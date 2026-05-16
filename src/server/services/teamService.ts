@@ -16,6 +16,25 @@ import { writeToMailbox } from '../../utils/teammateMailbox.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
+/** Check if a member name is valid (not a CLI flag, API method, or empty string) */
+function isValidMemberName(name: string): boolean {
+  if (!name || name.trim() === '') return false
+  // Filter out CLI flags like `--`, `-h`, `--help`, etc.
+  if (name.startsWith('-')) return false
+  // Filter out API method names and CLI tokens that might be mistakenly used as member names
+  const invalidNames = new Set([
+    'null', 'undefined',
+    // API methods
+    'SendMessage', 'TeamCreate', 'TeamDelete', 'TeamUpdate', 'TeamList',
+    // CLI tokens
+    'Agent', 'Team', 'Create', 'Delete', 'Update', 'List', 'Get', 'Set',
+    // Common commands
+    'help', 'version', 'init', 'start', 'stop', 'run', 'build', 'test'
+  ])
+  if (invalidNames.has(name)) return false
+  return true
+}
+
 export type TeamMember = {
   agentId: string
   name: string
@@ -299,7 +318,7 @@ export class TeamService {
   /**
    * Discover member names from the inboxes/ directory.
    * Each file `{name}.json` in inboxes/ represents a team member.
-   * Excludes the team-lead inbox since the leader is already in config.
+   * Excludes the team-lead inbox and invalid names (like `--` from CLI args).
    */
   private async discoverInboxMembers(teamName: string): Promise<string[]> {
     const inboxDir = path.join(this.getTeamsDir(), teamName, 'inboxes')
@@ -309,7 +328,7 @@ export class TeamService {
       return files
         .filter((f) => f.endsWith('.json'))
         .map((f) => f.replace(/\.json$/, ''))
-        .filter((name) => name !== 'team-lead')
+        .filter((name) => name !== 'team-lead' && isValidMemberName(name))
     } catch {
       return []
     }
@@ -585,14 +604,34 @@ export class TeamService {
         // Skip meta entries
         if (entry.isMeta) continue
 
+        // Extract content from entry.message or entry.content
+        // JSONL format: entry.message can be {role, content} object or direct content
+        let content: unknown = null
+        if (entry.message && typeof entry.message === 'object') {
+          // entry.message is {role, content} format - extract the content field
+          const msgObj = entry.message as Record<string, unknown>
+          content = msgObj.content ?? entry.content
+        } else {
+          // Direct content or fallback
+          content = entry.message ?? entry.content ?? null
+        }
+
+        // Extract model from entry.message.model (for assistant messages) or entry.model
+        const modelValue =
+          (typeof entry.model === 'string' ? entry.model : undefined) ??
+          (entry.message && typeof entry.message === 'object'
+            ? (entry.message as Record<string, unknown>).model
+            : undefined) ??
+          undefined
+
         const message: TranscriptMessage = {
           id: (entry.uuid as string) || crypto.randomUUID(),
           type: entryType as TranscriptMessage['type'],
-          content: entry.message ?? entry.content ?? null,
+          content,
           timestamp:
             (entry.timestamp as string) || new Date().toISOString(),
           ...(typeof entry.parentToolUseId === 'string' ? { parentToolUseId: entry.parentToolUseId } : {}),
-          ...(typeof entry.model === 'string' ? { model: entry.model } : {}),
+          ...(typeof modelValue === 'string' ? { model: modelValue } : {}),
         }
 
         messages.push(message)

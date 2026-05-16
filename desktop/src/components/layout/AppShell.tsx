@@ -17,6 +17,7 @@ import { StartupErrorView } from './StartupErrorView'
 import { useTabStore, SETTINGS_TAB_ID } from '../../stores/tabStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useSessionStore } from '../../stores/sessionStore'
+import { useTeamStore } from '../../stores/teamStore'
 import { useTranslation } from '../../i18n'
 import { H5ConnectionView } from './H5ConnectionView'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -90,6 +91,8 @@ export function AppShell() {
           if (activeId && activeTab?.type === 'session') {
             useChatStore.getState().connectToSession(activeId)
           }
+          // Restore active team state after page refresh
+          await useTeamStore.getState().restoreActiveTeam()
         })().catch(() => {})
       } catch (error) {
         if (!cancelled) {

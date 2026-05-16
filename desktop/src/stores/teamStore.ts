@@ -8,6 +8,26 @@ import { useTabStore } from './tabStore'
 
 const MEMBER_POLL_INTERVAL_MS = 1500
 const MEMBER_TRANSCRIPT_MATCH_WINDOW_MS = 120_000
+const ACTIVE_TEAM_STORAGE_KEY = 'cc-haha-active-team'
+
+/** Check if a member name is valid (not a CLI flag, API method, or empty string) */
+function isValidMemberName(name: string | undefined): boolean {
+  if (!name || name.trim() === '') return false
+  // Filter out CLI flags like `--`, `-h`, `--help`, etc.
+  if (name.startsWith('-')) return false
+  // Filter out API method names and CLI tokens that might be mistakenly used as member names
+  const invalidNames = new Set([
+    'null', 'undefined',
+    // API methods
+    'SendMessage', 'TeamCreate', 'TeamDelete', 'TeamUpdate', 'TeamList',
+    // CLI tokens
+    'Agent', 'Team', 'Create', 'Delete', 'Update', 'List', 'Get', 'Set',
+    // Common commands
+    'help', 'version', 'init', 'start', 'stop', 'run', 'build', 'test'
+  ])
+  if (invalidNames.has(name)) return false
+  return true
+}
 
 /** Generate a synthetic sessionId for team member tabs */
 const memberSessionId = (agentId: string) => `team-member:${agentId}`
@@ -131,6 +151,8 @@ type TeamStore = {
   startMemberPolling: (sessionId: string, force?: boolean) => void
   stopMemberPolling: () => void
   clearTeam: () => void
+  saveActiveTeam: () => void
+  restoreActiveTeam: () => Promise<void>
 
   // WebSocket handlers
   handleTeamCreated: (teamName: string) => void
@@ -159,7 +181,9 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
     try {
       const raw = await teamsApi.get(name) as Record<string, unknown>
       const rawMembers = Array.isArray(raw.members) ? raw.members : []
-      const members: TeamMember[] = rawMembers.map((m: Record<string, unknown>) => toTeamMember(m))
+      const members: TeamMember[] = rawMembers
+        .map((m: Record<string, unknown>) => toTeamMember(m))
+        .filter((m) => isValidMemberName(m.name) && isValidMemberName(m.role))
       const detail: TeamDetail = {
         name: raw.name as string,
         leadAgentId: raw.leadAgentId as string | undefined,
@@ -173,6 +197,8 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
         colors.set(m.agentId, AGENT_COLORS[i % AGENT_COLORS.length]!)
       })
       set({ activeTeam: detail, memberColors: colors })
+      // Persist active team name
+      get().saveActiveTeam()
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) })
     }
@@ -211,7 +237,13 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
         transcriptMessages,
       )
       syncMemberSessionMessages(sessionId, member.status, mergedMessages)
-    } catch {
+    } catch (error) {
+      console.error('[teamStore] Failed to refresh member session transcript:', {
+        teamName: team.name,
+        agentId: member.agentId,
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
       const existingMessages = useChatStore.getState().sessions[sessionId]?.messages ?? []
       syncMemberSessionMessages(sessionId, member.status, existingMessages)
     }
@@ -252,10 +284,24 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       return
     }
 
-    if (member.status !== 'running' && !hasPendingMessages) {
+    // Allow polling for completed/idle members so users can view their history.
+    // Only skip if there is genuinely nothing to poll (no pending messages and
+    // the member is in a terminal state with no reason to expect updates).
+    // For completed/idle members, use a longer interval to reduce overhead.
+    const isTerminal = member.status === 'completed' || member.status === 'error'
+    if (isTerminal && !hasPendingMessages) {
+      // Terminal members still need one final transcript refresh
+      // so the user can see their conversation history.
+      void get().refreshMemberSession(sessionId)
+      // Don't start a poll timer for truly terminal members
       get().stopMemberPolling()
       return
     }
+
+    // For idle members, keep polling at a reduced rate so messages stay current
+    const pollInterval = member.status === 'idle'
+      ? MEMBER_POLL_INTERVAL_MS * 4  // 6s for idle members
+      : MEMBER_POLL_INTERVAL_MS      // 1.5s for running members
 
     get().stopMemberPolling()
     polledMemberSessionId = sessionId
@@ -265,8 +311,27 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
         get().stopMemberPolling()
         return
       }
+
+      // Re-check member status on each tick — transition to longer interval
+      // when the member becomes idle, or stop when truly terminal
+      const currentMember = get().getMemberBySessionId(sessionId)
+      if (!currentMember) {
+        get().stopMemberPolling()
+        return
+      }
+
+      // Stop polling for terminal states (completed/error) after a final refresh
+      if (
+        (currentMember.status === 'completed' || currentMember.status === 'error') &&
+        !useChatStore.getState().sessions[sessionId]?.messages.some(isPendingMemberMessage)
+      ) {
+        void get().refreshMemberSession(sessionId)
+        get().stopMemberPolling()
+        return
+      }
+
       void get().refreshMemberSession(sessionId)
-    }, MEMBER_POLL_INTERVAL_MS)
+    }, pollInterval)
   },
 
   stopMemberPolling: () => {
@@ -280,6 +345,39 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
   clearTeam: () => {
     get().stopMemberPolling()
     set({ activeTeam: null, memberColors: new Map() })
+    // Clear persisted active team
+    try {
+      localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY)
+    } catch { /* noop */ }
+  },
+
+  saveActiveTeam: () => {
+    const { activeTeam } = get()
+    if (activeTeam) {
+      try {
+        localStorage.setItem(ACTIVE_TEAM_STORAGE_KEY, activeTeam.name)
+      } catch { /* noop */ }
+    } else {
+      try {
+        localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY)
+      } catch { /* noop */ }
+    }
+  },
+
+  restoreActiveTeam: async () => {
+    try {
+      const teamName = localStorage.getItem(ACTIVE_TEAM_STORAGE_KEY)
+      if (!teamName) return
+
+      // Check if team still exists
+      const { teams } = await teamsApi.list()
+      if (teams.some((t) => t.name === teamName)) {
+        await get().fetchTeamDetail(teamName)
+      } else {
+        // Team no longer exists, clear storage
+        localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY)
+      }
+    } catch { /* noop */ }
   },
 
   handleTeamCreated: (teamName: string) => {
@@ -323,6 +421,25 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       ]
       set({ activeTeam: { ...team, members: updatedMembers } })
 
+      // Check if all members have completed - if so, clear team state after a delay
+      const allCompleted = updatedMembers.length > 0 && updatedMembers.every(
+        (m) => m.status === 'completed' || m.status === 'error'
+      )
+      if (allCompleted) {
+        // Clear team state after 5 seconds so user can see final status
+        setTimeout(() => {
+          const currentTeam = get().activeTeam
+          if (currentTeam?.name === teamName) {
+            const stillAllCompleted = currentTeam.members.every(
+              (m) => m.status === 'completed' || m.status === 'error'
+            )
+            if (stillAllCompleted) {
+              get().clearTeam()
+            }
+          }
+        }, 5000)
+      }
+
       const currentTabId = useTabStore.getState().activeTabId
       if (currentTabId) {
         const viewedMember = get().getMemberBySessionId(currentTabId)
@@ -336,9 +453,17 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
 
   handleTeamDeleted: (teamName: string) => {
     get().stopMemberPolling()
-    set((s) => ({
-      teams: s.teams.filter((t) => t.name !== teamName),
-      activeTeam: s.activeTeam?.name === teamName ? null : s.activeTeam,
-    }))
+    set((s) => {
+      const isActiveTeam = s.activeTeam?.name === teamName
+      if (isActiveTeam) {
+        try {
+          localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY)
+        } catch { /* noop */ }
+      }
+      return {
+        teams: s.teams.filter((t) => t.name !== teamName),
+        activeTeam: isActiveTeam ? null : s.activeTeam,
+      }
+    })
   },
 }))
