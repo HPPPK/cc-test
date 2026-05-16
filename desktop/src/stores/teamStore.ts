@@ -545,6 +545,26 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       throw new Error('No active team')
     }
 
+    await teamsApi.deleteMember(team.name, agentId)
+    markMemberSessionsDisconnected([agentId])
+
+    // Optimistically remove member from local state
+    set((s) => ({
+      activeTeam: s.activeTeam
+        ? {
+            ...s.activeTeam,
+            members: s.activeTeam.members.filter((m) => m.agentId !== agentId),
+          }
+        : null,
+    }))
+  },
+
+  stopMember: async (agentId: string) => {
+    const team = get().activeTeam
+    if (!team) {
+      throw new Error('No active team')
+    }
+
     await teamsApi.stopMember(team.name, agentId)
     // The member will be updated via WebSocket team_update event
   },
