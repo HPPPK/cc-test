@@ -21,6 +21,7 @@ async function setupTmpConfigDir(): Promise<string> {
     `claude-watcher-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   )
   await fs.mkdir(path.join(tmpDir, 'teams'), { recursive: true })
+  await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   return tmpDir
 }
@@ -42,6 +43,19 @@ async function writeTeamConfig(
   const configPath = path.join(teamDir, 'config.json')
   await fs.writeFile(configPath, JSON.stringify(config), 'utf-8')
   return configPath
+}
+
+async function writeTranscriptFile(
+  projectDir: string,
+  sessionId: string,
+  entries: Record<string, unknown>[],
+): Promise<string> {
+  const dir = path.join(tmpDir, 'projects', projectDir)
+  await fs.mkdir(dir, { recursive: true })
+  const filePath = path.join(dir, `${sessionId}.jsonl`)
+  const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n'
+  await fs.writeFile(filePath, content, 'utf-8')
+  return filePath
 }
 
 /** Create a standard team config for testing. */
@@ -129,12 +143,18 @@ describe('TeamWatcher.extractMemberStatuses', () => {
       role: 'Lead Agent',
       status: 'running',
       currentTask: undefined,
+      joinedAt: '2023-11-14T22:13:20.000Z',
+      inputTokens: undefined,
+      outputTokens: undefined,
     })
     expect(statuses[1]).toEqual({
       agentId: 'agent-worker',
       role: 'Worker Agent',
       status: 'idle',
       currentTask: undefined,
+      joinedAt: '2023-11-14T22:13:21.000Z',
+      inputTokens: undefined,
+      outputTokens: undefined,
     })
   })
 
@@ -197,6 +217,53 @@ describe('TeamWatcher.extractMemberStatuses', () => {
 
     expect(statuses[0]!.currentTask).toBe('Implementing feature X')
   })
+
+  it('should derive token metrics from member transcript usage when config has none', async () => {
+    await setupTmpConfigDir()
+    try {
+      const config = makeTeamConfig()
+      await writeTranscriptFile('-tmp-project', 'session-worker-001', [
+        {
+          type: 'assistant',
+          uuid: 'msg-asst-1',
+          message: {
+            role: 'assistant',
+            model: 'claude-sonnet-4-20250514',
+            content: [{ type: 'text', text: 'First response' }],
+            usage: {
+              input_tokens: 100,
+              output_tokens: 20,
+              cache_read_input_tokens: 30,
+              cache_creation_input_tokens: 40,
+            },
+          },
+          timestamp: '2026-01-01T00:02:00.000Z',
+        },
+        {
+          type: 'assistant',
+          uuid: 'msg-asst-2',
+          message: {
+            role: 'assistant',
+            model: 'claude-sonnet-4-20250514',
+            content: [{ type: 'text', text: 'Second response' }],
+            usage: {
+              input_tokens: 200,
+              output_tokens: 50,
+            },
+          },
+          timestamp: '2026-01-01T00:03:00.000Z',
+        },
+      ])
+
+      const statuses = watcher.extractMemberStatuses(config)
+      const worker = statuses.find((member) => member.agentId === 'agent-worker')!
+
+      expect(worker.inputTokens).toBe(370)
+      expect(worker.outputTokens).toBe(70)
+    } finally {
+      await cleanupTmpDir()
+    }
+  })
 })
 
 // ============================================================================
@@ -256,6 +323,72 @@ describe('TeamWatcher polling', () => {
     // Second poll should detect the change
     watcher.checkNow()
     // No error means the diff detection worked
+  })
+
+  it('should detect transcript token usage changes when config is unchanged', async () => {
+    const config = makeTeamConfig({ name: 'usage-change-team' })
+    await writeTeamConfig('usage-change-team', config)
+    await writeTranscriptFile('-tmp-project', 'session-worker-001', [
+      {
+        type: 'assistant',
+        uuid: 'msg-asst-1',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'First response' }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+          },
+        },
+        timestamp: '2026-01-01T00:02:00.000Z',
+      },
+    ])
+
+    const snapshotBefore = (
+      watcher as unknown as {
+        buildTeamSnapshot: (content: string) => string
+      }
+    ).buildTeamSnapshot(JSON.stringify(config))
+
+    await writeTranscriptFile('-tmp-project', 'session-worker-001', [
+      {
+        type: 'assistant',
+        uuid: 'msg-asst-1',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'First response' }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+          },
+        },
+        timestamp: '2026-01-01T00:02:00.000Z',
+      },
+      {
+        type: 'assistant',
+        uuid: 'msg-asst-2',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'Second response' }],
+          usage: {
+            input_tokens: 200,
+            output_tokens: 50,
+          },
+        },
+        timestamp: '2026-01-01T00:03:00.000Z',
+      },
+    ])
+
+    const snapshotAfter = (
+      watcher as unknown as {
+        buildTeamSnapshot: (content: string) => string
+      }
+    ).buildTeamSnapshot(JSON.stringify(config))
+
+    expect(snapshotBefore).not.toBe(snapshotAfter)
   })
 
   it('should detect team deletion', async () => {
@@ -370,6 +503,67 @@ describe('TeamWatcher polling', () => {
     watcher.reset()
     watcher.checkNow()
     // No error means reset worked
+  })
+
+  it('should not rediscover a config member from its sanitized mailbox filename', async () => {
+    const config = makeTeamConfig({ name: 'watcher-sanitized' })
+    await writeTeamConfig('watcher-sanitized', config)
+    const inboxDir = path.join(tmpDir, 'teams', 'watcher-sanitized', 'inboxes')
+    await fs.mkdir(inboxDir, { recursive: true })
+    await fs.writeFile(path.join(inboxDir, 'Worker-Agent.json'), '[]', 'utf-8')
+
+    const inboxMembers = (
+      watcher as unknown as {
+        discoverInboxMembers: (
+          teamsDir: string,
+          teamName: string,
+          config: Record<string, unknown>,
+        ) => TeamMemberStatus[]
+      }
+    ).discoverInboxMembers(
+      path.join(tmpDir, 'teams'),
+      'watcher-sanitized',
+      config,
+    )
+
+    expect(inboxMembers).toEqual([])
+  })
+
+  it('should not rediscover an inbox member after a shutdown request', async () => {
+    const config = makeTeamConfig({
+      name: 'watcher-shutdown',
+      members: [],
+    })
+    await writeTeamConfig('watcher-shutdown', config)
+    const inboxDir = path.join(tmpDir, 'teams', 'watcher-shutdown', 'inboxes')
+    await fs.mkdir(inboxDir, { recursive: true })
+    await fs.writeFile(
+      path.join(inboxDir, 'security-reviewer.json'),
+      JSON.stringify([
+        {
+          from: 'team-lead',
+          text: JSON.stringify({ type: 'shutdown_request' }),
+          read: false,
+        },
+      ]),
+      'utf-8',
+    )
+
+    const inboxMembers = (
+      watcher as unknown as {
+        discoverInboxMembers: (
+          teamsDir: string,
+          teamName: string,
+          config: Record<string, unknown>,
+        ) => TeamMemberStatus[]
+      }
+    ).discoverInboxMembers(
+      path.join(tmpDir, 'teams'),
+      'watcher-shutdown',
+      config,
+    )
+
+    expect(inboxMembers).toEqual([])
   })
 })
 

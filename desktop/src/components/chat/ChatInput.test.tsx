@@ -68,6 +68,7 @@ import { useChatStore } from '../../stores/chatStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useTabStore } from '../../stores/tabStore'
+import { useTeamStore } from '../../stores/teamStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
 
 function okRepositoryContext() {
@@ -109,6 +110,7 @@ describe('ChatInput file mentions', () => {
   const initialChatState = useChatStore.getInitialState()
   const initialSessionState = useSessionStore.getInitialState()
   const initialTabState = useTabStore.getInitialState()
+  const initialTeamState = useTeamStore.getInitialState()
   const initialWorkspaceContextState = useWorkspaceChatContextStore.getInitialState()
 
   beforeEach(() => {
@@ -118,6 +120,7 @@ describe('ChatInput file mentions', () => {
     useChatStore.setState(initialChatState, true)
     useSessionStore.setState(initialSessionState, true)
     useTabStore.setState(initialTabState, true)
+    useTeamStore.setState(initialTeamState, true)
     useWorkspaceChatContextStore.setState(initialWorkspaceContextState, true)
 
     useTabStore.setState({
@@ -167,6 +170,54 @@ describe('ChatInput file mentions', () => {
     mocks.list.mockResolvedValue({ sessions: [], total: 0 })
     mocks.getMessages.mockResolvedValue({ messages: [] })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
+  })
+
+  it('keeps deleted team member sessions read-only after they disconnect', () => {
+    const memberSessionId = 'team-member:worker@test-team'
+    useTabStore.setState({
+      activeTabId: memberSessionId,
+      tabs: [{ sessionId: memberSessionId, title: 'worker', type: 'session', status: 'idle' }],
+    })
+    useSessionStore.setState({
+      sessions: [],
+      activeSessionId: memberSessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [memberSessionId]: {
+          messages: [{ id: 'existing', type: 'assistant_text', content: 'done', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'disconnected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+    useTeamStore.setState({
+      teams: [],
+      activeTeam: null,
+      memberColors: new Map(),
+      error: null,
+    })
+
+    render(<ChatInput />)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(input).toBeDisabled()
+    expect(input).toHaveAttribute('placeholder', 'This teammate session is disconnected. History is view-only.')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Open composer tools' })).not.toBeInTheDocument()
   })
 
   it('keeps unsent composer drafts isolated when switching between session tabs', async () => {

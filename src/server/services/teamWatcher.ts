@@ -22,6 +22,21 @@ function getTeamsDir(): string {
   return path.join(configDir, 'teams')
 }
 
+function toMailboxName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '-')
+}
+
+function addNameVariants(names: Set<string>, name: unknown): void {
+  if (typeof name !== 'string') return
+  names.add(name)
+  names.add(toMailboxName(name))
+}
+
+type TokenMetrics = {
+  inputTokens: number
+  outputTokens: number
+}
+
 // ─── TeamWatcher ──────────────────────────────────────────────────────────
 
 export class TeamWatcher {
@@ -88,15 +103,17 @@ export class TeamWatcher {
         continue
       }
 
+      const snapshot = this.buildTeamSnapshot(content)
+
       const lastContent = this.lastSnapshots.get(teamName)
 
       if (lastContent === undefined) {
         // New team detected
-        this.lastSnapshots.set(teamName, content)
+        this.lastSnapshots.set(teamName, snapshot)
         this.broadcast({ type: 'team_created', teamName })
-      } else if (content !== lastContent) {
+      } else if (snapshot !== lastContent) {
         // Team config changed -- extract member statuses and broadcast
-        this.lastSnapshots.set(teamName, content)
+        this.lastSnapshots.set(teamName, snapshot)
         try {
           const config = JSON.parse(content)
           const members = this.extractMemberStatuses(config)
@@ -128,11 +145,25 @@ export class TeamWatcher {
 
   // ── Member status extraction ───────────────────────────────────────────
 
+  private buildTeamSnapshot(content: string): string {
+    try {
+      const config = JSON.parse(content) as Record<string, unknown>
+      const metrics = this.extractMemberStatuses(config).map((member) => ({
+        agentId: member.agentId,
+        inputTokens: member.inputTokens ?? null,
+        outputTokens: member.outputTokens ?? null,
+      }))
+      return JSON.stringify({ content, metrics })
+    } catch {
+      return JSON.stringify({ content, metrics: [] })
+    }
+  }
+
   /**
    * Parse the TeamFile config and derive a TeamMemberStatus for each member.
    *
    * The raw config has:
-   *   members: [{ agentId, name, agentType, isActive, sessionId, ... }]
+   *   members: [{ agentId, name, agentType, isActive, sessionId, joinedAt, inputTokens, outputTokens, ... }]
    *
    * We map `isActive` to the status enum and use `agentType` / `name` as role.
    */
@@ -142,11 +173,29 @@ export class TeamWatcher {
 
     return members.map((m: Record<string, unknown>) => {
       const status = this.deriveStatus(m.isActive as boolean | undefined)
+
+      // Extract joinedAt - convert number timestamp to ISO string if needed
+      let joinedAt: string | undefined
+      if (typeof m.joinedAt === 'number') {
+        joinedAt = new Date(m.joinedAt as number).toISOString()
+      } else if (typeof m.joinedAt === 'string') {
+        joinedAt = m.joinedAt as string
+      }
+
+      const transcriptMetrics = this.getMemberTokenMetrics(config, m)
+
       return {
         agentId: (m.agentId as string) || '',
         role: (m.name as string) || (m.agentType as string) || 'member',
         status,
         currentTask: (m.currentTask as string) || undefined,
+        joinedAt,
+        inputTokens: typeof m.inputTokens === 'number'
+          ? (m.inputTokens as number)
+          : transcriptMetrics?.inputTokens,
+        outputTokens: typeof m.outputTokens === 'number'
+          ? (m.outputTokens as number)
+          : transcriptMetrics?.outputTokens,
       }
     })
   }
@@ -168,9 +217,10 @@ export class TeamWatcher {
   ): TeamMemberStatus[] {
     const inboxDir = path.join(teamsDir, teamName, 'inboxes')
     const configMembers = Array.isArray(config.members) ? config.members : []
-    const configNames = new Set(
-      configMembers.map((m: Record<string, unknown>) => m.name as string),
-    )
+    const configNames = new Set<string>()
+    for (const member of configMembers) {
+      addNameVariants(configNames, (member as Record<string, unknown>).name)
+    }
 
     try {
       const files = fs.readdirSync(inboxDir)
@@ -179,7 +229,11 @@ export class TeamWatcher {
       for (const file of files) {
         if (!file.endsWith('.json')) continue
         const name = file.replace(/\.json$/, '')
-        if (name === 'team-lead' || configNames.has(name)) continue
+        if (
+          name === 'team-lead' ||
+          configNames.has(name) ||
+          this.hasShutdownRequest(path.join(inboxDir, file))
+        ) continue
 
         extra.push({
           agentId: `${name}@${teamName}`,
@@ -204,9 +258,10 @@ export class TeamWatcher {
     if (!leadSessionId) return []
 
     const configMembers = Array.isArray(config.members) ? config.members : []
-    const configNames = new Set(
-      configMembers.map((m: Record<string, unknown>) => m.name as string),
-    )
+    const configNames = new Set<string>()
+    for (const member of configMembers) {
+      addNameVariants(configNames, (member as Record<string, unknown>).name)
+    }
     const projectsDir = path.join(path.dirname(teamsDir), 'projects')
 
     try {
@@ -238,6 +293,9 @@ export class TeamWatcher {
             inferredName &&
             inferredName !== 'team-lead' &&
             !configNames.has(inferredName) &&
+            !this.hasShutdownRequest(
+              path.join(teamsDir, teamName, 'inboxes', `${toMailboxName(inferredName)}.json`),
+            ) &&
             !extra.has(inferredName)
           ) {
             extra.set(inferredName, {
@@ -290,6 +348,145 @@ export class TeamWatcher {
     }
 
     return members
+  }
+
+  private hasShutdownRequest(inboxPath: string): boolean {
+    try {
+      const raw = fs.readFileSync(inboxPath, 'utf-8')
+      const messages = JSON.parse(raw) as Array<{ text?: unknown }>
+      return messages.some((message) => {
+        if (typeof message.text !== 'string') return false
+        try {
+          const parsed = JSON.parse(message.text) as { type?: unknown }
+          return parsed.type === 'shutdown_request'
+        } catch {
+          return message.text.includes('"type":"shutdown_request"')
+        }
+      })
+    } catch {
+      return false
+    }
+  }
+
+  private getMemberTokenMetrics(
+    config: Record<string, unknown>,
+    member: Record<string, unknown>,
+  ): TokenMetrics | null {
+    let transcriptPath: string | null = null
+    if (typeof member.sessionId === 'string') {
+      transcriptPath = this.findTranscriptFile(member.sessionId)
+    }
+
+    if (!transcriptPath && typeof config.leadSessionId === 'string' && typeof member.name === 'string') {
+      transcriptPath = this.findSubagentTranscript(config.leadSessionId, member.name)
+    }
+
+    if (!transcriptPath) return null
+    return this.parseTranscriptTokenMetrics(transcriptPath)
+  }
+
+  private findTranscriptFile(sessionId: string): string | null {
+    const projectsDir = path.join(path.dirname(getTeamsDir()), 'projects')
+
+    try {
+      const entries = fs.readdirSync(projectsDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const candidate = path.join(projectsDir, entry.name, `${sessionId}.jsonl`)
+        if (fs.existsSync(candidate)) return candidate
+      }
+    } catch {
+      return null
+    }
+
+    return null
+  }
+
+  private findSubagentTranscript(
+    leadSessionId: string,
+    memberName: string,
+  ): string | null {
+    const projectsDir = path.join(path.dirname(getTeamsDir()), 'projects')
+
+    try {
+      const projectEntries = fs.readdirSync(projectsDir, { withFileTypes: true })
+      let bestMatch: { path: string; mtime: number } | null = null
+
+      for (const projEntry of projectEntries) {
+        if (!projEntry.isDirectory()) continue
+        const subagentsDir = path.join(
+          projectsDir,
+          projEntry.name,
+          leadSessionId,
+          'subagents',
+        )
+
+        let files: string[]
+        try {
+          files = fs.readdirSync(subagentsDir)
+        } catch {
+          continue
+        }
+
+        for (const file of files) {
+          if (!file.endsWith('.jsonl')) continue
+          const filePath = path.join(subagentsDir, file)
+          const inferredName = this.extractSubagentName(filePath)
+          if (inferredName !== memberName) continue
+
+          const stat = fs.statSync(filePath)
+          if (!bestMatch || stat.mtimeMs > bestMatch.mtime) {
+            bestMatch = { path: filePath, mtime: stat.mtimeMs }
+          }
+        }
+      }
+
+      return bestMatch?.path ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private parseTranscriptTokenMetrics(filePath: string): TokenMetrics | null {
+    let raw: string
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8')
+    } catch {
+      return null
+    }
+
+    let inputTokens = 0
+    let outputTokens = 0
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0)
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as Record<string, unknown>
+        const message = entry.message
+        const usage = message && typeof message === 'object'
+          ? (message as Record<string, unknown>).usage
+          : entry.usage
+        if (!usage || typeof usage !== 'object') continue
+
+        const record = usage as Record<string, unknown>
+        inputTokens += this.numberField(record.input_tokens)
+        inputTokens += this.numberField(record.cache_read_input_tokens)
+        inputTokens += this.numberField(record.cache_creation_input_tokens)
+        inputTokens += this.numberField(record.cache_read_tokens)
+        inputTokens += this.numberField(record.cache_creation_tokens)
+        outputTokens += this.numberField(record.output_tokens)
+      } catch {
+        // Skip malformed transcript lines.
+      }
+    }
+
+    return inputTokens > 0 || outputTokens > 0
+      ? { inputTokens, outputTokens }
+      : null
+  }
+
+  private numberField(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
   }
 
   private extractSubagentName(filePath: string): string | null {

@@ -12,7 +12,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 import { ApiError } from '../middleware/errorHandler.js'
-import { writeToMailbox } from '../../utils/teammateMailbox.js'
+import { writeToMailbox, sendShutdownRequestToMailbox } from '../../utils/teammateMailbox.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +35,14 @@ function isValidMemberName(name: string): boolean {
   return true
 }
 
+function toMailboxName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '-')
+}
+
+function addNameVariants(names: Set<string>, name: string): void {
+  names.add(name)
+  names.add(toMailboxName(name))
+}
 export type TeamMember = {
   agentId: string
   name: string
@@ -46,6 +54,10 @@ export type TeamMember = {
   joinedAt: number
   cwd: string
   sessionId?: string
+  /** Cumulative input token count */
+  inputTokens?: number
+  /** Cumulative output token count */
+  outputTokens?: number
 }
 
 export type TeamSummary = {
@@ -93,7 +105,14 @@ type TeamFileRaw = {
     backendType?: string
     isActive?: boolean
     mode?: string
+    inputTokens?: number
+    outputTokens?: number
   }>
+}
+
+type TokenMetrics = {
+  inputTokens: number
+  outputTokens: number
 }
 
 // ─── Service ───────────────────────────────────────────────────────────────
@@ -132,8 +151,15 @@ export class TeamService {
         const config = await this.loadTeamConfig(entry.name)
         // Include inbox-discovered members in the count
         const inboxNames = await this.discoverInboxMembers(entry.name)
-        const configNames = new Set(config.members.map((m) => m.name))
-        const extraCount = inboxNames.filter((n) => !configNames.has(n)).length
+        let extraCount = 0
+        for (const inboxName of inboxNames) {
+          if (
+            !this.isConfigMemberName(config, inboxName) &&
+            !(await this.hasShutdownRequest(entry.name, inboxName))
+          ) {
+            extraCount++
+          }
+        }
         const summary = this.toSummary(config)
         summary.memberCount += extraCount
         summary.activeMemberCount += extraCount // assume running if newly discovered
@@ -151,25 +177,39 @@ export class TeamService {
   async getTeam(name: string): Promise<TeamDetail> {
     const config = await this.loadTeamConfig(name)
 
-    const members: TeamMember[] = config.members.map((m) => ({
-      agentId: m.agentId,
-      name: m.name,
-      agentType: m.agentType,
-      model: m.model,
-      color: m.color,
-      backendType: m.backendType,
-      status: this.deriveStatus(m.isActive),
-      joinedAt: m.joinedAt,
-      cwd: m.cwd,
-      sessionId: m.sessionId,
-    }))
+    const members: TeamMember[] = await Promise.all(
+      config.members.map(async (m) => {
+        const needsTranscriptMetrics =
+          typeof m.inputTokens !== 'number' ||
+          typeof m.outputTokens !== 'number'
+        const transcriptMetrics = needsTranscriptMetrics
+          ? await this.getMemberTokenMetrics(config, m)
+          : null
+        return {
+          agentId: m.agentId,
+          name: m.name,
+          agentType: m.agentType,
+          model: m.model,
+          color: m.color,
+          backendType: m.backendType,
+          status: this.deriveStatus(m.isActive),
+          joinedAt: m.joinedAt,
+          cwd: m.cwd,
+          sessionId: m.sessionId,
+          inputTokens: m.inputTokens ?? transcriptMetrics?.inputTokens,
+          outputTokens: m.outputTokens ?? transcriptMetrics?.outputTokens,
+        }
+      }),
+    )
 
     // Discover members from inboxes/ that aren't in config.json (race condition fix)
     const inboxNames = await this.discoverInboxMembers(name)
-    const configNames = new Set(config.members.map((m) => m.name))
 
     for (const inboxName of inboxNames) {
-      if (!configNames.has(inboxName)) {
+      if (
+        !this.isConfigMemberName(config, inboxName) &&
+        !(await this.hasShutdownRequest(name, inboxName))
+      ) {
         members.push({
           agentId: `${inboxName}@${name}`,
           name: inboxName,
@@ -187,7 +227,8 @@ export class TeamService {
       )
       for (const subagentName of subagentNames) {
         if (
-          !configNames.has(subagentName) &&
+          !this.isConfigMemberName(config, subagentName) &&
+          !(await this.hasShutdownRequest(name, subagentName)) &&
           !members.some((member) => member.name === subagentName)
         ) {
           members.push({
@@ -286,20 +327,166 @@ export class TeamService {
 
   // ── Delete team ─────────────────────────────────────────────────────────
 
-  async deleteTeam(name: string): Promise<void> {
+  async deleteTeam(name: string, force: boolean = false): Promise<void> {
     const config = await this.loadTeamConfig(name)
 
-    const hasActive = config.members.some(
-      (m) => m.isActive === undefined || m.isActive === true,
-    )
-    if (hasActive) {
-      throw ApiError.conflict(
-        `Cannot delete team "${name}": has active members`,
+    if (!force) {
+      // Check config.json members
+      const hasActiveInConfig = config.members.some(
+        (m) => m.isActive === undefined || m.isActive === true,
       )
+      if (hasActiveInConfig) {
+        throw ApiError.conflict(
+          `Cannot delete team "${name}": has active members`,
+        )
+      }
+
+      // Check inbox-discovered members (they're assumed running)
+      const inboxNames = await this.discoverInboxMembers(name)
+      const activeInboxMembers = []
+      for (const inboxName of inboxNames) {
+        if (
+          !this.isConfigMemberName(config, inboxName) &&
+          !(await this.hasShutdownRequest(name, inboxName))
+        ) {
+          activeInboxMembers.push(inboxName)
+        }
+      }
+      if (activeInboxMembers.length > 0) {
+        throw ApiError.conflict(
+          `Cannot delete team "${name}": has active members`,
+        )
+      }
+
+      // Check subagent-discovered members
+      if (config.leadSessionId) {
+        const subagentNames = await this.discoverSubagentMembers(config.leadSessionId)
+        const activeSubagentMembers = []
+        for (const subagentName of subagentNames) {
+          if (
+            !this.isConfigMemberName(config, subagentName) &&
+            !(await this.hasShutdownRequest(name, subagentName)) &&
+            !activeInboxMembers.includes(subagentName)
+          ) {
+            activeSubagentMembers.push(subagentName)
+          }
+        }
+        if (activeSubagentMembers.length > 0) {
+          throw ApiError.conflict(
+            `Cannot delete team "${name}": has active members`,
+          )
+        }
+      }
+    } else {
+      // Force mode: send shutdown requests to all active members first
+      const activeMembers = config.members.filter(
+        (m) => m.isActive === undefined || m.isActive === true,
+      )
+      for (const member of activeMembers) {
+        await sendShutdownRequestToMailbox(
+          member.name,
+          name,
+          'Team is being deleted',
+        )
+      }
+
+      // Also shutdown inbox-discovered members
+      const inboxNames = await this.discoverInboxMembers(name)
+      for (const inboxName of inboxNames) {
+        if (
+          !this.isConfigMemberName(config, inboxName) &&
+          !(await this.hasShutdownRequest(name, inboxName))
+        ) {
+          await sendShutdownRequestToMailbox(
+            inboxName,
+            name,
+            'Team is being deleted',
+          )
+        }
+      }
     }
 
     const teamDir = path.join(this.getTeamsDir(), name)
     await fs.rm(teamDir, { recursive: true, force: true })
+  }
+
+  // ── Delete team member ──────────────────────────────────────────────────
+
+  async deleteMember(teamName: string, agentId: string): Promise<void> {
+    const config = await this.loadTeamConfig(teamName)
+
+    // Try to resolve member name (handles both real and synthetic agentIds)
+    const memberName = await this.resolveMemberName(config, teamName, agentId)
+
+    if (!memberName) {
+      throw ApiError.notFound(`Team member not found: ${agentId}`)
+    }
+
+    // Find the member in config.json (may not exist for inbox-discovered members)
+    const member = config.members.find((m) => m.agentId === agentId)
+
+    // Send shutdown request via mailbox
+    await sendShutdownRequestToMailbox(
+      memberName,
+      teamName,
+      'Removed by team leader',
+    )
+
+    if (member) {
+      config.members = config.members.filter((m) => m.agentId !== agentId)
+    }
+    await this.saveTeamConfig(teamName, config)
+  }
+
+  // ── Stop team member (send shutdown request without deleting) ────────────
+
+  async stopMember(teamName: string, agentId: string): Promise<void> {
+    const config = await this.loadTeamConfig(teamName)
+
+    // Try to resolve member name (handles both real and synthetic agentIds)
+    const memberName = await this.resolveMemberName(config, teamName, agentId)
+
+    if (!memberName) {
+      throw ApiError.notFound(`Team member not found: ${agentId}`)
+    }
+
+    // Send shutdown request via mailbox
+    await sendShutdownRequestToMailbox(
+      memberName,
+      teamName,
+      'Stopped by team leader',
+    )
+
+    // Update config.json to mark member as inactive (if member exists in config)
+    // This allows immediate deletion without waiting for CLI to respond
+    const member = config.members.find((m) => m.agentId === agentId)
+    if (member) {
+      await this.updateMemberActiveStatus(teamName, agentId, false)
+    }
+  }
+
+  // ── Update member active status ────────────────────────────────────────────
+
+  private async updateMemberActiveStatus(
+    teamName: string,
+    agentId: string,
+    isActive: boolean,
+  ): Promise<void> {
+    const configPath = path.join(this.getTeamsDir(), teamName, 'config.json')
+
+    try {
+      const raw = await fs.readFile(configPath, 'utf-8')
+      const config = JSON.parse(raw) as TeamFileRaw
+
+      const memberIndex = config.members.findIndex((m) => m.agentId === agentId)
+      if (memberIndex === -1) return
+
+      config.members[memberIndex]!.isActive = isActive
+
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    } catch {
+      // If we can't update the config, that's okay - the shutdown request was sent
+    }
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
@@ -313,6 +500,23 @@ export class TeamService {
     } catch {
       throw ApiError.notFound(`Team not found: ${name}`)
     }
+  }
+
+  private async saveTeamConfig(name: string, config: TeamFileRaw): Promise<void> {
+    const configPath = path.join(this.getTeamsDir(), name, 'config.json')
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
+  }
+
+  private getConfigMemberNames(config: TeamFileRaw): Set<string> {
+    const names = new Set<string>()
+    for (const member of config.members) {
+      addNameVariants(names, member.name)
+    }
+    return names
+  }
+
+  private isConfigMemberName(config: TeamFileRaw, name: string): boolean {
+    return this.getConfigMemberNames(config).has(name)
   }
 
   /**
@@ -331,6 +535,34 @@ export class TeamService {
         .filter((name) => name !== 'team-lead' && isValidMemberName(name))
     } catch {
       return []
+    }
+  }
+
+  private async hasShutdownRequest(
+    teamName: string,
+    memberName: string,
+  ): Promise<boolean> {
+    const inboxPath = path.join(
+      this.getTeamsDir(),
+      teamName,
+      'inboxes',
+      `${toMailboxName(memberName)}.json`,
+    )
+
+    try {
+      const raw = await fs.readFile(inboxPath, 'utf-8')
+      const messages = JSON.parse(raw) as Array<{ text?: unknown }>
+      return messages.some((message) => {
+        if (typeof message.text !== 'string') return false
+        try {
+          const parsed = JSON.parse(message.text) as { type?: unknown }
+          return parsed.type === 'shutdown_request'
+        } catch {
+          return message.text.includes('"type":"shutdown_request"')
+        }
+      })
+    } catch {
+      return false
     }
   }
 
@@ -368,7 +600,10 @@ export class TeamService {
 
     const parsedName = agentId.includes('@') ? agentId.split('@')[0]! : agentId
     const inboxNames = await this.discoverInboxMembers(teamName)
-    if (inboxNames.includes(parsedName)) {
+    if (
+      inboxNames.includes(parsedName) &&
+      !(await this.hasShutdownRequest(teamName, parsedName))
+    ) {
       return parsedName
     }
 
@@ -376,7 +611,10 @@ export class TeamService {
       const subagentNames = await this.discoverSubagentMembers(
         config.leadSessionId,
       )
-      if (subagentNames.includes(parsedName)) {
+      if (
+        subagentNames.includes(parsedName) &&
+        !(await this.hasShutdownRequest(teamName, parsedName))
+      ) {
         return parsedName
       }
     }
@@ -458,6 +696,71 @@ export class TeamService {
     }
 
     return null
+  }
+
+  private async getMemberTokenMetrics(
+    config: TeamFileRaw,
+    member: TeamFileRaw['members'][number],
+  ): Promise<TokenMetrics | null> {
+    let transcriptPath: string | null = null
+
+    if (member.sessionId) {
+      transcriptPath = await this.findTranscriptFile(member.sessionId)
+    }
+
+    if (!transcriptPath && config.leadSessionId) {
+      transcriptPath = await this.findSubagentTranscript(
+        config.leadSessionId,
+        member.name,
+      )
+    }
+
+    if (!transcriptPath) return null
+    return this.parseTranscriptTokenMetrics(transcriptPath)
+  }
+
+  private async parseTranscriptTokenMetrics(
+    filePath: string,
+  ): Promise<TokenMetrics | null> {
+    let raw: string
+    try {
+      raw = await fs.readFile(filePath, 'utf-8')
+    } catch {
+      return null
+    }
+
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0)
+    let inputTokens = 0
+    let outputTokens = 0
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as Record<string, unknown>
+        const message = entry.message
+        const usage = message && typeof message === 'object'
+          ? (message as Record<string, unknown>).usage
+          : entry.usage
+        if (!usage || typeof usage !== 'object') continue
+
+        const record = usage as Record<string, unknown>
+        inputTokens += this.numberField(record.input_tokens)
+        inputTokens += this.numberField(record.cache_read_input_tokens)
+        inputTokens += this.numberField(record.cache_creation_input_tokens)
+        inputTokens += this.numberField(record.cache_read_tokens)
+        inputTokens += this.numberField(record.cache_creation_tokens)
+        outputTokens += this.numberField(record.output_tokens)
+      } catch {
+        // Skip malformed transcript lines.
+      }
+    }
+
+    return inputTokens > 0 || outputTokens > 0
+      ? { inputTokens, outputTokens }
+      : null
+  }
+
+  private numberField(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
   }
 
   /**

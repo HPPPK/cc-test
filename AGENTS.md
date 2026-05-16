@@ -22,6 +22,13 @@ Install root dependencies with `bun install`, then install desktop dependencies 
 - `bun run quality:gate --mode baseline --allow-live --provider-model <provider:model[:label]>`: run live Coding Agent baseline cases, provider smoke, and desktop agent-browser smoke.
 - `bun run quality:gate --mode release --allow-live --provider-model <provider:model[:label]>`: run the release gate with live baseline, provider smoke, desktop smoke, and coverage.
 
+## Project Startup & Process Safety
+- Before starting or restarting the project, consult `docs/starup/haha-startup.md`; follow the documented root -> `desktop/` -> `adapters/` dependency install order and build the desktop frontend before `cd desktop && bun run tauri dev`.
+- Use `bun run ./bin/claude-haha` or `bun run start` for the CLI, and `SERVER_PORT=3456 bun run src/server/index.ts` for the desktop API/WebSocket server unless the startup guide or local port ownership requires a different port.
+- Before stopping a process that owns a port, identify the exact PID and command line. On Windows, use `netstat -ano | findstr :<PORT>` and then inspect the PID with `tasklist` or a process command-line query.
+- Only terminate the exact PID when its command/path clearly belongs to this repository. If the port is owned by another project or user process, use a different port instead.
+- Never run broad process kills such as `taskkill /IM node.exe /F`, `taskkill /IM bun.exe /F`, or equivalent name-wide termination commands.
+
 ## Desktop Release Workflow
 - Desktop releases are built remotely by GitHub Actions, not by uploading local build artifacts.
 - The release workflow is `.github/workflows/release-desktop.yml`; it triggers automatically on `push` of tags matching `v*.*.*`.
@@ -85,3 +92,4 @@ Future Coding Agents should run the right local gate themselves before claiming 
 ## Commit & Pull Request Guidelines
 Recent history follows Conventional Commit prefixes such as `feat:`, `fix:`, and `docs:`. Keep subjects imperative and scoped to one change. PRs should explain the user-visible impact, list verification steps, link related issues, and include screenshots for desktop or docs UI changes. Keep diffs reviewable and call out any follow-up work or known gaps.
 Branch names should use normal product prefixes such as `fix/xxx`, `feat/xxx`, or `docs/xxx`; do not create `codex/`-prefixed branches in this repository.
+

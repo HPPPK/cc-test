@@ -217,6 +217,8 @@ export function ActiveSession() {
   const memberInfo = useTeamStore((s) => activeTabId ? s.getMemberBySessionId(activeTabId) : null)
   const activeTeam = useTeamStore((s) => s.activeTeam)
   const isMemberSession = !!memberInfo
+  const isDisconnectedMemberSession =
+    isMemberSession && sessionState?.connectionState === 'disconnected'
   const showWorkspacePanel = useWorkspacePanelStore((state) =>
     activeTabId && isSessionTabState(activeTabId, activeTabType) && !isMemberSession && !isMobileLayout
       ? state.isPanelOpen(activeTabId)
@@ -297,6 +299,9 @@ export function ActiveSession() {
                     {memberInfo?.status === 'completed' && (
                       <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                     )}
+                    {isDisconnectedMemberSession && (
+                      <span className="material-symbols-outlined text-[14px] text-[var(--color-text-tertiary)]">link_off</span>
+                    )}
                     <span className="material-symbols-outlined text-[14px] text-[var(--color-text-tertiary)]">smart_toy</span>
                     <span className="text-sm font-semibold text-[var(--color-text-primary)]">
                       {memberInfo?.role}
@@ -308,7 +313,9 @@ export function ActiveSession() {
                     )}
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
-                    {t('teams.memberSessionHint')}
+                    {isDisconnectedMemberSession
+                      ? t('teams.memberSessionDisconnectedHint')
+                      : t('teams.memberSessionHint')}
                   </p>
                 </div>
                 <button

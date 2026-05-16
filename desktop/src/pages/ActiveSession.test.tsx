@@ -279,6 +279,51 @@ describe('ActiveSession task polling', () => {
     useCLITaskStore.setState(originalCliTaskState)
   })
 
+  it('shows disconnected read-only copy for deleted member sessions', () => {
+    const memberSessionId = 'team-member:security-reviewer@test-team'
+
+    useTabStore.setState({
+      tabs: [{ sessionId: memberSessionId, title: 'security-reviewer', type: 'session', status: 'idle' }],
+      activeTabId: memberSessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [memberSessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'Previous result', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'disconnected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+    useTeamStore.setState({
+      teams: [],
+      activeTeam: null,
+      memberColors: new Map(),
+      error: null,
+    })
+
+    render(<ActiveSession />)
+
+    expect(screen.getByText(/成员会话已断开/)).toBeInTheDocument()
+    expect(screen.getByText('security-reviewer')).toBeInTheDocument()
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-input')).toBeInTheDocument()
+    expect(screen.queryByTestId('session-task-bar')).not.toBeInTheDocument()
+  })
+
   it('renders the workspace panel to the right of chat and supports resizing', () => {
     const sessionId = 'workspace-session'
 

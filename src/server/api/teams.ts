@@ -6,6 +6,7 @@
  * GET    /api/teams/:name/members/:id/transcript   — 获取成员 transcript
  * POST   /api/teams/:name/members/:id/messages     — 给成员发送消息
  * DELETE /api/teams/:name                          — 删除团队
+ * DELETE /api/teams/:name/members/:id              — 删除成员
  */
 
 import { teamService } from '../services/teamService.js'
@@ -59,6 +60,32 @@ export async function handleTeamsApi(
       return Response.json({ ok: true })
     }
 
+    // ── POST /api/teams/:name/members/:id/stop ─────────────────────────────
+    if (
+      method === 'POST' &&
+      teamName &&
+      segments[3] === 'members' &&
+      segments[4] &&
+      segments[5] === 'stop'
+    ) {
+      const agentId = decodeURIComponent(segments[4])
+      await teamService.stopMember(teamName, agentId)
+      return Response.json({ ok: true })
+    }
+
+    // ── DELETE /api/teams/:name/members/:id ───────────────────────────────
+    if (
+      method === 'DELETE' &&
+      teamName &&
+      segments[3] === 'members' &&
+      segments[4] &&
+      !segments[5]
+    ) {
+      const agentId = decodeURIComponent(segments[4])
+      await teamService.deleteMember(teamName, agentId)
+      return Response.json({ ok: true })
+    }
+
     // ── GET /api/teams/:name ──────────────────────────────────────────────
     if (method === 'GET' && teamName) {
       const team = await teamService.getTeam(teamName)
@@ -67,7 +94,9 @@ export async function handleTeamsApi(
 
     // ── DELETE /api/teams/:name ───────────────────────────────────────────
     if (method === 'DELETE' && teamName) {
-      await teamService.deleteTeam(teamName)
+      // Check for force=true query parameter
+      const force = _url.searchParams.get('force') === 'true'
+      await teamService.deleteTeam(teamName, force)
       return Response.json({ ok: true })
     }
 

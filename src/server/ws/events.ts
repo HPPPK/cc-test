@@ -86,6 +86,12 @@ export type TeamMemberStatus = {
   role: string
   status: 'running' | 'idle' | 'completed' | 'error'
   currentTask?: string
+  /** ISO 8601 timestamp when member joined the team */
+  joinedAt?: string
+  /** Cumulative input token count */
+  inputTokens?: number
+  /** Cumulative output token count */
+  outputTokens?: number
 }
 
 export type ComputerUseGrantFlags = {

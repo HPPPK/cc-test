@@ -38,7 +38,24 @@ export const teamsApi = {
     )
   },
 
-  delete(name: string) {
+  delete(name: string, force: boolean = false) {
+    const forceParam = force ? '?force=true' : ''
+    return api.delete<{ ok: true }>(`/api/teams/${encodeURIComponent(name)}${forceParam}`)
+  },
+
+  deleteMember(teamName: string, agentId: string) {
+    return api.delete<{ ok: true }>(
+      `/api/teams/${encodeURIComponent(teamName)}/members/${encodeURIComponent(agentId)}`,
+    )
+  },
+
+  stopMember(teamName: string, agentId: string) {
+    return api.post<{ ok: true }>(
+      `/api/teams/${encodeURIComponent(teamName)}/members/${encodeURIComponent(agentId)}/stop`,
+    )
+  },
+
+  deleteTeam(name: string) {
     return api.delete<{ ok: true }>(`/api/teams/${encodeURIComponent(name)}`)
   },
 }

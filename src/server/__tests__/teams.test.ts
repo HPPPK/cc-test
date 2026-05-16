@@ -195,6 +195,64 @@ describe('TeamService', () => {
     expect(detail.members[1]!.agentId).toBe('agent-worker')
   })
 
+  it('should preserve member runtime and token metrics from config', async () => {
+    const config = makeTeamConfig({ name: 'metrics-team' })
+    Object.assign(config.members[1]!, {
+      inputTokens: 12345,
+      outputTokens: 678,
+    })
+    await writeTeamConfig('metrics-team', config)
+
+    const detail = await service.getTeam('metrics-team')
+    const worker = detail.members.find((m) => m.agentId === 'agent-worker')!
+
+    expect(worker.joinedAt).toBe(1700000001000)
+    expect(worker.inputTokens).toBe(12345)
+    expect(worker.outputTokens).toBe(678)
+  })
+
+  it('should derive member token metrics from transcript usage when config has none', async () => {
+    await writeTeamConfig('transcript-metrics-team', makeTeamConfig({ name: 'transcript-metrics-team' }))
+    await writeTranscriptFile('-tmp-project', 'session-worker-001', [
+      {
+        type: 'assistant',
+        uuid: 'msg-asst-1',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'First response' }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_read_input_tokens: 30,
+            cache_creation_input_tokens: 40,
+          },
+        },
+        timestamp: '2026-01-01T00:02:00.000Z',
+      },
+      {
+        type: 'assistant',
+        uuid: 'msg-asst-2',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'Second response' }],
+          usage: {
+            input_tokens: 200,
+            output_tokens: 50,
+          },
+        },
+        timestamp: '2026-01-01T00:03:00.000Z',
+      },
+    ])
+
+    const detail = await service.getTeam('transcript-metrics-team')
+    const worker = detail.members.find((m) => m.agentId === 'agent-worker')!
+
+    expect(worker.inputTokens).toBe(370)
+    expect(worker.outputTokens).toBe(70)
+  })
+
   it('should discover missing in-process members from subagent transcripts', async () => {
     await writeTeamConfig(
       'subagent-team',
@@ -415,6 +473,18 @@ describe('TeamService', () => {
     expect(inbox.at(-1)?.text).toBe('Check the auth changes')
   })
 
+  it('should not rediscover a config member from its sanitized mailbox filename', async () => {
+    await writeTeamConfig('sanitized-inbox-team', makeTeamConfig({ name: 'sanitized-inbox-team' }))
+    const inboxDir = path.join(tmpDir, 'teams', 'sanitized-inbox-team', 'inboxes')
+    await fs.mkdir(inboxDir, { recursive: true })
+    await fs.writeFile(path.join(inboxDir, 'Worker-Agent.json'), '[]', 'utf-8')
+
+    const detail = await service.getTeam('sanitized-inbox-team')
+
+    expect(detail.members.filter((m) => m.agentId === 'agent-worker')).toHaveLength(1)
+    expect(detail.members.some((m) => m.agentId === 'Worker-Agent@sanitized-inbox-team')).toBe(false)
+  })
+
   // --------------------------------------------------------------------------
   // deleteTeam
   // --------------------------------------------------------------------------
@@ -618,6 +688,84 @@ describe('Teams API', () => {
       method: 'DELETE',
     })
     expect(res.status).toBe(409)
+  })
+
+  it('DELETE /api/teams/:name/members/:id should send shutdown request and remove member', async () => {
+    const config = makeTeamConfig({ name: 'member-del' })
+    // Set worker to inactive so it can be deleted
+    const workerMember = config.members.find((m) => m.agentId === 'agent-worker')
+    if (workerMember) {
+      (workerMember as Record<string, unknown>).isActive = false
+    }
+    await writeTeamConfig('member-del', config)
+
+    const res = await fetch(`${baseUrl}/api/teams/member-del/members/agent-worker`, {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { ok: boolean }
+    expect(body.ok).toBe(true)
+
+    // Verify shutdown request was sent to mailbox
+    const inboxPath = path.join(
+      tmpDir,
+      'teams',
+      'member-del',
+      'inboxes',
+      'Worker-Agent.json',
+    )
+    const rawInbox = await fs.readFile(inboxPath, 'utf-8')
+    const inbox = JSON.parse(rawInbox) as Array<{ text: string }>
+    expect(inbox.length).toBeGreaterThan(0)
+    // The message should contain shutdown_request
+    expect(inbox[inbox.length - 1]!.text).toContain('shutdown_request')
+
+    const detailRes = await fetch(`${baseUrl}/api/teams/member-del`)
+    expect(detailRes.status).toBe(200)
+    const detail = (await detailRes.json()) as { members: Array<{ agentId: string }> }
+    expect(detail.members.some((m) => m.agentId === 'agent-worker')).toBe(false)
+    expect(detail.members.some((m) => m.agentId === 'Worker-Agent@member-del')).toBe(false)
+  })
+
+  it('DELETE /api/teams/:name/members/:id should 404 for unknown member', async () => {
+    await writeTeamConfig('member-404', makeTeamConfig({ name: 'member-404' }))
+
+    const res = await fetch(`${baseUrl}/api/teams/member-404/members/nonexistent`, {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /api/teams/:name/members/:id should stop and remove a running member', async () => {
+    const config = makeTeamConfig({ name: 'member-running' })
+    const workerMember = config.members.find((m) => m.agentId === 'agent-worker')
+    if (workerMember) {
+      (workerMember as Record<string, unknown>).isActive = true
+    }
+    await writeTeamConfig('member-running', config)
+
+    const res = await fetch(`${baseUrl}/api/teams/member-running/members/agent-worker`, {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(200)
+
+    const inboxPath = path.join(
+      tmpDir,
+      'teams',
+      'member-running',
+      'inboxes',
+      'Worker-Agent.json',
+    )
+    const rawInbox = await fs.readFile(inboxPath, 'utf-8')
+    const inbox = JSON.parse(rawInbox) as Array<{ text: string }>
+    expect(inbox.at(-1)?.text).toContain('shutdown_request')
+
+    const detailRes = await fetch(`${baseUrl}/api/teams/member-running`)
+    expect(detailRes.status).toBe(200)
+    const detail = (await detailRes.json()) as { members: Array<{ agentId: string }> }
+    expect(detail.members.some((m) => m.agentId === 'agent-worker')).toBe(false)
+    expect(detail.members.some((m) => m.agentId === 'Worker-Agent@member-running')).toBe(false)
   })
 
   it('POST /api/teams should return 405', async () => {

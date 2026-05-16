@@ -142,6 +142,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const clearWorkspaceReferences = useWorkspaceChatContextStore((s) => s.clearReferences)
 
   const isMemberSession = !!memberInfo
+  const isDisconnectedMemberSession =
+    isMemberSession && sessionState?.connectionState === 'disconnected'
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
@@ -155,6 +157,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     ? resolveSlashUiAction(input.trim().slice(1))
     : null
   const canSubmit = !isWorkspaceMissing &&
+    !isDisconnectedMemberSession &&
     !launchTransitioning &&
     (!showLaunchControls || launchReady || !!pendingSlashUiAction) &&
     (input.trim().length > 0 || (!isMemberSession && (attachments.length > 0 || hasWorkspaceReferences)))
@@ -767,11 +770,13 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const composerPlaceholder =
     isHeroComposer
       ? t('empty.placeholder')
-      : isWorkspaceMissing
-        ? t('chat.placeholderMissing')
-        : isMemberSession
-          ? t('teams.memberPlaceholder')
-          : t('chat.placeholder')
+      : isDisconnectedMemberSession
+        ? t('teams.memberSessionDisconnectedPlaceholder')
+        : isWorkspaceMissing
+          ? t('chat.placeholderMissing')
+          : isMemberSession
+            ? t('teams.memberPlaceholder')
+            : t('chat.placeholder')
 
   const addFilesLabel = isHeroComposer ? t('empty.addFiles') : t('chat.addFiles')
   const slashCommandsLabel = isHeroComposer ? t('empty.slashCommands') : t('chat.slashCommands')
@@ -929,7 +934,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
                 onCompositionEnd={() => { composingRef.current = false }}
                 onPaste={handlePaste}
                 placeholder={composerPlaceholder}
-                disabled={isWorkspaceMissing}
+                disabled={isWorkspaceMissing || isDisconnectedMemberSession}
                 rows={2}
                 className="flex-1 resize-none border-none bg-transparent py-2 leading-relaxed text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] disabled:opacity-50"
               />
@@ -944,7 +949,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
               onCompositionEnd={() => { composingRef.current = false }}
               onPaste={handlePaste}
               placeholder={composerPlaceholder}
-              disabled={isWorkspaceMissing}
+              disabled={isWorkspaceMissing || isDisconnectedMemberSession}
               rows={1}
               className={`w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] disabled:opacity-50 ${
                 useCompactControls ? 'py-1.5 pb-14' : 'py-2 pb-12'

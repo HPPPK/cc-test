@@ -31,6 +31,8 @@ function isValidMemberName(name: string | undefined): boolean {
 
 /** Generate a synthetic sessionId for team member tabs */
 const memberSessionId = (agentId: string) => `team-member:${agentId}`
+const TEAM_MEMBER_SESSION_PREFIX = 'team-member:'
+const disconnectedMemberCache = new Map<string, TeamMember>()
 
 /** Module-level timer for polling member transcript */
 let memberPollTimer: ReturnType<typeof setInterval> | null = null
@@ -64,6 +66,15 @@ function normalizeMemberStatus(status: string | undefined): TeamMember['status']
   return status === 'failed' ? 'error' : 'idle'
 }
 
+function normalizeJoinedAt(value: unknown): string | undefined {
+  if (typeof value === 'number') return new Date(value).toISOString()
+  return typeof value === 'string' ? value : undefined
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined
+}
+
 function toTeamMember(raw: Record<string, unknown>): TeamMember {
   return {
     agentId: (raw.agentId as string) || '',
@@ -78,6 +89,9 @@ function toTeamMember(raw: Record<string, unknown>): TeamMember {
     currentTask: raw.currentTask as string | undefined,
     color: raw.color as AgentColor | undefined,
     sessionId: raw.sessionId as string | undefined,
+    joinedAt: normalizeJoinedAt(raw.joinedAt),
+    inputTokens: normalizeOptionalNumber(raw.inputTokens),
+    outputTokens: normalizeOptionalNumber(raw.outputTokens),
   }
 }
 
@@ -136,11 +150,55 @@ function syncMemberSessionMessages(
   })
 }
 
+function markMemberSessionsDisconnected(agentIds: string[]) {
+  const targetSessionIds = new Set(agentIds.map(memberSessionId))
+  if (targetSessionIds.size === 0) return
+
+  useChatStore.setState((state) => ({
+    sessions: Object.fromEntries(
+      Object.entries(state.sessions).map(([sessionId, session]) => [
+        sessionId,
+        targetSessionIds.has(sessionId)
+          ? {
+              ...session,
+              chatState: 'idle' as const,
+              connectionState: 'disconnected' as const,
+              streamingText: '',
+              streamingToolInput: '',
+              activeToolUseId: null,
+              activeToolName: null,
+              activeThinkingId: null,
+              pendingPermission: null,
+              pendingComputerUsePermission: null,
+              statusVerb: '',
+            }
+          : session,
+      ]),
+    ),
+  }))
+}
+
+function disconnectedMemberFromSessionId(sessionId: string): TeamMember {
+  const cached = disconnectedMemberCache.get(sessionId)
+  if (cached) return cached
+
+  const agentId = sessionId.slice(TEAM_MEMBER_SESSION_PREFIX.length)
+  const displayRole = agentId.split('@')[0] || agentId
+  const member: TeamMember = {
+    agentId,
+    role: displayRole,
+    status: 'error',
+  }
+  disconnectedMemberCache.set(sessionId, member)
+  return member
+}
+
 type TeamStore = {
   teams: TeamSummary[]
   activeTeam: TeamDetail | null
   memberColors: Map<string, AgentColor>
   error: string | null
+  wsDisconnected: boolean
 
   fetchTeams: () => Promise<void>
   fetchTeamDetail: (name: string) => Promise<void>
@@ -153,6 +211,10 @@ type TeamStore = {
   clearTeam: () => void
   saveActiveTeam: () => void
   restoreActiveTeam: () => Promise<void>
+  deleteMember: (agentId: string) => Promise<void>
+  stopMember: (agentId: string) => Promise<void>
+  deleteTeam: (force?: boolean) => Promise<void>
+  setWsDisconnected: (disconnected: boolean) => void
 
   // WebSocket handlers
   handleTeamCreated: (teamName: string) => void
@@ -165,6 +227,7 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
   activeTeam: null,
   memberColors: new Map(),
   error: null,
+  wsDisconnected: false,
 
   fetchTeams: async () => {
     set({ error: null })
@@ -206,10 +269,15 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
 
   getMemberBySessionId: (sessionId: string) => {
     const team = get().activeTeam
+    if (!team && sessionId.startsWith(TEAM_MEMBER_SESSION_PREFIX)) {
+      return disconnectedMemberFromSessionId(sessionId)
+    }
     if (!team) return null
     return team.members.find(
       (m) => m.sessionId === sessionId || memberSessionId(m.agentId) === sessionId,
-    ) ?? null
+    ) ?? (sessionId.startsWith(TEAM_MEMBER_SESSION_PREFIX)
+      ? disconnectedMemberFromSessionId(sessionId)
+      : null)
   },
 
   refreshMemberSession: async (sessionId) => {
@@ -416,6 +484,9 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
             currentTask: m.currentTask,
             color: colors.get(m.agentId) ?? AGENT_COLORS[i % AGENT_COLORS.length]!,
             sessionId: existing?.sessionId,
+            joinedAt: m.joinedAt ?? existing?.joinedAt,
+            inputTokens: m.inputTokens ?? existing?.inputTokens,
+            outputTokens: m.outputTokens ?? existing?.outputTokens,
           }
         }),
       ]
@@ -456,6 +527,7 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
     set((s) => {
       const isActiveTeam = s.activeTeam?.name === teamName
       if (isActiveTeam) {
+        markMemberSessionsDisconnected(s.activeTeam?.members.map((m) => m.agentId) ?? [])
         try {
           localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY)
         } catch { /* noop */ }
@@ -465,5 +537,32 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
         activeTeam: isActiveTeam ? null : s.activeTeam,
       }
     })
+  },
+
+  deleteMember: async (agentId: string) => {
+    const team = get().activeTeam
+    if (!team) {
+      throw new Error('No active team')
+    }
+
+    await teamsApi.stopMember(team.name, agentId)
+    // The member will be updated via WebSocket team_update event
+  },
+
+  deleteTeam: async (force?: boolean) => {
+    const team = get().activeTeam
+    if (!team) {
+      throw new Error('No active team')
+    }
+
+    await teamsApi.delete(team.name, force)
+    markMemberSessionsDisconnected(team.members.map((m) => m.agentId))
+
+    // Clear team state
+    get().clearTeam()
+  },
+
+  setWsDisconnected: (disconnected: boolean) => {
+    set({ wsDisconnected: disconnected })
   },
 }))
