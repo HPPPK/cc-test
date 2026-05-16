@@ -14,8 +14,6 @@ type SessionStore = {
   activeSessionId: string | null
   isLoading: boolean
   error: string | null
-  selectedProjects: string[]
-  availableProjects: string[]
   isBatchMode: boolean
   selectedSessionIds: Set<string>
 
@@ -32,7 +30,6 @@ type SessionStore = {
   renameSession: (id: string, title: string) => Promise<void>
   updateSessionTitle: (id: string, title: string) => void
   setActiveSession: (id: string | null) => void
-  setSelectedProjects: (projects: string[]) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -40,8 +37,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   activeSessionId: null,
   isLoading: false,
   error: null,
-  selectedProjects: [],
-  availableProjects: [],
   isBatchMode: false,
   selectedSessionIds: new Set(),
 
@@ -64,8 +59,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         }
         const sessions = [...byId.values()]
         syncedSessions = sessions
-        const availableProjects = [...new Set(sessions.map((s) => s.projectPath).filter(Boolean))].sort()
-        return { sessions, availableProjects, isLoading: false }
+        return { sessions, isLoading: false }
       })
       syncOpenSessionTabTitles(syncedSessions)
     } catch (err) {
@@ -87,6 +81,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       messageCount: 0,
       projectPath: '',
       workDir: resolvedWorkDir ?? workDir ?? null,
+      projectRoot: resolvedWorkDir ?? workDir ?? null,
       workDirExists: true,
     }
 
@@ -166,7 +161,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   setActiveSession: (id) => set({ activeSessionId: id }),
-  setSelectedProjects: (projects) => set({ selectedProjects: projects }),
 }))
 
 function removeIdsFromSet(selected: Set<string>, ids: string[]): Set<string> {

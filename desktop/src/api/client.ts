@@ -31,6 +31,15 @@ export function getBaseUrl() {
   return baseUrl
 }
 
+export function getApiUrl(pathOrUrl: string) {
+  try {
+    return new URL(pathOrUrl).toString()
+  } catch {
+    const normalizedPath = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`
+    return `${baseUrl}${normalizedPath}`
+  }
+}
+
 export function setAuthToken(token: string | null) {
   const trimmed = token?.trim() ?? ''
   authToken = trimmed.length > 0 ? trimmed : null

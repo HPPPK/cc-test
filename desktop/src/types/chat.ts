@@ -162,6 +162,48 @@ export type AgentTaskNotification = {
   status: 'completed' | 'failed' | 'stopped'
   summary?: string
   outputFile?: string
+  usage?: BackgroundAgentTaskUsage
+}
+
+export type BackgroundAgentTaskUsage = {
+  totalTokens?: number
+  toolUses?: number
+  durationMs?: number
+}
+
+export type BackgroundAgentTask = {
+  taskId: string
+  toolUseId?: string
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+  description?: string
+  taskType?: string
+  workflowName?: string
+  prompt?: string
+  summary?: string
+  lastToolName?: string
+  outputFile?: string
+  usage?: BackgroundAgentTaskUsage
+  startedAt: number
+  updatedAt: number
+}
+
+export type MemoryEventFile = {
+  path: string
+  action?: 'saved' | 'updated' | 'created' | 'deleted' | 'loaded' | 'failed'
+  summary?: string
+}
+
+export type GoalEventAction = 'created' | 'replaced' | 'status' | 'paused' | 'resumed' | 'completed' | 'cleared' | 'message'
+
+export type ActiveGoalState = {
+  action: Exclude<GoalEventAction, 'cleared' | 'message'>
+  status?: string
+  objective?: string
+  budget?: string
+  elapsed?: string
+  continuations?: string
+  message?: string
+  updatedAt: number
 }
 
 // ─── UI Message model (rendered in MessageList) ───────────────────
@@ -180,6 +222,27 @@ export type UIMessage =
   | { id: string; type: 'tool_use'; toolName: string; toolUseId: string; input: unknown; timestamp: number; parentToolUseId?: string }
   | { id: string; type: 'tool_result'; toolUseId: string; content: unknown; isError: boolean; timestamp: number; parentToolUseId?: string }
   | { id: string; type: 'system'; content: string; timestamp: number }
+  | {
+      id: string
+      type: 'goal_event'
+      action: GoalEventAction
+      status?: string
+      objective?: string
+      budget?: string
+      elapsed?: string
+      continuations?: string
+      message?: string
+      timestamp: number
+    }
+  | {
+      id: string
+      type: 'memory_event'
+      event: 'saved' | 'updated' | 'loaded' | 'failed'
+      files: MemoryEventFile[]
+      message?: string
+      teamCount?: number
+      timestamp: number
+    }
   | {
       id: string
       type: 'permission_request'

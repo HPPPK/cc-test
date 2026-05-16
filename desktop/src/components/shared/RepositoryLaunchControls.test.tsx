@@ -122,6 +122,16 @@ describe('RepositoryLaunchControls', () => {
     expect(listbox.parentElement?.className).toContain('w-[390px]')
   })
 
+  it('uses the flatter desktop bar when embedded in a composer', async () => {
+    renderControls({ placement: 'composer' })
+
+    const trigger = await screen.findByRole('button', { name: 'Select branch: main' })
+    const bar = trigger.parentElement
+    expect(bar).toHaveClass('min-h-[44px]', 'bg-transparent')
+    expect(bar).not.toHaveClass('rounded-b-xl')
+    expect(bar).not.toHaveClass('bg-[var(--color-surface-container-low)]')
+  })
+
   it('uses the full-width mobile bottom sheet in H5 mobile browser mode', async () => {
     viewportMocks.isMobile = true
     viewportMocks.isTauri = false

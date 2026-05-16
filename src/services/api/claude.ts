@@ -1613,7 +1613,7 @@ async function* queryModel(
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
     const modelCanThink = modelSupportsThinking(options.model)
     const sendsExplicitDisabledThinking =
-      !(hasThinking && modelCanThink) && shouldSendExplicitDisabledThinking()
+      !hasThinking && (modelCanThink || shouldSendExplicitDisabledThinking())
 
     const outputConfig: BetaOutputConfig = {
       ...((extraBodyParams.output_config as BetaOutputConfig) ?? {}),

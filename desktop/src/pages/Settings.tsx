@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import QRCode from 'qrcode'
 import { Copy, Eye, EyeOff, PowerOff, QrCode, RotateCw } from 'lucide-react'
-import { useSettingsStore, UI_ZOOM_MIN, UI_ZOOM_MAX, UI_ZOOM_STEP } from '../stores/settingsStore'
+import { useSettingsStore, UI_ZOOM_DEFAULT, UI_ZOOM_MIN, UI_ZOOM_MAX, UI_ZOOM_STEP } from '../stores/settingsStore'
 import { useProviderStore } from '../stores/providerStore'
 import { useTranslation } from '../i18n'
 import { Modal } from '../components/shared/Modal'
@@ -29,6 +29,7 @@ import { McpSettings } from './McpSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
+import { MemorySettings } from './MemorySettings'
 import { useUIStore, type SettingsTab } from '../stores/uiStore'
 import { ClaudeOfficialLogin } from '../components/settings/ClaudeOfficialLogin'
 import { useUpdateStore } from '../stores/updateStore'
@@ -92,6 +93,7 @@ export function Settings() {
             <TabButton icon="dns" label={t('settings.tab.mcp')} active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} />
             <TabButton icon="smart_toy" label={t('settings.tab.agents')} active={activeTab === 'agents'} onClick={() => setActiveTab('agents')} />
             <TabButton icon="auto_awesome" label={t('settings.tab.skills')} active={activeTab === 'skills'} onClick={() => setActiveTab('skills')} />
+            <TabButton icon="history_edu" label={t('settings.tab.memory')} active={activeTab === 'memory'} onClick={() => setActiveTab('memory')} />
             <TabButton icon="extension" label={t('settings.tab.plugins')} active={activeTab === 'plugins'} onClick={() => setActiveTab('plugins')} />
             <TabButton icon="mouse" label={t('settings.tab.computerUse')} active={activeTab === 'computerUse'} onClick={() => setActiveTab('computerUse')} />
             <TabButton icon="monitoring" label={t('settings.tab.activity')} active={activeTab === 'activity'} onClick={() => setActiveTab('activity')} />
@@ -114,6 +116,7 @@ export function Settings() {
           {activeTab === 'mcp' && <McpSettings />}
           {activeTab === 'agents' && <AgentsSettings />}
           {activeTab === 'skills' && <SkillSettings />}
+          {activeTab === 'memory' && <MemorySettings />}
           {activeTab === 'plugins' && <PluginSettings />}
           {activeTab === 'computerUse' && <ComputerUseSettings />}
           {activeTab === 'diagnostics' && <DiagnosticsSettings />}
@@ -1389,11 +1392,22 @@ function GeneralSettings() {
   const [webSearchDraft, setWebSearchDraft] = useState(webSearch)
   const [notificationPermission, setNotificationPermission] = useState<DesktopNotificationPermission>('default')
   const [notificationActionRunning, setNotificationActionRunning] = useState(false)
+  const [uiZoomDraft, setUiZoomDraft] = useState(uiZoom)
+  const [isUiZoomDragging, setIsUiZoomDragging] = useState(false)
+  const isUiZoomDraggingRef = useRef(false)
   const webSearchDirty = JSON.stringify(webSearchDraft) !== JSON.stringify(webSearch)
+  const uiZoomPercent = Math.round(uiZoomDraft * 100)
+  const uiZoomRangeProgress = `${Math.round(((uiZoomDraft - UI_ZOOM_MIN) / (UI_ZOOM_MAX - UI_ZOOM_MIN)) * 1000) / 10}%`
 
   useEffect(() => {
     setWebSearchDraft(webSearch)
   }, [webSearch])
+
+  useEffect(() => {
+    if (!isUiZoomDragging) {
+      setUiZoomDraft(uiZoom)
+    }
+  }, [isUiZoomDragging, uiZoom])
 
   useEffect(() => {
     let cancelled = false
@@ -1445,9 +1459,9 @@ function GeneralSettings() {
     RESPONSE_LANGUAGES.find(({ value }) => value === responseLanguage)?.label ?? RESPONSE_LANGUAGES[0]!.label
 
   const THEMES: Array<{ value: ThemeMode; label: string }> = [
+    { value: 'white', label: t('settings.general.appearance.white') },
     { value: 'light', label: t('settings.general.appearance.light') },
     { value: 'dark', label: t('settings.general.appearance.dark') },
-    { value: 'white', label: t('settings.general.appearance.white') },
   ]
 
   const WEB_SEARCH_MODES: Array<{ value: WebSearchMode; label: string }> = [
@@ -1509,6 +1523,119 @@ function GeneralSettings() {
       setNotificationActionRunning(false)
     }
   }
+
+  const setUiZoomDraggingState = (dragging: boolean) => {
+    isUiZoomDraggingRef.current = dragging
+    setIsUiZoomDragging(dragging)
+  }
+
+  const commitUiZoom = (value: number) => {
+    const nextZoom = Number.isFinite(value) ? value : UI_ZOOM_DEFAULT
+    setUiZoomDraggingState(false)
+    setUiZoomDraft(nextZoom)
+    setUiZoom(nextZoom)
+  }
+
+  const uiZoomSection = (
+    <div className="mt-8">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.uiZoom')}</h2>
+          <p className="text-sm text-[var(--color-text-tertiary)]">{t('settings.general.uiZoomDescription')}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--color-text-tertiary)]">
+            <span>{t('settings.general.uiZoomShortcutHint')}</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="font-medium text-[var(--color-text-secondary)]">{t('settings.general.uiZoomShortcutMac')}</span>
+              <kbd className="settings-zoom-kbd">⌘</kbd>
+              <kbd className="settings-zoom-kbd">+</kbd>
+              <span>/</span>
+              <kbd className="settings-zoom-kbd">⌘</kbd>
+              <kbd className="settings-zoom-kbd">-</kbd>
+              <span>/</span>
+              <kbd className="settings-zoom-kbd">⌘</kbd>
+              <kbd className="settings-zoom-kbd">0</kbd>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="font-medium text-[var(--color-text-secondary)]">{t('settings.general.uiZoomShortcutWindows')}</span>
+              <kbd className="settings-zoom-kbd">Ctrl</kbd>
+              <kbd className="settings-zoom-kbd">+</kbd>
+              <span>/</span>
+              <kbd className="settings-zoom-kbd">Ctrl</kbd>
+              <kbd className="settings-zoom-kbd">-</kbd>
+              <span>/</span>
+              <kbd className="settings-zoom-kbd">Ctrl</kbd>
+              <kbd className="settings-zoom-kbd">0</kbd>
+            </span>
+            <span>{t('settings.general.uiZoomShortcutResetHint')}</span>
+          </div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <span className="min-w-[48px] rounded-md bg-[var(--color-surface-container-low)] px-2 py-1 text-center text-sm font-medium text-[var(--color-text-secondary)]">
+            {uiZoomPercent}%
+          </span>
+          <button
+            type="button"
+            aria-label={t('settings.general.uiZoomReset')}
+            title={t('settings.general.uiZoomReset')}
+            onClick={() => {
+              setIsUiZoomDragging(false)
+              setUiZoomDraft(UI_ZOOM_DEFAULT)
+              setUiZoom(UI_ZOOM_DEFAULT)
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)]"
+          >
+            <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+            100%
+          </button>
+        </div>
+      </div>
+      <div
+        className={`settings-zoom-control flex items-center gap-3 ${isUiZoomDragging ? 'is-dragging' : ''}`}
+        style={{ '--settings-zoom-range-progress': uiZoomRangeProgress } as CSSProperties}
+      >
+        <span className="w-9 text-right text-xs text-[var(--color-text-tertiary)]">{Math.round(UI_ZOOM_MIN * 100)}%</span>
+        <div className="settings-zoom-range-wrap flex-1">
+          <div className="settings-zoom-preview" aria-hidden="true">
+            {uiZoomPercent}%
+          </div>
+          <input
+            type="range"
+            aria-label={t('settings.general.uiZoom')}
+            min={UI_ZOOM_MIN}
+            max={UI_ZOOM_MAX}
+            step={UI_ZOOM_STEP}
+            value={uiZoomDraft}
+            onPointerDown={() => {
+              setUiZoomDraggingState(true)
+            }}
+            onPointerUp={(e) => commitUiZoom(e.currentTarget.valueAsNumber)}
+            onPointerCancel={() => {
+              setUiZoomDraggingState(false)
+              setUiZoomDraft(uiZoom)
+            }}
+            onChange={(e) => {
+              const nextZoom = Number.isFinite(e.currentTarget.valueAsNumber)
+                ? e.currentTarget.valueAsNumber
+                : UI_ZOOM_DEFAULT
+              setUiZoomDraft(nextZoom)
+              if (!isUiZoomDraggingRef.current) {
+                setUiZoom(nextZoom)
+              }
+            }}
+            onBlur={(e) => {
+              if (uiZoomDraft !== uiZoom) {
+                commitUiZoom(e.currentTarget.valueAsNumber)
+              } else {
+                setUiZoomDraggingState(false)
+              }
+            }}
+            className="settings-zoom-range w-full"
+          />
+        </div>
+        <span className="w-9 text-xs text-[var(--color-text-tertiary)]">{Math.round(UI_ZOOM_MAX * 100)}%</span>
+      </div>
+    </div>
+  )
 
   return (
     <div className="max-w-xl">
@@ -1662,6 +1789,8 @@ function GeneralSettings() {
         </div>
       </div>
 
+      {uiZoomSection}
+
       <div className="mt-8">
         <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.webFetchPreflightTitle')}</h2>
         <p className="text-sm text-[var(--color-text-tertiary)] mb-3">{t('settings.general.webFetchPreflightDescription')}</p>
@@ -1777,33 +1906,6 @@ function GeneralSettings() {
           </div>
         </div>
       </div>
-      {/* UI Zoom */}
-      <div className="mt-8">
-        <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.uiZoom')}</h2>
-        <p className="text-sm text-[var(--color-text-tertiary)] mb-3">{t('settings.general.uiZoomDescription')}</p>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-end">
-            <span className="text-sm text-[var(--color-text-secondary)]">
-              {Math.round(uiZoom * 100)}%
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--color-text-tertiary)]">{Math.round(UI_ZOOM_MIN * 100)}%</span>
-            <input
-              type="range"
-              min={UI_ZOOM_MIN}
-              max={UI_ZOOM_MAX}
-              step={UI_ZOOM_STEP}
-              value={uiZoom}
-              onChange={(e) => setUiZoom(parseFloat(e.target.value))}
-              onMouseUp={(e) => e.currentTarget.blur()}
-              className="flex-1"
-            />
-            <span className="text-xs text-[var(--color-text-tertiary)]">{Math.round(UI_ZOOM_MAX * 100)}%</span>
-          </div>
-        </div>
-      </div>
-
     </div>
   )
 }
@@ -1820,6 +1922,7 @@ function H5AccessSettings() {
     updateH5AccessSettings,
   } = useSettingsStore()
   const t = useTranslation()
+  const addToast = useUIStore((s) => s.addToast)
   const [h5PublicBaseUrlDraft, setH5PublicBaseUrlDraft] = useState(h5Access.publicBaseUrl ?? '')
   const [h5GeneratedToken, setH5GeneratedToken] = useState<string | null>(null)
   const [h5TokenVisible, setH5TokenVisible] = useState(false)
@@ -1880,12 +1983,20 @@ function H5AccessSettings() {
 
   const handleH5UrlCopy = async () => {
     if (!h5AccessUrl) return
-    await copyTextToClipboard(h5AccessUrl)
+    const copied = await copyTextToClipboard(h5AccessUrl)
+    addToast({
+      type: copied ? 'success' : 'error',
+      message: copied ? t('settings.general.h5AccessUrlCopied') : t('common.copyFailed'),
+    })
   }
 
   const handleH5LaunchUrlCopy = async () => {
     if (!h5LaunchUrl) return
-    await copyTextToClipboard(h5LaunchUrl)
+    const copied = await copyTextToClipboard(h5LaunchUrl)
+    addToast({
+      type: copied ? 'success' : 'error',
+      message: copied ? t('settings.general.h5AccessLaunchUrlCopied') : t('common.copyFailed'),
+    })
   }
 
   const handleH5EnableConfirm = async () => {

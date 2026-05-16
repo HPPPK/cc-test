@@ -30,11 +30,11 @@ const HEAT_CELL_MIN = 6
 const HEAT_CELL_MAX = 22
 const TOOLTIP_WIDTH = 172
 const HEAT_COLORS = [
-  'var(--color-surface-container)',
-  'var(--color-primary-fixed)',
-  'var(--color-primary-fixed-dim)',
-  'var(--color-primary-container)',
-  'var(--color-primary)',
+  'var(--color-activity-heat-0)',
+  'var(--color-activity-heat-1)',
+  'var(--color-activity-heat-2)',
+  'var(--color-activity-heat-3)',
+  'var(--color-activity-heat-4)',
 ]
 const DATE_LOCALES: Record<Locale, string> = {
   en: 'en-US',
@@ -380,8 +380,8 @@ export function ActivitySettings() {
                           aria-describedby={activeTooltipDate === day.date ? tooltipId : undefined}
                           className={`rounded-[3px] border transition-[border-color,transform] hover:scale-110 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:ring-offset-2 focus:ring-offset-[var(--color-surface)] ${
                             isSelected
-                              ? 'border-[var(--color-text-primary)]'
-                              : 'border-[var(--color-border)]/30 hover:border-[var(--color-text-secondary)]'
+                              ? 'border-[var(--color-activity-cell-border-active)]'
+                              : 'border-[var(--color-activity-cell-border)] hover:border-[var(--color-activity-cell-border-hover)]'
                           }`}
                           style={{
                             width: heatCellSize,
@@ -401,11 +401,11 @@ export function ActivitySettings() {
                   <div
                     id={`activity-day-tooltip-${tooltipDay.date}`}
                     role="tooltip"
-                    className="pointer-events-none absolute z-20 min-w-[172px] rounded-md border border-[var(--color-inverse-surface)] bg-[var(--color-inverse-surface)] px-3 py-2 text-xs shadow-xl"
+                    className="pointer-events-none absolute z-20 min-w-[172px] rounded-md border border-[var(--color-activity-tooltip-border)] bg-[var(--color-activity-tooltip-surface)] px-3 py-2 text-xs shadow-xl"
                     style={tooltipStyle}
                   >
-                    <div className="font-medium text-[var(--color-inverse-on-surface)]">{formatDateLabel(tooltipDay.date, locale)}</div>
-                    <div className="mt-1 text-[var(--color-primary-fixed)]">
+                    <div className="font-medium text-[var(--color-activity-tooltip-text)]">{formatDateLabel(tooltipDay.date, locale)}</div>
+                    <div className="mt-1 text-[var(--color-activity-tooltip-muted)]">
                       {formatSessionCount(tooltipDay.sessionCount, t)} · {formatTokens(tooltipDay.tokens)} tokens
                     </div>
                   </div>
@@ -419,7 +419,7 @@ export function ActivitySettings() {
                 <span
                   key={color}
                   aria-hidden="true"
-                  className="rounded-[3px] border border-[var(--color-border)]/30"
+                  className="rounded-[3px] border border-[var(--color-activity-cell-border)]"
                   style={{ width: heatCellSize, height: heatCellSize, backgroundColor: color }}
                 />
               ))}

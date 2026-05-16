@@ -3,7 +3,7 @@
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' | 'dontAsk'
 
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
-export const THEME_MODES = ['light', 'dark', 'white'] as const
+export const THEME_MODES = ['white', 'light', 'dark'] as const
 export type ThemeMode = (typeof THEME_MODES)[number]
 
 export function isThemeMode(value: unknown): value is ThemeMode {
@@ -43,6 +43,5 @@ export type UserSettings = {
   desktopNotificationsEnabled?: boolean
   webSearch?: WebSearchSettings
   language?: string
-  uiZoom?: number
   [key: string]: unknown
 }

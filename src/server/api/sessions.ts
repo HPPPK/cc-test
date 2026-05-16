@@ -19,8 +19,7 @@ import { sessionService } from '../services/sessionService.js'
 import { conversationService } from '../services/conversationService.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { closeSessionConnection, getSlashCommands } from '../ws/handler.js'
-import { getCommandName } from '../../commands.js'
-import { getSkillDirCommands } from '../../skills/loadSkillsDir.js'
+import { listSkillSlashCommands, type SkillSlashCommand } from './skills.js'
 import { WorkspaceService } from '../services/workspaceService.js'
 import {
   getRepositoryContext,
@@ -426,24 +425,43 @@ function cleanupAdapterSessionMappings(sessionId: string): void {
   }
 }
 
-async function getSessionSlashCommands(sessionId: string): Promise<Response> {
-  const cachedCommands = getSlashCommands(sessionId)
-  if (cachedCommands.length > 0) {
-    return Response.json({ commands: cachedCommands })
+function mergeSessionSlashCommands(
+  preferred: Array<{ name: string; description?: string; argumentHint?: string }>,
+  fallback: SkillSlashCommand[],
+): Array<{ name: string; description: string; argumentHint?: string }> {
+  const merged = new Map<string, { name: string; description: string; argumentHint?: string }>()
+
+  for (const command of preferred) {
+    if (!command.name) continue
+    merged.set(command.name, {
+      name: command.name,
+      description: command.description || '',
+      ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
+    })
   }
 
+  for (const command of fallback) {
+    if (!command.name || merged.has(command.name)) continue
+    merged.set(command.name, {
+      name: command.name,
+      description: command.description || '',
+    })
+  }
+
+  return [...merged.values()]
+}
+
+async function getSessionSlashCommands(sessionId: string): Promise<Response> {
+  const cachedCommands = getSlashCommands(sessionId)
   const workDir = await sessionService.getSessionWorkDir(sessionId)
   if (!workDir) {
     throw ApiError.notFound(`Session not found: ${sessionId}`)
   }
 
-  const commands = await getSkillDirCommands(workDir)
-  const slashCommands = commands
-    .filter((command) => command.userInvocable !== false)
-    .map((command) => ({
-      name: getCommandName(command),
-      description: command.description || '',
-    }))
+  const skillCommands = await listSkillSlashCommands(workDir)
+  const slashCommands = cachedCommands.length > 0
+    ? mergeSessionSlashCommands(cachedCommands, skillCommands)
+    : skillCommands
 
   return Response.json({ commands: slashCommands })
 }
@@ -466,14 +484,10 @@ async function getSessionInspection(sessionId: string, url: URL): Promise<Respon
     .find((message) => message?.type === 'system' && message.subtype === 'init')
   const transcriptMetadata = await sessionService.getTranscriptMetadata(sessionId)
   const cachedSlashCommands = getSlashCommands(sessionId)
+  const skillSlashCommands = await listSkillSlashCommands(workDir)
   const fallbackSlashCommands = cachedSlashCommands.length > 0
-    ? cachedSlashCommands
-    : (await getSkillDirCommands(workDir))
-      .filter((command) => command.userInvocable !== false)
-      .map((command) => ({
-        name: getCommandName(command),
-        description: command.description || '',
-      }))
+    ? mergeSessionSlashCommands(cachedSlashCommands, skillSlashCommands)
+    : skillSlashCommands
   const slashCommandCount = Array.isArray(initMessage?.slash_commands)
     ? initMessage.slash_commands.length
     : fallbackSlashCommands.length
@@ -784,21 +798,21 @@ async function getRecentProjects(url: URL): Promise<Response> {
   const { sessions } = await sessionService.listSessions({ limit: 200 })
   const validSessions = sessions.filter((session) => session.workDirExists && session.workDir)
 
-  // First pass: resolve realPath for each session and group by realPath to dedup
+  // First pass: group by logical project root so worktrees stay under the same project.
   const realPathMap = new Map<string, { projectPath: string; modifiedAt: string; sessionCount: number; sessionId: string }>()
   for (const s of validSessions) {
     let realPath: string
     try {
       const workDir = await sessionService.getSessionWorkDir(s.id)
-      realPath = workDir || sessionService.desanitizePath(s.projectPath)
+      realPath = s.projectRoot || workDir || sessionService.desanitizePath(s.projectPath)
     } catch {
-      realPath = sessionService.desanitizePath(s.projectPath)
+      realPath = s.projectRoot || sessionService.desanitizePath(s.projectPath)
     }
 
     const existing = realPathMap.get(realPath)
     if (!existing || s.modifiedAt > existing.modifiedAt) {
       realPathMap.set(realPath, {
-        projectPath: s.projectPath,
+        projectPath: realPath,
         modifiedAt: s.modifiedAt,
         sessionCount: (existing?.sessionCount ?? 0) + 1,
         sessionId: s.id,

@@ -34,6 +34,56 @@ describe('titleService', () => {
     })
 
     try {
+      const providerId = 'zhipu-test'
+      await fs.mkdir(path.join(tmpDir, 'cc-haha'), { recursive: true })
+      await fs.writeFile(
+        path.join(tmpDir, 'settings.json'),
+        JSON.stringify({ alwaysThinkingEnabled: false }, null, 2),
+      )
+      await fs.writeFile(
+        path.join(tmpDir, 'cc-haha', 'providers.json'),
+        JSON.stringify({
+          activeId: providerId,
+          providers: [
+            {
+              id: providerId,
+              presetId: 'zhipuglm',
+              name: 'Zhipu GLM',
+              apiKey: 'test-key',
+              baseUrl: `http://127.0.0.1:${server.port}/anthropic`,
+              apiFormat: 'anthropic',
+              models: {
+                main: 'glm-5.1',
+                haiku: 'glm-4.5-air',
+                sonnet: 'glm-5-turbo',
+                opus: 'glm-5.1',
+              },
+            },
+          ],
+        }, null, 2),
+      )
+
+      await expect(generateTitle('请只回复 trace-ok')).resolves.toBe('Trace ok')
+      expect(requestBody?.thinking).toEqual({ type: 'disabled' })
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test('sends disabled thinking for DeepSeek title generation when desktop thinking is off', async () => {
+    let requestBody: Record<string, unknown> | null = null
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(req) {
+        requestBody = await req.json() as Record<string, unknown>
+        return Response.json({
+          content: [{ type: 'text', text: '{"title":"Trace ok"}' }],
+        })
+      },
+    })
+
+    try {
       const providerId = 'deepseek-test'
       await fs.mkdir(path.join(tmpDir, 'cc-haha'), { recursive: true })
       await fs.writeFile(

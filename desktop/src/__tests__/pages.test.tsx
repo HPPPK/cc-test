@@ -159,6 +159,22 @@ describe('Content-only pages render without errors', () => {
     expect(screen.queryByText('/internal-only')).not.toBeInTheDocument()
   })
 
+  it('EmptySession shows /goal as one command with argument hints, not pseudo subcommands', async () => {
+    vi.mocked(skillsApi.list).mockResolvedValueOnce({ skills: [] })
+
+    render(<EmptySession />)
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '/goal', selectionStart: 5 },
+    })
+
+    expect(await screen.findAllByText('/goal')).toHaveLength(2)
+    expect(screen.getByText('[<condition> | clear]')).toBeInTheDocument()
+    expect(screen.getByText('Set a completion goal')).toBeInTheDocument()
+    expect(screen.queryByText('/goal status')).not.toBeInTheDocument()
+    expect(screen.queryByText('/goal --tokens')).not.toBeInTheDocument()
+  })
+
   it('EmptySession renders mascot and composer', async () => {
     let container!: HTMLElement
     await act(async () => {
@@ -609,7 +625,7 @@ describe('Content-only pages render without errors', () => {
     expect(screen.getByText('Slash commands')).toBeInTheDocument()
     expect(screen.getByText('/clear')).toBeInTheDocument()
     expect(screen.getByText('/cost')).toBeInTheDocument()
-    expect(screen.getByText('13 more commands available. Type / to search the full command list.')).toBeInTheDocument()
+    expect(screen.getByText('14 more commands available. Type / to search the full command list.')).toBeInTheDocument()
 
     resetPageStores()
   })
@@ -1263,7 +1279,8 @@ describe('AppShell layout renders chrome', () => {
     expect(container.querySelector('aside')).toBeInTheDocument()
     expect(container.innerHTML).toContain('New session')
     expect(container.innerHTML).toContain('Scheduled')
-    expect(container.innerHTML).toContain('All projects')
+    expect(container.innerHTML).toContain('Search sessions')
+    expect(container.innerHTML).toContain('Settings')
   })
 })
 

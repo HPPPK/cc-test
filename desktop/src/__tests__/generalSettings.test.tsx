@@ -144,6 +144,7 @@ describe('Settings > General tab', () => {
       skipWebFetchPreflight: true,
       desktopNotificationsEnabled: true,
       responseLanguage: '',
+      uiZoom: 1,
       webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
       h5Access: {
         enabled: false,
@@ -166,6 +167,9 @@ describe('Settings > General tab', () => {
       }),
       setResponseLanguage: vi.fn().mockImplementation(async (language: string) => {
         useSettingsStore.setState({ responseLanguage: language })
+      }),
+      setUiZoom: vi.fn().mockImplementation((uiZoom: number) => {
+        useSettingsStore.setState({ uiZoom })
       }),
       setWebSearch: vi.fn().mockImplementation(async (webSearch) => {
         useSettingsStore.setState({ webSearch })
@@ -236,6 +240,12 @@ describe('Settings > General tab', () => {
     render(<Settings />)
 
     fireEvent.click(screen.getByText('General'))
+    const pureWhite = screen.getByRole('button', { name: 'Pure White' })
+    const warmClassic = screen.getByRole('button', { name: 'Warm Classic' })
+    const dark = screen.getByRole('button', { name: 'Dark' })
+
+    expect((pureWhite.compareDocumentPosition(warmClassic) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true)
+    expect((warmClassic.compareDocumentPosition(dark) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Pure White' }))
 
     expect(useSettingsStore.getState().setTheme).toHaveBeenCalledWith('white')
@@ -249,6 +259,76 @@ describe('Settings > General tab', () => {
 
     expect(screen.getByRole('button', { name: 'Pure White' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Warm Classic' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('keeps UI zoom below system notifications because it is a secondary setting', () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByText('General'))
+
+    const notificationsHeading = screen.getByRole('heading', { name: 'System Notifications' })
+    const uiZoomHeading = screen.getByRole('heading', { name: 'UI Zoom' })
+    const webFetchHeading = screen.getByRole('heading', { name: 'WebFetch Preflight' })
+
+    expect((notificationsHeading.compareDocumentPosition(uiZoomHeading) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true)
+    expect((uiZoomHeading.compareDocumentPosition(webFetchHeading) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(true)
+  })
+
+  it('previews UI zoom while dragging and applies it once on release', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByText('General'))
+    expect(screen.getByText('Shortcuts are faster:')).toBeInTheDocument()
+    expect(screen.getByText('macOS')).toBeInTheDocument()
+    expect(screen.getByText('Windows / Linux')).toBeInTheDocument()
+    expect(screen.getByText('0 resets zoom to 100%.')).toBeInTheDocument()
+
+    const slider = screen.getByLabelText('UI Zoom')
+    expect(slider).toHaveAttribute('step', '0.01')
+
+    fireEvent.pointerDown(slider, { pointerId: 1 })
+    await act(async () => {
+      fireEvent.change(slider, {
+        target: { value: '1.25', valueAsNumber: 1.25 },
+      })
+    })
+
+    expect(screen.getAllByText('125%')).toHaveLength(2)
+    expect(useSettingsStore.getState().setUiZoom).not.toHaveBeenCalledWith(1.25)
+    expect(useSettingsStore.getState().uiZoom).toBe(1)
+    expect(slider).toHaveValue('1.25')
+    expect(slider).toHaveClass('settings-zoom-range')
+    expect(slider.closest('.settings-zoom-control')).toHaveClass('is-dragging')
+    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '50%' })
+
+    await act(async () => {
+      fireEvent.pointerUp(slider, { pointerId: 1 })
+    })
+
+    expect(useSettingsStore.getState().setUiZoom).toHaveBeenCalledWith(1.25)
+    expect(slider.closest('.settings-zoom-control')).not.toHaveClass('is-dragging')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reset UI zoom to 100%' }))
+    })
+
+    expect(useSettingsStore.getState().setUiZoom).toHaveBeenLastCalledWith(1)
+  })
+
+  it('updates the UI zoom slider when shortcut zoom changes the shared setting while Settings is open', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByText('General'))
+
+    const slider = screen.getByLabelText('UI Zoom')
+
+    await act(async () => {
+      useSettingsStore.setState({ uiZoom: 1.1 })
+    })
+
+    expect(slider).toHaveValue('1.1')
+    expect(screen.getAllByText('110%')).toHaveLength(2)
+    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '40%' })
   })
 
   it('opens the Token usage tab from Settings navigation above Diagnostics', () => {
@@ -422,6 +502,10 @@ describe('Settings > General tab', () => {
     expect(clipboardMock.copyTextToClipboard).toHaveBeenCalledWith(
       'http://192.168.0.102:3456/?serverUrl=http%3A%2F%2F192.168.0.102%3A3456&h5Token=h5_default_generated_token',
     )
+    expect(useUIStore.getState().toasts[useUIStore.getState().toasts.length - 1]).toMatchObject({
+      type: 'success',
+      message: 'QR link copied.',
+    })
   })
 
   it('guides enabled H5 users to generate a token before the QR code exists', async () => {
@@ -493,6 +577,10 @@ describe('Settings > General tab', () => {
     })
 
     expect(clipboardMock.copyTextToClipboard).toHaveBeenCalledWith('https://phone.example/app')
+    expect(useUIStore.getState().toasts[useUIStore.getState().toasts.length - 1]).toMatchObject({
+      type: 'success',
+      message: 'H5 URL copied.',
+    })
   })
 
   it('shows the H5-specific store error when the H5 settings load failed', () => {

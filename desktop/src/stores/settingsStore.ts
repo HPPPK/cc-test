@@ -5,13 +5,22 @@ import { modelsApi } from '../api/models'
 import { h5AccessApi } from '../api/h5Access'
 import { isThemeMode, type H5AccessSettings, type PermissionMode, type EffortLevel, type ModelInfo, type ThemeMode, type WebSearchSettings } from '../types/settings'
 import type { Locale } from '../i18n'
+import {
+  APP_ZOOM_CONTROL_STEP,
+  DEFAULT_APP_ZOOM,
+  MAX_APP_ZOOM,
+  MIN_APP_ZOOM,
+  applyAppZoomLevel,
+  normalizeAppZoomLevel,
+  readStoredAppZoomLevel,
+} from '../lib/appZoom'
 import { useUIStore } from './uiStore'
 
 const LOCALE_STORAGE_KEY = 'cc-haha-locale'
-const UI_ZOOM_STORAGE_KEY = 'cc-haha-ui-zoom'
-export const UI_ZOOM_MIN = 0.5
-export const UI_ZOOM_MAX = 2.0
-export const UI_ZOOM_STEP = 0.05
+export const UI_ZOOM_MIN = MIN_APP_ZOOM
+export const UI_ZOOM_MAX = MAX_APP_ZOOM
+export const UI_ZOOM_STEP = APP_ZOOM_CONTROL_STEP
+export const UI_ZOOM_DEFAULT = DEFAULT_APP_ZOOM
 let desktopNotificationsSaveQueue: Promise<void> = Promise.resolve()
 
 function getStoredLocale(): Locale {
@@ -20,17 +29,6 @@ function getStoredLocale(): Locale {
     if (stored === 'en' || stored === 'zh') return stored
   } catch { /* localStorage unavailable */ }
   return 'zh'
-}
-
-function getStoredUiZoom(): number {
-  try {
-    const stored = localStorage.getItem(UI_ZOOM_STORAGE_KEY)
-    if (stored === null) return 1.0
-    const parsed = parseFloat(stored)
-    if (isNaN(parsed)) return 1.0
-    return Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, parsed))
-  } catch { /* localStorage unavailable */ }
-  return 1.0
 }
 
 type SettingsStore = {
@@ -96,14 +94,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   h5Access: DEFAULT_H5_ACCESS_SETTINGS,
   h5AccessError: null,
   responseLanguage: '',
-  uiZoom: getStoredUiZoom(),
+  uiZoom: readStoredAppZoomLevel(),
   isLoading: false,
   error: null,
 
   setUiZoom: (zoom: number) => {
-    const clamped = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, zoom))
-    set({ uiZoom: clamped })
-    try { localStorage.setItem(UI_ZOOM_STORAGE_KEY, String(clamped)) } catch { /* noop */ }
+    const level = normalizeAppZoomLevel(zoom)
+    set({ uiZoom: level })
+    void applyAppZoomLevel(level)
   },
 
   fetchAll: async () => {
@@ -118,7 +116,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         settingsApi.getUser(),
         loadH5AccessSettings(previousH5Access),
       ])
-      const theme = isThemeMode(userSettings.theme) ? userSettings.theme : 'light'
+      const theme = isThemeMode(userSettings.theme) ? userSettings.theme : 'white'
       useUIStore.getState().setTheme(theme)
       set({
         permissionMode: mode,
@@ -180,7 +178,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const prev = get().thinkingEnabled
     set({ thinkingEnabled: enabled })
     try {
-      await settingsApi.updateUser({ alwaysThinkingEnabled: enabled ? undefined : false })
+      await settingsApi.updateUser({ alwaysThinkingEnabled: enabled })
     } catch {
       set({ thinkingEnabled: prev })
     }

@@ -16,6 +16,7 @@ type Props = {
 
 const ACTIVE_REFRESH_MS = 30_000
 const CONTEXT_REQUEST_TIMEOUT_MS = 20_000
+const AUTO_REFRESH_MIN_INTERVAL_MS = 10_000
 
 function formatNumber(value: number | undefined) {
   return new Intl.NumberFormat().format(value ?? 0)
@@ -50,6 +51,10 @@ function isCliNotRunningError(error: string | null) {
   return error?.toLowerCase().includes('cli session is not running') ?? false
 }
 
+function isDocumentVisible() {
+  return typeof document === 'undefined' || document.visibilityState !== 'hidden'
+}
+
 function shouldFetchContext(sessionId: string | undefined, draft: boolean) {
   return Boolean(sessionId) && !draft
 }
@@ -73,64 +78,104 @@ export function ContextUsageIndicator({
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false)
   const requestSeq = useRef(0)
   const contextIdentityRef = useRef('')
+  const inFlightRequestRef = useRef<Promise<void> | null>(null)
+  const inFlightIdentityRef = useRef<string | null>(null)
+  const lastAutoRefreshAtRef = useRef(0)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (mode: 'auto' | 'manual' = 'manual') => {
     if (!sessionId || draft) {
       setLoading(false)
       return
     }
+    if (mode === 'auto' && !isDocumentVisible()) {
+      setLoading(false)
+      return
+    }
+    if (mode === 'auto' && Date.now() - lastAutoRefreshAtRef.current < AUTO_REFRESH_MIN_INTERVAL_MS) {
+      return inFlightRequestRef.current ?? undefined
+    }
+    if (typeof sessionsApi.getInspection !== 'function') {
+      setLoading(false)
+      return
+    }
     const activeSessionId = sessionId
+    const activeContextIdentity = `${activeSessionId}:${runtimeSelectionKey}`
+    if (inFlightRequestRef.current && inFlightIdentityRef.current === activeContextIdentity) {
+      return inFlightRequestRef.current
+    }
     const seq = requestSeq.current + 1
     requestSeq.current = seq
+    if (mode === 'auto') lastAutoRefreshAtRef.current = Date.now()
     setLoading(true)
     setError(null)
-    try {
-      const inspection = await sessionsApi.getInspection(activeSessionId, {
-        includeContext: true,
-        contextOnly: true,
-        timeout: CONTEXT_REQUEST_TIMEOUT_MS,
+    const request = sessionsApi.getInspection(activeSessionId, {
+      includeContext: true,
+      contextOnly: true,
+      timeout: CONTEXT_REQUEST_TIMEOUT_MS,
+    })
+      .then((inspection) => {
+        if (seq !== requestSeq.current || activeContextIdentity !== contextIdentityRef.current) return
+        const nextContext = inspection.context ?? inspection.contextEstimate ?? null
+        const nextSource = inspection.context ? 'live' : inspection.contextEstimate ? 'estimate' : null
+        const usageModel = inspection.usage?.models.find((model) => firstNonEmpty(model.displayName, model.model)) ?? null
+        setContext(nextContext)
+        setContextSource(nextSource)
+        setInspectionModel(firstNonEmpty(
+          inspection.context?.model,
+          inspection.contextEstimate?.model,
+          inspection.status?.model,
+          usageModel?.displayName,
+          usageModel?.model,
+        ) ?? null)
+        setError(nextContext ? null : inspection.errors?.context ?? null)
+        setUpdatedAt(Date.now())
       })
-      if (seq !== requestSeq.current) return
-      const nextContext = inspection.context ?? inspection.contextEstimate ?? null
-      const nextSource = inspection.context ? 'live' : inspection.contextEstimate ? 'estimate' : null
-      const usageModel = inspection.usage?.models.find((model) => firstNonEmpty(model.displayName, model.model)) ?? null
-      setContext(nextContext)
-      setContextSource(nextSource)
-      setInspectionModel(firstNonEmpty(
-        inspection.context?.model,
-        inspection.contextEstimate?.model,
-        inspection.status?.model,
-        usageModel?.displayName,
-        usageModel?.model,
-      ) ?? null)
-      setError(nextContext ? null : inspection.errors?.context ?? null)
-      setUpdatedAt(Date.now())
-    } catch (err) {
-      if (seq !== requestSeq.current) return
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (seq === requestSeq.current) setLoading(false)
-    }
-  }, [draft, sessionId])
+      .catch((err) => {
+        if (seq !== requestSeq.current || activeContextIdentity !== contextIdentityRef.current) return
+        setError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (inFlightRequestRef.current === request) {
+          inFlightRequestRef.current = null
+          inFlightIdentityRef.current = null
+        }
+        if (seq === requestSeq.current) setLoading(false)
+      })
+    inFlightRequestRef.current = request
+    inFlightIdentityRef.current = activeContextIdentity
+    return request
+  }, [draft, runtimeSelectionKey, sessionId])
 
   useEffect(() => {
     const contextIdentity = `${sessionId}:${runtimeSelectionKey}`
     const identityChanged = contextIdentityRef.current !== contextIdentity
     contextIdentityRef.current = contextIdentity
     if (identityChanged) {
+      requestSeq.current += 1
+      lastAutoRefreshAtRef.current = 0
       setContext(null)
       setContextSource(null)
       setError(null)
       setUpdatedAt(null)
       setInspectionModel(null)
     }
-    void refresh()
+    void refresh('auto')
   }, [messageCount, refresh, runtimeSelectionKey, sessionId])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const refreshIfVisible = () => {
+      if (!isDocumentVisible()) return
+      void refresh('auto')
+    }
+    document.addEventListener('visibilitychange', refreshIfVisible)
+    return () => document.removeEventListener('visibilitychange', refreshIfVisible)
+  }, [refresh])
 
   useEffect(() => {
     if (chatState === 'idle') return
     const timer = setInterval(() => {
-      void refresh()
+      void refresh('auto')
     }, ACTIVE_REFRESH_MS)
     return () => clearInterval(timer)
   }, [chatState, messageCount, refresh])
@@ -178,7 +223,7 @@ export function ContextUsageIndicator({
           if (compact) {
             setMobileDetailsOpen(true)
           }
-          void refresh()
+          void refresh('manual')
         }}
         title={t('contextIndicator.title')}
         data-testid="context-usage-indicator"

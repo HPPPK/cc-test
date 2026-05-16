@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   api,
+  getApiUrl,
   getDefaultBaseUrl,
   rawRecordDiagnosticEvent,
   setAuthToken,
@@ -28,6 +29,15 @@ describe('api diagnostics reporting', () => {
       'Content-Type': 'application/json',
     })
     expect((init as RequestInit & { headers?: Record<string, string> }).headers?.Authorization).toBeUndefined()
+  })
+
+  it('resolves relative asset URLs against the configured API base URL', () => {
+    setBaseUrl('http://127.0.0.1:49237')
+
+    expect(getApiUrl('/api/open-targets/icons/finder')).toBe(
+      'http://127.0.0.1:49237/api/open-targets/icons/finder',
+    )
+    expect(getApiUrl('https://example.com/icon.png')).toBe('https://example.com/icon.png')
   })
 
   it('adds Authorization when an H5 token is configured', async () => {
