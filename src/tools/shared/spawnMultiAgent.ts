@@ -64,6 +64,13 @@ import {
   sendCommandToPane,
 } from '../../utils/swarm/teammateLayoutManager.js'
 import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js'
+import {
+  buildRuntimeEnvOverlay,
+  buildProviderRuntimeEnvPrefix,
+  resolveTeammateRuntime,
+  type TeammateRuntimeSelection,
+} from '../../utils/swarm/teammateRuntime.js'
+import type { RuntimeEnvOverlay } from '../../utils/runtimeEnv.js'
 import { registerTask } from '../../utils/task/framework.js'
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import type { CustomAgentDefinition } from '../AgentTool/loadAgentsDir.js'
@@ -100,6 +107,44 @@ export function resolveTeammateModel(
   return inputModel ?? getDefaultTeammateModel(leaderModel)
 }
 
+export async function resolveTeammateSpawnRuntime(
+  input: {
+    model?: string
+    providerId?: string | null
+    modelId?: string
+  },
+  leaderModel: string | null,
+): Promise<{
+  model: string
+  runtime?: TeammateRuntimeSelection
+  runtimeEnv?: RuntimeEnvOverlay
+  clearInheritedProviderEnv: boolean
+}> {
+  if (input.modelId?.trim() && input.providerId === undefined) {
+    throw new Error(
+      'provider_id is required when model_id is provided for a teammate. Use provider_id=null for the official/default provider, or choose a provider_id from the Teammate runtime providers reminder.',
+    )
+  }
+
+  const model =
+    input.modelId?.trim() || resolveTeammateModel(input.model, leaderModel)
+  const runtime = await resolveTeammateRuntime({
+    providerId: input.providerId,
+    modelId: input.modelId,
+    model,
+  })
+
+  return {
+    model: runtime.model,
+    runtime: runtime.runtime,
+    runtimeEnv: buildRuntimeEnvOverlay({
+      env: runtime.env,
+      clearInheritedProviderEnv: runtime.clearInheritedProviderEnv,
+    }),
+    clearInheritedProviderEnv: runtime.clearInheritedProviderEnv,
+  }
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -109,6 +154,9 @@ export type SpawnOutput = {
   agent_id: string
   agent_type?: string
   model?: string
+  provider_id?: string | null
+  model_id?: string
+  runtime?: TeammateRuntimeSelection
   name: string
   color?: string
   tmux_session_name: string
@@ -127,6 +175,8 @@ export type SpawnTeammateConfig = {
   use_splitpane?: boolean
   plan_mode_required?: boolean
   model?: string
+  providerId?: string | null
+  modelId?: string
   agent_type?: string
   description?: string
   /** request_id of the API call whose response contained the tool_use that
@@ -144,6 +194,8 @@ type SpawnInput = {
   use_splitpane?: boolean
   plan_mode_required?: boolean
   model?: string
+  providerId?: string | null
+  modelId?: string
   agent_type?: string
   description?: string
   invokingRequestId?: string
@@ -309,8 +361,12 @@ async function handleSpawnSplitPane(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
-  const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
+  const {
+    model,
+    runtime,
+    runtimeEnv,
+    clearInheritedProviderEnv,
+  } = await resolveTeammateSpawnRuntime(input, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
     throw new Error('name and prompt are required for spawn operation')
@@ -436,7 +492,14 @@ async function handleSpawnSplitPane(
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
   // Includes CLAUDECODE, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
-  const envStr = buildInheritedEnvVars()
+  const runtimeEnvStr = buildProviderRuntimeEnvPrefix({
+    env: runtimeEnv,
+    clearInheritedProviderEnv,
+  })
+  const inheritedEnvStr = buildInheritedEnvVars({
+    includeProviderEnv: !clearInheritedProviderEnv,
+  })
+  const envStr = [runtimeEnvStr, inheritedEnvStr].filter(Boolean).join(' ')
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 
   // Send the command to the new pane
@@ -493,6 +556,7 @@ async function handleSpawnSplitPane(
       name: sanitizedName,
       agentType: agent_type,
       model,
+      runtime,
       prompt,
       color: teammateColor,
       planModeRequired: plan_mode_required,
@@ -522,6 +586,9 @@ async function handleSpawnSplitPane(
       agent_id: teammateId,
       agent_type,
       model,
+      provider_id: runtime?.providerId,
+      model_id: runtime?.modelId,
+      runtime,
       name: sanitizedName,
       color: teammateColor,
       tmux_session_name: sessionName,
@@ -545,8 +612,12 @@ async function handleSpawnSeparateWindow(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
-  const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
+  const {
+    model,
+    runtime,
+    runtimeEnv,
+    clearInheritedProviderEnv,
+  } = await resolveTeammateSpawnRuntime(input, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
     throw new Error('name and prompt are required for spawn operation')
@@ -639,7 +710,14 @@ async function handleSpawnSeparateWindow(
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
   // Includes CLAUDECODE, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
-  const envStr = buildInheritedEnvVars()
+  const runtimeEnvStr = buildProviderRuntimeEnvPrefix({
+    env: runtimeEnv,
+    clearInheritedProviderEnv,
+  })
+  const inheritedEnvStr = buildInheritedEnvVars({
+    includeProviderEnv: !clearInheritedProviderEnv,
+  })
+  const envStr = [runtimeEnvStr, inheritedEnvStr].filter(Boolean).join(' ')
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 
   // Send the command to the new window
@@ -701,6 +779,7 @@ async function handleSpawnSeparateWindow(
       name: sanitizedName,
       agentType: agent_type,
       model,
+      runtime,
       prompt,
       color: teammateColor,
       planModeRequired: plan_mode_required,
@@ -730,6 +809,9 @@ async function handleSpawnSeparateWindow(
       agent_id: teammateId,
       agent_type,
       model,
+      provider_id: runtime?.providerId,
+      model_id: runtime?.modelId,
+      runtime,
       name: sanitizedName,
       color: teammateColor,
       tmux_session_name: SWARM_SESSION_NAME,
@@ -834,8 +916,11 @@ async function handleSpawnInProcess(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default Opus
-  const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
+  const {
+    model,
+    runtime,
+    runtimeEnv,
+  } = await resolveTeammateSpawnRuntime(input, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
     throw new Error('name and prompt are required for spawn operation')
@@ -884,6 +969,8 @@ async function handleSpawnInProcess(
     color: teammateColor,
     planModeRequired: plan_mode_required ?? false,
     model,
+    runtime,
+    runtimeEnv,
   }
 
   const result = await spawnInProcessTeammate(config, context)
@@ -896,36 +983,6 @@ async function handleSpawnInProcess(
   logForDebugging(
     `[handleSpawnInProcess] spawn result: taskId=${result.taskId}, hasContext=${!!result.teammateContext}, hasAbort=${!!result.abortController}`,
   )
-
-  // Start the agent execution loop (fire-and-forget)
-  if (result.taskId && result.teammateContext && result.abortController) {
-    startInProcessTeammate({
-      identity: {
-        agentId: teammateId,
-        agentName: sanitizedName,
-        teamName,
-        color: teammateColor,
-        planModeRequired: plan_mode_required ?? false,
-        parentSessionId: result.teammateContext.parentSessionId,
-      },
-      taskId: result.taskId,
-      prompt,
-      description: input.description,
-      model,
-      agentDefinition,
-      teammateContext: result.teammateContext,
-      // Strip messages: the teammate never reads toolUseContext.messages
-      // (it builds its own history via allMessages in inProcessRunner).
-      // Passing the parent's full conversation here would pin it for the
-      // teammate's lifetime, surviving /clear and auto-compact.
-      toolUseContext: { ...context, messages: [] },
-      abortController: result.abortController,
-      invokingRequestId: input.invokingRequestId,
-    })
-    logForDebugging(
-      `[handleSpawnInProcess] Started agent execution for ${teammateId}`,
-    )
-  }
 
   // Track the teammate in AppState's teamContext
   // Auto-register leader if spawning without prior spawnTeam call
@@ -981,6 +1038,7 @@ async function handleSpawnInProcess(
       name: sanitizedName,
       agentType: agent_type,
       model,
+      runtime,
       prompt,
       color: teammateColor,
       planModeRequired: plan_mode_required,
@@ -991,6 +1049,38 @@ async function handleSpawnInProcess(
       backendType: 'in-process',
     })
   })
+
+  // Start the agent execution loop after roster/config registration so the
+  // first turn can discover its own team membership and any existing peers.
+  if (result.taskId && result.teammateContext && result.abortController) {
+    startInProcessTeammate({
+      identity: {
+        agentId: teammateId,
+        agentName: sanitizedName,
+        teamName,
+        color: teammateColor,
+        planModeRequired: plan_mode_required ?? false,
+        parentSessionId: result.teammateContext.parentSessionId,
+      },
+      taskId: result.taskId,
+      prompt,
+      description: input.description,
+      model,
+      runtimeEnv,
+      agentDefinition,
+      teammateContext: result.teammateContext,
+      // Strip messages: the teammate never reads toolUseContext.messages
+      // (it builds its own history via allMessages in inProcessRunner).
+      // Passing the parent's full conversation here would pin it for the
+      // teammate's lifetime, surviving /clear and auto-compact.
+      toolUseContext: { ...context, messages: [] },
+      abortController: result.abortController,
+      invokingRequestId: input.invokingRequestId,
+    })
+    logForDebugging(
+      `[handleSpawnInProcess] Started agent execution for ${teammateId}`,
+    )
+  }
 
   // Note: Do NOT send the prompt via mailbox for in-process teammates.
   // In-process teammates receive the prompt directly via startInProcessTeammate().
@@ -1003,6 +1093,9 @@ async function handleSpawnInProcess(
       agent_id: teammateId,
       agent_type,
       model,
+      provider_id: runtime?.providerId,
+      model_id: runtime?.modelId,
+      runtime,
       name: sanitizedName,
       color: teammateColor,
       tmux_session_name: 'in-process',

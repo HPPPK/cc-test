@@ -126,6 +126,7 @@ import {
   formatAgentLine,
   shouldInjectAgentListInMessages,
 } from '../tools/AgentTool/prompt.js'
+import { getTeammateRuntimeProviderRoster } from './swarm/teammateRuntimeProviders.js'
 import { filterDeniedAgents } from './permissions/permissions.js'
 import { getSubscriptionType } from './auth.js'
 import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
@@ -244,10 +245,11 @@ import {
   getAgentName,
   getAgentId,
   getTeamName,
+  isTeammate,
   isTeamLead,
 } from './teammate.js'
 import { isInProcessTeammate } from './teammateContext.js'
-import { removeTeammateFromTeamFile } from './swarm/teamHelpers.js'
+import { readTeamFile, removeTeammateFromTeamFile } from './swarm/teamHelpers.js'
 import { unassignTeammateTasks } from './tasks.js'
 import { getCompanionIntroAttachment } from '../buddy/prompt.js'
 
@@ -699,6 +701,11 @@ export type Attachment =
       showConcurrencyNote: boolean
     }
   | {
+      type: 'teammate_runtime_providers'
+      content: string
+      fingerprint: string
+    }
+  | {
       type: 'mcp_instructions_delta'
       addedNames: string[]
       addedBlocks: string[]
@@ -734,6 +741,7 @@ export type TeamContextAttachment = {
   teamName: string
   teamConfigPath: string
   taskListPath: string
+  teammateNames?: string[]
 }
 
 /**
@@ -906,6 +914,9 @@ export async function getAttachments(
               ]),
           maybe('team_context', async () =>
             getTeamContextAttachment(messages ?? []),
+          ),
+          maybe('teammate_runtime_providers', async () =>
+            getTeammateRuntimeProviderAttachments(toolUseContext, messages),
           ),
         ]
       : []),
@@ -1549,6 +1560,37 @@ export function getAgentListingDeltaAttachment(
       showConcurrencyNote: getSubscriptionType() !== 'pro',
     },
   ]
+}
+
+export async function getTeammateRuntimeProviderAttachments(
+  toolUseContext: ToolUseContext,
+  messages: Message[] | undefined,
+): Promise<Attachment[]> {
+  if (!isAgentSwarmsEnabled()) return []
+  if (isTeammate()) return []
+  if (toolUseContext.agentId) return []
+  if (
+    !toolUseContext.options.tools.some(t => toolMatchesName(t, AGENT_TOOL_NAME))
+  ) {
+    return []
+  }
+
+  const roster = await getTeammateRuntimeProviderRoster()
+  let previousFingerprint: string | undefined
+  for (const msg of messages ?? []) {
+    if (
+      msg.type === 'attachment' &&
+      msg.attachment.type === 'teammate_runtime_providers'
+    ) {
+      previousFingerprint = msg.attachment.fingerprint
+    }
+  }
+
+  if (previousFingerprint === roster.fingerprint) {
+    return []
+  }
+
+  return [{ type: 'teammate_runtime_providers', ...roster }]
 }
 
 // Exported for compact.ts / reactiveCompact.ts — single source of truth for the gate.
@@ -3787,6 +3829,10 @@ function getTeamContextAttachment(messages: Message[]): Attachment[] {
   const configDir = getClaudeConfigHomeDir()
   const teamConfigPath = `${configDir}/teams/${teamName}/config.json`
   const taskListPath = `${configDir}/tasks/${teamName}/`
+  const teamFile = readTeamFile(teamName)
+  const teammateNames = teamFile?.members
+    .map(member => member.name)
+    .filter(name => name && name !== agentName) ?? []
 
   return [
     {
@@ -3796,6 +3842,7 @@ function getTeamContextAttachment(messages: Message[]): Attachment[] {
       teamName,
       teamConfigPath,
       taskListPath,
+      teammateNames,
     },
   ]
 }

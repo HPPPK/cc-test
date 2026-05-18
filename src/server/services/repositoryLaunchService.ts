@@ -91,7 +91,16 @@ export type RepositorySessionLaunchState = {
 
 function samePath(left: string | null | undefined, right: string | null | undefined): boolean {
   if (!left || !right) return false
-  return path.resolve(left) === path.resolve(right)
+  return normalizeComparablePath(left) === normalizeComparablePath(right)
+}
+
+function normalizeComparablePath(filePath: string): string {
+  const resolved = path.resolve(filePath)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function normalizeDisplayPath(filePath: string): string {
+  return path.resolve(filePath).normalize('NFC')
 }
 
 export function isMaterializedWorktreeLaunch(
@@ -355,9 +364,11 @@ export async function getRepositoryContext(workDir: string): Promise<RepositoryC
     const currentBranch = branchResult.stdout.trim() || null
     const worktreeRecords = worktreeResult.code === 0 ? parseWorktreeList(worktreeResult.stdout) : []
     const worktrees = worktreeRecords.map((worktree) => ({
-      path: worktree.path,
+      path: normalizeDisplayPath(worktree.path),
       branch: worktree.branch,
-      current: absWorkDir === worktree.path || absWorkDir.startsWith(`${worktree.path}${path.sep}`),
+      current:
+        samePath(absWorkDir, worktree.path) ||
+        normalizeComparablePath(absWorkDir).startsWith(`${normalizeComparablePath(worktree.path)}${path.sep}`),
     }))
 
     return {

@@ -1,0 +1,65 @@
+{
+  "locked_at": "2026-05-17T23:45:00+08:00",
+  "lock_status": "closed",
+  "complexity_level": "T2-Structured",
+  "complexity_confidence": "high",
+
+  "matched_rules": [
+    {
+      "rule_id": "C-001",
+      "description": "Extends existing multi-file architecture (quality-gate, pr scripts)",
+      "evidence": "MP-003, MP-009 confirm reuse of existing gate architecture",
+      "trigger_result": true
+    },
+    {
+      "rule_id": "C-002",
+      "description": "Affects multiple modules but stays within coherent subsystem",
+      "evidence": "scripts/quality-gate/, scripts/pr/, package.json",
+      "trigger_result": true
+    },
+    {
+      "rule_id": "C-003",
+      "description": "Does not require cross-service or cross-process boundary changes",
+      "evidence": "All changes are within the quality-gate lane subsystem",
+      "trigger_result": true
+    },
+    {
+      "rule_id": "C-004",
+      "description": "Does not require reference reconstruction or behavioral equivalence",
+      "evidence": "New capability, not rewrite or port",
+      "trigger_result": false
+    }
+  ],
+
+  "scope_summary": {
+    "affected_files_estimate": "8-12 files",
+    "primary_surfaces": [
+      "scripts/quality-gate/modes.ts",
+      "scripts/quality-gate/runner.ts",
+      "scripts/quality-gate/types.ts",
+      "scripts/pr/impact-report.ts",
+      "scripts/pr/change-policy.ts",
+      "package.json"
+    ],
+    "secondary_surfaces": [
+      "scripts/quality-gate/*.test.ts",
+      "scripts/pr/*.test.ts"
+    ],
+    "risk_areas": [
+      "Lane routing logic must be regression-tested",
+      "Coverage strategy decision still pending (soft unknown)"
+    ]
+  },
+
+  "execution_model": "subagent-mandatory",
+  "dispatch_shape": "parallel-subagents",
+  "execution_surface": "native-subagents",
+
+  "deferred_soft_unknowns": [
+    {
+      "field": "full_coverage_handling",
+      "owner": "sp-plan",
+      "risk": "Coverage strategy affects complexity if full coverage cannot fit 5-minute target"
+    }
+  ]
+}

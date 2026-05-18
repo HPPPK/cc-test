@@ -41,6 +41,7 @@ import {
   unregisterAgent as unregisterPerfettoAgent,
 } from '../telemetry/perfettoTracing.js'
 import { removeMemberByAgentId } from './teamHelpers.js'
+import type { RuntimeEnvOverlay } from '../runtimeEnv.js'
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
 
@@ -69,6 +70,13 @@ export type InProcessSpawnConfig = {
   planModeRequired: boolean
   /** Optional model override for this teammate */
   model?: string
+  /** Optional provider/model runtime selection for this teammate */
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+  /** Optional per-teammate env overlay for provider isolation */
+  runtimeEnv?: RuntimeEnvOverlay
 }
 
 /**
@@ -105,7 +113,16 @@ export async function spawnInProcessTeammate(
   config: InProcessSpawnConfig,
   context: SpawnContext,
 ): Promise<InProcessSpawnOutput> {
-  const { name, teamName, prompt, color, planModeRequired, model } = config
+  const {
+    name,
+    teamName,
+    prompt,
+    color,
+    planModeRequired,
+    model,
+    runtime,
+    runtimeEnv,
+  } = config
   const { setAppState } = context
 
   // Generate deterministic agent ID
@@ -144,6 +161,8 @@ export async function spawnInProcessTeammate(
       planModeRequired,
       parentSessionId,
       abortController,
+      runtime,
+      runtimeEnv,
     })
 
     // Register agent in Perfetto trace for hierarchy visualization

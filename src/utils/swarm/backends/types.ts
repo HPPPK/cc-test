@@ -1,4 +1,5 @@
 import type { AgentColorName } from '../../../tools/AgentTool/agentColorManager.js'
+import type { RuntimeEnvOverlay } from '../../runtimeEnv.js'
 
 /**
  * Types of backends available for teammate execution.
@@ -209,6 +210,15 @@ export type TeammateSpawnConfig = TeammateIdentity & {
   cwd: string
   /** Model to use for this teammate */
   model?: string
+  /** Provider/model runtime selection for this teammate */
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+  /** Per-teammate env overlay for provider isolation */
+  runtimeEnv?: RuntimeEnvOverlay
+  /** Whether inherited provider env should be removed before runtime env is applied */
+  clearInheritedProviderEnv?: boolean
   /** System prompt for this teammate (resolved from workflow config) */
   systemPrompt?: string
   /** How to apply the system prompt: 'replace' or 'append' to default */

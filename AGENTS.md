@@ -93,3 +93,36 @@ Future Coding Agents should run the right local gate themselves before claiming 
 Recent history follows Conventional Commit prefixes such as `feat:`, `fix:`, and `docs:`. Keep subjects imperative and scoped to one change. PRs should explain the user-visible impact, list verification steps, link related issues, and include screenshots for desktop or docs UI changes. Keep diffs reviewable and call out any follow-up work or known gaps.
 Branch names should use normal product prefixes such as `fix/xxx`, `feat/xxx`, or `docs/xxx`; do not create `codex/`-prefixed branches in this repository.
 
+<!-- SPEC-KIT:BEGIN -->
+## Spec Kit Plus Managed Rules
+
+- `[AGENT]` marks an action the AI must explicitly execute.
+- `[AGENT]` is independent from `[P]`.
+
+## Always-On Context
+
+- Project cognition and project memory are always available, even without an active `sp-*` workflow.
+- When existing-system truth matters, use project cognition before broad source inspection and use its results to narrow live reads.
+- Read `.specify/memory/project-rules.md` and `.specify/memory/learnings/INDEX.md` before decisions that depend on local conventions, constraints, or past lessons.
+
+## Workflow Recommendations
+
+- Do not auto-enter an `sp-*` workflow unless the user invokes it.
+- Recommend `sp-discussion` for open-ended requirement exploration, `sp-specify` for formal alignment, `sp-deep-research` for feasibility proof, and `sp-debug` for root-cause diagnosis.
+- If the user invokes an `sp-*` workflow, follow that workflow's own contract.
+
+## Command Surface Rules
+
+- Treat live `specify --help` output as the authoritative CLI surface.
+- Before suggesting or running a `specify <subcommand>` invocation, verify that help exposes it.
+- Do not invent unsupported CLI names such as `specify create-feature`.
+- Feature creation uses the generated create-feature script at `.specify/scripts/bash/create-new-feature.sh` or `.specify/scripts/powershell/create-new-feature.ps1`.
+
+## Durable State
+
+- When resuming generated work, prefer durable workflow state and explicit feature paths over branch name or chat memory.
+- Keep project cognition freshness truthful after changes to architecture, ownership, workflow names, integration contracts, or verification entry points.
+- Store reusable lessons in project memory, not only in chat or task artifacts.
+
+- Preserve content outside this managed block.
+<!-- SPEC-KIT:END -->

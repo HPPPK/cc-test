@@ -11,6 +11,7 @@ import {
   buildInheritedEnvVars,
   getTeammateCommand,
 } from '../spawnUtils.js'
+import { buildProviderRuntimeEnvPrefix } from '../teammateRuntime.js'
 import { assignTeammateColor } from '../teammateLayoutManager.js'
 import { isInsideTmux } from './detection.js'
 import type {
@@ -149,7 +150,14 @@ export class PaneBackendExecutor implements TeammateExecutor {
       const workingDir = config.cwd
 
       // Build environment variables to forward to teammate
-      const envStr = buildInheritedEnvVars()
+      const runtimeEnvStr = buildProviderRuntimeEnvPrefix({
+        env: config.runtimeEnv,
+        clearInheritedProviderEnv: config.clearInheritedProviderEnv,
+      })
+      const inheritedEnvStr = buildInheritedEnvVars({
+        includeProviderEnv: !config.clearInheritedProviderEnv,
+      })
+      const envStr = [runtimeEnvStr, inheritedEnvStr].filter(Boolean).join(' ')
 
       const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 

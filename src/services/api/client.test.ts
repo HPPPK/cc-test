@@ -1,4 +1,8 @@
 import { describe, expect, mock, test } from 'bun:test'
+import { runWithRuntimeEnv } from '../../utils/runtimeEnv.js'
+
+const buildOpenAICodexFetchMock = mock((fetchOverride: unknown) => fetchOverride)
+const shouldUseOpenAICodexAuthMock = mock(() => true)
 
 mock.module('src/utils/http.js', () => ({
   getAuthHeaders: mock(() => ({})),
@@ -6,6 +10,12 @@ mock.module('src/utils/http.js', () => ({
   getUserAgent: mock(() => 'client-test-agent'),
   getWebFetchUserAgent: mock(() => 'client-test-agent'),
   withOAuth401Retry: mock(async <T>(fn: () => Promise<T>) => fn()),
+}))
+
+mock.module('src/services/openaiAuth/fetch.js', () => ({
+  OPENAI_OAUTH_DUMMY_KEY: 'openai-oauth-dummy-key',
+  buildOpenAICodexFetch: buildOpenAICodexFetchMock,
+  shouldUseOpenAICodexAuth: shouldUseOpenAICodexAuthMock,
 }))
 
 describe('resolveAnthropicClientApiKey', () => {
@@ -83,5 +93,56 @@ describe('getAnthropicClient', () => {
       if (originalSimple === undefined) delete process.env.CLAUDE_CODE_SIMPLE
       else process.env.CLAUDE_CODE_SIMPLE = originalSimple
     }
+  })
+
+  test('uses per-teammate runtime env without mutating process env', async () => {
+    const { getAnthropicClient } = await import('./client.js')
+
+    await runWithRuntimeEnv(
+      {
+        ANTHROPIC_AUTH_TOKEN: 'runtime-bearer-token',
+        ANTHROPIC_BASE_URL: 'http://runtime.example/v1',
+        CLAUDE_CODE_SIMPLE: '1',
+      },
+      async () => {
+        const client = await getAnthropicClient({
+          maxRetries: 0,
+          model: 'provider/model-id',
+        })
+
+        expect(client.apiKey).toBeNull()
+        expect(client._options.baseURL).toBe('http://runtime.example/v1')
+        expect(client._options.defaultHeaders).toMatchObject({
+          Authorization: 'Bearer runtime-bearer-token',
+        })
+      },
+    )
+
+    expect(process.env.ANTHROPIC_AUTH_TOKEN).not.toBe('runtime-bearer-token')
+  })
+
+  test('does not route provider-managed GPT model IDs through OpenAI Codex auth', async () => {
+    const { getAnthropicClient } = await import('./client.js')
+    const openAICallsBefore = buildOpenAICodexFetchMock.mock.calls.length
+
+    await runWithRuntimeEnv(
+      {
+        CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1',
+        ANTHROPIC_API_KEY: 'runtime-provider-key',
+        ANTHROPIC_BASE_URL: 'http://provider.example/v1',
+        CLAUDE_CODE_SIMPLE: '1',
+      },
+      async () => {
+        const client = await getAnthropicClient({
+          maxRetries: 0,
+          model: 'gpt-5.4',
+        })
+
+        expect(client.apiKey).toBe('runtime-provider-key')
+        expect(client._options.baseURL).toBe('http://provider.example/v1')
+      },
+    )
+
+    expect(buildOpenAICodexFetchMock.mock.calls.length).toBe(openAICallsBefore)
   })
 })

@@ -1,0 +1,117 @@
+{
+  "task_id": "T007",
+  "title": "Add shared quality-gate type extensions in scripts/quality-gate/types.ts",
+  "checklist_line": "- [ ] T007 [Agent: executor] Add shared quality-gate type extensions in scripts/quality-gate/types.ts",
+  "feature_branch": "003-layered-test-verify",
+  "active_profile": "Standard Delivery",
+  "execution_model": "subagent-mandatory",
+  "execution_surface": "native-subagents",
+  "agent": "executor",
+  "depends_on": [
+    "T003: fast-mode tests written",
+    "T005: risk tests written",
+    "T006: layered PR tests written"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "phase": 2,
+  "context_navigation": [
+    {
+      "need": "Feature usage paths",
+      "location": "spec.md#Scenarios and Usage Paths"
+    },
+    {
+      "need": "Success criteria",
+      "location": "spec.md#Success Criteria"
+    },
+    {
+      "need": "Locked decisions",
+      "location": "plan.md#Locked Planning Decisions"
+    },
+    {
+      "need": "Implementation constitution",
+      "location": "plan.md#Implementation Constitution"
+    },
+    {
+      "need": "Affected surfaces",
+      "location": "context.md#Affected Surfaces"
+    },
+    {
+      "need": "Data model entity",
+      "location": "N/A - no data-model.md is present; quality-gate lane/report entities live in scripts/quality-gate/types.ts"
+    },
+    {
+      "need": "API/contract surface",
+      "location": "package.json#scripts and scripts/quality-gate/types.ts#QualityGateReport"
+    }
+  ],
+  "write_scope": [
+    "scripts/quality-gate/types.ts"
+  ],
+  "read_scope": [
+    "scripts/quality-gate/types.ts",
+    "scripts/quality-gate/fast-mode.test.ts",
+    "scripts/pr/risk-escalation.test.ts",
+    "scripts/quality-gate/layered-pr.test.ts",
+    ".specify/features/003-layered-test-verify/plan.md"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "**/*.secret",
+    "**/credentials/**",
+    "**/secrets/**",
+    "node_modules/**",
+    "desktop/node_modules/**",
+    "adapters/**/node_modules/**",
+    "artifacts/**",
+    ".git/**",
+    ".specify/features/003-layered-test-verify/task-generation/** unless owned",
+    ".specify/features/003-layered-test-verify/task-packets/** unless owned",
+    "default forbidden paths",
+    "scripts/quality-gate/modes.ts",
+    "scripts/quality-gate/runner.ts",
+    "scripts/quality-gate/reporter.ts",
+    "scripts/pr/change-policy.ts",
+    "scripts/pr/impact-report.ts"
+  ],
+  "expected_outputs": [
+    "scripts/quality-gate/types.ts (modified)"
+  ],
+  "anti_goals": [
+    "Do not touch modes/runner/reporter/policy/impact files",
+    "do not remove existing report fields"
+  ],
+  "acceptance_criteria": [
+    "QualityGateMode includes fast",
+    "lane/report types support risk level, feedbackType, readyForMerge, coverageMode, and escalated-check metadata",
+    "existing runner tests pass"
+  ],
+  "verify_commands": [
+    "bun test scripts/quality-gate/runner.test.ts"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": "exact changed paths",
+    "validation_output": "command to output summary map",
+    "concerns": "list",
+    "recovery_hints": "list"
+  },
+  "retry_max": 2,
+  "escalation": "debugger",
+  "consequence_obligations": [
+    "CA-002",
+    "CA-004",
+    "CA-006"
+  ],
+  "packet_readiness": {
+    "DP1": "complete task body and context pointers",
+    "DP2": "dependency/write-scope metadata present",
+    "DP3": "blocked until /sp.analyze clears task package"
+  },
+  "shaped_by_handoffs": [
+    "task-generation/handoffs/story-phase-decomposition.json",
+    "task-generation/handoffs/dependency-graph-analysis.json",
+    "task-generation/handoffs/write-set-parallel-safety.json"
+  ]
+}

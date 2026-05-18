@@ -1,0 +1,32 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "capabilities": [
+    {"id": "cap-tui", "name": "Terminal UI (Ink REPL)", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-desktop", "name": "Desktop App (Tauri 2 + React)", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-commands", "name": "Slash Commands (70+)", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-agent", "name": "Multi-Agent Orchestration", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-skills", "name": "Skills System", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-memory", "name": "Cross-Session Memory System", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-mcp", "name": "MCP Protocol Support", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-lsp", "name": "LSP Integration", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-tools", "name": "Agent Tool Ecosystem (59 tools)", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-model-providers", "name": "Multi-Model Provider Support", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-computer-use", "name": "Computer Use (Desktop Control)", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-im-integration", "name": "IM Platform Integration (4 platforms)", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-worktree", "name": "Git Worktree Isolation", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-teams", "name": "Agent Teams Collaboration", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-plan-mode", "name": "Plan Mode", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-voice", "name": "Voice Mode", "criticality": "low-risk", "coverage": "implemented"},
+    {"id": "cap-h5-remote", "name": "H5 Remote Access", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-plugins", "name": "Plugin System", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-quality-gate", "name": "Quality Gate Automation", "criticality": "important", "coverage": "implemented"},
+    {"id": "cap-auth", "name": "Authentication System", "criticality": "critical", "coverage": "implemented"},
+    {"id": "cap-doctor", "name": "Installation Diagnostics", "criticality": "important", "coverage": "implemented"}
+  ],
+  "coverage_by_capability": {
+    "critical": {"total": 9, "classified": 9, "unknown": 0},
+    "important": {"total": 11, "classified": 11, "unknown": 0},
+    "low_risk": {"total": 1, "classified": 1, "unknown": 0}
+  }
+}

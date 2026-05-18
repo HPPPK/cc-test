@@ -1,0 +1,196 @@
+{
+  "feature_branch": "003-layered-test-verify",
+  "feature_dir": ".specify/features/003-layered-test-verify",
+  "locked_at": "2026-05-17T00:15:00+08:00",
+
+  "route": {
+    "primary_route": "feature-extension",
+    "route_confidence": "high",
+    "matched_rules": [
+      "R-001: Extends existing quality-gate architecture",
+      "R-002: Bounded to first slice",
+      "R-003: Preserves quality contracts",
+      "R-004: Fresh project cognition"
+    ]
+  },
+
+  "intent": {
+    "goal": "Add layered test verification with under-1-minute fast lane and reorganized PR/verify toward 5-minute target",
+    "non_goals": [
+      "Deleting tests merely to reduce runtime",
+      "Weakening coverage baselines without approval",
+      "Full expansion-ready test impact graph",
+      "Replacing bun run verify as PR entrypoint"
+    ],
+    "success_criteria": [
+      "SC-001: Fast lane under 1 minute",
+      "SC-002: PR/verify under 5 minutes for routine changes",
+      "SC-003: Explainable routing",
+      "SC-004: High-risk triggers heavy checks",
+      "SC-005: Clear output semantics",
+      "SC-006: Regression tests for routing"
+    ],
+    "must_preserve_invariants": [
+      "bun run verify remains PR readiness entrypoint",
+      "Same-area test requirements preserved",
+      "Coverage baselines not weakened without approval",
+      "Quarantine governance preserved",
+      "Release confidence gates preserved",
+      "Fast-lane success is NOT merge-ready"
+    ],
+    "allowed_optimization_scope": [
+      "Refine lane selection logic",
+      "Add fast-lane mode definition",
+      "Extend impact-report for fast-lane signals",
+      "Refine change-policy risk triggers",
+      "Optimize test selection without deleting high-signal tests"
+    ]
+  },
+
+  "complexity": {
+    "level": "T2-Structured",
+    "confidence": "high",
+    "scope_summary": {
+      "affected_files_estimate": "8-12 files",
+      "primary_surfaces": [
+        "scripts/quality-gate/modes.ts",
+        "scripts/quality-gate/runner.ts",
+        "scripts/quality-gate/types.ts",
+        "scripts/pr/impact-report.ts",
+        "scripts/pr/change-policy.ts",
+        "package.json"
+      ]
+    },
+    "execution_model": "subagent-mandatory",
+    "dispatch_shape": "parallel-subagents"
+  },
+
+  "must_preserve": [
+    {
+      "id": "MP-001",
+      "type": "goal",
+      "claim": "Make tests lighter/faster while preserving quality",
+      "status": "active"
+    },
+    {
+      "id": "MP-002",
+      "type": "scope",
+      "claim": "Under-1-minute fast lane + 5-minute PR/verify",
+      "status": "active"
+    },
+    {
+      "id": "MP-003",
+      "type": "decision",
+      "claim": "Layered PR Gate using existing architecture",
+      "status": "active"
+    },
+    {
+      "id": "MP-004",
+      "type": "decision",
+      "claim": "Changed-area tests + core smoke as fast evidence",
+      "status": "active"
+    },
+    {
+      "id": "MP-005",
+      "type": "decision",
+      "claim": "Preserve verify as PR entrypoint",
+      "status": "active"
+    },
+    {
+      "id": "MP-006",
+      "type": "decision",
+      "claim": "E2E/live-provider/release conditional",
+      "status": "active"
+    },
+    {
+      "id": "MP-007",
+      "type": "decision",
+      "claim": "Quality = regression protection + low flake + changed-area coverage",
+      "status": "active"
+    },
+    {
+      "id": "MP-008",
+      "type": "non_goal",
+      "claim": "Do not weaken quality contracts",
+      "status": "active"
+    },
+    {
+      "id": "MP-009",
+      "type": "reference",
+      "claim": "Existing gate surfaces",
+      "status": "active"
+    },
+    {
+      "id": "MP-010",
+      "type": "tradeoff",
+      "claim": "Fast success ≠ PR readiness",
+      "status": "active"
+    },
+    {
+      "id": "MP-011",
+      "type": "tradeoff",
+      "claim": "Impact graph deferred",
+      "status": "deferred"
+    },
+    {
+      "id": "MP-012",
+      "type": "blocking_question",
+      "claim": "Coverage strategy under 5-minute target",
+      "status": "resolved",
+      "resolution": "Changed-line coverage for PR, full coverage for baseline/release"
+    }
+  ],
+
+  "planning_decisions": [
+    {
+      "id": "D-001",
+      "decision": "Add fast mode in modes.ts",
+      "confidence": "verified"
+    },
+    {
+      "id": "D-002",
+      "decision": "Extend impact-report.ts for test selection",
+      "confidence": "verified"
+    },
+    {
+      "id": "D-003",
+      "decision": "Define core smoke set",
+      "confidence": "inferred"
+    },
+    {
+      "id": "D-004",
+      "decision": "Changed-line coverage for PR mode",
+      "confidence": "assumed"
+    },
+    {
+      "id": "D-005",
+      "decision": "Risk escalation in change-policy.ts",
+      "confidence": "verified"
+    },
+    {
+      "id": "D-006",
+      "decision": "Output semantics in reporter",
+      "confidence": "verified"
+    }
+  ],
+
+  "implementation_phases": [
+    "Phase 1: Fast Lane Mode Definition",
+    "Phase 2: Changed-Area Test Selection",
+    "Phase 3: Core Smoke Set",
+    "Phase 4: Layered PR Mode Refinement",
+    "Phase 5: Risk-Based Escalation",
+    "Phase 6: Output Semantics",
+    "Phase 7: Coverage Strategy Implementation",
+    "Phase 8: Regression Tests"
+  ],
+
+  "stop_and_reopen_conditions": [
+    "Implementation weakens quality contracts",
+    "Fast-lane success presented as PR readiness",
+    "Implementation ignores existing architecture",
+    "Either fast lane or PR/verify layering dropped"
+  ],
+
+  "next_command": "/sp.tasks"
+}

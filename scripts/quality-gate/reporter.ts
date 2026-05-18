@@ -45,8 +45,43 @@ function renderSummaryList(lines: string[], title: string, items: string[]) {
   lines.push('')
 }
 
+function renderFeedbackBanner(lines: string[], report: QualityGateReport) {
+  // Fast mode: Always show DEVELOPMENT SIGNAL banner
+  if (report.feedbackType === 'fast') {
+    lines.push('⚠️ **DEVELOPMENT SIGNAL - NOT PR READY**', '')
+    lines.push('> This is a quick feedback signal for local development.')
+    lines.push('> Run `bun run verify` for full PR verification.', '')
+    return
+  }
+
+  // PR/Release mode: Show PR readiness when ready for merge
+  if (report.readyForMerge) {
+    lines.push('✅ **PR READINESS: READY**', '')
+    lines.push('> All required checks passed. This change is ready for merge.', '')
+  } else if (report.mode === 'pr' || report.mode === 'release') {
+    lines.push('❌ **PR READINESS: NOT READY**', '')
+    lines.push('> Some checks failed or were skipped. Review the results below.', '')
+  }
+}
+
+function renderEscalatedChecks(lines: string[], report: QualityGateReport) {
+  if (!report.escalatedChecks?.length) return
+
+  lines.push('## Escalated Checks', '')
+  lines.push('> Heavy checks triggered by risk assessment:', '')
+  for (const check of report.escalatedChecks) {
+    lines.push(`- ${check}`)
+  }
+  lines.push('')
+}
+
 export function renderMarkdownReport(report: QualityGateReport) {
-  const lines = [
+  const lines: string[] = []
+
+  // Render mode-specific banner first
+  renderFeedbackBanner(lines, report)
+
+  lines.push(
     `# Quality Gate Report`,
     '',
     `- Run: ${report.runId}`,
@@ -66,7 +101,7 @@ export function renderMarkdownReport(report: QualityGateReport) {
     '',
     `## Test Scope`,
     '',
-  ]
+  )
 
   if (report.impact) {
     lines.push(`- Changed files: ${report.impact.changedFiles ?? 'unknown'}`)
@@ -80,6 +115,9 @@ export function renderMarkdownReport(report: QualityGateReport) {
   } else {
     lines.push('- Impact summary unavailable; inspect the impact-report lane log.', '')
   }
+
+  // Render escalated checks section if present
+  renderEscalatedChecks(lines, report)
 
   lines.push('## Result Matrix', '')
   lines.push('| Category | Lane | Status | Live | Duration | Evidence |')

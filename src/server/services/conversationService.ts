@@ -912,6 +912,10 @@ export class ConversationService {
     if (explicitProviderEnv && options?.model?.trim()) {
       explicitProviderEnv.ANTHROPIC_MODEL = options.model.trim()
     }
+    const shouldUseOfficialManagedOAuth = this.shouldMarkManagedOAuth(options?.providerId)
+    const officialOAuthEnv = shouldUseOfficialManagedOAuth
+      ? await this.buildOfficialOAuthEnv()
+      : {}
 
     const cliDiagnosticsPath = diagnosticsService.getCliDiagnosticsPath()
     try {
@@ -952,10 +956,11 @@ export class ConversationService {
       // 残留、只走用户 /login 的 OAuth token。自定义 provider 模式绝不能设,
       // 否则 CLI 会忽略 provider 的 AUTH_TOKEN、错误地走 OAuth 打到第三方
       // endpoint。详见 src/utils/auth.ts isManagedOAuthContext()。
-      ...(explicitProviderEnv ?? {}),
-      ...(this.shouldMarkManagedOAuth(options?.providerId)
-        ? await this.buildOfficialOAuthEnv()
+      ...(shouldUseOfficialManagedOAuth
+        ? { CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1' }
         : {}),
+      ...(explicitProviderEnv ?? {}),
+      ...officialOAuthEnv,
     }
   }
 
@@ -1059,7 +1064,19 @@ export class ConversationService {
 
     const configDir =
       process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
-    const settingsPath = path.join(configDir, 'cc-haha', 'settings.json')
+    const ccHahaDir = path.join(configDir, 'cc-haha')
+    const providersIndexPath = path.join(ccHahaDir, 'providers.json')
+    const settingsPath = path.join(ccHahaDir, 'settings.json')
+    try {
+      const raw = fs.readFileSync(providersIndexPath, 'utf-8')
+      const parsed = JSON.parse(raw) as { activeId?: unknown }
+      if (parsed.activeId === null) {
+        return true
+      }
+    } catch {
+      // Fall back to legacy settings.json detection below.
+    }
+
     try {
       const raw = fs.readFileSync(settingsPath, 'utf-8')
       const parsed = JSON.parse(raw) as { env?: Record<string, string> }

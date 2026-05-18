@@ -60,6 +60,10 @@ describe('teamStore team detail projection', () => {
           joinedAt: 1700000001000,
           inputTokens: 12000,
           outputTokens: 345,
+          runtime: {
+            providerId: 'openrouter',
+            modelId: 'openai/gpt-5.4',
+          },
         },
       ],
     })
@@ -71,6 +75,12 @@ describe('teamStore team detail projection', () => {
       joinedAt: '2023-11-14T22:13:21.000Z',
       inputTokens: 12000,
       outputTokens: 345,
+      providerId: 'openrouter',
+      modelId: 'openai/gpt-5.4',
+      runtime: {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      },
     })
   })
 
@@ -88,6 +98,10 @@ describe('teamStore team detail projection', () => {
             joinedAt: '2026-05-16T00:00:00.000Z',
             inputTokens: 12000,
             outputTokens: 345,
+            runtime: {
+              providerId: 'openrouter',
+              modelId: 'openai/gpt-5.4',
+            },
           },
         ],
       },
@@ -99,6 +113,7 @@ describe('teamStore team detail projection', () => {
         agentId: 'worker-agent',
         role: 'Worker Agent',
         status: 'idle',
+        modelId: 'openai/gpt-5.4-mini',
       },
     ])
 
@@ -107,6 +122,12 @@ describe('teamStore team detail projection', () => {
       joinedAt: '2026-05-16T00:00:00.000Z',
       inputTokens: 12000,
       outputTokens: 345,
+      providerId: 'openrouter',
+      modelId: 'openai/gpt-5.4-mini',
+      runtime: {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      },
     })
   })
 

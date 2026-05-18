@@ -229,14 +229,15 @@ describe('openTargetService', () => {
   })
 
   it('extracts macOS target icons from the detected app bundle icon file', async () => {
-    const iconPath = '/Applications/Visual Studio Code.app/Contents/Resources/Code.icns'
+    const appPath = '/Applications/Visual Studio Code.app'
+    const iconPath = join(appPath, 'Contents', 'Resources', 'Code.icns')
     const state = createService('darwin', {
       paths: {
-        '/Applications/Visual Studio Code.app': true,
+        [appPath]: true,
         [iconPath]: true,
       },
       plistValues: {
-        '/Applications/Visual Studio Code.app/Contents/Info.plist': 'Code.icns',
+        [join(appPath, 'Contents', 'Info.plist')]: 'Code.icns',
       },
       iconData: new Uint8Array([9, 8, 7]),
     })
@@ -301,14 +302,15 @@ describe('openTargetService', () => {
   })
 
   it('extracts Linux target icons from matching desktop entries', async () => {
-    const desktopPath = '/usr/share/applications/code.desktop'
-    const iconPath = '/usr/share/pixmaps/code.png'
+    const applicationsDir = '/usr/share/applications'
+    const desktopPath = join(applicationsDir, 'code.desktop')
+    const iconPath = join('/usr/share/pixmaps', 'code.png')
     const state = createService('linux', {
       commands: {
         code: true,
       },
       dirNames: {
-        '/usr/share/applications': ['code.desktop'],
+        [applicationsDir]: ['code.desktop'],
       },
       textFiles: {
         [desktopPath]: [
@@ -329,13 +331,14 @@ describe('openTargetService', () => {
   })
 
   it('uses the Linux folder icon for the file-manager fallback when available', async () => {
-    const folderIcon = '/usr/share/icons/hicolor/64x64/apps/folder.png'
+    const iconsDir = '/usr/share/icons'
+    const folderIcon = join(iconsDir, 'hicolor', '64x64', 'apps', 'folder.png')
     const state = createService('linux', {
       commands: {
         'xdg-open': true,
       },
       dirNames: {
-        '/usr/share/icons': ['hicolor'],
+        [iconsDir]: ['hicolor'],
       },
       paths: {
         [folderIcon]: true,

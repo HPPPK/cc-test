@@ -244,9 +244,12 @@ function MemberRow({ member, onView }: { member: TeamMember; onView: () => void 
   const [stopping, setStopping] = useState(false)
 
   // Calculate runtime
-  const runtime = member.joinedAt
+  const elapsed = member.joinedAt
     ? formatDuration(Date.now() - new Date(member.joinedAt).getTime())
     : '--'
+  const providerLabel = member.providerId === null ? 'official' : member.providerId
+  const modelLabel = member.modelId ?? member.model
+  const runtimeDisplay = [providerLabel, modelLabel].filter(Boolean).join(' / ')
 
   // Format token usage
   const totalTokens = (member.inputTokens ?? 0) + (member.outputTokens ?? 0)
@@ -299,7 +302,7 @@ function MemberRow({ member, onView }: { member: TeamMember; onView: () => void 
           }
         }}
         className="w-full flex items-center gap-2 py-1.5 px-1 rounded-md text-left hover:bg-[var(--color-surface-container-low)] transition-colors group"
-        title={`${member.role} - ${t('teams.runtime')}: ${runtime}, ${t('teams.tokens')}: ${tokenDisplay}`}
+        title={`${member.role} - ${runtimeDisplay ? `${runtimeDisplay}, ` : ''}${t('teams.runtime')}: ${elapsed}, ${t('teams.tokens')}: ${tokenDisplay}`}
       >
         <span
           className={`material-symbols-outlined text-[16px] shrink-0 ${config.pulse ? 'animate-pulse-dot' : ''}`}
@@ -331,8 +334,14 @@ function MemberRow({ member, onView }: { member: TeamMember; onView: () => void 
         </div>
 
         {/* Runtime display */}
+        {runtimeDisplay && (
+          <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums shrink min-w-0 max-w-[180px] truncate">
+            {runtimeDisplay}
+          </span>
+        )}
+
         <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums shrink-0">
-          {runtime}
+          {elapsed}
         </span>
 
         {/* Token display */}

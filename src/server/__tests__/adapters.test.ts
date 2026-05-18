@@ -67,7 +67,11 @@ describe('Adapters API', () => {
 
     const configPath = path.join(tmpDir, 'adapters.json')
     const stat = await fs.stat(configPath)
-    expect(stat.mode & 0o777).toBe(0o600)
+    if (process.platform === 'win32') {
+      expect(stat.isFile()).toBe(true)
+    } else {
+      expect(stat.mode & 0o777).toBe(0o600)
+    }
   })
 
   it('masks and preserves DingTalk client secrets', async () => {

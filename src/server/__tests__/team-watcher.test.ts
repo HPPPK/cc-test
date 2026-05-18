@@ -143,6 +143,9 @@ describe('TeamWatcher.extractMemberStatuses', () => {
       role: 'Lead Agent',
       status: 'running',
       currentTask: undefined,
+      model: 'claude-opus-4-7',
+      modelId: 'claude-opus-4-7',
+      runtime: undefined,
       joinedAt: '2023-11-14T22:13:20.000Z',
       inputTokens: undefined,
       outputTokens: undefined,
@@ -152,6 +155,9 @@ describe('TeamWatcher.extractMemberStatuses', () => {
       role: 'Worker Agent',
       status: 'idle',
       currentTask: undefined,
+      model: 'claude-sonnet-4-20250514',
+      modelId: 'claude-sonnet-4-20250514',
+      runtime: undefined,
       joinedAt: '2023-11-14T22:13:21.000Z',
       inputTokens: undefined,
       outputTokens: undefined,
@@ -171,6 +177,29 @@ describe('TeamWatcher.extractMemberStatuses', () => {
     const statuses = watcher.extractMemberStatuses(config)
 
     expect(statuses[1]!.status).toBe('idle')
+  })
+
+  it('should include teammate runtime selection in member statuses', () => {
+    const config = makeTeamConfig()
+    Object.assign(config.members[1]!, {
+      runtime: {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      },
+    })
+
+    const statuses = watcher.extractMemberStatuses(config)
+    const worker = statuses.find((s) => s.agentId === 'agent-worker')
+
+    expect(worker).toMatchObject({
+      model: 'claude-sonnet-4-20250514',
+      providerId: 'openrouter',
+      modelId: 'openai/gpt-5.4',
+      runtime: {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      },
+    })
   })
 
   it('should prefer member name as role when present', () => {

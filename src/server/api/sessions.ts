@@ -17,6 +17,7 @@
 
 import { sessionService } from '../services/sessionService.js'
 import { conversationService } from '../services/conversationService.js'
+import * as path from 'node:path'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { closeSessionConnection, getSlashCommands } from '../ws/handler.js'
 import { listSkillSlashCommands, type SkillSlashCommand } from './skills.js'
@@ -777,10 +778,11 @@ const RECENT_PROJECTS_CACHE_TTL = 30_000
 const DESKTOP_WORKTREE_MARKER = '/.claude/worktrees/'
 
 function projectNameForRecentPath(realPath: string, fallback: string): string {
-  const displayRoot = realPath.includes(DESKTOP_WORKTREE_MARKER)
-    ? realPath.slice(0, realPath.indexOf(DESKTOP_WORKTREE_MARKER))
-    : realPath
-  return displayRoot.split('/').filter(Boolean).pop() || fallback
+  const normalizedRealPath = realPath.replaceAll('\\', '/')
+  const displayRoot = normalizedRealPath.includes(DESKTOP_WORKTREE_MARKER)
+    ? normalizedRealPath.slice(0, normalizedRealPath.indexOf(DESKTOP_WORKTREE_MARKER))
+    : normalizedRealPath
+  return path.basename(displayRoot) || path.basename(fallback) || fallback
 }
 
 function isDesktopWorktreeBranchName(branch: string | null): boolean {

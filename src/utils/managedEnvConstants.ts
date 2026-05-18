@@ -11,7 +11,7 @@
  * VERTEX_REGION_CLAUDE_* is prefix-matched. New providers or new routing
  * config vars (endpoint, project, region, auth) do.
  */
-const PROVIDER_MANAGED_ENV_VARS = new Set([
+const PROVIDER_MANAGED_ENV_VAR_NAMES = [
   // The flag itself — settings can't unset it once the host set it
   'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
   // Provider selection
@@ -60,7 +60,9 @@ const PROVIDER_MANAGED_ENV_VARS = new Set([
   'CLAUDE_CODE_SUBAGENT_MODEL',
   'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
   'CLAUDE_CODE_MODEL_CONTEXT_WINDOWS',
-])
+] as const
+
+const PROVIDER_MANAGED_ENV_VARS = new Set(PROVIDER_MANAGED_ENV_VAR_NAMES)
 
 const PROVIDER_MANAGED_ENV_PREFIXES = [
   // Per-model Vertex region overrides — scales with model releases, so
@@ -74,6 +76,10 @@ export function isProviderManagedEnvVar(key: string): boolean {
     PROVIDER_MANAGED_ENV_VARS.has(upper) ||
     PROVIDER_MANAGED_ENV_PREFIXES.some(p => upper.startsWith(p))
   )
+}
+
+export function getProviderManagedEnvVarNames(): readonly string[] {
+  return PROVIDER_MANAGED_ENV_VAR_NAMES
 }
 
 /**

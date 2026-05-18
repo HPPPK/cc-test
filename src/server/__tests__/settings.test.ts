@@ -43,6 +43,10 @@ let originalAnthropicModel: string | undefined
 let originalAnthropicDefaultHaikuModel: string | undefined
 let originalAnthropicDefaultSonnetModel: string | undefined
 let originalAnthropicDefaultOpusModel: string | undefined
+let originalUseBedrock: string | undefined
+let originalUseVertex: string | undefined
+let originalUseFoundry: string | undefined
+let originalUseAzureOpenAI: string | undefined
 
 async function setup() {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-test-'))
@@ -59,6 +63,10 @@ async function setup() {
   originalAnthropicDefaultHaikuModel = process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   originalAnthropicDefaultSonnetModel = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   originalAnthropicDefaultOpusModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  originalUseBedrock = process.env.CLAUDE_CODE_USE_BEDROCK
+  originalUseVertex = process.env.CLAUDE_CODE_USE_VERTEX
+  originalUseFoundry = process.env.CLAUDE_CODE_USE_FOUNDRY
+  originalUseAzureOpenAI = process.env.CLAUDE_CODE_USE_AZURE_OPENAI
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   process.env.HOME = tmpDir
   process.env.USERPROFILE = tmpDir
@@ -70,6 +78,10 @@ async function setup() {
   delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  delete process.env.CLAUDE_CODE_USE_BEDROCK
+  delete process.env.CLAUDE_CODE_USE_VERTEX
+  delete process.env.CLAUDE_CODE_USE_FOUNDRY
+  delete process.env.CLAUDE_CODE_USE_AZURE_OPENAI
   clearKeychainCache()
   primeKeychainCacheFromPrefetch(null)
   clearOpenAIOAuthTokenCache()
@@ -151,6 +163,30 @@ async function teardown() {
     process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = originalAnthropicDefaultOpusModel
   } else {
     delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  }
+
+  if (originalUseBedrock !== undefined) {
+    process.env.CLAUDE_CODE_USE_BEDROCK = originalUseBedrock
+  } else {
+    delete process.env.CLAUDE_CODE_USE_BEDROCK
+  }
+
+  if (originalUseVertex !== undefined) {
+    process.env.CLAUDE_CODE_USE_VERTEX = originalUseVertex
+  } else {
+    delete process.env.CLAUDE_CODE_USE_VERTEX
+  }
+
+  if (originalUseFoundry !== undefined) {
+    process.env.CLAUDE_CODE_USE_FOUNDRY = originalUseFoundry
+  } else {
+    delete process.env.CLAUDE_CODE_USE_FOUNDRY
+  }
+
+  if (originalUseAzureOpenAI !== undefined) {
+    process.env.CLAUDE_CODE_USE_AZURE_OPENAI = originalUseAzureOpenAI
+  } else {
+    delete process.env.CLAUDE_CODE_USE_AZURE_OPENAI
   }
 
   await fs.rm(tmpDir, { recursive: true, force: true })
@@ -517,6 +553,7 @@ describe('Models API', () => {
     expect(ids).toContain('deepseek-v4-flash')
     expect(ids).toContain('gpt-5.3-codex')
     expect(ids).toContain('gpt-5.4')
+    expect(ids).toContain('gpt-5.5')
     expect(ids).toContain('gpt-5.4-mini')
     expect(ids.filter((id: string) => id === 'deepseek-v4-pro')).toHaveLength(1)
   })
@@ -696,6 +733,7 @@ describe('Model Options', () => {
 
     expect(values).toContain('gpt-5.3-codex')
     expect(values).toContain('gpt-5.4')
+    expect(values).toContain('gpt-5.5')
     expect(values).toContain('gpt-5.4-mini')
     expect(labels).toContain('deepseek-v4-pro')
     expect(labels).toContain('deepseek-v4-flash')

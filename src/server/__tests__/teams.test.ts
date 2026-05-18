@@ -200,6 +200,10 @@ describe('TeamService', () => {
     Object.assign(config.members[1]!, {
       inputTokens: 12345,
       outputTokens: 678,
+      runtime: {
+        providerId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      },
     })
     await writeTeamConfig('metrics-team', config)
 
@@ -209,6 +213,12 @@ describe('TeamService', () => {
     expect(worker.joinedAt).toBe(1700000001000)
     expect(worker.inputTokens).toBe(12345)
     expect(worker.outputTokens).toBe(678)
+    expect(worker.providerId).toBe('openrouter')
+    expect(worker.modelId).toBe('openai/gpt-5.4')
+    expect(worker.runtime).toEqual({
+      providerId: 'openrouter',
+      modelId: 'openai/gpt-5.4',
+    })
   })
 
   it('should derive member token metrics from transcript usage when config has none', async () => {
@@ -531,11 +541,8 @@ describe('Teams API', () => {
 
     const { handleTeamsApi } = await import('../api/teams.js')
 
-    const port = 40000 + Math.floor(Math.random() * 10000)
-    baseUrl = `http://127.0.0.1:${port}`
-
     server = Bun.serve({
-      port,
+      port: 0,
       hostname: '127.0.0.1',
 
       async fetch(req) {
@@ -549,6 +556,7 @@ describe('Teams API', () => {
         return new Response('Not Found', { status: 404 })
       },
     })
+    baseUrl = `http://127.0.0.1:${server.port}`
   })
 
   afterEach(async () => {

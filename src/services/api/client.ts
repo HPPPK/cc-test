@@ -34,6 +34,7 @@ import {
   getVertexRegionForModel,
   isEnvTruthy,
 } from '../../utils/envUtils.js'
+import { getRuntimeEnvValue } from '../../utils/runtimeEnv.js'
 
 /**
  * Environment variables for different client types:
@@ -93,8 +94,8 @@ function createStderrLogger(): ClientOptions['logger'] {
 
 export function resolveAnthropicClientApiKey({
   explicitApiKey,
-  envAuthToken = process.env.ANTHROPIC_AUTH_TOKEN,
-  envApiKey = process.env.ANTHROPIC_API_KEY,
+  envAuthToken = getRuntimeEnvValue('ANTHROPIC_AUTH_TOKEN'),
+  envApiKey = getRuntimeEnvValue('ANTHROPIC_API_KEY'),
   getFallbackApiKey = getAnthropicApiKey,
 }: {
   explicitApiKey?: string
@@ -125,6 +126,12 @@ export async function getAnthropicClient({
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID
   const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
   const clientApp = process.env.CLAUDE_AGENT_SDK_CLIENT_APP
+  const runtimeAuthToken = getRuntimeEnvValue('ANTHROPIC_AUTH_TOKEN')
+  const runtimeApiKey = getRuntimeEnvValue('ANTHROPIC_API_KEY')
+  const runtimeBaseUrl = getRuntimeEnvValue('ANTHROPIC_BASE_URL')
+  const runtimeProviderManagedByHost = isEnvTruthy(
+    getRuntimeEnvValue('CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST'),
+  )
   const customHeaders = getCustomHeaders()
   const defaultHeaders: { [key: string]: string } = {
     'x-app': 'cli',
@@ -159,9 +166,10 @@ export async function getAnthropicClient({
   const isOpenAIModel = model ? isOpenAIResponsesModel(model) : false
   const usingOpenAICodex =
     shouldUseOpenAICodexAuth() &&
+    !runtimeProviderManagedByHost &&
     !isClaudeAISubscriber() &&
     (isOpenAIModel ||
-      (!process.env.ANTHROPIC_AUTH_TOKEN &&
+      (!runtimeAuthToken &&
         !(apiKey || getAnthropicApiKey())))
 
   if (!isClaudeAISubscriber() && !usingOpenAICodex) {
@@ -184,33 +192,34 @@ export async function getAnthropicClient({
       fetch: resolvedFetch,
     }),
   }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
+  if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_BEDROCK'))) {
     const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
     // Use region override for small fast model if specified
     const awsRegion =
       model === getSmallFastModel() &&
-      process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
-        ? process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
+      getRuntimeEnvValue('ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION')
+        ? getRuntimeEnvValue('ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION')
         : getAWSRegion()
 
     const bedrockArgs: ConstructorParameters<typeof AnthropicBedrock>[0] = {
       ...ARGS,
       awsRegion,
-      ...(isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH) && {
+      ...(isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SKIP_BEDROCK_AUTH')) && {
         skipAuth: true,
       }),
       ...(isDebugToStdErr() && { logger: createStderrLogger() }),
     }
 
     // Add API key authentication if available
-    if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
+    const awsBearerToken = getRuntimeEnvValue('AWS_BEARER_TOKEN_BEDROCK')
+    if (awsBearerToken) {
       bedrockArgs.skipAuth = true
       // Add the Bearer token for Bedrock API key authentication
       bedrockArgs.defaultHeaders = {
         ...bedrockArgs.defaultHeaders,
-        Authorization: `Bearer ${process.env.AWS_BEARER_TOKEN_BEDROCK}`,
+        Authorization: `Bearer ${awsBearerToken}`,
       }
-    } else if (!isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)) {
+    } else if (!isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SKIP_BEDROCK_AUTH'))) {
       // Refresh auth and get credentials with cache clearing
       const cachedCredentials = await refreshAndGetAwsCredentials()
       if (cachedCredentials) {
@@ -222,13 +231,13 @@ export async function getAnthropicClient({
     // we have always been lying about the return type - this doesn't support batching or models
     return new AnthropicBedrock(bedrockArgs) as unknown as Anthropic
   }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)) {
+  if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_FOUNDRY'))) {
     const { AnthropicFoundry } = await import('@anthropic-ai/foundry-sdk')
     // Determine Azure AD token provider based on configuration
     // SDK reads ANTHROPIC_FOUNDRY_API_KEY by default
     let azureADTokenProvider: (() => Promise<string>) | undefined
-    if (!process.env.ANTHROPIC_FOUNDRY_API_KEY) {
-      if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_FOUNDRY_AUTH)) {
+    if (!getRuntimeEnvValue('ANTHROPIC_FOUNDRY_API_KEY')) {
+      if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SKIP_FOUNDRY_AUTH'))) {
         // Mock token provider for testing/proxy scenarios (similar to Vertex mock GoogleAuth)
         azureADTokenProvider = () => Promise.resolve('')
       } else {
@@ -252,10 +261,10 @@ export async function getAnthropicClient({
     // we have always been lying about the return type - this doesn't support batching or models
     return new AnthropicFoundry(foundryArgs) as unknown as Anthropic
   }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
+  if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_VERTEX'))) {
     // Refresh GCP credentials if gcpAuthRefresh is configured and credentials are expired
     // This is similar to how we handle AWS credential refresh for Bedrock
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)) {
+    if (!isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SKIP_VERTEX_AUTH'))) {
       await refreshGcpCredentialsIfNeeded()
     }
 
@@ -297,7 +306,7 @@ export async function getAnthropicClient({
       process.env['GOOGLE_APPLICATION_CREDENTIALS'] ||
       process.env['google_application_credentials']
 
-    const googleAuth = isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)
+    const googleAuth = isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SKIP_VERTEX_AUTH'))
       ? ({
           // Mock GoogleAuth for testing/proxy scenarios
           getClient: () => ({
@@ -317,7 +326,7 @@ export async function getAnthropicClient({
           ...(hasProjectEnvVar || hasKeyFile
             ? {}
             : {
-                projectId: process.env.ANTHROPIC_VERTEX_PROJECT_ID,
+                projectId: getRuntimeEnvValue('ANTHROPIC_VERTEX_PROJECT_ID'),
               }),
         })
 
@@ -337,7 +346,9 @@ export async function getAnthropicClient({
       ? null
       : usingOpenAICodex
         ? OPENAI_OAUTH_DUMMY_KEY
-        : resolveAnthropicClientApiKey({ explicitApiKey: apiKey }),
+        : resolveAnthropicClientApiKey({
+            explicitApiKey: apiKey ?? runtimeApiKey,
+          }),
     authToken: isClaudeAISubscriber()
       ? getClaudeAIOAuthTokens()?.accessToken
       : undefined,
@@ -346,6 +357,7 @@ export async function getAnthropicClient({
     isEnvTruthy(process.env.USE_STAGING_OAUTH)
       ? { baseURL: getOauthConfig().BASE_API_URL }
       : {}),
+    ...(runtimeBaseUrl ? { baseURL: runtimeBaseUrl } : {}),
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   }
@@ -358,7 +370,7 @@ async function configureApiKeyHeaders(
   isNonInteractiveSession: boolean,
 ): Promise<void> {
   const token =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    getRuntimeEnvValue('ANTHROPIC_AUTH_TOKEN') ||
     (await getApiKeyFromApiKeyHelper(isNonInteractiveSession))
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
@@ -367,7 +379,7 @@ async function configureApiKeyHeaders(
 
 function getCustomHeaders(): Record<string, string> {
   const customHeaders: Record<string, string> = {}
-  const customHeadersEnv = process.env.ANTHROPIC_CUSTOM_HEADERS
+  const customHeadersEnv = getRuntimeEnvValue('ANTHROPIC_CUSTOM_HEADERS')
 
   if (!customHeadersEnv) return customHeaders
 

@@ -34,10 +34,10 @@ function hasFlag(args: Map<string, Array<string | boolean>>, name: string) {
 }
 
 function readMode(value: string | boolean | undefined): QualityGateMode {
-  if (value === 'pr' || value === 'baseline' || value === 'release') {
+  if (value === 'pr' || value === 'baseline' || value === 'release' || value === 'fast') {
     return value
   }
-  throw new Error('Usage: bun run quality:gate --mode <pr|baseline|release> [--dry-run] [--allow-live] [--provider-model provider:model[:label]] [--only lane-id|prefix*] [--skip lane-id|prefix*]')
+  throw new Error('Usage: bun run quality:gate --mode <pr|baseline|release|fast> [--dry-run] [--allow-live] [--provider-model provider:model[:label]] [--only lane-id|prefix*] [--skip lane-id|prefix*]')
 }
 
 function readBaselineTargets(args: Map<string, Array<string | boolean>>): BaselineTarget[] {
@@ -84,6 +84,6 @@ const { report, outputDir } = await runQualityGate({
 console.log(`Quality gate report: ${outputDir}/report.md`)
 console.log(`Summary: passed=${report.summary.passed} failed=${report.summary.failed} skipped=${report.summary.skipped}`)
 
-if (report.summary.failed > 0) {
+if (report.summary.failed > 0 || ((mode === 'pr' || mode === 'release') && report.readyForMerge === false)) {
   process.exit(1)
 }

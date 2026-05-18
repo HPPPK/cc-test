@@ -1,0 +1,125 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "observations": [
+    {
+      "id": "obs-1",
+      "type": "architecture",
+      "description": "The project has a dual-architecture: a Bun CLI (Ink TUI) and a Tauri 2 desktop app (React+Vite+Zustand) that connects to the CLI's HTTP/WS server.",
+      "confidence": "high",
+      "evidence_paths": ["src/entrypoints/cli.tsx", "desktop/src/main.tsx", "src/server/index.ts"]
+    },
+    {
+      "id": "obs-2",
+      "type": "architecture",
+      "description": "The server bridges CLI agent capabilities to the desktop frontend via 26 REST API routes and WebSocket session events.",
+      "confidence": "high",
+      "evidence_paths": ["src/server/router.ts", "src/server/ws/handler.ts"]
+    },
+    {
+      "id": "obs-3",
+      "type": "architecture",
+      "description": "IM adapters (Telegram, Feishu, WeChat, DingTalk) share a common library under adapters/common/ and depend on the server via tsconfig paths.",
+      "confidence": "high",
+      "evidence_paths": ["adapters/common/", "adapters/package.json"]
+    },
+    {
+      "id": "obs-4",
+      "type": "coverage",
+      "description": "Agent-tools and agent-utils have critical coverage gaps (17.1% and 14.42% lines respectively) — the largest untested surface in the project.",
+      "confidence": "high",
+      "evidence_paths": ["scripts/quality-gate/coverage-thresholds.json", "scripts/quality-gate/coverage-baseline.json"]
+    },
+    {
+      "id": "obs-5",
+      "type": "coverage",
+      "description": "5 server tests are quarantined due to timing instability: cron-scheduler, providers-real, tasks, e2e:business-flow, e2e:full-flow.",
+      "confidence": "high",
+      "evidence_paths": ["scripts/quality-gate/quarantine.json"]
+    },
+    {
+      "id": "obs-6",
+      "type": "risk",
+      "description": "MCP, OAuth, and plugin systems are the highest-risk external trust boundaries — they handle third-party code execution, credential management, and hot-reloaded plugin code.",
+      "confidence": "high",
+      "evidence_paths": ["src/services/mcp/", "src/services/oauth/", "src/services/plugins/"]
+    },
+    {
+      "id": "obs-7",
+      "type": "risk",
+      "description": "Permission system spans 27 files across filesystem, shell, and approval sub-systems with auto-mode and YOLO classifier prompting — a sensitive security boundary.",
+      "confidence": "high",
+      "evidence_paths": ["src/utils/permissions/"]
+    },
+    {
+      "id": "obs-8",
+      "type": "risk",
+      "description": "Doctor repair is deny-by-default for persistence mutations, protecting transcripts, config, OAuth tokens, and team/session records.",
+      "confidence": "high",
+      "evidence_paths": ["AGENTS.md", "desktop/src/lib/doctorRepair.ts"]
+    },
+    {
+      "id": "obs-9",
+      "type": "evolution",
+      "description": "Recent git history shows Desktop UI/UX (36 commits) as the most active area, followed by Memory/Projects (19), Goals/Agent Loop (18), and Settings/Zoom (15).",
+      "confidence": "high",
+      "evidence_paths": ["git log"]
+    },
+    {
+      "id": "obs-10",
+      "type": "evolution",
+      "description": "Volatility hotspots include ActiveSession.tsx (11 changes), MessageList.tsx (9), zh.ts/en.ts i18n (7 each), chatStore.ts (6), goalState.ts (6), teamStore.ts (6 new area).",
+      "confidence": "high",
+      "evidence_paths": ["git log --name-only"]
+    },
+    {
+      "id": "obs-11",
+      "type": "architecture",
+      "description": "Desktop state management uses 22 Zustand stores — chatStore (1728 lines) is the largest, followed by sessionStore, uiStore, settingsStore, providerStore.",
+      "confidence": "high",
+      "evidence_paths": ["desktop/src/stores/"]
+    },
+    {
+      "id": "obs-12",
+      "type": "architecture",
+      "description": "The agent tool ecosystem has 59+ tools organized in individual directories under src/tools/, registered through src/tools.ts.",
+      "confidence": "high",
+      "evidence_paths": ["src/tools/", "src/tools.ts"]
+    },
+    {
+      "id": "obs-13",
+      "type": "capability",
+      "description": "21 capabilities identified across CLI, desktop, tools, services, and adapters — TUI, Desktop, Commands, Agent, Skills, Memory, MCP, LSP, Tools, Models, Computer Use, IM, Worktree, Teams, Plan, Voice, H5, Plugins, Quality Gate, Auth, Doctor.",
+      "confidence": "high",
+      "evidence_paths": ["src/commands/", "src/tools/", "desktop/src/", "adapters/"]
+    },
+    {
+      "id": "obs-14",
+      "type": "architecture",
+      "description": "The quality gate system supports 3 modes (pr/baseline/release) with enforcement across provider-smoke, desktop-smoke, coverage, quarantine, and persistence-upgrade.",
+      "confidence": "high",
+      "evidence_paths": ["scripts/quality-gate/"]
+    },
+    {
+      "id": "obs-15",
+      "type": "architecture",
+      "description": "Bun is the primary runtime with npm used only for docs build (VitePress requires npm ci). Cargo builds the Tauri native layer.",
+      "confidence": "high",
+      "evidence_paths": ["package.json", "desktop/src-tauri/Cargo.toml"]
+    },
+    {
+      "id": "obs-16",
+      "type": "uncertainty",
+      "description": "Exact import graph within src/utils/ (346 modules) was not analyzed — dependency edges here are inferred from directory structure and partial reads.",
+      "confidence": "medium",
+      "evidence_paths": ["src/utils/"]
+    },
+    {
+      "id": "obs-17",
+      "type": "uncertainty",
+      "description": "Specific API route mapping between desktop/src/api/ and src/server/api/ was not exhaustively validated — route paths are inferred from filename conventions.",
+      "confidence": "medium",
+      "evidence_paths": ["desktop/src/api/", "src/server/api/"]
+    }
+  ]
+}

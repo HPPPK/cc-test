@@ -91,6 +91,9 @@ export class InProcessBackend implements TeammateExecutor {
         prompt: config.prompt,
         color: config.color,
         planModeRequired: config.planModeRequired ?? false,
+        model: config.model,
+        runtime: config.runtime,
+        runtimeEnv: config.runtimeEnv,
       },
       this.context,
     )
@@ -122,6 +125,7 @@ export class InProcessBackend implements TeammateExecutor {
         toolUseContext: { ...this.context, messages: [] },
         abortController: result.abortController,
         model: config.model,
+        runtimeEnv: config.runtimeEnv,
         systemPrompt: config.systemPrompt,
         systemPromptMode: config.systemPromptMode,
         allowedTools: config.permissions,

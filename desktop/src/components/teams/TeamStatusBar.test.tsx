@@ -31,6 +31,8 @@ describe('TeamStatusBar destructive actions', () => {
             joinedAt: '2026-05-16T00:00:00.000Z',
             inputTokens: 1200,
             outputTokens: 45,
+            providerId: 'openrouter',
+            modelId: 'openai/gpt-5.4',
           },
         ],
       },
@@ -79,5 +81,11 @@ describe('TeamStatusBar destructive actions', () => {
     render(<TeamStatusBar />)
 
     expect(screen.getByText('1.2k / 45')).toBeTruthy()
+  })
+
+  it('renders member provider and model runtime selection', () => {
+    render(<TeamStatusBar />)
+
+    expect(screen.getByText('openrouter / openai/gpt-5.4')).toBeTruthy()
   })
 })

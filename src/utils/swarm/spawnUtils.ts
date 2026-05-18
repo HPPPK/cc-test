@@ -11,6 +11,7 @@ import {
 } from '../../bootstrap/state.js'
 import { quote } from '../bash/shellQuote.js'
 import { isInBundledMode } from '../bundledMode.js'
+import { isProviderManagedEnvVar } from '../managedEnvConstants.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getTeammateModeFromSnapshot } from './backends/teammateModeSnapshot.js'
 import { TEAMMATE_COMMAND_ENV_VAR } from './constants.js'
@@ -137,10 +138,18 @@ const TEAMMATE_ENV_VARS = [
  * Always includes CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
-export function buildInheritedEnvVars(): string {
+export function buildInheritedEnvVars(options?: {
+  includeProviderEnv?: boolean
+}): string {
   const envVars = ['CLAUDECODE=1', 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
 
   for (const key of TEAMMATE_ENV_VARS) {
+    if (
+      options?.includeProviderEnv === false &&
+      isProviderManagedEnvVar(key)
+    ) {
+      continue
+    }
     const value = process.env[key]
     if (value !== undefined && value !== '') {
       envVars.push(`${key}=${quote([value])}`)

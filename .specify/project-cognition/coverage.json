@@ -1,0 +1,126 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "coverage_summary": {
+    "source_surfaces": {
+      "total_nodes": 70,
+      "critical": 20,
+      "important": 35,
+      "low_risk": 15,
+      "classified": 70,
+      "unknown": 0
+    },
+    "test_surfaces": {
+      "server_tests": "46 test files in src/server/__tests__/",
+      "desktop_tests": "Colocated .test.ts/.test.tsx in desktop/src/stores/ and __tests__/",
+      "adapter_tests": "Per-package __tests__/ in adapters/",
+      "coverage_gaps": ["agent-tools (17.1%)", "agent-utils (14.42%)", "desktop functions (52.49%)"]
+    },
+    "capability_surfaces": {
+      "total_capabilities": 21,
+      "critical": 9,
+      "important": 11,
+      "low_risk": 1
+    },
+    "risk_surfaces": {
+      "total_risk_nodes": 8,
+      "critical": 3,
+      "important": 5,
+      "unknown": 0
+    },
+    "observability_surfaces": {
+      "total_observability_nodes": 3,
+      "all_important": true
+    },
+    "doc_surfaces": {
+      "directories": ["docs/", "release-notes/"],
+      "classified": true,
+      "unknown": 0
+    },
+    "infrastructure_surfaces": {
+      "ci_cd": "5 GitHub Actions workflows",
+      "quality_gate": "3 modes with enforcement",
+      "build": "Bun + Vite + Tauri + Cargo"
+    }
+  },
+  "coverage_by_area": {
+    "src_surfaces": {"total": 38, "critical": 12, "important": 20, "low-risk": 6, "classified": 38, "unknown": 0},
+    "desktop_surfaces": {"total": 14, "critical": 5, "important": 8, "low-risk": 1, "classified": 14, "unknown": 0},
+    "adapter_surfaces": {"total": 5, "critical": 0, "important": 5, "low-risk": 0, "classified": 5, "unknown": 0},
+    "config_surfaces": {"total": 3, "critical": 2, "important": 1, "low-risk": 0, "classified": 3, "unknown": 0},
+    "infrastructure": {"total": 3, "critical": 0, "important": 3, "low-risk": 0, "classified": 3, "unknown": 0},
+    "capability": {"total": 21, "critical": 9, "important": 11, "low-risk": 1, "classified": 21, "unknown": 0},
+    "risk": {"total": 8, "critical": 3, "important": 5, "low-risk": 0, "classified": 8, "unknown": 0},
+    "observability": {"total": 3, "critical": 0, "important": 3, "low-risk": 0, "classified": 3, "unknown": 0},
+    "coverage": {"total": 3, "critical": 0, "important": 3, "low-risk": 0, "classified": 3, "unknown": 0},
+    "test-surface": {"total": 3, "critical": 2, "important": 1, "low-risk": 0, "classified": 3, "unknown": 0},
+    "doc-surface": {"total": 2, "critical": 0, "important": 1, "low-risk": 1, "classified": 2, "unknown": 0}
+  },
+  "excluded_from_deep_read": [
+    {"path": "node_modules/", "reason": "vendor-cache-build-output"},
+    {"path": "desktop/node_modules/", "reason": "vendor-cache-build-output"},
+    {"path": "adapters/node_modules/", "reason": "vendor-cache-build-output"},
+    {"path": ".git/", "reason": "git internals not scanned"},
+    {"path": "bun.lock", "reason": "lockfile, not source surface"},
+    {"path": "artifacts/", "reason": "build output"}
+  ],
+  "unknown_surfaces": [],
+  "rows": [
+    {"surface": "src/entrypoints", "category": "source-surface", "coverage_class": "deep-read", "count": 5},
+    {"surface": "src/main.tsx", "category": "source-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "src/screens", "category": "source-surface", "coverage_class": "sampled", "count": 3},
+    {"surface": "src/components", "category": "source-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "src/commands", "category": "source-surface", "coverage_class": "inventory", "count": 115},
+    {"surface": "src/services", "category": "source-surface", "coverage_class": "sampled", "count": 30},
+    {"surface": "src/tools", "category": "source-surface", "coverage_class": "inventory", "count": 59},
+    {"surface": "src/utils", "category": "source-surface", "coverage_class": "inventory", "count": 346},
+    {"surface": "src/state", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/types", "category": "source-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "src/constants", "category": "source-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "src/server", "category": "source-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "src/server/__tests__", "category": "test-surface", "coverage_class": "deep-read", "count": 46},
+    {"surface": "src/coordinator", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/daemon", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/plugins", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/skills", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/bridge", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/proactive", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "src/vim", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "src/voice", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "src/native-ts", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "src/migrations", "category": "source-surface", "coverage_class": "sampled", "count": 11},
+    {"surface": "src/goals", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/jobs", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/tasks", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "src/memdir", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "desktop/src/App.tsx", "category": "source-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "desktop/src/stores", "category": "source-surface", "coverage_class": "deep-read", "count": 22},
+    {"surface": "desktop/src/api", "category": "source-surface", "coverage_class": "deep-read", "count": 27},
+    {"surface": "desktop/src/components", "category": "source-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "desktop/src/pages", "category": "source-surface", "coverage_class": "inventory", "count": 22},
+    {"surface": "desktop/src/hooks", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "desktop/src/types", "category": "source-surface", "coverage_class": "inventory", "count": 15},
+    {"surface": "desktop/src/i18n", "category": "source-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "desktop/src/lib", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "desktop/src/theme", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "desktop/src/__tests__", "category": "test-surface", "coverage_class": "deep-read", "count": 9},
+    {"surface": "adapters/common", "category": "source-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "adapters/feishu", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "adapters/dingtalk", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "adapters/telegram", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "adapters/wechat", "category": "source-surface", "coverage_class": "sampled", "count": 1},
+    {"surface": "stubs", "category": "source-surface", "coverage_class": "low-risk", "count": 2},
+    {"surface": "bin/claude-haha", "category": "source-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "preload.ts", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "runtime/", "category": "source-surface", "coverage_class": "low-risk", "count": 1},
+    {"surface": "scripts/quality-gate", "category": "infrastructure", "coverage_class": "deep-read", "count": 1},
+    {"surface": "scripts/pr", "category": "infrastructure", "coverage_class": "deep-read", "count": 1},
+    {"surface": ".github/workflows", "category": "infrastructure", "coverage_class": "deep-read", "count": 5},
+    {"surface": "docs/", "category": "doc-surface", "coverage_class": "inventory", "count": 1},
+    {"surface": "release-notes/", "category": "doc-surface", "coverage_class": "low-risk", "count": 18},
+    {"surface": "package.json", "category": "config-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "desktop/package.json", "category": "config-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "adapters/package.json", "category": "config-surface", "coverage_class": "deep-read", "count": 1},
+    {"surface": "fixtures/", "category": "test-surface", "coverage_class": "low-risk", "count": 1}
+  ]
+}

@@ -29,7 +29,7 @@ import type { SessionListItem } from '../types/session'
 import { useMobileViewport } from '../hooks/useMobileViewport'
 import { isTauriRuntime } from '../lib/desktopRuntime'
 import type { ActiveGoalState, BackgroundAgentTask } from '../types/chat'
-import { Bot, CheckCircle2, LoaderCircle, Target, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronUp, LoaderCircle, Target, XCircle } from 'lucide-react'
 
 const TASK_POLL_INTERVAL_MS = 1000
 const WORKSPACE_RESIZE_STEP = 32
@@ -290,6 +290,17 @@ function BackgroundAgentTasksPanel({
   compact: boolean
 }) {
   const t = useTranslation()
+  const hasRunningTask = tasks.some((task) => task.status === 'running')
+  const [isExpanded, setIsExpanded] = useState(hasRunningTask)
+
+  useEffect(() => {
+    if (hasRunningTask) {
+      setIsExpanded(true)
+      return
+    }
+    setIsExpanded(false)
+  }, [hasRunningTask, tasks.length])
+
   if (tasks.length === 0) return null
 
   return (
@@ -302,7 +313,7 @@ function BackgroundAgentTasksPanel({
       }
     >
       <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
-        <div className="flex min-w-0 items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+        <div className={`flex min-w-0 items-center gap-2 px-3 py-2 ${isExpanded ? 'border-b border-[var(--color-border)]' : ''}`}>
           <Bot size={15} strokeWidth={2.25} className="shrink-0 text-[var(--color-text-secondary)]" aria-hidden="true" />
           <span className="shrink-0 text-[13px] font-medium text-[var(--color-text-primary)]">
             {t('chat.backgroundAgents.title')}
@@ -310,62 +321,78 @@ function BackgroundAgentTasksPanel({
           <span className="truncate text-[12px] text-[var(--color-text-tertiary)]">
             {t('chat.backgroundAgents.count', { count: tasks.length })}
           </span>
+          <button
+            type="button"
+            aria-label={isExpanded ? t('chat.backgroundAgents.collapse') : t('chat.backgroundAgents.expand')}
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((expanded) => !expanded)}
+            className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)]"
+          >
+            {isExpanded ? (
+              <ChevronUp size={15} strokeWidth={2.25} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={15} strokeWidth={2.25} aria-hidden="true" />
+            )}
+          </button>
         </div>
-        <div className="divide-y divide-[var(--color-border)]">
-          {tasks.map((task) => {
-            const isRunning = task.status === 'running'
-            const isFailed = task.status === 'failed' || task.status === 'stopped'
-            const duration = formatBackgroundTaskDuration(task.usage?.durationMs)
-            const detail = task.summary || task.lastToolName || task.description || task.outputFile || task.taskId
-            return (
-              <div key={task.taskId} className="flex min-w-0 items-start gap-2 px-3 py-2">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
-                  {isRunning ? (
-                    <LoaderCircle size={15} strokeWidth={2.25} className="animate-spin text-[var(--color-accent)]" aria-hidden="true" />
-                  ) : isFailed ? (
-                    <XCircle size={15} strokeWidth={2.25} className="text-[var(--color-error)]" aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 size={15} strokeWidth={2.25} className="text-[var(--color-success)]" aria-hidden="true" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0 text-[12px] font-medium text-[var(--color-text-primary)]">
-                      {task.taskType || t('chat.backgroundAgents.agent')}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">
-                      {t(`chat.backgroundAgents.status.${task.status}`)}
-                    </span>
-                    {task.usage?.totalTokens ? (
-                      <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
-                        {t('chat.backgroundAgents.tokens', { count: task.usage.totalTokens.toLocaleString() })}
+        {isExpanded && (
+          <div className="divide-y divide-[var(--color-border)]">
+            {tasks.map((task) => {
+              const isRunning = task.status === 'running'
+              const isFailed = task.status === 'failed' || task.status === 'stopped'
+              const duration = formatBackgroundTaskDuration(task.usage?.durationMs)
+              const detail = task.summary || task.lastToolName || task.description || task.outputFile || task.taskId
+              return (
+                <div key={task.taskId} className="flex min-w-0 items-start gap-2 px-3 py-2">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                    {isRunning ? (
+                      <LoaderCircle size={15} strokeWidth={2.25} className="animate-spin text-[var(--color-accent)]" aria-hidden="true" />
+                    ) : isFailed ? (
+                      <XCircle size={15} strokeWidth={2.25} className="text-[var(--color-error)]" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 size={15} strokeWidth={2.25} className="text-[var(--color-success)]" aria-hidden="true" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="shrink-0 text-[12px] font-medium text-[var(--color-text-primary)]">
+                        {task.taskType || t('chat.backgroundAgents.agent')}
                       </span>
-                    ) : null}
-                    {duration ? (
-                      <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
-                        {duration}
+                      <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">
+                        {t(`chat.backgroundAgents.status.${task.status}`)}
                       </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-0.5 truncate text-[12px] text-[var(--color-text-secondary)]">
-                    {detail}
+                      {task.usage?.totalTokens ? (
+                        <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
+                          {t('chat.backgroundAgents.tokens', { count: task.usage.totalTokens.toLocaleString() })}
+                        </span>
+                      ) : null}
+                      {duration ? (
+                        <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
+                          {duration}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-0.5 truncate text-[12px] text-[var(--color-text-secondary)]">
+                      {detail}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
 }
-
 export function ActiveSession() {
   const isMobileLayout = useMobileViewport() && !isTauriRuntime()
   const activeTabId = useTabStore((s) => s.activeTabId)
   const activeTabType = useTabStore((s) => s.tabs.find((tab) => tab.sessionId === s.activeTabId)?.type ?? null)
   const sessions = useSessionStore((s) => s.sessions)
   const connectToSession = useChatStore((s) => s.connectToSession)
+  const refreshMemberSession = useTeamStore((s) => s.refreshMemberSession)
+  const startMemberPolling = useTeamStore((s) => s.startMemberPolling)
   const sessionState = useChatStore((s) => activeTabId ? s.sessions[activeTabId] : undefined)
   const pendingComputerUsePermission = sessionState?.pendingComputerUsePermission ?? null
   const fetchSessionTasks = useCLITaskStore((s) => s.fetchSessionTasks)
@@ -407,6 +434,13 @@ export function ActiveSession() {
       connectToSession(activeTabId)
     }
   }, [activeTabId, isMemberSession, connectToSession])
+
+  useEffect(() => {
+    if (!activeTabId || !isMemberSession) return
+
+    void refreshMemberSession(activeTabId)
+    startMemberPolling(activeTabId)
+  }, [activeTabId, isMemberSession, refreshMemberSession, startMemberPolling])
 
   useEffect(() => {
     if (!activeTabId || isMemberSession) return

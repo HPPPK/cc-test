@@ -1,0 +1,195 @@
+---
+name: "spec-kit-workflow-routing"
+description: "Use when working inside a Spec Kit Plus repository and the user asks whether a structured sp-* workflow would help, or when a manually invoked sp-* workflow needs routing context."
+compatibility: "Requires spec-kit project structure with .specify/ directory"
+metadata:
+  author: "github-spec-kit"
+  source: "templates/passive-skills/spec-kit-workflow-routing/SKILL.md"
+---
+
+
+# Spec Kit Workflow Routing
+
+This repository's explicit `sp-*` workflow skills are structured entrypoints that
+users normally invoke manually. This passive skill helps recommend a workflow or
+interpret a manually invoked workflow; it should not auto-enter a workflow during
+ordinary chat or coding. When giving a user an explicit next-step invocation, use
+the projected invocation placeholder, such as `$sp-specify`, rather than
+assuming one universal slash-style syntax.
+
+## Workflow Recommendation Discipline
+
+Do not auto-enter an `sp-*` workflow unless the user invokes it. For ordinary
+natural-language tasks, answer or work in the current mode while using always-on
+project cognition and project memory when they matter. You may recommend a
+workflow when it would materially improve the outcome.
+
+If the user already invoked an `sp-*` workflow, treat the routing check as
+complete and proceed under that workflow's generated contract.
+
+When there is even a 1% chance the current request is asking you to interpret,
+continue, or recommend a structured workflow, complete route selection before any response or action,
+including a clarifying question, file read, or shell command. The goal is to
+route into the right active `sp-*` workflow when one is already invoked, or to
+recommend the smallest safe workflow without silently entering it when ordinary
+chat or coding is enough.
+
+## Command Surface Discipline
+
+Treat the live `specify --help` output as the only authoritative CLI command
+surface.
+
+Before suggesting or running a `specify <subcommand>` invocation, verify that it
+exists in `specify --help` or `specify <subcommand> --help`.
+
+Do not invent, paraphrase, or "normalize" unsupported CLI names such as
+`specify create-feature`.
+
+Feature creation must stay on `$sp-specify` plus the generated
+create-feature script at `.specify/scripts/bash/create-new-feature.sh` or
+`.specify/scripts/powershell/create-new-feature.ps1`, not an imagined
+standalone branch-creation command.
+
+## Complementary Passive Skills
+
+- `spec-kit-project-cognition-gate` is the hard brownfield context gate. Workflow routing
+  can recommend a route or explain a manually invoked `sp-*` workflow, while the
+  cognition gate decides whether an existing-code task can continue or should
+  detour through `sp-map-update` or `sp-map-scan -> sp-map-build` first.
+- `spec-kit-project-learning` is the shared memory layer that applies after routing.
+  Once the active workflow is selected, that complementary skill defines the
+  workflow-specific learning-start and learning-capture behavior instead of leaving
+  those triggers implicit.
+
+## Recommendation Rules
+
+- Use `sp-fast` for trivial, local, low-risk fixes that touch at most 3 files and do
+  not cross a shared surface.
+- Use `sp-quick` for bounded work that is still small, but no longer trivial.
+- Use `sp-test-scan` when the repository needs read-only testing-system evidence,
+  module risk tiers, coverage-gap analysis, or build-ready test lanes.
+- Use `sp-test-build` when `TEST_SCAN.md` and `TEST_BUILD_PLAN.md/json` exist and
+  scan-approved lanes should construct or refresh the unit testing system.
+- Use `sp-auto` when repository state already records the recommended next step
+  and the user wants to continue without naming the exact workflow manually.
+- Use `sp-discussion` for rough ideas, not-yet-ready requirements, or multi-turn
+  product/technical exploration before formal specification. It preserves
+  `.specify/discussions/<slug>/` state and only hands off to `sp-specify` on
+  explicit user request through explicit handoff.
+- For large rough directions, stay in `sp-discussion` first. When the user asks
+  to hand off or continue, `sp-discussion` runs handoff assessment and decides
+  whether to write a bounded handoff, enter split mode with `split-plan.md`, or
+  continue discussion.
+- Do not route to `sp-split`; split-required work remains inside
+  `sp-discussion` as a candidate backlog.
+- After one candidate is implemented, route "continue next stage" requests back
+  to the same `sp-discussion` slug so the next candidate can be selected from
+  `split-plan.md`.
+- Use `sp-specify` for new capability, behavior, or requirement changes that are
+  ready for an aligned spec package before implementation.
+- Use `sp-prd-scan -> sp-prd-build` when an existing repository needs a current-state PRD suite reverse-extracted from code, docs, tests, routes, UI/API surfaces, and project cognition evidence. Treat that pair as the canonical heavy reconstruction PRD lane, a peer workflow path to `sp-specify`, not as a pre-plan requirement, and do not automatically hand off to planning.
+- Require the PRD lane to follow `subagent-mandatory` scan semantics for
+  substantive runs, carry contract artifacts such as `config-contracts.json`,
+  and keep critical claims blocked until `L4 Reconstruction-Ready`.
+- Treat `sp-prd-build` as a build-only compilation step: it must not reread the repository, and it must block completion when critical evidence gaps remain.
+- Treat `sp-prd` as a deprecated compatibility alias that must route into the
+  canonical `sp-prd-scan -> sp-prd-build` flow instead of acting as the primary
+  reverse-PRD lane.
+- Use `sp-clarify` when an existing spec package needs deeper analysis before
+  planning can safely proceed.
+- Use `sp-deep-research` when the requirements are clear but feasibility, external
+  evidence, optional multi-agent research, or a disposable demo is needed to prove
+  the implementation chain before planning. It must write a Planning Handoff for
+  `sp-plan`; skip it for minor changes to already-proven project behavior.
+- Treat `sp-research` as a compatibility alias for `sp-deep-research`. It must
+  route into the canonical feasibility gate and must not create separate
+  `sp-research` artifacts or workflow state.
+- Use `sp-plan` only after a valid spec package exists.
+- Use `sp-tasks` only after planning artifacts are ready.
+- Use `sp-implement` only after tasks are ready and execution should begin.
+- Use `sp-debug` for regressions, bugs, broken behavior, or incident-style recovery.
+- Use `sp-map-update` before other workflow steps when project cognition runtime
+  coverage is stale or too weak for a localized touched area.
+- Use `sp-map-scan -> sp-map-build` before other workflow steps only when
+  project cognition runtime context for an existing codebase is missing,
+  unusable, schema-incompatible, explicitly being rebuilt, or invalidated by
+  broad architecture replacement.
+- Use `sp-analyze` for drift, consistency, or readiness checks across existing
+  spec/plan/tasks artifacts.
+- Use `sp-explain` when the user needs a plain-language explanation of current
+  artifacts or runtime state.
+- For brownfield debug or extension work, the selected workflow must consume the
+  project cognition runtime and capability truth layer when a capability or
+  symptom route exists; do not jump straight to broad repository search.
+- Use the launcher-backed project cognition query planning flow required by the
+  selected workflow contract to retrieve the task-local project cognition
+  bundle. The agent must translate the raw user request into a `query_plan`
+  using returned map terms before running `project-cognition query --query-plan`.
+  Treat raw graph JSON artifacts as obsolete runtime surfaces.
+
+## Consequence-Aware Routing
+
+Recommend against `fast` when a request triggers the Senior Consequence Analysis Gate. Use `quick` only for bounded consequence work with durable `STATUS.md` fields. Recommend `discussion` or `specify` when lifecycle semantics, running work, destructive policy, shared state, downstream consumers, or acceptance criteria need product decisions. Recommend `debug` when the issue is a failure with unknown root cause.
+
+## User Invocation Examples
+
+Use canonical workflow names above when describing routing semantics, workflow
+state, or artifact handoffs. Use projected invocation placeholders when telling a
+user what to type:
+
+- New capability alignment: `$sp-specify`
+- Pre-spec discussion: `$sp-discussion`
+- Existing-project PRD extraction: `$sp-prd-scan -> $sp-prd-build`
+- Planning handoff: `$sp-plan`
+- Task generation: `$sp-tasks`
+- Implementation execution: `$sp-implement`
+- Debugging route: `$sp-debug`
+- Localized map refresh detour: `$sp-map-update`
+- Full map rebuild detour: `$sp-map-scan -> $sp-map-build`
+
+## Subagent Routing
+
+- Use subagents-first execution for bounded delegated work.
+- Dispatch `one-subagent` when one safe lane is ready.
+- Dispatch `parallel-subagents` when two or more independent lanes can run
+  concurrently.
+- Use `leader-inline-fallback` only after recording why delegation is
+  unavailable, unsafe, or not packetized.
+- Do not use old strategy labels as routing choices.
+- `sp-fast` is the main leader-inline route; use it only when the work is
+  trivial, local, low risk, and does not benefit from delegated verification.
+- For `sp-quick`, `sp-debug`, `sp-test-build`, `sp-map-scan`, `sp-map-build`, and
+  `sp-implement`, leader + subagents is the default execution shape for
+  independent bounded lanes when the current runtime supports delegation.
+- Use `sp-teams` only when Codex work needs durable team state, explicit join-point
+  tracking, or lifecycle control beyond one in-session subagent burst.
+
+## Behavioral Rules
+
+- Do not replace a user-invoked `sp-*` workflow with ad hoc implementation.
+- If multiple recommendations seem plausible, suggest the smallest safe route and
+  make the next escalation trigger explicit.
+- If the user intent is effectively "continue with the recommended next step",
+  prefer `sp-auto` over guessing which canonical workflow they meant from chat alone.
+- Keep `sp-*` workflows as visible optional entrypoints. This passive skill should
+  recommend them, not become a competing workflow.
+- If the user is already invoking the correct `sp-*` skill, do not redirect.
+- Do not skip from `sp-discussion` into `sp-specify` unless the user explicitly
+  requests handoff.
+- If a required next step is a user-invoked workflow entrypoint rather than an
+  in-workflow action, stop the current flow and tell the user exactly what to run.
+- Do not self-execute a different explicit `sp-*` workflow just because the current
+  workflow discovered a stale gate or missing prerequisite. Hand off by telling the
+  user to run the projected invocation, then wait.
+
+## Red Flags
+
+- You are about to auto-enter an `sp-*` workflow that the user did not invoke.
+- You are presenting a workflow recommendation as mandatory when ordinary chat,
+  coding, or review would satisfy the request.
+- The user is exploring rough requirements, but you did not mention `sp-discussion`
+  as an optional structured path.
+- You are treating "small" as a reason to recommend `sp-fast` automatically instead
+  of staying in the user's requested mode.
+- You found independent lanes but have not considered `one-subagent` or
+  `parallel-subagents` dispatch.

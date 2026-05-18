@@ -7,6 +7,25 @@ import { WorkspaceService } from '../services/workspaceService.js'
 
 const cleanupDirs = new Set<string>()
 const ONE_MIB = 1024 * 1024
+const symlinkIt = process.platform === 'win32' ? it.skip : it
+
+type TestableWorkspaceService = WorkspaceService & {
+  runGit: (workDir: string, args: string[]) => Promise<{
+    stdout: string
+    stderr: string
+    code: number
+  }>
+}
+
+function forceNonGit(service: WorkspaceService): WorkspaceService {
+  const testable = service as TestableWorkspaceService
+  testable.runGit = async () => ({
+    stdout: '',
+    stderr: 'fatal: not a git repository',
+    code: 128,
+  })
+  return service
+}
 
 function trackDir(dir: string): string {
   cleanupDirs.add(dir)
@@ -136,11 +155,11 @@ describe('WorkspaceService', () => {
   it('returns explicit non-git and missing-workdir states', async () => {
     const nonGitDir = await makeTempDir('workspace-service-non-git-')
     const missingDir = path.join(await makeTempDir('workspace-service-missing-parent-'), 'missing')
-    const service = new WorkspaceService(async (sessionId) => {
+    const service = forceNonGit(new WorkspaceService(async (sessionId) => {
       if (sessionId === 'non-git') return nonGitDir
       if (sessionId === 'missing') return missingDir
       return null
-    })
+    }))
 
     await expect(service.getStatus('unknown')).rejects.toThrow('Session not found: unknown')
 
@@ -165,7 +184,7 @@ describe('WorkspaceService', () => {
     await fs.mkdir(path.join(nonGitDir, 'src'))
     await fs.writeFile(path.join(nonGitDir, 'src/App.jsx'), 'export default function App() { return <main>New</main> }\n')
 
-    const service = new WorkspaceService(
+    const service = forceNonGit(new WorkspaceService(
       async () => nonGitDir,
       async () => [{
         id: 'assistant-1',
@@ -181,7 +200,7 @@ describe('WorkspaceService', () => {
           },
         }],
       }],
-    )
+    ))
 
     const status = await service.getStatus('session-1')
 
@@ -210,7 +229,7 @@ describe('WorkspaceService', () => {
     await fs.mkdir(path.dirname(generatedFile), { recursive: true })
     await fs.writeFile(generatedFile, 'export default function App() { return <main>Tetris</main> }\n')
 
-    const service = new WorkspaceService(
+    const service = forceNonGit(new WorkspaceService(
       async () => nonGitDir,
       async () => [],
       async () => [{
@@ -224,7 +243,7 @@ describe('WorkspaceService', () => {
           },
         },
       }],
-    )
+    ))
 
     const status = await service.getStatus('session-1')
 
@@ -255,7 +274,7 @@ describe('WorkspaceService', () => {
     await fs.writeFile(targetFile, 'export const value = 1\n')
 
     const lowerDrivePath = targetFile[0]?.toLowerCase() + targetFile.slice(1)
-    const service = new WorkspaceService(
+    const service = forceNonGit(new WorkspaceService(
       async () => nonGitDir,
       async () => [],
       async () => [{
@@ -269,7 +288,7 @@ describe('WorkspaceService', () => {
           },
         },
       }],
-    )
+    ))
 
     const status = await service.getStatus('session-1')
 
@@ -294,7 +313,7 @@ describe('WorkspaceService', () => {
     await expect(service.readTree('session-1', '../outside')).rejects.toThrow(/outside workspace/)
   })
 
-  it('rejects symlink targets that escape the workspace root', async () => {
+  symlinkIt('rejects symlink targets that escape the workspace root', async () => {
     const workDir = await makeTempDir('workspace-service-symlink-')
     const outsideDir = await makeTempDir('workspace-service-symlink-outside-')
     const outsideFile = path.join(outsideDir, 'secret.txt')
@@ -306,7 +325,7 @@ describe('WorkspaceService', () => {
     await expect(service.readFile('session-1', 'escape.txt')).rejects.toThrow(/outside workspace/)
   })
 
-  it('returns error for an untracked symlink that escapes the workspace root', async () => {
+  symlinkIt('returns error for an untracked symlink that escapes the workspace root', async () => {
     const repoDir = await makeTempDir('workspace-service-symlink-git-')
     const outsideDir = await makeTempDir('workspace-service-symlink-git-outside-')
     const outsideFile = path.join(outsideDir, 'secret.txt')
@@ -455,7 +474,7 @@ describe('WorkspaceService', () => {
     })
 
     const nonGitDir = await makeTempDir('workspace-service-diff-non-git-')
-    const nonGitService = new WorkspaceService(async () => nonGitDir)
+    const nonGitService = forceNonGit(new WorkspaceService(async () => nonGitDir))
     await expect(nonGitService.getDiff('session-1', 'whatever.txt')).resolves.toMatchObject({
       state: 'not_git_repo',
       path: 'whatever.txt',

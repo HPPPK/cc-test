@@ -3481,7 +3481,9 @@ You are a teammate in team "${attachment.teamName}".
 
 **Team Leader:** The team lead's name is "team-lead". Send updates and completion notifications to them.
 
-Read the team config to discover your teammates' names. Check the task list periodically. Create new tasks when work should be divided. Mark tasks resolved when complete.
+Known teammates right now: ${attachment.teammateNames?.length ? attachment.teammateNames.map(name => `"${name}"`).join(', ') : 'none yet; read the team config again before messaging peers'}.
+
+Read the team config to discover your teammates' names. Check the task list periodically. Create new tasks when work should be divided. Mark tasks resolved when complete. If your assignment asks you to greet, introduce yourself to, or coordinate with another teammate, do that with SendMessage first; plain text in your own transcript is not visible to them.
 
 **IMPORTANT:** Always refer to teammates by their NAME (e.g., "team-lead", "analyzer", "researcher"), never by UUID. When messaging, use the name directly:
 
@@ -4211,6 +4213,11 @@ You have exited auto mode. The user may now want to interact more directly. You 
       }
       return wrapMessagesInSystemReminder([
         createUserMessage({ content: parts.join('\n\n'), isMeta: true }),
+      ])
+    }
+    case 'teammate_runtime_providers': {
+      return wrapMessagesInSystemReminder([
+        createUserMessage({ content: attachment.content, isMeta: true }),
       ])
     }
     case 'mcp_instructions_delta': {

@@ -1,0 +1,26 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "ledger": {
+    "source_surfaces": {"classified": 63, "unknown": 0, "pct": 100},
+    "capability_surfaces": {"classified": 21, "unknown": 0, "pct": 100},
+    "risk_surfaces": {"classified": 8, "unknown": 0, "pct": 100},
+    "observability_surfaces": {"classified": 3, "unknown": 0, "pct": 100},
+    "test_surfaces": {"classified": 3, "unknown": 0, "pct": 100},
+    "doc_surfaces": {"classified": 2, "unknown": 0, "pct": 100},
+    "coverage_surfaces": {"classified": 3, "unknown": 0, "pct": 100}
+  },
+  "total_nodes": 103,
+  "classified": 103,
+  "unknown": 0,
+  "pct_complete": 100,
+  "rows": [
+    {"surface": "source-surfaces", "category": "source", "coverage_class": "classified", "count": 63},
+    {"surface": "capability-surfaces", "category": "capability", "coverage_class": "classified", "count": 21},
+    {"surface": "risk-surfaces", "category": "risk", "coverage_class": "classified", "count": 8},
+    {"surface": "observability-surfaces", "category": "observability", "coverage_class": "classified", "count": 3},
+    {"surface": "test-surfaces", "category": "test", "coverage_class": "classified", "count": 3},
+    {"surface": "doc-surfaces", "category": "doc", "coverage_class": "classified", "count": 2},
+    {"surface": "coverage-surfaces", "category": "coverage", "coverage_class": "classified", "count": 3}
+  ]
+}

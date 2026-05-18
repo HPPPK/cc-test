@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { act } from 'react'
 
@@ -78,7 +78,7 @@ afterEach(() => {
   useTabStore.setState({ tabs: [], activeTabId: null })
   useSessionStore.setState({ sessions: [], activeSessionId: null, isLoading: false, error: null })
   useChatStore.setState({ sessions: {} })
-  useTeamStore.setState({ teams: [], activeTeam: null, memberColors: new Map(), error: null })
+  useTeamStore.setState(useTeamStore.getInitialState(), true)
   useWorkspacePanelStore.setState(useWorkspacePanelStore.getInitialState(), true)
   useTerminalPanelStore.setState(useTerminalPanelStore.getInitialState(), true)
 })
@@ -284,6 +284,79 @@ describe('ActiveSession task polling', () => {
     expect(panel).toHaveTextContent('Running Playwright checks')
   })
 
+  it('collapses completed background agent tasks by default and can be expanded', () => {
+    const sessionId = 'background-agent-completed-session'
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Background Agent Completed Session',
+        createdAt: '2026-05-07T00:00:00.000Z',
+        modifiedAt: '2026-05-07T00:00:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Background Agent Completed Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          backgroundAgentTasks: {
+            'agent-task-1': {
+              taskId: 'agent-task-1',
+              toolUseId: 'agent-tool-1',
+              status: 'completed',
+              taskType: 'in_process_teammate',
+              description: '小明: 介绍自己',
+              summary: '小明已完成介绍',
+              startedAt: 1,
+              updatedAt: 2,
+            },
+          },
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const panel = screen.getByTestId('background-agent-panel')
+    expect(panel).toHaveTextContent('后台 Agent')
+    expect(panel).toHaveTextContent('1 个运行中或最近任务')
+    expect(screen.queryByText('小明已完成介绍')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('展开后台 Agent'))
+
+    expect(screen.getByText('小明已完成介绍')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('折叠后台 Agent'))
+
+    expect(screen.queryByText('小明已完成介绍')).not.toBeInTheDocument()
+  })
+
   it('refreshes CLI tasks repeatedly while a turn is active', async () => {
     vi.useFakeTimers()
 
@@ -388,6 +461,8 @@ describe('ActiveSession task polling', () => {
       },
       memberColors: new Map(),
       error: null,
+      refreshMemberSession: vi.fn().mockResolvedValue(undefined),
+      startMemberPolling: vi.fn(),
     })
 
     useTabStore.setState({
@@ -426,6 +501,121 @@ describe('ActiveSession task polling', () => {
 
     unmount()
     useCLITaskStore.setState(originalCliTaskState)
+  })
+
+  it('refreshes a member transcript and resumes polling when returning to an open member tab', async () => {
+    const memberSessionId = 'team-member:security-reviewer@test-team'
+    const regularSessionId = 'regular-session'
+    const refreshMemberSession = vi.fn().mockResolvedValue(undefined)
+    const startMemberPolling = vi.fn()
+
+    useTeamStore.setState({
+      teams: [],
+      activeTeam: {
+        name: 'test-team',
+        leadAgentId: 'team-lead@test-team',
+        leadSessionId: 'leader-session',
+        members: [
+          {
+            agentId: 'team-lead@test-team',
+            role: 'team-lead',
+            status: 'running',
+            sessionId: 'leader-session',
+          },
+          {
+            agentId: 'security-reviewer@test-team',
+            role: 'security-reviewer',
+            status: 'running',
+          },
+        ],
+      },
+      memberColors: new Map(),
+      error: null,
+      refreshMemberSession,
+      startMemberPolling,
+    })
+
+    useSessionStore.setState({
+      sessions: [{
+        id: regularSessionId,
+        title: 'Regular Session',
+        createdAt: '2026-05-07T00:00:00.000Z',
+        modifiedAt: '2026-05-07T00:00:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: regularSessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [
+        { sessionId: memberSessionId, title: 'security-reviewer', type: 'session', status: 'idle' },
+        { sessionId: regularSessionId, title: 'Regular Session', type: 'session', status: 'idle' },
+      ],
+      activeTabId: memberSessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [memberSessionId]: {
+          messages: [{ id: 'member-old', type: 'assistant_text', content: 'stale transcript', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+        [regularSessionId]: {
+          messages: [{ id: 'regular-msg', type: 'assistant_text', content: 'regular transcript', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    const { rerender } = render(<ActiveSession />)
+
+    refreshMemberSession.mockClear()
+    startMemberPolling.mockClear()
+
+    act(() => {
+      useTabStore.setState({ activeTabId: regularSessionId })
+      rerender(<ActiveSession />)
+    })
+    act(() => {
+      useTabStore.setState({ activeTabId: memberSessionId })
+      rerender(<ActiveSession />)
+    })
+
+    await waitFor(() => {
+      expect(refreshMemberSession).toHaveBeenCalledWith(memberSessionId)
+    })
+    expect(startMemberPolling).toHaveBeenCalledWith(memberSessionId)
   })
 
   it('shows disconnected read-only copy for deleted member sessions', () => {
@@ -612,10 +802,12 @@ describe('ActiveSession task polling', () => {
               status: 'running',
             },
           ],
-        },
-        memberColors: new Map(),
-        error: null,
-      })
+      },
+      memberColors: new Map(),
+      error: null,
+      refreshMemberSession: vi.fn().mockResolvedValue(undefined),
+      startMemberPolling: vi.fn(),
+    })
       useTabStore.setState({
         tabs: [{ sessionId: memberSessionId, title: 'security-reviewer', type: 'session', status: 'idle' }],
         activeTabId: memberSessionId,

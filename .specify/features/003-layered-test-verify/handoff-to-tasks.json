@@ -1,0 +1,419 @@
+{
+  "source_command": "sp-tasks",
+  "feature_branch": "003-layered-test-verify",
+  "feature_dir": ".specify/features/003-layered-test-verify",
+  "generated_at": "2026-05-18T00:45:00+08:00",
+  "task_generation_status": "complete",
+  "total_tasks": 21,
+  "phase_count": 7,
+  "execution_model": "subagent-mandatory",
+  "dispatch_shape": "parallel-subagents",
+  "execution_surface": "native-subagents",
+  "active_profile": "Standard Delivery",
+  "feature_delivery_shape": "serial shared-surface joins with intra-phase parallel batches",
+  "cognition": {
+    "readiness": "needs_update",
+    "advisory": "Missing cognition coverage for .specify/testing/ is advisory for artifact-only sp-tasks; minimal live reads were used.",
+    "missing_coverage": [
+      "path not covered by project cognition index: .specify/testing/"
+    ]
+  },
+  "accepted_task_generation_handoffs": [
+    "task-generation/handoffs/story-phase-decomposition.json",
+    "task-generation/handoffs/dependency-graph-analysis.json",
+    "task-generation/handoffs/write-set-parallel-safety.json"
+  ],
+  "success_criteria_coverage": {
+    "SC-001": [
+      "T003",
+      "T008",
+      "T009",
+      "T020"
+    ],
+    "SC-002": [
+      "T006",
+      "T012",
+      "T013",
+      "T020"
+    ],
+    "SC-003": [
+      "T004",
+      "T011",
+      "T015"
+    ],
+    "SC-004": [
+      "T005",
+      "T014",
+      "T015",
+      "T016"
+    ],
+    "SC-005": [
+      "T006",
+      "T017",
+      "T018"
+    ],
+    "SC-006": [
+      "T003",
+      "T004",
+      "T005",
+      "T006",
+      "T020"
+    ]
+  },
+  "must_preserve_coverage": {
+    "MP-001": [
+      "T003-T020 preserve quality while speeding verification"
+    ],
+    "MP-002": [
+      "T008",
+      "T009",
+      "T020"
+    ],
+    "MP-003": [
+      "T001",
+      "T008",
+      "T012"
+    ],
+    "MP-004": [
+      "T003",
+      "T004",
+      "T008",
+      "T011"
+    ],
+    "MP-005": [
+      "T009",
+      "T012",
+      "T020"
+    ],
+    "MP-006": [
+      "T005",
+      "T014",
+      "T015",
+      "T016"
+    ],
+    "MP-007": [
+      "T006",
+      "T012",
+      "T013",
+      "T020"
+    ],
+    "MP-008": [
+      "Task anti-goals plus T019 review"
+    ],
+    "MP-009": [
+      "T001",
+      "T002"
+    ],
+    "MP-010": [
+      "T006",
+      "T017",
+      "T018",
+      "T021"
+    ],
+    "MP-011": [
+      "T004",
+      "T010",
+      "T011 anti-goals defer impact graph"
+    ],
+    "MP-012": [
+      "T006",
+      "T012",
+      "T013"
+    ]
+  },
+  "consequence_obligation_coverage": {
+    "CA-001": [
+      "T001",
+      "T006",
+      "T009",
+      "T012",
+      "T019",
+      "T020"
+    ],
+    "CA-003": [
+      "T001",
+      "T002",
+      "T004",
+      "T005",
+      "T010",
+      "T011",
+      "T013",
+      "T014",
+      "T015",
+      "T019"
+    ],
+    "CA-006": [
+      "T001",
+      "T006",
+      "T007",
+      "T013",
+      "T017",
+      "T018",
+      "T019"
+    ],
+    "CA-005": [
+      "T002",
+      "T004",
+      "T005",
+      "T010",
+      "T014",
+      "T015",
+      "T016",
+      "T019"
+    ],
+    "CA-002": [
+      "T003",
+      "T006",
+      "T007",
+      "T008",
+      "T009",
+      "T017",
+      "T018",
+      "T019",
+      "T021"
+    ],
+    "CA-004": [
+      "T003",
+      "T006",
+      "T007",
+      "T008",
+      "T012",
+      "T013",
+      "T016",
+      "T019",
+      "T020",
+      "T021"
+    ]
+  },
+  "parallel_opportunities": [
+    {
+      "id": "PB-0",
+      "phase": 0,
+      "tasks": [
+        "T001",
+        "T002"
+      ],
+      "objective": "Read-only guardrail confirmation",
+      "write_sets": [],
+      "validation": "T001/T002 handoffs; no diffs outside task artifacts",
+      "join_point": "JP-0"
+    },
+    {
+      "id": "PB-1",
+      "phase": 1,
+      "tasks": [
+        "T003",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "objective": "Independent RED tests in separate files",
+      "write_sets": [
+        "scripts/quality-gate/fast-mode.test.ts",
+        "scripts/pr/fast-lane-selection.test.ts",
+        "scripts/pr/risk-escalation.test.ts",
+        "scripts/quality-gate/layered-pr.test.ts"
+      ],
+      "validation": "Focused bun test command fails for expected missing behavior only",
+      "join_point": "JP-1"
+    },
+    {
+      "id": "PB-2",
+      "phase": 3,
+      "tasks": [
+        "T008",
+        "T010"
+      ],
+      "objective": "Parallel fast-mode lane setup and PR area helper update after shared types are stable",
+      "write_sets": [
+        "scripts/quality-gate/modes.ts",
+        "scripts/pr/change-policy.ts"
+      ],
+      "validation": "fast-mode and change-policy tests",
+      "join_point": "JP-2 follow-up"
+    },
+    {
+      "id": "PB-3",
+      "phase": 3,
+      "tasks": [
+        "T009",
+        "T011"
+      ],
+      "objective": "Parallel package script registration and impact fast-lane output",
+      "write_sets": [
+        "package.json",
+        "scripts/pr/impact-report.ts"
+      ],
+      "validation": "quality:fast dry-run and fast-lane-selection tests",
+      "join_point": "JP-3"
+    },
+    {
+      "id": "PB-4",
+      "phase": 4,
+      "tasks": [
+        "T012",
+        "T014"
+      ],
+      "objective": "Parallel PR mode layering and risk policy update",
+      "write_sets": [
+        "scripts/quality-gate/modes.ts",
+        "scripts/pr/change-policy.ts"
+      ],
+      "validation": "layered-pr and risk-escalation tests",
+      "join_point": "JP-4 partial"
+    },
+    {
+      "id": "PB-5",
+      "phase": 4,
+      "tasks": [
+        "T013",
+        "T015"
+      ],
+      "objective": "Parallel runner execution update and impact escalation output",
+      "write_sets": [
+        "scripts/quality-gate/runner.ts",
+        "scripts/pr/impact-report.ts"
+      ],
+      "validation": "layered-pr, coverage, runner, and risk tests",
+      "join_point": "JP-4 partial"
+    }
+  ],
+  "join_points": [
+    {
+      "id": "JP-0",
+      "name": "Guardrails Confirmed",
+      "after": [
+        "T001",
+        "T002"
+      ],
+      "before": [
+        "T003",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "validation_target": "Existing quality-gate and PR policy patterns are named in handoffs.",
+      "validation_command": "Review T001/T002 handoffs; no file diffs except task artifacts.",
+      "pass_condition": "No implementation work starts until mode, runner, reporter, impact, and policy ownership is understood."
+    },
+    {
+      "id": "JP-1",
+      "name": "RED Contracts Written",
+      "after": [
+        "T003",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "before": [
+        "T007"
+      ],
+      "validation_target": "Focused tests exist and fail only for missing planned behavior.",
+      "validation_command": "bun test scripts/quality-gate/fast-mode.test.ts scripts/quality-gate/layered-pr.test.ts scripts/pr/fast-lane-selection.test.ts scripts/pr/risk-escalation.test.ts",
+      "pass_condition": "Failures are expected RED failures, not syntax/import/setup errors."
+    },
+    {
+      "id": "JP-2",
+      "name": "Shared Types Stable",
+      "after": [
+        "T007"
+      ],
+      "before": [
+        "T008",
+        "T010"
+      ],
+      "validation_target": "QualityGateMode, lane metadata, risk, report, and coverage types are available.",
+      "validation_command": "bun test scripts/quality-gate/runner.test.ts",
+      "pass_condition": "Existing runner tests pass and downstream type consumers compile."
+    },
+    {
+      "id": "JP-3",
+      "name": "Fast Lane Complete",
+      "after": [
+        "T008",
+        "T009",
+        "T010",
+        "T011"
+      ],
+      "before": [
+        "T012",
+        "T013",
+        "T014",
+        "T015"
+      ],
+      "validation_target": "quality:fast dry-run resolves and impact report emits fast-lane tests.",
+      "validation_command": "bun run quality:fast --dry-run; bun test scripts/quality-gate/fast-mode.test.ts scripts/pr/fast-lane-selection.test.ts",
+      "pass_condition": "Fast mode is lightweight, explainable, and not PR-ready."
+    },
+    {
+      "id": "JP-4",
+      "name": "Layered PR And Escalation Complete",
+      "after": [
+        "T012",
+        "T013",
+        "T014",
+        "T015",
+        "T016"
+      ],
+      "before": [
+        "T017",
+        "T018"
+      ],
+      "validation_target": "PR layering, changed-line coverage, and escalated checks are wired.",
+      "validation_command": "bun test scripts/quality-gate/layered-pr.test.ts scripts/pr/risk-escalation.test.ts",
+      "pass_condition": "Low-risk PRs skip heavy checks with reasons; high-risk fixtures trigger heavy checks."
+    },
+    {
+      "id": "JP-5",
+      "name": "Output Semantics Clear",
+      "after": [
+        "T017",
+        "T018"
+      ],
+      "before": [
+        "T019"
+      ],
+      "validation_target": "Fast/full reports have clear readiness labels.",
+      "validation_command": "bun test scripts/quality-gate/layered-pr.test.ts scripts/quality-gate/runner.test.ts",
+      "pass_condition": "Fast mode reports readyForMerge=false and NOT PR READY; PR mode reports PR READINESS."
+    },
+    {
+      "id": "JP-6",
+      "name": "Final Validation Evidence Ready",
+      "after": [
+        "T019",
+        "T020"
+      ],
+      "before": [
+        "T021"
+      ],
+      "validation_target": "Focused tests, dry-run gates, and policy checks have recorded output.",
+      "validation_command": "Commands listed in T020.",
+      "pass_condition": "Validation output is available for quickstart and handoff; live/release gaps are explicit."
+    }
+  ],
+  "affected_files": [
+    "scripts/quality-gate/fast-mode.test.ts",
+    "scripts/pr/fast-lane-selection.test.ts",
+    "scripts/pr/risk-escalation.test.ts",
+    "scripts/quality-gate/layered-pr.test.ts",
+    "scripts/quality-gate/types.ts",
+    "scripts/quality-gate/modes.ts",
+    "package.json",
+    "scripts/pr/change-policy.ts",
+    "scripts/pr/impact-report.ts",
+    "scripts/quality-gate/runner.ts",
+    "scripts/quality-gate/reporter.ts",
+    ".specify/features/003-layered-test-verify/quickstart.md"
+  ],
+  "self_audit": {
+    "coverage_mapping_status": "pass",
+    "locked_decision_preservation_status": "pass",
+    "guardrail_mapping_status": "pass",
+    "dp_readiness_status": "pass",
+    "reference_fidelity_mapping_status": "pass",
+    "unmapped_task_status": "pass",
+    "write_set_conflict_status": "pass"
+  },
+  "recommended_next_command": "/sp.analyze"
+}

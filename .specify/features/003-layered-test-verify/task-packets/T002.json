@@ -1,0 +1,105 @@
+{
+  "task_id": "T002",
+  "title": "Confirm PR impact and path policy patterns in scripts/pr/impact-report.ts and scripts/pr/change-policy.ts",
+  "checklist_line": "- [ ] T002 [P] [Agent: executor] Confirm PR impact and path policy patterns in scripts/pr/impact-report.ts and scripts/pr/change-policy.ts",
+  "feature_branch": "003-layered-test-verify",
+  "active_profile": "Standard Delivery",
+  "execution_model": "subagent-mandatory",
+  "execution_surface": "native-subagents",
+  "agent": "executor",
+  "depends_on": [],
+  "parallel_safe": true,
+  "story": null,
+  "phase": 0,
+  "context_navigation": [
+    {
+      "need": "Feature usage paths",
+      "location": "spec.md#Scenarios and Usage Paths"
+    },
+    {
+      "need": "Success criteria",
+      "location": "spec.md#Success Criteria"
+    },
+    {
+      "need": "Locked decisions",
+      "location": "plan.md#Locked Planning Decisions"
+    },
+    {
+      "need": "Implementation constitution",
+      "location": "plan.md#Implementation Constitution"
+    },
+    {
+      "need": "Affected surfaces",
+      "location": "context.md#Affected Surfaces"
+    },
+    {
+      "need": "Data model entity",
+      "location": "N/A - no data-model.md is present; quality-gate lane/report entities live in scripts/quality-gate/types.ts"
+    },
+    {
+      "need": "API/contract surface",
+      "location": "package.json#scripts and scripts/quality-gate/types.ts#QualityGateReport"
+    }
+  ],
+  "write_scope": [],
+  "read_scope": [
+    "scripts/pr/impact-report.ts",
+    "scripts/pr/change-policy.ts",
+    "scripts/pr/change-policy.test.ts",
+    ".specify/features/003-layered-test-verify/plan.md",
+    ".specify/features/003-layered-test-verify/context.md"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "**/*.secret",
+    "**/credentials/**",
+    "**/secrets/**",
+    "node_modules/**",
+    "desktop/node_modules/**",
+    "adapters/**/node_modules/**",
+    "artifacts/**",
+    ".git/**",
+    ".specify/features/003-layered-test-verify/task-generation/** unless owned",
+    ".specify/features/003-layered-test-verify/task-packets/** unless owned",
+    "default forbidden paths",
+    "all source writes"
+  ],
+  "expected_outputs": [
+    "Worker handoff notes only (no file writes)"
+  ],
+  "anti_goals": [
+    "Do not modify files",
+    "do not add a standalone impact graph"
+  ],
+  "acceptance_criteria": [
+    "Handoff identifies evaluateChangePolicy, current areas, required checks, coverage signals, risk notes, and areasForPath export status",
+    "no files are modified"
+  ],
+  "verify_commands": [
+    "bun test scripts/pr/change-policy.test.ts"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": "exact changed paths",
+    "validation_output": "command to output summary map",
+    "concerns": "list",
+    "recovery_hints": "list"
+  },
+  "retry_max": 2,
+  "escalation": "debugger",
+  "consequence_obligations": [
+    "CA-003",
+    "CA-005"
+  ],
+  "packet_readiness": {
+    "DP1": "complete task body and context pointers",
+    "DP2": "dependency/write-scope metadata present",
+    "DP3": "blocked until /sp.analyze clears task package"
+  },
+  "shaped_by_handoffs": [
+    "task-generation/handoffs/story-phase-decomposition.json",
+    "task-generation/handoffs/dependency-graph-analysis.json",
+    "task-generation/handoffs/write-set-parallel-safety.json"
+  ]
+}

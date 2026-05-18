@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync, readFileSync, appendFileSync } from 'node:fs'
+import type { FastLaneTestSelection, RiskLevel } from '../quality-gate/types.js'
 
 export type ChangeArea =
   | 'desktop'
@@ -29,6 +30,26 @@ export type ChangePolicyResult = {
     docs: boolean
     coverage: boolean
   }
+  /**
+   * Risk level of the change.
+   * CA-005: High-risk paths escalate to the right checks.
+   */
+  riskLevel: RiskLevel
+  /**
+   * Escalated checks triggered by high-risk paths.
+   * Undefined when no escalation is needed.
+   */
+  escalatedChecks: string[] | undefined
+  /**
+   * Guidance for medium-risk changes.
+   * Suggests additional verification that might be helpful.
+   */
+  riskGuidance: string | undefined
+  /**
+   * Explanation for why heavy checks were skipped.
+   * Populated for low-risk changes.
+   */
+  skipExplanation: string | undefined
 }
 
 const ALLOW_CLI_CORE_LABEL = 'allow-cli-core-change'
@@ -105,7 +126,7 @@ function isCliCorePath(path: string) {
   return startsWithAny(path, cliCorePrefixes)
 }
 
-function areasForPath(path: string): ChangeArea[] {
+export function areasForPath(path: string): ChangeArea[] {
   const areas = new Set<ChangeArea>()
 
   if (path.startsWith('desktop/')) {
@@ -137,6 +158,209 @@ function areasForPath(path: string): ChangeArea[] {
   }
 
   return [...areas]
+}
+
+// --- Fast-lane test selection helpers ---
+
+/** 高风险路径模式：Tauri/native 代码 */
+const HIGH_RISK_TAURI_PATTERN = /^desktop\/src-tauri\//
+
+/** 高风险路径模式：Provider/运行时选择器 */
+const HIGH_RISK_PROVIDER_PATTERN = /\/provider-selector\./
+
+/** 高风险路径模式：Provider 服务 */
+const HIGH_RISK_PROVIDER_SERVICE_PATTERN = /^src\/server\/services\/(provider|conversation)Service\.ts$/
+
+/** 高风险路径模式：WebSearchTool 后端 */
+const HIGH_RISK_WEB_SEARCH_PATTERN = /^src\/tools\/WebSearchTool\/backend\.ts$/
+
+/** 高风险路径模式：WebSocket 处理器 */
+const HIGH_RISK_WEBSOCKET_PATTERN = /^src\/server\/ws\//
+
+/** 高风险路径模式：会话服务 */
+const HIGH_RISK_CONVERSATION_PATTERN = /^src\/server\/services\/conversation/
+
+/** 高风险路径模式：CI/发布工作流 */
+const HIGH_RISK_RELEASE_PATTERN = /^\.github\/workflows\/(release(-.*)?\.yml|build-desktop|pr-quality)/
+
+/** 高风险路径模式：发布脚本 */
+const HIGH_RISK_RELEASE_SCRIPT_PATTERN = /^scripts\/(release|pr\/change-policy)\.ts$/
+
+/** 中等风险路径模式：Desktop 状态/API 层 */
+const MEDIUM_RISK_DESKTOP_API_PATTERN = /^desktop\/src\/(api|stores|hooks)\//
+
+/** 中等风险路径模式：服务器路由/工具/中间件 */
+const MEDIUM_RISK_SERVER_PATTERN = /^src\/server\/(routes|utils|middleware)\//
+
+/** 中等风险路径模式：适配器实现 */
+const MEDIUM_RISK_ADAPTER_PATTERN = /^adapters\/[^/]+\/[^.]+\.ts$/
+
+/** 各区域对应的测试文件 glob 模式 */
+const AREA_TEST_PATTERNS: Record<string, string[]> = {
+  server: [
+    'src/server/**/*.test.*',
+    'src/server/**/__tests__/**',
+  ],
+  desktop: [
+    'desktop/src/**/*.test.*',
+    'desktop/src/**/*.spec.*',
+  ],
+  adapters: [
+    'adapters/**/*.test.*',
+    'adapters/**/__tests__/**',
+  ],
+  docs: [
+    'docs/**/*.test.*',
+  ],
+}
+
+/** 核心 smoke 测试集：始终运行，验证系统基础设施完整性 */
+const CORE_SMOKE_PATTERNS = [
+  'scripts/pr/change-policy.test.ts',
+  'scripts/quality-gate/quarantine.test.ts',
+  'scripts/quality-gate/fast-mode.test.ts',
+  'scripts/quality-gate/layered-pr.test.ts',
+]
+
+/** 可选的测试区域（不含 release 和 cli-core，它们由专门的门控处理） */
+const SELECTABLE_AREAS: readonly string[] = ['server', 'desktop', 'adapters', 'docs']
+
+/**
+ * 评估变更文件的风险等级。
+ * - high: Tauri/native、Provider/运行时、CI/发布工作流、WebSocket/会话服务
+ * - medium: Desktop 状态/API 层、服务器路由/工具/中间件、适配器实现
+ * - low: 其余变更（文档、测试、fixture 等）
+ */
+function assessRiskLevel(normalizedFiles: string[]): {
+  riskLevel: RiskLevel
+  escalatedChecks: string[]
+  riskGuidance: string | undefined
+  skipExplanation: string | undefined
+} {
+  const escalatedChecks: string[] = []
+  const guidanceHints: string[] = []
+
+  // 高风险：Tauri/native 代码
+  const hasTauri = normalizedFiles.some((f) => HIGH_RISK_TAURI_PATTERN.test(f))
+  if (hasTauri) {
+    escalatedChecks.push('native-checks')
+  }
+
+  // 高风险：Provider 服务和运行时选择器
+  const hasProviderService = normalizedFiles.some((f) => HIGH_RISK_PROVIDER_SERVICE_PATTERN.test(f))
+  const hasProviderSelector = normalizedFiles.some((f) => HIGH_RISK_PROVIDER_PATTERN.test(f))
+  const hasWebSearchBackend = normalizedFiles.some((f) => HIGH_RISK_WEB_SEARCH_PATTERN.test(f))
+  const hasWebSocket = normalizedFiles.some((f) => HIGH_RISK_WEBSOCKET_PATTERN.test(f))
+  const hasConversation = normalizedFiles.some((f) => HIGH_RISK_CONVERSATION_PATTERN.test(f))
+
+  if (hasProviderService || hasProviderSelector || hasWebSearchBackend || hasWebSocket || hasConversation) {
+    escalatedChecks.push('live-provider-checks')
+  }
+
+  // 高风险：CI/发布工作流和脚本
+  const hasReleaseWorkflow = normalizedFiles.some((f) => HIGH_RISK_RELEASE_PATTERN.test(f))
+  const hasReleaseScript = normalizedFiles.some((f) => HIGH_RISK_RELEASE_SCRIPT_PATTERN.test(f))
+  if (hasReleaseWorkflow || hasReleaseScript) {
+    escalatedChecks.push('release-gates')
+  }
+
+  // 高风险返回
+  if (escalatedChecks.length > 0) {
+    return {
+      riskLevel: 'high',
+      escalatedChecks,
+      riskGuidance: undefined,
+      skipExplanation: undefined,
+    }
+  }
+
+  // 中等风险：Desktop 状态/API 层
+  const hasMediumDesktop = normalizedFiles.some((f) => MEDIUM_RISK_DESKTOP_API_PATTERN.test(f))
+  if (hasMediumDesktop) {
+    guidanceHints.push('state management and API layer changes may benefit from integration testing')
+  }
+
+  // 中等风险：服务器路由/工具/中间件
+  const hasMediumServer = normalizedFiles.some((f) => MEDIUM_RISK_SERVER_PATTERN.test(f))
+  if (hasMediumServer) {
+    guidanceHints.push('server route/utility changes may benefit from integration testing')
+  }
+
+  // 中等风险：适配器实现
+  const hasMediumAdapter = normalizedFiles.some((f) => MEDIUM_RISK_ADAPTER_PATTERN.test(f))
+  if (hasMediumAdapter) {
+    guidanceHints.push('adapter implementation changes should verify provider compatibility')
+  }
+
+  // 中等风险返回
+  if (guidanceHints.length > 0) {
+    return {
+      riskLevel: 'medium',
+      escalatedChecks: [],
+      riskGuidance: guidanceHints.join('; '),
+      skipExplanation: undefined,
+    }
+  }
+
+  // 低风险返回
+  return {
+    riskLevel: 'low',
+    escalatedChecks: [],
+    riskGuidance: undefined,
+    skipExplanation: 'low-risk change: heavy checks (native, live-provider, release-gates) are not required.',
+  }
+}
+
+/**
+ * 基于变更文件选择 fast-lane 测试集。
+ *
+ * 使用 `areasForPath()` 将每个文件分类到区域，然后为每个受影响区域
+ * 选择对应的测试模式。始终包含核心 smoke 测试集。
+ *
+ * CA-003: 跳过的区域必须通过影响/风险评估解释
+ * CA-005: 高风险路径升级到正确的检查
+ */
+export function selectFastLaneTests(inputFiles: string[]): FastLaneTestSelection {
+  const normalizedFiles = [...new Set(inputFiles.map(normalizePath).filter(Boolean))].sort()
+
+  // 收集所有受影响区域
+  const touchedAreas = new Set<string>()
+  for (const file of normalizedFiles) {
+    for (const area of areasForPath(file)) {
+      touchedAreas.add(area)
+    }
+  }
+
+  // 选择可测试区域的测试模式
+  const selectedTests: FastLaneTestSelection['selectedTests'] = {}
+  for (const area of SELECTABLE_AREAS) {
+    if (touchedAreas.has(area)) {
+      const key = area as keyof typeof selectedTests
+      selectedTests[key] = AREA_TEST_PATTERNS[area] ?? []
+    }
+  }
+
+  // 构建跳过区域的说明（CA-003）
+  const skipped: FastLaneTestSelection['skipped'] = []
+  for (const area of SELECTABLE_AREAS) {
+    if (!touchedAreas.has(area)) {
+      skipped.push({
+        area,
+        reason: `No files changed in the ${area} area; skipping ${area} test lane.`,
+      })
+    }
+  }
+
+  // 风险评估（CA-005）
+  const { riskLevel, escalatedChecks } = assessRiskLevel(normalizedFiles)
+
+  return {
+    coreSmoke: [...CORE_SMOKE_PATTERNS],
+    selectedTests,
+    skipped,
+    riskLevel,
+    escalatedChecks: escalatedChecks.length > 0 ? escalatedChecks : undefined,
+  }
 }
 
 function hasMatchingTest(files: string[], predicate: (file: string) => boolean) {
@@ -241,6 +465,9 @@ export function evaluateChangePolicy(
 
   const orderedAreas = [...areas].sort()
 
+  // 风险评估（CA-005）
+  const riskAssessment = assessRiskLevel(files)
+
   return {
     files,
     labels,
@@ -260,6 +487,10 @@ export function evaluateChangePolicy(
       docs: touchesDocs,
       coverage: touchesCoverage,
     },
+    riskLevel: riskAssessment.riskLevel,
+    escalatedChecks: riskAssessment.escalatedChecks.length > 0 ? riskAssessment.escalatedChecks : undefined,
+    riskGuidance: riskAssessment.riskGuidance,
+    skipExplanation: riskAssessment.skipExplanation,
   }
 }
 

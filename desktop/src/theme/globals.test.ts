@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest'
 
 import css from './globals.css?raw'
 
+const normalizedCss = css.replace(/\r\n/g, '\n')
+
 function getThemeBlock(selector: ':root,\n[data-theme="light"]' | '[data-theme="white"]' | '[data-theme="dark"]') {
-  const start = css.indexOf(`${selector} {`)
+  const start = normalizedCss.indexOf(`${selector} {`)
   expect(start).toBeGreaterThanOrEqual(0)
 
-  const bodyStart = css.indexOf('{', start)
+  const bodyStart = normalizedCss.indexOf('{', start)
   let depth = 0
-  for (let index = bodyStart; index < css.length; index += 1) {
-    const char = css[index]
+  for (let index = bodyStart; index < normalizedCss.length; index += 1) {
+    const char = normalizedCss[index]
     if (char === '{') depth += 1
     if (char === '}') {
       depth -= 1
       if (depth === 0) {
-        return css.slice(bodyStart + 1, index)
+        return normalizedCss.slice(bodyStart + 1, index)
       }
     }
   }
@@ -23,11 +25,11 @@ function getThemeBlock(selector: ':root,\n[data-theme="light"]' | '[data-theme="
 }
 
 function getCssBetween(startMarker: string, endMarker: string) {
-  const start = css.indexOf(startMarker)
+  const start = normalizedCss.indexOf(startMarker)
   expect(start).toBeGreaterThanOrEqual(0)
-  const end = css.indexOf(endMarker, start)
+  const end = normalizedCss.indexOf(endMarker, start)
   expect(end).toBeGreaterThan(start)
-  return css.slice(start, end)
+  return normalizedCss.slice(start, end)
 }
 
 describe('desktop theme tokens', () => {
@@ -84,9 +86,9 @@ describe('desktop theme tokens', () => {
   })
 
   it('keeps the UI zoom slider thumb visible in dark mode', () => {
-    expect(css).toContain('[data-theme="dark"] .settings-zoom-control')
-    expect(css).toContain('--settings-zoom-thumb-bg: var(--color-surface-bright);')
-    expect(css).toContain('--settings-zoom-thumb-border: rgba(255, 181, 159, 0.78);')
-    expect(css).toContain('box-shadow: var(--settings-zoom-thumb-shadow);')
+    expect(normalizedCss).toContain('[data-theme="dark"] .settings-zoom-control')
+    expect(normalizedCss).toContain('--settings-zoom-thumb-bg: var(--color-surface-bright);')
+    expect(normalizedCss).toContain('--settings-zoom-thumb-border: rgba(255, 181, 159, 0.78);')
+    expect(normalizedCss).toContain('box-shadow: var(--settings-zoom-thumb-shadow);')
   })
 })

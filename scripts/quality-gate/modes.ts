@@ -2,14 +2,19 @@ import { baselineCases } from './baseline/cases'
 import type { BaselineTarget, LaneDefinition, QualityGateMode } from './types'
 
 export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTarget[] = []): LaneDefinition[] {
+  // Lanes are defined in execution order for each mode:
+  // PR mode: impact-report -> policy-checks -> area checks -> coverage -> heavy checks
+  // Fast mode: impact-report -> policy-checks -> core-smoke -> fast-lane-tests
+  // Baseline/Release: impact-report -> policy-checks -> coverage (full) -> heavy checks -> baseline cases -> live smokes
   const lanes: LaneDefinition[] = [
+    // === Layer 1: Scope and Governance (always first) ===
     {
       id: 'impact-report',
       title: 'Impact report',
       description: 'Summarize changed areas, required local checks, and risk notes.',
       kind: 'command',
       command: ['bun', 'run', 'check:impact'],
-      requiredForModes: ['pr', 'baseline', 'release'],
+      requiredForModes: ['pr', 'baseline', 'release', 'fast'],
       category: 'scope',
     },
     {
@@ -19,9 +24,35 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       kind: 'command',
       command: ['bun', 'run', 'check:policy'],
       impactRequiredCheck: 'bun run check:policy',
-      requiredForModes: ['pr', 'release'],
+      requiredForModes: ['pr', 'release', 'fast'],
       category: 'governance',
     },
+
+    // === Layer 2: Core smoke and fast-lane tests ===
+    {
+      id: 'core-smoke',
+      title: 'Core smoke tests',
+      description: 'Tiny fixed set of critical-path smoke tests for fast feedback. Validates policy and quarantine governance tests.',
+      kind: 'command',
+      command: ['bun', 'test', 'scripts/pr/change-policy.test.ts', 'scripts/quality-gate/quarantine.test.ts'],
+      requiredForModes: ['fast'],
+      category: 'smoke',
+      timeoutMs: 30000,
+      executionKind: 'sequential',
+    },
+    {
+      id: 'fast-lane-tests',
+      title: 'Fast lane tests',
+      description: 'Changed-area dynamic test selection based on impact analysis. Runs only tests relevant to modified files.',
+      kind: 'command',
+      command: ['bun', 'run', 'check:fast-lane'],
+      requiredForModes: ['fast'],
+      category: 'unit',
+      timeoutMs: 60000,
+      dependsOn: ['impact-report'],
+    },
+
+    // === Layer 3: Area-specific checks (conditional on impact) ===
     {
       id: 'desktop-checks',
       title: 'Desktop checks',
@@ -53,16 +84,6 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       category: 'unit',
     },
     {
-      id: 'native-checks',
-      title: 'Native desktop checks',
-      description: 'Build sidecars and run the Tauri native compile check when native or packaging paths changed.',
-      kind: 'command',
-      command: ['bun', 'run', 'check:native'],
-      impactRequiredCheck: 'bun run check:native',
-      requiredForModes: ['pr', 'release'],
-      category: 'native',
-    },
-    {
       id: 'docs-checks',
       title: 'Docs checks',
       description: 'Run docs install and VitePress build when docs paths changed.',
@@ -72,15 +93,20 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       requiredForModes: ['pr'],
       category: 'docs',
     },
+
+    // === Layer 4: Coverage ===
     {
-      id: 'persistence-upgrade',
-      title: 'Persistence upgrade checks',
-      description: 'Validate local JSON and desktop localStorage migrations against old-version fixtures.',
+      id: 'coverage',
+      title: 'Coverage gate',
+      description: 'Run unit/component coverage suites and enforce the ratcheted coverage baseline.',
       kind: 'command',
-      command: ['bun', 'run', 'check:persistence-upgrade'],
-      requiredForModes: ['pr', 'release'],
-      category: 'governance',
+      command: ['bun', 'run', 'check:coverage'],
+      requiredForModes: ['pr', 'baseline', 'release'],
+      category: 'coverage',
+      // coverageMode is set per-mode in the return statement below
     },
+
+    // === Layer 5: Heavy checks (conditional on risk) ===
     {
       id: 'quarantine',
       title: 'Quarantine governance',
@@ -91,14 +117,38 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       category: 'governance',
     },
     {
-      id: 'coverage',
-      title: 'Coverage gate',
-      description: 'Run unit/component coverage suites and enforce the ratcheted coverage baseline.',
+      id: 'native-checks',
+      title: 'Native desktop checks',
+      description: 'Build sidecars and run the Tauri native compile check when native or packaging paths changed.',
       kind: 'command',
-      command: ['bun', 'run', 'check:coverage'],
-      requiredForModes: ['pr', 'baseline', 'release'],
-      category: 'coverage',
+      command: ['bun', 'run', 'check:native'],
+      impactRequiredCheck: 'bun run check:native',
+      requiredForModes: ['pr', 'release'],
+      category: 'native',
+      // CA-005: High-risk paths escalate to the right checks
+      // Native-checks only runs when Tauri/native code changes (high risk)
+      riskTrigger: {
+        riskLevels: ['high'],
+        escalatedChecks: ['native-checks'],
+      },
     },
+    {
+      id: 'persistence-upgrade',
+      title: 'Persistence upgrade checks',
+      description: 'Validate local JSON and desktop localStorage migrations against old-version fixtures.',
+      kind: 'command',
+      command: ['bun', 'run', 'check:persistence-upgrade'],
+      requiredForModes: ['pr', 'release'],
+      category: 'governance',
+      // CA-005: High-risk paths escalate to the right checks
+      // Persistence-upgrade runs when desktop state/API layer changes (medium+ risk)
+      riskTrigger: {
+        riskLevels: ['medium', 'high'],
+        escalatedChecks: ['persistence-upgrade'],
+      },
+    },
+
+    // === Baseline/Release only ===
     {
       id: 'baseline-catalog',
       title: 'Baseline case catalog validation',
@@ -159,5 +209,17 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
     })
   }
 
-  return lanes.filter((lane) => lane.requiredForModes.includes(mode))
+  // Filter lanes for the requested mode and apply mode-specific properties
+  const filteredLanes = lanes.filter((lane) => lane.requiredForModes.includes(mode))
+
+  // Set coverageMode based on mode:
+  // - PR mode uses 'changed-line' coverage for faster feedback
+  // - Baseline and release modes use 'full' coverage for complete verification
+  for (const lane of filteredLanes) {
+    if (lane.id === 'coverage') {
+      lane.coverageMode = mode === 'pr' ? 'changed-line' : 'full'
+    }
+  }
+
+  return filteredLanes
 }

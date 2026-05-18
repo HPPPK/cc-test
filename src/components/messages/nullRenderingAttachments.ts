@@ -37,6 +37,7 @@ const NULL_RENDERING_TYPES = [
   'ultrathink_effort',
   'max_turns_reached',
   'task_reminder',
+  'teammate_runtime_providers',
   'auto_mode',
   'auto_mode_exit',
   'output_token_usage',

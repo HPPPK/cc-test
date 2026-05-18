@@ -28,6 +28,7 @@ import { getAPIProvider } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
+import { getRuntimeEnvValue } from '../runtimeEnv.js'
 import {
   getOpenAIModelDisplayName,
   resolveOpenAICodexModel,
@@ -39,7 +40,7 @@ export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
-  return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
+  return getRuntimeEnvValue('ANTHROPIC_SMALL_FAST_MODEL') || getDefaultHaikuModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -71,7 +72,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    specifiedModel = getRuntimeEnvValue('ANTHROPIC_MODEL') || settings.model || undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -111,8 +112,9 @@ export function getDefaultOpusModel(): ModelName {
   if (isOpenAIAuthActive()) {
     return resolveOpenAICodexModel('opus')
   }
-  if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  const opusModel = getRuntimeEnvValue('ANTHROPIC_DEFAULT_OPUS_MODEL')
+  if (opusModel) {
+    return opusModel
   }
   // 3P providers (Bedrock, Vertex, Foundry) — kept as a separate branch
   // even when values match, since 3P availability lags firstParty and
@@ -128,8 +130,9 @@ export function getDefaultSonnetModel(): ModelName {
   if (isOpenAIAuthActive()) {
     return resolveOpenAICodexModel('sonnet')
   }
-  if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+  const sonnetModel = getRuntimeEnvValue('ANTHROPIC_DEFAULT_SONNET_MODEL')
+  if (sonnetModel) {
+    return sonnetModel
   }
   // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
   if (getAPIProvider() !== 'firstParty') {
@@ -143,8 +146,9 @@ export function getDefaultHaikuModel(): ModelName {
   if (isOpenAIAuthActive()) {
     return resolveOpenAICodexModel('haiku')
   }
-  if (process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
+  const haikuModel = getRuntimeEnvValue('ANTHROPIC_DEFAULT_HAIKU_MODEL')
+  if (haikuModel) {
+    return haikuModel
   }
 
   // Haiku 4.5 is available on all platforms (first-party, Foundry, Bedrock, Vertex)

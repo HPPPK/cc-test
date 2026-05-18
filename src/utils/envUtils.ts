@@ -1,16 +1,17 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
+import { getRuntimeEnvValue } from './runtimeEnv.js'
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
 export const getClaudeConfigHomeDir = memoize(
   (): string => {
     return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+      getRuntimeEnvValue('CLAUDE_CONFIG_DIR') ?? join(homedir(), '.claude')
     ).normalize('NFC')
   },
-  () => process.env.CLAUDE_CONFIG_DIR,
+  () => getRuntimeEnvValue('CLAUDE_CONFIG_DIR'),
 )
 
 export function getTeamsDir(): string {
@@ -59,7 +60,7 @@ export function isEnvDefinedFalsy(
  */
 export function isBareMode(): boolean {
   return (
-    isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_SIMPLE')) ||
     process.argv.includes('--bare')
   )
 }
@@ -94,14 +95,18 @@ export function parseEnvVars(
  * Matches the Anthropic Bedrock SDK's region behavior
  */
 export function getAWSRegion(): string {
-  return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+  return (
+    getRuntimeEnvValue('AWS_REGION') ||
+    getRuntimeEnvValue('AWS_DEFAULT_REGION') ||
+    'us-east-1'
+  )
 }
 
 /**
  * Get the default Vertex AI region
  */
 export function getDefaultVertexRegion(): string {
-  return process.env.CLOUD_ML_REGION || 'us-east5'
+  return getRuntimeEnvValue('CLOUD_ML_REGION') || 'us-east5'
 }
 
 /**
@@ -176,7 +181,7 @@ export function getVertexRegionForModel(
       model.startsWith(prefix),
     )
     if (match) {
-      return process.env[match[1]] || getDefaultVertexRegion()
+      return getRuntimeEnvValue(match[1]) || getDefaultVertexRegion()
     }
   }
   return getDefaultVertexRegion()

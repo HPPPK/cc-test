@@ -36,6 +36,7 @@ import { FeishuMediaService } from './media.js'
 import { AttachmentStore } from '../common/attachment/attachment-store.js'
 import { checkAttachmentLimit } from '../common/attachment/attachment-limits.js'
 import { ImageBlockWatcher } from '../common/attachment/image-block-watcher.js'
+import { isOutsideWorkDir } from './path-safety.js'
 import type { PendingUpload } from '../common/attachment/attachment-types.js'
 
 // ---------- init ----------
@@ -500,16 +501,6 @@ function summarizeToolCall(toolName: string, input: unknown): ToolCallSummary {
     default:
       return { icon: '🔧', label: toolName }
   }
-}
-
-/** True if `filePath` resolves to a location outside of `workDir`.
- *  Relative paths are resolved against workDir first. */
-function isOutsideWorkDir(filePath: string, workDir: string): boolean {
-  const abs = path.isAbsolute(filePath)
-    ? path.normalize(filePath)
-    : path.resolve(workDir, filePath)
-  const normWork = path.normalize(workDir).replace(/\/+$/, '')
-  return abs !== normWork && !abs.startsWith(normWork + path.sep)
 }
 
 /** Truncate a single-line target preview (e.g. shell command) to maxLen. */

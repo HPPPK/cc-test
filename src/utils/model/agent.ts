@@ -8,6 +8,7 @@ import {
   parseUserSpecifiedModel,
 } from './model.js'
 import { getAPIProvider } from './providers.js'
+import { getRuntimeEnvValue } from '../runtimeEnv.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
@@ -40,8 +41,9 @@ export function getAgentModel(
   toolSpecifiedModel?: ModelAlias,
   permissionMode?: PermissionMode,
 ): string {
-  if (process.env.CLAUDE_CODE_SUBAGENT_MODEL) {
-    return parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
+  const subagentModelOverride = getRuntimeEnvValue('CLAUDE_CODE_SUBAGENT_MODEL')
+  if (subagentModelOverride) {
+    return parseUserSpecifiedModel(subagentModelOverride)
   }
 
   // Extract Bedrock region prefix from parent model to inherit for subagents.

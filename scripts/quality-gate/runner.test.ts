@@ -7,6 +7,14 @@ import { renderJUnitReport, renderMarkdownReport } from './reporter'
 import { runQualityGate, runQualityGateLanes } from './runner'
 import type { LaneDefinition, QualityGateReport } from './types'
 
+function printLinesCommand(lines: string[]) {
+  return ['bun', '-e', `console.log(${JSON.stringify(lines.join('\n'))})`]
+}
+
+function exitCommand(code: number) {
+  return ['bun', '-e', `process.exit(${code})`]
+}
+
 describe('quality gate modes', () => {
   test('pr mode includes existing path-aware PR checks', () => {
     const lanes = lanesForMode('pr').map((lane) => lane.id)
@@ -204,18 +212,17 @@ describe('runQualityGate', () => {
         title: 'Impact report',
         description: 'Writes selected local checks',
         kind: 'command',
-        command: ['bash', '-lc', [
-          'printf "%s\\n"',
-          '"# PR impact report"',
-          '""',
-          '"Changed files: 1"',
-          '"Areas: server"',
-          '"Labels: none"',
-          '"Blocked: no"',
-          '""',
-          '"## Required local checks"',
-          '"- bun run check:server"',
-        ].join(' ')],
+        command: printLinesCommand([
+          '# PR impact report',
+          '',
+          'Changed files: 1',
+          'Areas: server',
+          'Labels: none',
+          'Blocked: no',
+          '',
+          '## Required local checks',
+          '- bun run check:server',
+        ]),
         requiredForModes: ['pr'],
       },
       {
@@ -223,7 +230,7 @@ describe('runQualityGate', () => {
         title: 'Desktop checks',
         description: 'Should be skipped',
         kind: 'command',
-        command: ['bash', '-lc', 'exit 7'],
+        command: exitCommand(7),
         impactRequiredCheck: 'bun run check:desktop',
         requiredForModes: ['pr'],
       },
@@ -255,18 +262,17 @@ describe('runQualityGate', () => {
         title: 'Impact report',
         description: 'Writes selected local checks',
         kind: 'command',
-        command: ['bash', '-lc', [
-          'printf "%s\\n"',
-          '"# PR impact report"',
-          '""',
-          '"Changed files: 1"',
-          '"Areas: desktop"',
-          '"Labels: none"',
-          '"Blocked: no"',
-          '""',
-          '"## Required local checks"',
-          '"- bun run check:desktop"',
-        ].join(' ')],
+        command: printLinesCommand([
+          '# PR impact report',
+          '',
+          'Changed files: 1',
+          'Areas: desktop',
+          'Labels: none',
+          'Blocked: no',
+          '',
+          '## Required local checks',
+          '- bun run check:desktop',
+        ]),
         requiredForModes: ['pr'],
       },
       {
@@ -274,7 +280,7 @@ describe('runQualityGate', () => {
         title: 'Desktop checks',
         description: 'Should run',
         kind: 'command',
-        command: ['bash', '-lc', 'exit 0'],
+        command: exitCommand(0),
         impactRequiredCheck: 'bun run check:desktop',
         requiredForModes: ['pr'],
       },
@@ -388,6 +394,109 @@ describe('runQualityGate', () => {
       expect(report.impact?.requiredChecks).toEqual(['`bun run check:desktop`'])
       expect(report.coverage?.suites[0].lines?.pct).toBe(88)
       expect(report.artifacts.map((artifact) => artifact.path)).toContain(join(coverageDir, 'coverage-report.md'))
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true })
+    }
+  })
+
+  test('command lanes finish when grandchildren keep inherited logs open', async () => {
+    const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
+    const scriptPath = join(artifactsDir, 'grandchild-log-lane.ts')
+    writeFileSync(scriptPath, [
+      'Bun.spawn([',
+      '  process.execPath,',
+      '  "-e",',
+      '  "setTimeout(() => {}, 10000)",',
+      '], { stdout: "inherit", stderr: "inherit" })',
+      'console.log("parent complete")',
+      'process.exit(0)',
+      '',
+    ].join('\n'))
+
+    const lanes: LaneDefinition[] = [
+      {
+        id: 'grandchild-log-lane',
+        title: 'Grandchild log lane',
+        description: 'Spawns a detached grandchild that inherits stdout.',
+        kind: 'command',
+        command: ['bun', scriptPath],
+        requiredForModes: ['pr'],
+      },
+    ]
+
+    try {
+      const start = Date.now()
+      const { report } = await runQualityGateLanes({
+        mode: 'pr',
+        dryRun: false,
+        allowLive: false,
+        baselineTargets: [],
+        rootDir: process.cwd(),
+        artifactsDir,
+        runId: 'grandchild-log-test',
+      }, lanes)
+
+      expect(Date.now() - start).toBeLessThan(5_000)
+      expect(report.results[0].status).toBe('passed')
+      expect(readFileSync(report.results[0].logPath!, 'utf8')).toContain('parent complete')
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true })
+    }
+  })
+
+  test('keeps PR readiness false when impact policy is blocked', async () => {
+    const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
+    const lanes: LaneDefinition[] = [
+      {
+        id: 'impact-report',
+        title: 'Impact report',
+        description: 'Writes blocked impact report',
+        kind: 'command',
+        command: ['bun', 'run', 'check:impact'],
+        requiredForModes: ['pr'],
+        category: 'scope',
+      },
+    ]
+
+    try {
+      const { report } = await runQualityGateLanes({
+        mode: 'pr',
+        dryRun: false,
+        allowLive: false,
+        baselineTargets: [],
+        rootDir: process.cwd(),
+        artifactsDir,
+        runId: 'policy-blocked-readiness-test',
+      }, lanes, async (lane, options) => {
+        const logPath = join(options.runOutputDir!, 'logs', `${lane.id}.log`)
+        mkdirSync(join(options.runOutputDir!, 'logs'), { recursive: true })
+        writeFileSync(logPath, [
+          '# PR impact report',
+          '',
+          'Changed files: 1',
+          'Areas: cli-core',
+          'Labels: none',
+          'Blocked: yes',
+          'Blocking reasons:',
+          '- CLI core changes require the allow-cli-core-change label and maintainer approval.',
+          '',
+          '## Required local checks',
+          '- `bun run check:policy`',
+        ].join('\n'))
+        return {
+          id: lane.id,
+          title: lane.title,
+          status: 'passed',
+          command: lane.command,
+          durationMs: 1,
+          exitCode: 0,
+          logPath,
+        }
+      })
+
+      expect(report.summary.failed).toBe(0)
+      expect(report.impact?.blocked).toBe(true)
+      expect(report.readyForMerge).toBe(false)
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }

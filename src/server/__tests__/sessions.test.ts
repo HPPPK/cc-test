@@ -25,12 +25,15 @@ import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 
 let tmpDir: string
 let service: SessionService
+let originalGitCeilingDirectories: string | undefined
 
 /** Create a temporary config dir and configure the service to use it. */
 async function setupTmpConfigDir(): Promise<string> {
   tmpDir = path.join(os.tmpdir(), `claude-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
+  originalGitCeilingDirectories = process.env.GIT_CEILING_DIRECTORIES
   process.env.CLAUDE_CONFIG_DIR = tmpDir
+  process.env.GIT_CEILING_DIRECTORIES = tmpDir
   return tmpDir
 }
 
@@ -39,6 +42,11 @@ async function cleanupTmpDir(): Promise<void> {
     await fs.rm(tmpDir, { recursive: true, force: true })
   }
   delete process.env.CLAUDE_CONFIG_DIR
+  if (originalGitCeilingDirectories !== undefined) {
+    process.env.GIT_CEILING_DIRECTORIES = originalGitCeilingDirectories
+  } else {
+    delete process.env.GIT_CEILING_DIRECTORIES
+  }
 }
 
 function git(cwd: string, ...args: string[]): string {
@@ -425,9 +433,15 @@ describe('SessionService', () => {
 
   it('should list sessions from JSONL files', async () => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
-    await writeSessionFile('-tmp-testproject', sessionId, [
+    const projectRoot = path.join(tmpDir, 'testproject')
+    const projectPath = sanitizePath(projectRoot)
+    await fs.mkdir(projectRoot, { recursive: true })
+    await writeSessionFile(projectPath, sessionId, [
       makeSnapshotEntry(),
-      makeUserEntry('Hello Claude'),
+      {
+        ...makeUserEntry('Hello Claude'),
+        cwd: projectRoot,
+      },
       makeAssistantEntry('Hi there!'),
     ])
 
@@ -439,8 +453,8 @@ describe('SessionService', () => {
     expect(session.id).toBe(sessionId)
     expect(session.title).toBe('Hello Claude')
     expect(session.messageCount).toBe(2) // 1 user + 1 assistant
-    expect(session.projectPath).toBe('-tmp-testproject')
-    expect(session.projectRoot).toBe('/tmp/test')
+    expect(session.projectPath).toBe(projectPath)
+    expect(session.projectRoot).toBe(await fs.realpath(projectRoot))
   })
 
   it('should expose the source project root for persisted worktree sessions', async () => {
@@ -1532,11 +1546,8 @@ describe('Sessions API', () => {
     const { handleSessionsApi } = await import('../api/sessions.js')
     const { handleConversationsApi } = await import('../api/conversations.js')
 
-    const port = 30000 + Math.floor(Math.random() * 10000)
-    baseUrl = `http://127.0.0.1:${port}`
-
     server = Bun.serve({
-      port,
+      port: 0,
       hostname: '127.0.0.1',
 
       async fetch(req) {
@@ -1554,6 +1565,7 @@ describe('Sessions API', () => {
         return new Response('Not Found', { status: 404 })
       },
     })
+    baseUrl = `http://127.0.0.1:${server.port}`
   })
 
   afterEach(async () => {

@@ -1,0 +1,6 @@
+{
+  "restore_files": {
+    ".specify/config.json": "{\n  \"specify_launcher\": {\n    \"command\": \"uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify\",\n    \"argv\": [\n      \"uvx\",\n      \"--from\",\n      \"git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6\",\n      \"specify\"\n    ]\n  },\n  \"notify\": \"uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify sp-teams notify-hook\"\n}\n",
+    ".codex/config.toml": "notify = [\"uvx\", \"--from\", \"git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6\", \"specify\", \"sp-teams\", \"notify-hook\"]\n"
+  }
+}

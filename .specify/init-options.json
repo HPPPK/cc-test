@@ -1,0 +1,10 @@
+{
+  "ai": "opencode",
+  "branch_numbering": "sequential",
+  "constitution_profile": "product",
+  "here": true,
+  "integration": "opencode",
+  "preset": null,
+  "script": "ps",
+  "speckit_version": "0.5.1.dev0"
+}

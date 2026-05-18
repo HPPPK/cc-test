@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'bun:test'
 import * as path from 'node:path'
+import { isOutsideWorkDir } from '../path-safety.js'
 
 // ---------- helpers extracted from feishu/index.ts for testability ----------
 
@@ -207,14 +208,6 @@ function summarizeToolCall(toolName: string, input: unknown): ToolCallSummary {
     default:
       return { icon: '🔧', label: toolName }
   }
-}
-
-function isOutsideWorkDir(filePath: string, workDir: string): boolean {
-  const abs = path.isAbsolute(filePath)
-    ? path.normalize(filePath)
-    : path.resolve(workDir, filePath)
-  const normWork = path.normalize(workDir).replace(/\/+$/, '')
-  return abs !== normWork && !abs.startsWith(normWork + path.sep)
 }
 
 function truncateTarget(s: string, maxLen = 160): string {

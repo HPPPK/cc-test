@@ -913,6 +913,8 @@ export const en = {
   'chat.backgroundAgents.title': 'Background agents',
   'chat.backgroundAgents.count': '{count} active or recent',
   'chat.backgroundAgents.agent': 'agent',
+  'chat.backgroundAgents.expand': 'Expand background agents',
+  'chat.backgroundAgents.collapse': 'Collapse background agents',
   'chat.backgroundAgents.tokens': '{count} tokens',
   'chat.backgroundAgents.status.running': 'running',
   'chat.backgroundAgents.status.completed': 'completed',

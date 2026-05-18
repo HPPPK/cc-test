@@ -24,6 +24,21 @@ import { whichSync } from './which.js'
 
 const GIT_ROOT_NOT_FOUND = Symbol('git-root-not-found')
 
+function normalizeComparablePath(filePath: string): string {
+  const resolved = resolve(filePath)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function getGitCeilingDirectories(): string[] {
+  const value = process.env.GIT_CEILING_DIRECTORIES
+  if (!value) return []
+  return value
+    .split(process.platform === 'win32' ? ';' : ':')
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .map(entry => normalizeComparablePath(entry))
+}
+
 const findGitRootImpl = memoizeWithLRU(
   (startPath: string): string | typeof GIT_ROOT_NOT_FOUND => {
     const startTime = Date.now()
@@ -31,9 +46,14 @@ const findGitRootImpl = memoizeWithLRU(
 
     let current = resolve(startPath)
     const root = current.substring(0, current.indexOf(sep) + 1) || sep
+    const ceilingDirectories = getGitCeilingDirectories()
     let statCount = 0
 
     while (current !== root) {
+      if (ceilingDirectories.includes(normalizeComparablePath(current))) {
+        break
+      }
+
       try {
         const gitPath = join(current, '.git')
         statCount++
@@ -81,7 +101,7 @@ const findGitRootImpl = memoizeWithLRU(
     })
     return GIT_ROOT_NOT_FOUND
   },
-  path => path,
+  path => `${path}\0${process.env.GIT_CEILING_DIRECTORIES ?? ''}`,
   50,
 )
 

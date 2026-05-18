@@ -1,0 +1,82 @@
+{
+  "locked_at": "2026-05-17T23:45:00+08:00",
+  "lock_status": "closed",
+
+  "goal": "Add a layered test verification workflow that provides under-1-minute fast feedback and reorganizes ordinary PR/verify toward a 5-minute target without weakening quality contracts.",
+
+  "non_goals": [
+    "Deleting tests merely to reduce runtime",
+    "Weakening coverage baselines or thresholds without explicit approval",
+    "Building a full expansion-ready test impact graph in first slice",
+    "Replacing bun run verify as PR readiness entrypoint",
+    "Bypassing same-area test, quarantine, persistence, or release requirements"
+  ],
+
+  "success_criteria": [
+    {
+      "id": "SC-001",
+      "criterion": "Routine local changes can run a fast lane in seconds to under 1 minute",
+      "measurable": true
+    },
+    {
+      "id": "SC-002",
+      "criterion": "Ordinary PR/verify has credible path to under 5 minutes for non-high-risk changes",
+      "measurable": true
+    },
+    {
+      "id": "SC-003",
+      "criterion": "Fast-lane routing is explainable via changed files and risk notes",
+      "measurable": true
+    },
+    {
+      "id": "SC-004",
+      "criterion": "High-risk paths still trigger heavier checks (E2E, live-provider, release gates)",
+      "measurable": true
+    },
+    {
+      "id": "SC-005",
+      "criterion": "Reports and output clearly distinguish fast feedback from PR readiness",
+      "measurable": true
+    },
+    {
+      "id": "SC-006",
+      "criterion": "Regression tests prove lane routing does not skip required checks",
+      "measurable": true
+    }
+  ],
+
+  "must_preserve_invariants": [
+    "bun run verify remains the PR readiness entrypoint",
+    "Same-area test requirements are preserved",
+    "Coverage baselines and thresholds are not weakened without approval",
+    "Quarantine governance is preserved",
+    "Persistence upgrade checks are preserved",
+    "Release confidence gates are preserved",
+    "Fast-lane success is NOT presented as merge-ready"
+  ],
+
+  "allowed_optimization_scope": [
+    "Refine lane selection logic in quality-gate/runner.ts",
+    "Add fast-lane mode definition in quality-gate/modes.ts",
+    "Extend impact-report.ts to emit fast-lane signals",
+    "Refine change-policy.ts risk triggers",
+    "Optimize test selection without deleting high-signal tests",
+    "Add conditional escalation for coverage and heavy evidence"
+  ],
+
+  "stop_and_reopen_conditions": [
+    "Implementation weakens quality contracts (coverage, same-area, quarantine, release)",
+    "Fast-lane success is presented as PR readiness",
+    "Implementation ignores existing gate architecture and creates unrelated parallel system",
+    "Either fast lane or PR/verify layering is dropped"
+  ],
+
+  "deferred_soft_unknowns": [
+    {
+      "field": "full_coverage_handling",
+      "owner": "sp-plan",
+      "latest_resolve_phase": "sp-plan",
+      "risk": "Must decide whether coverage remains mandatory, becomes changed-line-first, or is conditionally escalated"
+    }
+  ]
+}

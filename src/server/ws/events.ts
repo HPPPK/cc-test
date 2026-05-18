@@ -86,6 +86,13 @@ export type TeamMemberStatus = {
   role: string
   status: 'running' | 'idle' | 'completed' | 'error'
   currentTask?: string
+  model?: string
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
   /** ISO 8601 timestamp when member joined the team */
   joinedAt?: string
   /** Cumulative input token count */

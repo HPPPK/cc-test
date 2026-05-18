@@ -268,6 +268,9 @@ function shouldRespectGitignore(): boolean {
 async function getFilesUsingGit(rootPath: string, respectGitignore: boolean): Promise<string[] | null> {
   const repoRoot = findGitRoot(rootPath)
   if (!repoRoot) return null
+  if (normalizeComparablePath(repoRoot) !== normalizeComparablePath(rootPath)) {
+    return null
+  }
 
   const trackedResult = await execFileNoThrowWithCwd(
     gitExe(),

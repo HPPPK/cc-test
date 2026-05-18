@@ -14,6 +14,7 @@
  */
 
 import { AsyncLocalStorage } from 'async_hooks'
+import type { RuntimeEnvOverlay } from './runtimeEnv.js'
 
 /**
  * Runtime context for in-process teammates.
@@ -36,6 +37,13 @@ export type TeammateContext = {
   isInProcess: true
   /** Abort controller for lifecycle management (linked to parent) */
   abortController: AbortController
+  /** Per-teammate provider/model runtime selection. */
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+  /** Per-teammate env overlay for in-process provider isolation. */
+  runtimeEnv?: RuntimeEnvOverlay
 }
 
 const teammateContextStorage = new AsyncLocalStorage<TeammateContext>()
@@ -88,6 +96,8 @@ export function createTeammateContext(config: {
   planModeRequired: boolean
   parentSessionId: string
   abortController: AbortController
+  runtime?: TeammateContext['runtime']
+  runtimeEnv?: RuntimeEnvOverlay
 }): TeammateContext {
   return {
     ...config,

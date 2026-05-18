@@ -7,6 +7,7 @@ import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getRuntimeEnvValue } from './runtimeEnv.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
@@ -117,7 +118,7 @@ export function modelSupportsThinking(model: string): boolean {
 }
 
 function isMiniMaxAnthropicEndpoint(): boolean {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL?.toLowerCase() ?? ''
+  const baseUrl = getRuntimeEnvValue('ANTHROPIC_BASE_URL')?.toLowerCase() ?? ''
   return baseUrl.includes('minimax') || baseUrl.includes('minimaxi')
 }
 
@@ -163,8 +164,9 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
 }
 
 export function shouldEnableThinkingByDefault(): boolean {
-  if (process.env.MAX_THINKING_TOKENS) {
-    return parseInt(process.env.MAX_THINKING_TOKENS, 10) > 0
+  const maxThinkingTokens = getRuntimeEnvValue('MAX_THINKING_TOKENS')
+  if (maxThinkingTokens) {
+    return parseInt(maxThinkingTokens, 10) > 0
   }
 
   const { settings } = getSettingsWithErrors()
@@ -181,5 +183,5 @@ export function shouldEnableThinkingByDefault(): boolean {
 }
 
 export function shouldSendExplicitDisabledThinking(): boolean {
-  return isEnvTruthy(process.env.CC_HAHA_SEND_DISABLED_THINKING)
+  return isEnvTruthy(getRuntimeEnvValue('CC_HAHA_SEND_DISABLED_THINKING'))
 }

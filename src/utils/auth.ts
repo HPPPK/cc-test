@@ -60,6 +60,7 @@ import { execSyncWithDefaults_DEPRECATED } from './execFileNoThrow.js'
 import * as lockfile from './lockfile.js'
 import { logError } from './log.js'
 import { memoizeWithTTLAsync } from './memoize.js'
+import { getRuntimeEnvValue } from './runtimeEnv.js'
 import { getSecureStorage } from './secureStorage/index.js'
 import {
   clearLegacyApiKeyPrefetch,
@@ -91,8 +92,8 @@ const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
  */
 function isManagedOAuthContext(): boolean {
   return (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ||
-    process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_REMOTE')) ||
+    getRuntimeEnvValue('CLAUDE_CODE_ENTRYPOINT') === 'claude-desktop'
   )
 }
 
@@ -109,24 +110,24 @@ export function isAnthropicAuthEnabled(): boolean {
   // ~/.claude settings (apiKeyHelper, settings.env.ANTHROPIC_API_KEY) MUST NOT
   // flip this — they'd cause a header mismatch with the proxy and a bogus
   // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
+  if (getRuntimeEnvValue('ANTHROPIC_UNIX_SOCKET')) {
+    return !!getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN')
   }
 
   const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_AZURE_OPENAI)
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_BEDROCK')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_VERTEX')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_FOUNDRY')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_AZURE_OPENAI'))
 
   // Check if user has configured an external API key source
   // This allows externally-provided API keys to work (without requiring proxy configuration)
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    getRuntimeEnvValue('ANTHROPIC_AUTH_TOKEN') ||
     apiKeyHelper ||
-    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    getRuntimeEnvValue('CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR')
 
   // Check if API key is from an external source (not managed by /login)
   const { source: apiKeySource } = getAnthropicApiKeyWithSource({
@@ -163,11 +164,11 @@ export function getAuthTokenSource() {
     return { source: 'none' as const, hasToken: false }
   }
 
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
+  if (getRuntimeEnvValue('ANTHROPIC_AUTH_TOKEN') && !isManagedOAuthContext()) {
     return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
   }
 
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+  if (getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN')) {
     return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
   }
 
@@ -180,7 +181,7 @@ export function getAuthTokenSource() {
     // doesn't exist. Call sites fall through correctly — the new source is
     // !== 'none' (cli/handlers/auth.ts → oauth_token) and not in the
     // isEnvVarToken set (auth.ts:1844 → generic re-login message).
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
+    if (getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR')) {
       return {
         source: 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
         hasToken: true,
@@ -235,8 +236,9 @@ export function getAnthropicApiKeyWithSource(
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.
   if (isBareMode()) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return { key: process.env.ANTHROPIC_API_KEY, source: 'ANTHROPIC_API_KEY' }
+    const bareApiKey = getRuntimeEnvValue('ANTHROPIC_API_KEY')
+    if (bareApiKey) {
+      return { key: bareApiKey, source: 'ANTHROPIC_API_KEY' }
     }
     if (getConfiguredApiKeyHelper()) {
       return {
@@ -253,7 +255,7 @@ export function getAnthropicApiKeyWithSource(
   // https://anthropic.slack.com/archives/C08428WSLKV/p1747331773214779
   const apiKeyEnv = isRunningOnHomespace()
     ? undefined
-    : process.env.ANTHROPIC_API_KEY
+    : getRuntimeEnvValue('ANTHROPIC_API_KEY')
 
   // Always check for direct environment variable when the user ran claude --print.
   // This is useful for CI, etc.
@@ -276,8 +278,8 @@ export function getAnthropicApiKeyWithSource(
 
     if (
       !apiKeyEnv &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+      !getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN') &&
+      !getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR')
     ) {
       throw new Error(
         'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
@@ -1275,52 +1277,61 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   }
 }
 
-export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
-  // --bare: API-key-only. No OAuth env tokens, no keychain, no credentials file.
-  if (isBareMode()) return null
+export const getClaudeAIOAuthTokens = memoize(
+  (): OAuthTokens | null => {
+    // --bare: API-key-only. No OAuth env tokens, no keychain, no credentials file.
+    if (isBareMode()) return null
 
-  // Check for force-set OAuth token from environment variable
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
+    // Check for force-set OAuth token from environment variable
+    const oauthToken = getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN')
+    if (oauthToken) {
+      // Return an inference-only token (unknown refresh and expiry)
+      return {
+        accessToken: oauthToken,
+        refreshToken: null,
+        expiresAt: null,
+        scopes: ['user:inference'],
+        subscriptionType: null,
+        rateLimitTier: null,
+      }
     }
-  }
 
-  // Check for OAuth token from file descriptor
-  const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
-  if (oauthTokenFromFd) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: oauthTokenFromFd,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
+    // Check for OAuth token from file descriptor
+    const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
+    if (oauthTokenFromFd) {
+      // Return an inference-only token (unknown refresh and expiry)
+      return {
+        accessToken: oauthTokenFromFd,
+        refreshToken: null,
+        expiresAt: null,
+        scopes: ['user:inference'],
+        subscriptionType: null,
+        rateLimitTier: null,
+      }
     }
-  }
 
-  try {
-    const secureStorage = getSecureStorage()
-    const storageData = secureStorage.read()
-    const oauthData = storageData?.claudeAiOauth
+    try {
+      const secureStorage = getSecureStorage()
+      const storageData = secureStorage.read()
+      const oauthData = storageData?.claudeAiOauth
 
-    if (!oauthData?.accessToken) {
+      if (!oauthData?.accessToken) {
+        return null
+      }
+
+      return oauthData
+    } catch (error) {
+      logError(error)
       return null
     }
-
-    return oauthData
-  } catch (error) {
-    logError(error)
-    return null
-  }
-})
+  },
+  () =>
+    [
+      isBareMode() ? 'bare' : 'normal',
+      getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
+      getRuntimeEnvValue('CLAUDE_CONFIG_DIR') ?? '',
+    ].join(':'),
+)
 
 /**
  * Clears all OAuth token caches. Call this on 401 errors to ensure
@@ -1424,7 +1435,7 @@ export async function getClaudeAIOAuthTokensAsync(): Promise<OAuthTokens | null>
 
   // Env var and FD tokens are sync and don't hit the keychain
   if (
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+    getRuntimeEnvValue('CLAUDE_CODE_OAUTH_TOKEN') ||
     getOAuthTokenFromFileDescriptor()
   ) {
     return getClaudeAIOAuthTokens()
@@ -1615,10 +1626,10 @@ export function is1PApiCustomer(): boolean {
 
   // Exclude Vertex, Bedrock, and Foundry customers
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_AZURE_OPENAI)
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_BEDROCK')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_VERTEX')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_FOUNDRY')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_AZURE_OPENAI'))
   ) {
     return false
   }
@@ -1755,10 +1766,10 @@ export function getSubscriptionName(): string {
 /** Check if using third-party services (Bedrock or Vertex or Foundry) */
 export function isUsing3PServices(): boolean {
   return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_AZURE_OPENAI)
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_BEDROCK')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_VERTEX')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_FOUNDRY')) ||
+    isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_AZURE_OPENAI'))
   )
 }
 

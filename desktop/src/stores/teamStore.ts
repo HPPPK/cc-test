@@ -75,7 +75,41 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
+function normalizeMemberRuntime(raw: Record<string, unknown>) {
+  const rawRuntime = raw.runtime
+  const runtime =
+    rawRuntime &&
+    typeof rawRuntime === 'object' &&
+    typeof (rawRuntime as Record<string, unknown>).modelId === 'string'
+      ? {
+          ...(((rawRuntime as Record<string, unknown>).providerId !== undefined)
+            ? {
+                providerId: (rawRuntime as Record<string, unknown>)
+                  .providerId as string | null,
+              }
+            : {}),
+          modelId: (rawRuntime as Record<string, unknown>).modelId as string,
+        }
+      : undefined
+  const providerId =
+    raw.providerId !== undefined
+      ? (raw.providerId as string | null)
+      : runtime?.providerId
+  const modelId =
+    typeof raw.modelId === 'string'
+      ? (raw.modelId as string)
+      : runtime?.modelId ?? (raw.model as string | undefined)
+
+  return {
+    model: raw.model as string | undefined,
+    ...(providerId !== undefined ? { providerId } : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(runtime ? { runtime } : {}),
+  }
+}
+
 function toTeamMember(raw: Record<string, unknown>): TeamMember {
+  const runtime = normalizeMemberRuntime(raw)
   return {
     agentId: (raw.agentId as string) || '',
     name: raw.name as string | undefined,
@@ -87,6 +121,7 @@ function toTeamMember(raw: Record<string, unknown>): TeamMember {
       '',
     status: normalizeMemberStatus(raw.status as string | undefined),
     currentTask: raw.currentTask as string | undefined,
+    ...runtime,
     color: raw.color as AgentColor | undefined,
     sessionId: raw.sessionId as string | undefined,
     joinedAt: normalizeJoinedAt(raw.joinedAt),
@@ -482,6 +517,12 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
             role: m.role,
             status: normalizeMemberStatus(m.status),
             currentTask: m.currentTask,
+            model: m.model ?? existing?.model,
+            providerId: m.providerId !== undefined
+              ? m.providerId
+              : existing?.providerId ?? existing?.runtime?.providerId,
+            modelId: m.modelId ?? existing?.modelId,
+            runtime: m.runtime ?? existing?.runtime,
             color: colors.get(m.agentId) ?? AGENT_COLORS[i % AGENT_COLORS.length]!,
             sessionId: existing?.sessionId,
             joinedAt: m.joinedAt ?? existing?.joinedAt,

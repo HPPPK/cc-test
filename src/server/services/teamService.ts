@@ -43,11 +43,48 @@ function addNameVariants(names: Set<string>, name: string): void {
   names.add(name)
   names.add(toMailboxName(name))
 }
+
+function resolveMemberRuntime(member: {
+  model?: string
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+}): {
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+} {
+  const runtime =
+    member.runtime && typeof member.runtime.modelId === 'string'
+      ? member.runtime
+      : undefined
+  const providerId =
+    member.providerId !== undefined ? member.providerId : runtime?.providerId
+  const modelId = member.modelId ?? runtime?.modelId ?? member.model
+
+  return {
+    ...(providerId !== undefined ? { providerId } : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(runtime ? { runtime } : {}),
+  }
+}
 export type TeamMember = {
   agentId: string
   name: string
   agentType?: string
   model?: string
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
   color?: string
   backendType?: string
   status: 'running' | 'completed' | 'idle' | 'failed'
@@ -95,6 +132,12 @@ type TeamFileRaw = {
     name: string
     agentType?: string
     model?: string
+    providerId?: string | null
+    modelId?: string
+    runtime?: {
+      providerId?: string | null
+      modelId: string
+    }
     prompt?: string
     color?: string
     joinedAt: number
@@ -185,11 +228,13 @@ export class TeamService {
         const transcriptMetrics = needsTranscriptMetrics
           ? await this.getMemberTokenMetrics(config, m)
           : null
+        const runtime = resolveMemberRuntime(m)
         return {
           agentId: m.agentId,
           name: m.name,
           agentType: m.agentType,
           model: m.model,
+          ...runtime,
           color: m.color,
           backendType: m.backendType,
           status: this.deriveStatus(m.isActive),

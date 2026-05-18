@@ -35,7 +35,11 @@ describe('installPrePushHook', () => {
       expect(result.hookPath).toBe(hookPath)
       expect(result.liveConfigured).toBe(false)
       expect(readFileSync(hookPath, 'utf8')).toContain('echo quality')
-      expect(statSync(hookPath).mode & 0o111).toBeGreaterThan(0)
+      if (process.platform === 'win32') {
+        expect(statSync(hookPath).isFile()).toBe(true)
+      } else {
+        expect(statSync(hookPath).mode & 0o111).toBeGreaterThan(0)
+      }
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }

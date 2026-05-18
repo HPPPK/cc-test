@@ -1,5 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
+import { getRuntimeEnvValue } from '../runtimeEnv.js'
 
 export type ModelCapabilityOverride =
   | 'effort'
@@ -34,8 +35,8 @@ export const get3PModelCapabilityOverride = memoize(
     }
     const m = model.toLowerCase()
     for (const tier of TIERS) {
-      const pinned = process.env[tier.modelEnvVar]
-      const capabilities = process.env[tier.capabilitiesEnvVar]
+      const pinned = getRuntimeEnvValue(tier.modelEnvVar)
+      const capabilities = getRuntimeEnvValue(tier.capabilitiesEnvVar)
       if (!pinned || capabilities === undefined) continue
       if (m !== pinned.toLowerCase()) continue
       return capabilities
@@ -46,5 +47,15 @@ export const get3PModelCapabilityOverride = memoize(
     }
     return undefined
   },
-  (model, capability) => `${model.toLowerCase()}:${capability}`,
+  (model, capability) =>
+    [
+      model.toLowerCase(),
+      capability,
+      getAPIProvider(),
+      isFirstPartyAnthropicBaseUrl() ? 'firstPartyBase' : 'customBase',
+      ...TIERS.flatMap(tier => [
+        getRuntimeEnvValue(tier.modelEnvVar) ?? '',
+        getRuntimeEnvValue(tier.capabilitiesEnvVar) ?? '',
+      ]),
+    ].join(':'),
 )

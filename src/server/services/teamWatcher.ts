@@ -32,6 +32,45 @@ function addNameVariants(names: Set<string>, name: unknown): void {
   names.add(toMailboxName(name))
 }
 
+function resolveMemberRuntime(member: Record<string, unknown>): {
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
+} {
+  const rawRuntime = member.runtime
+  const runtime =
+    rawRuntime &&
+    typeof rawRuntime === 'object' &&
+    typeof (rawRuntime as Record<string, unknown>).modelId === 'string'
+      ? {
+          ...(((rawRuntime as Record<string, unknown>).providerId !== undefined)
+            ? {
+                providerId: (rawRuntime as Record<string, unknown>)
+                  .providerId as string | null,
+              }
+            : {}),
+          modelId: (rawRuntime as Record<string, unknown>).modelId as string,
+        }
+      : undefined
+  const providerId =
+    member.providerId !== undefined
+      ? (member.providerId as string | null)
+      : runtime?.providerId
+  const modelId =
+    typeof member.modelId === 'string'
+      ? (member.modelId as string)
+      : runtime?.modelId ?? (member.model as string | undefined)
+
+  return {
+    ...(providerId !== undefined ? { providerId } : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(runtime ? { runtime } : {}),
+  }
+}
+
 type TokenMetrics = {
   inputTokens: number
   outputTokens: number
@@ -150,6 +189,10 @@ export class TeamWatcher {
       const config = JSON.parse(content) as Record<string, unknown>
       const metrics = this.extractMemberStatuses(config).map((member) => ({
         agentId: member.agentId,
+        model: member.model ?? null,
+        providerId: member.providerId ?? null,
+        modelId: member.modelId ?? null,
+        runtime: member.runtime ?? null,
         inputTokens: member.inputTokens ?? null,
         outputTokens: member.outputTokens ?? null,
       }))
@@ -183,12 +226,15 @@ export class TeamWatcher {
       }
 
       const transcriptMetrics = this.getMemberTokenMetrics(config, m)
+      const runtime = resolveMemberRuntime(m)
 
       return {
         agentId: (m.agentId as string) || '',
         role: (m.name as string) || (m.agentType as string) || 'member',
         status,
         currentTask: (m.currentTask as string) || undefined,
+        model: (m.model as string) || undefined,
+        ...runtime,
         joinedAt,
         inputTokens: typeof m.inputTokens === 'number'
           ? (m.inputTokens as number)

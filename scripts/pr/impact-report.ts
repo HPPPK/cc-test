@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { evaluateChangePolicy } from './change-policy'
-import { changedFilesForLocalPrCheck } from './changed-files'
+import { evaluateChangePolicy, selectFastLaneTests } from './change-policy.js'
+import { changedFilesForLocalPrCheck } from './changed-files.js'
 
 function parseListArg(name: string) {
   const index = process.argv.indexOf(name)
@@ -138,6 +138,9 @@ const warnings = [...coverageWarnings(result.files)]
 const blockingTestSignals = result.missingTestSignals
 const notes = riskNotes(result.files)
 
+// 获取 fast-lane 测试选择
+const fastLaneSelection = selectFastLaneTests(files)
+
 console.log('# PR impact report')
 console.log('')
 console.log(`Changed files: ${result.files.length}`)
@@ -156,6 +159,51 @@ console.log('')
 console.log('## Required local checks')
 for (const command of commands) {
   console.log(`- \`${command}\``)
+}
+
+// Fast-lane tests 部分 (CA-003: 跳过的区域必须可解释)
+console.log('')
+console.log('## Fast-lane tests')
+console.log('')
+console.log('### Core smoke')
+for (const pattern of fastLaneSelection.coreSmoke) {
+  console.log(`- ${pattern}`)
+}
+
+console.log('')
+console.log('### Selected by area')
+const selectedAreas = Object.entries(fastLaneSelection.selectedTests)
+if (selectedAreas.length === 0) {
+  console.log('- (none)')
+} else {
+  for (const [area, patterns] of selectedAreas) {
+    if (patterns && patterns.length > 0) {
+      for (const pattern of patterns) {
+        console.log(`- ${area}: ${pattern}`)
+      }
+    } else {
+      console.log(`- ${area}: (none)`)
+    }
+  }
+}
+
+console.log('')
+console.log('### Skipped')
+if (fastLaneSelection.skipped.length === 0) {
+  console.log('- (none)')
+} else {
+  for (const skipped of fastLaneSelection.skipped) {
+    console.log(`- ${skipped.area}: ${skipped.reason}`)
+  }
+}
+
+console.log('')
+console.log('### Risk assessment')
+console.log(`- Level: ${result.riskLevel}`)
+if (result.escalatedChecks && result.escalatedChecks.length > 0) {
+  console.log(`- Escalated checks: ${result.escalatedChecks.join(', ')}`)
+} else {
+  console.log('- Escalated checks: (none)')
 }
 
 console.log('')
@@ -181,6 +229,56 @@ if (notes.length === 0) {
   for (const note of notes) {
     console.log(`- ${note}`)
   }
+}
+
+// CA-005: High-risk paths escalate to the right checks
+// CA-003: Skipped lanes must be explainable
+console.log('')
+if (result.escalatedChecks && result.escalatedChecks.length > 0) {
+  console.log('## Escalated checks')
+  console.log('')
+
+  // 收集触发升级的路径
+  const triggeringPaths: string[] = []
+
+  for (const check of result.escalatedChecks) {
+    console.log(`- ${check}`)
+
+    if (check === 'native-checks') {
+      const tauriFiles = result.files.filter((f) => f.startsWith('desktop/src-tauri/'))
+      triggeringPaths.push(...tauriFiles)
+    }
+    if (check === 'live-provider-checks') {
+      const providerFiles = result.files.filter((f) =>
+        f.includes('provider') ||
+        f.includes('WebSearchTool') ||
+        f.startsWith('src/server/ws/') ||
+        f.startsWith('src/server/services/conversation')
+      )
+      triggeringPaths.push(...providerFiles)
+    }
+    if (check === 'release-gates') {
+      const releaseFiles = result.files.filter((f) =>
+        f.startsWith('.github/workflows/') ||
+        f.startsWith('scripts/pr/')
+      )
+      triggeringPaths.push(...releaseFiles)
+    }
+  }
+
+  console.log('')
+  console.log('Triggered by high-risk paths:')
+  for (const path of [...new Set(triggeringPaths)]) {
+    console.log(`- ${path}`)
+  }
+} else if (result.riskLevel === 'medium' && result.riskGuidance) {
+  console.log('## Risk guidance')
+  console.log('')
+  console.log(`- ${result.riskGuidance}`)
+} else if (result.riskLevel === 'low' && result.skipExplanation) {
+  console.log('## Heavy check skip')
+  console.log('')
+  console.log(`- ${result.skipExplanation}`)
 }
 
 console.log('')

@@ -91,6 +91,7 @@ describe('ConversationService', () => {
     const service = new ConversationService() as any
     const workDir = path.join(tmpDir, 'workspace', 'myself_code', 'claude-code-haha')
     await fs.mkdir(workDir, { recursive: true })
+    await fs.mkdir(path.join(workDir, '.git'), { recursive: true })
 
     const env = (await service.buildChildEnv(workDir)) as Record<string, string>
 
@@ -101,7 +102,7 @@ describe('ConversationService', () => {
     expect(env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE).not.toContain('myself_code')
   })
 
-  test('strips inherited provider env when desktop provider config exists', async () => {
+  test('uses official managed OAuth when providers index has no active provider despite stale settings env', async () => {
     const ccHahaDir = path.join(tmpDir, 'cc-haha')
     await fs.mkdir(ccHahaDir, { recursive: true })
     await fs.writeFile(
@@ -109,10 +110,23 @@ describe('ConversationService', () => {
       JSON.stringify({ activeId: null, providers: [] }),
       'utf-8',
     )
+    await fs.writeFile(
+      path.join(ccHahaDir, 'settings.json'),
+      JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'stale-settings-token',
+          ANTHROPIC_BASE_URL: 'https://stale-settings.example/anthropic',
+        },
+      }),
+      'utf-8',
+    )
 
     const service = new ConversationService() as any
     const env = (await service.buildChildEnv('D:\\workspace\\code\\myself_code\\cc-haha')) as Record<string, string>
 
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop')
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
     expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
     expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(env.ANTHROPIC_MODEL).toBeUndefined()
@@ -140,6 +154,7 @@ describe('ConversationService', () => {
     const env = (await service.buildChildEnv('/tmp')) as Record<string, string>
 
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop')
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('haha-fresh-token')
   })
 
@@ -166,6 +181,7 @@ describe('ConversationService', () => {
 
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined()
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined()
   })
 
   test('buildChildEnv injects explicit provider runtime env for session-scoped providers', async () => {
@@ -276,6 +292,7 @@ describe('ConversationService', () => {
 
     expect(env.ANTHROPIC_API_KEY).toBeUndefined()
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop')
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('forced-official-token')
   })
 
@@ -292,6 +309,7 @@ describe('ConversationService', () => {
     const env = (await service.buildChildEnv('/tmp')) as Record<string, string>
 
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop')
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
   })
 

@@ -40,8 +40,11 @@ afterEach(async () => {
 })
 
 describe('memory API', () => {
+  const symlinkIt = process.platform === 'win32' ? it.skip : it
+
   it('lists current project memory files with frontmatter metadata', async () => {
     const cwd = path.join(tmpDir, 'workspace', 'app')
+    await fs.mkdir(path.join(cwd, '.git'), { recursive: true })
     const projectId = sanitizePath(cwd)
     const memoryDir = path.join(tmpDir, 'projects', projectId, 'memory')
     await fs.mkdir(path.join(memoryDir, 'notes'), { recursive: true })
@@ -149,7 +152,7 @@ describe('memory API', () => {
     })
   })
 
-  it('rejects traversal and symlink escapes', async () => {
+  symlinkIt('rejects traversal and symlink escapes', async () => {
     const projectId = sanitizePath(path.join(tmpDir, 'workspace', 'app'))
     const memoryDir = path.join(tmpDir, 'projects', projectId, 'memory')
     const outsideDir = path.join(tmpDir, 'outside')

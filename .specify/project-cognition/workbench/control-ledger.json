@@ -1,0 +1,30 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "file_coverage": {
+    "total_source_files_inventoried": 63,
+    "entrypoint_files": [
+      "bin/claude-haha",
+      "src/entrypoints/cli.tsx",
+      "src/entrypoints/init.ts",
+      "src/entrypoints/mcp.ts",
+      "src/entrypoints/agentSdkTypes.ts",
+      "desktop/src/main.tsx"
+    ],
+    "branch_nodes": [
+      {"id": "bin-launcher", "type": "entrypoint-exec"},
+      {"id": "cli-entrypoint", "type": "entrypoint-tsx"},
+      {"id": "desktop-entrypoint", "type": "entrypoint-react"}
+    ],
+    "control_nodes": [
+      {"id": "src-query-engine", "type": "control-loop"},
+      {"id": "src-commands-registry", "type": "control-dispatch"},
+      {"id": "src-tools-registry", "type": "control-dispatch"},
+      {"id": "src-server", "type": "control-server"},
+      {"id": "desktop-api", "type": "control-client"}
+    ]
+  },
+  "entrypoint_coverage": "high (6 key entrypoints identified)",
+  "branch_coverage": "high (3 branch nodes identified)",
+  "control_node_coverage": "high (5 control nodes identified)"
+}

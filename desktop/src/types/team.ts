@@ -12,6 +12,13 @@ export type TeamMember = {
   role: string
   status: 'running' | 'idle' | 'completed' | 'error'
   currentTask?: string
+  model?: string
+  providerId?: string | null
+  modelId?: string
+  runtime?: {
+    providerId?: string | null
+    modelId: string
+  }
   color?: AgentColor
   sessionId?: string
   /** ISO 8601 timestamp when member joined the team */

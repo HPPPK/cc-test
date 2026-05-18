@@ -83,7 +83,9 @@ const baseInputSchema = lazySchema(() => z.object({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
   subagent_type: z.string().optional().describe('The type of specialized agent to use for this task'),
-  model: z.enum(['sonnet', 'opus', 'haiku']).optional().describe("Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent."),
+  model: z.enum(['sonnet', 'opus', 'haiku']).optional().describe("Optional legacy model alias override for this agent. This does not select a custom provider; for spawned teammates on a specific provider/model, use provider_id and model_id together."),
+  provider_id: z.string().nullable().optional().describe('Optional provider ID for a spawned teammate. Required with model_id. Use null for the official/default provider. If the provider roster shows provider_id=null, pass JSON null, not the string "null".'),
+  model_id: z.string().optional().describe('Optional exact model ID for a spawned teammate. Requires provider_id so the runtime provider is explicit. This is passed through without alias parsing.'),
   run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.')
 }));
 
@@ -133,6 +135,8 @@ type AgentToolInput = z.infer<ReturnType<typeof baseInputSchema>> & {
   name?: string;
   team_name?: string;
   mode?: z.infer<ReturnType<typeof permissionModeSchema>>;
+  provider_id?: string | null;
+  model_id?: string;
   isolation?: 'worktree' | 'remote';
   cwd?: string;
 };
@@ -165,6 +169,12 @@ type TeammateSpawnedOutput = {
   agent_id: string;
   agent_type?: string;
   model?: string;
+  provider_id?: string | null;
+  model_id?: string;
+  runtime?: {
+    providerId?: string | null;
+    modelId: string;
+  };
   name: string;
   color?: string;
   tmux_session_name: string;
@@ -245,6 +255,8 @@ export const AgentTool = buildTool({
     name,
     team_name,
     mode: spawnMode,
+    provider_id,
+    model_id,
     isolation,
     cwd
   }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
@@ -282,6 +294,12 @@ export const AgentTool = buildTool({
     // Check if this is a multi-agent spawn request
     // Spawn is triggered when team_name is set (from param or context) and name is provided
     if (teamName && name) {
+      if (provider_id !== undefined && !model_id?.trim()) {
+        throw new Error('model_id is required when provider_id is provided for a teammate.');
+      }
+      if (model_id?.trim() && provider_id === undefined) {
+        throw new Error('provider_id is required when model_id is provided for a teammate. Use provider_id=null for the official/default provider, or a provider_id from the latest Teammate runtime providers reminder.');
+      }
       // Set agent definition color for grouped UI display before spawning
       const agentDef = subagent_type ? toolUseContext.options.agentDefinitions.activeAgents.find(a => a.agentType === subagent_type) : undefined;
       if (agentDef?.color) {
@@ -295,6 +313,8 @@ export const AgentTool = buildTool({
         use_splitpane: true,
         plan_mode_required: spawnMode === 'plan',
         model: model ?? agentDef?.model,
+        providerId: provider_id,
+        modelId: model_id,
         agent_type: subagent_type,
         invokingRequestId: assistantMessage?.requestId
       }, toolUseContext);

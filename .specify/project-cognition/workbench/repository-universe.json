@@ -1,0 +1,38 @@
+{
+  "command": "map-scan",
+  "timestamp": "2026-05-16T21:59:00Z",
+  "project": "cc-haha",
+  "root": "F:/github/cc-haha",
+  "primary_language": "TypeScript",
+  "secondary_languages": ["Rust (Tauri)", "Python (runtime)", "Bash (launcher)"],
+  "runtime": "Bun (primary), Tauri 2 (desktop native)",
+  "build_system": "Bun + Vite (desktop frontend) + Cargo (Tauri)",
+  "test_framework": "Vitest (desktop), bun:test (root/adapters)",
+  "ci_cd": "5 GitHub Actions workflows",
+  "repository_universe": {
+    "total_git_tracked_files": "~4000+ (based on source surface enumeration)",
+    "src_dirs": 48,
+    "desktop_dirs": 14,
+    "adapter_packages": 5,
+    "scripts": "~20+ script files",
+    "docs": "VitePress site",
+    "github_workflows": 5,
+    "release_versions": 18
+  },
+  "surface_boundaries": {
+    "cli_core": "src/ (entrypoints, main, TUI, commands, tools, services, utils)",
+    "server": "src/server/ (HTTP/WS, API, proxy, middleware, services)",
+    "desktop_frontend": "desktop/src/ (React, stores, API client, components)",
+    "desktop_native": "desktop/src-tauri/ (Rust Tauri bindings)",
+    "adapters": "adapters/ (IM platform bridges)",
+    "test_infra": "scripts/quality-gate/, scripts/pr/, scripts/git-hooks/",
+    "docs_site": "docs/ (VitePress)"
+  },
+  "excluded_roots": [
+    {"path": "node_modules/", "reason": "vendor"},
+    {"path": "desktop/node_modules/", "reason": "vendor"},
+    {"path": "adapters/node_modules/", "reason": "vendor"},
+    {"path": ".git/", "reason": "git internals"},
+    {"path": "artifacts/", "reason": "build output"}
+  ]
+}

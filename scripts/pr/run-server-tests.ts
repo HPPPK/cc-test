@@ -7,6 +7,8 @@ import { loadQuarantineManifest, quarantinedPathSet } from '../quality-gate/quar
 const root = process.cwd()
 const roots = ['src/server', 'src/tools', 'src/utils']
 const excludedFiles = quarantinedPathSet(loadQuarantineManifest(undefined, { enforceReviewDate: true }))
+const testTimeoutMs = process.env.CC_HAHA_SERVER_TEST_TIMEOUT_MS?.trim() || '20000'
+const isolateFiles = process.env.CC_HAHA_SERVER_TEST_ISOLATE_FILES === '1'
 
 function normalize(path: string) {
   return relative(root, path).split(sep).join('/')
@@ -44,10 +46,36 @@ if (testFiles.length === 0) {
   process.exit(0)
 }
 
-const proc = Bun.spawn(['bun', 'test', ...testFiles], {
-  cwd: root,
-  stdout: 'inherit',
-  stderr: 'inherit',
-})
+const failedFiles: string[] = []
 
-process.exit(await proc.exited)
+if (!isolateFiles) {
+  const proc = Bun.spawn(['bun', 'test', `--timeout=${testTimeoutMs}`, ...testFiles], {
+    cwd: root,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  process.exit(await proc.exited)
+}
+
+for (const testFile of testFiles) {
+  console.log(`\n[check:server] ${testFile}`)
+  const proc = Bun.spawn(['bun', 'test', `--timeout=${testTimeoutMs}`, testFile], {
+    cwd: root,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const exitCode = await proc.exited
+  if (exitCode !== 0) {
+    failedFiles.push(testFile)
+  }
+}
+
+if (failedFiles.length > 0) {
+  console.error('\n[check:server] Failed test files:')
+  for (const file of failedFiles) {
+    console.error(`- ${file}`)
+  }
+  process.exit(1)
+}
+
+console.log(`\n[check:server] Passed ${testFiles.length} test files.`)

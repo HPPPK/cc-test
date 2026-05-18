@@ -62,6 +62,11 @@ export type TeamAllowedPath = {
   addedAt: number // Timestamp when added
 }
 
+export type TeammateRuntimeSelection = {
+  providerId?: string | null
+  modelId: string
+}
+
 export type TeamFile = {
   name: string
   description?: string
@@ -75,6 +80,7 @@ export type TeamFile = {
     name: string
     agentType?: string
     model?: string
+    runtime?: TeammateRuntimeSelection
     prompt?: string
     color?: string
     planModeRequired?: boolean

@@ -1,0 +1,59 @@
+{
+  "identity": {
+    "command_name": "implement",
+    "scope_key": "implement-002-teammates-desktop-ui",
+    "trigger": "before_stop"
+  },
+  "truth_sources": [
+    {
+      "path": "F:\\github\\cc-haha\\.specify\\features\\002-teammates-desktop-ui",
+      "exists": true,
+      "mtime_ms": 1778915117889.9626
+    },
+    {
+      "path": "F:\\github\\cc-haha\\.specify\\features\\002-teammates-desktop-ui\\implement-tracker.md",
+      "exists": true,
+      "mtime_ms": 1778915104301.0466
+    }
+  ],
+  "phase_state": {
+    "state_kind": "implement-tracker",
+    "status": "validating",
+    "active_command": "",
+    "phase_mode": "",
+    "next_command": "",
+    "next_action": "Manual validation of quickstart.md scenarios",
+    "resume_decision": "resume-here",
+    "blocked_reason": ""
+  },
+  "artifact_digest": {
+    "current_batch": "Phase 7 - 最终验证 (T032-T034)",
+    "goal": "确保所有功能正确集成",
+    "lane_id": "002-teammates-desktop-ui",
+    "lane_recovery_state": "resumable"
+  },
+  "execution_signal": {
+    "retry_attempts": "0"
+  },
+  "resume_cue": [
+    "You are resuming `implement`.",
+    "Next action: Manual validation of quickstart.md scenarios.",
+    "Re-read F:\\github\\cc-haha\\.specify\\features\\002-teammates-desktop-ui\\implement-tracker.md before changing course."
+  ],
+  "recovery_summary": {
+    "command_name": "implement",
+    "phase_mode": "",
+    "status": "validating",
+    "summary": "",
+    "allowed_actions": [],
+    "forbidden_actions": [],
+    "authoritative_sources": [
+      "F:\\github\\cc-haha\\.specify\\features\\002-teammates-desktop-ui\\implement-tracker.md"
+    ],
+    "next_action": "Manual validation of quickstart.md scenarios",
+    "next_command": "",
+    "route_reason": "",
+    "blocked_reason": "",
+    "resume_decision": "resume-here"
+  }
+}

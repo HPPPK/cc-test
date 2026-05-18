@@ -1,0 +1,222 @@
+{
+  "lane_id": "dependency-graph-analysis",
+  "status": "success",
+  "source_artifacts_inspected": [
+    ".specify/features/003-layered-test-verify/tasks.md",
+    ".specify/features/003-layered-test-verify/spec.md",
+    ".specify/features/003-layered-test-verify/plan.md",
+    ".specify/features/003-layered-test-verify/context.md",
+    ".specify/features/003-layered-test-verify/plan-contract.json",
+    ".specify/features/003-layered-test-verify/handoff-to-tasks.json",
+    ".specify/features/003-layered-test-verify/task-index.json",
+    ".specify/memory/constitution.md"
+  ],
+  "decisions_or_constraints": [
+    "Implementation remains blocked until /sp.analyze validates the task package; tasks.md correctly recommends /sp.analyze as the next command.",
+    "The dependency graph is phase-serial with intra-phase parallel opportunities, but several edges need to be made explicit in task-index.json to keep downstream analysis from relying on prose-only ordering.",
+    "Shared write surfaces require serial checkpoints: scripts/quality-gate/types.ts, scripts/quality-gate/modes.ts, scripts/quality-gate/runner.ts, scripts/pr/impact-report.ts, scripts/pr/change-policy.ts, and scripts/quality-gate/__tests__/routing.test.ts.",
+    "Fast-lane success must remain a development signal only; no task may present fast mode as PR-ready or merge-ready.",
+    "Coverage behavior is an explicit planning decision: changed-line coverage for PR mode and full coverage for baseline/release modes, with ratchets preserved."
+  ],
+  "dependency_edges": [
+    {"from": "T001", "to": "T003", "reason": "types work follows quality-gate pattern inspection"},
+    {"from": "T003", "to": "T004", "reason": "fast mode definition needs QualityGateMode type support"},
+    {"from": "T004", "to": "T005", "reason": "package script should target an existing fast mode"},
+    {"from": "T002", "to": "T006", "reason": "impact-report changes require PR impact/change-policy pattern inspection"},
+    {"from": "T004", "to": "T006", "reason": "test selection must align with the fast mode lane shape"},
+    {"from": "T006", "to": "T007", "reason": "fast-lane-tests lane consumes impact-report selection output"},
+    {"from": "T004", "to": "T008", "reason": "core-smoke lane is added to the fast mode composition"},
+    {"from": "T008", "to": "T009", "reason": "runtime measurement needs the smoke lane in place"},
+    {"from": "T007", "to": "T010", "reason": "PR layering needs fast-lane-tests defined"},
+    {"from": "T008", "to": "T010", "reason": "PR layering needs core-smoke defined"},
+    {"from": "T010", "to": "T011", "reason": "runner filtering follows finalized PR lane ordering"},
+    {"from": "T003", "to": "T012", "reason": "RiskLevel extends shared types after mode type setup"},
+    {"from": "T012", "to": "T013", "reason": "change-policy risk rules need RiskLevel type"},
+    {"from": "T002", "to": "T013", "reason": "risk rule changes require change-policy pattern inspection"},
+    {"from": "T013", "to": "T014", "reason": "impact report escalatedChecks depend on risk classification"},
+    {"from": "T006", "to": "T014", "reason": "impact-report escalation extends the same output surface as fast-lane tests"},
+    {"from": "T014", "to": "T015", "reason": "modes escalation rules consume impact-report escalatedChecks"},
+    {"from": "T010", "to": "T015", "reason": "escalated lane gating depends on PR lane structure"},
+    {"from": "T003", "to": "T016", "reason": "report fields extend shared quality-gate types"},
+    {"from": "T016", "to": "T017", "reason": "runner report semantics require typed fields"},
+    {"from": "T011", "to": "T017", "reason": "readyForMerge semantics depend on finalized runner mode execution"},
+    {"from": "T017", "to": "T018", "reason": "reporter banners consume runner report fields"},
+    {"from": "T003", "to": "T019", "reason": "coverageMode extends shared lane configuration types"},
+    {"from": "T019", "to": "T020", "reason": "mode definitions need typed coverageMode field"},
+    {"from": "T010", "to": "T020", "reason": "coverage mode assignment depends on finalized PR mode layering"},
+    {"from": "T020", "to": "T021", "reason": "runner passes --changed based on mode coverage configuration"},
+    {"from": "T017", "to": "T021", "reason": "coverage runner changes share runner.ts with output semantics"},
+    {"from": "T005", "to": "T022", "reason": "fast mode tests expect the quality:fast script to exist"},
+    {"from": "T007", "to": "T022", "reason": "routing tests validate fast-lane-tests lane composition"},
+    {"from": "T008", "to": "T022", "reason": "routing tests validate core-smoke lane composition"},
+    {"from": "T022", "to": "T023", "reason": "changed-area tests extend the same routing test file"},
+    {"from": "T006", "to": "T023", "reason": "changed-area tests depend on impact-report selection logic"},
+    {"from": "T023", "to": "T024", "reason": "risk tests extend the same routing test file after selection coverage"},
+    {"from": "T014", "to": "T024", "reason": "risk tests depend on escalatedChecks output"},
+    {"from": "T024", "to": "T025", "reason": "output tests extend the same routing test file"},
+    {"from": "T018", "to": "T025", "reason": "output tests depend on reporter labels"},
+    {"from": "T025", "to": "T026", "reason": "coverage tests extend the same routing test file"},
+    {"from": "T021", "to": "T026", "reason": "coverage tests depend on runner coverageMode behavior"},
+    {"from": "T026", "to": "T027", "reason": "final validation follows all regression tests"},
+    {"from": "T027", "to": "T028", "reason": "quickstart timing/results must reflect actual validation output"}
+  ],
+  "join_points": [
+    {
+      "name": "Guardrails Confirmed",
+      "after": ["T001", "T002"],
+      "before": ["T003", "T006", "T013"],
+      "validation": "Manual confirmation that lane definition, impact filtering, and risk classification patterns are understood before source edits."
+    },
+    {
+      "name": "Fast Mode Defined",
+      "after": ["T003", "T004", "T005"],
+      "before": ["T006", "T008", "T022"],
+      "validation": "bun run quality:fast --dry-run completes and fast mode excludes heavy lanes."
+    },
+    {
+      "name": "Test Selection Working",
+      "after": ["T006", "T007"],
+      "before": ["T010", "T023"],
+      "validation": "Changed-area fast lane executes only the selected area tests for a representative changed path."
+    },
+    {
+      "name": "Core Smoke Validated",
+      "after": ["T008", "T009"],
+      "before": ["T010", "T022"],
+      "validation": "Core smoke always runs and stays under the 20 second budget."
+    },
+    {
+      "name": "PR Mode Layered",
+      "after": ["T010", "T011"],
+      "before": ["T015", "T017", "T020"],
+      "validation": "bun run verify preserves required lanes while ordering fast checks before heavier checks."
+    },
+    {
+      "name": "Risk Escalation Working",
+      "after": ["T012", "T013", "T014", "T015"],
+      "before": ["T024"],
+      "validation": "Fixture changes for native, provider/runtime, and release-sensitive paths trigger their escalated lanes."
+    },
+    {
+      "name": "Output Semantics Clear",
+      "after": ["T016", "T017", "T018"],
+      "before": ["T025"],
+      "validation": "Fast reports show development-signal/not-PR-ready semantics; PR reports show PR readiness semantics."
+    },
+    {
+      "name": "Coverage Strategy Working",
+      "after": ["T019", "T020", "T021"],
+      "before": ["T026"],
+      "validation": "PR mode uses changed-line coverage and baseline/release modes retain full coverage."
+    },
+    {
+      "name": "All Regression Tests Pass",
+      "after": ["T022", "T023", "T024", "T025", "T026"],
+      "before": ["T027"],
+      "validation": "bun test scripts/quality-gate/__tests__/routing.test.ts passes and covers SC-001 through SC-006."
+    },
+    {
+      "name": "Final Validation Complete",
+      "after": ["T027"],
+      "before": ["T028"],
+      "validation": "Actual fast/verify timing and validation results are available before quickstart updates."
+    }
+  ],
+  "high_risk_review_gates": [
+    {
+      "gate": "Shared quality-gate type surface",
+      "tasks": ["T003", "T012", "T016", "T019"],
+      "risk": "Multiple branches extend scripts/quality-gate/types.ts; downstream modes, runner, and reporter depend on compatible shared types.",
+      "checkpoint": "After all type extensions, verify runner and routing tests compile before modes/runner tasks continue."
+    },
+    {
+      "gate": "Mode composition and lane ordering",
+      "tasks": ["T004", "T007", "T008", "T010", "T015", "T020"],
+      "risk": "scripts/quality-gate/modes.ts is a shared registration surface for fast, PR, baseline, and release behavior.",
+      "checkpoint": "Require read-only review of final lane composition to ensure heavy checks are conditional, not removed, and existing modes remain intact."
+    },
+    {
+      "gate": "Runner execution semantics",
+      "tasks": ["T011", "T017", "T021"],
+      "risk": "scripts/quality-gate/runner.ts controls filtering, report fields, and coverage flags; mistakes can silently skip checks or mislabel readiness.",
+      "checkpoint": "Review runner diff plus routing tests before declaring PR mode or coverage strategy valid."
+    },
+    {
+      "gate": "Impact and risk classification",
+      "tasks": ["T006", "T013", "T014"],
+      "risk": "Misclassification can skip same-area tests or escalated checks for high-risk paths.",
+      "checkpoint": "Require fixture-based validation for server, desktop, adapters, docs, native, provider/runtime, and release-sensitive paths."
+    },
+    {
+      "gate": "Single regression test file accumulation",
+      "tasks": ["T022", "T023", "T024", "T025", "T026"],
+      "risk": "Sequential edits to one test file can mask missing scenarios unless each layer is independently validated.",
+      "checkpoint": "Run the focused routing test after each incremental test task and final full focused suite before T027."
+    }
+  ],
+  "task_adjustments": [
+    {
+      "issue": "T008 is marked parallel_safe but writes scripts/quality-gate/modes.ts, the same shared surface as T004, T007, T010, T015, and T020.",
+      "recommended_fix": "Keep T008 dependent on T004 and ensure task-index.json records it cannot run in the same batch as T007/T010/T015/T020; treat its [P] marker as only eligible after the Fast Mode Defined join point and with no concurrent modes.ts writers."
+    },
+    {
+      "issue": "T012, T016, and T019 all depend only on T003 and each writes scripts/quality-gate/types.ts, creating a potential parallel write conflict despite [P] markers.",
+      "recommended_fix": "Either serialize the type-extension tasks in task-index.json (for example T012 -> T016 -> T019) or merge them behind a single shared-types join task before downstream consumers T013, T017, and T020."
+    },
+    {
+      "issue": "T005 is listed as parallel_safe but depends on T004, so it is not actually parallel with T004 despite the Parallel Execution Opportunities text saying it can run in parallel with T004 after T004 completes.",
+      "recommended_fix": "Revise the parallel opportunity note: T005 is an isolated follow-up after T004, not a same-batch parallel lane."
+    },
+    {
+      "issue": "T006 is currently ordered before T008, but plan Capability 1 says fast lane equals changed-area tests plus core smoke. T007 wires fast-lane-tests before core-smoke is defined.",
+      "recommended_fix": "Add an explicit join that fast mode is provisional after T007 until T008 completes, or add T008 as a dependency of the fast-mode completeness checkpoint and any tests that assert complete fast lane composition."
+    },
+    {
+      "issue": "T013 can begin after T012 and T002 while T006 may still be modifying impact-report assumptions; this is safe for write sets but not for final escalation semantics.",
+      "recommended_fix": "Keep T013 implementation parallel-safe by write set, but require the Risk Escalation Working join point to include T006/T014 evidence before T015 wires escalated lanes."
+    },
+    {
+      "issue": "T022 through T026 serialize all regression tests in a single file, delaying test-first coverage until after implementation tasks.",
+      "recommended_fix": "If /sp.analyze enforces test-before-implementation strictly, split test tasks earlier by surface or add explicit rationale that this feature uses post-implementation regression tests due to route/mode APIs being stabilized first."
+    },
+    {
+      "issue": "T028 uses agent doc-updater, which is not in the sp-tasks allowed agent list in the loaded workflow contract.",
+      "recommended_fix": "Change T028 agent to executor or writer-compatible allowed role if available in the execution environment; update task-index.json consistently."
+    },
+    {
+      "issue": "task-index.json shows no dependency_cycles or write_set_conflicts, but it does not account for potential conflicts among parallel_safe tasks sharing types.ts.",
+      "recommended_fix": "Update task-index.json write_set_conflicts or parallel batch metadata to flag T012/T016/T019 as mutually exclusive unless serialized."
+    },
+    {
+      "issue": "No task-packets directory entries were present during this lane's inspection.",
+      "recommended_fix": "Before implementation handoff, generate per-task packets or have /sp.analyze block DP packet readiness until task-packets/*.json exist and match tasks.md/task-index.json."
+    }
+  ],
+  "dp_readiness": {
+    "DP1": "Partial: tasks.md and task-index.json exist with 28 tasks and no recorded cycles, but per-task packet files were not present during inspection, so dispatch packet readiness should not be considered complete.",
+    "DP2": "Partial: dependency ordering is broadly acyclic and phase-serial, but analyze should require explicit serialization or conflict metadata for shared types.ts and modes.ts writers before approving parallel dispatch.",
+    "DP3": "Blocked for implementation: next command remains /sp.analyze, and implementation must not start until analyze validates graph fixes, packet completeness, guardrail preservation, and DP1/DP2 readiness."
+  },
+  "blockers": [],
+  "validation_evidence": [
+    "task-index.json reports total_tasks=28, write_set_conflicts=[], and dependency_cycles=[].",
+    "tasks.md declares Serial phases with intra-phase parallel batches and recommends /sp.analyze as the next command.",
+    "handoff-to-tasks.json maps SC-001 through SC-006 to task IDs and recommends /sp.analyze.",
+    "plan.md preserves LD-001 through LD-007 and resolves MP-012 as changed-line PR coverage with full baseline/release coverage.",
+    "context.md identifies the same primary affected surfaces used by tasks.md: modes.ts, runner.ts, impact-report.ts, change-policy.ts, types.ts, package.json, and tests.",
+    "No task-packets entries were found when inspecting .specify/features/003-layered-test-verify/task-packets, so packet readiness is partial from this lane's view."
+  ],
+  "concerns": [
+    "No obvious cycles or impossible total ordering were found, but current parallel-safe markers are optimistic for shared type and mode registration surfaces.",
+    "The dependency graph in tasks.md visually omits some edges present in task-index.json, including T004 -> T008, T003 -> T012/T016/T019, and T018 -> T025; downstream tools should use task-index.json only after it is corrected.",
+    "Regression tests are scheduled after most implementation work; this may be acceptable for route-level integration tests, but analyze should verify the project testing contract does not require earlier test tasks.",
+    "T028's doc-updater role may be invalid under the loaded sp-tasks agent roster.",
+    "Per-task packet files appear absent, which weakens independent executability despite tasks.md containing rich task bodies."
+  ],
+  "recovery_hints": [
+    "Run /sp.analyze before implementation and have it specifically validate shared-surface write conflicts, packet presence, and invalid agent roles.",
+    "If analyze blocks, first repair task-index.json and tasks.md parallel metadata; do not edit source code or implementation files.",
+    "Prefer adding serial join tasks or explicit mutual-exclusion metadata for shared registration surfaces instead of allowing concurrent writers.",
+    "Generate or refresh task-packets/*.json from the corrected task graph before dispatching implementation subagents."
+  ]
+}

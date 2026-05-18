@@ -7,7 +7,9 @@ import { lanesForMode } from './modes'
 import { executeProviderSmoke } from './provider-smoke/execute'
 import { writeReport } from './reporter'
 import type {
+  CoverageMode,
   CoverageSuiteSummary,
+  FeedbackType,
   ImpactSummary,
   LaneCategory,
   LaneDefinition,
@@ -73,15 +75,26 @@ async function pipeToLog(
   stream: ReadableStream<Uint8Array> | null,
   logPath: string,
   write: (chunk: Buffer) => void,
+  stop: Promise<unknown>,
 ) {
   if (!stream) return
   const reader = stream.getReader()
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const chunk = Buffer.from(value)
-    appendFileSync(logPath, chunk)
-    write(chunk)
+  let stopped = false
+  stop.finally(() => {
+    stopped = true
+    reader.cancel().catch(() => undefined)
+  }).catch(() => undefined)
+  try {
+    while (!stopped) {
+      const { done, value } = await reader.read()
+      if (done || !value) break
+      const chunk = Buffer.from(value)
+      appendFileSync(logPath, chunk)
+      write(chunk)
+    }
+  } catch {
+    // The runner may cancel log readers after the child command exits. That is
+    // expected when grandchildren keep inherited stdout/stderr handles open.
   }
 }
 
@@ -94,15 +107,87 @@ async function gitInfo(rootDir: string) {
   }
 }
 
+/**
+ * Determines the feedback type for a quality gate report.
+ * - 'fast' for fast mode (development signal only)
+ * - 'full' for PR, baseline, and release modes (complete verification)
+ */
+export function determineFeedbackType(mode: QualityGateMode): FeedbackType {
+  // Fast mode always produces 'fast' feedback (development signal only)
+  // PR, baseline, and release modes produce 'full' feedback
+  return mode === 'fast' ? 'fast' : 'full'
+}
+
+/**
+ * Determines whether the report indicates PR readiness.
+ * - Always false for fast mode (CA-002: Fast success is NEVER merge-ready)
+ * - True for PR/release modes when all checks pass (no failures)
+ * - Baseline mode is not merge-ready (it's for coverage tracking)
+ */
+export function determineReadyForMerge(
+  mode: QualityGateMode,
+  summary: { passed: number; failed: number; skipped: number },
+  impact?: ImpactSummary,
+): boolean {
+  // Fast mode is NEVER merge-ready (CA-002)
+  if (mode === 'fast') return false
+  // Baseline mode is for coverage tracking, not PR readiness
+  if (mode === 'baseline') return false
+  // A policy-blocked impact report must prevent PR/release readiness even
+  // when individual command lanes exit successfully.
+  if (impact?.blocked) return false
+  // PR and release modes are merge-ready when all checks pass (no failures)
+  return summary.failed === 0
+}
+
+/**
+ * Adjusts coverage command arguments based on the lane's coverage mode.
+ * When coverageMode is 'changed-line', adds --changed flag for changed-line coverage.
+ */
+function adjustCoverageCommandForMode(
+  command: string[],
+  coverageMode: CoverageMode | undefined,
+): string[] {
+  if (coverageMode !== 'changed-line') {
+    return command
+  }
+  // Add --changed flag for changed-line coverage if not already present
+  if (command.includes('--changed')) {
+    return command
+  }
+  // Insert --changed before the test files/patterns (after coverage flags)
+  // For commands like 'bun run check:coverage', we need to pass through
+  // For direct test commands, we add --changed after coverage flags
+  const result = [...command]
+  // Find where to insert --changed (after last --coverage* flag or at end)
+  let insertIndex = result.length
+  for (let i = result.length - 1; i >= 0; i--) {
+    if (result[i].startsWith('--coverage')) {
+      insertIndex = i + 1
+      break
+    }
+  }
+  result.splice(insertIndex, 0, '--changed')
+  return result
+}
+
 async function runCommandLane(lane: LaneDefinition, options: QualityGateOptions): Promise<LaneResult> {
   const started = Date.now()
-  const command = lane.command ?? []
+  let command = lane.command ?? []
   const artifactRoot = options.runOutputDir ?? join(options.rootDir, 'artifacts', 'quality-runs', options.runId ?? 'current')
   const logPath = join(artifactRoot, 'logs', `${sanitizeId(lane.id)}.log`)
 
+  // Adjust coverage command for coverageMode (changed-line vs full)
+  if (lane.id === 'coverage' && lane.coverageMode) {
+    command = adjustCoverageCommandForMode(command, lane.coverageMode)
+  }
+
   if (options.dryRun) {
     mkdirSync(dirname(logPath), { recursive: true })
-    writeFileSync(logPath, `$ ${command.join(' ')}\n[quality-gate] skipped: dry run\n`)
+    const skipReasonText = lane.coverageMode === 'changed-line'
+      ? 'dry run (changed-line coverage)'
+      : 'dry run'
+    writeFileSync(logPath, `$ ${command.join(' ')}\n[quality-gate] skipped: ${skipReasonText}\n`)
     return {
       id: lane.id,
       title: lane.title,
@@ -117,7 +202,9 @@ async function runCommandLane(lane: LaneDefinition, options: QualityGateOptions)
   mkdirSync(dirname(logPath), { recursive: true })
   writeFileSync(logPath, `$ ${command.join(' ')}\n`)
 
-  if (options.mode === 'pr' && lane.impactRequiredCheck) {
+  // Check impact-required checks for lanes that have impactRequiredCheck defined
+  // This applies to PR, fast, and release modes that use impact-based selection
+  if (lane.impactRequiredCheck) {
     const requiredChecks = readImpactRequiredChecks(options)
     if (!requiredChecks) {
       const error = `Impact report unavailable before ${lane.impactRequiredCheck}`
@@ -157,10 +244,13 @@ async function runCommandLane(lane: LaneDefinition, options: QualityGateOptions)
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const [exitCode] = await Promise.all([
-    proc.exited,
-    pipeToLog(proc.stdout, logPath, writeStdout),
-    pipeToLog(proc.stderr, logPath, writeStderr),
+  const exitCode = await proc.exited
+  await Promise.race([
+    Promise.all([
+      pipeToLog(proc.stdout, logPath, writeStdout, proc.exited),
+      pipeToLog(proc.stderr, logPath, writeStderr, proc.exited),
+    ]),
+    new Promise<void>((resolve) => setTimeout(resolve, 250)),
   ])
 
   return {
@@ -333,6 +423,19 @@ function splitSummaryList(value: string | undefined) {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
+function parseRiskLevel(value: string | undefined): import('./types').RiskLevel | undefined {
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value
+  }
+  return undefined
+}
+
+function parseEscalatedChecks(value: string | undefined): string[] | undefined {
+  if (!value || value === '(none)') return undefined
+  const checks = splitSummaryList(value)
+  return checks.length > 0 ? checks : undefined
+}
+
 function parseImpactSummary(results: LaneResult[]): ImpactSummary | undefined {
   const impact = results.find((result) => result.id === 'impact-report')
   const log = readText(impact?.logPath)
@@ -354,6 +457,29 @@ function parseImpactSummary(results: LaneResult[]): ImpactSummary | undefined {
     requiredChecks: readSection(lines, 'Required local checks'),
     testCoverageSignals: readSection(lines, 'Test coverage signals'),
     riskNotes: readSection(lines, 'Risk notes'),
+  }
+}
+
+function parseRiskAssessment(results: LaneResult[]): {
+  riskLevel?: import('./types').RiskLevel
+  escalatedChecks?: string[]
+} {
+  const impact = results.find((result) => result.id === 'impact-report')
+  const log = readText(impact?.logPath)
+  if (!log) return {}
+
+  const lines = log.split(/\r?\n/)
+  const findValue = (label: string) => {
+    const prefix = `${label}:`
+    return lines.find((line) => line.startsWith(prefix))?.slice(prefix.length).trim()
+  }
+
+  const riskLevel = parseRiskLevel(findValue('- Level'))
+  const escalatedChecks = parseEscalatedChecks(findValue('- Escalated checks'))
+
+  return {
+    ...(riskLevel ? { riskLevel } : {}),
+    ...(escalatedChecks ? { escalatedChecks } : {}),
   }
 }
 
@@ -456,6 +582,12 @@ export async function runQualityGateLanes(
   }
   const results = enforceReleaseLiveLanes(options, selectedLanes, rawResults)
 
+  // Parse risk assessment from impact-report for escalation metadata
+  const riskAssessment = parseRiskAssessment(results)
+
+  const impact = parseImpactSummary(results)
+  const summary = summarize(results)
+
   const report: QualityGateReport = {
     schemaVersion: 1,
     runId,
@@ -467,10 +599,17 @@ export async function runQualityGateLanes(
     rootDir: options.rootDir,
     git: await gitInfo(options.rootDir),
     results,
-    impact: parseImpactSummary(results),
+    impact,
     coverage: parseCoverageSummary(results),
     artifacts: collectReportArtifacts(outputDir, results),
-    summary: summarize(results),
+    summary,
+    // CA-002: feedbackType distinguishes fast (development signal) from full (PR readiness)
+    feedbackType: determineFeedbackType(options.mode),
+    // CA-002: readyForMerge is always false for fast mode, true for PR/release when all checks pass
+    readyForMerge: determineReadyForMerge(options.mode, summary, impact),
+    // Escalation metadata from risk assessment
+    ...(riskAssessment.riskLevel ? { riskLevel: riskAssessment.riskLevel } : {}),
+    ...(riskAssessment.escalatedChecks ? { escalatedChecks: riskAssessment.escalatedChecks } : {}),
   }
 
   writeReport(report, outputDir)

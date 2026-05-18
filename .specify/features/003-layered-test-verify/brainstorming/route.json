@@ -1,0 +1,58 @@
+{
+  "locked_at": "2026-05-17T23:45:00+08:00",
+  "lock_status": "closed",
+  "primary_route": "feature-extension",
+  "route_confidence": "high",
+
+  "matched_rules": [
+    {
+      "rule_id": "R-001",
+      "description": "Request extends existing quality-gate lane architecture",
+      "evidence": "MP-003 confirms Option B: Layered PR Gate using existing impact-report/change-policy/quality-gate",
+      "predicate_result": true
+    },
+    {
+      "rule_id": "R-002",
+      "description": "Request is bounded to first slice, not full impact-graph system",
+      "evidence": "MP-011 defers expansion-ready test impact graph to future-feature",
+      "predicate_result": true
+    },
+    {
+      "rule_id": "R-003",
+      "description": "Request preserves existing quality contracts",
+      "evidence": "MP-008 explicitly requires preserving coverage baselines, same-area tests, quarantine governance, and release confidence",
+      "predicate_result": true
+    },
+    {
+      "rule_id": "R-004",
+      "description": "Project cognition is fresh for broad architectural decisions",
+      "evidence": ".specify/project-cognition/status.json reports freshness: fresh, baseline_state: ready",
+      "predicate_result": true
+    }
+  ],
+
+  "rejected_routes": [
+    {
+      "route": "new-parallel-test-system",
+      "reason": "MP-003 explicitly requires reusing existing gate architecture",
+      "blocking_item": "MP-003"
+    },
+    {
+      "route": "test-deletion-only",
+      "reason": "MP-001 requires speed plus quality, not speed alone; MP-008 forbids weakening coverage without approval",
+      "blocking_items": ["MP-001", "MP-008"]
+    },
+    {
+      "route": "full-impact-graph",
+      "reason": "MP-011 defers expansion-ready impact graph to future-feature",
+      "blocking_item": "MP-011"
+    }
+  ],
+
+  "blocking_unknowns": [],
+  "derived_complexity_hints": [
+    "Medium complexity: extends existing multi-file architecture",
+    "Cross-cutting: affects scripts/quality-gate/, scripts/pr/, package.json",
+    "Requires regression tests for lane routing behavior"
+  ]
+}

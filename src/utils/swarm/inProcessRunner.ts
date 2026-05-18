@@ -87,6 +87,7 @@ import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
 import type { TeammateContext } from '../teammateContext.js'
 import { runWithTeammateContext } from '../teammateContext.js'
+import { runWithRuntimeEnv, type RuntimeEnvOverlay } from '../runtimeEnv.js'
 import {
   createIdleNotification,
   getLastPeerDmSummary,
@@ -485,6 +486,8 @@ export type InProcessRunnerConfig = {
   abortController: AbortController
   /** Optional model override for this teammate */
   model?: string
+  /** Optional per-teammate env overlay for provider isolation */
+  runtimeEnv?: RuntimeEnvOverlay
   /** Optional system prompt override for this teammate */
   systemPrompt?: string
   /** How to apply the system prompt: 'replace' or 'append' to default */
@@ -893,6 +896,7 @@ export async function runInProcessTeammate(
     toolUseContext,
     abortController,
     model,
+    runtimeEnv,
     systemPrompt,
     systemPromptMode,
     allowedTools,
@@ -1157,124 +1161,126 @@ export async function runInProcessTeammate(
       let workWasAborted = false
 
       // Run agent within contexts
-      await runWithTeammateContext(teammateContext, async () => {
-        return runWithAgentContext(agentContext, async () => {
-          // Mark task as running (not idle)
-          updateTaskState(
-            taskId,
-            task => ({ ...task, status: 'running', isIdle: false }),
-            setAppState,
-          )
-
-          // Run the normal agent loop - same runAgent() used by AgentTool/subagents.
-          // This calls query() internally, so we share the core API infrastructure.
-          // Pass forkContextMessages to preserve conversation history across prompts.
-          // In-process teammates are async but run in the same process as the leader,
-          // so they CAN show permission prompts (unlike true background agents).
-          // Use currentWorkAbortController so Escape stops this turn only, not the teammate.
-          for await (const message of runAgent({
-            agentDefinition: iterationAgentDefinition,
-            promptMessages,
-            toolUseContext,
-            canUseTool: createInProcessCanUseTool(
-              identity,
-              currentWorkAbortController,
-              (waitMs: number) => {
-                updateTaskState(
-                  taskId,
-                  task => ({
-                    ...task,
-                    totalPausedMs: (task.totalPausedMs ?? 0) + waitMs,
-                  }),
-                  setAppState,
-                )
-              },
-            ),
-            isAsync: true,
-            canShowPermissionPrompts: allowPermissionPrompts ?? true,
-            forkContextMessages,
-            querySource: 'agent:custom',
-            override: { abortController: currentWorkAbortController },
-            model: model as ModelAlias | undefined,
-            preserveToolUseResults: true,
-            availableTools: toolUseContext.options.tools,
-            allowedTools,
-            contentReplacementState: teammateReplacementState,
-          })) {
-            // Check lifecycle abort first (kills whole teammate)
-            if (abortController.signal.aborted) {
-              logForDebugging(
-                `[inProcessRunner] ${identity.agentId} lifecycle aborted`,
-              )
-              break
-            }
-
-            // Check work abort (stops current turn only)
-            if (currentWorkAbortController.signal.aborted) {
-              logForDebugging(
-                `[inProcessRunner] ${identity.agentId} current work aborted (Escape pressed)`,
-              )
-              workWasAborted = true
-              break
-            }
-
-            iterationMessages.push(message)
-            allMessages.push(message)
-
-            updateProgressFromMessage(
-              tracker,
-              message,
-              resolveActivity,
-              toolUseContext.options.tools,
-            )
-            const progress = getProgressUpdate(tracker)
-
+      await runWithRuntimeEnv(runtimeEnv, () =>
+        runWithTeammateContext(teammateContext, async () => {
+          return runWithAgentContext(agentContext, async () => {
+            // Mark task as running (not idle)
             updateTaskState(
               taskId,
-              task => {
-                // Track in-progress tool use IDs for animation in transcript view
-                let inProgressToolUseIDs = task.inProgressToolUseIDs
-                if (message.type === 'assistant') {
-                  for (const block of message.message.content) {
-                    if (block.type === 'tool_use') {
-                      inProgressToolUseIDs = new Set([
-                        ...(inProgressToolUseIDs ?? []),
-                        block.id,
-                      ])
+              task => ({ ...task, status: 'running', isIdle: false }),
+              setAppState,
+            )
+
+            // Run the normal agent loop - same runAgent() used by AgentTool/subagents.
+            // This calls query() internally, so we share the core API infrastructure.
+            // Pass forkContextMessages to preserve conversation history across prompts.
+            // In-process teammates are async but run in the same process as the leader,
+            // so they CAN show permission prompts (unlike true background agents).
+            // Use currentWorkAbortController so Escape stops this turn only, not the teammate.
+            for await (const message of runAgent({
+              agentDefinition: iterationAgentDefinition,
+              promptMessages,
+              toolUseContext,
+              canUseTool: createInProcessCanUseTool(
+                identity,
+                currentWorkAbortController,
+                (waitMs: number) => {
+                  updateTaskState(
+                    taskId,
+                    task => ({
+                      ...task,
+                      totalPausedMs: (task.totalPausedMs ?? 0) + waitMs,
+                    }),
+                    setAppState,
+                  )
+                },
+              ),
+              isAsync: true,
+              canShowPermissionPrompts: allowPermissionPrompts ?? true,
+              forkContextMessages,
+              querySource: 'agent:custom',
+              override: { abortController: currentWorkAbortController },
+              model: model as ModelAlias | undefined,
+              preserveToolUseResults: true,
+              availableTools: toolUseContext.options.tools,
+              allowedTools,
+              contentReplacementState: teammateReplacementState,
+            })) {
+              // Check lifecycle abort first (kills whole teammate)
+              if (abortController.signal.aborted) {
+                logForDebugging(
+                  `[inProcessRunner] ${identity.agentId} lifecycle aborted`,
+                )
+                break
+              }
+
+              // Check work abort (stops current turn only)
+              if (currentWorkAbortController.signal.aborted) {
+                logForDebugging(
+                  `[inProcessRunner] ${identity.agentId} current work aborted (Escape pressed)`,
+                )
+                workWasAborted = true
+                break
+              }
+
+              iterationMessages.push(message)
+              allMessages.push(message)
+
+              updateProgressFromMessage(
+                tracker,
+                message,
+                resolveActivity,
+                toolUseContext.options.tools,
+              )
+              const progress = getProgressUpdate(tracker)
+
+              updateTaskState(
+                taskId,
+                task => {
+                  // Track in-progress tool use IDs for animation in transcript view
+                  let inProgressToolUseIDs = task.inProgressToolUseIDs
+                  if (message.type === 'assistant') {
+                    for (const block of message.message.content) {
+                      if (block.type === 'tool_use') {
+                        inProgressToolUseIDs = new Set([
+                          ...(inProgressToolUseIDs ?? []),
+                          block.id,
+                        ])
+                      }
                     }
-                  }
-                } else if (message.type === 'user') {
-                  const content = message.message.content
-                  if (Array.isArray(content)) {
-                    for (const block of content) {
-                      if (
-                        typeof block === 'object' &&
-                        'type' in block &&
-                        block.type === 'tool_result'
-                      ) {
-                        if (inProgressToolUseIDs) {
-                          inProgressToolUseIDs = new Set(inProgressToolUseIDs)
-                          inProgressToolUseIDs.delete(block.tool_use_id)
+                  } else if (message.type === 'user') {
+                    const content = message.message.content
+                    if (Array.isArray(content)) {
+                      for (const block of content) {
+                        if (
+                          typeof block === 'object' &&
+                          'type' in block &&
+                          block.type === 'tool_result'
+                        ) {
+                          if (inProgressToolUseIDs) {
+                            inProgressToolUseIDs = new Set(inProgressToolUseIDs)
+                            inProgressToolUseIDs.delete(block.tool_use_id)
+                          }
                         }
                       }
                     }
                   }
-                }
 
-                return {
-                  ...task,
-                  progress,
-                  messages: appendCappedMessage(task.messages, message),
-                  inProgressToolUseIDs,
-                }
-              },
-              setAppState,
-            )
-          }
+                  return {
+                    ...task,
+                    progress,
+                    messages: appendCappedMessage(task.messages, message),
+                    inProgressToolUseIDs,
+                  }
+                },
+                setAppState,
+              )
+            }
 
-          return { success: true, messages: iterationMessages }
-        })
-      })
+            return { success: true, messages: iterationMessages }
+          })
+        }),
+      )
 
       // Clear the work controller from state (it's no longer valid)
       updateTaskState(
@@ -1546,7 +1552,9 @@ export function startInProcessTeammate(config: InProcessRunnerConfig): void {
   // the full config object (including toolUseContext) while the promise is
   // pending - which can be hours for a long-running teammate.
   const agentId = config.identity.agentId
-  void runInProcessTeammate(config).catch(error => {
+  void runWithRuntimeEnv(config.runtimeEnv, () =>
+    runInProcessTeammate(config),
+  ).catch(error => {
     logForDebugging(`[inProcessRunner] Unhandled error in ${agentId}: ${error}`)
   })
 }
