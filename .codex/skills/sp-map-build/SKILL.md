@@ -38,7 +38,7 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 
 - Primary inputs: `.specify/project-cognition/status.json`, `.specify/project-cognition/evidence/`, `.specify/project-cognition/provisional/nodes.json`, `.specify/project-cognition/provisional/edges.json`, `.specify/project-cognition/provisional/observations.json`, and live repository evidence.
 - This command owns the query-backed cognition runtime outputs: `.specify/project-cognition/status.json` and `.specify/project-cognition/project-cognition.db`.
-- After the SQLite DB is published, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition publish-runtime-metadata --format json` before `validate-build` so `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id` are written from the DB into the metadata table and status entrypoint.
+- After the SQLite DB is published, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` before `validate-build` so `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id` are written from the DB into the metadata table and status entrypoint.
 - If the evidence baseline is incomplete or the accepted evidence cannot support graph reconstruction, produce a scan gap report and return to `sp-map-scan`.
 - Record accepted and rejected reconstruction evidence as DB/runtime update records and queryable task-local bundle readiness metadata. Treat any raw graph or slice files as compatibility/export artifacts, not runtime truth.
 - Apply project cognition ignore rules from root `.cognitionignore` and `.specify/project-cognition/.cognitionignore`; rejected paths remain outside graph evidence and DB route indexes even when scan artifacts mention them.
@@ -61,7 +61,7 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify learning start --command map-build --format json` when available so passive learning files exist and repeated graph-build blind spots can be promoted at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command map-build --format json` when available so passive learning files exist and repeated graph-build blind spots can be promoted at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader graph-build context.
 - Open only learning detail docs linked from map-build-relevant index entries.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
@@ -75,9 +75,9 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 - Validate scan inputs before execution and compile/validate `MapBuildPacket` inputs before dispatch.
 - Dispatch only validated packetized build lanes as `one-subagent` or `parallel-subagents`.
 - If overlap, missing packet data, missing required references, or unsafe acceptance criteria prevent safe dispatch, record `subagent-blocked` and stop for escalation or recovery.
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition publish-runtime-metadata --format json` immediately after publishing `.specify/project-cognition/project-cognition.db` so DB metadata and `.specify/project-cognition/status.json` agree on `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id`.
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition validate-build --format json` after publishing runtime metadata.
-- Use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` immediately after publishing `.specify/project-cognition/project-cognition.db` so DB metadata and `.specify/project-cognition/status.json` agree on `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id`.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` after publishing runtime metadata.
+- Use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`.
 
 ## Hard Boundary
 
@@ -216,10 +216,10 @@ At minimum, claims must include:
 
 Before reporting completion:
 
-- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition publish-runtime-metadata --format json` after publishing `.specify/project-cognition/project-cognition.db`
-- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition validate-build --format json` after publishing runtime metadata
-- use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`
-- confirm that `.specify/project-cognition/project-cognition.db` was written and can be queried through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json`
+- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` after publishing `.specify/project-cognition/project-cognition.db`
+- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` after publishing runtime metadata
+- use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`
+- confirm that `.specify/project-cognition/project-cognition.db` was written and can be queried through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json`
 - if `validate-build` returns `status=blocked`, report the specific DB, schema, active generation, status, or smoke-query error and do not mark the baseline fresh
 - confirm that `status.json` reflects a query-ready baseline
 - confirm that the runtime remains query-backed and does not advertise raw graph JSON or handbook-first outputs as runtime truth

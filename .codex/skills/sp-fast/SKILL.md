@@ -118,7 +118,6 @@ Upgrade to `/sp-quick` immediately if:
 - The work expands to more than 3 files.
 - The change touches a shared surface such as a router table, registration file, export barrel, template registry, or other coordination point.
 - The project cognition runtime or change slice shows the touched area is a change-propagation hotspot, has explicit verification entry points beyond a trivial local check, or carries known unknowns that make safe direct execution unavailable.
-- The requested work comes from `.specify/testing/UNIT_TEST_SYSTEM_REQUEST.md` and is larger than one tiny harness, command, fixture, or helper repair.
 - The task stops being obvious and needs research or clarification to proceed safely.
 - The task needs multiple subagent lanes, resumable tracking, or a written quick-task summary artifact.
 - The work started as a bug fix, but root-cause analysis is still unresolved, competing causes are still plausible, or the next safe step is diagnostic investigation rather than a truly local repair. In that case, route to `$sp-debug`.
@@ -127,7 +126,6 @@ Upgrade to `/sp-specify` immediately if:
 - The Senior Consequence Analysis Gate triggers for lifecycle, running-state, shared-state, destructive-operation, downstream consumer impact, broad compatibility handling, security, or multiple plausible behavior choices that need product semantics.
 - The request introduces a new workflow, role boundary, or user-visible behavior that needs explicit acceptance criteria.
 - The change carries compatibility, migration, rollout, or neighboring-workflow risk.
-- The request is still a testing-system program from `.specify/testing/UNIT_TEST_SYSTEM_REQUEST.md` instead of a tiny local repair.
 - The task is no longer a bounded local fix and now changes architecture, APIs, long-lived templates, or planning assumptions.
 
 ## Passive Project Learning Layer
@@ -150,9 +148,9 @@ Fast path does not load the full passive learning layer.
      Run or emulate:
 
      ```text
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json
+     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json
      # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json
+     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json
      ```
 
      Use the returned readiness:
@@ -175,8 +173,7 @@ Fast path does not load the full passive learning layer.
    - If the task is behavior-changing rather than docs-only, write a failing targeted test or failing repro check before editing production code.
    - The direct execution notes must include that RED gate before production edits.
    - Do not use manual sanity checks as a substitute for red when behavior changes.
-   - If no reliable automated test surface exists for the affected behavior, stop and redirect to `/sp-test-scan` or `/sp-quick` instead of hand-waving the verification gap.
-   - If `.specify/testing/TESTING_PLAYBOOK.md` defines command-tier expectations for `fast smoke`, `focused`, and `full`, use fast smoke only as the cheapest early signal, run the focused tier as the fast-lane acceptance check, and reserve full for broader regression or final verification.
+   - If no reliable automated test surface exists for the affected behavior, stop and redirect to `/sp-quick` or `/sp-specify` instead of hand-waving the verification gap.
    - For bug fixes and regressions, record the current root-cause explanation before implementation starts. If the root cause is not yet known, or if multiple plausible causes are still in play, stop and route to `$sp-debug` instead of applying a quick symptom patch.
    - Keep the change as small and local as possible.
    - If the Senior Consequence Analysis Gate stands down, record the stand-down reason before continuing in `sp-fast`.
@@ -194,8 +191,8 @@ Fast path does not load the full passive learning layer.
    - Include `changed_behavior_surfaces` for commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions affected by the change.
    - Include `verification_evidence` with the exact checks run and the result.
    - Include `project_cognition_refresh` recommending `$sp-map-update` with the changed paths whenever project cognition might be affected.
-   - If the fast-path change unexpectedly touched truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths. Do not route to `$sp-map-scan` or `$sp-map-build` for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` only when build acceptance passes.
-   - If a refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and recommend `$sp-map-update` with the changed paths; escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
+   - If the fast-path change unexpectedly touched truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths. Do not route to `$sp-map-scan` or `$sp-map-build` for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes.
+   - If a refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and recommend `$sp-map-update` with the changed paths; escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
 
 ## Output Contract
 

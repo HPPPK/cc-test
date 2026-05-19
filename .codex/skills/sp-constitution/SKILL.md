@@ -43,7 +43,7 @@ Create or update the project constitution as the authoritative rule layer for do
 
 ## Process
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify learning start --command constitution --format json` when available so passive learning files exist and relevant shared memory is visible before broader context collection.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command constitution --format json` when available so passive learning files exist and relevant shared memory is visible before broader context collection.
 - Load the current constitution, then read `.specify/memory/project-rules.md` and `.specify/memory/learnings/INDEX.md` in that order before broader repository context. Open only relevant learning detail docs linked from the index.
 - If the repository already has code and you need repo-derived evidence, read `.specify/project-cognition/status.json` plus the smallest relevant cognition slice or graph artifact first to assess git-baseline freshness before trusting any compatibility/export artifact. If the cognition baseline is missing, run `/sp-map-scan` followed by `/sp-map-build` before continuing or explicitly report the refresh as a blocking follow-up. If the cognition runtime is stale or too weak for the touched area, use `/sp-map-update` when possible before broader work continues.
 - Load the current constitution and identify unresolved placeholders or requested changes.
@@ -90,12 +90,12 @@ constitution and propagate any amendments across dependent artifacts.
 **Note**: If `.specify/memory/constitution.md` does not exist yet, it should
 have been initialized from `.specify/templates/constitution-template.md`
 during project setup. That project-local template may be the default product
-constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify init`. If it is
+constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify init`. If it is
 missing, copy the template first.
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify learning start --command constitution --format json` when
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command constitution --format json` when
   available so passive learning files exist before deeper context collection.
 - Read `.specify/memory/constitution.md`,
   `.specify/memory/project-rules.md`, and
@@ -112,7 +112,7 @@ missing, copy the template first.
   changes, hidden dependencies, or promotion friction, make sure durable state
   captures that reusable learning pressure instead of treating it as chat-only
   discussion.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - When the durable state does not capture the reusable lesson cleanly, update
   `.specify/memory/learnings/INDEX.md` and a linked detail document with the
   command, type, summary, and evidence.
@@ -127,8 +127,8 @@ missing, copy the template first.
   `/sp-map-scan` followed by `/sp-map-build` before continuing or mark the refresh as a blocking
   follow-up rather than fabricating repository context.
 - If an amendment affects project cognition runtime truth and a full refresh can be completed now,
-  do it, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition validate-build --format json`, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` only when build acceptance passes;
-  otherwise use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback.
+  do it, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json`, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes;
+  otherwise use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback.
 - If the amendment changes structure, ownership, workflows, testing strategy, integrations, or operator expectations, mark the related project cognition compatibility/export surface for refresh in the Sync Impact Report even if the constitution update itself is complete. Use this exact framing: mark the related project cognition compatibility/export surface for refresh.
 
 ## Downstream Re-entry Contract

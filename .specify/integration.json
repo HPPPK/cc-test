@@ -1,7 +1,11 @@
 {
-  "integration": "opencode",
+  "integration": "codex",
   "version": "0.5.1.dev0",
   "scripts": {
-    "update-context": ".specify/integrations/opencode/scripts/update-context.ps1"
+    "update-context": ".specify/integrations/codex/scripts/update-context.ps1"
+  },
+  "team": {
+    "surface": "sp-teams",
+    "runtime_config": ".specify/teams/runtime.json"
   }
 }

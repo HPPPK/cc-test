@@ -43,9 +43,9 @@ Required context inputs:
   Run or emulate:
 
   ```text
-  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition lexicon --intent research --query=\"$ARGUMENTS\" --format json
+  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent research --query=\"$ARGUMENTS\" --format json
   # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition query --intent research --query-plan \"<query_plan_json>\" --format json
+  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent research --query-plan \"<query_plan_json>\" --format json
   ```
 
   Use the returned readiness:

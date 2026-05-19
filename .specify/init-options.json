@@ -1,9 +1,10 @@
 {
-  "ai": "opencode",
+  "ai": "codex",
+  "ai_skills": true,
   "branch_numbering": "sequential",
   "constitution_profile": "product",
   "here": true,
-  "integration": "opencode",
+  "integration": "codex",
   "preset": null,
   "script": "ps",
   "speckit_version": "0.5.1.dev0"

@@ -77,7 +77,7 @@ Use `execution_surface: native-subagents`.
 Goal: Read the current stage artifact, project cognition artifact, or explicitly requested compatibility/export atlas artifact and explain it in plain language so the user can understand what the system currently believes, what is decided, what is still open, and what the next phase or next relevant view will do.
 
 1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly` from repo root once (`--json --paths-only` / `-Json -PathsOnly`) and parse the available feature paths.
-   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify lane resolve --command explain --ensure-worktree` before guessing from branch-only context.
+   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command explain --ensure-worktree` before guessing from branch-only context.
    - When lane resolution returns a materialized lane worktree, explain artifacts from that isolated worktree context so the explanation stays attached to the active feature lane.
 
 2. Resolve the stage artifact deterministically:

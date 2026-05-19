@@ -176,9 +176,9 @@ Forbidden before the cognition gate:
 Before `context-grounding`, `technical-options`, affected-surface analysis, or source-grounded recommendations, use the launcher-backed project cognition query flow:
 
 1. Read `.specify/project-cognition/status.json` for freshness and runtime metadata.
-2. Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json`.
+2. Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json`.
 3. Translate the returned map terms into a bounded `query_plan` with `selected_concepts`, `rejected_concepts`, `expanded_queries`, `paths`, and `selection_reason`.
-4. Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition query --intent plan --query-plan \"<query_plan_json>\" --format json`.
+4. Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent plan --query-plan \"<query_plan_json>\" --format json`.
 5. Use the returned readiness, route_pack, subgraph, missing coverage, and `minimal_live_reads` as the discussion's source-grounded context.
 
 Treat `.specify/project-cognition/project-cognition.db` plus the query bundle as runtime truth. Do not require legacy raw slice artifacts as a prerequisite for source-grounded discussion.

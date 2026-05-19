@@ -74,12 +74,12 @@ Use `execution_surface: native-subagents`.
 - It must not silently escalate to a full rebuild without recording why.
 - It must prefer metadata-only or single-slice updates when those are sufficient.
 - After recording updates, re-evaluate runtime readiness through the shared freshness contract.
-- After applying update records, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition validate-build --format json`.
+- After applying update records, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json`.
 - If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete missing, unusable, schema-incompatible, explicitly-rebuild-required, or baseline-identity-invalid condition and route to `$sp-map-scan`, then `$sp-map-build`.
 - If `validate-build` is blocked after update recording, report `partial_refresh` and preserve the validation errors instead of claiming the runtime is fresh.
-- If the re-evaluated runtime is `fresh` with `readiness=ready`, finalize the successful refresh through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` so cognition freshness metadata cannot remain stale.
+- If the re-evaluated runtime is `fresh` with `readiness=ready`, finalize the successful refresh through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` so cognition freshness metadata cannot remain stale.
 - If the update helper returns `ready` and `validate-build` passes, but the shared freshness check still sees the same refreshed source paths only because those source changes are not committed yet, report the incremental update as recorded and baseline-finalization pending. Do not tell the user to run `$sp-map-scan` or `$sp-map-build` merely because refreshed source changes are not committed yet.
-- After those source changes are committed, update the git-baseline freshness metadata with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition record-refresh --reason \"map-update\" --format json` or `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json` without rerunning `$sp-map-scan` or `$sp-map-build`, unless validation reports `needs_rebuild`, the baseline is unusable, or the affected closure cannot be bounded safely.
+- After those source changes are committed, update the git-baseline freshness metadata with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition record-refresh --reason \"map-update\" --format json` or `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` without rerunning `$sp-map-scan` or `$sp-map-build`, unless validation reports `needs_rebuild`, the baseline is unusable, or the affected closure cannot be bounded safely.
 - Do not report refresh completion when the runtime remains blocked.
 - A recorded refresh is not automatically a ready refresh: `partial_refresh` means update metadata was written but readiness still failed.
 
@@ -103,7 +103,7 @@ The canonical outputs for this command are:
 - updated `.specify/project-cognition/project-cognition.db`
 - query/update helper readiness metadata
 - the post-recording freshness result, including `freshness`, `readiness`, and `recommended_next_action`
-- when the post-recording freshness result is ready, a completed cognition refresh finalizer via `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a2f1f2ba1cdaf4f7a1c85870121c2ec3eb60f3f6 specify project-cognition complete-refresh --format json`
+- when the post-recording freshness result is ready, a completed cognition refresh finalizer via `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json`
 
 ## Guardrails
 

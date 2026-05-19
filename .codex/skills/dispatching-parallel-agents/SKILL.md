@@ -40,10 +40,9 @@ Current routing vocabulary:
 ## Process
 
 1. **Route first**: Select the owning `sp-*` workflow before dispatch. Common
-   canonical routes are `sp-quick`, `sp-debug`, `sp-test-scan`, `sp-test-build`,
-   `sp-map-scan`, `sp-map-build`, and `sp-implement`. When telling the user what
-   to type, use placeholders such as `$sp-quick`, `$sp-debug`,
-   `$sp-test-scan`, `$sp-test-build`, `$sp-map-scan`,
+   canonical routes are `sp-quick`, `sp-debug`, `sp-map-scan`, `sp-map-build`,
+   and `sp-implement`. When telling the user what to type, use placeholders such
+   as `$sp-quick`, `$sp-debug`, `$sp-map-scan`,
    `$sp-map-build`, or `$sp-implement`.
 2. **Split lanes**: Name each lane, purpose, read context, write-set, forbidden
    paths, shared surfaces, and verification target.
