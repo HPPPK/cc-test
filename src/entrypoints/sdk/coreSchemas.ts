@@ -1700,6 +1700,7 @@ export const SDKTaskNotificationMessageSchema = lazySchema(() =>
     status: z.enum(['completed', 'failed', 'stopped']),
     output_file: z.string(),
     summary: z.string(),
+    result: z.string().optional(),
     usage: z
       .object({
         total_tokens: z.number(),

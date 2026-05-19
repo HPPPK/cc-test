@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import type { FitAddon as XTermFitAddon } from '@xterm/addon-fit'
 import { useTranslation, type TranslationKey } from '../i18n'
 import { terminalApi } from '../api/terminal'
+import { useSettingsStore } from '../stores/settingsStore'
+import { Dropdown } from '../components/shared/Dropdown'
+import { Input } from '../components/shared/Input'
+import { Button } from '../components/shared/Button'
+import type { DesktopTerminalStartupShell } from '../types/settings'
 
 type TerminalStatus = 'idle' | 'starting' | 'running' | 'exited' | 'error' | 'unavailable'
 
@@ -24,6 +29,7 @@ type TerminalSettingsProps = {
   testId?: string
   workspace?: boolean
   docked?: boolean
+  showPreferences?: boolean
 }
 
 export function TerminalSettings({
@@ -35,8 +41,11 @@ export function TerminalSettings({
   testId = 'settings-terminal-host',
   workspace = false,
   docked = false,
+  showPreferences = false,
 }: TerminalSettingsProps = {}) {
   const t = useTranslation()
+  const desktopTerminal = useSettingsStore((state) => state.desktopTerminal)
+  const setDesktopTerminal = useSettingsStore((state) => state.setDesktopTerminal)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTermTerminal | null>(null)
   const fitRef = useRef<XTermFitAddon | null>(null)
@@ -45,6 +54,51 @@ export function TerminalSettings({
   const [status, setStatus] = useState<TerminalStatus>(() => terminalApi.isAvailable() ? 'idle' : 'unavailable')
   const [error, setError] = useState<string | null>(null)
   const [shellInfo, setShellInfo] = useState<{ shell: string; cwd: string } | null>(null)
+  const [startupShell, setStartupShell] = useState<DesktopTerminalStartupShell>(desktopTerminal?.startupShell ?? 'system')
+  const [customShellPath, setCustomShellPath] = useState(desktopTerminal?.customShellPath ?? '')
+  const [preferencesError, setPreferencesError] = useState<string | null>(null)
+  const [preferencesSaved, setPreferencesSaved] = useState(false)
+  const [preferencesSaving, setPreferencesSaving] = useState(false)
+  const isWindows = typeof navigator !== 'undefined' && /Win/i.test(navigator.platform || navigator.userAgent)
+
+  useEffect(() => {
+    setStartupShell(desktopTerminal?.startupShell ?? 'system')
+    setCustomShellPath(desktopTerminal?.customShellPath ?? '')
+  }, [desktopTerminal])
+
+  useEffect(() => {
+    if (!preferencesSaved) return
+    const timer = window.setTimeout(() => setPreferencesSaved(false), 2500)
+    return () => window.clearTimeout(timer)
+  }, [preferencesSaved])
+
+  const shellItems = useMemo(() => [
+    {
+      value: 'system' as const,
+      label: t('settings.terminal.shell.system'),
+      description: t('settings.terminal.shell.systemDesc'),
+    },
+    {
+      value: 'pwsh' as const,
+      label: t('settings.terminal.shell.pwsh'),
+      description: t('settings.terminal.shell.pwshDesc'),
+    },
+    {
+      value: 'powershell' as const,
+      label: t('settings.terminal.shell.powershell'),
+      description: t('settings.terminal.shell.powershellDesc'),
+    },
+    {
+      value: 'cmd' as const,
+      label: t('settings.terminal.shell.cmd'),
+      description: t('settings.terminal.shell.cmdDesc'),
+    },
+    {
+      value: 'custom' as const,
+      label: t('settings.terminal.shell.custom'),
+      description: t('settings.terminal.shell.customDesc'),
+    },
+  ], [t])
 
   const resizeSession = useCallback(() => {
     const terminal = terminalRef.current
@@ -202,6 +256,36 @@ export function TerminalSettings({
     terminalRef.current?.clear()
   }
 
+  const savePreferences = async () => {
+    setPreferencesError(null)
+    setPreferencesSaved(false)
+
+    const trimmedPath = customShellPath.trim()
+    if (startupShell === 'custom') {
+      if (!trimmedPath) {
+        setPreferencesError(t('settings.terminal.customPathRequired'))
+        return
+      }
+      if (!/^[A-Za-z]:[\\/]/.test(trimmedPath)) {
+        setPreferencesError(t('settings.terminal.customPathAbsolute'))
+        return
+      }
+    }
+
+    setPreferencesSaving(true)
+    try {
+      await setDesktopTerminal({
+        startupShell,
+        customShellPath: trimmedPath,
+      })
+      setPreferencesSaved(true)
+    } catch (err) {
+      setPreferencesError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPreferencesSaving(false)
+    }
+  }
+
   return (
     <div className={`flex h-full flex-col overflow-hidden ${
       docked
@@ -289,6 +373,83 @@ export function TerminalSettings({
         </div>
       )}
 
+      {showPreferences && isWindows && (
+        <>
+          <div className="mb-4 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-4">
+            <div className="flex flex-col gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  {t('settings.terminal.preferencesTitle')}
+                </h3>
+                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                  {t('settings.terminal.preferencesBody')}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">
+                  {t('settings.terminal.startupShell')}
+                </span>
+                <Dropdown<DesktopTerminalStartupShell>
+                  items={shellItems}
+                  value={startupShell}
+                  onChange={(value) => {
+                    setStartupShell(value)
+                    setPreferencesError(null)
+                    setPreferencesSaved(false)
+                  }}
+                  width="100%"
+                  trigger={
+                    <button
+                      type="button"
+                      className="flex h-10 w-full items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text-primary)]"
+                    >
+                      <span>{shellItems.find((item) => item.value === startupShell)?.label ?? startupShell}</span>
+                      <span className="material-symbols-outlined text-[18px] text-[var(--color-text-tertiary)]">expand_more</span>
+                    </button>
+                  }
+                />
+              </div>
+
+              {startupShell === 'custom' && (
+                <Input
+                  label={t('settings.terminal.customPath')}
+                  placeholder={t('settings.terminal.customPathPlaceholder')}
+                  value={customShellPath}
+                  onChange={(event) => {
+                    setCustomShellPath(event.target.value)
+                    setPreferencesError(null)
+                    setPreferencesSaved(false)
+                  }}
+                  error={preferencesError ?? undefined}
+                />
+              )}
+
+              {preferencesError && startupShell !== 'custom' && (
+                <p className="text-xs text-[var(--color-error)]">{preferencesError}</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  loading={preferencesSaving}
+                  onClick={() => void savePreferences()}
+                >
+                  {t('settings.terminal.saveShell')}
+                </Button>
+                {preferencesSaved && (
+                  <span className="text-xs text-[var(--color-text-secondary)]">
+                    {t('settings.terminal.saveShellSuccess')}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <BashPathSettings isTauri={terminalApi.isAvailable()} />
+        </>
+      )}
+
       {status === 'unavailable' ? (
         <div className="flex flex-1 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-8 text-center">
           <div>
@@ -339,5 +500,122 @@ function StatusPill({ status, label }: { status: TerminalStatus; label: string }
       <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
       {label}
     </span>
+  )
+}
+
+function BashPathSettings({ isTauri }: { isTauri: boolean }) {
+  const t = useTranslation()
+  const [bashPath, setBashPath] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [invalid, setInvalid] = useState(false)
+
+  useEffect(() => {
+    if (!isTauri) return
+    void terminalApi.getBashPath().then((path) => setBashPath(path)).catch(() => {})
+  }, [isTauri])
+
+  const handleSave = async () => {
+    const trimmed = bashPath?.trim() || null
+    setSaving(true)
+    setInvalid(false)
+    setSaved(false)
+    try {
+      await terminalApi.setBashPath(trimmed)
+      setBashPath(trimmed)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      setInvalid(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReset = async () => {
+    setSaving(true)
+    setSaved(false)
+    setInvalid(false)
+    try {
+      await terminalApi.setBashPath(null)
+      setBashPath(null)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleBrowse = async () => {
+    if (!isTauri) return
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({
+        title: t('settings.terminal.bashPathLabel'),
+        multiple: false,
+        filters: [{
+          name: 'Bash Executable',
+          extensions: ['exe', '', 'bat', 'cmd', 'ps1'],
+        }],
+      })
+      if (selected && typeof selected === 'string') {
+        setBashPath(selected)
+        setInvalid(false)
+      }
+    } catch {
+      // user cancelled
+    }
+  }
+
+  if (!isTauri) return null
+
+  return (
+    <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-3">
+      <label className="mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]">
+        {t('settings.terminal.bashPathLabel')}
+      </label>
+      <p className="mb-2 text-xs text-[var(--color-text-tertiary)]">
+        {t('settings.terminal.bashPathDescription')}
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={bashPath || ''}
+          onChange={(e) => { setBashPath(e.target.value); setInvalid(false); setSaved(false) }}
+          placeholder={t('settings.terminal.bashPathLabel')}
+          className="flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-mono text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-border-focus)]"
+        />
+        <button
+          type="button"
+          onClick={handleBrowse}
+          className="inline-flex h-8 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
+          <span className="material-symbols-outlined text-[16px]">folder_open</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex h-8 items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--color-text-primary)] px-3 text-xs font-medium text-[var(--color-surface)] transition-colors hover:opacity-90 disabled:opacity-50"
+        >
+          {saved ? t('settings.terminal.bashPathSaved') : t('settings.terminal.bashPathSave')}
+        </button>
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={saving || bashPath === null}
+          className="inline-flex h-8 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+        >
+          {t('settings.terminal.bashPathReset')}
+        </button>
+      </div>
+      {invalid && (
+        <p className="mt-1.5 text-xs text-[var(--color-error)]">
+          {t('settings.terminal.bashPathInvalid')}
+        </p>
+      )}
+    </div>
   )
 }

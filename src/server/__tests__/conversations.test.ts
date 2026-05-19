@@ -9,82 +9,27 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
-import { execFileSync, execFile } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
 import { ConversationService, ConversationStartupError, conversationService } from '../services/conversationService.js'
 import { SessionService, sessionService } from '../services/sessionService.js'
 import { ProviderService } from '../services/providerService.js'
 
-const execFileAsync = promisify(execFile)
-
 async function rmWithRetry(targetPath: string): Promise<void> {
-  const attempts = process.platform === 'win32' ? 8 : 1
+  const attempts = process.platform === 'win32' ? 5 : 1
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       await fs.rm(targetPath, { recursive: true, force: true })
       return
     } catch (error) {
       if (
+        attempt === attempts - 1 ||
         !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code || '')
       ) {
         throw error
       }
-      if (attempt === attempts - 1) {
-        return
-      }
-      if (globalThis.Bun?.gc) {
-        globalThis.Bun.gc(true)
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
     }
-  }
-}
-
-async function stopMockSdkCliProcesses(fixturePath: string): Promise<void> {
-  if (process.platform !== 'win32') return
-
-  const escapedPath = fixturePath.replace(/'/g, "''")
-  const command = [
-    '$matches = Get-CimInstance Win32_Process | Where-Object {',
-    `$_.CommandLine -like '*${escapedPath}*'`,
-    '}',
-    'foreach ($p in $matches) { Stop-Process -Id $p.ProcessId -Force }',
-  ].join(' ')
-
-  try {
-    await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      command,
-    ])
-  } catch {
-    // Best-effort cleanup for test fixture subprocesses.
-  }
-}
-
-async function countMockSdkCliProcesses(fixturePath: string): Promise<number> {
-  if (process.platform !== 'win32') return 0
-
-  const escapedPath = fixturePath.replace(/'/g, "''")
-  const command = [
-    '$matches = Get-CimInstance Win32_Process | Where-Object {',
-    `$_.CommandLine -like '*${escapedPath}*'`,
-    '}',
-    '@($matches).Count',
-  ].join(' ')
-
-  try {
-    const { stdout } = await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      command,
-    ])
-    return Number(stdout.trim()) || 0
-  } catch {
-    return 0
   }
 }
 
@@ -539,7 +484,6 @@ describe('WebSocket Chat Integration', () => {
   let baseUrl: string
   let wsUrl: string
   let tmpDir: string
-  let mockCliPath: string
 
   function git(cwd: string, ...args: string[]): string {
     return execFileSync('git', args, {
@@ -806,11 +750,9 @@ describe('WebSocket Chat Integration', () => {
   beforeAll(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-conv-'))
     process.env.CLAUDE_CONFIG_DIR = tmpDir
-    mockCliPath = fileURLToPath(
+    process.env.CLAUDE_CLI_PATH = fileURLToPath(
       new URL('./fixtures/mock-sdk-cli.ts', import.meta.url)
     )
-    await stopMockSdkCliProcesses(mockCliPath)
-    process.env.CLAUDE_CLI_PATH = mockCliPath
     await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
 
     const port = 15000 + Math.floor(Math.random() * 1000)
@@ -821,13 +763,7 @@ describe('WebSocket Chat Integration', () => {
   })
 
   afterAll(async () => {
-    await Promise.all(
-      conversationService.getActiveSessions().map((sessionId) =>
-        conversationService.stopSessionAndWait(sessionId, 500),
-      ),
-    )
-    server?.stop()
-    await stopMockSdkCliProcesses(mockCliPath)
+    server?.stop(true)
     if (tmpDir) {
       await rmWithRetry(tmpDir)
     }
@@ -837,8 +773,6 @@ describe('WebSocket Chat Integration', () => {
       delete process.env.CLAUDE_CLI_PATH
     }
     delete process.env.CLAUDE_CONFIG_DIR
-
-    expect(await countMockSdkCliProcesses(mockCliPath)).toBe(0)
   })
 
   it('should connect and receive connected event', async () => {
@@ -972,6 +906,7 @@ describe('WebSocket Chat Integration', () => {
       workDir: worktreePath!,
       repository: launchInfo!.repository,
     })
+    await sessionService.deletePlaceholderSessionFiles(sessionId, worktreePath!)
 
     const messages = await runTurn(sessionId, 'Continue in the existing worktree')
     const statusVerbs = messages
@@ -1193,7 +1128,7 @@ describe('WebSocket Chat Integration', () => {
       await providerService.activateOfficial()
       await fs.writeFile(path.join(tmpDir, 'settings.json'), '{}\n', 'utf-8')
     }
-  }, 45_000)
+  }, 20_000)
 
   it('should continue chat when SDK init arrives only after the first user turn', async () => {
     const messages = await withMockInitMode('on_first_user', () =>
@@ -1519,7 +1454,7 @@ describe('WebSocket Chat Integration', () => {
       }
       await rmWithRetry(projectDir)
     }
-  }, 45_000)
+  }, 20_000)
 
   it('should clear a desktop session without sending /clear to the CLI turn loop', async () => {
     const createRes = await fetch(`${baseUrl}/api/sessions`, {

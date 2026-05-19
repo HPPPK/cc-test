@@ -44,11 +44,6 @@ type GitInfo = SessionGitInfo
 
 type Attachment = ComposerAttachment
 
-type ComposerDraft = {
-  input: string
-  attachments: Attachment[]
-}
-
 type ChatInputProps = {
   variant?: 'default' | 'hero'
   compact?: boolean
@@ -96,7 +91,6 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const slashMenuRef = useRef<HTMLDivElement>(null)
   const fileSearchRef = useRef<FileSearchMenuHandle>(null)
   const slashItemRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const composerDraftsRef = useRef<Record<string, ComposerDraft>>({})
   const previousActiveTabIdRef = useRef<string | null>(null)
   const inputRef = useRef(input)
   const attachmentsRef = useRef(attachments)
@@ -136,6 +130,18 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const addWorkspaceReference = useWorkspaceChatContextStore((s) => s.addReference)
   const removeWorkspaceReference = useWorkspaceChatContextStore((s) => s.removeReference)
   const clearWorkspaceReferences = useWorkspaceChatContextStore((s) => s.clearReferences)
+  const saveComposerDraft = useCallback((sessionId: string) => {
+    const draft = {
+      input: inputRef.current,
+      attachments: attachmentsRef.current,
+    }
+    const chatStore = useChatStore.getState()
+    if (draft.input.length === 0 && draft.attachments.length === 0) {
+      chatStore.clearComposerDraft(sessionId)
+      return
+    }
+    chatStore.setComposerDraft(sessionId, draft)
+  }, [])
 
   const isMemberSession = !!memberInfo
   const isDisconnectedMemberSession =
@@ -181,13 +187,10 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     if (previousActiveTabId === activeTabId) return
 
     if (previousActiveTabId) {
-      composerDraftsRef.current[previousActiveTabId] = {
-        input: inputRef.current,
-        attachments: attachmentsRef.current,
-      }
+      saveComposerDraft(previousActiveTabId)
     }
 
-    const nextDraft = activeTabId ? composerDraftsRef.current[activeTabId] : undefined
+    const nextDraft = activeTabId ? useChatStore.getState().sessions[activeTabId]?.composerDraft : undefined
     setComposerInput(nextDraft?.input ?? '')
     setComposerAttachments(nextDraft?.attachments ?? [])
     setPlusMenuOpen(false)
@@ -198,7 +201,14 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     setAtFilter('')
     setAtCursorPos(-1)
     previousActiveTabIdRef.current = activeTabId
-  }, [activeTabId, setComposerAttachments, setComposerInput])
+  }, [activeTabId, saveComposerDraft, setComposerAttachments, setComposerInput])
+
+  useEffect(() => {
+    return () => {
+      const currentActiveTabId = previousActiveTabIdRef.current
+      if (currentActiveTabId) saveComposerDraft(currentActiveTabId)
+    }
+  }, [saveComposerDraft])
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -585,6 +595,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     })
     setComposerInput('')
     setComposerAttachments([])
+    useChatStore.getState().clearComposerDraft(activeTabId!)
+    if (targetSessionId !== activeTabId) useChatStore.getState().clearComposerDraft(targetSessionId)
     if (!isMemberSession) {
       clearWorkspaceReferences(activeTabId!)
       if (targetSessionId !== activeTabId) clearWorkspaceReferences(targetSessionId)

@@ -200,6 +200,158 @@ describe('MessageList nested tool calls', () => {
     expect(screen.getByText('Budget: 0 / unlimited tokens')).toBeTruthy()
   })
 
+  it('renders non-agent background progress inline in the transcript', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'user-1',
+              type: 'user_text',
+              content: 'run review',
+              timestamp: 1,
+            },
+            {
+              id: 'background-task-shell-1',
+              type: 'background_task',
+              timestamp: 2,
+              task: {
+                taskId: 'shell-task-1',
+                toolUseId: 'shell-tool-1',
+                status: 'running',
+                taskType: 'local_bash',
+                summary: 'Running Playwright checks',
+                usage: {
+                  totalTokens: 1200,
+                  toolUses: 4,
+                  durationMs: 45000,
+                },
+                startedAt: 2,
+                updatedAt: 2,
+              },
+            },
+            {
+              id: 'assistant-1',
+              type: 'assistant_text',
+              content: 'continuing',
+              timestamp: 3,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const card = screen.getByTestId('background-task-event-card')
+    expect(card.textContent).toContain('Background command')
+    expect(card.textContent).toContain('running')
+    expect(card.textContent).toContain('Running Playwright checks')
+    expect(card.textContent).toContain('1,200 tokens')
+    expect(card.textContent).toContain('45s')
+  })
+
+  it('renders stopped non-agent background tasks as neutral transcript events', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [{
+            id: 'background-task-shell-stopped',
+            type: 'background_task',
+            timestamp: 2,
+            task: {
+              taskId: 'shell-task-stopped',
+              toolUseId: 'shell-tool-stopped',
+              status: 'stopped',
+              taskType: 'local_bash',
+              summary: 'Command "bun test" was stopped',
+              startedAt: 1,
+              updatedAt: 2,
+            },
+          }],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const card = screen.getByTestId('background-task-event-card')
+    expect(card.getAttribute('data-status')).toBe('stopped')
+    expect(card.textContent).toContain('stopped')
+    expect(card.querySelector('.text-\\[var\\(--color-error\\)\\]')).toBeNull()
+  })
+
+  it('uses user-facing labels for workflow and unknown background tasks', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'background-task-workflow',
+              type: 'background_task',
+              timestamp: 2,
+              task: {
+                taskId: 'workflow-task',
+                status: 'running',
+                taskType: 'local_workflow',
+                summary: 'Running release checklist',
+                startedAt: 1,
+                updatedAt: 2,
+              },
+            },
+            {
+              id: 'background-task-unknown',
+              type: 'background_task',
+              timestamp: 3,
+              task: {
+                taskId: 'unknown-task',
+                status: 'completed',
+                summary: 'Finished background work',
+                startedAt: 1,
+                updatedAt: 3,
+              },
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const cards = screen.getAllByTestId('background-task-event-card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]?.textContent).toContain('Background workflow')
+    expect(cards[1]?.textContent).toContain('Background task')
+  })
+
+  it('does not render agent background task events as separate transcript cards', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [{
+            id: 'background-task-agent-hidden',
+            type: 'background_task',
+            timestamp: 2,
+            task: {
+              taskId: 'agent-task-hidden',
+              toolUseId: 'agent-tool-hidden',
+              status: 'running',
+              taskType: 'local_agent',
+              summary: 'Running Read',
+              startedAt: 1,
+              updatedAt: 2,
+            },
+          }],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.queryByTestId('background-task-event-card')).toBeNull()
+    expect(screen.queryByText('local_agent')).toBeNull()
+  })
+
   it('restores the full transcript when scrolling away from latest', async () => {
     useChatStore.setState({
       sessions: {
@@ -322,6 +474,66 @@ describe('MessageList nested tool calls', () => {
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0)
     expect(screen.getByText(/Read .*example\.ts.*done/i)).toBeTruthy()
     expect(container.textContent).toContain('Agent')
+  })
+
+  it('keeps mixed tool groups active while a nested child tool call is unresolved', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'idle',
+          messages: [
+            {
+              id: 'tool-task-update',
+              type: 'tool_use',
+              toolName: 'TaskUpdate',
+              toolUseId: 'task-update-1',
+              input: { tasks: [{ id: '4', status: 'in_progress', content: 'Run page integration' }] },
+              timestamp: 1,
+            },
+            {
+              id: 'tool-bash',
+              type: 'tool_use',
+              toolName: 'Bash',
+              toolUseId: 'bash-1',
+              input: { command: 'bun run dev' },
+              timestamp: 2,
+            },
+            {
+              id: 'result-task-update',
+              type: 'tool_result',
+              toolUseId: 'task-update-1',
+              content: 'updated',
+              isError: false,
+              timestamp: 3,
+            },
+            {
+              id: 'result-bash',
+              type: 'tool_result',
+              toolUseId: 'bash-1',
+              content: 'started',
+              isError: false,
+              timestamp: 4,
+            },
+            {
+              id: 'tool-local-bash',
+              type: 'tool_use',
+              toolName: 'local_bash',
+              toolUseId: 'local-bash-1',
+              input: { description: 'Run page integration checks' },
+              timestamp: 5,
+              parentToolUseId: 'task-update-1',
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const groupSummary = screen.getByText('TaskUpdate (1), ran a command')
+    const groupButton = groupSummary.closest('button')
+    expect(groupButton?.textContent).not.toContain('check_circle')
+    expect(screen.getByText('local_bash')).toBeTruthy()
   })
 
   it('does not render blank assistant bubbles for whitespace-only text', () => {
@@ -559,6 +771,68 @@ describe('MessageList nested tool calls', () => {
     expect(toolGroups.map((item) => item.toolCalls[0]?.toolUseId)).toEqual(['agent-1', 'write-1'])
   })
 
+  it('keeps task-management tools from downgrading dispatched agents into a mixed tool tree', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'tool-task-create',
+        type: 'tool_use',
+        toolName: 'TaskCreate',
+        toolUseId: 'task-create-1',
+        input: { subject: 'Review recent changes' },
+        timestamp: 1,
+      },
+      {
+        id: 'tool-task-update',
+        type: 'tool_use',
+        toolName: 'TaskUpdate',
+        toolUseId: 'task-update-1',
+        input: { id: '1', status: 'in_progress' },
+        timestamp: 2,
+      },
+      {
+        id: 'tool-agent-a',
+        type: 'tool_use',
+        toolName: 'Agent',
+        toolUseId: 'agent-a',
+        input: { description: 'Review desktop impact' },
+        timestamp: 3,
+      },
+      {
+        id: 'tool-agent-b',
+        type: 'tool_use',
+        toolName: 'Agent',
+        toolUseId: 'agent-b',
+        input: { description: 'Review runtime impact' },
+        timestamp: 4,
+      },
+      {
+        id: 'tool-agent-child-bash',
+        type: 'tool_use',
+        toolName: 'Bash',
+        toolUseId: 'agent-a-bash',
+        input: { command: 'git status --short' },
+        timestamp: 5,
+        parentToolUseId: 'agent-a',
+      },
+    ]
+
+    const { renderItems, childToolCallsByParent } = buildRenderModel(messages)
+    const toolGroups = renderItems.filter((item) => item.kind === 'tool_group')
+
+    expect(toolGroups).toHaveLength(2)
+    expect(toolGroups[0]?.toolCalls.map((toolCall) => toolCall.toolName)).toEqual([
+      'TaskCreate',
+      'TaskUpdate',
+    ])
+    expect(toolGroups[1]?.toolCalls.map((toolCall) => toolCall.toolName)).toEqual([
+      'Agent',
+      'Agent',
+    ])
+    expect(childToolCallsByParent.get('agent-a')?.map((toolCall) => toolCall.toolUseId)).toEqual([
+      'agent-a-bash',
+    ])
+  })
+
   it('keeps later nested tool calls under their parent after an interleaved user message', () => {
     const messages: UIMessage[] = [
       {
@@ -755,6 +1029,175 @@ describe('MessageList nested tool calls', () => {
     expect(screen.queryByRole('button', { name: 'View result' })).toBeNull()
   })
 
+  it('shows completed background agent result from the terminal task notification', () => {
+    const resultText = '后台 agent 已经完成：定位到 parentToolUseId 丢失并补齐了 live 事件链。'
+
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'tool-agent',
+              type: 'tool_use',
+              toolName: 'Agent',
+              toolUseId: 'agent-1',
+              input: { description: '排查 subagent UI' },
+              timestamp: 1,
+            },
+            {
+              id: 'result-agent',
+              type: 'tool_result',
+              toolUseId: 'agent-1',
+              content:
+                "Async agent launched successfully.\nagentId: a29934b04b20ed564 (internal ID - do not mention to user. Use SendMessage with to: 'a29934b04b20ed564' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.",
+              isError: false,
+              timestamp: 2,
+            },
+          ],
+          agentTaskNotifications: {
+            'agent-1': {
+              taskId: 'agent-task-1',
+              toolUseId: 'agent-1',
+              status: 'completed',
+              summary: 'Agent "排查 subagent UI" completed',
+              result: resultText,
+            },
+          },
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText('Done')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View result' }))
+
+    expect(within(screen.getByRole('dialog')).getByText(resultText)).toBeTruthy()
+  })
+
+  it('prefers the terminal task report over structured agent tool result JSON', () => {
+    const markdownReport = '## 审查安全风险\n\n- 最终报告应该按 Markdown 展示。'
+
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'tool-agent',
+              type: 'tool_use',
+              toolName: 'Agent',
+              toolUseId: 'agent-1',
+              input: { description: '查看安全报告' },
+              timestamp: 1,
+            },
+            {
+              id: 'result-agent',
+              type: 'tool_result',
+              toolUseId: 'agent-1',
+              content: {
+                results: [
+                  {
+                    file: 'git:v0.2.6..v0.2.7',
+                    line: 0,
+                    snippet: 'raw structured JSON should not be shown',
+                    context: '结构化检索结果不是给用户看的最终报告。',
+                  },
+                ],
+              },
+              isError: false,
+              timestamp: 2,
+            },
+          ],
+          agentTaskNotifications: {
+            'agent-1': {
+              taskId: 'agent-task-1',
+              toolUseId: 'agent-1',
+              status: 'completed',
+              summary: 'Agent "审查安全风险" completed',
+              result: markdownReport,
+            },
+          },
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText(/最终报告应该按 Markdown 展示。/)).toBeTruthy()
+    expect(screen.queryByText(/raw structured JSON should not be shown/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View result' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: '审查安全风险' })).toBeTruthy()
+    expect(within(dialog).getByText('最终报告应该按 Markdown 展示。')).toBeTruthy()
+    expect(within(dialog).queryByText(/raw structured JSON should not be shown/)).toBeNull()
+  })
+
+  it('formats structured agent fallback results as readable markdown', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'tool-agent',
+              type: 'tool_use',
+              toolName: 'Agent',
+              toolUseId: 'agent-1',
+              input: { description: '审查安全风险' },
+              timestamp: 1,
+            },
+            {
+              id: 'result-agent',
+              type: 'tool_result',
+              toolUseId: 'agent-1',
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    results: [
+                      {
+                        file: 'git:v0.2.6..v0.2.7',
+                        line: 0,
+                        snippet: 'v0.2.7 tag = a4c92ec7',
+                        context: '版本范围判断：release-notes/v0.2.7.md 明确相比 v0.2.6。',
+                      },
+                      {
+                        risk: 'medium',
+                        items: [
+                          {
+                            file: '/tmp/example/src/lib.rs',
+                            line: 220,
+                            context: '中风险：服务默认监听 0.0.0.0。',
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                },
+              ],
+              isError: false,
+              timestamp: 2,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText(/git:v0\.2\.6\.\.v0\.2\.7:0/)).toBeTruthy()
+    expect(screen.queryByText(/\{"results"/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View result' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('git:v0.2.6..v0.2.7:0')).toBeTruthy()
+    expect(within(dialog).getByText('/tmp/example/src/lib.rs:220')).toBeTruthy()
+    expect(within(dialog).getByText(/服务默认监听 0\.0\.0\.0/)).toBeTruthy()
+    expect(within(dialog).queryByText(/\{"results"/)).toBeNull()
+  })
+
   it('renders copy controls for user messages and scopes assistant copy to a single reply', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, {
@@ -824,8 +1267,8 @@ describe('MessageList nested tool calls', () => {
     await selectMessageText(userText, 'workspace selection behavior')
     const floatingAddButton = screen.getByRole('button', { name: 'Add to chat' })
 
-    expect(floatingAddButton.style.left).toBe('260px')
-    expect(floatingAddButton.style.top).toBe('112px')
+    expect(floatingAddButton.style.left).toBe('141px')
+    expect(floatingAddButton.style.top).toBe('26px')
 
     fireEvent.click(floatingAddButton)
 
@@ -870,6 +1313,80 @@ describe('MessageList nested tool calls', () => {
         messageId: 'assistant-1',
         sourceRole: 'assistant',
         quote: 'quote the selected lines',
+      },
+    ])
+  })
+
+  it('dismisses the selected-message action when clicking outside the popover', async () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [{
+            id: 'assistant-1',
+            type: 'assistant_text',
+            content: 'Clicking outside should clear this selected reply.',
+            timestamp: 1,
+          }],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const assistantText = screen.getByText(/Clicking outside should clear/)
+    await selectMessageText(assistantText, 'selected reply')
+    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.pointerDown(document.body)
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
+    expect(window.getSelection()?.toString()).toBe('')
+  })
+
+  it('keeps only the latest selected-message action when selecting across messages', async () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'assistant-1',
+              type: 'assistant_text',
+              content: 'First assistant reply can be selected.',
+              timestamp: 1,
+            },
+            {
+              id: 'assistant-2',
+              type: 'assistant_text',
+              content: 'Second assistant reply should replace it.',
+              timestamp: 2,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const firstText = screen.getByText(/First assistant reply/)
+    const secondText = screen.getByText(/Second assistant reply/)
+    await selectMessageText(firstText, 'First assistant reply')
+    expect(screen.getAllByRole('button', { name: 'Add to chat' })).toHaveLength(1)
+
+    await act(async () => {
+      fireEvent.pointerDown(secondText)
+      await Promise.resolve()
+    })
+    await selectMessageText(secondText, 'Second assistant reply')
+
+    expect(screen.getAllByRole('button', { name: 'Add to chat' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }))
+    expect(useWorkspaceChatContextStore.getState().referencesBySession[ACTIVE_TAB]).toMatchObject([
+      {
+        messageId: 'assistant-2',
+        quote: 'Second assistant reply',
       },
     ])
   })

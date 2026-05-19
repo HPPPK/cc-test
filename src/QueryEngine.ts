@@ -6,6 +6,7 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from 'src/bootstrap/state.js'
+import { isGoalLocalCommandOutputContent } from './goals/goalState.js'
 import type {
   PermissionMode,
   SDKCompactBoundaryMessage,
@@ -934,6 +935,16 @@ export class QueryEngine {
             break
           }
           this.mutableMessages.push(message)
+          if (
+            message.subtype === 'local_command' &&
+            isGoalLocalCommandOutputContent(message.content)
+          ) {
+            if (persistSession) {
+              messages.push(message)
+              await recordTranscript(messages)
+            }
+            yield toSDKLocalCommandOutputMessage(message)
+          }
           // Yield compact boundary messages to SDK
           if (
             message.subtype === 'compact_boundary' &&

@@ -344,7 +344,11 @@ describe('desktopNotifications', () => {
 
   it('forwards notification click targets from native and plugin listeners', async () => {
     const unlistenNative = vi.fn()
-    const unregisterPlugin = vi.fn()
+    const pluginListener = {
+      unregister: vi.fn(function (this: unknown) {
+        expect(this).toBe(pluginListener)
+      }),
+    }
     type NativeClickCallback = (event: { payload: unknown }) => void
     type PluginClickCallback = (notification: unknown) => void
     let nativeCallback: NativeClickCallback = () => {
@@ -366,7 +370,7 @@ describe('desktopNotifications', () => {
     notificationPluginMock.onAction.mockImplementation(async (callback: (notification: unknown) => void) => {
       pluginCallback = callback
       pluginRegistered = true
-      return { unregister: unregisterPlugin }
+      return pluginListener
     })
 
     const onTarget = vi.fn()
@@ -382,7 +386,7 @@ describe('desktopNotifications', () => {
 
     cleanup()
     expect(unlistenNative).toHaveBeenCalledTimes(1)
-    expect(unregisterPlugin).toHaveBeenCalledTimes(1)
+    expect(pluginListener.unregister).toHaveBeenCalledTimes(1)
   })
 
   it('requests OS-level window attention for blocking prompts', async () => {

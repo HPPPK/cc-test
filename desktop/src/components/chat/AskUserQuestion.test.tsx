@@ -260,4 +260,62 @@ describe('AskUserQuestion', () => {
       },
     })
   })
+
+  it('keeps custom responses scoped to each question tab', () => {
+    const input = {
+      questions: [
+        {
+          header: 'Q1',
+          question: 'First question?',
+          options: [{ label: 'A1' }, { label: 'B1' }],
+        },
+        {
+          header: 'Q2',
+          question: 'Second question?',
+          options: [{ label: 'A2' }, { label: 'B2' }],
+        },
+      ],
+    }
+
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={input}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+      target: { value: 'transient-q1' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+      target: { value: '' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
+    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+      target: { value: 'custom-q1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Q2$/ }))
+
+    expect((screen.getByPlaceholderText('Type your answer...') as HTMLInputElement).value).toBe('')
+
+    fireEvent.click(screen.getByRole('button', { name: /^A2$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
+
+    expect((screen.getByPlaceholderText('Type your answer...') as HTMLInputElement).value).toBe('custom-q1')
+
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
+      type: 'permission_response',
+      requestId: 'perm-1',
+      allowed: true,
+      updatedInput: {
+        ...input,
+        answers: {
+          'First question?': 'custom-q1',
+          'Second question?': 'A2',
+        },
+      },
+    })
+  })
 })

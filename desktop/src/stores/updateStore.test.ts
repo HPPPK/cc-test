@@ -48,6 +48,29 @@ describe('updateStore', () => {
     expect(useUpdateStore.getState().shouldPrompt).toBe(true)
   })
 
+  it('passes the configured manual update proxy to update checks', async () => {
+    const update = {
+      version: '0.2.0',
+      body: 'Bug fixes and performance improvements',
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    check.mockResolvedValue(update)
+
+    vi.resetModules()
+    const { useSettingsStore } = await import('./settingsStore')
+    useSettingsStore.setState({
+      updateProxy: {
+        mode: 'manual',
+        url: 'http://127.0.0.1:7890',
+      },
+    })
+    const { useUpdateStore } = await import('./updateStore')
+
+    await useUpdateStore.getState().checkForUpdates()
+
+    expect(check).toHaveBeenCalledWith({ proxy: 'http://127.0.0.1:7890' })
+  })
+
   it('does not re-prompt for the same version after dismissing once', async () => {
     check.mockResolvedValue({
       version: '0.2.0',
@@ -131,6 +154,50 @@ describe('updateStore', () => {
     expect(useUpdateStore.getState().progressPercent).toBe(100)
     expect(useUpdateStore.getState().status).toBe('restarting')
     expect(relaunch).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes the pending update when the proxy changes before install', async () => {
+    const staleClose = vi.fn().mockResolvedValue(undefined)
+    const freshDownload = vi.fn(async (onEvent?: (event: unknown) => void) => {
+      onEvent?.({ event: 'Started', data: { contentLength: 100 } })
+      onEvent?.({ event: 'Progress', data: { chunkLength: 100 } })
+      onEvent?.({ event: 'Finished' })
+    })
+    const freshInstall = vi.fn().mockResolvedValue(undefined)
+
+    check
+      .mockResolvedValueOnce({
+        version: '0.2.0',
+        body: 'Notes',
+        close: staleClose,
+      })
+      .mockResolvedValueOnce({
+        version: '0.2.0',
+        body: 'Notes',
+        download: freshDownload,
+        install: freshInstall,
+        close: vi.fn().mockResolvedValue(undefined),
+      })
+    invoke.mockResolvedValue(undefined)
+    relaunch.mockResolvedValue(undefined)
+
+    vi.resetModules()
+    const { useSettingsStore } = await import('./settingsStore')
+    const { useUpdateStore } = await import('./updateStore')
+
+    await useUpdateStore.getState().checkForUpdates()
+    useSettingsStore.setState({
+      updateProxy: {
+        mode: 'manual',
+        url: 'http://127.0.0.1:7890',
+      },
+    })
+    await useUpdateStore.getState().installUpdate()
+
+    expect(staleClose).toHaveBeenCalledTimes(1)
+    expect(check).toHaveBeenNthCalledWith(2, { proxy: 'http://127.0.0.1:7890' })
+    expect(freshDownload).toHaveBeenCalledTimes(1)
+    expect(freshInstall).toHaveBeenCalledTimes(1)
   })
 
   it('clears the native exit guard when install fails after sidecars stop', async () => {

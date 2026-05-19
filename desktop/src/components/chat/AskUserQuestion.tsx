@@ -57,6 +57,7 @@ function parseInput(input: unknown): Question[] {
 }
 
 type QuestionSelections = Record<number, string[]>
+type QuestionFreeTexts = Record<number, string>
 
 function getSelectedAnswer(question: Question, selected: string[] | undefined) {
   if (!selected || selected.length === 0) return ''
@@ -73,11 +74,13 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   const inputObject = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
   const [activeTab, setActiveTab] = useState(0)
   const [selections, setSelections] = useState<QuestionSelections>({})
-  const [freeText, setFreeText] = useState('')
+  const [freeTexts, setFreeTexts] = useState<QuestionFreeTexts>({})
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const composingRef = useRef(false)
 
   if (questions.length === 0) return null
+  const safeActiveTab = Math.min(activeTab, questions.length - 1)
+  const activeQuestion = questions[safeActiveTab]
 
   const resultAnswers = useMemo(() => {
     if (!result || typeof result !== 'object') return {}
@@ -95,11 +98,11 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
         .join(', ')
     }
-    return freeText.trim() || questions
-      .map((question, index) => getSelectedAnswer(question, selections[index]))
+    return questions
+      .map((question, index) => freeTexts[index]?.trim() || getSelectedAnswer(question, selections[index]))
       .filter(Boolean)
       .join('; ')
-  }, [freeText, questions, resultAnswers, selections])
+  }, [freeTexts, questions, resultAnswers, selections])
   const submitted = Object.keys(resultAnswers).length > 0 || hasSubmitted
 
   const handleSelect = (qIndex: number, label: string) => {
@@ -126,7 +129,33 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
       }
       return { ...prev, [qIndex]: [label] }
     })
-    setFreeText('')
+    setFreeTexts((prev) => {
+      if (!prev[qIndex]) return prev
+      const next = { ...prev }
+      delete next[qIndex]
+      return next
+    })
+  }
+
+  const handleFreeTextChange = (qIndex: number, value: string) => {
+    if (submitted) return
+    setFreeTexts((prev) => {
+      const next = { ...prev }
+      if (value) {
+        next[qIndex] = value
+      } else {
+        delete next[qIndex]
+      }
+      return next
+    })
+    if (value.trim()) {
+      setSelections((prev) => {
+        if (!prev[qIndex]) return prev
+        const next = { ...prev }
+        delete next[qIndex]
+        return next
+      })
+    }
   }
 
   const handleSubmit = () => {
@@ -134,17 +163,18 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
 
     const parts: string[] = []
     for (let i = 0; i < questions.length; i++) {
-      const selected = getSelectedAnswer(questions[i]!, selections[i])
-      if (selected) parts.push(selected)
+      const answer = freeTexts[i]?.trim() || getSelectedAnswer(questions[i]!, selections[i])
+      if (answer) parts.push(answer)
     }
-    const response = freeText.trim() || parts.join('; ') || ''
+    const response = parts.join('; ')
     if (!response) return
 
     if (!targetSessionId || !pendingRequest) return
 
     const answers = questions.reduce<Record<string, string>>((acc, question, index) => {
-      if (freeText.trim()) {
-        acc[question.question] = freeText.trim()
+      const freeText = freeTexts[index]?.trim()
+      if (freeText) {
+        acc[question.question] = freeText
       } else {
         const selected = getSelectedAnswer(question, selections[index])
         if (selected) acc[question.question] = selected
@@ -162,9 +192,9 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   }
 
   // All questions must be answered (via selection or free text) to enable submit
-  const allAnswered = freeText.trim().length > 0 || questions.every((_, i) => (selections[i]?.length ?? 0) > 0)
-  const safeActiveTab = Math.min(activeTab, questions.length - 1)
-  const activeQuestion = questions[safeActiveTab]
+  const allAnswered = questions.every((_, i) =>
+    Boolean(freeTexts[i]?.trim()) || (selections[i]?.length ?? 0) > 0,
+  )
 
   if (!activeQuestion) return null
 
@@ -202,7 +232,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         <div className="flex px-4 border-b border-[var(--color-outline-variant)]/20 bg-[var(--color-surface-container-low)] overflow-x-auto">
           {questions.map((q, i) => {
             const isActive = safeActiveTab === i
-            const isAnswered = (selections[i]?.length ?? 0) > 0
+            const isAnswered = Boolean(freeTexts[i]?.trim()) || (selections[i]?.length ?? 0) > 0
             const tabLabel = q.header || `Q${i + 1}`
             return (
               <button
@@ -292,11 +322,8 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
             </label>
             <input
               type="text"
-              value={freeText}
-              onChange={(e) => {
-                setFreeText(e.target.value)
-                if (e.target.value.trim()) setSelections({})
-              }}
+              value={freeTexts[safeActiveTab] ?? ''}
+              onChange={(e) => handleFreeTextChange(safeActiveTab, e.target.value)}
               onCompositionStart={() => { composingRef.current = true }}
               onCompositionEnd={() => { composingRef.current = false }}
               onKeyDown={(e) => {

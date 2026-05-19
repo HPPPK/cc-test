@@ -21,6 +21,7 @@ import {
   buildClaudeCliArgs,
   resolveClaudeCliLauncher,
 } from '../../utils/desktopBundledCli.js'
+import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -640,7 +641,7 @@ export class CronScheduler {
     workDir: string,
     task: CronTask,
   ): Promise<Record<string, string | undefined>> {
-    const cleanEnv = { ...process.env }
+    const cleanEnv = await getProcessEnvWithTerminalShellEnvironment()
     delete cleanEnv.CLAUDE_CODE_OAUTH_TOKEN
 
     if (this.shouldStripInheritedProviderEnv(task.providerId)) {

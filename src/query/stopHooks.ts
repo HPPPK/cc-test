@@ -1,11 +1,17 @@
 import { feature } from 'bun:bundle'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
+import { getSessionId } from '../bootstrap/state.js'
 import { isExtractModeActive } from '../memdir/paths.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import type { ToolUseContext } from '../Tool.js'
+import {
+  ensureThreadGoalHookFromTranscript,
+  isGoalPromptHookCommand,
+} from '../goals/goalState.js'
+import type { HookResult } from '../types/hooks.js'
 import type { HookProgress } from '../types/hooks.js'
 import type {
   AssistantMessage,
@@ -30,6 +36,7 @@ import {
 } from '../utils/hooks.js'
 import {
   createStopHookSummaryMessage,
+  createCommandInputMessage,
   createSystemMessage,
   createUserInterruptionMessage,
   createUserMessage,
@@ -60,6 +67,15 @@ import {
 type StopHookResult = {
   blockingErrors: Message[]
   preventContinuation: boolean
+}
+
+export function shouldLetGoalPromptHookContinue(
+  result: Pick<HookResult, 'blockingError' | 'preventContinuation'>,
+): boolean {
+  return Boolean(
+    result.preventContinuation &&
+      isGoalPromptHookCommand(result.blockingError?.command),
+  )
 }
 
 export async function* handleStopHooks(
@@ -177,6 +193,14 @@ export async function* handleStopHooks(
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
 
+    if (!toolUseContext.agentId) {
+      ensureThreadGoalHookFromTranscript(
+        toolUseContext,
+        getSessionId(),
+        [...messagesForQuery, ...assistantMessages],
+      )
+    }
+
     const generator = executeStopHooks(
       permissionMode,
       toolUseContext.abortController.signal,
@@ -196,6 +220,7 @@ export async function* handleStopHooks(
     let hasOutput = false
     const hookErrors: string[] = []
     const hookInfos: StopHookInfo[] = []
+    let goalCompleted = false
 
     for await (const result of generator) {
       if (result.message) {
@@ -231,6 +256,9 @@ export async function* handleStopHooks(
               hookErrors.push(attachment.content)
               hasOutput = true
             } else if (attachment.type === 'hook_success') {
+              if (isGoalPromptHookCommand(attachment.command)) {
+                goalCompleted = true
+              }
               // Check if successful hook produced any stdout/stderr
               if (
                 (attachment.stdout && attachment.stdout.trim()) ||
@@ -267,16 +295,18 @@ export async function* handleStopHooks(
       }
       // Check if hook wants to prevent continuation
       if (result.preventContinuation) {
-        preventedContinuation = true
-        stopReason = result.stopReason || 'Stop hook prevented continuation'
-        // Create attachment to track the stopped continuation (for structured data)
-        yield createAttachmentMessage({
-          type: 'hook_stopped_continuation',
-          message: stopReason,
-          hookName: 'Stop',
-          toolUseID: stopHookToolUseID,
-          hookEvent: 'Stop',
-        })
+        if (!shouldLetGoalPromptHookContinue(result)) {
+          preventedContinuation = true
+          stopReason = result.stopReason || 'Stop hook prevented continuation'
+          // Create attachment to track the stopped continuation (for structured data)
+          yield createAttachmentMessage({
+            type: 'hook_stopped_continuation',
+            message: stopReason,
+            hookName: 'Stop',
+            toolUseID: stopHookToolUseID,
+            hookEvent: 'Stop',
+          })
+        }
       }
 
       // Check if we were aborted during hook execution
@@ -320,6 +350,12 @@ export async function* handleStopHooks(
           priority: 'immediate',
         })
       }
+    }
+
+    if (goalCompleted) {
+      yield createCommandInputMessage(
+        '<local-command-stdout>Goal marked complete.</local-command-stdout>',
+      )
     }
 
     if (preventedContinuation) {

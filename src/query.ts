@@ -48,7 +48,6 @@ import {
   createUserInterruptionMessage,
   normalizeMessagesForAPI,
   createSystemMessage,
-  createCommandInputMessage,
   createAssistantAPIErrorMessage,
   getMessagesAfterCompactBoundary,
   createToolUseSummaryMessage,
@@ -100,7 +99,6 @@ import { runTools } from './services/tools/toolOrchestration.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
-import { evaluateThreadGoalAfterTurn } from './goals/goalEvaluator.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
@@ -1306,57 +1304,6 @@ async function* queryLoop(
         }
         state = next
         continue
-      }
-
-      if (!toolUseContext.agentId) {
-        try {
-          const goalDecision = await evaluateThreadGoalAfterTurn({
-            threadId: getSessionId(),
-            messages: messagesForQuery,
-            assistantMessages,
-            signal: toolUseContext.abortController.signal,
-            querySource,
-          })
-
-          if (goalDecision.action === 'continue') {
-            logForDebugging(
-              `Goal continuation #${goalDecision.goal.continuationCount}: ${goalDecision.reason}`,
-            )
-            state = {
-              messages: [
-                ...messagesForQuery,
-                ...assistantMessages,
-                createUserMessage({
-                  content: goalDecision.prompt,
-                  isMeta: true,
-                }),
-              ],
-              toolUseContext,
-              autoCompactTracking: tracking,
-              maxOutputTokensRecoveryCount: 0,
-              hasAttemptedReactiveCompact: false,
-              maxOutputTokensOverride: undefined,
-              pendingToolUseSummary: undefined,
-              stopHookActive: undefined,
-              turnCount,
-              transition: { reason: 'goal_continuation' } as Continue,
-            }
-            continue
-          }
-
-          if (goalDecision.action === 'complete') {
-            yield createCommandInputMessage(
-              '<local-command-stdout>Goal marked complete.</local-command-stdout>',
-            )
-          }
-
-          if (goalDecision.action === 'budget_limited') {
-            logForDebugging('Goal stopped because its budget was reached')
-          }
-        } catch (error) {
-          logError(error)
-          logForDebugging('Goal evaluator failed; returning control to user')
-        }
       }
 
       if (feature('TOKEN_BUDGET')) {

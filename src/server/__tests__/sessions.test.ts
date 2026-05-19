@@ -18,6 +18,7 @@ import { sanitizePath } from '../../utils/sessionStoragePortable.js'
 import { clearInstalledPluginsCache } from '../../utils/plugins/installedPluginsManager.js'
 import { clearPluginCache } from '../../utils/plugins/pluginLoader.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
+import { updateSessionSlashCommands } from '../ws/handler.js'
 
 // ============================================================================
 // Test helpers
@@ -118,6 +119,19 @@ async function writeSkill(
   await fs.writeFile(
     path.join(skillDir, 'SKILL.md'),
     ['---', `description: ${description}`, '---', '', `# ${skillName}`].join('\n'),
+    'utf-8',
+  )
+}
+
+async function writeLegacySlashCommand(
+  commandsDir: string,
+  commandName: string,
+  description: string,
+): Promise<void> {
+  await fs.mkdir(commandsDir, { recursive: true })
+  await fs.writeFile(
+    path.join(commandsDir, `${commandName}.md`),
+    ['---', `description: ${description}`, 'argument-hint: <topic>', '---', '', `Run ${commandName}.`].join('\n'),
     'utf-8',
   )
 }
@@ -887,6 +901,7 @@ describe('SessionService', () => {
         toolUseId: 'toolu_bg',
         status: 'completed',
         summary: 'Background command completed',
+        timestamp: '2026-01-01T00:01:00.000Z',
       },
     ])
   })
@@ -1239,6 +1254,21 @@ describe('SessionService', () => {
     expect(context.branches.some((branch) => branch.name.startsWith('worktree-desktop-'))).toBe(false)
   })
 
+  it('should keep stale worktree records when their paths cannot be resolved', async () => {
+    const workDir = await createCleanGitRepo(tmpDir)
+    const staleWorktreeName = `stale-worktree-${Date.now()}`
+    const staleWorktree = path.join(tmpDir, staleWorktreeName)
+    git(workDir, 'worktree', 'add', '-b', 'stale-worktree', staleWorktree, 'feature/rail')
+    await fs.rm(staleWorktree, { recursive: true, force: true })
+
+    const context = await getRepositoryContext(workDir)
+    const expectedPath = path.join(await fs.realpath(tmpDir), staleWorktreeName).normalize('NFC')
+    expect(context.state).toBe('ok')
+    expect(context.worktrees.some((worktree) => (
+      worktree.path === expectedPath && worktree.branch === 'stale-worktree' && !worktree.current
+    ))).toBe(true)
+  })
+
   it('should let git carry compatible dirty changes during direct branch launch', async () => {
     const workDir = await createCleanGitRepo(tmpDir)
     await fs.writeFile(path.join(workDir, 'README.md'), 'main\nlocal-pricing-edit\n')
@@ -1528,6 +1558,26 @@ describe('SessionService', () => {
     expect(launchInfo!.transcriptMessageCount).toBe(2)
     expect(launchInfo!.customTitle).toBe('Saved chat')
   })
+
+  it('should recover Windows drive paths from sanitized project dirs for old transcripts without metadata', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-ffffffffffff'
+    const userUuid = crypto.randomUUID()
+    const userEntry = makeUserEntry('Resume this Windows session', userUuid)
+    delete userEntry.cwd
+    await writeSessionFile('g--AI-NTos-NT-deepseek-nano-core', sessionId, [
+      makeSnapshotEntry(),
+      userEntry,
+      makeAssistantEntry('Welcome back', userUuid),
+    ])
+
+    const expectedWorkDir = 'g:\\AI\\NTos\\NT\\deepseek\\nano\\core'
+    expect(await service.getSessionWorkDir(sessionId)).toBe(expectedWorkDir)
+
+    const launchInfo = await service.getSessionLaunchInfo(sessionId)
+    expect(launchInfo).not.toBeNull()
+    expect(launchInfo!.workDir).toBe(expectedWorkDir)
+    expect(launchInfo!.transcriptMessageCount).toBe(2)
+  })
 })
 
 // ============================================================================
@@ -1696,7 +1746,7 @@ describe('Sessions API', () => {
       makeUserEntry('Hello'),
       makeAssistantEntry('World'),
       makeUserEntry(
-        '<task-notification>\n<task-id>bg-1</task-id>\n<tool-use-id>toolu_bg</tool-use-id>\n<status>failed</status>\n<summary>Background command failed &amp; stopped</summary>\n<output-file>C:\\Temp\\bg.output</output-file>\n</task-notification>',
+        '<task-notification>\n<task-id>bg-1</task-id>\n<tool-use-id>toolu_bg</tool-use-id>\n<status>failed</status>\n<summary>Background command failed &amp; stopped</summary>\n<result>Stack trace &amp; failed assertion</result>\n<output-file>C:\\Temp\\bg.output</output-file>\n</task-notification>',
         crypto.randomUUID(),
       ),
       makeAssistantEntry('internal task response'),
@@ -1717,7 +1767,9 @@ describe('Sessions API', () => {
         toolUseId: 'toolu_bg',
         status: 'failed',
         summary: 'Background command failed & stopped',
+        result: 'Stack trace & failed assertion',
         outputFile: 'C:\\Temp\\bg.output',
+        timestamp: expect.any(String),
       },
     ])
   })
@@ -2118,6 +2170,93 @@ describe('Sessions API', () => {
     )
     expect(body.commands).toContainEqual(
       expect.objectContaining({ name: 'project-skill', description: 'Project skill description' }),
+    )
+  })
+
+  it('GET /api/sessions/:id/slash-commands should include legacy custom commands before CLI init', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeef'
+    const workDir = path.join(tmpDir, 'workspace', 'app')
+
+    await writeLegacySlashCommand(
+      path.join(tmpDir, 'commands'),
+      'user-probe',
+      'User custom slash command',
+    )
+    await writeLegacySlashCommand(
+      path.join(workDir, '.claude', 'commands'),
+      'project-probe',
+      'Project custom slash command',
+    )
+
+    await writeSessionFile('-tmp-api-test', sessionId, [
+      makeSnapshotEntry(),
+      makeSessionMetaEntry(workDir),
+    ])
+
+    clearCommandsCache()
+
+    const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/slash-commands`)
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as {
+      commands: Array<{ name: string; description: string; argumentHint?: string }>
+    }
+
+    expect(body.commands).toContainEqual(
+      expect.objectContaining({
+        name: 'user-probe',
+        description: 'User custom slash command',
+        argumentHint: '<topic>',
+      }),
+    )
+    expect(body.commands).toContainEqual(
+      expect.objectContaining({
+        name: 'project-probe',
+        description: 'Project custom slash command',
+        argumentHint: '<topic>',
+      }),
+    )
+  })
+
+  it('GET /api/sessions/:id/slash-commands should preserve cached command argument hints when merging custom commands', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeef001'
+    const workDir = path.join(tmpDir, 'workspace', 'app')
+
+    await writeLegacySlashCommand(
+      path.join(workDir, '.claude', 'commands'),
+      'project-probe',
+      'Project custom slash command',
+    )
+
+    await writeSessionFile('-tmp-api-test', sessionId, [
+      makeSnapshotEntry(),
+      makeSessionMetaEntry(workDir),
+    ])
+
+    updateSessionSlashCommands(
+      sessionId,
+      [{ name: 'builtin-probe', description: 'Cached CLI command', argumentHint: '<value>' }],
+      { notifyClient: false },
+    )
+    clearCommandsCache()
+
+    const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/slash-commands`)
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as {
+      commands: Array<{ name: string; description: string; argumentHint?: string }>
+    }
+
+    expect(body.commands).toContainEqual({
+      name: 'builtin-probe',
+      description: 'Cached CLI command',
+      argumentHint: '<value>',
+    })
+    expect(body.commands).toContainEqual(
+      expect.objectContaining({
+        name: 'project-probe',
+        description: 'Project custom slash command',
+      }),
     )
   })
 

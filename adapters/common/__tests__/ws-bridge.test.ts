@@ -97,6 +97,22 @@ describe('WsBridge: handler serialization', () => {
     })
   })
 
+  async function waitForServerConnection(): Promise<WsServerSocket> {
+    if (connections[0]) return connections[0]
+    await new Promise<void>((resolve, reject) => {
+      const onConnection = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        server.off('connection', onConnection)
+        reject(new Error('Timed out waiting for test WebSocket connection'))
+      }, 500)
+      server.once('connection', onConnection)
+    })
+    return connections[0]!
+  }
+
   it('processes handler calls in strict FIFO order per chatId', async () => {
     const bridge = new WsBridge(serverUrl, 'test')
     const events: string[] = []
@@ -115,8 +131,7 @@ describe('WsBridge: handler serialization', () => {
     bridge.connectSession('chat-1', 'sess-1')
     const ok = await bridge.waitForOpen('chat-1')
     expect(ok).toBe(true)
-    expect(connections.length).toBe(1)
-    const serverWs = connections[0]!
+    const serverWs = await waitForServerConnection()
 
     // Blast three messages back-to-back. msg1 is slow, msg2/msg3 are fast.
     // With serialization: start:1, end:1, start:2, end:2, start:3, end:3
@@ -151,7 +166,7 @@ describe('WsBridge: handler serialization', () => {
 
     bridge.connectSession('chat-err', 'sess-err')
     await bridge.waitForOpen('chat-err')
-    const serverWs = connections[0]!
+    const serverWs = await waitForServerConnection()
 
     serverWs.send(JSON.stringify({ throw: true }))
     serverWs.send(JSON.stringify({ tag: 'after' }))
@@ -169,7 +184,7 @@ describe('WsBridge: handler serialization', () => {
     bridge.connectSession('chat-deleted', 'sess-deleted')
     await bridge.waitForOpen('chat-deleted')
 
-    const serverWs = connections[0]!
+    const serverWs = await waitForServerConnection()
     serverWs.close(1000, 'session deleted')
 
     await new Promise((resolve) => setTimeout(resolve, 50))

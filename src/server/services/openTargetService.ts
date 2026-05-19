@@ -1,7 +1,7 @@
-import { execFile as execFileCallback } from 'node:child_process'
+import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, extname, join, resolve, win32 as winPath } from 'node:path'
+import { extname, join, posix as posixPath, resolve, win32 as winPath } from 'node:path'
 import { promisify } from 'node:util'
 import { ApiError } from '../middleware/errorHandler.js'
 
@@ -88,7 +88,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
     appPaths: {
       darwin: [
         '/Applications/Visual Studio Code.app',
-        join(homedir(), 'Applications', 'Visual Studio Code.app'),
+        posixPath.join(homedir(), 'Applications', 'Visual Studio Code.app'),
       ],
     },
   },
@@ -105,7 +105,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
     },
     windowsExecutableNames: ['Cursor.exe'],
     appPaths: {
-      darwin: ['/Applications/Cursor.app', join(homedir(), 'Applications', 'Cursor.app')],
+      darwin: ['/Applications/Cursor.app', posixPath.join(homedir(), 'Applications', 'Cursor.app')],
     },
   },
   {
@@ -121,7 +121,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
     },
     windowsExecutableNames: ['sublime_text.exe', 'subl.exe'],
     appPaths: {
-      darwin: ['/Applications/Sublime Text.app', join(homedir(), 'Applications', 'Sublime Text.app')],
+      darwin: ['/Applications/Sublime Text.app', posixPath.join(homedir(), 'Applications', 'Sublime Text.app')],
     },
   },
   {
@@ -134,7 +134,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
       darwin: ['antigravity'],
     },
     appPaths: {
-      darwin: ['/Applications/Antigravity.app', join(homedir(), 'Applications', 'Antigravity.app')],
+      darwin: ['/Applications/Antigravity.app', posixPath.join(homedir(), 'Applications', 'Antigravity.app')],
     },
   },
   {
@@ -150,7 +150,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
     },
     windowsExecutableNames: ['goland64.exe', 'goland.exe'],
     appPaths: {
-      darwin: ['/Applications/GoLand.app', join(homedir(), 'Applications', 'GoLand.app')],
+      darwin: ['/Applications/GoLand.app', posixPath.join(homedir(), 'Applications', 'GoLand.app')],
     },
   },
   {
@@ -166,7 +166,7 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
     },
     windowsExecutableNames: ['pycharm64.exe', 'pycharm.exe'],
     appPaths: {
-      darwin: ['/Applications/PyCharm.app', join(homedir(), 'Applications', 'PyCharm.app')],
+      darwin: ['/Applications/PyCharm.app', posixPath.join(homedir(), 'Applications', 'PyCharm.app')],
     },
   },
   {
@@ -201,13 +201,13 @@ const TARGET_DEFINITIONS: TargetDefinition[] = [
 const LINUX_APPLICATION_DIRS = [
   '/usr/share/applications',
   '/usr/local/share/applications',
-  join(homedir(), '.local', 'share', 'applications'),
+  posixPath.join(homedir(), '.local', 'share', 'applications'),
   '/var/lib/flatpak/exports/share/applications',
-  join(homedir(), '.local', 'share', 'flatpak', 'exports', 'share', 'applications'),
+  posixPath.join(homedir(), '.local', 'share', 'flatpak', 'exports', 'share', 'applications'),
 ]
 
 const LINUX_ICON_ROOTS = [
-  join(homedir(), '.local', 'share', 'icons'),
+  posixPath.join(homedir(), '.local', 'share', 'icons'),
   '/usr/local/share/icons',
   '/usr/share/icons',
 ]
@@ -261,29 +261,98 @@ async function defaultPathExists(targetPath: string): Promise<boolean> {
 }
 
 async function defaultLaunch(command: string, args: string[]): Promise<OpenTargetLaunchResult> {
-  try {
-    const { stdout, stderr } = await execFile(command, args, {
-      timeout: 10_000,
-      windowsHide: true,
-    })
-    return {
-      code: 0,
-      stdout: String(stdout ?? ''),
-      stderr: String(stderr ?? ''),
+  return await new Promise((resolveLaunch) => {
+    let settled = false
+    const settle = (result: OpenTargetLaunchResult) => {
+      if (settled) return
+      settled = true
+      resolveLaunch(result)
     }
-  } catch (error) {
-    const err = error as {
-      code?: unknown
-      stdout?: unknown
-      stderr?: unknown
-      message?: string
+
+    try {
+      const child = spawn(command, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+
+      child.once('error', (error) => {
+        settle({
+          code: 1,
+          stdout: '',
+          stderr: error.message,
+        })
+      })
+
+      child.once('spawn', () => {
+        child.unref()
+        settle({
+          code: 0,
+          stdout: '',
+          stderr: '',
+        })
+      })
+    } catch (error) {
+      const err = error as { message?: string }
+      settle({
+        code: 1,
+        stdout: '',
+        stderr: String(err.message ?? error),
+      })
     }
-    return {
-      code: typeof err.code === 'number' ? err.code : 1,
-      stdout: String(err.stdout ?? ''),
-      stderr: String(err.stderr ?? err.message ?? ''),
-    }
+  })
+}
+
+async function resolveWindowsApplicationPath(
+  definition: TargetDefinition,
+  runtime: Runtime,
+): Promise<string | null> {
+  for (const appPath of definition.appPaths?.win32 ?? []) {
+    if (await runtime.pathExists(appPath)) return appPath
   }
+
+  for (const command of definition.commands?.win32 ?? []) {
+    const commandPath = await runtime.resolveCommand(command)
+    if (!commandPath) continue
+
+    const executablePath = await resolveWindowsExecutablePath(commandPath, definition, runtime)
+    if (executablePath) return executablePath
+  }
+
+  return null
+}
+
+async function resolveWindowsExecutablePath(
+  commandPath: string,
+  definition: TargetDefinition,
+  runtime: Runtime,
+): Promise<string | null> {
+  const extension = winPath.extname(commandPath).toLowerCase()
+  if (extension === '.exe' && await runtime.pathExists(commandPath)) {
+    return commandPath
+  }
+
+  if (extension !== '.cmd' && extension !== '.bat') {
+    return null
+  }
+
+  const executableNames = definition.windowsExecutableNames
+    ?? definition.commands?.win32?.filter((command) => winPath.extname(command).toLowerCase() === '.exe')
+    ?? []
+
+  let currentDir = winPath.dirname(commandPath)
+  for (let depth = 0; depth < 5; depth += 1) {
+    for (const executableName of executableNames) {
+      const candidate = winPath.join(currentDir, executableName)
+      if (await runtime.pathExists(candidate)) return candidate
+    }
+
+    const nextDir = winPath.dirname(currentDir)
+    if (!nextDir || nextDir === currentDir) break
+    currentDir = nextDir
+  }
+
+  return null
 }
 
 async function defaultReadDirNames(targetPath: string): Promise<string[]> {
@@ -466,6 +535,10 @@ async function isDetected(definition: TargetDefinition, runtime: Runtime): Promi
     return false
   }
 
+  if (runtime.platform === 'win32') {
+    return (await resolveWindowsApplicationPath(definition, runtime)) !== null
+  }
+
   for (const appPath of definition.appPaths?.[runtime.platform] ?? []) {
     if (await runtime.pathExists(appPath)) {
       return true
@@ -495,7 +568,7 @@ async function resolveLaunchPlan(
       case 'darwin':
         return { command: 'open', args: [targetPath] }
       case 'win32':
-        return { command: 'explorer.exe', args: [targetPath] }
+        return { command: 'cmd.exe', args: ['/d', '/c', 'start', '', targetPath] }
       case 'linux':
         return { command: 'xdg-open', args: [targetPath] }
       default:
@@ -509,6 +582,11 @@ async function resolveLaunchPlan(
         return { command: 'open', args: ['-a', appPath, targetPath] }
       }
     }
+  }
+
+  if (runtime.platform === 'win32') {
+    const applicationPath = await resolveWindowsApplicationPath(definition, runtime)
+    return applicationPath ? { command: applicationPath, args: [targetPath] } : null
   }
 
   for (const command of definition.commands?.[runtime.platform] ?? []) {
@@ -555,8 +633,8 @@ async function findDarwinBundleIconPath(
   definition: TargetDefinition,
   runtime: Runtime,
 ): Promise<string | null> {
-  const resourcesPath = join(appPath, 'Contents', 'Resources')
-  const plistPath = join(appPath, 'Contents', 'Info.plist')
+  const resourcesPath = posixPath.join(appPath, 'Contents', 'Resources')
+  const plistPath = posixPath.join(appPath, 'Contents', 'Info.plist')
   const plistIcon = await runtime.readPlistValue(plistPath, 'CFBundleIconFile')
 
   const candidates = [
@@ -566,7 +644,7 @@ async function findDarwinBundleIconPath(
   ].filter((value): value is string => Boolean(value))
 
   for (const fileName of candidates) {
-    const iconPath = join(resourcesPath, fileName)
+    const iconPath = posixPath.join(resourcesPath, fileName)
     if (await runtime.pathExists(iconPath)) return iconPath
   }
 
@@ -576,7 +654,7 @@ async function findDarwinBundleIconPath(
     .find((fileName) => !/document/i.test(fileName)) ?? null
 
   if (!firstIcon) return null
-  const fallbackPath = join(resourcesPath, firstIcon)
+  const fallbackPath = posixPath.join(resourcesPath, firstIcon)
   return await runtime.pathExists(fallbackPath) ? fallbackPath : null
 }
 
@@ -610,50 +688,8 @@ async function resolveWindowsIconPath(
     if (await runtime.pathExists(iconPath)) return iconPath
   }
 
-  for (const appPath of definition.appPaths?.win32 ?? []) {
-    if (await runtime.pathExists(appPath)) return appPath
-  }
-
-  for (const command of definition.commands?.win32 ?? []) {
-    const commandPath = await runtime.resolveCommand(command)
-    if (!commandPath) continue
-
-    const directIconPath = await resolveWindowsExecutableIconPath(commandPath, definition, runtime)
-    if (directIconPath) return directIconPath
-  }
-
-  return null
-}
-
-async function resolveWindowsExecutableIconPath(
-  commandPath: string,
-  definition: TargetDefinition,
-  runtime: Runtime,
-): Promise<string | null> {
-  const extension = winPath.extname(commandPath).toLowerCase()
-  if ((extension === '.exe' || extension === '.ico') && await runtime.pathExists(commandPath)) {
-    return commandPath
-  }
-
-  if (extension !== '.cmd' && extension !== '.bat') {
-    return null
-  }
-
-  const executableNames = definition.windowsExecutableNames
-    ?? definition.commands?.win32?.filter((command) => winPath.extname(command).toLowerCase() === '.exe')
-    ?? []
-
-  let currentDir = winPath.dirname(commandPath)
-  for (let depth = 0; depth < 5; depth += 1) {
-    for (const executableName of executableNames) {
-      const candidate = winPath.join(currentDir, executableName)
-      if (await runtime.pathExists(candidate)) return candidate
-    }
-
-    const nextDir = winPath.dirname(currentDir)
-    if (!nextDir || nextDir === currentDir) break
-    currentDir = nextDir
-  }
+  const applicationPath = await resolveWindowsApplicationPath(definition, runtime)
+  if (applicationPath) return applicationPath
 
   return null
 }
@@ -702,7 +738,7 @@ async function findLinuxDesktopEntries(
     for (const fileName of fileNames) {
       if (!fileName.endsWith('.desktop')) continue
 
-      const filePath = join(directory, fileName)
+      const filePath = posixPath.join(directory, fileName)
       const text = await runtime.readTextFile(filePath)
       if (!text) continue
 
@@ -757,7 +793,7 @@ function linuxDesktopEntryMatchesDefinition(
   definition: TargetDefinition,
 ): boolean {
   const commandNames = new Set(
-    (definition.commands?.linux ?? []).map((command) => basename(command).toLowerCase()),
+    (definition.commands?.linux ?? []).map((command) => posixPath.basename(command).toLowerCase()),
   )
   const normalizedNeedles = [
     definition.id,
@@ -790,7 +826,7 @@ function extractLinuxDesktopExecCommand(execValue: string): string | null {
 
   for (const token of tokens) {
     if (!token || token.includes('=')) continue
-    const command = basename(token).toLowerCase()
+    const command = posixPath.basename(token).toLowerCase()
     if (command === 'env') continue
     return command
   }
@@ -816,11 +852,11 @@ async function resolveLinuxIconName(
   const directRoots = [
     '/usr/share/pixmaps',
     '/usr/local/share/pixmaps',
-    join(homedir(), '.local', 'share', 'pixmaps'),
+    posixPath.join(homedir(), '.local', 'share', 'pixmaps'),
   ]
   for (const root of directRoots) {
     for (const candidateExtension of extensions) {
-      const candidate = join(root, `${baseName}${candidateExtension}`)
+      const candidate = posixPath.join(root, `${baseName}${candidateExtension}`)
       if (await runtime.pathExists(candidate)) return candidate
     }
   }
@@ -830,7 +866,7 @@ async function resolveLinuxIconName(
     for (const themeName of themeNames) {
       for (const subdir of LINUX_ICON_THEME_SUBDIRS) {
         for (const candidateExtension of extensions) {
-          const candidate = join(root, themeName, subdir, `${baseName}${candidateExtension}`)
+          const candidate = posixPath.join(root, themeName, subdir, `${baseName}${candidateExtension}`)
           if (await runtime.pathExists(candidate)) return candidate
         }
       }

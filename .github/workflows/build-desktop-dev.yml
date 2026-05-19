@@ -126,6 +126,7 @@ jobs:
       - name: Build sidecars
         working-directory: desktop
         env:
+          BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-cache
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: bun run build:sidecars
 
@@ -133,6 +134,7 @@ jobs:
       - name: Build Tauri app
         working-directory: desktop
         env:
+          BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-cache
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: |
           # 开发构建: 禁用 updater artifacts (不需要签名密钥)

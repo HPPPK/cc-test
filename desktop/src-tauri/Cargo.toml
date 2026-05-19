@@ -1,6 +1,6 @@
 [package]
 name = "claude-code-desktop"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 
 [lib]
@@ -24,3 +24,4 @@ anyhow = "1.0.102"
 portable-pty = "0.9.0"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
+reqwest = { version = "0.13", default-features = false, features = ["system-proxy"] }

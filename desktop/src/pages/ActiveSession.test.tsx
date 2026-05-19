@@ -135,7 +135,7 @@ describe('ActiveSession task polling', () => {
     expect(screen.getByTestId('chat-input')).toHaveAttribute('data-variant', 'default')
   })
 
-  it('shows the current goal as a persistent session status panel', () => {
+  it('renders the current goal as a lightweight header strip without a page-level panel', () => {
     const sessionId = 'goal-visible-session'
 
     useSessionStore.setState({
@@ -199,15 +199,77 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    const panel = screen.getByTestId('active-goal-panel')
-    expect(panel).toHaveTextContent('当前目标')
-    expect(panel).toHaveTextContent('自循环运行中')
-    expect(panel).toHaveTextContent('ship the smoke test')
-    expect(panel).toHaveTextContent('预算 0 / 2,000 tokens')
-    expect(panel).toHaveTextContent('续作次数 0')
+    expect(screen.queryByTestId('active-goal-panel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('active-goal-strip')).toBeInTheDocument()
+    expect(screen.getByTestId('active-goal-strip')).toHaveTextContent('ship the smoke test')
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
   })
 
-  it('shows background agent progress below the goal panel', () => {
+  it('does not keep a completed goal pinned in the header', () => {
+    const sessionId = 'goal-completed-session'
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Goal Completed Session',
+        createdAt: '2026-05-07T00:00:00.000Z',
+        modifiedAt: '2026-05-07T00:00:00.000Z',
+        messageCount: 3,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Goal Completed Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{
+            id: 'goal-completed-event',
+            type: 'goal_event',
+            action: 'completed',
+            status: 'complete',
+            message: 'Goal marked complete.',
+            timestamp: 3,
+          }],
+          activeGoal: {
+            action: 'completed',
+            status: 'complete',
+            message: 'Goal marked complete.',
+            updatedAt: 3,
+          },
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    expect(screen.queryByTestId('active-goal-strip')).not.toBeInTheDocument()
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
+  })
+
+  it('does not render background agent progress as a page-level panel', () => {
     const sessionId = 'background-agent-visible-session'
 
     useSessionStore.setState({
@@ -277,11 +339,70 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    const panel = screen.getByTestId('background-agent-panel')
-    expect(panel).toHaveTextContent('后台 Agent')
-    expect(panel).toHaveTextContent('运行中')
-    expect(panel).toHaveTextContent('local_agent')
-    expect(panel).toHaveTextContent('Running Playwright checks')
+    expect(screen.queryByTestId('background-agent-panel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
+  })
+
+  it('keeps the session header active while a background task is still running after the turn completes', () => {
+    const sessionId = 'background-shell-running-session'
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Background Shell Session',
+        createdAt: '2026-05-07T00:00:00.000Z',
+        modifiedAt: new Date().toISOString(),
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Background Shell Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'task started', timestamp: 1 }],
+          backgroundAgentTasks: {
+            'bash-task-1': {
+              taskId: 'bash-task-1',
+              toolUseId: 'bash-tool-1',
+              status: 'running',
+              taskType: 'local_bash',
+              description: 'Run page integration checks',
+              startedAt: 1,
+              updatedAt: 2,
+            },
+          },
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    expect(screen.getByText(/session active|会话活跃中/)).toBeInTheDocument()
+    expect(screen.getByTestId('chat-input')).toHaveAttribute('data-variant', 'default')
   })
 
   it('collapses completed background agent tasks by default and can be expanded', () => {

@@ -2032,6 +2032,9 @@ function runHeadlessStreaming(
             const summaryMatch = notificationText.match(
               /<summary>([^<]+)<\/summary>/,
             )
+            const resultMatch = notificationText.match(
+              /<result>([\s\S]*?)<\/result>/,
+            )
 
             const isValidStatus = (
               s: string | undefined,
@@ -2077,6 +2080,7 @@ function runHeadlessStreaming(
                 status,
                 output_file: outputFileMatch?.[1] ?? '',
                 summary: summaryMatch?.[1] ?? '',
+                result: resultMatch?.[1],
                 usage:
                   totalTokensMatch && toolUsesMatch
                     ? {

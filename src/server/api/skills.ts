@@ -13,6 +13,7 @@ import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getProjectDirsUpToHome } from '../../utils/markdownConfigLoader.js'
 import { getCwd } from '../../utils/cwd.js'
 import { loadAllPlugins, loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
+import { getSkillDirCommands } from '../../skills/loadSkillsDir.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 
@@ -278,6 +279,22 @@ type PluginSkillLocation = {
 export type SkillSlashCommand = {
   name: string
   description: string
+  argumentHint?: string
+}
+
+async function collectLegacySlashCommands(cwd: string): Promise<SkillSlashCommand[]> {
+  const commands = await getSkillDirCommands(cwd)
+  return commands
+    .filter((command) =>
+      command.type === 'prompt' &&
+      command.loadedFrom === 'commands_DEPRECATED' &&
+      command.userInvocable !== false &&
+      !command.isHidden)
+    .map((command) => ({
+      name: command.name,
+      description: command.description || '',
+      ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
+    }))
 }
 
 function buildPluginSkillName(pluginName: string, skillDir: string): string {
@@ -381,12 +398,29 @@ async function collectAllSkills(cwd?: string): Promise<SkillMeta[]> {
 }
 
 export async function listSkillSlashCommands(cwd?: string): Promise<SkillSlashCommand[]> {
-  return (await collectAllSkills(cwd))
-    .filter((skill) => skill.userInvocable)
-    .map((skill) => ({
+  const requestedCwd = cwd || getCwd()
+  const [skills, legacyCommands] = await Promise.all([
+    collectAllSkills(requestedCwd),
+    collectLegacySlashCommands(requestedCwd),
+  ])
+
+  const byName = new Map<string, SkillSlashCommand>()
+
+  for (const skill of skills) {
+    if (!skill.userInvocable) continue
+    byName.set(skill.name, {
       name: skill.name,
       description: skill.description || '',
-    }))
+    })
+  }
+
+  for (const command of legacyCommands) {
+    if (!byName.has(command.name)) {
+      byName.set(command.name, command)
+    }
+  }
+
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────

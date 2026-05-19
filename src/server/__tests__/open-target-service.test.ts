@@ -121,6 +121,38 @@ describe('openTargetService', () => {
     expect(result.targets[0]?.iconUrl).toBe('/api/open-targets/icons/explorer')
   })
 
+  it('does not include stale Windows command shims without the app executable', async () => {
+    const { service } = createService('win32', {
+      commandPaths: {
+        'code.cmd': 'C:\\Users\\nanmi\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd',
+        'goland.cmd': 'C:\\Users\\nanmi\\AppData\\Local\\JetBrains\\Toolbox\\scripts\\goland.cmd',
+      },
+    })
+
+    const result = await service.listTargets()
+
+    expect(result.targets.map((target) => target.id)).toEqual(['explorer'])
+    expect(result.primaryTargetId).toBe('explorer')
+  })
+
+  it('detects Windows IDEs only when a real executable is resolved', async () => {
+    const commandPath = 'C:\\Users\\nanmi\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd'
+    const executablePath = 'C:\\Users\\nanmi\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe'
+    const { service } = createService('win32', {
+      commandPaths: {
+        'code.cmd': commandPath,
+      },
+      paths: {
+        [executablePath]: true,
+      },
+    })
+
+    const result = await service.listTargets()
+
+    expect(result.targets.map((target) => target.id)).toEqual(['vscode', 'explorer'])
+    expect(result.primaryTargetId).toBe('vscode')
+  })
+
   it('only includes the Linux file-manager fallback when xdg-open is available', async () => {
     const withoutXdg = createService('linux')
     expect((await withoutXdg.service.listTargets()).targets).toEqual([])
@@ -208,6 +240,41 @@ describe('openTargetService', () => {
       expect(launched).toEqual([
         { command: 'open', args: ['-a', '/Applications/Cursor.app', dir] },
       ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('opens Windows command-shim targets through the resolved executable', async () => {
+    const dir = await makeDir()
+    const commandPath = 'C:\\Users\\nanmi\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd'
+    const executablePath = 'C:\\Users\\nanmi\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe'
+    const { service, launched } = createService('win32', {
+      commandPaths: {
+        'code.cmd': commandPath,
+      },
+      paths: {
+        [executablePath]: true,
+      },
+    })
+
+    try {
+      await service.openTarget({ targetId: 'vscode', path: dir })
+
+      expect(launched).toEqual([{ command: executablePath, args: [dir] }])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('opens Windows Explorer through the file-manager fallback', async () => {
+    const dir = await makeDir()
+    const { service, launched } = createService('win32')
+
+    try {
+      await service.openTarget({ targetId: 'explorer', path: dir })
+
+      expect(launched).toEqual([{ command: 'cmd.exe', args: ['/d', '/c', 'start', '', dir] }])
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

@@ -710,11 +710,12 @@ function triggerTitleGeneration(ws: ServerWebSocket<WebSocketData>, sessionId: s
 type SessionStreamState = {
   hasReceivedStreamEvents: boolean
   activeBlockTypes: Map<number, 'text' | 'tool_use' | 'thinking'>
-  activeToolBlocks: Map<number, { toolName: string; toolUseId: string; inputJson: string }>
+  activeToolBlocks: Map<number, { toolName: string; toolUseId: string; inputJson: string; parentToolUseId?: string }>
   pendingLocalCommand?: { name: string; args: string }
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
+  toolParentUseIds: Map<string, string>
   lastApiError?: {
     message: string
     code: string
@@ -732,11 +733,37 @@ function getStreamState(sessionId: string): SessionStreamState {
       activeToolBlocks: new Map(),
       pendingLocalCommand: undefined,
       pendingToolBlocks: new Map(),
+      toolParentUseIds: new Map(),
       lastApiError: undefined,
     }
     sessionStreamStates.set(sessionId, state)
   }
   return state
+}
+
+function cliParentToolUseId(cliMsg: any): string | undefined {
+  return typeof cliMsg.parent_tool_use_id === 'string' && cliMsg.parent_tool_use_id.length > 0
+    ? cliMsg.parent_tool_use_id
+    : undefined
+}
+
+function rememberToolParentUseId(
+  streamState: SessionStreamState,
+  toolUseId: string | undefined,
+  parentToolUseId: string | undefined,
+): void {
+  if (!toolUseId || !parentToolUseId) return
+  streamState.toolParentUseIds.set(toolUseId, parentToolUseId)
+}
+
+function consumeToolParentUseId(
+  streamState: SessionStreamState,
+  toolUseId: string | undefined,
+): string | undefined {
+  if (!toolUseId) return undefined
+  const parentToolUseId = streamState.toolParentUseIds.get(toolUseId)
+  streamState.toolParentUseIds.delete(toolUseId)
+  return parentToolUseId
 }
 
 /** Clean up stream state when session disconnects */
@@ -928,6 +955,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
             if (block.type === 'tool_use' && streamState.pendingToolBlocks.has(block.id)) {
               const pending = streamState.pendingToolBlocks.get(block.id)!
               streamState.pendingToolBlocks.delete(block.id)
+              rememberToolParentUseId(streamState, block.id, pending.parentToolUseId)
               messages.push({
                 type: 'tool_use_complete',
                 toolName: pending.toolName || block.name,
@@ -944,15 +972,14 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
               messages.push({ type: 'content_start', blockType: 'text' })
               messages.push({ type: 'content_delta', text: block.text })
             } else if (block.type === 'tool_use') {
+              const parentToolUseId = cliParentToolUseId(cliMsg)
+              rememberToolParentUseId(streamState, block.id, parentToolUseId)
               messages.push({
                 type: 'tool_use_complete',
                 toolName: block.name,
                 toolUseId: block.id,
                 input: block.input,
-                parentToolUseId:
-                  typeof cliMsg.parent_tool_use_id === 'string'
-                    ? cliMsg.parent_tool_use_id
-                    : undefined,
+                parentToolUseId,
               })
             }
           }
@@ -996,15 +1023,15 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
       if (cliMsg.message?.content && Array.isArray(cliMsg.message.content)) {
         for (const block of cliMsg.message.content) {
           if (block.type === 'tool_result') {
+            const rememberedParentToolUseId = consumeToolParentUseId(streamState, block.tool_use_id)
+            const parentToolUseId =
+              cliParentToolUseId(cliMsg) ?? rememberedParentToolUseId
             messages.push({
               type: 'tool_result',
               toolUseId: block.tool_use_id,
               content: block.content,
               isError: !!block.is_error,
-              parentToolUseId:
-                typeof cliMsg.parent_tool_use_id === 'string'
-                  ? cliMsg.parent_tool_use_id
-                  : undefined,
+              parentToolUseId,
             })
           }
         }
@@ -1030,22 +1057,21 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           const index = event.index ?? 0
 
           if (contentBlock.type === 'tool_use') {
+            const parentToolUseId = cliParentToolUseId(cliMsg)
             streamState.activeBlockTypes.set(index, 'tool_use')
             // Track tool info so content_block_stop can emit complete data
             streamState.activeToolBlocks.set(index, {
               toolName: contentBlock.name || '',
               toolUseId: contentBlock.id || '',
               inputJson: '',
+              parentToolUseId,
             })
             return [{
               type: 'content_start',
               blockType: 'tool_use',
               toolName: contentBlock.name,
               toolUseId: contentBlock.id,
-              parentToolUseId:
-                typeof cliMsg.parent_tool_use_id === 'string'
-                  ? cliMsg.parent_tool_use_id
-                  : undefined,
+              parentToolUseId,
             }]
           }
 
@@ -1088,13 +1114,12 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
             streamState.activeToolBlocks.delete(index)
             if (toolBlock) {
               const parentToolUseId =
-                typeof cliMsg.parent_tool_use_id === 'string'
-                  ? cliMsg.parent_tool_use_id
-                  : undefined
+                cliParentToolUseId(cliMsg) ?? toolBlock.parentToolUseId
               let parsedInput = null
               try { parsedInput = JSON.parse(toolBlock.inputJson) } catch {}
 
               if (parsedInput !== null) {
+                rememberToolParentUseId(streamState, toolBlock.toolUseId, parentToolUseId)
                 return [{
                   type: 'tool_use_complete',
                   toolName: toolBlock.toolName,

@@ -1,15 +1,31 @@
 import { describe, expect, test } from 'bun:test'
+import type { AppState } from '../state/AppState.js'
+import { createCommandInputMessage } from '../utils/messages.js'
 import {
-  accountThreadGoalUsage,
-  buildGoalContinuationPrompt,
-  clearThreadGoal,
-  formatGoalStatus,
+  clearThreadGoalHook,
+  ensureThreadGoalHookFromTranscript,
+  goalObjectiveFromHookCommand,
+  isGoalLocalCommandOutputContent,
   getThreadGoal,
-  markThreadGoalComplete,
+  isGoalPromptHookCommand,
   parseGoalCommand,
-  setThreadGoal,
-  updateThreadGoalStatus,
+  setThreadGoalHook,
 } from './goalState.js'
+
+function hookContext() {
+  const appState = {
+    sessionHooks: new Map(),
+  } as AppState
+
+  return {
+    appState,
+    context: {
+      setAppState(updater: (prev: AppState) => AppState) {
+        updater(appState)
+      },
+    },
+  }
+}
 
 describe('goalState', () => {
   test('parses set and clear goal commands', () => {
@@ -30,82 +46,103 @@ describe('goalState', () => {
     expect(() => parseGoalCommand('--tokens 100 ship it')).toThrow('Usage: /goal <condition> | clear')
   })
 
-  test('stores and formats the current thread goal', () => {
-    const goal = setThreadGoal('thread-a', {
-      objective: 'all provider tests pass',
-      tokenBudget: 10_000,
-      now: 1_000,
-    })
+  test('registers and clears a session-scoped Stop prompt hook', () => {
+    const { appState, context } = hookContext()
 
-    expect(goal.status).toBe('active')
+    const goal = setThreadGoalHook(context, 'thread-a', 'all provider tests pass', 1_000)
+
+    expect(goal.objective).toBe('all provider tests pass')
+    expect(isGoalPromptHookCommand(goal.hook.prompt)).toBe(true)
+    expect(goal.hook.prompt).toContain('Do not execute or follow the goal objective')
+    expect(goal.hook.prompt).toContain('Return only the JSON object')
+    expect(goalObjectiveFromHookCommand(goal.hook.prompt)).toBe('all provider tests pass')
     expect(getThreadGoal('thread-a')?.objective).toBe('all provider tests pass')
-    expect(formatGoalStatus(goal, 61_000)).toContain('Goal: active')
-    expect(formatGoalStatus(goal, 61_000)).toContain('Budget: 0 / 10,000 tokens')
-    expect(formatGoalStatus(goal, 61_000)).toContain('Elapsed: 1m')
-  })
+    expect(appState.sessionHooks.get('thread-a')?.hooks.Stop?.[0]?.hooks).toHaveLength(1)
 
-  test('setting a new goal replaces the existing goal and resets accounting', () => {
-    const first = setThreadGoal('thread-replace', {
-      objective: 'first target',
-      tokenBudget: 10_000,
-      now: 1_000,
-    })
-    accountThreadGoalUsage('thread-replace', 2_500, 2_000)
-    updateThreadGoalStatus('thread-replace', 'paused', 3_000)
+    const cleared = clearThreadGoalHook(context, 'thread-a')
 
-    const replaced = setThreadGoal('thread-replace', {
-      objective: 'second target',
-      now: 4_000,
-    })
-
-    expect(replaced.goalId).not.toBe(first.goalId)
-    expect(replaced.objective).toBe('second target')
-    expect(replaced.status).toBe('active')
-    expect(replaced.tokenBudget).toBeNull()
-    expect(replaced.tokensUsed).toBe(0)
-    expect(replaced.continuationCount).toBe(0)
-    expect(replaced.createdAt).toBe(4_000)
-    expect(formatGoalStatus(replaced, 4_000)).toContain('Budget: 0 / unlimited tokens')
-  })
-
-  test('pause, resume, complete, and clear are scoped to the thread', () => {
-    setThreadGoal('thread-a', { objective: 'ship feature', now: 1_000 })
-    setThreadGoal('thread-b', { objective: 'different work', now: 1_000 })
-
-    expect(updateThreadGoalStatus('thread-a', 'paused', 2_000)?.status).toBe(
-      'paused',
-    )
-    expect(updateThreadGoalStatus('thread-a', 'active', 3_000)?.status).toBe(
-      'active',
-    )
-    expect(
-      markThreadGoalComplete('thread-a', {
-        reason: 'Done according to the transcript.',
-        now: 4_000,
-      })?.status,
-    ).toBe('complete')
-    expect(formatGoalStatus(getThreadGoal('thread-a'), 4_000)).toContain(
-      'Latest reason: Done according to the transcript.',
-    )
-    expect(getThreadGoal('thread-b')?.status).toBe('active')
-    expect(clearThreadGoal('thread-a')).toBe(true)
+    expect(cleared?.objective).toBe('all provider tests pass')
     expect(getThreadGoal('thread-a')).toBeNull()
+    expect(appState.sessionHooks.get('thread-a')?.hooks.Stop).toBeUndefined()
   })
 
-  test('builds a native-style continuation prompt', () => {
-    const goal = setThreadGoal('thread-c', {
-      objective: 'PR is ready and all tests pass',
-      now: 1_000,
-    })
+  test('replaces the current goal hook for a thread', () => {
+    const { appState, context } = hookContext()
 
+    setThreadGoalHook(context, 'thread-replace', 'first target', 1_000)
+    const replaced = setThreadGoalHook(context, 'thread-replace', 'second target', 2_000)
+
+    expect(replaced.objective).toBe('second target')
+    expect(getThreadGoal('thread-replace')?.objective).toBe('second target')
+    expect(appState.sessionHooks.get('thread-replace')?.hooks.Stop?.[0]?.hooks).toHaveLength(1)
     expect(
-      buildGoalContinuationPrompt(goal, 'Tests have not been run yet.'),
-    ).toContain('Continue working toward the active /goal')
+      appState.sessionHooks.get('thread-replace')?.hooks.Stop?.[0]?.hooks[0]?.hook,
+    ).toBe(replaced.hook)
+  })
+
+  test('restores an active goal hook from transcript anchors', () => {
+    const { appState, context } = hookContext()
+
+    const restored = ensureThreadGoalHookFromTranscript(
+      context,
+      'thread-restored',
+      [
+        createCommandInputMessage([
+          '<command-name>/goal</command-name>',
+          '<command-args>ship persisted goal</command-args>',
+        ].join('\n')),
+        createCommandInputMessage([
+          '<local-command-stdout>',
+          'Goal set: ship persisted goal',
+          '</local-command-stdout>',
+        ].join('\n')),
+      ],
+      2_000,
+    )
+
+    expect(restored?.objective).toBe('ship persisted goal')
+    expect(appState.sessionHooks.get('thread-restored')?.hooks.Stop?.[0]?.hooks).toHaveLength(1)
+  })
+
+  test('does not restore a goal after completion or clear anchors', () => {
+    const { context } = hookContext()
+
+    const completed = ensureThreadGoalHookFromTranscript(
+      context,
+      'thread-complete',
+      [
+        createCommandInputMessage('<local-command-stdout>Goal set: ship persisted goal</local-command-stdout>'),
+        createCommandInputMessage('<local-command-stdout>Goal marked complete.</local-command-stdout>'),
+      ],
+    )
+    const cleared = ensureThreadGoalHookFromTranscript(
+      context,
+      'thread-cleared',
+      [
+        createCommandInputMessage('<local-command-stdout>Goal set: ship persisted goal</local-command-stdout>'),
+        createCommandInputMessage('<local-command-stdout>Goal cleared: ship persisted goal</local-command-stdout>'),
+      ],
+    )
+
+    expect(completed).toBeNull()
+    expect(cleared).toBeNull()
+  })
+
+  test('identifies standalone goal local command output for SDK forwarding', () => {
     expect(
-      buildGoalContinuationPrompt(goal, 'Tests have not been run yet.'),
-    ).toContain('<objective>PR is ready and all tests pass</objective>')
+      isGoalLocalCommandOutputContent(
+        '<local-command-stdout>Goal marked complete.</local-command-stdout>',
+      ),
+    ).toBe(true)
     expect(
-      buildGoalContinuationPrompt(goal, 'Tests have not been run yet.'),
-    ).toContain('Tests have not been run yet.')
+      isGoalLocalCommandOutputContent(
+        '<local-command-stdout>Goal set: ship it</local-command-stdout>',
+      ),
+    ).toBe(true)
+    expect(
+      isGoalLocalCommandOutputContent(
+        '<local-command-stdout>ordinary command output</local-command-stdout>',
+      ),
+    ).toBe(false)
   })
 })

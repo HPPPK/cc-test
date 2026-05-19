@@ -63,6 +63,235 @@ describe('settingsStore UI zoom', () => {
   })
 })
 
+describe('settingsStore update proxy persistence', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  it('defaults old user settings to automatic system proxy mode', async () => {
+    vi.doMock('../api/settings', () => ({
+      settingsApi: {
+        getUser: vi.fn().mockResolvedValue({}),
+        updateUser: vi.fn(),
+        getPermissionMode: vi.fn().mockResolvedValue({ mode: 'default' }),
+        setPermissionMode: vi.fn(),
+        getCliLauncherStatus: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/models', () => ({
+      modelsApi: {
+        list: vi.fn().mockResolvedValue({ models: [] }),
+        getCurrent: vi.fn().mockResolvedValue({ model: null }),
+        setCurrent: vi.fn(),
+        getEffort: vi.fn().mockResolvedValue({ level: 'medium' }),
+        setEffort: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/h5Access', () => ({
+      h5AccessApi: {
+        get: vi.fn().mockResolvedValue({
+          settings: {
+            enabled: false,
+            tokenPreview: null,
+            allowedOrigins: [],
+            publicBaseUrl: null,
+          },
+        }),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        regenerate: vi.fn(),
+        update: vi.fn(),
+      },
+    }))
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    await useSettingsStore.getState().fetchAll()
+
+    expect(useSettingsStore.getState().updateProxy).toEqual({
+      mode: 'system',
+      url: '',
+    })
+  })
+
+  it('persists manual update proxy settings trimmed', async () => {
+    const updateUser = vi.fn().mockResolvedValue({})
+    vi.doMock('../api/settings', () => ({
+      settingsApi: {
+        getUser: vi.fn(),
+        updateUser,
+        getPermissionMode: vi.fn(),
+        setPermissionMode: vi.fn(),
+        getCliLauncherStatus: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/models', () => ({
+      modelsApi: {
+        list: vi.fn(),
+        getCurrent: vi.fn(),
+        setCurrent: vi.fn(),
+        getEffort: vi.fn(),
+        setEffort: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/h5Access', () => ({
+      h5AccessApi: {
+        get: vi.fn(),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        regenerate: vi.fn(),
+        update: vi.fn(),
+      },
+    }))
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    await useSettingsStore.getState().setUpdateProxy({
+      mode: 'manual',
+      url: '  http://127.0.0.1:7890  ',
+    })
+
+    expect(useSettingsStore.getState().updateProxy).toEqual({
+      mode: 'manual',
+      url: 'http://127.0.0.1:7890',
+    })
+    expect(updateUser).toHaveBeenCalledWith({
+      updateProxy: {
+        mode: 'manual',
+        url: 'http://127.0.0.1:7890',
+      },
+    })
+  })
+})
+
+describe('settingsStore app mode', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    delete (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__
+  })
+
+  it('hydrates app mode from the native desktop command', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      mode: 'portable',
+      portableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+    })
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke }))
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: object }
+    tauriWindow.__TAURI_INTERNALS__ = {}
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    await useSettingsStore.getState().fetchAppMode()
+
+    expect(invoke).toHaveBeenCalledWith('get_app_mode')
+    expect(useSettingsStore.getState().appMode).toEqual({
+      mode: 'portable',
+      portableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+    })
+  })
+
+  it('persists app mode through the native desktop command and marks restart required', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke }))
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: object }
+    tauriWindow.__TAURI_INTERNALS__ = {}
+
+    const { useSettingsStore } = await import('./settingsStore')
+    useSettingsStore.setState({
+      appMode: {
+        mode: 'default',
+        portableDir: null,
+        defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      },
+      appModeRequiresRestart: false,
+    })
+
+    await useSettingsStore.getState().setAppMode('portable')
+
+    expect(invoke).toHaveBeenCalledWith('set_app_mode', {
+      mode: 'portable',
+      portableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+    })
+    expect(useSettingsStore.getState().appMode).toEqual({
+      mode: 'portable',
+      portableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      activeConfigDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      configDirSource: 'portable',
+    })
+    expect(useSettingsStore.getState().appModeRequiresRestart).toBe(true)
+  })
+
+  it('persists a user-selected portable directory', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke }))
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: object }
+    tauriWindow.__TAURI_INTERNALS__ = {}
+
+    const { useSettingsStore } = await import('./settingsStore')
+    useSettingsStore.setState({
+      appMode: {
+        mode: 'default',
+        portableDir: null,
+        defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      },
+      appModeRequiresRestart: false,
+    })
+
+    await useSettingsStore.getState().setAppMode('portable', 'D:\\portable-data')
+
+    expect(invoke).toHaveBeenCalledWith('set_app_mode', {
+      mode: 'portable',
+      portableDir: 'D:\\portable-data',
+    })
+    expect(useSettingsStore.getState().appMode).toMatchObject({
+      mode: 'portable',
+      portableDir: 'D:\\portable-data',
+      activeConfigDir: 'D:\\portable-data',
+      configDirSource: 'portable',
+    })
+  })
+
+  it('switches app mode back to the system data source', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke }))
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: object }
+    tauriWindow.__TAURI_INTERNALS__ = {}
+
+    const { useSettingsStore } = await import('./settingsStore')
+    useSettingsStore.setState({
+      appMode: {
+        mode: 'portable',
+        portableDir: 'D:\\portable-data',
+        defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+        activeConfigDir: 'D:\\portable-data',
+        configDirSource: 'portable',
+      },
+      appModeRequiresRestart: false,
+    })
+
+    await useSettingsStore.getState().setAppMode('default', null)
+
+    expect(invoke).toHaveBeenCalledWith('set_app_mode', {
+      mode: 'default',
+      portableDir: null,
+    })
+    expect(useSettingsStore.getState().appMode).toEqual({
+      mode: 'default',
+      portableDir: null,
+      defaultPortableDir: 'C:\\cc-haha\\CLAUDE_CONFIG_DIR',
+      activeConfigDir: null,
+      configDirSource: 'system',
+    })
+    expect(useSettingsStore.getState().appModeRequiresRestart).toBe(true)
+  })
+})
+
 describe('settingsStore desktop notification persistence', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -302,6 +531,127 @@ describe('settingsStore thinking persistence', () => {
     await useSettingsStore.getState().setThinkingEnabled(false)
 
     expect(useSettingsStore.getState().thinkingEnabled).toBe(true)
+  })
+})
+
+describe('settingsStore desktop terminal shell persistence', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  it('hydrates desktop terminal settings from user settings and falls back to system defaults', async () => {
+    vi.doMock('../api/settings', () => ({
+      settingsApi: {
+        getUser: vi.fn().mockResolvedValue({
+          desktopTerminal: {
+            startupShell: 'pwsh',
+            customShellPath: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+          },
+        }),
+        updateUser: vi.fn(),
+        getPermissionMode: vi.fn().mockResolvedValue({ mode: 'default' }),
+        setPermissionMode: vi.fn(),
+        getCliLauncherStatus: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/models', () => ({
+      modelsApi: {
+        list: vi.fn().mockResolvedValue({ models: [] }),
+        getCurrent: vi.fn().mockResolvedValue({ model: null }),
+        setCurrent: vi.fn(),
+        getEffort: vi.fn().mockResolvedValue({ level: 'medium' }),
+        setEffort: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/h5Access', () => ({
+      h5AccessApi: {
+        get: vi.fn().mockResolvedValue({
+          settings: {
+            enabled: false,
+            tokenPreview: null,
+            allowedOrigins: [],
+            publicBaseUrl: null,
+          },
+        }),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        regenerate: vi.fn(),
+        update: vi.fn(),
+      },
+    }))
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    expect(useSettingsStore.getState().desktopTerminal).toEqual({
+      startupShell: 'system',
+      customShellPath: '',
+    })
+
+    await useSettingsStore.getState().fetchAll()
+
+    expect(useSettingsStore.getState().desktopTerminal).toEqual({
+      startupShell: 'pwsh',
+      customShellPath: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+    })
+  })
+
+  it('persists desktop terminal settings explicitly', async () => {
+    const updateUser = vi.fn().mockResolvedValue({ ok: true })
+
+    vi.doMock('../api/settings', () => ({
+      settingsApi: {
+        getUser: vi.fn(),
+        updateUser,
+        getPermissionMode: vi.fn(),
+        setPermissionMode: vi.fn(),
+        getCliLauncherStatus: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/models', () => ({
+      modelsApi: {
+        list: vi.fn(),
+        getCurrent: vi.fn(),
+        setCurrent: vi.fn(),
+        getEffort: vi.fn(),
+        setEffort: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/h5Access', () => ({
+      h5AccessApi: {
+        get: vi.fn().mockResolvedValue({
+          settings: {
+            enabled: false,
+            tokenPreview: null,
+            allowedOrigins: [],
+            publicBaseUrl: null,
+          },
+        }),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        regenerate: vi.fn(),
+        update: vi.fn(),
+      },
+    }))
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    await useSettingsStore.getState().setDesktopTerminal({
+      startupShell: 'custom',
+      customShellPath: 'C:\\tools\\pwsh.exe',
+    })
+
+    expect(updateUser).toHaveBeenCalledWith({
+      desktopTerminal: {
+        startupShell: 'custom',
+        customShellPath: 'C:\\tools\\pwsh.exe',
+      },
+    })
+    expect(useSettingsStore.getState().desktopTerminal).toEqual({
+      startupShell: 'custom',
+      customShellPath: 'C:\\tools\\pwsh.exe',
+    })
   })
 })
 

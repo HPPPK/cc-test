@@ -91,16 +91,7 @@ export type RepositorySessionLaunchState = {
 
 function samePath(left: string | null | undefined, right: string | null | undefined): boolean {
   if (!left || !right) return false
-  return normalizeComparablePath(left) === normalizeComparablePath(right)
-}
-
-function normalizeComparablePath(filePath: string): string {
-  const resolved = path.resolve(filePath)
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
-}
-
-function normalizeDisplayPath(filePath: string): string {
-  return path.resolve(filePath).normalize('NFC')
+  return path.resolve(left) === path.resolve(right)
 }
 
 export function isMaterializedWorktreeLaunch(
@@ -196,6 +187,19 @@ async function resolveDirectory(workDir: string): Promise<string> {
   }
 
   return realPath
+}
+
+async function canonicalizeKnownPath(candidate: string): Promise<string> {
+  try {
+    return (await fs.realpath(candidate)).normalize('NFC')
+  } catch {
+    return path.resolve(candidate).normalize('NFC')
+  }
+}
+
+function isSameOrInsidePath(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate)
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
 }
 
 function normalizeRemoteBranch(ref: string): { name: string; remoteRef: string } | null {
@@ -362,13 +366,17 @@ export async function getRepositoryContext(workDir: string): Promise<RepositoryC
     ])
 
     const currentBranch = branchResult.stdout.trim() || null
-    const worktreeRecords = worktreeResult.code === 0 ? parseWorktreeList(worktreeResult.stdout) : []
+    const rawWorktreeRecords = worktreeResult.code === 0 ? parseWorktreeList(worktreeResult.stdout) : []
+    const worktreeRecords = await Promise.all(
+      rawWorktreeRecords.map(async (worktree) => ({
+        ...worktree,
+        path: await canonicalizeKnownPath(worktree.path),
+      })),
+    )
     const worktrees = worktreeRecords.map((worktree) => ({
-      path: normalizeDisplayPath(worktree.path),
+      path: worktree.path,
       branch: worktree.branch,
-      current:
-        samePath(absWorkDir, worktree.path) ||
-        normalizeComparablePath(absWorkDir).startsWith(`${normalizeComparablePath(worktree.path)}${path.sep}`),
+      current: isSameOrInsidePath(worktree.path, absWorkDir),
     }))
 
     return {

@@ -168,8 +168,10 @@ export type AgentTaskNotification = {
   toolUseId: string
   status: 'completed' | 'failed' | 'stopped'
   summary?: string
+  result?: string
   outputFile?: string
   usage?: BackgroundAgentTaskUsage
+  timestamp?: string
 }
 
 export type BackgroundAgentTaskUsage = {
@@ -228,6 +230,7 @@ export type UIMessage =
   | { id: string; type: 'thinking'; content: string; timestamp: number }
   | { id: string; type: 'tool_use'; toolName: string; toolUseId: string; input: unknown; timestamp: number; parentToolUseId?: string }
   | { id: string; type: 'tool_result'; toolUseId: string; content: unknown; isError: boolean; timestamp: number; parentToolUseId?: string }
+  | { id: string; type: 'background_task'; task: BackgroundAgentTask; timestamp: number }
   | { id: string; type: 'system'; content: string; timestamp: number }
   | {
       id: string

@@ -3,12 +3,12 @@ import { getSessionId } from '../../bootstrap/state.js'
 import type { LocalJSXCommandContext } from '../../commands.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import {
-  buildGoalStartPrompt,
-  clearThreadGoal,
   getThreadGoal,
-  hydrateThreadGoalFromMessages,
+  clearThreadGoalHook,
+  ensureThreadGoalHookFromTranscript,
+  getGoalHookUnavailableReason,
   parseGoalCommand,
-  setThreadGoal,
+  setThreadGoalHook,
 } from '../../goals/goalState.js'
 
 export async function call(
@@ -17,28 +17,31 @@ export async function call(
   args: string,
 ): Promise<React.ReactNode> {
   const threadId = getSessionId()
-  const getCurrentGoal = () =>
-    getThreadGoal(threadId) ?? hydrateThreadGoalFromMessages(threadId, _context.messages)
 
   try {
     const parsed = parseGoalCommand(args)
     if (parsed.type === 'clear') {
-      const existing = getCurrentGoal()
-      const cleared = clearThreadGoal(threadId)
+      const existing =
+        getThreadGoal(threadId) ??
+        ensureThreadGoalHookFromTranscript(_context, threadId, _context.messages)
+      const cleared = clearThreadGoalHook(_context, threadId)
       onDone(
-        cleared && existing ? `Goal cleared: ${existing.objective}` : 'No active goal.',
+        cleared || existing ? `Goal cleared: ${(cleared ?? existing)!.objective}` : 'No active goal.',
         { display: 'system' },
       )
       return null
     }
 
-    const goal = setThreadGoal(threadId, {
-      objective: parsed.objective,
-    })
+    const unavailableReason = getGoalHookUnavailableReason()
+    if (unavailableReason) {
+      onDone(unavailableReason, { display: 'system' })
+      return null
+    }
+
+    const goal = setThreadGoalHook(_context, threadId, parsed.objective)
     onDone(`Goal set: ${goal.objective}`, {
       display: 'system',
       shouldQuery: true,
-      metaMessages: [buildGoalStartPrompt(goal)],
     })
     return null
   } catch (error) {

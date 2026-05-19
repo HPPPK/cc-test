@@ -350,6 +350,23 @@ describe('ChatInput file mentions', () => {
     })
   })
 
+  it('restores an unsent composer draft after the composer unmounts', async () => {
+    const { unmount } = render(<ChatInput compact />)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: 'keep this prompt while I inspect another tab', selectionStart: 43 },
+    })
+    expect(input.value).toBe('keep this prompt while I inspect another tab')
+
+    unmount()
+    render(<ChatInput compact />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveValue('keep this prompt while I inspect another tab')
+    })
+  })
+
   it('shows branch and worktree launch controls for an empty active Git session', async () => {
     useSessionStore.setState({
       sessions: [{

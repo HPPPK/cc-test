@@ -63,11 +63,49 @@ function generateSummary(toolCalls: ToolCall[], t: (key: TranslationKey, params?
   return parts.join(', ')
 }
 
-function groupHasErrors(toolCalls: ToolCall[], resultMap: Map<string, ToolResult>): boolean {
+function toolCallHasError(
+  toolCall: ToolCall,
+  resultMap: Map<string, ToolResult>,
+  childToolCallsByParent: Map<string, ToolCall[]>,
+): boolean {
+  const result = resultMap.get(toolCall.toolUseId)
+  if (result?.isError) return true
+
+  return (childToolCallsByParent.get(toolCall.toolUseId) ?? []).some((childToolCall) =>
+    toolCallHasError(childToolCall, resultMap, childToolCallsByParent),
+  )
+}
+
+function groupHasErrors(
+  toolCalls: ToolCall[],
+  resultMap: Map<string, ToolResult>,
+  childToolCallsByParent: Map<string, ToolCall[]>,
+): boolean {
   return toolCalls.some((tc) => {
-    const result = resultMap.get(tc.toolUseId)
-    return result?.isError
+    return toolCallHasError(tc, resultMap, childToolCallsByParent)
   })
+}
+
+function isToolCallResolved(
+  toolCall: ToolCall,
+  resultMap: Map<string, ToolResult>,
+  childToolCallsByParent: Map<string, ToolCall[]>,
+): boolean {
+  if (!resultMap.has(toolCall.toolUseId)) return false
+
+  return (childToolCallsByParent.get(toolCall.toolUseId) ?? []).every((childToolCall) =>
+    isToolCallResolved(childToolCall, resultMap, childToolCallsByParent),
+  )
+}
+
+function hasUnresolvedToolCalls(
+  toolCalls: ToolCall[],
+  resultMap: Map<string, ToolResult>,
+  childToolCallsByParent: Map<string, ToolCall[]>,
+): boolean {
+  return toolCalls.some((toolCall) =>
+    !isToolCallResolved(toolCall, resultMap, childToolCallsByParent),
+  )
 }
 
 export function ToolCallGroup({
@@ -380,15 +418,16 @@ function ToolCallGroupMulti({ toolCalls, resultMap, childToolCallsByParent, isSt
   const [expanded, setExpanded] = useState(false)
   const t = useTranslation()
   const summary = generateSummary(toolCalls, t)
-  const errorPresent = groupHasErrors(toolCalls, resultMap)
-  const allComplete = toolCalls.every((tc) => resultMap.has(tc.toolUseId))
+  const errorPresent = groupHasErrors(toolCalls, resultMap, childToolCallsByParent)
+  const hasUnresolvedTools = hasUnresolvedToolCalls(toolCalls, resultMap, childToolCallsByParent)
+  const isRunning = !!isStreaming || hasUnresolvedTools
   const hasNestedToolCalls = toolCalls.some((tc) => (childToolCallsByParent.get(tc.toolUseId)?.length ?? 0) > 0)
 
   useEffect(() => {
-    if (isStreaming || hasNestedToolCalls) {
+    if (isRunning || hasNestedToolCalls) {
       setExpanded(true)
     }
-  }, [hasNestedToolCalls, isStreaming])
+  }, [hasNestedToolCalls, isRunning])
 
   return (
     <div className="mb-2">
@@ -403,16 +442,13 @@ function ToolCallGroupMulti({ toolCalls, resultMap, childToolCallsByParent, isSt
         <span className="flex-1 truncate text-[12px] text-[var(--color-text-secondary)]">
           {summary}
         </span>
-        {!isStreaming && allComplete && !errorPresent && (
+        {!isRunning && !errorPresent && (
           <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]">check_circle</span>
         )}
-        {!isStreaming && errorPresent && (
+        {!isRunning && errorPresent && (
           <span className="material-symbols-outlined text-[14px] text-[var(--color-error)]">error</span>
         )}
-        {!isStreaming && !allComplete && !errorPresent && (
-          <span className="material-symbols-outlined text-[14px] text-[var(--color-outline)]">pending</span>
-        )}
-        {isStreaming && (
+        {isRunning && (
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)] animate-pulse-dot" />
         )}
       </button>
@@ -470,6 +506,7 @@ function AgentCallCard({
   const statusClassName = getAgentStatusClassName(status)
   const statusLabel = getAgentStatusLabel(status, t)
   const taskSummary = agentTaskNotification?.summary?.trim() || ''
+  const taskResult = agentTaskNotification?.result?.trim() || ''
   const errorText =
     status === 'failed'
       ? taskSummary || (result?.isError ? getAgentErrorSummary(result.content) : '')
@@ -480,7 +517,9 @@ function AgentCallCard({
     result && !result.isError && !isLaunchResult && !isAgentLifecycleResult(result.content)
       ? extractAgentDisplayText(result.content).trim()
       : ''
-  const previewText = fullOutputText || (status === 'done' || status === 'stopped' ? taskSummary : '')
+  const terminalTaskReport = status === 'done' || status === 'stopped' ? taskResult : ''
+  const terminalTaskSummary = status === 'done' || status === 'stopped' ? taskSummary : ''
+  const previewText = terminalTaskReport || fullOutputText || terminalTaskSummary
   const outputSummary = previewText ? getAgentOutputSummary(previewText) : ''
   const description = typeof input.description === 'string' ? input.description : ''
 
@@ -838,7 +877,135 @@ function getAgentOutputSummary(content: string): string {
 }
 
 function extractAgentDisplayText(content: unknown): string {
-  return stripAgentResultMetadata(extractTextContent(content))
+  return stripAgentResultMetadata(formatAgentStructuredResult(content) || extractTextContent(content))
+}
+
+function formatAgentStructuredResult(content: unknown): string {
+  const structured = parseStructuredAgentContent(content)
+  if (!structured || Array.isArray(structured)) return ''
+
+  const results = structured.results
+  if (!Array.isArray(results) || results.length === 0) return ''
+
+  const items = results
+    .map((result, index) => formatAgentStructuredResultItem(result, index))
+    .filter(Boolean)
+
+  return items.join('\n')
+}
+
+function parseStructuredAgentContent(content: unknown): Record<string, unknown> | unknown[] | null {
+  if (typeof content === 'string') {
+    return parseStructuredAgentText(content)
+  }
+
+  if (Array.isArray(content)) {
+    return parseStructuredAgentText(extractTextContent(content))
+  }
+
+  if (content && typeof content === 'object') {
+    if ('results' in content) return content as Record<string, unknown>
+
+    const extracted = extractTextContent(content)
+    return extracted ? parseStructuredAgentText(extracted) : null
+  }
+
+  return null
+}
+
+function parseStructuredAgentText(text: string): Record<string, unknown> | unknown[] | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> | unknown[] : null
+  } catch {
+    return null
+  }
+}
+
+function formatAgentStructuredResultItem(result: unknown, index: number): string {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    const text = extractTextContent(result).trim()
+    return text ? `${index + 1}. ${text}` : ''
+  }
+
+  const record = result as Record<string, unknown>
+  const location = formatAgentResultLocation(record)
+  const context = getStringField(record, 'context')
+  const snippet = getStringField(record, 'snippet')
+  const message = getStringField(record, 'message') || getStringField(record, 'text') || getStringField(record, 'summary')
+  const nestedItems = Array.isArray(record.items) ? record.items : []
+
+  if (nestedItems.length > 0) {
+    const label = getStringField(record, 'risk') || getStringField(record, 'title') || message || 'Grouped results'
+    const lines = [`${index + 1}. ${formatAgentGroupLabel(label)}`]
+    if (context) lines.push(`   - ${context}`)
+    if (snippet) lines.push(`   - ${snippet}`)
+
+    nestedItems
+      .map(formatAgentStructuredNestedItem)
+      .filter(Boolean)
+      .forEach((item) => {
+        lines.push(
+          item
+            .split('\n')
+            .map((line, lineIndex) => `${lineIndex === 0 ? '   - ' : '     '}${line}`)
+            .join('\n'),
+        )
+      })
+
+    return lines.join('\n')
+  }
+
+  const lines = [`${index + 1}. ${location ? formatInlineCode(location) : 'Result'}`]
+
+  if (message) lines.push(`   - ${message}`)
+  if (context) lines.push(`   - ${context}`)
+  if (snippet) lines.push(`   - ${snippet}`)
+
+  return lines.join('\n')
+}
+
+function formatAgentStructuredNestedItem(item: unknown): string {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    return extractTextContent(item).trim()
+  }
+
+  const record = item as Record<string, unknown>
+  const location = formatAgentResultLocation(record)
+  const context = getStringField(record, 'context')
+  const snippet = getStringField(record, 'snippet')
+  const message = getStringField(record, 'message') || getStringField(record, 'text') || getStringField(record, 'summary')
+  const headingParts = [location ? formatInlineCode(location) : '', message].filter(Boolean)
+  const lines = [headingParts.join(' - ') || 'Result']
+
+  if (context) lines.push(context)
+  if (snippet) lines.push(snippet)
+
+  return lines.join('\n')
+}
+
+function formatAgentGroupLabel(label: string): string {
+  const normalized = label.trim()
+  if (!normalized) return 'Grouped results'
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`
+}
+
+function formatAgentResultLocation(record: Record<string, unknown>): string {
+  const file = getStringField(record, 'file')
+  if (!file) return ''
+  const line = typeof record.line === 'number' ? record.line : null
+  return line !== null ? `${file}:${line}` : file
+}
+
+function getStringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function formatInlineCode(value: string): string {
+  return `\`${value.replace(/`/g, '\\`')}\``
 }
 
 function stripAgentResultMetadata(text: string): string {

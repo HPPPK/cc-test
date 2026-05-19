@@ -66,7 +66,7 @@ describe('composerUtils', () => {
     expect(
       mergeSlashCommands([
         {
-          name: 'goal',
+          name: 'compact',
           description: '',
           argumentHint: '',
         },
@@ -74,9 +74,8 @@ describe('composerUtils', () => {
     ).toEqual(
       expect.arrayContaining([
         {
-          name: 'goal',
-          description: 'Set a completion goal',
-          argumentHint: '[<condition> | clear]',
+          name: 'compact',
+          description: 'Compact conversation context',
         },
       ]),
     )
@@ -85,9 +84,7 @@ describe('composerUtils', () => {
   it('keeps /goal as a single command with argument hints instead of pseudo subcommands', () => {
     const commands = filterSlashCommands(mergeSlashCommands([]), 'goal')
 
-    expect(
-      commands.map((command) => command.name),
-    ).toEqual(['goal'])
+    expect(commands.map((command) => command.name)).toEqual(['goal'])
     expect(commands[0]).toMatchObject({
       description: 'Set a completion goal',
       argumentHint: '[<condition> | clear]',

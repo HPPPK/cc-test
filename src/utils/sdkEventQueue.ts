@@ -46,6 +46,7 @@ type TaskNotificationSdkEvent = {
   status: 'completed' | 'failed' | 'stopped'
   output_file: string
   summary: string
+  result?: string
   usage?: {
     total_tokens: number
     tool_uses: number

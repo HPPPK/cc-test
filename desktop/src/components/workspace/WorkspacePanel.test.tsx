@@ -144,13 +144,13 @@ async function selectWorkspaceCodeText(
   Object.assign(range, {
     getBoundingClientRect: () => ({
       left: 120,
-      top: 40,
+      top: 100,
       right: 240,
-      bottom: 58,
+      bottom: 118,
       width: 120,
       height: 18,
       x: 120,
-      y: 40,
+      y: 100,
       toJSON: () => ({}),
     }),
   })
@@ -160,7 +160,7 @@ async function selectWorkspaceCodeText(
   selection?.addRange(range)
 
   await act(async () => {
-    fireEvent.mouseUp(code, { clientX: 180, clientY: 72 })
+    fireEvent.mouseUp(code, { clientX: 180, clientY: 122 })
     await Promise.resolve()
   })
   await flushReactWork()
@@ -1444,14 +1444,69 @@ describe('WorkspacePanel', () => {
     const addButtons = view.getAllByRole('button', { name: 'Add to chat' })
     const floatingAddButton = addButtons[addButtons.length - 1]!
 
-    expect(floatingAddButton.style.left).toBe('180px')
-    expect(floatingAddButton.style.top).toBe('80px')
+    expect(floatingAddButton.style.left).toBe('101px')
+    expect(floatingAddButton.style.top).toBe('46px')
 
     fireEvent.keyDown(view.getByTestId('workspace-code').parentElement?.parentElement ?? view.getByTestId('workspace-code'), {
       key: 'Escape',
     })
     await flushReactWork()
     expect(view.queryAllByRole('button', { name: 'Add to chat' })).toHaveLength(1)
+  })
+
+  it('dismisses the selected-code action when clicking outside the popover', async () => {
+    await setWorkspaceState((state) => ({
+      ...state,
+      panelBySession: {
+        ...state.panelBySession,
+        'session-selection-dismiss': {
+          isOpen: true,
+          activeView: 'all',
+        },
+      },
+      statusBySession: {
+        ...state.statusBySession,
+        'session-selection-dismiss': {
+          state: 'ok',
+          workDir: '/repo',
+          repoName: 'repo',
+          branch: 'main',
+          isGitRepo: true,
+          changedFiles: [],
+        },
+      },
+      previewTabsBySession: {
+        ...state.previewTabsBySession,
+        'session-selection-dismiss': [{
+          id: 'file:src/App.ts',
+          path: 'src/App.ts',
+          kind: 'file',
+          title: 'App.ts',
+          language: 'text',
+          content: 'const title = "Todo"\nexport default title',
+          state: 'ok',
+          size: 42,
+        }],
+      },
+      activePreviewTabIdBySession: {
+        ...state.activePreviewTabIdBySession,
+        'session-selection-dismiss': 'file:src/App.ts',
+      },
+    }))
+
+    const view = await renderPanel('session-selection-dismiss')
+
+    await selectWorkspaceCodeText(view, 1, 'const title = "Todo"', 1, 'const title = "Todo"')
+    expect(view.getAllByRole('button', { name: 'Add to chat' })).toHaveLength(2)
+
+    await act(async () => {
+      fireEvent.pointerDown(document.body)
+      await Promise.resolve()
+    })
+    await flushReactWork()
+
+    expect(view.queryAllByRole('button', { name: 'Add to chat' })).toHaveLength(1)
+    expect(window.getSelection()?.toString()).toBe('')
   })
 
   it('adds selected markdown text from a preview to the chat context', async () => {

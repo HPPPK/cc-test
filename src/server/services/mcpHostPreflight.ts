@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import path from 'node:path'
 import { getCwd } from '../../utils/cwd.js'
-import { which } from '../../utils/which.js'
+import { getMcpStdioEnvironment } from '../../utils/mcpStdioEnvironment.js'
 
 type HostCommandCheckResult =
   | {
@@ -148,14 +148,28 @@ export async function inspectMcpHostCommand(
     }
   }
 
-  const resolvedCommand =
-    env?.PATH
-      ? await resolveCommandFromPath(trimmedCommand, env.PATH)
-      : await which(trimmedCommand)
+  const hasExplicitPath = env ? Object.hasOwn(env, 'PATH') : false
+  const resolvedCommand = hasExplicitPath
+    ? await resolveCommandFromPath(trimmedCommand, env?.PATH)
+    : await resolveCommandFromPath(trimmedCommand, process.env.PATH)
   if (resolvedCommand) {
     return {
       ok: true,
       resolvedCommand,
+    }
+  }
+
+  if (!hasExplicitPath) {
+    const stdioEnv = await getMcpStdioEnvironment(env)
+    const shellResolvedCommand = await resolveCommandFromPath(
+      trimmedCommand,
+      stdioEnv.PATH,
+    )
+    if (shellResolvedCommand) {
+      return {
+        ok: true,
+        resolvedCommand: shellResolvedCommand,
+      }
     }
   }
 

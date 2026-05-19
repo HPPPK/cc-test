@@ -339,7 +339,7 @@ function disposePluginListener(listener: unknown): void {
   const unregister = listener && typeof listener === 'object'
     ? (listener as { unregister?: () => Promise<void> | void }).unregister
     : undefined
-  if (unregister) void unregister()
+  if (typeof unregister === 'function') void unregister.call(listener)
 }
 
 export async function installDesktopNotificationClickListener(

@@ -54,9 +54,10 @@ vi.mock('../../i18n', () => ({
       'sidebar.openInFinder': 'Open in Finder',
       'sidebar.openInFinderFailed': 'Could not open the project in Finder.',
       'sidebar.openInFinderUnavailable': 'No file manager is available.',
-      'sidebar.hideProjectFromSidebar': 'Remove from Sidebar',
+      'sidebar.hideProjectFromSidebar': 'Hide from Sidebar',
       'sidebar.restoreProjectToSidebar': 'Restore to Sidebar',
-      'sidebar.projectHidden': '{project} was removed from the sidebar.',
+      'sidebar.restoreHiddenProjects': 'Restore hidden projects ({count})',
+      'sidebar.projectHidden': '{project} was hidden from the sidebar. Existing sessions were not deleted.',
       'sidebar.newSessionInProject': 'New session in {project}',
       'sidebar.showMoreSessions': 'Expand display',
       'sidebar.showFewerSessions': 'Collapse display',
@@ -517,7 +518,7 @@ describe('Sidebar', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Pin Project' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Open in Finder' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Remove from Sidebar' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Hide from Sidebar' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Create Permanent Worktree' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Rename Project' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Archive Conversations' })).not.toBeInTheDocument()
@@ -564,7 +565,7 @@ describe('Sidebar', () => {
     render(<Sidebar />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Project actions for beta' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from Sidebar' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from Sidebar' }))
 
     await waitFor(() => {
       expect(screen.queryByText('beta')).not.toBeInTheDocument()
@@ -575,7 +576,7 @@ describe('Sidebar', () => {
     expect(JSON.parse(window.localStorage.getItem(PROJECT_HIDDEN_STORAGE_KEY) ?? '[]')).toEqual(['/workspace/beta'])
     expect(addToast).toHaveBeenCalledWith({
       type: 'info',
-      message: 'beta was removed from the sidebar.',
+      message: 'beta was hidden from the sidebar. Existing sessions were not deleted.',
     })
   })
 
@@ -594,6 +595,74 @@ describe('Sidebar', () => {
     expect(screen.getByText('alpha')).toBeInTheDocument()
     expect(screen.queryByText('beta')).not.toBeInTheDocument()
     expect(screen.queryByTestId('project-filter')).not.toBeInTheDocument()
+  })
+
+  it('restores hidden projects from the project header menu', async () => {
+    window.localStorage.setItem(PROJECT_HIDDEN_STORAGE_KEY, JSON.stringify(['/workspace/beta']))
+    const now = new Date().toISOString()
+    useSessionStore.setState({
+      sessions: [
+        makeSession('alpha-1', 'Alpha Session', '/workspace/alpha', now),
+        makeSession('beta-1', 'Beta Session', '/workspace/beta', now),
+      ],
+    })
+
+    render(<Sidebar />)
+
+    expect(screen.getByText('alpha')).toBeInTheDocument()
+    expect(screen.queryByText('beta')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Project menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore hidden projects (1)' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('beta')).toBeInTheDocument()
+    })
+    expect(JSON.parse(window.localStorage.getItem(PROJECT_HIDDEN_STORAGE_KEY) ?? '[]')).toEqual([])
+    expect(desktopUiPreferencesApiMock.updateSidebarPreferences).toHaveBeenCalledWith({
+      projectOrder: [],
+      pinnedProjects: [],
+      hiddenProjects: [],
+      projectOrganization: 'recentProject',
+      projectSortBy: 'updatedAt',
+    })
+  })
+
+  it('restores a hidden project when a new session is created in that project', async () => {
+    window.localStorage.setItem(PROJECT_HIDDEN_STORAGE_KEY, JSON.stringify(['/workspace/beta']))
+    createSession.mockResolvedValue('beta-new')
+    const now = new Date().toISOString()
+    useSessionStore.setState({
+      sessions: [
+        makeSession('alpha-1', 'Alpha Session', '/workspace/alpha', now),
+        makeSession('beta-1', 'Beta Session', '/workspace/beta', now),
+      ],
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId: 'beta-1', title: 'Beta Session', type: 'session', status: 'idle' }],
+      activeTabId: 'beta-1',
+    })
+
+    render(<Sidebar />)
+
+    expect(screen.queryByText('beta')).not.toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New Session' }))
+    })
+
+    await waitFor(() => {
+      expect(createSession).toHaveBeenCalledWith('/workspace/beta')
+      expect(screen.getByText('beta')).toBeInTheDocument()
+    })
+    expect(JSON.parse(window.localStorage.getItem(PROJECT_HIDDEN_STORAGE_KEY) ?? '[]')).toEqual([])
+    expect(desktopUiPreferencesApiMock.updateSidebarPreferences).toHaveBeenCalledWith({
+      projectOrder: [],
+      pinnedProjects: [],
+      hiddenProjects: [],
+      projectOrganization: 'recentProject',
+      projectSortBy: 'updatedAt',
+    })
   })
 
   it('uses server sidebar preferences across browser and desktop storage contexts', async () => {

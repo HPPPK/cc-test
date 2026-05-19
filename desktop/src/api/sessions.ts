@@ -341,7 +341,7 @@ export const sessionsApi = {
   },
 
   getSlashCommands(sessionId: string) {
-    return api.get<{ commands: Array<{ name: string; description: string }> }>(`/api/sessions/${sessionId}/slash-commands`)
+    return api.get<{ commands: Array<{ name: string; description: string; argumentHint?: string }> }>(`/api/sessions/${sessionId}/slash-commands`)
   },
 
   getInspection(sessionId: string, options?: { includeContext?: boolean; timeout?: number; contextOnly?: boolean }) {

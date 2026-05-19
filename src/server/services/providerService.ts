@@ -85,6 +85,16 @@ function isSavedProvider(value: unknown): value is SavedProvider {
   )
 }
 
+function normalizeModelMapping(models: SavedProvider['models']): SavedProvider['models'] {
+  const main = models.main.trim()
+  return {
+    main,
+    haiku: models.haiku.trim() || main,
+    sonnet: models.sonnet.trim() || main,
+    opus: models.opus.trim() || main,
+  }
+}
+
 function normalizeProvidersIndex(value: unknown): ProvidersIndex | null {
   if (!isRecord(value) || !Array.isArray(value.providers)) {
     return null
@@ -258,7 +268,7 @@ export class ProviderService {
       ...(input.authStrategy !== undefined && { authStrategy: input.authStrategy }),
       baseUrl: input.baseUrl,
       apiFormat: input.apiFormat ?? 'anthropic',
-      models: input.models,
+      models: normalizeModelMapping(input.models),
       ...(input.autoCompactWindow !== undefined && { autoCompactWindow: input.autoCompactWindow }),
       ...(input.modelContextWindows !== undefined && { modelContextWindows: input.modelContextWindows }),
       ...(input.notes !== undefined && { notes: input.notes }),
@@ -282,7 +292,7 @@ export class ProviderService {
       ...(input.authStrategy !== undefined && { authStrategy: input.authStrategy }),
       ...(input.baseUrl !== undefined && { baseUrl: input.baseUrl }),
       ...(input.apiFormat !== undefined && { apiFormat: input.apiFormat }),
-      ...(input.models !== undefined && { models: input.models }),
+      ...(input.models !== undefined && { models: normalizeModelMapping(input.models) }),
       ...(typeof input.autoCompactWindow === 'number' && { autoCompactWindow: input.autoCompactWindow }),
       ...(input.modelContextWindows !== undefined && input.modelContextWindows !== null && { modelContextWindows: input.modelContextWindows }),
       ...(input.notes !== undefined && { notes: input.notes }),

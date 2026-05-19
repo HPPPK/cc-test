@@ -156,6 +156,22 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
     void desktopUiPreferencesApi.updateSidebarPreferences(normalized).catch(() => undefined)
   }, [])
 
+  const restoreHiddenProjectForWorkDir = useCallback((workDir: string | null | undefined) => {
+    if (!workDir) return
+    setHiddenProjectKeys((current) => {
+      const next = new Set([...current].filter((projectKey) => !projectPathMatches(projectKey, workDir)))
+      if (next.size === current.size) return current
+      persistSidebarProjectPreferences(buildSidebarProjectPreferences(
+        projectOrder,
+        pinnedProjectKeys,
+        next,
+        projectOrganization,
+        projectSortBy,
+      ))
+      return next
+    })
+  }, [persistSidebarProjectPreferences, pinnedProjectKeys, projectOrder, projectOrganization, projectSortBy])
+
   useEffect(() => {
     let cancelled = false
     const startRevision = sidebarPreferenceRevisionRef.current
@@ -247,6 +263,7 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
   const createSessionForWorkDir = useCallback(async (workDir?: string) => {
     try {
       const sessionId = await useSessionStore.getState().createSession(workDir)
+      restoreHiddenProjectForWorkDir(workDir)
       useTabStore.getState().openTab(sessionId, t('sidebar.newSession'))
       useChatStore.getState().connectToSession(sessionId)
       closeMobileDrawer()
@@ -256,7 +273,7 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
         message: error instanceof Error ? error.message : t('sidebar.sessionListFailed'),
       })
     }
-  }, [addToast, closeMobileDrawer, t])
+  }, [addToast, closeMobileDrawer, restoreHiddenProjectForWorkDir, t])
 
   const openProjectHeaderMenu = useCallback((event: React.MouseEvent, type: SidebarHeaderMenuType) => {
     event.stopPropagation()
@@ -354,6 +371,23 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
       return next
     })
   }, [hiddenProjectKeys, persistSidebarProjectPreferences, projectOrder, projectOrganization, projectSortBy])
+
+  const restoreAllHiddenProjects = useCallback(() => {
+    setProjectHeaderMenu(null)
+    setProjectHeaderSubmenu(null)
+    setHiddenProjectKeys((current) => {
+      if (current.size === 0) return current
+      const next = new Set<string>()
+      persistSidebarProjectPreferences(buildSidebarProjectPreferences(
+        projectOrder,
+        pinnedProjectKeys,
+        next,
+        projectOrganization,
+        projectSortBy,
+      ))
+      return next
+    })
+  }, [persistSidebarProjectPreferences, pinnedProjectKeys, projectOrder, projectOrganization, projectSortBy])
 
   const toggleHiddenProject = useCallback((project: ProjectGroup) => {
     const wasHidden = hiddenProjectKeys.has(project.key)
@@ -773,7 +807,7 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
                   {searchQuery ? t('sidebar.noMatching') : t('sidebar.noSessions')}
                 </div>
               )}
-              {visibleProjectGroups.length > 0 && (
+              {orderedProjectGroups.length > 0 && (
                 <ProjectHeaderActions
                   title={t('sidebar.projects')}
                   menuLabel={t('sidebar.projectMenu')}
@@ -1086,6 +1120,8 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
           onSetSortBy={updateProjectSortBy}
           onCreateBlank={() => void createSessionForWorkDir()}
           onUseExistingFolder={() => void createSessionFromExistingFolder()}
+          onRestoreHiddenProjects={restoreAllHiddenProjects}
+          hiddenProjectCount={hiddenProjectKeys.size}
           t={t}
         />
       )}
@@ -1102,6 +1138,8 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
           onSetSortBy={updateProjectSortBy}
           onCreateBlank={() => void createSessionForWorkDir()}
           onUseExistingFolder={() => void createSessionFromExistingFolder()}
+          onRestoreHiddenProjects={restoreAllHiddenProjects}
+          hiddenProjectCount={hiddenProjectKeys.size}
           t={t}
         />
       )}
@@ -1266,6 +1304,8 @@ function ProjectHeaderMenu({
   onSetSortBy,
   onCreateBlank,
   onUseExistingFolder,
+  onRestoreHiddenProjects,
+  hiddenProjectCount,
   t,
 }: {
   type: SidebarHeaderMenuType
@@ -1278,6 +1318,8 @@ function ProjectHeaderMenu({
   onSetSortBy: (sortBy: SidebarProjectSortBy) => void
   onCreateBlank: () => void
   onUseExistingFolder: () => void
+  onRestoreHiddenProjects: () => void
+  hiddenProjectCount: number
   t: ReturnType<typeof useTranslation>
 }) {
   const width = type === 'sort' ? 230 : type === 'create' ? 250 : 270
@@ -1344,6 +1386,14 @@ function ProjectHeaderMenu({
       >
         {t('sidebar.sortCondition')}
       </HeaderMenuItem>
+      {hiddenProjectCount > 0 && (
+        <HeaderMenuItem
+          icon={<RotateCcw size={18} aria-hidden="true" />}
+          onClick={onRestoreHiddenProjects}
+        >
+          {t('sidebar.restoreHiddenProjects', { count: hiddenProjectCount })}
+        </HeaderMenuItem>
+      )}
     </div>
   )
 }
@@ -1594,6 +1644,20 @@ function normalizeProjectKeyList(values: unknown): string[] {
   }
 
   return normalized
+}
+
+function normalizeProjectPathForComparison(value: string): string {
+  const normalized = value.replace(/\\/g, '/').replace(/\/+$/g, '')
+  return normalized || value
+}
+
+function projectPathMatches(projectKey: string, workDir: string): boolean {
+  const normalizedProjectKey = normalizeProjectPathForComparison(projectKey)
+  const normalizedWorkDir = normalizeProjectPathForComparison(workDir)
+
+  return normalizedProjectKey === normalizedWorkDir
+    || normalizedWorkDir.startsWith(`${normalizedProjectKey}/`)
+    || normalizedProjectKey.startsWith(`${normalizedWorkDir}/`)
 }
 
 function hasSidebarProjectPreferences(preferences: SidebarProjectPreferences): boolean {

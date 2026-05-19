@@ -1,9 +1,13 @@
-import { describe, expect, test } from 'bun:test'
-import { switchSession } from '../../bootstrap/state.js'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { setIsInteractive, switchSession } from '../../bootstrap/state.js'
 import type { SessionId } from '../../types/ids.js'
 import type { LocalJSXCommandContext } from '../../types/command.js'
 import { createCommandInputMessage } from '../../utils/messages.js'
 import { call } from './goal.js'
+
+afterEach(() => {
+  setIsInteractive(true)
+})
 
 async function runGoal(args: string, context: Partial<LocalJSXCommandContext> = {}) {
   const calls: Array<{
@@ -21,6 +25,7 @@ async function runGoal(args: string, context: Partial<LocalJSXCommandContext> = 
     },
     {
       messages: [],
+      setAppState: updater => updater({ sessionHooks: new Map() } as any),
       ...context,
     } as LocalJSXCommandContext,
     args,
@@ -32,6 +37,7 @@ async function runGoal(args: string, context: Partial<LocalJSXCommandContext> = 
 
 describe('/goal command', () => {
   test('sets and clears a goal in one CLI session', async () => {
+    setIsInteractive(false)
     switchSession(`goal-command-${crypto.randomUUID()}` as SessionId)
 
     const created = await runGoal('ship the smoke test')
@@ -40,9 +46,7 @@ describe('/goal command', () => {
       display: 'system',
       shouldQuery: true,
     })
-    expect(created.options?.metaMessages?.[0]).toContain(
-      '<objective>ship the smoke test</objective>',
-    )
+    expect(created.options?.metaMessages).toBeUndefined()
 
     const replaced = await runGoal('ship the replacement target')
     expect(replaced.result).toBe('Goal set: ship the replacement target')
@@ -50,9 +54,7 @@ describe('/goal command', () => {
       display: 'system',
       shouldQuery: true,
     })
-    expect(replaced.options?.metaMessages?.[0]).toContain(
-      '<objective>ship the replacement target</objective>',
-    )
+    expect(replaced.options?.metaMessages).toBeUndefined()
 
     const cleared = await runGoal('clear')
     expect(cleared.result).toBe('Goal cleared: ship the replacement target')
@@ -68,6 +70,7 @@ describe('/goal command', () => {
   })
 
   test('reports usage errors without querying the model', async () => {
+    setIsInteractive(false)
     switchSession(`goal-command-${crypto.randomUUID()}` as SessionId)
 
     const result = await runGoal('')
@@ -80,6 +83,7 @@ describe('/goal command', () => {
   })
 
   test('does not treat removed subcommands as replacement goals', async () => {
+    setIsInteractive(false)
     switchSession(`goal-command-${crypto.randomUUID()}` as SessionId)
 
     const created = await runGoal('ship the smoke test')
@@ -93,7 +97,8 @@ describe('/goal command', () => {
     expect(cleared.result).toBe('Goal cleared: ship the smoke test')
   })
 
-  test('hydrates completed goal state from persisted slash command history', async () => {
+  test('clears active goal state restored from persisted slash command history', async () => {
+    setIsInteractive(false)
     switchSession(`goal-command-${crypto.randomUUID()}` as SessionId)
 
     const result = await runGoal('clear', {
@@ -105,11 +110,6 @@ describe('/goal command', () => {
         createCommandInputMessage([
           '<local-command-stdout>',
           'Goal set: ship persisted goal',
-          '</local-command-stdout>',
-        ].join('\n')),
-        createCommandInputMessage([
-          '<local-command-stdout>',
-          'Goal marked complete.',
           '</local-command-stdout>',
         ].join('\n')),
       ],

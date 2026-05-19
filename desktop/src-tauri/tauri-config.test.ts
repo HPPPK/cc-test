@@ -23,4 +23,11 @@ describe('tauri security config', () => {
     expect(csp).toContain('http://127.0.0.1:*')
     expect(csp).toContain('http://localhost:*')
   })
+
+  it('enables OS proxy discovery for updater downloads', () => {
+    const cargoToml = readFileSync(join(currentDir, 'Cargo.toml'), 'utf8')
+
+    expect(cargoToml).toContain('reqwest = { version = "0.13"')
+    expect(cargoToml).toContain('features = ["system-proxy"]')
+  })
 })

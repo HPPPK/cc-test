@@ -25,6 +25,7 @@ import {
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { findCanonicalGitRoot } from '../../utils/git.js'
 import { sanitizePath } from '../../utils/path.js'
+import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
 
 const MAX_CAPTURED_PROCESS_LINES = 80
 const MAX_CAPTURED_SDK_MESSAGES = 40
@@ -887,7 +888,7 @@ export class ConversationService {
       'CLAUDE_CODE_MODEL_CONTEXT_WINDOWS',
     ] as const
 
-    const cleanEnv = { ...process.env }
+    const cleanEnv = await getProcessEnvWithTerminalShellEnvironment()
     delete cleanEnv.CLAUDE_CODE_OAUTH_TOKEN
     if (this.shouldStripInheritedProviderEnv(options?.providerId)) {
       for (const key of PROVIDER_ENV_KEYS) {

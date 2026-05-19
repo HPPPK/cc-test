@@ -89,7 +89,9 @@ export type SessionTaskNotification = {
   toolUseId: string
   status: 'completed' | 'failed' | 'stopped'
   summary?: string
+  result?: string
   outputFile?: string
+  timestamp?: string
 }
 
 export type TranscriptUsageSnapshot = {
@@ -512,7 +514,10 @@ export class SessionService {
     return match?.[1] ? this.decodeXmlText(match[1].trim()) : undefined
   }
 
-  private parseTaskNotificationContent(content: unknown): SessionTaskNotification | null {
+  private parseTaskNotificationContent(
+    content: unknown,
+    timestamp?: string,
+  ): SessionTaskNotification | null {
     const xml = this.extractTextBlocks(content)
       .map((text) => this.extractTaskNotificationXml(text))
       .find((value): value is string => value !== null)
@@ -529,13 +534,16 @@ export class SessionService {
 
     const taskId = this.readXmlTag(xml, 'task-id') || toolUseId
     const summary = this.readXmlTag(xml, 'summary')
+    const result = this.readXmlTag(xml, 'result')
     const outputFile = this.readXmlTag(xml, 'output-file')
     return {
       taskId,
       toolUseId,
       status,
       ...(summary ? { summary } : {}),
+      ...(result ? { result } : {}),
       ...(outputFile ? { outputFile } : {}),
+      ...(timestamp ? { timestamp } : {}),
     }
   }
 
@@ -945,10 +953,16 @@ export class SessionService {
    * Reverses sanitizePath(): `-Users-nanmi-workspace` → `/Users/nanmi/workspace`.
    */
   desanitizePath(sanitized: string): string {
-    // The sanitized form replaces all '/' (and '\') with '-'.
+    // The sanitized form replaces all non-alphanumeric characters with '-'.
+    // This fallback is necessarily lossy, but old Windows transcripts without
+    // session-meta still need the drive separator restored well enough to resume.
+    const windowsDrivePath = sanitized.match(/^([a-zA-Z])--(.+)$/)
+    if (windowsDrivePath) {
+      return `${windowsDrivePath[1]}:${path.win32.sep}${windowsDrivePath[2].replace(/-/g, path.win32.sep)}`
+    }
+
     // On POSIX the original path starts with '/', so the sanitized form starts with '-'.
-    // We restore by replacing every '-' with '/' (the platform separator).
-    // On Windows the leading character would be a drive letter, but we handle POSIX here.
+    // UNC-style Windows paths also recover to a leading double separator on Windows.
     return sanitized.replace(/-/g, path.sep)
   }
 
@@ -1835,7 +1849,10 @@ export class SessionService {
     const notifications: SessionTaskNotification[] = []
     for (const entry of entries) {
       if (entry.message?.role !== 'user') continue
-      const notification = this.parseTaskNotificationContent(entry.message.content)
+      const notification = this.parseTaskNotificationContent(
+        entry.message.content,
+        entry.timestamp,
+      )
       if (notification) notifications.push(notification)
     }
     return notifications

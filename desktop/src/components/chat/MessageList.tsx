@@ -1,5 +1,5 @@
 import { useRef, useEffect, useMemo, memo, useState, useCallback, useLayoutEffect, type ReactNode } from 'react'
-import { ArrowDown, BookMarked, ChevronDown, ChevronRight, Settings, Target } from 'lucide-react'
+import { ArrowDown, BookMarked, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleStop, LoaderCircle, MessageCircle, Settings, Target, XCircle } from 'lucide-react'
 import { ApiError } from '../../api/client'
 import { sessionsApi, type SessionTurnCheckpoint } from '../../api/sessions'
 import { useChatStore } from '../../stores/chatStore'
@@ -22,11 +22,13 @@ import { InlineTaskSummary } from './InlineTaskSummary'
 import { CurrentTurnChangeCard } from './CurrentTurnChangeCard'
 import type { AgentTaskNotification, UIMessage } from '../../types/chat'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
+import { clearWindowSelection, getSelectionPopoverPosition, useSelectionPopoverDismiss } from '../../hooks/useSelectionPopoverDismiss'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
 type MemoryEvent = Extract<UIMessage, { type: 'memory_event' }>
 type GoalEvent = Extract<UIMessage, { type: 'goal_event' }>
+type BackgroundTaskEvent = Extract<UIMessage, { type: 'background_task' }>
 
 type RenderItem =
   | { kind: 'tool_group'; toolCalls: ToolCall[]; id: string }
@@ -61,11 +63,9 @@ type ChatSelectionState = {
   y: number
 }
 
-const CHAT_SELECTION_MENU_OFFSET = 8
-
-function clampValue(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(value, max))
-}
+const CHAT_SELECTION_MENU_OFFSET = 10
+const CHAT_SELECTION_MENU_WIDTH = 158
+const CHAT_SELECTION_MENU_HEIGHT = 44
 
 function getElementForNode(node: Node | null): Element | null {
   if (!node) return null
@@ -73,32 +73,12 @@ function getElementForNode(node: Node | null): Element | null {
 }
 
 function getChatSelectionPosition(range: Range, root: HTMLElement, pointer: { clientX: number; clientY: number }) {
-  const rect = typeof range.getBoundingClientRect === 'function'
-    ? range.getBoundingClientRect()
-    : null
-  const rootRect = root.getBoundingClientRect()
-  const pointerInsideRoot =
-    pointer.clientX >= rootRect.left &&
-    pointer.clientX <= rootRect.right &&
-    pointer.clientY >= rootRect.top &&
-    pointer.clientY <= rootRect.bottom
-  const fallbackX = rect && rect.width > 0
-    ? rect.left + rect.width / 2
-    : rect?.left ?? rootRect.left + 24
-  const fallbackY = rect
-    ? rect.bottom + CHAT_SELECTION_MENU_OFFSET
-    : rootRect.top + 24
-  const unclampedX = pointerInsideRoot ? pointer.clientX : fallbackX
-  const unclampedY = pointerInsideRoot ? pointer.clientY + CHAT_SELECTION_MENU_OFFSET : fallbackY
-  const minX = Math.max(12, rootRect.left + 8)
-  const maxX = Math.max(minX, Math.min(window.innerWidth - 160, rootRect.right - 136))
-  const minY = Math.max(12, rootRect.top + 8)
-  const maxY = Math.max(minY, Math.min(window.innerHeight - 48, rootRect.bottom - 40))
-
-  return {
-    x: clampValue(unclampedX, minX, maxX),
-    y: clampValue(unclampedY, minY, maxY),
-  }
+  return getSelectionPopoverPosition(range, root, {
+    menuWidth: CHAT_SELECTION_MENU_WIDTH,
+    menuHeight: CHAT_SELECTION_MENU_HEIGHT,
+    offset: CHAT_SELECTION_MENU_OFFSET,
+    fallbackPointer: pointer,
+  })
 }
 
 function getChatSelectionFromContainer(
@@ -128,22 +108,25 @@ function getChatSelectionFromContainer(
 function ChatSelectionMenu({
   selection,
   onAdd,
+  popoverRef,
 }: {
   selection: ChatSelectionState | null
   onAdd: () => void
+  popoverRef: { current: HTMLButtonElement | null }
 }) {
   const t = useTranslation()
   if (!selection) return null
 
   return (
     <button
+      ref={popoverRef}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onAdd}
-      className="fixed z-50 inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2.5 text-[12px] font-medium text-[var(--color-text-primary)] shadow-[var(--shadow-dropdown)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+      className="fixed z-50 inline-flex h-11 items-center gap-2 rounded-full border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-5 text-[15px] font-semibold text-[var(--color-text-primary)] shadow-[0_10px_28px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
       style={{ left: selection.x, top: selection.y }}
     >
-      <span aria-hidden="true" className="material-symbols-outlined text-[15px] text-[var(--color-text-tertiary)]">person_add</span>
+      <MessageCircle size={21} strokeWidth={2.15} className="shrink-0 text-[var(--color-text-primary)]" aria-hidden="true" />
       <span>{t('chat.addSelectionToChat')}</span>
     </button>
   )
@@ -220,6 +203,90 @@ function GoalEventCard({ message }: { message: GoalEvent }) {
   )
 }
 
+function formatBackgroundTaskDuration(durationMs?: number) {
+  if (typeof durationMs !== 'number' || durationMs < 0) return null
+  const seconds = Math.round(durationMs / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}m ${seconds % 60}s`
+}
+
+function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) {
+  const t = useTranslation()
+  const { task } = message
+  const isRunning = task.status === 'running'
+  const isFailed = task.status === 'failed'
+  const isStopped = task.status === 'stopped'
+  const duration = formatBackgroundTaskDuration(task.usage?.durationMs)
+  const detail = task.summary || task.lastToolName || task.description || task.outputFile || task.taskId
+  const label = getBackgroundTaskLabel(task.taskType, t)
+
+  return (
+    <div className="mb-2">
+      <div
+        data-testid="background-task-event-card"
+        data-status={task.status}
+        className="flex min-w-0 items-start gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-3 py-2"
+      >
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+          {isRunning ? (
+            <LoaderCircle size={15} strokeWidth={2.25} className="animate-spin text-[var(--color-accent)]" aria-hidden="true" />
+          ) : isFailed ? (
+            <XCircle size={15} strokeWidth={2.25} className="text-[var(--color-error)]" aria-hidden="true" />
+          ) : isStopped ? (
+            <CircleStop size={15} strokeWidth={2.25} className="text-[var(--color-text-tertiary)]" aria-hidden="true" />
+          ) : (
+            <CheckCircle2 size={15} strokeWidth={2.25} className="text-[var(--color-success)]" aria-hidden="true" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <Bot size={14} strokeWidth={2.25} className="shrink-0 text-[var(--color-text-tertiary)]" aria-hidden="true" />
+            <span className="shrink-0 text-[12px] font-medium text-[var(--color-text-primary)]">
+              {label}
+            </span>
+            <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">
+              {t(`chat.backgroundAgents.status.${task.status}`)}
+            </span>
+            {task.usage?.totalTokens ? (
+              <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
+                {t('chat.backgroundAgents.tokens', { count: task.usage.totalTokens.toLocaleString() })}
+              </span>
+            ) : null}
+            {duration ? (
+              <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
+                {duration}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 truncate text-[12px] leading-5 text-[var(--color-text-secondary)]">
+            {detail}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function isAgentBackgroundTaskMessage(message: UIMessage): boolean {
+  if (message.type !== 'background_task') return false
+  if (message.task.taskType === 'local_agent' || message.task.taskType === 'remote_agent') {
+    return true
+  }
+  return /^Agent (?:(?:"[^"]+" )?(completed|was stopped)|(?:"[^"]+" )?failed(?::|$))/.test(
+    message.task.summary ?? '',
+  )
+}
+
+function getBackgroundTaskLabel(
+  taskType: string | undefined,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string {
+  if (taskType === 'local_bash') return t('chat.backgroundTasks.command')
+  if (taskType === 'local_workflow') return t('chat.backgroundTasks.workflow')
+  return t('chat.backgroundTasks.task')
+}
+
 function SelectableChatMessage({
   sessionId,
   messageId,
@@ -234,6 +301,7 @@ function SelectableChatMessage({
   children: ReactNode
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const selectionMenuRef = useRef<HTMLButtonElement>(null)
   const addReference = useWorkspaceChatContextStore((state) => state.addReference)
   const [selectionMenu, setSelectionMenu] = useState<ChatSelectionState | null>(null)
   const t = useTranslation()
@@ -244,6 +312,16 @@ function SelectableChatMessage({
   useEffect(() => {
     setSelectionMenu(null)
   }, [content, messageId])
+
+  const dismissSelectionMenu = useCallback(() => {
+    setSelectionMenu(null)
+  }, [])
+
+  useSelectionPopoverDismiss({
+    active: Boolean(selectionMenu),
+    popoverRef: selectionMenuRef,
+    onDismiss: dismissSelectionMenu,
+  })
 
   const addCurrentSelectionToChat = useCallback(() => {
     if (!sessionId || !selectionMenu) return
@@ -256,7 +334,7 @@ function SelectableChatMessage({
       messageId,
     })
     setSelectionMenu(null)
-    window.getSelection()?.removeAllRanges()
+    clearWindowSelection()
   }, [addReference, messageId, role, selectionMenu, sessionId, sourceName])
 
   return (
@@ -270,7 +348,7 @@ function SelectableChatMessage({
       }}
     >
       {children}
-      <ChatSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} />
+      <ChatSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} popoverRef={selectionMenuRef} />
     </div>
   )
 }
@@ -305,6 +383,15 @@ export function buildRenderModel(messages: UIMessage[]): RenderModel {
       pendingToolCalls = []
     }
   }
+  const appendRootToolCall = (toolCall: ToolCall) => {
+    const nextIsAgent = toolCall.toolName === 'Agent'
+    const pendingIsAgentGroup = pendingToolCalls.every((pendingToolCall) => pendingToolCall.toolName === 'Agent')
+
+    if (pendingToolCalls.length > 0 && pendingIsAgentGroup !== nextIsAgent) {
+      flushGroup()
+    }
+    pendingToolCalls.push(toolCall)
+  }
 
   for (const msg of messages) {
     if (msg.type === 'tool_use') {
@@ -317,6 +404,9 @@ export function buildRenderModel(messages: UIMessage[]): RenderModel {
 
   for (const msg of messages) {
     if (msg.type === 'assistant_text' && !msg.content.trim()) {
+      continue
+    }
+    if (isAgentBackgroundTaskMessage(msg)) {
       continue
     }
 
@@ -337,7 +427,7 @@ export function buildRenderModel(messages: UIMessage[]): RenderModel {
         flushGroup()
         items.push({ kind: 'message', message: msg })
       } else {
-        pendingToolCalls.push(msg)
+        appendRootToolCall(msg)
       }
     } else {
       flushGroup()
@@ -354,6 +444,7 @@ function isTurnResponseMessage(message: UIMessage) {
     message.type === 'assistant_text' ||
     message.type === 'tool_use' ||
     message.type === 'tool_result' ||
+    (message.type === 'background_task' && !isAgentBackgroundTaskMessage(message)) ||
     message.type === 'error' ||
     message.type === 'task_summary'
   )
@@ -1124,6 +1215,8 @@ export const MessageBlock = memo(function MessageBlock({
       return <MemoryEventCard message={message} />
     case 'goal_event':
       return <GoalEventCard message={message} />
+    case 'background_task':
+      return <BackgroundTaskEventCard message={message} />
     case 'system':
       return (
         <div className="mb-3 text-center text-xs text-[var(--color-text-tertiary)]">

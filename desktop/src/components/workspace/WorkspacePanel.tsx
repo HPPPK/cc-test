@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { MessageCircle } from 'lucide-react'
 import { Highlight } from 'prism-react-renderer'
 import type {
   WorkspaceChangedFile,
@@ -18,6 +19,7 @@ import { useChatStore } from '../../stores/chatStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
 import { useUIStore } from '../../stores/uiStore'
 import { copyTextToClipboard } from '../chat/clipboard'
+import { clearWindowSelection, getSelectionPopoverPosition, useSelectionPopoverDismiss } from '../../hooks/useSelectionPopoverDismiss'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import {
   getFileExtension,
@@ -84,7 +86,9 @@ const FILE_STATUS_META: Record<WorkspaceFileStatus, { label: string; className: 
 const EMPTY_TREE_BY_PATH: Record<string, WorkspaceTreeResult | undefined> = {}
 const EMPTY_PREVIEW_TABS: WorkspacePreviewTab[] = []
 const EMPTY_EXPANDED_PATHS: string[] = []
-const SELECTION_MENU_OFFSET = 8
+const SELECTION_MENU_OFFSET = 10
+const SELECTION_MENU_WIDTH = 158
+const SELECTION_MENU_HEIGHT = 44
 const FILE_BADGE_META: Record<string, { label: string; className: string }> = {
   ts: { label: 'TS', className: 'bg-[var(--color-secondary)]/14 text-[var(--color-secondary)]' },
   tsx: { label: 'TSX', className: 'bg-[var(--color-secondary)]/14 text-[var(--color-secondary)]' },
@@ -239,37 +243,13 @@ function getLineNumberFromNode(node: Node | null, root: HTMLElement) {
   return Number.isFinite(line) ? line : undefined
 }
 
-function clampValue(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(value, max))
-}
-
 function getSelectionPosition(range: Range, root: HTMLElement, pointer?: SelectionPointer) {
-  const rect = typeof range.getBoundingClientRect === 'function'
-    ? range.getBoundingClientRect()
-    : null
-  const rootRect = root.getBoundingClientRect()
-  const pointerInsideRoot = pointer
-    && pointer.clientX >= rootRect.left
-    && pointer.clientX <= rootRect.right
-    && pointer.clientY >= rootRect.top
-    && pointer.clientY <= rootRect.bottom
-  const fallbackX = rect && rect.width > 0
-    ? rect.left + rect.width / 2
-    : rect?.left ?? rootRect.left + 24
-  const fallbackY = rect
-    ? rect.bottom + SELECTION_MENU_OFFSET
-    : rootRect.top + 24
-  const unclampedX = pointerInsideRoot ? pointer.clientX : fallbackX
-  const unclampedY = pointerInsideRoot ? pointer.clientY + SELECTION_MENU_OFFSET : fallbackY
-  const minX = Math.max(12, rootRect.left + 8)
-  const maxX = Math.max(minX, Math.min(window.innerWidth - 160, rootRect.right - 136))
-  const minY = Math.max(12, rootRect.top + 8)
-  const maxY = Math.max(minY, Math.min(window.innerHeight - 48, rootRect.bottom - 40))
-
-  return {
-    x: clampValue(unclampedX, minX, maxX),
-    y: clampValue(unclampedY, minY, maxY),
-  }
+  return getSelectionPopoverPosition(range, root, {
+    menuWidth: SELECTION_MENU_WIDTH,
+    menuHeight: SELECTION_MENU_HEIGHT,
+    offset: SELECTION_MENU_OFFSET,
+    fallbackPointer: pointer,
+  })
 }
 
 function getTextSelectionFromContainer(
@@ -321,22 +301,25 @@ function getLineRangeForText(value: string, text: string) {
 function FloatingSelectionMenu({
   selection,
   onAdd,
+  popoverRef,
 }: {
   selection: FloatingSelectionMenuState | null
   onAdd: () => void
+  popoverRef: { current: HTMLButtonElement | null }
 }) {
   const t = useTranslation()
   if (!selection) return null
 
   return (
     <button
+      ref={popoverRef}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onAdd}
-      className="fixed z-50 inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2.5 text-[12px] font-medium text-[var(--color-text-primary)] shadow-[var(--shadow-dropdown)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+      className="fixed z-50 inline-flex h-11 items-center gap-2 rounded-full border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-5 text-[15px] font-semibold text-[var(--color-text-primary)] shadow-[0_10px_28px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
       style={{ left: selection.x, top: selection.y }}
     >
-      <span aria-hidden="true" className="material-symbols-outlined text-[15px] text-[var(--color-text-tertiary)]">person_add</span>
+      <MessageCircle size={21} strokeWidth={2.15} className="shrink-0 text-[var(--color-text-primary)]" aria-hidden="true" />
       <span>{t('workspace.addSelectionToChat')}</span>
     </button>
   )
@@ -452,6 +435,7 @@ function CodeSurface({
 }) {
   const t = useTranslation()
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const selectionMenuRef = useRef<HTMLButtonElement>(null)
   const [commentLine, setCommentLine] = useState<number | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [showAllLines, setShowAllLines] = useState(false)
@@ -468,6 +452,16 @@ function CodeSurface({
     setCommentDraft('')
     setSelectionMenu(null)
   }, [language, value])
+
+  const dismissSelectionMenu = useCallback(() => {
+    setSelectionMenu(null)
+  }, [])
+
+  useSelectionPopoverDismiss({
+    active: Boolean(selectionMenu),
+    popoverRef: selectionMenuRef,
+    onDismiss: dismissSelectionMenu,
+  })
 
   const submitLineComment = () => {
     if (!commentLine || !commentDraft.trim()) return
@@ -497,7 +491,7 @@ function CodeSurface({
       endLine: selectionMenu.endLine,
     })
     setSelectionMenu(null)
-    window.getSelection()?.removeAllRanges()
+    clearWindowSelection()
   }
 
   const renderLineCommentEditor = (lineNumber: number) => {
@@ -650,7 +644,7 @@ function CodeSurface({
           </div>
         )}
       </div>
-      <FloatingSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} />
+      <FloatingSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} popoverRef={selectionMenuRef} />
     </div>
   )
 }
@@ -663,11 +657,22 @@ function MarkdownSurface({
   onAddSelection: (selection: WorkspaceTextSelection) => void
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const selectionMenuRef = useRef<HTMLButtonElement>(null)
   const [selectionMenu, setSelectionMenu] = useState<FloatingSelectionMenuState | null>(null)
 
   useEffect(() => {
     setSelectionMenu(null)
   }, [value])
+
+  const dismissSelectionMenu = useCallback(() => {
+    setSelectionMenu(null)
+  }, [])
+
+  useSelectionPopoverDismiss({
+    active: Boolean(selectionMenu),
+    popoverRef: selectionMenuRef,
+    onDismiss: dismissSelectionMenu,
+  })
 
   const handleSelectionMouseUp = (event: MouseEvent<HTMLDivElement>) => {
     setSelectionMenu(getTextSelectionFromContainer(
@@ -685,7 +690,7 @@ function MarkdownSurface({
       endLine: selectionMenu.endLine,
     })
     setSelectionMenu(null)
-    window.getSelection()?.removeAllRanges()
+    clearWindowSelection()
   }
 
   return (
@@ -704,7 +709,7 @@ function MarkdownSurface({
           className="workspace-markdown-preview prose-p:text-[14px] prose-p:leading-7 prose-h1:text-[24px] prose-h2:text-[18px] prose-h3:text-[15px] prose-code:text-[12px] prose-pre:my-4"
         />
       </div>
-      <FloatingSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} />
+      <FloatingSelectionMenu selection={selectionMenu} onAdd={addCurrentSelectionToChat} popoverRef={selectionMenuRef} />
     </div>
   )
 }

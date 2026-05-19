@@ -153,6 +153,28 @@ describe('ProviderService', () => {
       expect(provider.models.main).toBe('model-main')
     })
 
+    test('should normalize empty model mappings to the main model when adding a provider', async () => {
+      const svc = new ProviderService()
+      const provider = await svc.addProvider(sampleInput({
+        models: {
+          main: 'gpt-5.5',
+          haiku: '',
+          sonnet: '   ',
+          opus: '',
+        },
+      }))
+
+      expect(provider.models).toEqual({
+        main: 'gpt-5.5',
+        haiku: 'gpt-5.5',
+        sonnet: 'gpt-5.5',
+        opus: 'gpt-5.5',
+      })
+
+      const config = await readProvidersConfig()
+      expect((config.providers as Array<{ models: unknown }>)[0]?.models).toEqual(provider.models)
+    })
+
     test('new providers should not be auto-activated', async () => {
       const svc = new ProviderService()
       const provider = await svc.addProvider(sampleInput())
@@ -359,6 +381,27 @@ describe('ProviderService', () => {
       settings = await readSettings()
       env = settings.env as Record<string, string>
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
+    })
+
+    test('should normalize empty model mappings before syncing settings', async () => {
+      const svc = new ProviderService()
+      const provider = await svc.addProvider(sampleInput({
+        models: {
+          main: 'gpt-5.5',
+          haiku: '',
+          sonnet: '',
+          opus: '',
+        },
+      }))
+
+      await svc.activateProvider(provider.id)
+
+      const settings = await readSettings()
+      const env = settings.env as Record<string, string>
+      expect(env.ANTHROPIC_MODEL).toBe('gpt-5.5')
+      expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.5')
+      expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.5')
+      expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.5')
     })
 
     test('updating active provider should override and clear model context windows', async () => {

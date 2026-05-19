@@ -38,6 +38,7 @@ import { checkAttachmentLimit } from '../common/attachment/attachment-limits.js'
 import { ImageBlockWatcher } from '../common/attachment/image-block-watcher.js'
 import { isOutsideWorkDir } from './path-safety.js'
 import type { PendingUpload } from '../common/attachment/attachment-types.js'
+import { isOutsideWorkDir } from './path-safety.js'
 
 // ---------- init ----------
 

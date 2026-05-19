@@ -10,6 +10,8 @@ import QRCode from 'qrcode'
 type ImTab = 'feishu' | 'wechat' | 'dingtalk' | 'telegram'
 type ImPlatform = 'telegram' | 'feishu' | 'wechat' | 'dingtalk'
 
+const FEISHU_CREATE_BOT_URL = 'https://open.feishu.cn/page/openclaw?form=multiAgent'
+
 export function AdapterSettings() {
   const t = useTranslation()
   const {
@@ -375,6 +377,7 @@ export function AdapterSettings() {
   const pairingExpiry = config.pairing?.expiresAt
   const isPairingActive = pairingExpiry ? Date.now() < pairingExpiry : false
   const minutesLeft = pairingExpiry ? Math.max(0, Math.ceil((pairingExpiry - Date.now()) / 60000)) : 0
+  const hasSavedFeishuCredentials = Boolean(config.feishu?.appId && config.feishu?.appSecret)
 
   if (isLoading) {
     return (
@@ -505,6 +508,32 @@ export function AdapterSettings() {
 
         {activeIm === 'feishu' && (
           <div className="p-4 space-y-4">
+            {!hasSavedFeishuCredentials && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <span className="material-symbols-outlined mt-0.5 text-[20px] text-[var(--color-brand)]">smart_toy</span>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('settings.adapters.feishuCreateBotTitle')}</h4>
+                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-tertiary)]">{t('settings.adapters.feishuCreateBotDesc')}</p>
+                      <ol className="mt-2 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+                        <li>1. {t('settings.adapters.feishuCreateBotStepCreate')}</li>
+                        <li>2. {t('settings.adapters.feishuCreateBotStepFill')}</li>
+                      </ol>
+                    </div>
+                  </div>
+                  <a
+                    href={FEISHU_CREATE_BOT_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-[image:var(--gradient-btn-primary)] px-3 text-xs font-medium text-[var(--color-btn-primary-fg)] shadow-[var(--shadow-button-primary)] transition-colors hover:bg-[image:var(--gradient-btn-primary-hover)] hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]"
+                  >
+                    {t('settings.adapters.feishuCreateBotAction')}
+                    <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                  </a>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label={t('settings.adapters.appId')}

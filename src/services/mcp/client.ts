@@ -95,7 +95,7 @@ import {
 } from '../../utils/proxy.js'
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
-import { subprocessEnv } from '../../utils/subprocessEnv.js'
+import { getMcpStdioEnvironment } from '../../utils/mcpStdioEnvironment.js'
 import {
   isPersistError,
   persistToolResult,
@@ -943,13 +943,11 @@ export const connectToServer = memoize(
         const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
           ? [[serverRef.command, ...serverRef.args].join(' ')]
           : serverRef.args
+        const stdioEnv = await getMcpStdioEnvironment(serverRef.env)
         transport = new StdioClientTransport({
           command: finalCommand,
           args: finalArgs,
-          env: {
-            ...subprocessEnv(),
-            ...serverRef.env,
-          } as Record<string, string>,
+          env: stdioEnv,
           stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
         })
       } else {

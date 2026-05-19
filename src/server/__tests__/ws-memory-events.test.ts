@@ -253,6 +253,69 @@ describe('WebSocket goal command events', () => {
 })
 
 describe('WebSocket stream event translation', () => {
+  it('keeps subagent parent linkage when later stream events omit the parent id', () => {
+    const sessionId = `subagent-parent-${crypto.randomUUID()}`
+
+    expect(translateCliMessage({
+      type: 'stream_event',
+      parent_tool_use_id: 'agent-1',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: 'read-1', name: 'Read' },
+      },
+    }, sessionId)).toEqual([
+      {
+        type: 'content_start',
+        blockType: 'tool_use',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        parentToolUseId: 'agent-1',
+      },
+    ])
+
+    expect(translateCliMessage({
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: '{"file_path":"src/App.tsx"}' },
+      },
+    }, sessionId)).toEqual([
+      { type: 'content_delta', toolInput: '{"file_path":"src/App.tsx"}' },
+    ])
+
+    expect(translateCliMessage({
+      type: 'stream_event',
+      event: { type: 'content_block_stop', index: 0 },
+    }, sessionId)).toEqual([
+      {
+        type: 'tool_use_complete',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        input: { file_path: 'src/App.tsx' },
+        parentToolUseId: 'agent-1',
+      },
+    ])
+
+    expect(translateCliMessage({
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'read-1', content: 'ok' },
+        ],
+      },
+    }, sessionId)).toEqual([
+      {
+        type: 'tool_result',
+        toolUseId: 'read-1',
+        content: 'ok',
+        isError: false,
+        parentToolUseId: 'agent-1',
+      },
+    ])
+  })
+
   it('keeps DeepSeek-style thinking blocks in thinking state until text starts', () => {
     const sessionId = `deepseek-thinking-${crypto.randomUUID()}`
 

@@ -3,7 +3,22 @@ import { ApiError } from '../api/client'
 import { settingsApi } from '../api/settings'
 import { modelsApi } from '../api/models'
 import { h5AccessApi } from '../api/h5Access'
-import { isThemeMode, type H5AccessSettings, type PermissionMode, type EffortLevel, type ModelInfo, type ThemeMode, type WebSearchSettings } from '../types/settings'
+import {
+  isThemeMode,
+  type AppMode,
+  type AppModeConfig,
+  type DesktopTerminalSettings,
+  type DesktopTerminalStartupShell,
+  type H5AccessSettings,
+  type PermissionMode,
+  type EffortLevel,
+  type ModelInfo,
+  type ThemeMode,
+  type UpdateProxyMode,
+  type UpdateProxySettings,
+  type WebSearchSettings,
+} from '../types/settings'
+import { isTauriRuntime } from '../lib/desktopRuntime'
 import type { Locale } from '../i18n'
 import {
   APP_ZOOM_CONTROL_STEP,
@@ -42,13 +57,18 @@ type SettingsStore = {
   theme: ThemeMode
   skipWebFetchPreflight: boolean
   desktopNotificationsEnabled: boolean
+  desktopTerminal: DesktopTerminalSettings
   webSearch: WebSearchSettings
+  updateProxy: UpdateProxySettings
   h5Access: H5AccessSettings
   h5AccessError: string | null
   responseLanguage: string
   uiZoom: number
   isLoading: boolean
   error: string | null
+
+  appMode: AppModeConfig
+  appModeRequiresRestart: boolean
 
   fetchAll: () => Promise<void>
   fetchH5Access: () => Promise<void>
@@ -60,7 +80,9 @@ type SettingsStore = {
   setTheme: (theme: ThemeMode) => Promise<void>
   setSkipWebFetchPreflight: (enabled: boolean) => Promise<void>
   setDesktopNotificationsEnabled: (enabled: boolean) => Promise<void>
+  setDesktopTerminal: (settings: DesktopTerminalSettings) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
+  setUpdateProxy: (settings: UpdateProxySettings) => Promise<void>
   enableH5Access: () => Promise<string>
   disableH5Access: () => Promise<void>
   regenerateH5AccessToken: () => Promise<string>
@@ -69,6 +91,8 @@ type SettingsStore = {
     publicBaseUrl?: string | null
   }) => Promise<void>
   setResponseLanguage: (language: string) => Promise<void>
+  fetchAppMode: () => Promise<void>
+  setAppMode: (mode: AppMode, portableDir?: string | null) => Promise<void>
   setUiZoom: (zoom: number) => void
 }
 
@@ -77,6 +101,16 @@ const DEFAULT_H5_ACCESS_SETTINGS: H5AccessSettings = {
   tokenPreview: null,
   allowedOrigins: [],
   publicBaseUrl: null,
+}
+
+const DEFAULT_DESKTOP_TERMINAL_SETTINGS: DesktopTerminalSettings = {
+  startupShell: 'system',
+  customShellPath: '',
+}
+
+const DEFAULT_UPDATE_PROXY_SETTINGS: UpdateProxySettings = {
+  mode: 'system',
+  url: '',
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -90,7 +124,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   theme: useUIStore.getState().theme,
   skipWebFetchPreflight: true,
   desktopNotificationsEnabled: false,
+  desktopTerminal: DEFAULT_DESKTOP_TERMINAL_SETTINGS,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
+  updateProxy: DEFAULT_UPDATE_PROXY_SETTINGS,
   h5Access: DEFAULT_H5_ACCESS_SETTINGS,
   h5AccessError: null,
   responseLanguage: '',
@@ -98,6 +134,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   isLoading: false,
   error: null,
 
+  appMode: {
+    mode: 'default',
+    portableDir: null,
+    defaultPortableDir: null,
+    activeConfigDir: null,
+    configDirSource: 'system',
+  },
+  appModeRequiresRestart: false,
   setUiZoom: (zoom: number) => {
     const level = normalizeAppZoomLevel(zoom)
     set({ uiZoom: level })
@@ -128,7 +172,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         theme,
         skipWebFetchPreflight: userSettings.skipWebFetchPreflight !== false,
         desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
+        desktopTerminal: normalizeDesktopTerminalSettings(userSettings.desktopTerminal),
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
+        updateProxy: normalizeUpdateProxySettings(userSettings.updateProxy),
         h5Access: h5AccessResult.settings,
         h5AccessError: h5AccessResult.error,
         responseLanguage: typeof userSettings.language === 'string' ? userSettings.language : '',
@@ -232,6 +278,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
 
+  setDesktopTerminal: async (settings) => {
+    const prev = get().desktopTerminal
+    const next = normalizeDesktopTerminalSettings(settings)
+    set({ desktopTerminal: next })
+    try {
+      await settingsApi.updateUser({ desktopTerminal: next })
+    } catch (error) {
+      set({ desktopTerminal: prev })
+      throw error
+    }
+  },
+
   setWebSearch: async (webSearch) => {
     const prev = get().webSearch
     const next = normalizeWebSearchSettings(webSearch)
@@ -240,6 +298,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ webSearch: next })
     } catch {
       set({ webSearch: prev })
+    }
+  },
+
+  setUpdateProxy: async (settings) => {
+    const prev = get().updateProxy
+    const next = normalizeUpdateProxySettings(settings)
+    set({ updateProxy: next })
+    try {
+      await settingsApi.updateUser({ updateProxy: next })
+    } catch (error) {
+      set({ updateProxy: prev })
+      throw error
     }
   },
 
@@ -310,6 +380,41 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({ responseLanguage: prev })
     }
   },
+
+  fetchAppMode: async () => {
+    if (!isTauriRuntime()) return
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const result: AppModeConfig = await invoke('get_app_mode')
+      set({ appMode: result })
+    } catch { /* silently ignore - not in Tauri or command unavailable */ }
+  },
+
+  setAppMode: async (mode, portableDir) => {
+    if (!isTauriRuntime()) return
+    const prev = get().appMode
+    const newMode: AppModeConfig = {
+      ...prev,
+      mode,
+      portableDir: mode === 'portable'
+        ? portableDir ?? prev.defaultPortableDir ?? prev.portableDir
+        : null,
+      activeConfigDir: mode === 'portable'
+        ? portableDir ?? prev.defaultPortableDir ?? prev.portableDir
+        : null,
+      configDirSource: mode === 'portable' ? 'portable' : 'system',
+    }
+    set({ appMode: newMode, appModeRequiresRestart: true })
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('set_app_mode', {
+        mode,
+        portableDir: newMode.portableDir || null,
+      })
+    } catch {
+      set({ appMode: prev, appModeRequiresRestart: false })
+    }
+  },
 }))
 
 function normalizeWebSearchSettings(settings: WebSearchSettings | undefined): WebSearchSettings {
@@ -317,6 +422,37 @@ function normalizeWebSearchSettings(settings: WebSearchSettings | undefined): We
     mode: settings?.mode ?? 'auto',
     tavilyApiKey: settings?.tavilyApiKey ?? '',
     braveApiKey: settings?.braveApiKey ?? '',
+  }
+}
+
+function isUpdateProxyMode(value: unknown): value is UpdateProxyMode {
+  return value === 'system' || value === 'manual'
+}
+
+function normalizeUpdateProxySettings(
+  settings: Partial<UpdateProxySettings> | undefined,
+): UpdateProxySettings {
+  const mode = isUpdateProxyMode(settings?.mode)
+    ? settings.mode
+    : DEFAULT_UPDATE_PROXY_SETTINGS.mode
+  return {
+    mode,
+    url: typeof settings?.url === 'string' ? settings.url.trim() : '',
+  }
+}
+
+function normalizeDesktopTerminalSettings(
+  settings: Partial<DesktopTerminalSettings> | undefined,
+): DesktopTerminalSettings {
+  const startupShell = isDesktopTerminalStartupShell(settings?.startupShell)
+    ? settings.startupShell
+    : DEFAULT_DESKTOP_TERMINAL_SETTINGS.startupShell
+
+  return {
+    startupShell,
+    customShellPath: typeof settings?.customShellPath === 'string'
+      ? settings.customShellPath
+      : DEFAULT_DESKTOP_TERMINAL_SETTINGS.customShellPath,
   }
 }
 
@@ -365,4 +501,12 @@ function isLegacyH5EndpointError(error: unknown) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback
+}
+
+function isDesktopTerminalStartupShell(value: unknown): value is DesktopTerminalStartupShell {
+  return value === 'system'
+    || value === 'pwsh'
+    || value === 'powershell'
+    || value === 'cmd'
+    || value === 'custom'
 }

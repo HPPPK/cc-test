@@ -10,6 +10,7 @@ import {
 } from '../services/cronScheduler.js'
 import { CronService } from '../services/cronService.js'
 import { ProviderService } from '../services/providerService.js'
+import { resetTerminalShellEnvironmentCacheForTests } from '../../utils/terminalShellEnvironment.js'
 
 const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
 const originalPath = process.env.PATH
@@ -18,6 +19,10 @@ const originalClaudeAppRoot = process.env.CLAUDE_APP_ROOT
 const originalAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL
 const originalAnthropicModel = process.env.ANTHROPIC_MODEL
 const originalClaudeCodeEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT
+const originalHome = process.env.HOME
+const originalShell = process.env.SHELL
+const originalZdotdir = process.env.ZDOTDIR
+const originalDisableTerminalShellEnv = process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
 
 const isWindows = process.platform === 'win32'
 const unixOnly = isWindows ? it.skip : it
@@ -81,6 +86,27 @@ function restoreEnv(): void {
   } else {
     delete process.env.CLAUDE_CODE_ENTRYPOINT
   }
+  if (originalHome) {
+    process.env.HOME = originalHome
+  } else {
+    delete process.env.HOME
+  }
+  if (originalShell) {
+    process.env.SHELL = originalShell
+  } else {
+    delete process.env.SHELL
+  }
+  if (originalZdotdir) {
+    process.env.ZDOTDIR = originalZdotdir
+  } else {
+    delete process.env.ZDOTDIR
+  }
+  if (originalDisableTerminalShellEnv) {
+    process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = originalDisableTerminalShellEnv
+  } else {
+    delete process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
+  }
+  resetTerminalShellEnvironmentCacheForTests()
 }
 
 describe('cron scheduler launcher resolution', () => {
@@ -89,6 +115,8 @@ describe('cron scheduler launcher resolution', () => {
   beforeEach(async () => {
     tmpDir = await createTmpDir()
     process.env.CLAUDE_CONFIG_DIR = path.join(tmpDir, 'config')
+    process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = '1'
+    resetTerminalShellEnvironmentCacheForTests()
   })
 
   afterEach(async () => {
@@ -299,5 +327,97 @@ describe('cron scheduler launcher resolution', () => {
     expect(env.ANTHROPIC_MODEL).not.toBe('stale-parent-model')
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('sdk-cli')
+  })
+
+  unixOnly('executeTask inherits exported terminal shell variables', async () => {
+    const appRoot = path.join(tmpDir, 'app-root')
+    const sidecarPath = path.join(tmpDir, 'claude-sidecar')
+    const sidecarEnvPath = path.join(tmpDir, 'sidecar.env')
+    const shellPath = path.join(tmpDir, 'zsh')
+    const nodeBin = path.join(tmpDir, 'node-bin')
+    const nvmDir = path.join(tmpDir, '.nvm')
+
+    await fs.mkdir(appRoot, { recursive: true })
+    await fs.mkdir(nodeBin, { recursive: true })
+    await fs.mkdir(nvmDir, { recursive: true })
+    await fs.writeFile(
+      shellPath,
+      [
+        '#!/bin/sh',
+        'command=',
+        'while [ "$#" -gt 0 ]; do',
+        '  if [ "$1" = "-c" ]; then',
+        '    shift',
+        '    command="$1"',
+        '    break',
+        '  fi',
+        '  shift',
+        'done',
+        'if [ -f "$HOME/.zshrc" ]; then',
+        '  . "$HOME/.zshrc" </dev/null >/dev/null 2>/dev/null || true',
+        'fi',
+        'exec /bin/sh -c "$command"',
+        '',
+      ].join('\n'),
+      'utf-8',
+    )
+    await fs.chmod(shellPath, 0o755)
+    await fs.writeFile(
+      path.join(tmpDir, '.zshrc'),
+      [
+        `export NVM_DIR="${nvmDir}"`,
+        `export PATH="${nodeBin}:$PATH"`,
+        '',
+      ].join('\n'),
+    )
+    await fs.writeFile(
+      sidecarPath,
+      [
+        '#!/bin/sh',
+        `env | sort > "${sidecarEnvPath}"`,
+        '/bin/cat >/dev/null',
+        'printf \'%s\\n\' \'{"type":"result","result":"shell env ok"}\'',
+        'exit 0',
+        '',
+      ].join('\n'),
+      'utf-8',
+    )
+    await fs.chmod(sidecarPath, 0o755)
+
+    delete process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
+    process.env.HOME = tmpDir
+    process.env.SHELL = shellPath
+    process.env.PATH = '/usr/bin:/bin'
+    delete process.env.ZDOTDIR
+    process.env.CLAUDE_CLI_PATH = sidecarPath
+    process.env.CLAUDE_APP_ROOT = appRoot
+    resetTerminalShellEnvironmentCacheForTests()
+
+    const cronService = new CronService()
+    const scheduler = new CronScheduler(cronService)
+    const task = await cronService.createTask({
+      cron: '* * * * *',
+      prompt: 'cron shell env test',
+      name: 'Shell Env Task',
+      recurring: true,
+      folderPath: tmpDir,
+    })
+
+    const run = await scheduler.executeTask(task)
+
+    expect(run.status).toBe('completed')
+    expect(run.output).toBe('shell env ok')
+
+    const env = Object.fromEntries(
+      (await fs.readFile(sidecarEnvPath, 'utf-8'))
+        .trim()
+        .split('\n')
+        .map((line) => {
+          const index = line.indexOf('=')
+          return [line.slice(0, index), line.slice(index + 1)]
+        }),
+    )
+    expect(env.NVM_DIR).toBe(nvmDir)
+    expect(env.PATH.split(path.delimiter)[0]).toBe(nodeBin)
   })
 })
