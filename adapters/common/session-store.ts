@@ -76,7 +76,21 @@ export class SessionStore {
     const dir = path.dirname(this.filePath)
     fs.mkdirSync(dir, { recursive: true })
     const tmp = `${this.filePath}.tmp.${Date.now()}`
-    fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2) + '\n')
-    fs.renameSync(tmp, this.filePath)
+    const payload = JSON.stringify(this.data, null, 2) + '\n'
+    fs.writeFileSync(tmp, payload)
+    try {
+      fs.renameSync(tmp, this.filePath)
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String((error as NodeJS.ErrnoException).code ?? '') : ''
+      if (!['EPERM', 'EEXIST', 'EBUSY', 'EXDEV'].includes(code)) {
+        throw error
+      }
+      fs.writeFileSync(this.filePath, payload)
+      try {
+        fs.unlinkSync(tmp)
+      } catch {
+        // best-effort cleanup
+      }
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -76,6 +76,34 @@ describe('H5AccessService', () => {
     )
     expect(raw).not.toContain(result.token)
     expect(await service.validateToken(result.token)).toBe(true)
+  })
+
+  test('falls back to a direct managed settings write when atomic rename is blocked', async () => {
+    const renameError = new Error('EPERM: operation not permitted, rename') as NodeJS.ErrnoException
+    renameError.code = 'EPERM'
+    const renameSpy = spyOn(fs, 'rename').mockImplementation(async () => {
+      throw renameError
+    })
+
+    try {
+      const service = new H5AccessService()
+      const result = await service.enable()
+      const raw = await fs.readFile(getManagedSettingsPath(), 'utf-8')
+      const saved = JSON.parse(raw) as {
+        h5Access: {
+          enabled: boolean
+          tokenHash: string
+          tokenPreview: string
+        }
+      }
+
+      expect(renameSpy).toHaveBeenCalledTimes(1)
+      expect(saved.h5Access.enabled).toBe(true)
+      expect(saved.h5Access.tokenHash).toHaveLength(64)
+      expect(raw).not.toContain(result.token)
+    } finally {
+      renameSpy.mockRestore()
+    }
   })
 
   test('enabled public settings use the packaged app LAN URL when provided', async () => {
