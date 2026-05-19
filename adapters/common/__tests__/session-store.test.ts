@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
@@ -81,6 +81,30 @@ describe('SessionStore', () => {
 
     const store2 = new SessionStore(path.join(tmpDir, 'sessions.json'))
     expect(store2.get('chat-1')!.sessionId).toBe('uuid-aaa')
+  })
+
+  it('falls back to a direct write when rename is blocked', () => {
+    const renameError = new Error('EPERM: operation not permitted, rename') as NodeJS.ErrnoException
+    renameError.code = 'EPERM'
+    const renameSpy = spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw renameError
+    })
+
+    try {
+      store.set('chat-1', 'uuid-aaa', '/path')
+
+      expect(renameSpy).toHaveBeenCalledTimes(1)
+      expect(store.get('chat-1')!.sessionId).toBe('uuid-aaa')
+      expect(JSON.parse(fs.readFileSync(path.join(tmpDir, 'sessions.json'), 'utf8'))).toEqual({
+        'chat-1': {
+          sessionId: 'uuid-aaa',
+          workDir: '/path',
+          updatedAt: expect.any(Number),
+        },
+      })
+    } finally {
+      renameSpy.mockRestore()
+    }
   })
 
   it('handles missing file gracefully', () => {

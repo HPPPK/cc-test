@@ -5,7 +5,6 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import * as path from 'node:path'
 import { isOutsideWorkDir } from '../path-safety.js'
 
 // ---------- helpers extracted from feishu/index.ts for testability ----------

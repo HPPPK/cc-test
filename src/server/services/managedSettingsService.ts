@@ -6,6 +6,15 @@ import { ApiError } from '../middleware/errorHandler.js'
 import { normalizeJsonObject, readRecoverableJsonFile } from './recoverableJsonFile.js'
 import { ensurePersistentStorageUpgraded } from './persistentStorageMigrations.js'
 
+const FALLBACK_RENAME_ERROR_CODES = new Set(['EPERM', 'EEXIST', 'EBUSY', 'EXDEV'])
+
+function canFallbackFromRenameError(error: unknown): boolean {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String((error as NodeJS.ErrnoException).code ?? '')
+    : ''
+  return FALLBACK_RENAME_ERROR_CODES.has(code)
+}
+
 export class ManagedSettingsService {
   private static writeLocks = new Map<string, Promise<void>>()
 
@@ -48,8 +57,18 @@ export class ManagedSettingsService {
       await fs.writeFile(tmpFile, contents, 'utf-8')
       await fs.rename(tmpFile, filePath)
     } catch (error) {
+      if (!canFallbackFromRenameError(error)) {
+        await fs.unlink(tmpFile).catch(() => {})
+        throw ApiError.internal(`Failed to write settings.json: ${error}`)
+      }
+
+      try {
+        await fs.writeFile(filePath, contents, 'utf-8')
+      } catch (fallbackError) {
+        await fs.unlink(tmpFile).catch(() => {})
+        throw ApiError.internal(`Failed to write settings.json: ${fallbackError}`)
+      }
       await fs.unlink(tmpFile).catch(() => {})
-      throw ApiError.internal(`Failed to write settings.json: ${error}`)
     }
   }
 
