@@ -134,6 +134,10 @@ async function compileExecutable({
       'fflate',
       'sharp',
       'react-devtools-core',
+      // IM adapters —— 可选功能，有平台特定的 native 依赖
+      '@larksuiteoapi/node-sdk',
+      'grammy',
+      'dingtalk-stream',
     ],
     compile: {
       target: bunTarget,
