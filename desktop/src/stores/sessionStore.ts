@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import { sessionsApi, type BatchDeleteSessionsResponse, type CreateSessionRepositoryOptions } from '../api/sessions'
+import {
+  sessionsApi,
+  type BatchDeleteSessionsResponse,
+  type CreateSessionRepositoryOptions,
+  type WorkflowSessionCreateOptions,
+} from '../api/sessions'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 import { useTabStore } from './tabStore'
 import type { SessionListItem } from '../types/session'
@@ -7,6 +12,7 @@ import { isPlaceholderSessionTitle } from '../lib/sessionTitle'
 
 type CreateSessionOptions = {
   repository?: CreateSessionRepositoryOptions
+  workflow?: WorkflowSessionCreateOptions
 }
 
 type SessionStore = {
@@ -51,7 +57,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         const byId = new Map<string, SessionListItem>()
         for (const s of raw) {
           const current = currentById.get(s.id)
-          const candidate = preserveLocalTitle(current, s)
+          const candidate = preserveLocalSessionState(current, s)
           const existing = byId.get(s.id)
           if (!existing || new Date(candidate.modifiedAt) > new Date(existing.modifiedAt)) {
             byId.set(s.id, candidate)
@@ -68,9 +74,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   createSession: async (workDir?: string, options?: CreateSessionOptions) => {
-    const { sessionId: id, workDir: resolvedWorkDir } = await sessionsApi.create({
+    const { sessionId: id, workDir: resolvedWorkDir, workflow } = await sessionsApi.create({
       ...(workDir ? { workDir } : {}),
       ...(options?.repository ? { repository: options.repository } : {}),
+      ...(options?.workflow ? { workflow: options.workflow } : {}),
     })
     const now = new Date().toISOString()
     const optimisticSession: SessionListItem = {
@@ -83,6 +90,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       workDir: resolvedWorkDir ?? workDir ?? null,
       projectRoot: resolvedWorkDir ?? workDir ?? null,
       workDirExists: true,
+      ...(workflow ? { workflow } : {}),
     }
 
     set((state) => ({
@@ -170,15 +178,36 @@ function removeIdsFromSet(selected: Set<string>, ids: string[]): Set<string> {
   return next
 }
 
-function preserveLocalTitle(
+function preserveLocalSessionState(
   current: SessionListItem | undefined,
   incoming: SessionListItem,
 ): SessionListItem {
   if (!current) return incoming
-  if (isPlaceholderSessionTitle(incoming.title) && !isPlaceholderSessionTitle(current.title)) {
-    return { ...incoming, title: current.title }
+  const merged = shouldKeepCurrentWorkflow(current, incoming)
+    ? { ...incoming, workflow: current.workflow }
+    : incoming
+  if (isPlaceholderSessionTitle(merged.title) && !isPlaceholderSessionTitle(current.title)) {
+    return { ...merged, title: current.title }
   }
-  return incoming
+  return merged
+}
+
+function shouldKeepCurrentWorkflow(
+  current: SessionListItem,
+  incoming: SessionListItem,
+): boolean {
+  if (!current.workflow) return false
+  if (!incoming.workflow) return true
+
+  const currentUpdatedAt = workflowUpdatedAt(current)
+  const incomingUpdatedAt = workflowUpdatedAt(incoming)
+  if (!currentUpdatedAt || !incomingUpdatedAt) return false
+
+  return new Date(currentUpdatedAt) > new Date(incomingUpdatedAt)
+}
+
+function workflowUpdatedAt(session: SessionListItem): string | undefined {
+  return session.workflow?.statePointer.updatedAt ?? session.modifiedAt
 }
 
 function syncOpenSessionTabTitles(sessions: SessionListItem[]): void {

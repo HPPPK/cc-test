@@ -15,10 +15,32 @@ import {
 } from '../services/conversationService.js'
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
 import { sessionService } from '../services/sessionService.js'
+import { ApiError } from '../middleware/errorHandler.js'
 import { SettingsService } from '../services/settingsService.js'
 import { ProviderService } from '../services/providerService.js'
 import { diagnosticsService } from '../services/diagnosticsService.js'
 import { deriveTitle, generateTitle, saveAiTitle } from '../services/titleService.js'
+import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
+import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
+import { WorkflowReportStore } from '../services/workflowReportStore.js'
+import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
+import {
+  getWorkflowPhaseDisallowedTools,
+  getWorkflowPromptToolGuidance,
+  getWorkflowScopedToolNames,
+} from '../services/workflowToolPolicy.js'
+import {
+  stateToWorkflowMetadata,
+  workflowSummaryFromState,
+} from '../services/workflowSummary.js'
+import type {
+  CompletionSubmission,
+  WorkflowModelResolution,
+  WorkflowSessionMetadata,
+  WorkflowSessionSummary,
+  WorkflowSessionState,
+  WorkflowTransitionRequest,
+} from '../services/workflowTypes.js'
 import { parseSlashCommand } from '../../utils/slashCommandParsing.js'
 import {
   COMMAND_NAME_TAG,
@@ -29,6 +51,9 @@ import { shouldCreateWorktreeForSessionLaunch } from '../services/repositoryLaun
 
 const settingsService = new SettingsService()
 const providerService = new ProviderService()
+const workflowRuntimeService = new WorkflowRuntimeService()
+const workflowSessionStateService = new WorkflowSessionStateService()
+const workflowReportStore = new WorkflowReportStore()
 
 /**
  * Cache slash commands from CLI init messages, keyed by sessionId.
@@ -70,6 +95,8 @@ const runtimeOverrides = new Map<string, {
 }>()
 
 const runtimeTransitionPromises = new Map<string, Promise<void>>()
+const workflowTransitionPromises = new Map<string, Promise<void>>()
+const ephemeralWorkflowStates = new Map<string, WorkflowSessionState>()
 const sessionStartupPromises = new Map<string, Promise<void>>()
 const lastResolvedStartupWorkDirs = new Map<string, string>()
 const prewarmPendingSessions = new Set<string>()
@@ -185,6 +212,10 @@ export const handleWebSocket = {
 
         case 'set_runtime_config':
           void handleSetRuntimeConfig(ws, message)
+          break
+
+        case 'workflow_transition':
+          void handleWorkflowTransition(ws, message)
           break
 
         case 'prewarm_session':
@@ -348,9 +379,15 @@ async function handleUserMessage(
     },
   })
 
+  const resolvedMessage = await resolveWorkflowUserMessage(ws, sessionId, message.content)
+  if (resolvedMessage === null) {
+    sendMessage(ws, { type: 'status', state: 'idle' })
+    return
+  }
+
   const sent = conversationService.sendMessage(
     sessionId,
-    message.content,
+    resolvedMessage,
     message.attachments
   )
   if (!sent) {
@@ -431,6 +468,118 @@ async function handlePrewarmSession(ws: ServerWebSocket<WebSocketData>) {
     })
 }
 
+async function resolveWorkflowUserMessage(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  content: string,
+): Promise<string | null> {
+  const workflow = await getWorkflowMetadata(sessionId)
+  if (!workflow) return content
+
+  const state = await loadWorkflowStateForWebSocket(sessionId, workflow)
+  if (!state) return content
+  const defaultModel = await resolveWorkflowDefaultModel(sessionId)
+
+  const started = await workflowRuntimeService.startPhase({
+    state,
+    requestedAt: new Date().toISOString(),
+    resolveDefaultModel: async () => defaultModel,
+    isRequestedModelAvailable: async (modelId) => defaultModel.modelId === modelId,
+  })
+
+  await persistWorkflowStateIfAvailable(sessionId, started.state)
+  for (const notification of started.notifications) {
+    sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
+  }
+  if (started.state.workflowStatus === 'failed') {
+    return null
+  }
+
+  const prompt = await workflowRuntimeService.assemblePrompt({
+    state: started.state,
+    userMessage: content,
+  })
+  return augmentWorkflowPrompt(started.state, prompt.content)
+}
+
+async function resolveWorkflowDefaultModel(sessionId: string): Promise<{
+  providerId: string | null
+  modelId: string | null
+}> {
+  const runtime = await getRuntimeSettings(sessionId)
+  return {
+    providerId: runtime.providerId ?? null,
+    modelId: runtime.model ?? null,
+  }
+}
+
+function augmentWorkflowPrompt(state: WorkflowSessionState, content: string): string {
+  const sections = [content]
+  const model = getVisibleWorkflowModelResolution(state)
+  if (model) {
+    sections.push([
+      'Workflow model provenance',
+      `Requested model: ${model.requestedModel ?? '(none)'}`,
+      `Actual model: ${model.actualModel ?? '(none)'}`,
+      `Provider id: ${model.providerId ?? '(official)'}`,
+      `Model source: ${model.source}`,
+      `Fallback applied: ${model.fallbackApplied ? 'yes' : 'no'}`,
+      model.fallbackReason ? `Fallback reason: ${model.fallbackReason}` : '',
+    ].filter(Boolean).join('\n'))
+  }
+  const toolGuidance = getWorkflowPromptToolGuidance(state)
+  if (toolGuidance) sections.push(toolGuidance)
+  return sections.join('\n\n')
+}
+
+function getVisibleWorkflowModelResolution(state: WorkflowSessionState): WorkflowModelResolution | undefined {
+  const resolution = state.activeModelResolution
+  if (isWorkflowModelResolution(resolution)) return resolution
+
+  const activePhase = state.activePhaseId
+    ? state.phases.find((phase) => phase.id === state.activePhaseId)
+    : undefined
+  if (
+    activePhase &&
+    (
+      activePhase.requestedModel !== undefined ||
+      activePhase.actualModel !== undefined ||
+      activePhase.fallbackReason !== undefined ||
+      activePhase.blockedReason !== undefined
+    )
+  ) {
+    return {
+      requestedModel: activePhase.requestedModel ?? null,
+      actualModel: activePhase.actualModel ?? null,
+      providerId: null,
+      source: activePhase.actualModel ? 'phase-request' : 'none',
+      fallbackApplied: Boolean(activePhase.fallbackReason),
+      fallbackReason: activePhase.fallbackReason ?? null,
+      resolvedAt: state.updatedAt,
+    }
+  }
+
+  return undefined
+}
+
+function isWorkflowModelResolution(value: unknown): value is WorkflowModelResolution {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    (typeof record.requestedModel === 'string' || record.requestedModel === null) &&
+    (typeof record.actualModel === 'string' || record.actualModel === null) &&
+    (typeof record.providerId === 'string' || record.providerId === null) &&
+    (
+      record.source === 'phase-request' ||
+      record.source === 'main-session-default' ||
+      record.source === 'none'
+    ) &&
+    typeof record.fallbackApplied === 'boolean' &&
+    (typeof record.fallbackReason === 'string' || record.fallbackReason === null) &&
+    typeof record.resolvedAt === 'string'
+  )
+}
+
 function handlePermissionResponse(
   ws: ServerWebSocket<WebSocketData>,
   message: Extract<ClientMessage, { type: 'permission_response' }>
@@ -488,6 +637,210 @@ function handleSetPermissionMode(
   if (!ok) {
     console.warn(`[WS] Ignored permission mode update for inactive session ${sessionId}`)
   }
+}
+
+async function handleWorkflowTransition(
+  ws: ServerWebSocket<WebSocketData>,
+  message: Extract<ClientMessage, { type: 'workflow_transition' }>,
+) {
+  try {
+    await enqueueWorkflowTransition(ws.data.sessionId, () =>
+      applyWorkflowTransitionMessage(ws, normalizeWorkflowTransitionMessage(message)),
+    )
+  } catch (error) {
+    sendWorkflowError(ws, error)
+  }
+}
+
+async function applyWorkflowTransitionMessage(
+  ws: ServerWebSocket<WebSocketData>,
+  message: WorkflowBoundaryTransitionMessage,
+) {
+  const { sessionId } = ws.data
+  if (!isWorkflowTransitionRequest(message)) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_TRANSITION_INVALID',
+      message: 'Workflow transition is invalid.',
+    })
+    return
+  }
+
+  const workflow = await getWorkflowMetadata(sessionId)
+  if (!workflow && !sessionId.startsWith('workflow-')) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_NOT_ENABLED',
+      message: 'Workflow mode is not enabled for this session.',
+    })
+    return
+  }
+
+  const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (!state) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_STATE_UNAVAILABLE',
+      message: 'Workflow state is unavailable for this session.',
+    })
+    return
+  }
+
+  const result = await applyWorkflowBoundaryTransition(state, message, new Date().toISOString())
+
+  await persistWorkflowStateIfAvailable(sessionId, result.state)
+  for (const notification of result.notifications) {
+    sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
+  }
+  const shouldContinueNextPhase = shouldAutoContinueWorkflowAfterTransition(state, result.state, message)
+  if (conversationService.hasSession(sessionId)) {
+    await enqueueRuntimeTransition(sessionId, () =>
+      restartSessionWithWorkflowPolicy(ws, sessionId, result.state),
+    )
+  }
+  if (shouldContinueNextPhase) {
+    await sendWorkflowAutoContinueTurn(ws, sessionId, result.state)
+  }
+}
+
+type WorkflowBoundaryTransitionMessage = Extract<ClientMessage, { type: 'workflow_transition' }> & {
+  action: WorkflowTransitionRequest['action'] | CompletionSubmission['status'] | 'manual_complete'
+  stateVersion?: number
+  expectedStateVersion?: number
+  handoff?: unknown
+  rationale?: unknown
+  evidence?: unknown
+}
+
+type WorkflowBoundaryTransitionResult = Awaited<ReturnType<WorkflowRuntimeService['applyTransition']>>
+
+async function applyWorkflowBoundaryTransition(
+  state: WorkflowSessionState,
+  message: WorkflowBoundaryTransitionMessage,
+  requestedAt: string,
+): Promise<WorkflowBoundaryTransitionResult> {
+  if (isCompletionSubmissionAction(message.action)) {
+    const submission = toCompletionSubmission(message)
+    const result = message.action === 'manual_complete'
+      ? await workflowRuntimeService.submitManualCompletion({
+        state,
+        submission,
+        requestedAt,
+        transitionId: message.transitionId,
+      })
+      : await workflowRuntimeService.submitPhaseCompletion({
+        state,
+        submission,
+        requestedAt,
+        transitionId: message.transitionId,
+      })
+    return { state: result.state, notifications: result.notifications }
+  }
+
+  return await workflowRuntimeService.applyTransition({
+    state,
+    request: message as WorkflowTransitionRequest,
+    requestedAt,
+  })
+}
+
+function normalizeWorkflowTransitionMessage(
+  message: Extract<ClientMessage, { type: 'workflow_transition' }>,
+): WorkflowBoundaryTransitionMessage {
+  if (typeof message.stateVersion === 'number') return message as WorkflowBoundaryTransitionMessage
+  if (typeof message.expectedStateVersion === 'number') {
+    return { ...message, stateVersion: message.expectedStateVersion } as WorkflowBoundaryTransitionMessage
+  }
+  return message as WorkflowBoundaryTransitionMessage
+}
+
+function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
+  return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+}
+
+function toCompletionSubmission(message: WorkflowBoundaryTransitionMessage): CompletionSubmission {
+  return {
+    phaseId: message.phaseId,
+    stateVersion: message.stateVersion as number,
+    status: message.action === 'manual_complete' ? 'ready' : message.action as CompletionSubmission['status'],
+    handoff: message.handoff as CompletionSubmission['handoff'],
+    rationale: message.rationale as string,
+    evidence: message.evidence as CompletionSubmission['evidence'],
+  }
+}
+
+function shouldAutoContinueWorkflowAfterTransition(
+  previousState: WorkflowSessionState,
+  nextState: WorkflowSessionState,
+  message: WorkflowBoundaryTransitionMessage,
+): boolean {
+  return message.action === 'confirm'
+    && nextState.workflowStatus === 'running'
+    && Boolean(nextState.activePhaseId)
+    && nextState.activePhaseId !== previousState.activePhaseId
+    && !nextState.pendingConfirmation
+}
+
+async function sendWorkflowAutoContinueTurn(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  state: WorkflowSessionState,
+): Promise<void> {
+  if (!conversationService.hasSession(sessionId)) return
+
+  const phaseId = state.activePhaseId ?? 'active'
+  sendMessage(ws, { type: 'status', state: 'thinking', verb: 'Thinking' })
+  rebindSessionOutput(sessionId, ws)
+
+  const defaultModel = await resolveWorkflowDefaultModel(sessionId)
+  const started = await workflowRuntimeService.startPhase({
+    state,
+    requestedAt: new Date().toISOString(),
+    resolveDefaultModel: async () => defaultModel,
+    isRequestedModelAvailable: async (modelId) => defaultModel.modelId === modelId,
+  })
+
+  await persistWorkflowStateIfAvailable(sessionId, started.state)
+  for (const notification of started.notifications) {
+    sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
+  }
+  if (started.state.workflowStatus === 'failed') {
+    sendMessage(ws, { type: 'status', state: 'idle' })
+    return
+  }
+
+  const prompt = await workflowRuntimeService.assemblePrompt({
+    state: started.state,
+    userMessage: `Continue automatically with the newly confirmed workflow phase: ${phaseId}.`,
+  })
+  const resolvedMessage = augmentWorkflowPrompt(started.state, prompt.content)
+
+  const sent = conversationService.sendMessage(sessionId, resolvedMessage)
+  if (!sent) {
+    sendMessage(ws, {
+      type: 'error',
+      message: 'CLI process is not running after workflow transition confirmation.',
+      code: 'CLI_NOT_RUNNING',
+    })
+    sendMessage(ws, { type: 'status', state: 'idle' })
+  }
+}
+
+function sendWorkflowError(ws: ServerWebSocket<WebSocketData>, error: unknown): void {
+  if (error instanceof ApiError) {
+    sendMessage(ws, {
+      type: 'error',
+      code: error.code || 'WORKFLOW_TRANSITION_INVALID',
+      message: error.message,
+    })
+    return
+  }
+
+  sendMessage(ws, {
+    type: 'error',
+    code: 'WORKFLOW_TRANSITION_INVALID',
+    message: error instanceof Error ? error.message : 'Workflow transition failed.',
+  })
 }
 
 async function handleSetRuntimeConfig(
@@ -558,10 +911,11 @@ async function restartSessionWithPermissionMode(
 
     // Rebuild runtime settings (will pick up the persisted mode)
     const runtimeSettings = await getRuntimeSettings(sessionId)
+    const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
     const sdkUrl =
       `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
       `?token=${encodeURIComponent(crypto.randomUUID())}`
-    await conversationService.startSession(sessionId, workDir, sdkUrl, runtimeSettings)
+    await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
 
     sendMessage(ws, { type: 'status', state: 'idle' })
     console.log(`[WS] Restarted CLI for ${sessionId} with permission mode: ${mode}`)
@@ -596,10 +950,11 @@ async function restartSessionWithRuntimeConfig(
     conversationService.stopSession(sessionId)
 
     const runtimeSettings = await getRuntimeSettings(sessionId)
+    const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
     const sdkUrl =
       `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
       `?token=${encodeURIComponent(crypto.randomUUID())}`
-    await conversationService.startSession(sessionId, workDir, sdkUrl, runtimeSettings)
+    await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
 
     sendMessage(ws, { type: 'status', state: 'idle' })
     console.log(`[WS] Restarted CLI for ${sessionId} with runtime override`)
@@ -618,6 +973,46 @@ async function restartSessionWithRuntimeConfig(
       message: await buildSessionStartupDiagnosticMessage(
         sessionId,
         `Failed to switch provider/model: ${errMsg}`,
+      ),
+      code: 'CLI_RESTART_FAILED',
+    })
+    sendMessage(ws, { type: 'status', state: 'idle' })
+  }
+}
+
+async function restartSessionWithWorkflowPolicy(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  state: WorkflowSessionState,
+): Promise<void> {
+  try {
+    const workDir = conversationService.getSessionWorkDir(sessionId)
+    conversationService.stopSession(sessionId)
+
+    const runtimeSettings = await getRuntimeSettings(sessionId)
+    const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings, state)
+    const sdkUrl =
+      `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
+      `?token=${encodeURIComponent(crypto.randomUUID())}`
+    await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
+
+    sendMessage(ws, { type: 'status', state: 'idle' })
+    console.log(`[WS] Restarted CLI for ${sessionId} with workflow tool policy`)
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    void diagnosticsService.recordEvent({
+      type: 'workflow_policy_restart_failed',
+      severity: 'error',
+      sessionId,
+      summary: errMsg,
+      details: { activePhaseId: state.activePhaseId, error: err },
+    })
+    console.error(`[WS] Failed to restart CLI for ${sessionId} after workflow transition: ${errMsg}`)
+    sendMessage(ws, {
+      type: 'error',
+      message: await buildSessionStartupDiagnosticMessage(
+        sessionId,
+        `Failed to apply workflow tool policy: ${errMsg}`,
       ),
       code: 'CLI_RESTART_FAILED',
     })
@@ -909,12 +1304,13 @@ async function ensureCliSessionStarted(
     const workDir = await resolveSessionWorkDir(sessionId)
     lastResolvedStartupWorkDirs.set(sessionId, workDir)
     const runtimeSettings = await getRuntimeSettings(sessionId)
+    const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
     const sdkUrl =
       `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
       `?token=${encodeURIComponent(crypto.randomUUID())}`
     await sendRepositoryStartupStatus(ws, sessionId, reason)
     console.log(`[WS] Starting CLI for ${sessionId} due to ${reason}`)
-    await conversationService.startSession(sessionId, workDir, sdkUrl, runtimeSettings)
+    await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
   })()
 
   sessionStartupPromises.set(sessionId, startup)
@@ -1599,6 +1995,8 @@ type RuntimeSettings = {
   effort?: string
   thinking?: 'disabled'
   providerId?: string | null
+  disallowedTools?: string[]
+  workflowSessionId?: string
 }
 
 async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> {
@@ -1633,6 +2031,22 @@ async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> 
   }
 
   return getDefaultRuntimeSettings()
+}
+
+async function getRuntimeSettingsWithWorkflowPolicy(
+  sessionId: string,
+  runtimeSettings?: RuntimeSettings,
+  state?: WorkflowSessionState,
+): Promise<RuntimeSettings> {
+  const settings = runtimeSettings ?? await getRuntimeSettings(sessionId)
+  const workflowState = state ?? await loadWorkflowStateForWebSocket(sessionId)
+  const disallowedTools = getWorkflowPhaseDisallowedTools(workflowState)
+  const workflowSettings = getWorkflowScopedToolNames(workflowState).length > 0
+    ? { workflowSessionId: sessionId }
+    : {}
+  return disallowedTools.length > 0
+    ? { ...settings, ...workflowSettings, disallowedTools }
+    : { ...settings, ...workflowSettings }
 }
 
 async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
@@ -1761,6 +2175,23 @@ function enqueueRuntimeTransition(
   return next
 }
 
+function enqueueWorkflowTransition(
+  sessionId: string,
+  transition: () => Promise<void>,
+): Promise<void> {
+  const previous = workflowTransitionPromises.get(sessionId) ?? Promise.resolve()
+  const next = previous
+    .catch(() => {})
+    .then(transition)
+    .finally(() => {
+      if (workflowTransitionPromises.get(sessionId) === next) {
+        workflowTransitionPromises.delete(sessionId)
+      }
+    })
+  workflowTransitionPromises.set(sessionId, next)
+  return next
+}
+
 async function waitForRuntimeTransitionBeforeUserTurn(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
@@ -1798,6 +2229,252 @@ async function waitForRuntimeTransitionBeforeUserTurn(
   }
 
   return { ok: true, waited }
+}
+
+async function getWorkflowMetadata(sessionId: string): Promise<WorkflowSessionMetadata | null> {
+  const detail = await sessionService.getSession(sessionId).catch(() => null)
+  return detail?.workflow?.mode === 'workflow' ? detail.workflow : null
+}
+
+async function loadWorkflowStateForWebSocket(
+  sessionId: string,
+  metadata?: WorkflowSessionMetadata,
+): Promise<WorkflowSessionState | null> {
+  const read = await workflowSessionStateService.readState(sessionId).catch(() => null)
+  if (read?.state) return read.state
+  const cached = ephemeralWorkflowStates.get(sessionId)
+  if (cached) return cached
+
+  const workflow = metadata ?? await getWorkflowMetadata(sessionId)
+  if (!workflow) {
+    if (sessionId.startsWith('workflow-')) {
+      const state = makeEphemeralWorkflowState(sessionId)
+      ephemeralWorkflowStates.set(sessionId, state)
+      return state
+    }
+    return null
+  }
+  const state = makeEphemeralWorkflowState(sessionId, workflow)
+  ephemeralWorkflowStates.set(sessionId, state)
+  return state
+}
+
+async function persistWorkflowStateIfAvailable(
+  sessionId: string,
+  state: WorkflowSessionState,
+): Promise<void> {
+  const read = await workflowSessionStateService.readState(sessionId).catch(() => null)
+  if (!read?.exists) {
+    ephemeralWorkflowStates.set(sessionId, state)
+    return
+  }
+  const write = await workflowSessionStateService.writeState(sessionId, state).catch((error) => {
+    console.warn(`[WS] Failed to persist workflow state for ${sessionId}:`, error)
+    return null
+  })
+  if (!write) return
+  await persistWorkflowFinalReportIfReady(write.state)
+
+  const workDir =
+    conversationService.getSessionWorkDir(sessionId) ||
+    await sessionService.getSessionWorkDir(sessionId).catch(() => null)
+  if (!workDir) return
+
+  const metadata = stateToWorkflowMetadata(write.state, write.pointer)
+  const model = getVisibleWorkflowModelResolution(write.state)
+  await sessionService.appendSessionMetadata(sessionId, {
+    workDir,
+    workflow: model ? { ...metadata, model } : metadata,
+  }).catch((error) => {
+    console.warn(`[WS] Failed to append workflow metadata for ${sessionId}:`, error)
+  })
+}
+
+async function persistWorkflowFinalReportIfReady(state: WorkflowSessionState): Promise<void> {
+  if (!state.finalReportRef) return
+  await workflowReportStore.createFinalReport(state.sessionId, buildWorkflowFinalReport(state)).catch((error) => {
+    console.warn(`[WS] Failed to persist workflow final report for ${state.sessionId}:`, error)
+  })
+}
+
+function makeEphemeralWorkflowState(
+  sessionId: string,
+  workflow?: WorkflowSessionMetadata,
+): WorkflowSessionState {
+  const now = new Date().toISOString()
+  const activePhaseId = workflow?.activePhaseId ?? 'implementation'
+  const templateId = workflow?.templateId ?? 'ephemeral-workflow'
+  const templateVersion = workflow?.templateVersion ?? '1'
+  const templateSource = workflow?.templateSource ?? 'builtin'
+  return {
+    schemaVersion: 1,
+    sessionId,
+    mode: 'workflow',
+    template: {
+      id: templateId,
+      version: String(templateVersion),
+      source: templateSource,
+      snapshotId: workflow?.templateSnapshotId ?? `${templateId}-v${templateVersion}`,
+      sourceState: 'current',
+    },
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: templateId,
+      source: templateSource,
+      version: templateVersion,
+      displayName: templateId,
+      description: 'Ephemeral workflow state for WebSocket transition handling.',
+      phases: [
+        {
+          id: activePhaseId || 'implementation',
+          label: activePhaseId || 'implementation',
+          instructions: `Continue workflow phase ${activePhaseId || 'implementation'}.`,
+          requestedModel: null,
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: { type: 'agent-reported', description: 'completion criteria' },
+          transitionAuthority: 'auto',
+        },
+      ],
+    },
+    templateIdentity: {
+      id: templateId,
+      source: templateSource,
+      version: templateVersion,
+      registryKey: `${templateSource}:${templateId}`,
+    },
+    sourceTemplateStatus: 'current',
+    status: workflow?.status ?? workflow?.workflowStatus ?? 'running',
+    workflowStatus: workflow?.workflowStatus ?? workflow?.status ?? 'running',
+    activePhaseId,
+    phases: [
+      {
+        id: activePhaseId || 'implementation',
+        index: 0,
+        status: 'running',
+        artifactPointers: [],
+      },
+    ],
+    phaseRuns: [],
+    transitionHistory: [],
+    artifactIndex: [],
+    finalReportRef: null,
+    stateVersion: workflow?.stateRevision ?? 1,
+    revision: workflow?.stateRevision ?? 1,
+    createdAt: now,
+    updatedAt: now,
+    pendingConfirmation: null,
+  }
+}
+
+function isWorkflowTransitionRequest(message: Extract<ClientMessage, { type: 'workflow_transition' }>): boolean {
+  return (
+    typeof message.phaseId === 'string' &&
+    message.phaseId.length > 0 &&
+    (
+      message.action === 'confirm' ||
+      message.action === 'reject' ||
+      message.action === 'retry' ||
+      message.action === 'manual_complete' ||
+      message.action === 'ready' ||
+      message.action === 'blocked' ||
+      message.action === 'unable'
+    )
+  )
+}
+
+export function workflowNotificationForDesktop(notification: {
+  type: string
+  subtype?: string
+  data?: unknown
+  message?: string
+}): Record<string, unknown> {
+  if (notification.type !== 'system_notification' || notification.subtype !== 'workflow_state') {
+    return notification as Record<string, unknown>
+  }
+  return {
+    ...notification,
+    data: isWorkflowSessionState(notification.data)
+      ? workflowSummaryForWebSocket(notification.data)
+      : notification.data,
+  }
+}
+
+function workflowSummaryForWebSocket(state: WorkflowSessionState): WorkflowSessionSummary {
+  const summary = workflowSummaryFromState(state)
+  const model = getVisibleWorkflowModelResolution(state)
+  const blocked = getActiveBlockedSubmission(state)
+  return {
+    ...summary,
+    ...(model ? { model } : {}),
+    ...(blocked
+      ? {
+          blockedReason: blocked.submission.rationale,
+          blockedStatus: blocked.submission.status,
+          blockedEvidence: blocked.submission.evidence,
+          blockedArtifact: workflowArtifactSummary(blocked.artifact, blocked.submission),
+        }
+      : {}),
+  }
+}
+
+function getActiveBlockedSubmission(state: WorkflowSessionState): {
+  artifact: Record<string, unknown>
+  submission: CompletionSubmission
+} | null {
+  const phase = state.activePhaseId
+    ? state.phases.find((candidate) => candidate.id === state.activePhaseId)
+    : null
+  const pointers = phase?.artifactPointers ?? []
+  for (const pointer of [...pointers].reverse()) {
+    const record = pointer as Record<string, unknown>
+    const submission = record.submission
+    if (!isBlockedCompletionSubmission(submission)) continue
+    return { artifact: record, submission }
+  }
+  return null
+}
+
+function isBlockedCompletionSubmission(value: unknown): value is CompletionSubmission {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    (record.status === 'blocked' || record.status === 'unable') &&
+    typeof record.rationale === 'string' &&
+    Array.isArray(record.evidence)
+  )
+}
+
+function workflowArtifactSummary(
+  artifact: Record<string, unknown>,
+  submission: CompletionSubmission,
+): Record<string, unknown> {
+  const handoff = submission.handoff
+  return {
+    artifactId: typeof artifact.artifactId === 'string' ? artifact.artifactId : `${submission.phaseId}-${submission.status}`,
+    phaseId: submission.phaseId,
+    status: submission.status,
+    label: typeof artifact.title === 'string' ? artifact.title : `${submission.phaseId} ${submission.status}`,
+    handoffSummary: typeof handoff.summary === 'string' ? handoff.summary : submission.rationale,
+    evidenceSummary: submission.evidence
+      .map((item) => typeof item.ref === 'string' ? item.ref : typeof item.label === 'string' ? item.label : '')
+      .filter(Boolean)
+      .join('; '),
+    createdAt: typeof artifact.createdAt === 'string' ? artifact.createdAt : new Date(0).toISOString(),
+    transitionId: typeof artifact.artifactId === 'string' ? artifact.artifactId : undefined,
+    completionId: typeof artifact.artifactId === 'string' ? artifact.artifactId : undefined,
+    provenance: submission.status === 'blocked' ? 'agent-blocked' : 'agent-unable',
+  }
+}
+
+function isWorkflowSessionState(value: unknown): value is WorkflowSessionState {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).mode === 'workflow' &&
+    Array.isArray((value as Record<string, unknown>).phases),
+  )
 }
 
 /**
@@ -1887,4 +2564,11 @@ export function __resetWebSocketHandlerStateForTests(): void {
   activeSessions.clear()
   sessionCleanupTimers.clear()
   prewarmIdleTimers.clear()
+  workflowTransitionPromises.clear()
+  runtimeTransitionPromises.clear()
+  runtimeOverrides.clear()
+  sessionStartupPromises.clear()
+  prewarmPendingSessions.clear()
+  prewarmedSessions.clear()
+  ephemeralWorkflowStates.clear()
 }

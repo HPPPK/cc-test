@@ -49,7 +49,7 @@ if (testFiles.length === 0) {
 const failedFiles: string[] = []
 
 if (!isolateFiles) {
-  const proc = Bun.spawn(['bun', 'test', `--timeout=${testTimeoutMs}`, ...testFiles], {
+  const proc = Bun.spawn(['bun', 'test', '--isolate', `--timeout=${testTimeoutMs}`, ...testFiles], {
     cwd: root,
     stdout: 'inherit',
     stderr: 'inherit',

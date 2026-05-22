@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ownerDefinedTopLevel": {
+    "keep": true
+  },
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "unknown-field-user-template",
+      "version": "1",
+      "name": "User Template With Unknown Fields",
+      "description": "A valid user template carrying future fields.",
+      "ownerDefinedTemplateField": "keep-template-field",
+      "phases": [
+        {
+          "id": "preserve",
+          "name": "Preserve",
+          "instructions": "Preserve unknown fields across writes.",
+          "ownerDefinedPhaseField": {
+            "keep": "phase-field"
+          },
+          "skills": [
+            {
+              "name": "future-skill",
+              "source": "user",
+              "reason": "Prompt-level guidance only.",
+              "ownerDefinedSkillField": "keep-skill-field"
+            }
+          ],
+          "requiredArtifacts": [
+            {
+              "id": "future-artifact",
+              "name": "Future Artifact",
+              "required": true,
+              "ownerDefinedArtifactField": "keep-artifact-field"
+            }
+          ],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Unknown fields are preserved.",
+            "ownerDefinedCriteriaField": "keep-criteria-field"
+          },
+          "transition": {
+            "authority": "auto",
+            "ownerDefinedTransitionField": "keep-transition-field"
+          }
+        }
+      ]
+    }
+  ]
+}

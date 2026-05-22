@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "template": {
+    "id": "agent-development",
+    "version": "1",
+    "source": "builtin",
+    "snapshotId": "agent-development-v1",
+    "sourceState": "current"
+  },
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1",
+    "displayName": "Agent Development",
+    "description": "Linear workflow fixture",
+    "phases": [
+      {
+        "id": "specify",
+        "label": "Specify",
+        "instructions": "Create the specification.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      },
+      {
+        "id": "plan",
+        "label": "Plan",
+        "instructions": "Create the plan.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      }
+    ]
+  },
+  "templateIdentity": {
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1",
+    "registryKey": "builtin:agent-development",
+    "contentHash": "fixture-hash"
+  },
+  "sourceTemplateStatus": "current",
+  "status": "pending-confirmation",
+  "workflowStatus": "pending-confirmation",
+  "activePhaseId": "specify",
+  "phases": [
+    {
+      "id": "specify",
+      "index": 0,
+      "status": "pending-confirmation",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "phase-specify-ready-1",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-21T00:01:00.000Z",
+          "updatedAt": "2026-05-21T00:01:00.000Z",
+          "label": "Specify phase completion"
+        }
+      ]
+    }
+  ],
+  "phaseRuns": [
+    {
+      "phaseId": "specify",
+      "index": 0,
+      "status": "pending-confirmation",
+      "startedAt": "2026-05-21T00:00:00.000Z",
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "agent-development",
+        "templateVersion": "1",
+        "phaseId": "specify"
+      },
+      "inputArtifactRefs": [],
+      "outputArtifactRefs": [],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null,
+      "futurePhaseField": "preserve me"
+    }
+  ],
+  "transitionHistory": [
+    {
+      "transitionId": "submit-ready-1",
+      "fromStatus": "running",
+      "toStatus": "pending-confirmation",
+      "fromPhaseId": "specify",
+      "toPhaseId": "specify",
+      "authority": "completion-check",
+      "decision": "blocked",
+      "action": "confirmation-requested",
+      "result": "noop",
+      "completionCheckId": "check-ready-1",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "phase-specify-ready-1",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-21T00:01:00.000Z",
+          "updatedAt": "2026-05-21T00:01:00.000Z",
+          "label": "Specify phase completion"
+        }
+      ],
+      "createdAt": "2026-05-21T00:01:00.000Z",
+      "stateVersion": 3
+    }
+  ],
+  "artifactIndex": {
+    "phase-specify-ready-1": {
+      "schemaVersion": 1,
+      "sessionId": "fixture-session",
+      "phaseId": "specify",
+      "artifactId": "phase-specify-ready-1",
+      "lifecycleStatus": "pending",
+      "createdAt": "2026-05-21T00:01:00.000Z",
+      "updatedAt": "2026-05-21T00:01:00.000Z",
+      "title": "Specify phase completion",
+      "handoff": {
+        "summary": "Specification is ready for review."
+      },
+      "rationale": "Required artifacts were produced.",
+      "evidence": [
+        {
+          "kind": "artifact",
+          "label": "Spec",
+          "ref": ".specify/features/004-workflow-session-mode/spec.md"
+        }
+      ],
+      "provenance": {
+        "source": "agent",
+        "messageId": "msg-ready-1",
+        "model": {},
+        "skillGuidance": []
+      }
+    }
+  },
+  "pendingConfirmation": {
+    "confirmationId": "confirm-ready-1",
+    "phaseId": "specify",
+    "fromPhaseId": "specify",
+    "toPhaseId": "plan",
+    "completionCheckId": "check-ready-1",
+    "artifactRefs": [
+      {
+        "kind": "phase-artifact",
+        "sessionId": "fixture-session",
+        "artifactId": "phase-specify-ready-1",
+        "schemaVersion": 1,
+        "createdAt": "2026-05-21T00:01:00.000Z",
+        "updatedAt": "2026-05-21T00:01:00.000Z",
+        "label": "Specify phase completion"
+      }
+    ],
+    "createdAt": "2026-05-21T00:01:00.000Z",
+    "status": "pending",
+    "submission": {
+      "phaseId": "specify",
+      "stateVersion": 2,
+      "status": "ready",
+      "handoff": {
+        "summary": "Specification is ready for review."
+      },
+      "rationale": "Required artifacts were produced.",
+      "evidence": [
+        {
+          "kind": "artifact",
+          "label": "Spec",
+          "ref": ".specify/features/004-workflow-session-mode/spec.md"
+        }
+      ]
+    }
+  },
+  "statusHistory": [],
+  "finalReportRef": null,
+  "stateVersion": 3,
+  "revision": 3,
+  "createdAt": "2026-05-21T00:00:00.000Z",
+  "updatedAt": "2026-05-21T00:01:00.000Z",
+  "futureStateField": {
+    "preserved": true
+  }
+}

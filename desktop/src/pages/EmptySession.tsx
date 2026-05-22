@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
+import { sessionsApi, type WorkflowTemplatesResponse } from '../api/sessions'
 import { skillsApi } from '../api/skills'
 import { useTranslation } from '../i18n'
 import { useSessionStore } from '../stores/sessionStore'
@@ -10,6 +11,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
 import { RepositoryLaunchControls } from '../components/shared/RepositoryLaunchControls'
+import { WorkflowTemplatePicker } from '../components/workflow/WorkflowComponents'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
 import { ModelSelector } from '../components/controls/ModelSelector'
 import { AttachmentGallery } from '../components/chat/AttachmentGallery'
@@ -36,8 +38,13 @@ import {
 } from '../components/chat/composerUtils'
 import type { AttachmentRef } from '../types/chat'
 import type { SlashCommandOption } from '../components/chat/composerUtils'
+import type { WorkflowTemplateSource } from '../types/session'
 
 type Attachment = ComposerAttachment
+type WorkflowTemplateSelection = {
+  templateId: string
+  templateSource: WorkflowTemplateSource
+}
 
 type Translate = ReturnType<typeof useTranslation>
 
@@ -95,6 +102,9 @@ export function EmptySession() {
   const [slashFilter, setSlashFilter] = useState('')
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [slashCommands, setSlashCommands] = useState<SlashCommandOption[]>([])
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
+  const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
+  const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -118,6 +128,27 @@ export function EmptySession() {
 
   useEffect(() => {
     textareaRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    sessionsApi.listWorkflowTemplates()
+      .then(({ templates, invalidTemplates }) => {
+        if (cancelled) return
+        setWorkflowTemplates(templates)
+        setInvalidWorkflowTemplates(invalidTemplates)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setWorkflowTemplates([])
+        setInvalidWorkflowTemplates([])
+        setSelectedWorkflowTemplate(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -271,11 +302,25 @@ export function EmptySession() {
     setIsSubmitting(true)
     try {
       const explicitDraftSelection = useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
+      const workflowTemplate = selectedWorkflowTemplate
+        ? workflowTemplates.find((template) =>
+          template.id === selectedWorkflowTemplate.templateId &&
+          template.source === selectedWorkflowTemplate.templateSource)
+        : null
       const sessionId = await createSession(
         workDir || undefined,
-        selectedBranch
-          ? { repository: { branch: selectedBranch, worktree: useWorktree } }
-          : undefined,
+        {
+          ...(selectedBranch ? { repository: { branch: selectedBranch, worktree: useWorktree } } : {}),
+          ...(workflowTemplate
+            ? {
+                workflow: {
+                  templateId: workflowTemplate.id,
+                  templateSource: workflowTemplate.source,
+                  initialPhaseId: workflowTemplate.firstPhaseId,
+                },
+              }
+            : {}),
+        },
       )
       if (explicitDraftSelection) {
         useSessionRuntimeStore.getState().setSelection(sessionId, explicitDraftSelection)
@@ -674,6 +719,19 @@ export function EmptySession() {
               {attachments.length > 0 && (
                 <AttachmentGallery attachments={attachments} variant="composer" onRemove={removeAttachment} />
               )}
+
+              {workflowTemplates.length > 0 || invalidWorkflowTemplates.length > 0 ? (
+                <WorkflowTemplatePicker
+                  templates={workflowTemplates}
+                  invalidTemplates={invalidWorkflowTemplates.map((issue) => ({
+                    id: issue.templateId,
+                    source: issue.source,
+                    message: issue.message,
+                  }))}
+                  selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+                  onSelect={setSelectedWorkflowTemplate}
+                />
+              ) : null}
 
               <div className="flex items-start gap-3">
                 <textarea

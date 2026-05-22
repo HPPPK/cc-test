@@ -24,6 +24,10 @@ export function resolveDesktopSmokeRuntimeSelection(target: BaselineTarget | und
   }
 }
 
+export function desktopViteCommand() {
+  return ['bun', 'run', 'dev']
+}
+
 async function getPort(): Promise<number> {
   return await new Promise((resolve, reject) => {
     const server = createServer()
@@ -247,14 +251,7 @@ export async function executeDesktopSmoke(
   void pipeToFile(server.stdout, serverLogPath)
   void pipeToFile(server.stderr, serverLogPath)
 
-  const viteExecutable = join(
-    rootDir,
-    'desktop',
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'vite.cmd' : 'vite',
-  )
-  const vite = Bun.spawn([viteExecutable, '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], {
+  const vite = Bun.spawn([...desktopViteCommand(), '--', '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], {
     cwd: join(rootDir, 'desktop'),
     env: {
       ...process.env,

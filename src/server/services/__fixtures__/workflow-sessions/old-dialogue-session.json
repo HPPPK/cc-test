@@ -1,0 +1,51 @@
+[
+  {
+    "type": "file-history-snapshot",
+    "messageId": "fixture-snapshot",
+    "snapshot": {
+      "messageId": "fixture-snapshot-root",
+      "trackedFileBackups": {},
+      "timestamp": "2026-05-20T03:00:00.000Z"
+    },
+    "isSnapshotUpdate": false
+  },
+  {
+    "type": "session-meta",
+    "isMeta": true,
+    "workDir": "/tmp/old-dialogue-fixture",
+    "timestamp": "2026-05-20T03:00:00.000Z"
+  },
+  {
+    "parentUuid": null,
+    "isSidechain": false,
+    "type": "user",
+    "message": {
+      "role": "user",
+      "content": "Plain old dialogue fixture"
+    },
+    "uuid": "old-dialogue-user",
+    "timestamp": "2026-05-20T03:01:00.000Z",
+    "userType": "external",
+    "cwd": "/tmp/old-dialogue-fixture",
+    "sessionId": "fixture-session"
+  },
+  {
+    "parentUuid": "old-dialogue-user",
+    "isSidechain": false,
+    "type": "assistant",
+    "message": {
+      "model": "claude-sonnet-4-5",
+      "id": "msg_old_dialogue_fixture",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Dialogue response remains non-workflow."
+        }
+      ]
+    },
+    "uuid": "old-dialogue-assistant",
+    "timestamp": "2026-05-20T03:02:00.000Z"
+  }
+]

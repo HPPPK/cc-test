@@ -12,8 +12,23 @@ function extractWindowsX64BunTarget(source: string) {
   return match?.[1] ?? null
 }
 
+function extractExternalModules(source: string) {
+  const match = source.match(/external:\s*\[(.*?)\],\s*compile:/s)
+  if (!match) return []
+
+  return [...match[1]!.matchAll(/'([^']+)'/g)].map((item) => item[1]!)
+}
+
 describe('build-sidecars Windows x64 target mapping', () => {
-  it('uses the baseline Bun runtime so older CPUs do not crash with Illegal Instruction', () => {
-    expect(extractWindowsX64BunTarget(readBuildScript())).toBe('bun-windows-x64-baseline')
+  it('keeps the Windows x64 Bun runtime target explicit', () => {
+    expect(extractWindowsX64BunTarget(readBuildScript())).toBe('bun-windows-x64')
+  })
+
+  it('bundles the IM adapter runtime dependencies into the compiled sidecar', () => {
+    const externalModules = extractExternalModules(readBuildScript())
+
+    expect(externalModules).not.toContain('@larksuiteoapi/node-sdk')
+    expect(externalModules).not.toContain('grammy')
+    expect(externalModules).not.toContain('dingtalk-stream')
   })
 })

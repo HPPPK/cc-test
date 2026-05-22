@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "agent-development",
+      "version": "1",
+      "name": "Agent Development",
+      "description": "Discussion to implementation workflow",
+      "phases": [
+        {
+          "id": "discussion",
+          "name": "Discussion",
+          "instructions": "Explore goals, constraints, options, non-goals, and decisions before formal specification.",
+          "skills": [],
+          "requiredArtifacts": [],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "The user goal, constraints, accepted decisions, and open questions are captured."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "specify",
+          "name": "Specify",
+          "instructions": "Convert the discussion outcome into planning-ready requirements and acceptance criteria.",
+          "skills": [],
+          "requiredArtifacts": [],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Requirements are explicit, testable, and ready for planning."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "plan",
+          "name": "Plan",
+          "instructions": "Design the implementation approach, ownership boundaries, data contracts, risks, and validation strategy.",
+          "skills": [],
+          "requiredArtifacts": [],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "The technical plan names affected surfaces, risks, and verification routes."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "tasks",
+          "name": "Tasks",
+          "instructions": "Break the approved plan into dependency-aware implementation tasks with write scopes and validation.",
+          "skills": [],
+          "requiredArtifacts": [],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Tasks are independently executable, scoped, and ordered."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "implement",
+          "name": "Implement",
+          "instructions": "Execute the approved tasks with tests, validation evidence, and scoped handoff.",
+          "skills": [],
+          "requiredArtifacts": [],
+          "completionCriteria": {
+            "type": "agent-reported",
+            "description": "Implementation work is complete with changed files, validation evidence, and remaining risk recorded."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        }
+      ]
+    }
+  ]
+}

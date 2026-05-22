@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MessageEntry } from '../types/session'
+import type { MessageEntry, WorkflowSessionSummary } from '../types/session'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 
 const {
@@ -48,6 +48,7 @@ const {
       projectPath: string
       workDir: string | null
       workDirExists: boolean
+      workflow?: WorkflowSessionSummary
     }>,
   },
   cliTaskStoreSnapshot: {
@@ -103,6 +104,14 @@ vi.mock('./sessionStore', () => ({
     getState: () => ({
       sessions: sessionStoreSnapshot.sessions,
       updateSessionTitle: updateSessionTitleMock,
+    }),
+    setState: vi.fn((updater: any) => {
+      const next = typeof updater === 'function'
+        ? updater(sessionStoreSnapshot)
+        : updater
+      if (next?.sessions) {
+        sessionStoreSnapshot.sessions = next.sessions
+      }
     }),
   },
 }))
@@ -1042,6 +1051,111 @@ describe('chatStore history mapping', () => {
       cliCommand,
       projectCommand,
     ])
+  })
+
+  it('updates workflow session metadata from websocket workflow_state notifications', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+    }]
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'running',
+        activePhaseId: 'technical-design',
+        activePhaseIndex: 1,
+        phaseCount: 5,
+        pendingConfirmation: false,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+        transitionAuthority: 'user-confirmation',
+      },
+    })
+
+    expect(sessionStoreSnapshot.sessions[0]?.workflow).toMatchObject({
+      mode: 'workflow',
+      activePhaseId: 'technical-design',
+      transitionAuthority: 'user-confirmation',
+    })
+  })
+
+  it('ignores raw workflow state payloads that cannot drive the desktop phase panel', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      workflow: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'running',
+        activePhaseId: 'requirements-clarification',
+        activePhaseIndex: 0,
+        phaseCount: 5,
+        pendingConfirmation: false,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    }]
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        schemaVersion: 1,
+        sessionId: TEST_SESSION_ID,
+        mode: 'workflow',
+        status: 'running',
+        workflowStatus: 'running',
+        activePhaseId: 'technical-design',
+        phases: [],
+      },
+    })
+
+    expect(sessionStoreSnapshot.sessions[0]?.workflow).toMatchObject({
+      activePhaseId: 'requirements-clarification',
+      activePhaseIndex: 0,
+    })
   })
 
   it('syncs live TodoWrite tool input into the task store for that session', () => {

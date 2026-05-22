@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "reportId": "final",
+  "sessionId": "fixture-session",
+  "templateId": "requirements-to-implementation",
+  "templateVersion": "1",
+  "createdAt": "2026-05-20T02:06:00.000Z",
+  "phaseSummaries": [
+    {
+      "phaseId": "requirements-clarification",
+      "label": "Requirements clarification",
+      "status": "completed",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T02:00:00.000Z",
+          "label": "Requirements summary"
+        }
+      ],
+      "completion": {
+        "phaseId": "requirements-clarification",
+        "passed": true,
+        "checkedAt": "2026-05-20T02:05:00.000Z",
+        "criteriaType": "manual-checklist",
+        "artifactPointers": [
+          {
+            "kind": "phase-artifact",
+            "sessionId": "fixture-session",
+            "artifactId": "requirements-summary",
+            "schemaVersion": 1,
+            "createdAt": "2026-05-20T02:00:00.000Z",
+            "label": "Requirements summary"
+          }
+        ]
+      }
+    }
+  ],
+  "verificationResult": {
+    "passed": true,
+    "notes": "Fixture verification passed"
+  },
+  "conversationSummary": "Workflow completed. Final report is available.",
+  "artifactRefs": [
+    {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "requirements-summary",
+      "schemaVersion": 1,
+      "createdAt": "2026-05-20T02:00:00.000Z",
+      "label": "Requirements summary"
+    }
+  ],
+  "template": {
+    "id": "requirements-to-implementation",
+    "version": "1",
+    "source": "builtin",
+    "snapshotId": "requirements-to-implementation-v1"
+  },
+  "status": "completed",
+  "summary": "Workflow completed. Final report is available.",
+  "phases": [
+    {
+      "id": "requirements-clarification",
+      "name": "Requirements clarification",
+      "status": "completed",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T02:00:00.000Z",
+          "label": "Requirements summary"
+        }
+      ],
+      "completion": {
+        "phaseId": "requirements-clarification",
+        "passed": true,
+        "checkedAt": "2026-05-20T02:05:00.000Z",
+        "criteriaType": "manual-checklist",
+        "artifactPointers": []
+      }
+    }
+  ],
+  "verification": {
+    "passed": true,
+    "notes": "Fixture verification passed"
+  }
+}

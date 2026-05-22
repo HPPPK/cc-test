@@ -2,6 +2,7 @@
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
+import { SubmitPhaseCompletionTool } from './tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
@@ -135,6 +136,8 @@ const WorkflowTool = feature('WORKFLOW_SCRIPTS')
   : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import type { ToolPermissionContext } from './Tool.js'
+import type { WorkflowSessionState } from './server/services/workflowTypes.js'
+import { getWorkflowScopedToolNames } from './server/services/workflowToolPolicy.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
 import { isEnvTruthy } from './utils/envUtils.js'
@@ -348,6 +351,10 @@ export function assembleToolPool(
   mcpTools: Tools,
 ): Tools {
   const builtInTools = getTools(permissionContext)
+  const desktopWorkflowTools = filterToolsByDenyRules(
+    getDesktopWorkflowScopedTools(),
+    permissionContext,
+  ).filter(tool => tool.isEnabled())
 
   // Filter out MCP tools that are in the deny list
   const allowedMcpTools = filterToolsByDenyRules(mcpTools, permissionContext)
@@ -362,7 +369,43 @@ export function assembleToolPool(
   // readonly so copy-then-sort; allowedMcpTools is a fresh .filter() result.
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   return uniqBy(
-    [...builtInTools].sort(byName).concat(allowedMcpTools.sort(byName)),
+    [...builtInTools]
+      .sort(byName)
+      .concat(allowedMcpTools.sort(byName), desktopWorkflowTools.sort(byName)),
+    'name',
+  )
+}
+
+function getDesktopWorkflowScopedTools(): Tools {
+  const sessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID?.trim()
+  return sessionId ? [SubmitPhaseCompletionTool] : []
+}
+
+export function getWorkflowScopedTools(
+  state: WorkflowSessionState | null | undefined,
+): Tools {
+  const toolNames = new Set(getWorkflowScopedToolNames(state))
+  if (!toolNames.size) return []
+  return [SubmitPhaseCompletionTool].filter(tool => toolNames.has(tool.name))
+}
+
+export function assembleWorkflowToolPool(
+  permissionContext: ToolPermissionContext,
+  mcpTools: Tools,
+  state: WorkflowSessionState | null | undefined,
+): Tools {
+  const workflowTools = filterToolsByDenyRules(
+    getWorkflowScopedTools(state),
+    permissionContext,
+  ).filter(tool => tool.isEnabled())
+
+  if (!workflowTools.length) {
+    return assembleToolPool(permissionContext, mcpTools)
+  }
+
+  const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
+  return uniqBy(
+    [...assembleToolPool(permissionContext, mcpTools), ...workflowTools].sort(byName),
     'name',
   )
 }

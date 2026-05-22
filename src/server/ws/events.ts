@@ -12,6 +12,17 @@ export type ClientMessage =
   | { type: 'prewarm_session' }
   | { type: 'user_message'; content: string; attachments?: AttachmentRef[] }
   | {
+      type: 'workflow_transition'
+      phaseId: string
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'ready' | 'blocked' | 'unable'
+      transitionId?: string
+      stateVersion?: number
+      expectedStateVersion?: number
+      handoff?: Record<string, unknown>
+      rationale?: string
+      evidence?: Array<Record<string, unknown>>
+    }
+  | {
       type: 'permission_response'
       requestId: string
       allowed: boolean

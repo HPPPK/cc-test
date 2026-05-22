@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "template": {
+    "id": "requirements-to-implementation",
+    "version": "1",
+    "source": "builtin",
+    "snapshotId": "requirements-to-implementation-v1",
+    "sourceState": "stale-template"
+  },
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "requirements-to-implementation",
+    "source": "builtin",
+    "version": "1",
+    "displayName": "Requirements to Implementation",
+    "description": "Linear workflow fixture",
+    "phases": [
+      {
+        "id": "requirements-clarification",
+        "label": "Requirements clarification",
+        "instructions": "Clarify requirements.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      },
+      {
+        "id": "technical-design",
+        "label": "Technical design",
+        "instructions": "Design the implementation.",
+        "requestedModel": "claude-opus-4-7",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      },
+      {
+        "id": "implementation",
+        "label": "Implementation",
+        "instructions": "Implement the plan.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      }
+    ],
+    "contentHash": "old-bundled-template-hash"
+  },
+  "templateIdentity": {
+    "id": "requirements-to-implementation",
+    "source": "builtin",
+    "version": "1",
+    "registryKey": "builtin:requirements-to-implementation",
+    "contentHash": "old-bundled-template-hash"
+  },
+  "sourceTemplateStatus": "stale-template",
+  "status": "running",
+  "workflowStatus": "running",
+  "activePhaseId": "implementation",
+  "phases": [
+    {
+      "id": "requirements-clarification",
+      "index": 0,
+      "status": "completed",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:01:00.000Z",
+          "label": "Requirements summary"
+        }
+      ]
+    },
+    {
+      "id": "technical-design",
+      "index": 1,
+      "status": "pending-confirmation",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "design-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:02:00.000Z",
+          "label": "Design summary"
+        }
+      ]
+    },
+    {
+      "id": "implementation",
+      "index": 2,
+      "status": "running",
+      "artifactPointers": []
+    }
+  ],
+  "phaseRuns": [
+    {
+      "phaseId": "requirements-clarification",
+      "index": 0,
+      "status": "completed",
+      "startedAt": "2026-05-20T00:00:00.000Z",
+      "completedAt": "2026-05-20T00:01:00.000Z",
+      "instructionsProvenance": {
+        "templateId": "requirements-to-implementation",
+        "templateVersion": "1",
+        "phaseId": "requirements-clarification"
+      },
+      "inputArtifactRefs": [],
+      "outputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:01:00.000Z",
+          "label": "Requirements summary"
+        }
+      ],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null
+    },
+    {
+      "phaseId": "technical-design",
+      "index": 1,
+      "status": "pending-confirmation",
+      "startedAt": "2026-05-20T00:01:00.000Z",
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "requirements-to-implementation",
+        "templateVersion": "1",
+        "phaseId": "technical-design"
+      },
+      "inputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:01:00.000Z",
+          "label": "Requirements summary"
+        }
+      ],
+      "outputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "design-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:02:00.000Z",
+          "label": "Design summary"
+        }
+      ],
+      "completionChecks": [
+        {
+          "checkId": "check-design",
+          "phaseId": "technical-design",
+          "status": "passed",
+          "criteriaRef": "manual",
+          "summary": "Design approved by agent, waiting for user.",
+          "blockedReason": null,
+          "artifactRefs": [
+            {
+              "kind": "phase-artifact",
+              "sessionId": "fixture-session",
+              "artifactId": "design-summary",
+              "schemaVersion": 1,
+              "createdAt": "2026-05-20T00:02:00.000Z",
+              "label": "Design summary"
+            }
+          ],
+          "evaluatedAt": "2026-05-20T00:03:00.000Z",
+          "evaluator": "agent"
+        }
+      ],
+      "modelResolution": {
+        "requestedModel": "claude-opus-4-7",
+        "actualModel": "claude-sonnet-4-5",
+        "providerId": "anthropic",
+        "source": "phase-request",
+        "fallbackApplied": true,
+        "fallbackReason": "requested model unavailable",
+        "resolvedAt": "2026-05-20T00:01:05.000Z"
+      },
+      "skillProvenance": [],
+      "blockedReason": null
+    },
+    {
+      "phaseId": "implementation",
+      "index": 2,
+      "status": "running",
+      "startedAt": "2026-05-20T00:04:00.000Z",
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "requirements-to-implementation",
+        "templateVersion": "1",
+        "phaseId": "implementation"
+      },
+      "inputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:01:00.000Z",
+          "label": "Requirements summary"
+        },
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "design-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:02:00.000Z",
+          "label": "Design summary"
+        }
+      ],
+      "outputArtifactRefs": [],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null
+    }
+  ],
+  "transitionHistory": [
+    {
+      "transitionId": "advance-implementation",
+      "fromStatus": "pending-confirmation",
+      "toStatus": "running",
+      "fromPhaseId": "technical-design",
+      "toPhaseId": "implementation",
+      "authority": "user-confirmation",
+      "decision": "approved",
+      "completionCheckId": "check-design",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "design-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:02:00.000Z",
+          "label": "Design summary"
+        }
+      ],
+      "createdAt": "2026-05-20T00:04:00.000Z"
+    }
+  ],
+  "artifactIndex": [
+    {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "requirements-summary",
+      "schemaVersion": 1,
+      "createdAt": "2026-05-20T00:01:00.000Z",
+      "label": "Requirements summary"
+    },
+    {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "design-summary",
+      "schemaVersion": 1,
+      "createdAt": "2026-05-20T00:02:00.000Z",
+      "label": "Design summary"
+    }
+  ],
+  "finalReportRef": null,
+  "stateVersion": 4,
+  "revision": 4,
+  "createdAt": "2026-05-20T00:00:00.000Z",
+  "updatedAt": "2026-05-20T00:04:00.000Z",
+  "pendingConfirmation": {
+    "confirmationId": "confirm-design",
+    "phaseId": "technical-design",
+    "fromPhaseId": "technical-design",
+    "toPhaseId": "implementation",
+    "completionCheckId": "check-design",
+    "artifactRefs": [
+      {
+        "kind": "phase-artifact",
+        "sessionId": "fixture-session",
+        "artifactId": "design-summary",
+        "schemaVersion": 1,
+        "createdAt": "2026-05-20T00:02:00.000Z",
+        "label": "Design summary"
+      }
+    ],
+    "createdAt": "2026-05-20T00:03:00.000Z",
+    "status": "pending"
+  }
+}

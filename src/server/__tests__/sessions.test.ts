@@ -20,6 +20,21 @@ import { clearPluginCache } from '../../utils/plugins/pluginLoader.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { updateSessionSlashCommands } from '../ws/handler.js'
 
+const WORKFLOW_ERROR_CODES = [
+  'WORKFLOW_TEMPLATE_NOT_FOUND',
+  'WORKFLOW_TEMPLATE_INVALID',
+  'WORKFLOW_TEMPLATE_CONFLICT',
+  'WORKFLOW_NOT_ENABLED',
+  'WORKFLOW_STATE_UNAVAILABLE',
+  'WORKFLOW_STATE_CONFLICT',
+  'WORKFLOW_TRANSITION_INVALID',
+  'WORKFLOW_STATE_STALE',
+  'WORKFLOW_PENDING_CONFLICT',
+  'WORKFLOW_REPORT_NOT_READY',
+  'WORKFLOW_REPORT_UNAVAILABLE',
+  'WORKFLOW_MODEL_UNAVAILABLE',
+] as const
+
 // ============================================================================
 // Test helpers
 // ============================================================================
@@ -314,6 +329,404 @@ function makeWorktreeStateEntry(
   }
 }
 
+function makeWorkflowPointer(
+  sessionId: string,
+  kind: 'workflow-state' | 'phase-artifact' | 'final-report',
+  artifactId: string,
+  timestamp = '2026-01-01T00:00:00.000Z',
+): Record<string, unknown> {
+  return {
+    kind,
+    sessionId,
+    artifactId,
+    schemaVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    label: artifactId,
+  }
+}
+
+function makeWorkflowSessionMetaEntry(
+  sessionId: string,
+  workDir: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const statePointer = makeWorkflowPointer(sessionId, 'workflow-state', 'state')
+  const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+
+  return {
+    type: 'session-meta',
+    isMeta: true,
+    workDir,
+    workflow: {
+      mode: 'workflow',
+      schemaVersion: 1,
+      templateId: 'requirements-to-implementation',
+      templateVersion: '1',
+      templateSource: 'builtin',
+      templateSnapshotId: 'requirements-to-implementation-v1',
+      status: 'running',
+      workflowStatus: 'running',
+      activePhaseId: 'technical-design',
+      statePointer,
+      stateRef: statePointer,
+      reportPointer,
+      reportRef: reportPointer,
+      stateRevision: 7,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    },
+    timestamp: '2026-01-01T00:00:00.000Z',
+  }
+}
+
+async function readJsonlEntries(filePath: string): Promise<Array<Record<string, unknown>>> {
+  const raw = await fs.readFile(filePath, 'utf-8')
+  return raw
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+}
+
+async function collectFiles(root: string): Promise<string[]> {
+  const found: string[] = []
+
+  async function walk(current: string): Promise<void> {
+    let entries: Array<import('node:fs').Dirent>
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true })
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+      if (code === 'ENOENT') return
+      throw error
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        await walk(fullPath)
+      } else if (entry.isFile()) {
+        found.push(fullPath)
+      }
+    }
+  }
+
+  await walk(root)
+  return found.sort()
+}
+
+function expectNoAbsolutePathLeak(value: unknown): void {
+  const serialized = JSON.stringify(value)
+  expect(serialized).not.toContain(tmpDir)
+  expect(serialized).not.toContain(tmpDir.replace(/\\/g, '\\\\'))
+}
+
+function expectWorkflowErrorShape(
+  body: { error?: unknown; code?: unknown; message?: unknown },
+  expectedCode: typeof WORKFLOW_ERROR_CODES[number],
+): void {
+  expect(body.error ?? body.code).toBe(expectedCode)
+  expect(typeof body.message).toBe('string')
+}
+
+async function loadWorkflowSessionFixture(name: string): Promise<Record<string, unknown>> {
+  const fixturePath = path.join(
+    process.cwd(),
+    'src/server/services/__fixtures__/workflow-sessions',
+    name,
+  )
+  return JSON.parse(await fs.readFile(fixturePath, 'utf-8')) as Record<string, unknown>
+}
+
+function rewriteWorkflowFixtureSessionIds(value: unknown, sessionId: string): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteWorkflowFixtureSessionIds(item, sessionId))
+  }
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  const rewritten: Record<string, unknown> = {}
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    rewritten[key] = key === 'sessionId'
+      ? sessionId
+      : rewriteWorkflowFixtureSessionIds(nested, sessionId)
+  }
+  return rewritten
+}
+
+async function writeWorkflowSessionStateFixture(
+  sessionId: string,
+  fixtureName: string,
+): Promise<Record<string, unknown>> {
+  const state = rewriteWorkflowFixtureSessionIds(
+    await loadWorkflowSessionFixture(fixtureName),
+    sessionId,
+  ) as Record<string, unknown>
+  const statePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  await fs.mkdir(path.dirname(statePath), { recursive: true })
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8')
+  return state
+}
+
+async function writeWorkflowSessionState(
+  sessionId: string,
+  state: Record<string, unknown>,
+): Promise<void> {
+  const statePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  await fs.mkdir(path.dirname(statePath), { recursive: true })
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8')
+}
+
+function makePendingWorkflowTransitionState(
+  sessionId: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const createdAt = '2026-05-21T00:00:00.000Z'
+  const updatedAt = '2026-05-21T00:01:00.000Z'
+  const pendingArtifact = {
+    kind: 'phase-artifact',
+    sessionId,
+    artifactId: 'discussion-ready-1',
+    schemaVersion: 1,
+    createdAt: updatedAt,
+    updatedAt,
+    label: 'Discussion phase completion',
+    phaseId: 'discussion',
+    title: 'Discussion phase completion',
+    lifecycleStatus: 'pending',
+  }
+
+  return {
+    schemaVersion: 1,
+    sessionId,
+    mode: 'workflow',
+    template: {
+      id: 'agent-development',
+      version: '1',
+      source: 'builtin',
+      snapshotId: 'agent-development-v1',
+      sourceState: 'current',
+    },
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: 'agent-development',
+      source: 'builtin',
+      version: '1',
+      displayName: 'Agent Development',
+      description: 'Ready confirmation transition fixture.',
+      phases: [
+        {
+          id: 'discussion',
+          label: 'Discussion',
+          instructions: 'Discuss the request.',
+          requestedModel: null,
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: { type: 'agent-reported' },
+          transitionAuthority: 'user-confirmation',
+        },
+        {
+          id: 'specify',
+          label: 'Specify',
+          instructions: 'Write the specification.',
+          requestedModel: null,
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: { type: 'agent-reported' },
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+    templateIdentity: {
+      id: 'agent-development',
+      source: 'builtin',
+      version: '1',
+      registryKey: 'builtin:agent-development',
+    },
+    sourceTemplateStatus: 'current',
+    status: 'pending-confirmation',
+    workflowStatus: 'pending-confirmation',
+    activePhaseId: 'discussion',
+    phases: [
+      {
+        id: 'discussion',
+        index: 0,
+        status: 'pending-confirmation',
+        artifactPointers: [pendingArtifact],
+      },
+      {
+        id: 'specify',
+        index: 1,
+        status: 'created',
+        artifactPointers: [],
+      },
+    ],
+    phaseRuns: [],
+    transitionHistory: [
+      {
+        transitionId: 'submit-discussion-ready',
+        requestId: 'submit-discussion-ready',
+        fromPhaseId: 'discussion',
+        toPhaseId: 'specify',
+        authority: 'completion-check',
+        action: 'confirmation-requested',
+        result: 'accepted',
+        completionCheckId: 'submit-discussion-ready',
+        artifactRefs: [pendingArtifact],
+        createdAt: updatedAt,
+        stateVersion: 3,
+      },
+    ],
+    artifactIndex: [pendingArtifact],
+    finalReportRef: null,
+    stateVersion: 3,
+    revision: 3,
+    createdAt,
+    updatedAt,
+    pendingConfirmation: {
+      confirmationId: 'submit-discussion-ready',
+      phaseId: 'discussion',
+      fromPhaseId: 'discussion',
+      toPhaseId: 'specify',
+      completionCheckId: 'submit-discussion-ready',
+      artifactRefs: [pendingArtifact],
+      createdAt: updatedAt,
+      status: 'pending',
+      submission: {
+        phaseId: 'discussion',
+        stateVersion: 2,
+        status: 'ready',
+        handoff: {
+          summary: 'Discussion is ready for confirmation.',
+          artifacts: [],
+          next: 'Confirm or request retry.',
+        },
+        rationale: 'The agent completed the discussion phase.',
+        evidence: [
+          {
+            kind: 'artifact',
+            label: 'Discussion summary',
+            ref: 'discussion-ready-1',
+          },
+        ],
+      },
+    },
+    ...overrides,
+  }
+}
+
+function makeFinalPendingWorkflowTransitionState(sessionId: string): Record<string, unknown> {
+  return makePendingWorkflowTransitionState(sessionId, {
+    activePhaseId: 'discussion',
+    phases: [
+      {
+        id: 'discussion',
+        index: 0,
+        status: 'pending-confirmation',
+        artifactPointers: [
+          {
+            kind: 'phase-artifact',
+            sessionId,
+            artifactId: 'discussion-final-ready-1',
+            schemaVersion: 1,
+            createdAt: '2026-05-21T00:01:00.000Z',
+            updatedAt: '2026-05-21T00:01:00.000Z',
+            label: 'Final discussion completion',
+            phaseId: 'discussion',
+            title: 'Final discussion completion',
+            lifecycleStatus: 'pending',
+          },
+        ],
+      },
+    ],
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: 'agent-development',
+      source: 'builtin',
+      version: '1',
+      displayName: 'Agent Development',
+      description: 'Final ready confirmation transition fixture.',
+      phases: [
+        {
+          id: 'discussion',
+          label: 'Discussion',
+          instructions: 'Discuss the request.',
+          requestedModel: null,
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: { type: 'agent-reported' },
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+    pendingConfirmation: {
+      confirmationId: 'submit-discussion-final-ready',
+      phaseId: 'discussion',
+      fromPhaseId: 'discussion',
+      toPhaseId: null,
+      completionCheckId: 'submit-discussion-final-ready',
+      artifactRefs: [
+        {
+          kind: 'phase-artifact',
+          sessionId,
+          artifactId: 'discussion-final-ready-1',
+          schemaVersion: 1,
+          createdAt: '2026-05-21T00:01:00.000Z',
+          updatedAt: '2026-05-21T00:01:00.000Z',
+          label: 'Final discussion completion',
+          phaseId: 'discussion',
+          title: 'Final discussion completion',
+          lifecycleStatus: 'pending',
+        },
+      ],
+      createdAt: '2026-05-21T00:01:00.000Z',
+      status: 'pending',
+      submission: {
+        phaseId: 'discussion',
+        stateVersion: 2,
+        status: 'ready',
+        handoff: {
+          summary: 'Final workflow phase is ready.',
+          artifacts: [],
+          next: 'Confirm final report creation.',
+        },
+        rationale: 'The final phase is complete.',
+        evidence: [],
+      },
+    },
+    artifactIndex: [
+      {
+        kind: 'phase-artifact',
+        sessionId,
+        artifactId: 'discussion-final-ready-1',
+        schemaVersion: 1,
+        createdAt: '2026-05-21T00:01:00.000Z',
+        updatedAt: '2026-05-21T00:01:00.000Z',
+        label: 'Final discussion completion',
+        phaseId: 'discussion',
+        title: 'Final discussion completion',
+        lifecycleStatus: 'pending',
+      },
+    ],
+  })
+}
+
+async function writeWorkflowFinalReportFixture(
+  sessionId: string,
+  fixtureName: string,
+): Promise<Record<string, unknown>> {
+  const report = rewriteWorkflowFixtureSessionIds(
+    await loadWorkflowSessionFixture(fixtureName),
+    sessionId,
+  ) as Record<string, unknown>
+  const reportPath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+  await fs.mkdir(path.dirname(reportPath), { recursive: true })
+  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf-8')
+  return report
+}
+
 async function writeFileHistoryBackup(
   sessionId: string,
   backupFileName: string,
@@ -580,6 +993,82 @@ describe('SessionService', () => {
     expect(detail!.messages).toHaveLength(2)
     expect(detail!.messages[0]!.type).toBe('user')
     expect(detail!.messages[1]!.type).toBe('assistant')
+  })
+
+  it('should keep normal dialogue sessions readable without workflow metadata by default', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    await writeSessionFile('-tmp-dialogue-project', sessionId, [
+      makeSnapshotEntry(),
+      makeSessionMetaEntry('/tmp/dialogue-project'),
+      makeUserEntry('Plain dialogue remains the default'),
+      makeAssistantEntry('No workflow metadata is required'),
+    ])
+
+    const detail = await service.getSession(sessionId)
+    const list = await service.listSessions()
+
+    expect(detail).not.toBeNull()
+    expect(detail!.messages).toHaveLength(2)
+    expect(detail!.messages[0]).toMatchObject({
+      type: 'user',
+      content: 'Plain dialogue remains the default',
+    })
+    expect(detail!.messages[1]).toMatchObject({ type: 'assistant' })
+    expect('workflow' in (detail as unknown as Record<string, unknown>)).toBe(false)
+    expect('workflow' in (list.sessions[0] as unknown as Record<string, unknown>)).toBe(false)
+  })
+
+  it('should expose additive workflow metadata pointers for staged session detail and list recovery', async () => {
+    const sessionId = 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const workDir = path.join(tmpDir, 'workflow-project')
+    const statePointer = makeWorkflowPointer(sessionId, 'workflow-state', 'state')
+    const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+    await writeSessionFile(sanitizePath(workDir), sessionId, [
+      makeSnapshotEntry(),
+      makeWorkflowSessionMetaEntry(sessionId, workDir, {
+        statePointer,
+        stateRef: statePointer,
+        reportPointer,
+        reportRef: reportPointer,
+      }),
+      makeUserEntry('Run the staged workflow'),
+      makeAssistantEntry('Workflow phase is running'),
+    ])
+
+    const detail = await service.getSession(sessionId) as unknown as {
+      workflow?: {
+        mode: string
+        templateId: string
+        status: string
+        activePhaseId: string
+        statePointer: Record<string, unknown>
+        reportPointer: Record<string, unknown>
+      }
+    }
+    const list = await service.listSessions() as unknown as {
+      sessions: Array<{
+        id: string
+        workflow?: {
+          mode: string
+          statePointer: Record<string, unknown>
+          reportPointer: Record<string, unknown>
+        }
+      }>
+    }
+
+    expect(detail.workflow).toMatchObject({
+      mode: 'workflow',
+      templateId: 'requirements-to-implementation',
+      status: 'running',
+      activePhaseId: 'technical-design',
+      statePointer,
+      reportPointer,
+    })
+    expect(list.sessions.find((session) => session.id === sessionId)?.workflow).toMatchObject({
+      mode: 'workflow',
+      statePointer,
+      reportPointer,
+    })
   })
 
   it('should skip meta entries in messages', async () => {
@@ -1080,6 +1569,44 @@ describe('SessionService', () => {
     })
   })
 
+  it('should preserve staged workflow metadata pointers when clearing a transcript', async () => {
+    const sessionId = 'cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const workDir = path.join(tmpDir, 'workflow-clear-project')
+    const statePointer = makeWorkflowPointer(sessionId, 'workflow-state', 'state')
+    const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+    const filePath = await writeSessionFile(sanitizePath(workDir), sessionId, [
+      makeSnapshotEntry(),
+      makeWorkflowSessionMetaEntry(sessionId, workDir, {
+        statePointer,
+        stateRef: statePointer,
+        reportPointer,
+        reportRef: reportPointer,
+        stateRevision: 9,
+      }),
+      makeUserEntry('workflow turn before clear'),
+      makeAssistantEntry('workflow response before clear'),
+    ])
+
+    await service.clearSessionTranscript(sessionId, workDir)
+
+    const entries = await readJsonlEntries(filePath)
+    const metaEntry = entries.findLast((entry) => entry.type === 'session-meta')
+    expect(metaEntry).toMatchObject({
+      type: 'session-meta',
+      isMeta: true,
+      workDir,
+      workflow: {
+        mode: 'workflow',
+        statePointer,
+        stateRef: statePointer,
+        reportPointer,
+        reportRef: reportPointer,
+        stateRevision: 9,
+      },
+    })
+    expect(await service.getSessionMessages(sessionId)).toEqual([])
+  })
+
   it('should remove stale placeholder files after native CLI worktree startup', async () => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
     const sourceFile = await writeSessionFile('-tmp-source', sessionId, [
@@ -1396,6 +1923,40 @@ describe('SessionService', () => {
     expect(fs.access(filePath)).rejects.toThrow()
   })
 
+  it('should delete only the matching workflow companion artifacts for a staged session', async () => {
+    const sessionId = 'dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const otherSessionId = 'eeeeeeee-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const sessionFilePath = await writeSessionFile('-tmp-workflow-delete-project', sessionId, [
+      makeSnapshotEntry(),
+      makeWorkflowSessionMetaEntry(sessionId, '/tmp/workflow-delete-project'),
+      makeUserEntry('workflow session to delete'),
+    ])
+    await writeSessionFile('-tmp-other-workflow-project', otherSessionId, [
+      makeSnapshotEntry(),
+      makeWorkflowSessionMetaEntry(otherSessionId, '/tmp/other-workflow-project'),
+    ])
+
+    const workflowRoot = path.join(tmpDir, 'cc-haha', 'workflow-sessions')
+    const sessionWorkflowDir = path.join(workflowRoot, sessionId)
+    const otherWorkflowDir = path.join(workflowRoot, otherSessionId)
+    const unrelatedCcHahaFile = path.join(tmpDir, 'cc-haha', 'settings.json')
+    await fs.mkdir(path.join(sessionWorkflowDir, 'artifacts'), { recursive: true })
+    await fs.mkdir(path.join(sessionWorkflowDir, 'reports'), { recursive: true })
+    await fs.mkdir(path.join(otherWorkflowDir, 'reports'), { recursive: true })
+    await fs.writeFile(path.join(sessionWorkflowDir, 'state.json'), '{"sessionId":"target"}\n', 'utf-8')
+    await fs.writeFile(path.join(sessionWorkflowDir, 'artifacts', 'phase-1.json'), '{"artifact":true}\n', 'utf-8')
+    await fs.writeFile(path.join(sessionWorkflowDir, 'reports', 'final.json'), '{"report":true}\n', 'utf-8')
+    await fs.writeFile(path.join(otherWorkflowDir, 'state.json'), '{"sessionId":"other"}\n', 'utf-8')
+    await fs.writeFile(unrelatedCcHahaFile, '{"keep":true}\n', 'utf-8')
+
+    await service.deleteSession(sessionId)
+
+    await expect(fs.access(sessionFilePath)).rejects.toThrow()
+    await expect(fs.access(sessionWorkflowDir)).rejects.toThrow()
+    await expect(fs.access(path.join(otherWorkflowDir, 'state.json'))).resolves.toBeNull()
+    await expect(fs.readFile(unrelatedCcHahaFile, 'utf-8')).resolves.toContain('"keep":true')
+  })
+
   it('should throw when deleting non-existent session', async () => {
     expect(
       service.deleteSession('00000000-0000-0000-0000-000000000000')
@@ -1593,8 +2154,7 @@ describe('Sessions API', () => {
     service = new SessionService()
 
     // Import and start a minimal test server
-    const { handleSessionsApi } = await import('../api/sessions.js')
-    const { handleConversationsApi } = await import('../api/conversations.js')
+    const { handleApiRequest } = await import('../router.js')
 
     server = Bun.serve({
       port: 0,
@@ -1604,12 +2164,8 @@ describe('Sessions API', () => {
         const url = new URL(req.url)
         const segments = url.pathname.split('/').filter(Boolean)
 
-        if (segments[0] === 'api' && segments[1] === 'sessions') {
-          // Route chat sub-resource to conversations handler
-          if (segments[3] === 'chat') {
-            return handleConversationsApi(req, url, segments)
-          }
-          return handleSessionsApi(req, url, segments)
+        if (segments[0] === 'api') {
+          return handleApiRequest(req, url)
         }
 
         return new Response('Not Found', { status: 404 })
@@ -1665,6 +2221,1454 @@ describe('Sessions API', () => {
     expect(body.sessionId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     )
+  })
+
+  it('POST /api/sessions should keep dialogue create shape compatible when workflow is omitted', async () => {
+    const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-dialogue-session-'))
+
+    const res = await fetch(`${baseUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workDir }),
+    })
+    expect(res.status).toBe(201)
+
+    const created = (await res.json()) as { sessionId: string; workDir?: string; workflow?: unknown }
+    expect(created.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    )
+    expect(created.workDir).toBe(await fs.realpath(workDir))
+    expect('workflow' in created).toBe(false)
+
+    const listRes = await fetch(`${baseUrl}/api/sessions`)
+    expect(listRes.status).toBe(200)
+    const list = (await listRes.json()) as {
+      sessions: Array<{ id: string; workflow?: unknown }>
+    }
+    expect('workflow' in list.sessions.find((session) => session.id === created.sessionId)!).toBe(false)
+
+    const detailRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}`)
+    expect(detailRes.status).toBe(200)
+    const detail = (await detailRes.json()) as { workflow?: unknown }
+    expect('workflow' in detail).toBe(false)
+  })
+
+  describe('Workflow Session API contract', () => {
+    it('POST /api/sessions should create a workflow session with additive summary and state pointer metadata', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-session-'))
+
+      const res = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(res.status).toBe(201)
+
+      const created = (await res.json()) as {
+        sessionId: string
+        workDir?: string
+        workflow?: {
+          mode: string
+          templateId: string
+          templateVersion: string
+          templateSource: string
+          templateSnapshotId: string
+          status: string
+          activePhaseId: string | null
+          activePhaseIndex: number
+          phaseCount: number
+          pendingConfirmation: boolean
+          statePointer: Record<string, unknown>
+          reportPointer?: Record<string, unknown>
+        }
+      }
+      expect(created.workDir).toBe(await fs.realpath(workDir))
+      expect(created.workflow).toMatchObject({
+        mode: 'workflow',
+        templateId: 'agent-development',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'agent-development-v1',
+        status: 'created',
+        activePhaseId: 'discussion',
+        activePhaseIndex: 0,
+        phaseCount: 5,
+        pendingConfirmation: false,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: created.sessionId,
+          artifactId: 'state',
+          schemaVersion: 1,
+        },
+      })
+      expect(created.workflow?.reportPointer).toBeUndefined()
+      expectNoAbsolutePathLeak(created.workflow)
+
+      const listRes = await fetch(`${baseUrl}/api/sessions`)
+      expect(listRes.status).toBe(200)
+      const list = (await listRes.json()) as {
+        sessions: Array<{ id: string; workflow?: unknown }>
+      }
+      expect(list.sessions.find((session) => session.id === created.sessionId)?.workflow).toMatchObject({
+        mode: 'workflow',
+        templateId: 'agent-development',
+        activePhaseId: 'discussion',
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: created.sessionId,
+          artifactId: 'state',
+        },
+      })
+      expectNoAbsolutePathLeak(list.sessions.find((session) => session.id === created.sessionId)?.workflow)
+
+      const detailRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}`)
+      expect(detailRes.status).toBe(200)
+      const detail = (await detailRes.json()) as {
+        workflow?: unknown
+        messages: unknown[]
+      }
+      expect(detail.workflow).toMatchObject({
+        mode: 'workflow',
+        templateId: 'agent-development',
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: created.sessionId,
+          artifactId: 'state',
+        },
+      })
+      expect(detail.messages).toEqual([])
+      expectNoAbsolutePathLeak(detail.workflow)
+
+      const stateRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow`)
+      expect(stateRes.status).toBe(200)
+      const statePayload = (await stateRes.json()) as {
+        state?: {
+          templateSnapshot?: {
+            phases?: Array<{
+              id: string
+              actionPolicy?: {
+                allowedActions?: string[]
+                forbiddenActions?: string[]
+              }
+              phasePrompt?: {
+                objective?: string
+                handoffInput?: string[]
+                executionRules?: string[]
+                outputArtifact?: {
+                  name?: string
+                  sections?: string[]
+                }
+                completionRules?: string[]
+              }
+            }>
+          }
+        }
+      }
+      expect(statePayload.state?.templateSnapshot?.phases?.map((phase) => ({
+        id: phase.id,
+        actionPolicy: phase.actionPolicy,
+        phasePrompt: phase.phasePrompt,
+      }))).toEqual([
+        expect.objectContaining({
+          id: 'discussion',
+          actionPolicy: expect.objectContaining({
+            allowedActions: expect.arrayContaining(['Ask clarifying questions']),
+            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
+          }),
+          phasePrompt: expect.objectContaining({
+            objective: expect.stringContaining('Clarify and freeze'),
+            outputArtifact: expect.objectContaining({
+              name: 'Requirements Brief',
+              sections: expect.arrayContaining(['Acceptance Criteria']),
+            }),
+            completionRules: expect.arrayContaining([
+              expect.stringContaining('Do not enter specify'),
+            ]),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'specify',
+          actionPolicy: expect.objectContaining({
+            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
+          }),
+          phasePrompt: expect.objectContaining({
+            outputArtifact: expect.objectContaining({ name: 'Specification Brief' }),
+            handoffInput: expect.arrayContaining([
+              expect.stringContaining('discussion brief'),
+            ]),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'plan',
+          actionPolicy: expect.objectContaining({
+            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
+          }),
+          phasePrompt: expect.objectContaining({
+            outputArtifact: expect.objectContaining({ name: 'Technical Plan' }),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'tasks',
+          actionPolicy: expect.objectContaining({
+            allowedActions: expect.arrayContaining(['Break the approved design into ordered implementation tasks']),
+          }),
+          phasePrompt: expect.objectContaining({
+            outputArtifact: expect.objectContaining({ name: 'Task Breakdown' }),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'implement',
+          actionPolicy: expect.objectContaining({
+            allowedActions: expect.arrayContaining(['Create and edit scoped production, test, and documentation files']),
+          }),
+          phasePrompt: expect.objectContaining({
+            outputArtifact: expect.objectContaining({ name: 'Implementation Report' }),
+          }),
+        }),
+      ])
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should advance a pending workflow confirmation', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-'))
+
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+
+      const created = (await createRes.json()) as { sessionId: string }
+      const retryRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'retry',
+          transitionId: 'retry-requirements-ready',
+        }),
+      })
+      expect(retryRes.status).toBe(200)
+      const retryBody = (await retryRes.json()) as {
+        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean }
+      }
+      expect(retryBody.workflow).toMatchObject({
+        status: 'pending-confirmation',
+        activePhaseId: 'discussion',
+        pendingConfirmation: true,
+      })
+
+      const confirmRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'confirm',
+          transitionId: 'confirm-requirements-ready',
+        }),
+      })
+      expect(confirmRes.status).toBe(200)
+      const confirmBody = (await confirmRes.json()) as {
+        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean }
+        state: { activePhaseId: string; phases: Array<{ id: string; status: string }> }
+      }
+
+      expect(confirmBody.workflow).toMatchObject({
+        status: 'running',
+        activePhaseId: 'specify',
+        pendingConfirmation: false,
+      })
+      expect(confirmBody.state.activePhaseId).toBe('specify')
+      expect(confirmBody.state.phases.find((phase) => phase.id === 'discussion')).toMatchObject({
+        status: 'completed',
+      })
+      expect(confirmBody.state.phases.find((phase) => phase.id === 'specify')).toMatchObject({
+        status: 'running',
+      })
+    })
+
+    it.each([
+      ['confirm', 'accepted', 'specify', false, 'accepted'],
+      ['reject', 'rejected', 'discussion', false, 'rejected'],
+      ['retry', 'superseded', 'discussion', false, 'superseded'],
+    ] as const)('POST /api/sessions/:id/workflow/transition should %s a ready pending confirmation with canonical stateVersion', async (
+      action,
+      expectedResult,
+      expectedActivePhaseId,
+      expectedPending,
+      expectedArtifactStatus,
+    ) => {
+      const sessionId = `aaaaaaaa-bbbb-cccc-dddd-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
+      const workDir = path.join(tmpDir, `api-workflow-${action}`)
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Confirm the ready workflow phase'),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action,
+          stateVersion: 3,
+          transitionId: `${action}-discussion-ready`,
+        }),
+      })
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        state: {
+          activePhaseId: string
+          pendingConfirmation: unknown
+          phases: Array<{ id: string; status: string; artifactPointers: Array<{ lifecycleStatus?: string }> }>
+          transitionHistory: Array<{ transitionId: string; result?: string; stateVersion?: number }>
+        }
+        workflow: { activePhaseId: string; pendingConfirmation: boolean }
+      }
+
+      expect(body.workflow).toMatchObject({
+        activePhaseId: expectedActivePhaseId,
+        pendingConfirmation: expectedPending,
+      })
+      expect(body.state.activePhaseId).toBe(expectedActivePhaseId)
+      expect(body.state.pendingConfirmation).toBeNull()
+      expect(body.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: `${action}-discussion-ready`,
+        result: expectedResult,
+        stateVersion: expect.any(Number),
+      }))
+      expect(body.state.phases.find((phase) => phase.id === 'discussion')?.artifactPointers).toContainEqual(
+        expect.objectContaining({ lifecycleStatus: expectedArtifactStatus }),
+      )
+      expectNoAbsolutePathLeak(body.workflow)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should reject stale canonical stateVersion without advancing', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-111111111117'
+      const workDir = path.join(tmpDir, 'api-workflow-stale-transition')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'confirm',
+          stateVersion: 2,
+          transitionId: 'stale-discussion-ready',
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_STATE_STALE')
+      expectNoAbsolutePathLeak(body)
+
+      const stateRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      const stateBody = (await stateRes.json()) as {
+        state: { activePhaseId: string; pendingConfirmation: unknown }
+        workflow: { activePhaseId: string; pendingConfirmation: boolean }
+      }
+      expect(stateBody.state.activePhaseId).toBe('discussion')
+      expect(stateBody.workflow.pendingConfirmation).toBe(true)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should replay duplicate transitionId without advancing twice', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-121212121217'
+      const workDir = path.join(tmpDir, 'api-workflow-duplicate-transition')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const requestBody = {
+        phaseId: 'discussion',
+        action: 'confirm',
+        stateVersion: 3,
+        transitionId: 'confirm-discussion-idempotent',
+      }
+      const firstRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+      expect(firstRes.status).toBe(200)
+
+      const secondRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...requestBody, stateVersion: 4 }),
+      })
+      expect(secondRes.status).toBe(200)
+      const secondBody = (await secondRes.json()) as {
+        state: {
+          activePhaseId: string
+          phases: Array<{ id: string; artifactPointers: unknown[] }>
+          transitionHistory: Array<{ transitionId: string }>
+        }
+      }
+
+      expect(secondBody.state.activePhaseId).toBe('specify')
+      expect(secondBody.state.phases.find((phase) => phase.id === 'discussion')?.artifactPointers).toHaveLength(1)
+      expect(secondBody.state.transitionHistory.filter((transition) =>
+        transition.transitionId === 'confirm-discussion-idempotent'
+      )).toHaveLength(1)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should reject ready when another completion is pending', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-131313131317'
+      const workDir = path.join(tmpDir, 'api-workflow-pending-conflict')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'ready',
+          stateVersion: 3,
+          transitionId: 'submit-second-ready',
+          handoff: {
+            summary: 'Second ready attempt.',
+            artifacts: [],
+            next: 'Confirm.',
+          },
+          rationale: 'Trying to submit ready again.',
+          evidence: [],
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_PENDING_CONFLICT')
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition manual_complete should use shared required-field validation', async () => {
+      const agentSessionId = 'aaaaaaaa-bbbb-cccc-dddd-141414141417'
+      const manualSessionId = 'aaaaaaaa-bbbb-cccc-dddd-151515151517'
+      const agentWorkDir = path.join(tmpDir, 'api-workflow-agent-shared-validation')
+      const manualWorkDir = path.join(tmpDir, 'api-workflow-manual-shared-validation')
+      const runningOverrides = {
+        status: 'running',
+        workflowStatus: 'running',
+        activePhaseId: 'discussion',
+        phases: [
+          {
+            id: 'discussion',
+            index: 0,
+            status: 'running',
+            artifactPointers: [],
+          },
+          {
+            id: 'specify',
+            index: 1,
+            status: 'created',
+            artifactPointers: [],
+          },
+        ],
+        transitionHistory: [],
+        artifactIndex: [],
+        pendingConfirmation: null,
+        stateVersion: 3,
+        revision: 3,
+      }
+
+      await writeWorkflowSessionState(agentSessionId, makePendingWorkflowTransitionState(agentSessionId, runningOverrides))
+      await writeWorkflowSessionState(manualSessionId, makePendingWorkflowTransitionState(manualSessionId, runningOverrides))
+      await writeSessionFile(sanitizePath(agentWorkDir), agentSessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(agentSessionId, agentWorkDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+      await writeSessionFile(sanitizePath(manualWorkDir), manualSessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(manualSessionId, manualWorkDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const sharedInvalidPayload = {
+        phaseId: 'discussion',
+        stateVersion: 3,
+        transitionId: 'missing-rationale',
+        handoff: {
+          summary: 'Discussion output was reviewed by the user.',
+          artifacts: [],
+          next: 'Advance to specify.',
+        },
+        evidence: [],
+      }
+
+      const agentRes = await fetch(`${baseUrl}/api/sessions/${agentSessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...sharedInvalidPayload,
+          action: 'ready',
+        }),
+      })
+      const manualRes = await fetch(`${baseUrl}/api/sessions/${manualSessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...sharedInvalidPayload,
+          action: 'manual_complete',
+        }),
+      })
+      const agentBody = (await agentRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      const manualBody = (await manualRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(agentRes.status).toBe(400)
+      expect(manualRes.status).toBe(agentRes.status)
+      expect(manualBody.error ?? manualBody.code).toBe(agentBody.error ?? agentBody.code)
+      expect(manualBody.message).toBe(agentBody.message)
+      expectNoAbsolutePathLeak(manualBody)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition manual_complete should create an accepted artifact and advance exactly one phase', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-161616161617'
+      const workDir = path.join(tmpDir, 'api-workflow-manual-complete')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId, {
+        status: 'running',
+        workflowStatus: 'running',
+        activePhaseId: 'discussion',
+        phases: [
+          {
+            id: 'discussion',
+            index: 0,
+            status: 'running',
+            artifactPointers: [],
+          },
+          {
+            id: 'specify',
+            index: 1,
+            status: 'created',
+            artifactPointers: [],
+          },
+        ],
+        transitionHistory: [],
+        artifactIndex: [],
+        pendingConfirmation: null,
+        stateVersion: 3,
+        revision: 3,
+      }))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'manual_complete',
+          stateVersion: 3,
+          transitionId: 'manual-complete-discussion',
+          handoff: {
+            summary: 'User reviewed the discussion output.',
+            artifacts: [],
+            next: 'Advance to specify.',
+          },
+          rationale: 'User manually confirmed this phase is complete.',
+          evidence: [
+            {
+              kind: 'note',
+              label: 'Manual review',
+              ref: 'discussion accepted by user',
+            },
+          ],
+        }),
+      })
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        state: {
+          activePhaseId: string
+          pendingConfirmation: unknown
+          phases: Array<{
+            id: string
+            status: string
+            artifactPointers: Array<{
+              lifecycleStatus?: string
+              submission?: {
+                handoff?: { summary?: string }
+                rationale?: string
+                evidence?: unknown[]
+              }
+            }>
+          }>
+          artifactIndex: Array<{
+            lifecycleStatus?: string
+            submission?: {
+              handoff?: { summary?: string }
+              rationale?: string
+              evidence?: unknown[]
+            }
+          }>
+          transitionHistory: Array<{ transitionId: string; result?: string; toPhaseId?: string; stateVersion?: number }>
+        }
+        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean }
+      }
+
+      expect(body.workflow).toMatchObject({
+        status: 'running',
+        activePhaseId: 'specify',
+        pendingConfirmation: false,
+      })
+      expect(body.state.activePhaseId).toBe('specify')
+      expect(body.state.pendingConfirmation).toBeNull()
+      expect(body.state.phases.find((phase) => phase.id === 'discussion')).toMatchObject({
+        status: 'completed',
+      })
+      expect(body.state.phases.find((phase) => phase.id === 'specify')).toMatchObject({
+        status: 'running',
+      })
+      expect(body.state.phases.find((phase) => phase.id === 'discussion')?.artifactPointers).toContainEqual(
+        expect.objectContaining({
+          lifecycleStatus: 'accepted',
+          submission: expect.objectContaining({
+            handoff: expect.objectContaining({ summary: 'User reviewed the discussion output.' }),
+            rationale: 'User manually confirmed this phase is complete.',
+            evidence: [
+              expect.objectContaining({
+                kind: 'note',
+                label: 'Manual review',
+                ref: 'discussion accepted by user',
+              }),
+            ],
+          }),
+        }),
+      )
+      expect(body.state.artifactIndex).toContainEqual(expect.objectContaining({
+        lifecycleStatus: 'accepted',
+        submission: expect.objectContaining({
+          rationale: 'User manually confirmed this phase is complete.',
+        }),
+      }))
+      expect(body.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'manual-complete-discussion',
+        result: 'accepted',
+        toPhaseId: 'specify',
+        stateVersion: expect.any(Number),
+      }))
+      expectNoAbsolutePathLeak(body.workflow)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition manual_complete should reject stale stateVersion without advancing', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-171717171717'
+      const workDir = path.join(tmpDir, 'api-workflow-manual-stale')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId, {
+        status: 'running',
+        workflowStatus: 'running',
+        activePhaseId: 'discussion',
+        phases: [
+          {
+            id: 'discussion',
+            index: 0,
+            status: 'running',
+            artifactPointers: [],
+          },
+          {
+            id: 'specify',
+            index: 1,
+            status: 'created',
+            artifactPointers: [],
+          },
+        ],
+        transitionHistory: [],
+        artifactIndex: [],
+        pendingConfirmation: null,
+        stateVersion: 3,
+        revision: 3,
+      }))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'manual_complete',
+          stateVersion: 2,
+          transitionId: 'manual-stale-discussion',
+          handoff: {
+            summary: 'User reviewed the discussion output.',
+            artifacts: [],
+          },
+          rationale: 'User manually confirmed this phase is complete.',
+          evidence: [],
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_STATE_STALE')
+      expectNoAbsolutePathLeak(body)
+
+      const stateRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      const stateBody = (await stateRes.json()) as {
+        state: { activePhaseId: string; pendingConfirmation: unknown }
+        workflow: { activePhaseId: string; pendingConfirmation: boolean }
+      }
+      expect(stateBody.state.activePhaseId).toBe('discussion')
+      expect(stateBody.workflow.pendingConfirmation).toBe(false)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition manual_complete should reject unresolved pending confirmation conflicts', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-181818181817'
+      const workDir = path.join(tmpDir, 'api-workflow-manual-pending-conflict')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'manual_complete',
+          stateVersion: 3,
+          transitionId: 'manual-conflicts-with-pending',
+          handoff: {
+            summary: 'User tries to bypass a pending agent completion.',
+            artifacts: [],
+          },
+          rationale: 'User manually confirmed this phase is complete.',
+          evidence: [],
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_PENDING_CONFLICT')
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition confirm final phase should persist a readable final report artifact', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-191919191917'
+      const workDir = path.join(tmpDir, 'api-workflow-final-confirm-report')
+      await writeWorkflowSessionState(sessionId, makeFinalPendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Confirm the final workflow phase'),
+      ])
+
+      const transitionRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'confirm',
+          stateVersion: 3,
+          transitionId: 'confirm-final-discussion-ready',
+        }),
+      })
+      expect(transitionRes.status).toBe(200)
+      const transitionBody = (await transitionRes.json()) as {
+        workflow: { status: string; reportPointer?: Record<string, unknown> }
+      }
+
+      expect(transitionBody.workflow).toMatchObject({
+        status: 'completed',
+        reportPointer: {
+          kind: 'final-report',
+          sessionId,
+          artifactId: 'final',
+        },
+      })
+
+      const reportRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/report`)
+      expect(reportRes.status).toBe(200)
+      const reportBody = (await reportRes.json()) as {
+        pointer: Record<string, unknown>
+        report: {
+          sessionId: string
+          status?: string
+          conversationSummary?: string
+          phaseSummaries: Array<{ phaseId: string; status: string }>
+        }
+      }
+
+      expect(reportBody.pointer).toEqual(transitionBody.workflow.reportPointer)
+      expect(reportBody.report).toMatchObject({
+        sessionId,
+        status: 'completed',
+        conversationSummary: 'Workflow completed.',
+      })
+      expect(reportBody.report.phaseSummaries).toContainEqual(expect.objectContaining({
+        phaseId: 'discussion',
+        status: 'completed',
+      }))
+      expectNoAbsolutePathLeak(reportBody)
+    })
+
+    it('POST /api/sessions should reject invalid workflow payloads without partial transcripts or artifacts', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-invalid-workflow-'))
+      const cases: Array<{
+        name: string
+        workflow: unknown
+        code: typeof WORKFLOW_ERROR_CODES[number]
+      }> = [
+        {
+          name: 'missing templateId',
+          workflow: {},
+          code: 'WORKFLOW_TEMPLATE_INVALID',
+        },
+        {
+          name: 'unknown templateId',
+          workflow: { templateId: 'missing-template' },
+          code: 'WORKFLOW_TEMPLATE_NOT_FOUND',
+        },
+        {
+          name: 'initial phase is not the first phase',
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'specify',
+          },
+          code: 'WORKFLOW_TRANSITION_INVALID',
+        },
+        {
+          name: 'unknown template source',
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'remote',
+          },
+          code: 'WORKFLOW_TEMPLATE_INVALID',
+        },
+        {
+          name: 'unknown workflow field',
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            unexpected: true,
+          },
+          code: 'WORKFLOW_TEMPLATE_INVALID',
+        },
+      ]
+
+      for (const testCase of cases) {
+        const projectsBefore = await collectFiles(path.join(tmpDir, 'projects'))
+        const workflowArtifactsBefore = await collectFiles(path.join(tmpDir, 'cc-haha', 'workflow-sessions'))
+
+        const res = await fetch(`${baseUrl}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workDir, workflow: testCase.workflow }),
+        })
+        const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+        expect(res.status, testCase.name).toBe(400)
+        expectWorkflowErrorShape(body, testCase.code)
+        expectNoAbsolutePathLeak(body)
+        expect(await collectFiles(path.join(tmpDir, 'projects')), testCase.name).toEqual(projectsBefore)
+        expect(
+          await collectFiles(path.join(tmpDir, 'cc-haha', 'workflow-sessions')),
+          testCase.name,
+        ).toEqual(workflowArtifactsBefore)
+      }
+    })
+
+    it('GET /api/workflows/templates should return builtin templates and invalid user template issues', async () => {
+      const workflowConfigPath = path.join(tmpDir, 'cc-haha', 'workflows.json')
+      await fs.mkdir(path.dirname(workflowConfigPath), { recursive: true })
+      await fs.writeFile(
+        workflowConfigPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          templates: [
+            {
+              id: 'invalid-user-template',
+              version: '1',
+              name: 'Invalid user template',
+              phases: [],
+            },
+          ],
+        }),
+        'utf-8',
+      )
+
+      const res = await fetch(`${baseUrl}/api/workflows/templates`)
+      expect(res.status).toBe(200)
+
+      const body = (await res.json()) as {
+        templates: Array<{
+          id: string
+          source: string
+          version: string
+          name: string
+          description?: string
+          phaseCount: number
+          firstPhaseId: string
+          phaseNames?: string[]
+        }>
+        invalidTemplates: Array<{
+          source: string
+          templateId?: string
+          path: string
+          code: string
+          message: string
+          severity: string
+        }>
+      }
+      expect(body.templates).toContainEqual(expect.objectContaining({
+        id: 'agent-development',
+        source: 'builtin',
+        version: '1',
+        name: 'Agent Development',
+        description: expect.any(String),
+        phaseCount: 5,
+        firstPhaseId: 'discussion',
+        phaseNames: [
+          'Discussion',
+          'Specify',
+          'Plan',
+          'Tasks',
+          'Implement',
+        ],
+      }))
+      expect(body.templates.some((template) => template.id === 'invalid-user-template')).toBe(false)
+      expect(body.invalidTemplates).toContainEqual({
+        source: 'user-config',
+        templateId: 'invalid-user-template',
+        path: '$.templates[0].phases',
+        code: 'WORKFLOW_TEMPLATE_INVALID_PHASES',
+        message: 'Template phases must be a non-empty ordered array.',
+        severity: 'error',
+      })
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('GET /api/sessions/:id/workflow should be mode-gated and omit absolute artifact paths', async () => {
+      const dialogueSessionId = 'aaaaaaaa-bbbb-cccc-dddd-010101010101'
+      await writeSessionFile('-tmp-dialogue-workflow-api', dialogueSessionId, [
+        makeSnapshotEntry(),
+        makeSessionMetaEntry(path.join(tmpDir, 'dialogue-workflow-api')),
+        makeUserEntry('Dialogue session should not expose workflow state'),
+      ])
+
+      const dialogueRes = await fetch(`${baseUrl}/api/sessions/${dialogueSessionId}/workflow`)
+      const dialogueBody = (await dialogueRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect([404, 409]).toContain(dialogueRes.status)
+      expectWorkflowErrorShape(dialogueBody, 'WORKFLOW_NOT_ENABLED')
+      expectNoAbsolutePathLeak(dialogueBody)
+
+      const missingRes = await fetch(
+        `${baseUrl}/api/sessions/00000000-0000-0000-0000-000000000000/workflow`,
+      )
+      expect(missingRes.status).toBe(404)
+      expectNoAbsolutePathLeak(await missingRes.json())
+    })
+
+    it('GET /api/sessions/:id/workflow/report should be mode-gated and hide artifact paths until ready', async () => {
+      const dialogueSessionId = 'aaaaaaaa-bbbb-cccc-dddd-020202020202'
+      await writeSessionFile('-tmp-dialogue-workflow-report-api', dialogueSessionId, [
+        makeSnapshotEntry(),
+        makeSessionMetaEntry(path.join(tmpDir, 'dialogue-workflow-report-api')),
+        makeUserEntry('Dialogue session should not expose workflow report'),
+      ])
+
+      const dialogueRes = await fetch(`${baseUrl}/api/sessions/${dialogueSessionId}/workflow/report`)
+      const dialogueBody = (await dialogueRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect([404, 409]).toContain(dialogueRes.status)
+      expectWorkflowErrorShape(dialogueBody, 'WORKFLOW_NOT_ENABLED')
+      expectNoAbsolutePathLeak(dialogueBody)
+
+      const workflowSessionId = 'aaaaaaaa-bbbb-cccc-dddd-030303030303'
+      const workDir = path.join(tmpDir, 'workflow-report-not-ready')
+      await writeSessionFile(sanitizePath(workDir), workflowSessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(workflowSessionId, workDir, {
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Workflow report is not ready yet'),
+      ])
+
+      const notReadyRes = await fetch(`${baseUrl}/api/sessions/${workflowSessionId}/workflow/report`)
+      const notReadyBody = (await notReadyRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect(notReadyRes.status).toBe(404)
+      expectWorkflowErrorShape(notReadyBody, 'WORKFLOW_REPORT_NOT_READY')
+      expectNoAbsolutePathLeak(notReadyBody)
+    })
+
+    it('workflow resume recovery restores companion state and records a resume transition', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-050505050505'
+      const workDir = path.join(tmpDir, 'workflow-resume-recovery')
+      await writeWorkflowSessionStateFixture(sessionId, 'resume-stale-template-state.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'requirements-clarification',
+          sourceTemplateStatus: 'current',
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Resume the workflow without starting over'),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        state: {
+          status: string
+          activePhaseId: string
+          artifactIndex: unknown[]
+          pendingConfirmation: { status: string; artifactRefs: unknown[] } | null
+          phaseRuns: Array<{
+            phaseId: string
+            outputArtifactRefs: unknown[]
+            modelResolution?: unknown
+          }>
+          transitionHistory: Array<{ authority?: string; decision?: string }>
+        }
+        workflow: { activePhaseId: string; pendingConfirmation: boolean }
+      }
+
+      expect(body.state.status).toBe('resumed')
+      expect(body.state.activePhaseId).toBe('implementation')
+      expect(body.workflow.activePhaseId).toBe('implementation')
+      expect(body.workflow.pendingConfirmation).toBe(true)
+      expect(body.state.artifactIndex).toHaveLength(2)
+      expect(body.state.pendingConfirmation).toMatchObject({
+        status: 'pending',
+        artifactRefs: [expect.objectContaining({ artifactId: 'design-summary' })],
+      })
+      expect(body.state.phaseRuns.find((phase) => phase.phaseId === 'technical-design')).toMatchObject({
+        outputArtifactRefs: [expect.objectContaining({ artifactId: 'design-summary' })],
+        modelResolution: {
+          requestedModel: 'claude-opus-4-7',
+          actualModel: 'claude-sonnet-4-5',
+          providerId: 'anthropic',
+          fallbackApplied: true,
+          fallbackReason: 'requested model unavailable',
+        },
+      })
+      expect(body.state.transitionHistory).toContainEqual(expect.objectContaining({
+        authority: 'resume',
+        decision: 'resumed',
+      }))
+      expectNoAbsolutePathLeak(body.workflow)
+    })
+
+    it('workflow resume recovery exposes stale template and model fallback state in summary', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-060606060606'
+      const workDir = path.join(tmpDir, 'workflow-stale-template-recovery')
+      await writeWorkflowSessionStateFixture(sessionId, 'resume-stale-template-state.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          activePhaseId: 'implementation',
+          sourceTemplateStatus: 'current',
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        workflow: {
+          sourceTemplateStatus?: string
+          model?: {
+            requestedModel: string
+            actualModel: string
+            fallbackApplied: boolean
+            fallbackReason: string
+          }
+        }
+      }
+
+      expect(body.workflow).toMatchObject({
+        sourceTemplateStatus: 'stale-template',
+        model: {
+          requestedModel: 'claude-opus-4-7',
+          actualModel: 'claude-sonnet-4-5',
+          fallbackApplied: true,
+          fallbackReason: 'requested model unavailable',
+        },
+      })
+      expectNoAbsolutePathLeak(body.workflow)
+    })
+
+    it('workflow resume recovery exposes missing template state without invalidating snapshot execution', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-070707070707'
+      const workDir = path.join(tmpDir, 'workflow-missing-template-recovery')
+      await writeWorkflowSessionStateFixture(sessionId, 'resume-missing-template-state.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateSource: 'user',
+          activePhaseId: 'implementation',
+          sourceTemplateStatus: 'current',
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        state: {
+          sourceTemplateStatus: string
+          templateSnapshot: { id: string; source: string; phases: unknown[] }
+        }
+        workflow: { sourceTemplateStatus?: string; activePhaseId: string }
+      }
+
+      expect(body.state.sourceTemplateStatus).toBe('missing-template')
+      expect(body.state.templateSnapshot).toMatchObject({
+        id: 'user-delivery-plan',
+        source: 'user',
+        phases: expect.any(Array),
+      })
+      expect(body.workflow).toMatchObject({
+        activePhaseId: 'implementation',
+        sourceTemplateStatus: 'missing-template',
+      })
+    })
+
+    it.each([
+      ['stale-template', 'resume-stale-template-state.json'],
+      ['missing-template', 'resume-missing-template-state.json'],
+    ] as const)('POST /api/sessions/:id/workflow/transition should block unsafe advancement for %s resume state', async (
+      _status,
+      fixtureName,
+    ) => {
+      const sessionId = `aaaaaaaa-bbbb-cccc-dddd-${_status === 'stale-template' ? '071111111111' : '072222222222'}`
+      const workDir = path.join(tmpDir, `workflow-${_status}-transition-blocked`)
+      await writeWorkflowSessionStateFixture(sessionId, fixtureName)
+      const stateBefore = rewriteWorkflowFixtureSessionIds(
+        await loadWorkflowSessionFixture(fixtureName),
+        sessionId,
+      ) as Record<string, unknown>
+      const phaseId = stateBefore.activePhaseId
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          activePhaseId: phaseId,
+          sourceTemplateStatus: 'current',
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Attempt unsafe workflow advancement after resume'),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId,
+          action: 'manual_complete',
+          stateVersion: stateBefore.stateVersion,
+          transitionId: `unsafe-${_status}-advance`,
+          handoff: {
+            summary: 'This should not advance because the resume state is not fully trusted.',
+            artifacts: [],
+          },
+          rationale: 'Attempting an unsafe transition from a recovery state.',
+          evidence: [],
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_STATE_CONFLICT')
+
+      const persistedStatePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+      const stateAfter = JSON.parse(await fs.readFile(persistedStatePath, 'utf-8')) as Record<string, unknown>
+      expect(stateAfter.activePhaseId).toBe(stateBefore.activePhaseId)
+      expect(stateAfter.workflowStatus).toBe(stateBefore.workflowStatus)
+      expect(stateAfter.stateVersion).toBe(stateBefore.stateVersion)
+    })
+
+    it('workflow report recovery returns the persisted final report pointer and body', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-080808080808'
+      const workDir = path.join(tmpDir, 'workflow-final-report-recovery')
+      const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+      await writeWorkflowSessionStateFixture(sessionId, 'completed-final-report-state.json')
+      const report = await writeWorkflowFinalReportFixture(sessionId, 'completed-final-report.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          status: 'completed',
+          workflowStatus: 'completed',
+          activePhaseId: null,
+          reportPointer,
+          reportRef: reportPointer,
+        }),
+        makeAssistantEntry('Workflow completed. Final report is available.'),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/report`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        pointer: Record<string, unknown>
+        report: Record<string, unknown>
+      }
+
+      expect(body.pointer).toEqual(reportPointer)
+      expect(body.report).toMatchObject(report)
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('workflow report recovery preserves unknown final report fields through the API', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-081111111111'
+      const workDir = path.join(tmpDir, 'workflow-final-report-unknown-fields')
+      const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+      await writeWorkflowSessionStateFixture(sessionId, 'completed-final-report-state.json')
+      await writeWorkflowFinalReportFixture(sessionId, 'final-report-with-unknown-fields.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          status: 'completed',
+          workflowStatus: 'completed',
+          activePhaseId: null,
+          reportPointer,
+          reportRef: reportPointer,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/report`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        report: {
+          futureReportField?: unknown
+          phaseSummaries: Array<{ futurePhaseSummaryField?: unknown }>
+        }
+      }
+
+      expect(body.report.futureReportField).toEqual({ preserved: true })
+      expect(body.report.phaseSummaries[0]?.futurePhaseSummaryField).toBe('preserve me')
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('workflow report recovery distinguishes unavailable report artifacts from report-not-ready', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-090909090909'
+      const workDir = path.join(tmpDir, 'workflow-report-unavailable')
+      const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          status: 'completed',
+          workflowStatus: 'completed',
+          activePhaseId: null,
+          reportPointer,
+          reportRef: reportPointer,
+        }),
+        makeAssistantEntry('Workflow completed before report recovery was checked.'),
+      ])
+      const reportDir = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports')
+      await fs.mkdir(reportDir, { recursive: true })
+      const filesBefore = await collectFiles(reportDir)
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/report`)
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(await collectFiles(reportDir)).toEqual(filesBefore)
+      expect(res.status).toBe(404)
+      expectWorkflowErrorShape(body, 'WORKFLOW_REPORT_UNAVAILABLE')
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('workflow report recovery treats corrupt reports as unavailable without regenerating them', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-091111111111'
+      const workDir = path.join(tmpDir, 'workflow-corrupt-report-unavailable')
+      const reportPointer = makeWorkflowPointer(sessionId, 'final-report', 'final')
+      await writeWorkflowSessionStateFixture(sessionId, 'completed-final-report-state.json')
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          status: 'completed',
+          workflowStatus: 'completed',
+          activePhaseId: null,
+          reportPointer,
+          reportRef: reportPointer,
+        }),
+      ])
+      const reportPath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+      await fs.mkdir(path.dirname(reportPath), { recursive: true })
+      await fs.copyFile(
+        path.join(process.cwd(), 'src/server/services/__fixtures__/workflow-sessions/corrupt-final-report.json'),
+        reportPath,
+      )
+      const corruptReportBefore = await fs.readFile(reportPath, 'utf-8')
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/report`)
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect(res.status).toBe(404)
+      expectWorkflowErrorShape(body, 'WORKFLOW_REPORT_UNAVAILABLE')
+      expect(await fs.readFile(reportPath, 'utf-8')).toBe(corruptReportBefore)
+      expectNoAbsolutePathLeak(body)
+    })
+
+    it('workflow resume recovery keeps old dialogue fixtures in dialogue mode', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-101010101010'
+      const fixturePath = path.join(
+        process.cwd(),
+        'src/server/services/__fixtures__/workflow-sessions/old-dialogue-session.json',
+      )
+      const entries = JSON.parse(await fs.readFile(fixturePath, 'utf-8')) as Array<Record<string, unknown>>
+      await writeSessionFile('-tmp-old-dialogue-fixture', sessionId, entries.map((entry) => ({
+        ...entry,
+        sessionId,
+      })))
+
+      const detailRes = await fetch(`${baseUrl}/api/sessions/${sessionId}`)
+      expect(detailRes.status).toBe(200)
+      const detail = (await detailRes.json()) as { workflow?: unknown; messages: unknown[] }
+      expect('workflow' in detail).toBe(false)
+      expect(detail.messages).toHaveLength(2)
+
+      const workflowRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
+      const workflowBody = (await workflowRes.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      expect(workflowRes.status).toBe(409)
+      expectWorkflowErrorShape(workflowBody, 'WORKFLOW_NOT_ENABLED')
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should reject dialogue sessions with a stable workflow error', async () => {
+      const dialogueSessionId = 'aaaaaaaa-bbbb-cccc-dddd-040404040404'
+      await writeSessionFile('-tmp-dialogue-workflow-transition-api', dialogueSessionId, [
+        makeSnapshotEntry(),
+        makeSessionMetaEntry(path.join(tmpDir, 'dialogue-workflow-transition-api')),
+        makeUserEntry('Dialogue session should not transition workflow'),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${dialogueSessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'requirements-clarification',
+          action: 'confirm',
+          transitionId: 'transition-1',
+        }),
+      })
+      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+
+      expect([404, 409]).toContain(res.status)
+      expectWorkflowErrorShape(body, 'WORKFLOW_NOT_ENABLED')
+      expectNoAbsolutePathLeak(body)
+    })
   })
 
   it('GET /api/sessions/repository-context should return branch launch metadata', async () => {

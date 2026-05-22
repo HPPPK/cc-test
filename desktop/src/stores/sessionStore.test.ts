@@ -16,8 +16,29 @@ vi.mock('../api/sessions', () => ({
 
 import { useSessionStore } from './sessionStore'
 import { useTabStore } from './tabStore'
+import type { WorkflowSessionSummary } from '../types/session'
 
 const initialState = useSessionStore.getState()
+
+const workflowSummary: WorkflowSessionSummary = {
+  mode: 'workflow',
+  templateId: 'requirements-to-implementation',
+  templateVersion: '1',
+  templateSource: 'builtin',
+  templateSnapshotId: 'snapshot-1',
+  status: 'created',
+  activePhaseId: 'requirements-clarification',
+  activePhaseIndex: 0,
+  phaseCount: 5,
+  pendingConfirmation: false,
+  statePointer: {
+    kind: 'workflow-state',
+    sessionId: 'session-workflow-1',
+    artifactId: 'state',
+    schemaVersion: 1,
+    createdAt: '2026-05-20T00:00:00.000Z',
+  },
+}
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -164,5 +185,167 @@ describe('sessionStore', () => {
     })
     expect(useSessionStore.getState().sessions[0]?.workDir)
       .toBe('/workspace/repo/.claude/worktrees/desktop-feature-rail-12345678')
+  })
+
+  it('forwards workflow options when creating a workflow session', async () => {
+    createMock.mockResolvedValue({
+      sessionId: 'session-workflow-1',
+      workDir: '/workspace/repo',
+      workflow: workflowSummary,
+    })
+    listMock.mockImplementation(() => new Promise(() => {}))
+
+    await (useSessionStore.getState().createSession as any)('/workspace/repo', {
+      workflow: {
+        templateId: 'requirements-to-implementation',
+        templateSource: 'builtin',
+        initialPhaseId: 'requirements-clarification',
+      },
+    })
+
+    expect(createMock).toHaveBeenCalledWith({
+      workDir: '/workspace/repo',
+      workflow: {
+        templateId: 'requirements-to-implementation',
+        templateSource: 'builtin',
+        initialPhaseId: 'requirements-clarification',
+      },
+    })
+  })
+
+  it('adds an optimistic workflow summary only when the create response includes one', async () => {
+    createMock.mockResolvedValue({
+      sessionId: 'session-workflow-1',
+      workDir: '/workspace/repo',
+      workflow: workflowSummary,
+    })
+    listMock.mockImplementation(() => new Promise(() => {}))
+
+    await (useSessionStore.getState().createSession as any)('/workspace/repo', {
+      workflow: { templateId: 'requirements-to-implementation' },
+    })
+
+    expect(useSessionStore.getState().sessions[0]).toMatchObject({
+      id: 'session-workflow-1',
+      workflow: workflowSummary,
+    })
+  })
+
+  it('does not invent workflow metadata for normal dialogue create responses', async () => {
+    createMock.mockResolvedValue({
+      sessionId: 'session-dialogue-1',
+      workDir: '/workspace/repo',
+    })
+    listMock.mockImplementation(() => new Promise(() => {}))
+
+    await useSessionStore.getState().createSession('/workspace/repo')
+
+    expect('workflow' in (useSessionStore.getState().sessions[0] as Record<string, unknown>)).toBe(false)
+  })
+
+  it('preserves optional workflow summaries when fetched sessions include them', async () => {
+    window.localStorage.setItem('workflow-state', JSON.stringify({
+      sessionId: 'session-workflow-1',
+      activePhaseId: 'stale-local-phase',
+      status: 'completed',
+    }))
+    listMock.mockResolvedValue({
+      sessions: [{
+        id: 'session-workflow-1',
+        title: 'Workflow session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:01.000Z',
+        messageCount: 0,
+        projectPath: '',
+        workDir: '/workspace/repo',
+        workDirExists: true,
+        workflow: workflowSummary,
+      }],
+      total: 1,
+    })
+
+    await useSessionStore.getState().fetchSessions()
+
+    expect(useSessionStore.getState().sessions[0]).toMatchObject({
+      id: 'session-workflow-1',
+      workflow: workflowSummary,
+    })
+    expect(useSessionStore.getState().sessions[0]?.workflow?.activePhaseId)
+      .toBe('requirements-clarification')
+  })
+
+  it('keeps a newer live workflow summary when a background refresh returns stale metadata', async () => {
+    const liveWorkflow: WorkflowSessionSummary = {
+      ...workflowSummary,
+      status: 'running',
+      transitionAuthority: 'user-confirmation',
+      statePointer: {
+        ...workflowSummary.statePointer,
+        updatedAt: '2026-05-20T00:00:05.000Z',
+      },
+    }
+    useSessionStore.setState({
+      sessions: [{
+        id: 'session-workflow-1',
+        title: 'Workflow session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:05.000Z',
+        messageCount: 1,
+        projectPath: '',
+        workDir: '/workspace/repo',
+        workDirExists: true,
+        workflow: liveWorkflow,
+      }],
+    })
+    listMock.mockResolvedValue({
+      sessions: [{
+        id: 'session-workflow-1',
+        title: 'Workflow session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:01.000Z',
+        messageCount: 1,
+        projectPath: '',
+        workDir: '/workspace/repo',
+        workDirExists: true,
+        workflow: {
+          ...workflowSummary,
+          statePointer: {
+            ...workflowSummary.statePointer,
+            updatedAt: '2026-05-20T00:00:00.000Z',
+          },
+        },
+      }],
+      total: 1,
+    })
+
+    await useSessionStore.getState().fetchSessions()
+
+    expect(useSessionStore.getState().sessions[0]?.workflow).toMatchObject({
+      status: 'running',
+      transitionAuthority: 'user-confirmation',
+      statePointer: {
+        updatedAt: '2026-05-20T00:00:05.000Z',
+      },
+    })
+  })
+
+  it('does not invent workflow metadata when fetched sessions omit workflow summaries', async () => {
+    listMock.mockResolvedValue({
+      sessions: [{
+        id: 'session-dialogue-1',
+        title: 'Dialogue session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:01.000Z',
+        messageCount: 0,
+        projectPath: '',
+        workDir: '/workspace/repo',
+        workDirExists: true,
+      }],
+      total: 1,
+    })
+
+    await useSessionStore.getState().fetchSessions()
+
+    expect('workflow' in (useSessionStore.getState().sessions[0] as Record<string, unknown>)).toBe(false)
   })
 })

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "extended-agent-development",
+      "version": "1",
+      "name": "Extended Agent Development",
+      "description": "A valid linear workflow with more than five phases.",
+      "phases": [
+        {
+          "id": "discussion",
+          "name": "Discussion",
+          "instructions": "Clarify the goal and constraints.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "The goal is understood."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "specify",
+          "name": "Specify",
+          "instructions": "Write requirements.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Requirements are testable."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "research",
+          "name": "Research",
+          "instructions": "Resolve feasibility questions.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Feasibility risks are resolved."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "plan",
+          "name": "Plan",
+          "instructions": "Create a technical plan.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "The plan is reviewable."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "tasks",
+          "name": "Tasks",
+          "instructions": "Create executable tasks.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Tasks are dependency-aware."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "implement",
+          "name": "Implement",
+          "instructions": "Execute tasks.",
+          "completionCriteria": {
+            "type": "agent-reported",
+            "description": "Implementation evidence is recorded."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "verify",
+          "name": "Verify",
+          "instructions": "Run verification.",
+          "completionCriteria": {
+            "type": "agent-reported",
+            "description": "Verification evidence is recorded."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "retro",
+          "name": "Retro",
+          "instructions": "Capture follow-up learning.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Follow-up learning and residual risk are recorded."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -35,10 +35,6 @@ async function waitForServer(url: string): Promise<void> {
   throw new Error(`Timed out waiting for server at ${url}`)
 }
 
-function randomPort(): number {
-  return 18000 + Math.floor(Math.random() * 10000)
-}
-
 function resolvePrivateLanBaseUrl(port: number): string | null {
   for (const entries of Object.values(os.networkInterfaces())) {
     for (const entry of entries ?? []) {
@@ -66,8 +62,9 @@ async function startRemoteServer(options: { authRequired?: boolean } = {}): Prom
     delete process.env.SERVER_AUTH_REQUIRED
   }
 
-  const port = randomPort()
-  server = startServer(port, '0.0.0.0')
+  server = startServer(0, '0.0.0.0')
+  const port = server.port
+  ProviderService.setServerPort(port)
   baseUrl = `http://127.0.0.1:${port}`
   wsBaseUrl = `ws://127.0.0.1:${port}`
   lanBaseUrl = resolvePrivateLanBaseUrl(port) ?? ''

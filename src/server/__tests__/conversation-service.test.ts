@@ -22,6 +22,7 @@ describe('ConversationService', () => {
   let originalShell: string | undefined
   let originalZdotdir: string | undefined
   let originalDisableTerminalShellEnv: string | undefined
+  let originalWorkflowSessionId: string | undefined
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-haha-conversation-service-'))
@@ -39,6 +40,7 @@ describe('ConversationService', () => {
     originalShell = process.env.SHELL
     originalZdotdir = process.env.ZDOTDIR
     originalDisableTerminalShellEnv = process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
+    originalWorkflowSessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID
 
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     process.env.ANTHROPIC_API_KEY = 'stale-parent-api-key'
@@ -51,6 +53,7 @@ describe('ConversationService', () => {
     delete process.env.CLAUDE_CODE_ENTRYPOINT
     delete process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST
     delete process.env.CLAUDE_CODE_DIAGNOSTICS_FILE
+    process.env.CC_HAHA_WORKFLOW_SESSION_ID = 'stale-parent-workflow-session'
     process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = '1'
     resetTerminalShellEnvironmentCacheForTests()
   })
@@ -97,6 +100,9 @@ describe('ConversationService', () => {
 
     if (originalDisableTerminalShellEnv === undefined) delete process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
     else process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = originalDisableTerminalShellEnv
+
+    if (originalWorkflowSessionId === undefined) delete process.env.CC_HAHA_WORKFLOW_SESSION_ID
+    else process.env.CC_HAHA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
 
     resetTerminalShellEnvironmentCacheForTests()
     await fs.rm(tmpDir, { recursive: true, force: true })
@@ -422,6 +428,38 @@ describe('ConversationService', () => {
     expect(args).toContain('--include-partial-messages')
     expect(args).toContain('--sdk-url')
     expect(args).toContain('--replay-user-messages')
+  })
+
+  test('buildSessionCliArgs preserves workflow read-only tool denies in bypass mode', () => {
+    const service = new ConversationService() as any
+    const args = service.buildSessionCliArgs(
+      '123e4567-e89b-12d3-a456-426614174000',
+      'ws://127.0.0.1:3456/sdk/test-session?token=test-token',
+      false,
+      {
+        permissionMode: 'bypassPermissions',
+        disallowedTools: ['Write', 'Edit', 'MultiEdit', 'Bash', 'PowerShell', 'Agent'],
+      },
+    ) as string[]
+
+    const denyIndex = args.indexOf('--disallowed-tools')
+    expect(denyIndex).toBeGreaterThan(-1)
+    expect(args[denyIndex + 1]).toBe('Write,Edit,MultiEdit,Bash,PowerShell,Agent')
+    expect(args).toContain('--dangerously-skip-permissions')
+  })
+
+  test('buildChildEnv passes workflow context to desktop SDK CLI sessions only', async () => {
+    const service = new ConversationService() as any
+    const sdkEnv = (await service.buildChildEnv(
+      '/tmp',
+      'ws://127.0.0.1:3456/sdk/workflow-session?token=test-token',
+      { workflowSessionId: 'workflow-session' },
+    )) as Record<string, string>
+    const dialogueEnv = (await service.buildChildEnv('/tmp')) as Record<string, string>
+
+    expect(sdkEnv.CC_HAHA_WORKFLOW_SESSION_ID).toBe('workflow-session')
+    expect(sdkEnv.CC_HAHA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
+    expect(dialogueEnv.CC_HAHA_WORKFLOW_SESSION_ID).toBeUndefined()
   })
 
   test('buildChildEnv asks desktop SDK sessions to wait briefly for MCP tools', async () => {

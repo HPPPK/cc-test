@@ -12,24 +12,67 @@ describe('coverage gate helpers', () => {
     const summary = parseLcov([
       'TN:',
       'SF:src/a.ts',
+      'FNDA:1,covered',
+      'FNDA:0,missing',
       'FNF:4',
       'FNH:3',
+      'BRDA:1,0,0,1',
+      'BRDA:1,0,1,-',
       'BRF:10',
       'BRH:7',
-      'LF:20',
-      'LH:18',
+      'DA:1,1',
+      'DA:2,1',
+      'DA:3,0',
+      'DA:4,1',
+      'DA:5,1',
       'end_of_record',
       'SF:src/b.ts',
+      'FNDA:1,other',
       'FNF:1',
       'FNH:1',
-      'LF:10',
-      'LH:5',
+      'DA:1,1',
+      'DA:2,0',
       'end_of_record',
     ].join('\n'))
 
-    expect(summary.lines.pct).toBe(76.67)
+    expect(summary.lines.pct).toBe(71.43)
     expect(summary.functions.pct).toBe(80)
     expect(summary.branches.pct).toBe(70)
+  })
+
+  test('parses duplicate lcov source records using aggregate counters', () => {
+    const summary = parseLcov([
+      'TN:',
+      'SF:src/a.ts',
+      'FNDA:0,load',
+      'FNF:1',
+      'FNH:0',
+      'BRDA:1,0,0,0',
+      'BRF:1',
+      'BRH:0',
+      'DA:1,0',
+      'DA:2,0',
+      'LF:2',
+      'LH:0',
+      'end_of_record',
+      'TN:',
+      'SF:src/a.ts',
+      'FNDA:2,load',
+      'FNF:1',
+      'FNH:1',
+      'BRDA:1,0,0,1',
+      'BRF:1',
+      'BRH:1',
+      'DA:1,1',
+      'DA:2,0',
+      'LF:2',
+      'LH:1',
+      'end_of_record',
+    ].join('\n'))
+
+    expect(summary.lines).toEqual({ total: 4, covered: 1, pct: 25 })
+    expect(summary.functions).toEqual({ total: 2, covered: 1, pct: 50 })
+    expect(summary.branches).toEqual({ total: 2, covered: 1, pct: 50 })
   })
 
   test('filters lcov records to an explicit source scope', () => {
@@ -38,14 +81,28 @@ describe('coverage gate helpers', () => {
       'SF:/repo/src/server/routes.ts',
       'LF:10',
       'LH:8',
+      'DA:1,1',
+      'DA:2,1',
+      'DA:3,1',
+      'DA:4,1',
+      'DA:5,1',
+      'DA:6,1',
+      'DA:7,1',
+      'DA:8,1',
+      'DA:9,0',
+      'DA:10,0',
       'FNF:2',
       'FNH:2',
+      'FNDA:1,one',
+      'FNDA:1,two',
       'end_of_record',
       'SF:/repo/desktop/src-tauri/target/generated.js',
       'LF:100',
       'LH:0',
+      'DA:1,0',
       'FNF:10',
       'FNH:0',
+      'FNDA:0,generated',
       'end_of_record',
     ].join('\n'), {
       rootDir: '/repo',

@@ -15,16 +15,47 @@
  *   PATCH  /api/sessions/:id        — 重命名会话
  */
 
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { sessionService } from '../services/sessionService.js'
 import { conversationService } from '../services/conversationService.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
-import { closeSessionConnection, getSlashCommands } from '../ws/handler.js'
+import {
+  closeSessionConnection,
+  getSlashCommands,
+  sendToSession,
+  workflowNotificationForDesktop,
+} from '../ws/handler.js'
 import { listSkillSlashCommands, type SkillSlashCommand } from './skills.js'
 import { WorkspaceService } from '../services/workspaceService.js'
 import {
   getRepositoryContext,
   type CreateSessionRepositoryOptions,
 } from '../services/repositoryLaunchService.js'
+import {
+  WorkflowTemplateRegistryService,
+  type WorkflowTemplateRegistryTemplate,
+} from '../services/workflowTemplateRegistryService.js'
+import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
+import { WorkflowReportStore } from '../services/workflowReportStore.js'
+import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
+import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
+import {
+  type CompletionSubmission,
+  type WorkflowSessionCreateOptions,
+  type WorkflowSessionMetadata,
+  type WorkflowSessionState,
+  type WorkflowSessionSummary,
+  type WorkflowTemplate,
+  type WorkflowTransitionRecord,
+  type WorkflowTransitionRequest,
+} from '../services/workflowTypes.js'
+import {
+  stateToWorkflowMetadata,
+  workflowSummaryFromMetadata,
+  workflowSummaryFromState,
+} from '../services/workflowSummary.js'
 import {
   executeSessionRewind,
   getSessionTurnCheckpointDiff,
@@ -33,6 +64,7 @@ import {
   type RewindTargetSelector,
 } from '../services/sessionRewindService.js'
 import { SessionStore } from '../../../adapters/common/session-store.js'
+import { sanitizePath as sanitizePortablePath } from '../../utils/sessionStoragePortable.js'
 
 const workspaceService = new WorkspaceService(
   async (sessionId) => (
@@ -42,6 +74,19 @@ const workspaceService = new WorkspaceService(
   async (sessionId) => sessionService.getSessionMessages(sessionId),
   async (sessionId) => sessionService.getSessionFileHistorySnapshots(sessionId),
 )
+const workflowTemplateRegistryService = new WorkflowTemplateRegistryService()
+const workflowSessionStateService = new WorkflowSessionStateService()
+const workflowReportStore = new WorkflowReportStore()
+const workflowRuntimeService = new WorkflowRuntimeService()
+
+const WORKFLOW_CREATE_KEYS = new Set(['templateId', 'templateSource', 'initialPhaseId'])
+const workflowTransitionPromises = new Map<string, Promise<unknown>>()
+
+class WorkflowApiError extends ApiError {
+  constructor(statusCode: number, code: string, message: string) {
+    super(statusCode, message, code)
+  }
+}
 
 export async function handleSessionsApi(
   req: Request,
@@ -166,6 +211,10 @@ export async function handleSessionsApi(
       return await handleSessionWorkspaceRoute(sessionId, url, segments[4])
     }
 
+    if (subResource === 'workflow') {
+      return await handleWorkflowSessionRoute(req, sessionId, segments[4])
+    }
+
     // Route to conversations handler if sub-resource is 'chat'
     if (subResource === 'chat') {
       // This is handled by the conversations API, but in case the router
@@ -265,9 +314,17 @@ async function handleSessionWorkspaceRoute(
 }
 
 async function createSession(req: Request): Promise<Response> {
-  let body: { workDir?: string; repository?: CreateSessionRepositoryOptions }
+  let body: {
+    workDir?: string
+    repository?: CreateSessionRepositoryOptions
+    workflow?: WorkflowSessionCreateOptions
+  }
   try {
-    body = (await req.json()) as { workDir?: string; repository?: CreateSessionRepositoryOptions }
+    body = (await req.json()) as {
+      workDir?: string
+      repository?: CreateSessionRepositoryOptions
+      workflow?: WorkflowSessionCreateOptions
+    }
   } catch {
     throw ApiError.badRequest('Invalid JSON body')
   }
@@ -288,9 +345,21 @@ async function createSession(req: Request): Promise<Response> {
     }
   }
 
+  const workflowTemplate = body.workflow === undefined
+    ? null
+    : await resolveWorkflowCreateTemplate(body.workflow)
   const result = await sessionService.createSession(body.workDir, body.repository)
+  let response: { sessionId: string; workDir: string; workflow?: WorkflowSessionSummary } = result
+
+  if (workflowTemplate) {
+    response = {
+      ...result,
+      workflow: await createWorkflowSessionMetadata(result.sessionId, result.workDir, workflowTemplate),
+    }
+  }
+
   recentProjectsCache = null
-  return Response.json(result, { status: 201 })
+  return Response.json(response, { status: 201 })
 }
 
 async function getSessionRepositoryContext(url: URL): Promise<Response> {
@@ -300,6 +369,515 @@ async function getSessionRepositoryContext(url: URL): Promise<Response> {
   }
 
   return Response.json(await getRepositoryContext(workDir))
+}
+
+export async function handleWorkflowTemplatesApi(req: Request): Promise<Response> {
+  try {
+    if (req.method !== 'GET') {
+      return Response.json(
+        { error: 'METHOD_NOT_ALLOWED', message: `Method ${req.method} not allowed` },
+        { status: 405 },
+      )
+    }
+
+    const registry = await workflowTemplateRegistryService.listTemplates()
+    return Response.json({
+      templates: registry.templates.map((template) => ({
+        id: template.id,
+        source: template.source,
+        version: template.version,
+        name: template.name,
+        description: template.description,
+        phaseCount: template.phases.length,
+        firstPhaseId: template.phases[0]?.id ?? null,
+        phaseNames: template.phases.map((phase) => phase.name),
+      })),
+      invalidTemplates: registry.invalidTemplates,
+    })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+async function resolveWorkflowCreateTemplate(
+  workflow: WorkflowSessionCreateOptions,
+): Promise<WorkflowTemplateRegistryTemplate> {
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow must be an object')
+  }
+
+  for (const key of Object.keys(workflow)) {
+    if (!WORKFLOW_CREATE_KEYS.has(key)) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', `Unsupported workflow field: ${key}`)
+    }
+  }
+
+  if (typeof workflow.templateId !== 'string' || workflow.templateId.trim().length === 0) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateId is required')
+  }
+
+  if (
+    workflow.templateSource !== undefined &&
+    workflow.templateSource !== 'builtin' &&
+    workflow.templateSource !== 'user'
+  ) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateSource must be builtin or user')
+  }
+
+  if (
+    workflow.initialPhaseId !== undefined &&
+    (typeof workflow.initialPhaseId !== 'string' || workflow.initialPhaseId.trim().length === 0)
+  ) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'workflow.initialPhaseId must be a non-empty string')
+  }
+
+  const registry = await workflowTemplateRegistryService.listTemplates()
+  const candidates = registry.templates.filter((template) =>
+    template.id === workflow.templateId &&
+    (workflow.templateSource === undefined || template.source === workflow.templateSource)
+  )
+
+  if (candidates.length === 0) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
+  }
+  if (candidates.length > 1) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_CONFLICT', 'Workflow template resolution is ambiguous')
+  }
+
+  const template = candidates[0]!
+  const firstPhaseId = template.phases[0]?.id
+  if (!firstPhaseId) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Workflow template has no startable phases')
+  }
+  if (workflow.initialPhaseId !== undefined && workflow.initialPhaseId !== firstPhaseId) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'initialPhaseId must name the first workflow phase')
+  }
+
+  return template
+}
+
+async function createWorkflowSessionMetadata(
+  sessionId: string,
+  workDir: string,
+  registryTemplate: WorkflowTemplateRegistryTemplate,
+): Promise<WorkflowSessionSummary> {
+  const now = new Date().toISOString()
+  const templateSnapshot = toWorkflowTemplate(registryTemplate)
+  const templateSnapshotId = `${registryTemplate.id}-v${registryTemplate.version}`
+  const phases = registryTemplate.phases.map((phase, index) => ({
+    id: phase.id,
+    index,
+    status: 'created' as const,
+    artifactPointers: [],
+  }))
+  const phaseRuns = registryTemplate.phases.map((phase, index) => ({
+    phaseId: phase.id,
+    index,
+    status: 'created' as const,
+    startedAt: null,
+    completedAt: null,
+    instructionsProvenance: {
+      templateId: registryTemplate.id,
+      templateVersion: registryTemplate.version,
+      phaseId: phase.id,
+    },
+    inputArtifactRefs: [],
+    outputArtifactRefs: [],
+    completionChecks: [],
+    modelResolution: null,
+    skillProvenance: [],
+    blockedReason: null,
+  }))
+  const state = {
+    schemaVersion: 1,
+    sessionId,
+    mode: 'workflow',
+    template: {
+      id: registryTemplate.id,
+      version: registryTemplate.version,
+      source: registryTemplate.source,
+      snapshotId: templateSnapshotId,
+      sourceState: 'current',
+    },
+    templateSnapshot,
+    templateIdentity: {
+      id: registryTemplate.id,
+      source: registryTemplate.source,
+      version: registryTemplate.version,
+      registryKey: `${registryTemplate.source}:${registryTemplate.id}`,
+    },
+    sourceTemplateStatus: 'current',
+    status: 'created',
+    workflowStatus: 'created',
+    activePhaseId: registryTemplate.phases[0]?.id ?? null,
+    phases,
+    phaseRuns,
+    transitionHistory: [],
+    artifactIndex: [],
+    finalReportRef: null,
+    stateVersion: 1,
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
+    pendingConfirmation: null,
+  } satisfies WorkflowSessionState
+
+  const { pointer } = await workflowSessionStateService.writeState(sessionId, state)
+  const metadata = stateToWorkflowMetadata(state, pointer)
+  await appendWorkflowMetadata(sessionId, workDir, metadata)
+  return workflowSummaryFromMetadata(metadata)
+}
+
+function toWorkflowTemplate(template: WorkflowTemplateRegistryTemplate): WorkflowTemplate {
+  return {
+    schemaVersion: template.schemaVersion,
+    id: template.id,
+    source: template.source,
+    version: template.version,
+    displayName: template.name,
+    description: template.description,
+    phases: template.phases.map((phase) => ({
+      id: phase.id,
+      label: phase.name,
+      instructions: phase.instructions,
+      requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : null,
+      skillDeclarations: phase.skills.map((skill) => ({
+        ...skill,
+        source: 'template',
+        guidance: skill.reason || '',
+      })),
+      requiredArtifacts: phase.requiredArtifacts.map((artifact) => ({
+        ...artifact,
+        kind: 'json',
+        description: artifact.description || artifact.name || artifact.id,
+      })),
+      completionCriteria: phase.completionCriteria,
+      transitionAuthority: phase.transition.authority,
+      ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
+      ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
+    })),
+    registryKey: `${template.source}:${template.id}`,
+  }
+}
+
+async function appendWorkflowMetadata(
+  sessionId: string,
+  workDir: string,
+  workflow: WorkflowSessionMetadata,
+): Promise<void> {
+  const projectDir = sanitizePortablePath(workDir)
+  const filePath = path.join(configDir(), 'projects', projectDir, `${sessionId}.jsonl`)
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await fs.appendFile(
+    filePath,
+    `${JSON.stringify({
+      type: 'session-meta',
+      isMeta: true,
+      workDir,
+      workflow,
+      timestamp: workflow.updatedAt,
+    })}\n`,
+    'utf-8',
+  )
+}
+
+async function handleWorkflowSessionRoute(
+  req: Request,
+  sessionId: string,
+  workflowResource?: string,
+): Promise<Response> {
+  switch (workflowResource) {
+    case undefined:
+      if (req.method !== 'GET') return methodNotAllowed(req.method)
+      return await getWorkflowState(sessionId)
+    case 'transition':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await transitionWorkflow(req, sessionId)
+    case 'report':
+      if (req.method !== 'GET') return methodNotAllowed(req.method)
+      return await getWorkflowReport(sessionId)
+    default:
+      throw ApiError.notFound(`Unknown workflow resource: ${workflowResource}`)
+  }
+}
+
+async function getWorkflowState(sessionId: string): Promise<Response> {
+  const workflowMetadata = await requireWorkflowSession(sessionId)
+  const stateRead = await workflowSessionStateService.readState(sessionId)
+  if (!stateRead.exists || !stateRead.state) {
+    throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+  }
+  const state = projectWorkflowStateForApi(stateRead.state, workflowMetadata)
+  return Response.json({ state, workflow: workflowSummaryFromState(stateRead.state) })
+}
+
+function projectWorkflowStateForApi(
+  state: WorkflowSessionState,
+  metadata: WorkflowSessionMetadata,
+): WorkflowSessionState {
+  if (!hasResumeRecoveryProjection(state, metadata)) {
+    return state
+  }
+
+  const resumedAt = state.lastResumeAt ?? new Date().toISOString()
+  const resumeTransition = buildResumeTransitionProjection(state, resumedAt)
+
+  return {
+    ...state,
+    status: 'resumed',
+    lastResumeAt: resumedAt,
+    transitionHistory: hasResumeTransition(state.transitionHistory)
+      ? state.transitionHistory
+      : [...state.transitionHistory, resumeTransition],
+    resumeMetadata: {
+      status: 'resumed',
+      trustedStatus: state.status,
+      trustedWorkflowStatus: state.workflowStatus,
+      projectedAt: resumedAt,
+    },
+  }
+}
+
+function hasResumeRecoveryProjection(
+  state: WorkflowSessionState,
+  metadata: WorkflowSessionMetadata,
+): boolean {
+  if (state.status === 'created' || state.workflowStatus === 'created') {
+    return false
+  }
+  return (
+    metadata.activePhaseId !== state.activePhaseId ||
+    metadata.sourceTemplateStatus !== state.sourceTemplateStatus ||
+    metadata.stateRevision !== state.revision
+  )
+}
+
+function hasResumeTransition(transitions: WorkflowTransitionRecord[]): boolean {
+  return transitions.some((transition) =>
+    transition.authority === 'resume' && transition.decision === 'resumed'
+  )
+}
+
+function buildResumeTransitionProjection(
+  state: WorkflowSessionState,
+  resumedAt: string,
+): WorkflowTransitionRecord {
+  return {
+    transitionId: `resume-${state.sessionId}-${state.revision}`,
+    fromStatus: state.status,
+    toStatus: 'resumed',
+    fromPhaseId: state.activePhaseId,
+    toPhaseId: state.activePhaseId,
+    authority: 'resume',
+    decision: 'resumed',
+    completionCheckId: null,
+    createdAt: resumedAt,
+    stateVersion: state.stateVersion,
+    previousRevision: state.revision,
+    nextRevision: state.revision,
+  }
+}
+
+async function transitionWorkflow(req: Request, sessionId: string): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+
+  let body: WorkflowBoundaryTransitionRequest
+  try {
+    body = normalizeWorkflowBoundaryTransitionRequest(await req.json())
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'Workflow transition must be an object')
+  }
+  if (typeof body.phaseId !== 'string' || body.phaseId.length === 0) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'phaseId is required')
+  }
+  if (!isSupportedWorkflowBoundaryAction(body.action)) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'Unsupported workflow transition action')
+  }
+
+  return await enqueueWorkflowTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    assertWorkflowStateTrustedForTransition(stateRead.state)
+
+    const requestedAt = new Date().toISOString()
+    const result = await applyWorkflowBoundaryTransition(stateRead.state, body, requestedAt)
+    const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state)
+    await persistWorkflowFinalReportIfReady(result.state)
+    const detail = await sessionService.getSession(sessionId)
+    const workDir = detail.workDir || process.cwd()
+    await appendWorkflowMetadata(sessionId, workDir, stateToWorkflowMetadata(result.state, pointer))
+    for (const notification of result.notifications) {
+      sendToSession(sessionId, workflowNotificationForDesktop(notification) as any)
+    }
+
+    return Response.json({
+      ok: true,
+      state: result.state,
+      workflow: workflowSummaryFromState(result.state),
+    })
+  })
+}
+
+async function persistWorkflowFinalReportIfReady(state: WorkflowSessionState): Promise<void> {
+  if (!state.finalReportRef) return
+  await workflowReportStore.createFinalReport(state.sessionId, buildWorkflowFinalReport(state))
+}
+
+function assertWorkflowStateTrustedForTransition(state: WorkflowSessionState): void {
+  if (
+    state.sourceTemplateStatus === 'stale-template' ||
+    state.sourceTemplateStatus === 'missing-template'
+  ) {
+    throw workflowError(
+      409,
+      'WORKFLOW_STATE_CONFLICT',
+      'Workflow state was restored from a template recovery state and cannot advance safely',
+    )
+  }
+}
+
+type WorkflowBoundaryTransitionRequest = Omit<WorkflowTransitionRequest, 'action'> & {
+  action: WorkflowTransitionRequest['action'] | CompletionSubmission['status'] | 'manual_complete'
+  stateVersion?: number
+  expectedStateVersion?: number
+  handoff?: unknown
+  rationale?: unknown
+  evidence?: unknown
+}
+
+type WorkflowBoundaryTransitionResult = Awaited<ReturnType<WorkflowRuntimeService['applyTransition']>>
+
+async function applyWorkflowBoundaryTransition(
+  state: WorkflowSessionState,
+  request: WorkflowBoundaryTransitionRequest,
+  requestedAt: string,
+): Promise<WorkflowBoundaryTransitionResult> {
+  if (isCompletionSubmissionAction(request.action)) {
+    const submission = toCompletionSubmission(request)
+    const result = request.action === 'manual_complete'
+      ? await workflowRuntimeService.submitManualCompletion({
+        state,
+        submission,
+        requestedAt,
+        transitionId: request.transitionId,
+      })
+      : await workflowRuntimeService.submitPhaseCompletion({
+        state,
+        submission,
+        requestedAt,
+        transitionId: request.transitionId,
+      })
+    return { state: result.state, notifications: result.notifications }
+  }
+
+  return await workflowRuntimeService.applyTransition({
+    state,
+    request: request as WorkflowTransitionRequest,
+    requestedAt,
+  })
+}
+
+function normalizeWorkflowBoundaryTransitionRequest(value: unknown): WorkflowBoundaryTransitionRequest {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value as WorkflowBoundaryTransitionRequest
+  }
+
+  const request = value as WorkflowBoundaryTransitionRequest
+  if (typeof request.stateVersion === 'number') return request
+  if (typeof request.expectedStateVersion === 'number') {
+    return { ...request, stateVersion: request.expectedStateVersion }
+  }
+  return request
+}
+
+function isSupportedWorkflowBoundaryAction(
+  action: unknown,
+): action is WorkflowBoundaryTransitionRequest['action'] {
+  return (
+    action === 'confirm' ||
+    action === 'reject' ||
+    action === 'retry' ||
+    action === 'manual_complete' ||
+    action === 'ready' ||
+    action === 'blocked' ||
+    action === 'unable'
+  )
+}
+
+function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
+  return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+}
+
+function toCompletionSubmission(request: WorkflowBoundaryTransitionRequest): CompletionSubmission {
+  return {
+    phaseId: request.phaseId,
+    stateVersion: request.stateVersion as number,
+    status: request.action === 'manual_complete' ? 'ready' : request.action as CompletionSubmission['status'],
+    handoff: request.handoff as CompletionSubmission['handoff'],
+    rationale: request.rationale as string,
+    evidence: request.evidence as CompletionSubmission['evidence'],
+  }
+}
+
+function enqueueWorkflowTransition<T>(
+  sessionId: string,
+  transition: () => Promise<T>,
+): Promise<T> {
+  const previous = workflowTransitionPromises.get(sessionId) ?? Promise.resolve()
+  const next = previous.catch(() => {}).then(transition)
+  const tracked = next.then(() => {}, () => {})
+  workflowTransitionPromises.set(sessionId, tracked)
+  return next.finally(() => {
+    if (workflowTransitionPromises.get(sessionId) === tracked) {
+      workflowTransitionPromises.delete(sessionId)
+    }
+  })
+}
+
+async function getWorkflowReport(sessionId: string): Promise<Response> {
+  const workflow = await requireWorkflowSession(sessionId)
+  if (!workflow.reportPointer && !workflow.reportRef) {
+    throw workflowError(404, 'WORKFLOW_REPORT_NOT_READY', 'Workflow report is not ready')
+  }
+
+  const reportRead = await workflowReportStore.readFinalReport(sessionId)
+  if (!reportRead.exists || !reportRead.report) {
+    throw workflowError(404, 'WORKFLOW_REPORT_UNAVAILABLE', 'Workflow report artifact is unavailable')
+  }
+
+  return Response.json({ report: reportRead.report, pointer: workflow.reportPointer ?? workflow.reportRef })
+}
+
+async function requireWorkflowSession(sessionId: string): Promise<WorkflowSessionMetadata> {
+  const detail = await sessionService.getSession(sessionId)
+  if (!detail) {
+    throw ApiError.notFound(`Session not found: ${sessionId}`)
+  }
+  if (!detail.workflow || detail.workflow.mode !== 'workflow') {
+    throw workflowError(409, 'WORKFLOW_NOT_ENABLED', 'Workflow mode is not enabled for this session')
+  }
+  return detail.workflow
+}
+
+function configDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
+}
+
+function workflowError(statusCode: number, code: string, message: string): WorkflowApiError {
+  return new WorkflowApiError(statusCode, code, message)
+}
+
+function methodNotAllowed(method: string): Response {
+  return Response.json(
+    { error: 'METHOD_NOT_ALLOWED', message: `Method ${method} not allowed` },
+    { status: 405 },
+  )
 }
 
 async function requireSessionWorkspace(sessionId: string): Promise<string> {

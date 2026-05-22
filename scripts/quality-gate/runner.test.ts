@@ -31,6 +31,49 @@ describe('quality gate modes', () => {
     expect(lanes.some((lane) => lane.startsWith('baseline:'))).toBe(false)
   })
 
+  test('pr mode includes credential-free workflow session mode smoke', async () => {
+    const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
+    const workflowSmokeLane = lanesForMode('pr').find((lane) => lane.id === 'workflow-session-mode-smoke')
+
+    try {
+      expect(workflowSmokeLane).toBeDefined()
+      expect(workflowSmokeLane?.kind).toBe('command')
+      expect(workflowSmokeLane?.live).toBeUndefined()
+      expect(workflowSmokeLane?.command).toEqual([
+        'bun',
+        'run',
+        'scripts/quality-gate/workflow-session-mode-smoke.ts',
+      ])
+
+      const { report } = await runQualityGate({
+        mode: 'pr',
+        dryRun: true,
+        allowLive: false,
+        baselineTargets: [],
+        rootDir: process.cwd(),
+        artifactsDir,
+        runId: 'workflow-smoke-selector-test',
+        onlyLaneSelectors: ['workflow-session-mode-smoke'],
+      })
+
+      expect(report.summary).toEqual({
+        passed: 0,
+        failed: 0,
+        skipped: 1,
+      })
+      expect(report.results).toHaveLength(1)
+      expect(report.results[0]).toMatchObject({
+        id: 'workflow-session-mode-smoke',
+        category: 'smoke',
+        live: false,
+        status: 'skipped',
+        skipReason: 'dry run',
+      })
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true })
+    }
+  })
+
   test('baseline mode includes live baseline cases but not native checks', () => {
     const lanes = lanesForMode('baseline').map((lane) => lane.id)
     expect(lanes).toContain('baseline-catalog')

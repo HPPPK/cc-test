@@ -72,9 +72,7 @@ function mapTargetTripleToBun(triple: string) {
     case 'x86_64-apple-darwin':
       return 'bun-darwin-x64'
     case 'x86_64-pc-windows-msvc':
-      // Prefer baseline on Windows x64 so older CPUs do not crash before the
-      // desktop app can even start the local sidecar process.
-      return 'bun-windows-x64-baseline'
+      return 'bun-windows-x64'
     case 'aarch64-pc-windows-msvc':
       return 'bun-windows-arm64'
     case 'x86_64-unknown-linux-gnu':
@@ -136,10 +134,6 @@ async function compileExecutable({
       'fflate',
       'sharp',
       'react-devtools-core',
-      // IM adapters —— 可选功能，有平台特定的 native 依赖
-      '@larksuiteoapi/node-sdk',
-      'grammy',
-      'dingtalk-stream',
     ],
     compile: {
       target: bunTarget,

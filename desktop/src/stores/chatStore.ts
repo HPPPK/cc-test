@@ -11,7 +11,7 @@ import { notifyDesktop } from '../lib/desktopNotifications'
 import { deriveSessionTitle, isPlaceholderSessionTitle } from '../lib/sessionTitle'
 import { AGENT_LIFECYCLE_TYPES } from '../types/team'
 import type { ComposerAttachment } from '../lib/composerAttachments'
-import type { MessageEntry } from '../types/session'
+import type { MessageEntry, WorkflowSessionSummary } from '../types/session'
 import type { PermissionMode } from '../types/settings'
 import type { RuntimeSelection } from '../types/runtime'
 import type {
@@ -127,6 +127,15 @@ type ChatStore = {
     requestId: string,
     response: ComputerUsePermissionResponse,
   ) => void
+  sendWorkflowTransition: (
+    sessionId: string,
+    command: {
+      phaseId: string
+      action: 'confirm' | 'reject' | 'retry'
+      transitionId?: string
+      expectedStateVersion?: number
+    },
+  ) => void
   setSessionRuntime: (sessionId: string, selection: RuntimeSelection) => void
   setSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void
   stopGeneration: (sessionId: string) => void
@@ -192,6 +201,19 @@ function clearPendingToolParentUseIds(sessionId: string): void {
   pendingToolParentUseIdsBySession.delete(sessionId)
 }
 const AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS = 160
+
+function isWorkflowSummary(value: unknown): value is WorkflowSessionSummary {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    record.mode === 'workflow' &&
+    typeof record.templateId === 'string' &&
+    (typeof record.activePhaseId === 'string' || record.activePhaseId === null) &&
+    typeof record.activePhaseIndex === 'number' &&
+    typeof record.phaseCount === 'number' &&
+    typeof record.pendingConfirmation === 'boolean'
+  )
+}
 
 let msgCounter = 0
 const nextId = () => `msg-${++msgCounter}-${Date.now()}`
@@ -645,6 +667,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         chatState: response.userConsented === false ? 'idle' : 'tool_executing',
       })),
     }))
+  },
+
+  sendWorkflowTransition: (sessionId, command) => {
+    wsManager.send(sessionId, {
+      type: 'workflow_transition',
+      ...command,
+    })
   },
 
   setSessionRuntime: (sessionId, selection) => {
@@ -1118,6 +1147,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         useTabStore.getState().updateTabTitle(msg.sessionId, msg.title)
         break
       case 'system_notification':
+        if (msg.subtype === 'workflow_state' && isWorkflowSummary(msg.data)) {
+          const workflow = msg.data
+          useSessionStore.setState((state) => ({
+            sessions: state.sessions.map((item) =>
+              item.id === sessionId
+                ? { ...item, workflow, modifiedAt: new Date().toISOString() }
+                : item,
+            ),
+          }))
+        }
         if (msg.subtype === 'slash_commands' && Array.isArray(msg.data)) {
           const incomingCommands = normalizeSlashCommandList(msg.data)
           update((session) => ({

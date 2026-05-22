@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1",
+    "displayName": "Agent Development",
+    "description": "Linear workflow fixture",
+    "phases": []
+  },
+  "templateIdentity": {
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1"
+  },
+  "sourceTemplateStatus": "current",
+  "status": "running",
+  "workflowStatus": "running",
+  "activePhaseId": "plan",
+  "phases": [
+    {
+      "id": "plan",
+      "index": 1,
+      "status": "running",
+      "requestedModel": "provider-a/missing-model",
+      "actualModel": "provider-b/default-model",
+      "fallbackReason": "Requested phase model is unavailable.",
+      "artifactPointers": []
+    }
+  ],
+  "phaseRuns": [
+    {
+      "phaseId": "plan",
+      "index": 1,
+      "status": "running",
+      "startedAt": "2026-05-21T00:10:00.000Z",
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "agent-development",
+        "templateVersion": "1",
+        "phaseId": "plan"
+      },
+      "inputArtifactRefs": [],
+      "outputArtifactRefs": [],
+      "completionChecks": [],
+      "modelResolution": {
+        "requestedModel": "provider-a/missing-model",
+        "actualModel": "provider-b/default-model",
+        "providerId": "provider-b",
+        "source": "main-session-default",
+        "fallbackApplied": true,
+        "fallbackReason": "Requested phase model is unavailable.",
+        "resolvedAt": "2026-05-21T00:10:01.000Z"
+      },
+      "skillProvenance": [],
+      "blockedReason": null
+    }
+  ],
+  "transitionHistory": [
+    {
+      "transitionId": "blocked-1",
+      "fromStatus": "running",
+      "toStatus": "running",
+      "fromPhaseId": "plan",
+      "toPhaseId": "plan",
+      "authority": "completion-check",
+      "decision": "blocked",
+      "result": "blocked",
+      "completionCheckId": null,
+      "artifactRefs": [],
+      "createdAt": "2026-05-21T00:11:00.000Z",
+      "stateVersion": 8
+    },
+    {
+      "transitionId": "unable-1",
+      "fromStatus": "running",
+      "toStatus": "running",
+      "fromPhaseId": "plan",
+      "toPhaseId": "plan",
+      "authority": "completion-check",
+      "decision": "failed",
+      "result": "blocked",
+      "completionCheckId": null,
+      "artifactRefs": [],
+      "createdAt": "2026-05-21T00:12:00.000Z",
+      "stateVersion": 9
+    }
+  ],
+  "statusHistory": [
+    {
+      "phaseId": "plan",
+      "stateVersion": 8,
+      "status": "blocked",
+      "rationale": "External dependency is unavailable.",
+      "evidence": [
+        {
+          "kind": "log",
+          "label": "Dependency check",
+          "ref": "artifacts/dependency-check.log"
+        }
+      ],
+      "recordedAt": "2026-05-21T00:11:00.000Z"
+    },
+    {
+      "phaseId": "plan",
+      "stateVersion": 9,
+      "status": "unable",
+      "rationale": "The phase cannot complete without a new requirement decision.",
+      "evidence": [],
+      "recordedAt": "2026-05-21T00:12:00.000Z"
+    }
+  ],
+  "artifactIndex": {},
+  "pendingConfirmation": null,
+  "finalReportRef": null,
+  "stateVersion": 9,
+  "revision": 9,
+  "createdAt": "2026-05-21T00:00:00.000Z",
+  "updatedAt": "2026-05-21T00:12:00.000Z"
+}

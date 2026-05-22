@@ -73,6 +73,8 @@ type SessionStartOptions = {
   effort?: string
   thinking?: 'enabled' | 'adaptive' | 'disabled'
   providerId?: string | null
+  disallowedTools?: string[]
+  workflowSessionId?: string
 }
 
 export class ConversationStartupError extends Error {
@@ -132,6 +134,7 @@ export class ConversationService {
       ...worktreeArgs,
       '--replay-user-messages',
       ...this.getRuntimeArgs(options),
+      ...this.getDisallowedToolArgs(options?.disallowedTools),
       ...this.getPermissionArgs(options?.permissionMode, dangerousMode),
     ])
   }
@@ -860,6 +863,16 @@ export class ConversationService {
     return args
   }
 
+  private getDisallowedToolArgs(disallowedTools: string[] | undefined): string[] {
+    const uniqueTools = Array.from(new Set(
+      (disallowedTools ?? [])
+        .map((tool) => tool.trim())
+        .filter(Boolean),
+    ))
+    if (uniqueTools.length === 0) return []
+    return ['--disallowed-tools', uniqueTools.join(',')]
+  }
+
   private async buildChildEnv(
     workDir: string,
     sdkUrl?: string,
@@ -890,6 +903,7 @@ export class ConversationService {
 
     const cleanEnv = await getProcessEnvWithTerminalShellEnvironment()
     delete cleanEnv.CLAUDE_CODE_OAUTH_TOKEN
+    delete cleanEnv.CC_HAHA_WORKFLOW_SESSION_ID
     if (this.shouldStripInheritedProviderEnv(options?.providerId)) {
       for (const key of PROVIDER_ENV_KEYS) {
         delete cleanEnv[key]
@@ -939,6 +953,9 @@ export class ConversationService {
       ...(desktopServerUrl
         ? { CC_HAHA_DESKTOP_SERVER_URL: desktopServerUrl }
         : {}),
+      ...(sdkUrl && options?.workflowSessionId
+        ? { CC_HAHA_WORKFLOW_SESSION_ID: options.workflowSessionId }
+        : {}),
       ...(sdkUrl
         ? {
             CC_HAHA_DESKTOP_AWAIT_MCP: '1',
@@ -966,9 +983,15 @@ export class ConversationService {
   }
 
   private resolveDesktopAutoMemoryPath(workDir: string): string {
-    const memoryProjectRoot = fs.existsSync(workDir)
-      ? findCanonicalGitRoot(workDir) ?? workDir
-      : workDir
+    const gitRoot = fs.existsSync(workDir) ? findCanonicalGitRoot(workDir) : null
+    const homeDir = this.resolveRealPathForComparison(os.homedir())
+    const realGitRoot = gitRoot
+      ? this.resolveRealPathForComparison(gitRoot)
+      : null
+    const memoryProjectRoot =
+      gitRoot && realGitRoot && path.resolve(realGitRoot) !== path.resolve(homeDir)
+        ? gitRoot
+        : workDir
     return (
       path.join(
         getClaudeConfigHomeDir(),
@@ -977,6 +1000,14 @@ export class ConversationService {
         AUTO_MEMORY_DIRNAME,
       ) + path.sep
     ).normalize('NFC')
+  }
+
+  private resolveRealPathForComparison(filePath: string): string {
+    try {
+      return fs.realpathSync.native?.(filePath) ?? fs.realpathSync(filePath)
+    } catch {
+      return filePath
+    }
   }
 
   /**

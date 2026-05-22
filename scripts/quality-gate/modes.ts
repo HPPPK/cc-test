@@ -51,6 +51,15 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       timeoutMs: 60000,
       dependsOn: ['impact-report'],
     },
+    {
+      id: 'workflow-session-mode-smoke',
+      title: 'Workflow session mode smoke',
+      description: 'Run isolated workflow session mode server/API/WebSocket smoke coverage without live provider credentials.',
+      kind: 'command',
+      command: ['bun', 'run', 'scripts/quality-gate/workflow-session-mode-smoke.ts'],
+      requiredForModes: ['pr'],
+      category: 'smoke',
+    },
 
     // === Layer 3: Area-specific checks (conditional on impact) ===
     {

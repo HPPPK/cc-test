@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { resolveDesktopSmokeRuntimeSelection } from './execute'
+import { desktopViteCommand, resolveDesktopSmokeRuntimeSelection } from './execute'
 
 describe('desktop smoke runtime selection', () => {
   test('lets current-runtime use the desktop default active provider', () => {
@@ -28,5 +28,11 @@ describe('desktop smoke runtime selection', () => {
       providerId: 'provider-a',
       modelId: 'model-a',
     })
+  })
+})
+
+describe('desktop smoke Vite launcher', () => {
+  test('uses the package script instead of platform-specific node_modules shims', () => {
+    expect(desktopViteCommand()).toEqual(['bun', 'run', 'dev'])
   })
 })

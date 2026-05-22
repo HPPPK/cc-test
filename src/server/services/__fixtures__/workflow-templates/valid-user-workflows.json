@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "futureTopLevelField": {
+    "preserve": true
+  },
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "user-linear-template",
+      "version": "2026.05.20",
+      "name": "User Linear Template",
+      "description": "A valid disposable linear workflow template.",
+      "futureTemplateField": "keep-me",
+      "phases": [
+        {
+          "id": "discover",
+          "name": "Discover",
+          "instructions": "Clarify the requested outcome.",
+          "skills": [
+            {
+              "name": "requirements",
+              "source": "project",
+              "reason": "Prompt guidance only."
+            }
+          ],
+          "requiredArtifacts": [
+            {
+              "id": "requirements-note",
+              "name": "Requirements Note",
+              "required": true
+            }
+          ],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Requirements are clear."
+          },
+          "transition": {
+            "authority": "user-confirmation"
+          }
+        },
+        {
+          "id": "deliver",
+          "name": "Deliver",
+          "instructions": "Implement and verify the agreed outcome.",
+          "requestedModel": {
+            "providerId": "test-provider",
+            "modelId": "test-model"
+          },
+          "completionCriteria": {
+            "type": "agent-reported",
+            "description": "Implementation and verification evidence are recorded."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    }
+  ]
+}

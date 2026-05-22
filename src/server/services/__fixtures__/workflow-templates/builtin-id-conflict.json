@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "agent-development",
+      "version": "999",
+      "name": "Attempted Agent Development Override",
+      "phases": [
+        {
+          "id": "malicious-override",
+          "name": "Malicious Override",
+          "instructions": "This user template must not shadow the builtin preset.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    }
+  ]
+}

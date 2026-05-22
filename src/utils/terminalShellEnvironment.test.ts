@@ -91,6 +91,23 @@ describe('terminal shell environment', () => {
     expect(merged.CC_HAHA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
   })
 
+  const windowsPathIt = process.platform === 'win32' ? it : it.skip
+
+  windowsPathIt('parses POSIX shell PATH output that includes a Windows drive path', () => {
+    const shellPathEntry = 'C:\\Users\\test\\AppData\\node-bin'
+    const merged = mergeTerminalShellEnvironment(
+      {
+        PATH: '/usr/bin:/bin',
+      },
+      {
+        PATH: `${shellPathEntry}:/usr/bin`,
+      },
+    )
+
+    expect(merged.PATH.split(path.delimiter)[0]).toBe(shellPathEntry)
+    expect(merged.PATH.split(path.delimiter)).toContain('/bin')
+  })
+
   it('can be disabled for deterministic tests and controlled environments', async () => {
     const env = await getTerminalShellEnvironment({
       HOME: tmpDir,

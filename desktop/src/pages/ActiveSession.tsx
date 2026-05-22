@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Target } from 'lucide-react'
 import {
   SCHEDULED_TAB_ID,
@@ -26,8 +26,15 @@ import { SessionTaskBar } from '../components/chat/SessionTaskBar'
 import { WorkspacePanel } from '../components/workspace/WorkspacePanel'
 import { TeamStatusBar } from '../components/teams/TeamStatusBar'
 import { TerminalSettings } from './TerminalSettings'
+import {
+  WorkflowReportLink,
+  WorkflowStatusPanel,
+  type WorkflowTransitionCommand,
+  type WorkflowStatusPanelSummary,
+} from '../components/workflow/WorkflowComponents'
+import { WorkflowTransitionControls } from '../components/workflow/WorkflowTransitionControls'
 import type { SessionListItem } from '../types/session'
-import type { ActiveGoalState } from '../types/chat'
+import type { ActiveGoalState, BackgroundAgentTask } from '../types/chat'
 import { useMobileViewport } from '../hooks/useMobileViewport'
 import { isTauriRuntime } from '../lib/desktopRuntime'
 
@@ -102,6 +109,85 @@ function ActiveGoalStrip({
           ))}
         </span>
       ) : null}
+    </div>
+  )
+}
+
+function getBackgroundAgentStatusLabel(status: BackgroundAgentTask['status'], t: ReturnType<typeof useTranslation>) {
+  switch (status) {
+    case 'running':
+      return t('chat.backgroundAgents.status.running')
+    case 'completed':
+      return t('chat.backgroundAgents.status.completed')
+    case 'failed':
+      return t('chat.backgroundAgents.status.failed')
+    case 'stopped':
+      return t('chat.backgroundAgents.status.stopped')
+  }
+}
+
+function BackgroundAgentPanel({
+  tasks,
+}: {
+  tasks: BackgroundAgentTask[]
+}) {
+  const t = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+
+  if (tasks.length === 0) return null
+
+  return (
+    <div
+      data-testid="background-agent-panel"
+      className="border-b border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-4 py-2"
+    >
+      <div className="mx-auto w-full max-w-[860px]">
+        <button
+          type="button"
+          aria-label={expanded ? t('chat.backgroundAgents.collapse') : t('chat.backgroundAgents.expand')}
+          onClick={() => setExpanded((value) => !value)}
+          className="flex w-full min-w-0 items-center gap-2 text-left"
+        >
+          <span className="material-symbols-outlined text-[16px] text-[var(--color-text-tertiary)]" aria-hidden="true">
+            {expanded ? 'expand_more' : 'chevron_right'}
+          </span>
+          <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+            {t('chat.backgroundAgents.title')}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-text-tertiary)]">
+            {t('chat.backgroundAgents.count', { count: tasks.length })}
+          </span>
+        </button>
+
+        {expanded ? (
+          <div className="mt-2 space-y-1.5">
+            {tasks.map((task) => {
+              const detail = task.summary || task.description || task.outputFile || task.taskId
+              return (
+                <div
+                  key={task.taskId}
+                  className="flex min-w-0 items-center gap-2 rounded-[7px] border border-[var(--color-border)]/70 bg-[var(--color-surface)] px-2.5 py-1.5"
+                >
+                  <span className="material-symbols-outlined text-[14px] text-[var(--color-text-tertiary)]" aria-hidden="true">
+                    smart_toy
+                  </span>
+                  <span className="shrink-0 text-[11px] font-medium text-[var(--color-text-secondary)]">
+                    {getBackgroundAgentStatusLabel(task.status, t)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-primary)]">
+                    {detail}
+                  </span>
+                  {task.usage?.totalTokens ? (
+                    <span className="hidden shrink-0 text-[11px] text-[var(--color-text-tertiary)] sm:inline">
+                      {t('chat.backgroundAgents.tokens', { count: task.usage.totalTokens.toLocaleString() })}
+                    </span>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -269,13 +355,26 @@ export function ActiveSession() {
   const hasRunningTasks = useCLITaskStore((s) => s.tasks.some((task) => task.status === 'in_progress'))
   const chatState = sessionState?.chatState ?? 'idle'
   const tokenUsage = sessionState?.tokenUsage ?? { input_tokens: 0, output_tokens: 0 }
-  const hasRunningBackgroundTasks = Object.values(sessionState?.backgroundAgentTasks ?? {})
+  const backgroundAgentTasks = useMemo(
+    () => Object.values(sessionState?.backgroundAgentTasks ?? {}),
+    [sessionState?.backgroundAgentTasks],
+  )
+  const hasRunningBackgroundTasks = backgroundAgentTasks
     .some((task) => task.status === 'running')
 
   const session = sessions.find((s) => s.id === activeTabId)
   const memberInfo = useTeamStore((s) => activeTabId ? s.getMemberBySessionId(activeTabId) : null)
   const activeTeam = useTeamStore((s) => s.activeTeam)
+  const refreshMemberSession = useTeamStore((s) => s.refreshMemberSession)
+  const startMemberPolling = useTeamStore((s) => s.startMemberPolling)
   const isMemberSession = !!memberInfo
+  const isDisconnectedMemberSession = isMemberSession && sessionState?.connectionState === 'disconnected'
+  const completedBackgroundAgentTasks = useMemo(
+    () => backgroundAgentTasks
+      .filter((task) => task.status !== 'running')
+      .sort((a, b) => b.updatedAt - a.updatedAt),
+    [backgroundAgentTasks],
+  )
   const showWorkspacePanel = useWorkspacePanelStore((state) =>
     activeTabId && isSessionTabState(activeTabId, activeTabType) && !isMemberSession && !isMobileLayout
       ? state.isPanelOpen(activeTabId)
@@ -287,12 +386,34 @@ export function ActiveSession() {
       : false,
   )
   const terminalPanelHeight = useTerminalPanelStore((state) => state.height)
+  const handleWorkflowTransition = useCallback(async (command: WorkflowTransitionCommand) => {
+    if (!activeTabId) return
+
+    const sendWorkflowTransition = useChatStore.getState().sendWorkflowTransition as (
+      sessionId: string,
+      command: WorkflowTransitionCommand,
+    ) => void
+    sendWorkflowTransition(activeTabId, command)
+  }, [activeTabId])
 
   useEffect(() => {
     if (activeTabId && !isMemberSession) {
       connectToSession(activeTabId)
     }
   }, [activeTabId, isMemberSession, connectToSession])
+
+  useEffect(() => {
+    if (!activeTabId || !isMemberSession || isDisconnectedMemberSession) return
+
+    void refreshMemberSession(activeTabId)
+    startMemberPolling(activeTabId)
+  }, [
+    activeTabId,
+    isMemberSession,
+    isDisconnectedMemberSession,
+    refreshMemberSession,
+    startMemberPolling,
+  ])
 
   useEffect(() => {
     if (!activeTabId || isMemberSession) return
@@ -329,6 +450,33 @@ export function ActiveSession() {
     (trackedTaskSessionId === activeTabId && hasRunningTasks) ||
     hasRunningBackgroundTasks
   const totalTokens = tokenUsage.input_tokens + tokenUsage.output_tokens
+  const workflowDisplay = useMemo(() => {
+    if (!session?.workflow) return null
+    return session.workflow
+  }, [session?.workflow])
+  const workflowReportState = workflowDisplay && !workflowDisplay.reportPointer
+    ? workflowDisplay.status === 'completed'
+      ? 'Final report unavailable'
+      : 'Final report not ready'
+    : null
+  const workflowStateVersion = workflowDisplay
+    ? workflowDisplay.stateVersion
+    : undefined
+  const workflowControlsDisplay = useMemo<WorkflowStatusPanelSummary | null>(() => {
+    if (!workflowDisplay) return null
+    if (!workflowDisplay.blockedStatus) return workflowDisplay
+
+    return {
+      ...workflowDisplay,
+      status: 'failed',
+      pendingConfirmation: false,
+      transitionAuthority: 'auto',
+    }
+  }, [workflowDisplay])
+  const canShowWorkflowControls = workflowDisplay &&
+    workflowDisplay.status !== 'completed' &&
+    workflowDisplay.status !== 'stale-template' &&
+    workflowDisplay.status !== 'missing-template'
 
   const lastUpdated = useMemo(() => {
     if (!session?.modifiedAt) return ''
@@ -370,7 +518,9 @@ export function ActiveSession() {
                     )}
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
-                    {t('teams.memberSessionHint')}
+                    {isDisconnectedMemberSession
+                      ? t('teams.memberSessionDisconnectedHint')
+                      : t('teams.memberSessionHint')}
                   </p>
                 </div>
                 <button
@@ -392,6 +542,32 @@ export function ActiveSession() {
               </div>
             </div>
           )}
+
+          {!isMemberSession && workflowDisplay ? (
+            <div className="shrink-0 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)] px-4 py-3">
+              <div className={showWorkspacePanel ? 'flex w-full flex-col gap-3' : 'mx-auto flex w-full max-w-[860px] flex-col gap-3'}>
+                <WorkflowStatusPanel workflow={workflowDisplay} />
+                {canShowWorkflowControls ? (
+                  <WorkflowTransitionControls
+                    workflow={workflowControlsDisplay}
+                    stateVersion={workflowStateVersion}
+                    onConfirm={handleWorkflowTransition}
+                    onReject={handleWorkflowTransition}
+                    onRetry={handleWorkflowTransition}
+                  />
+                ) : null}
+                <WorkflowReportLink workflow={workflowDisplay} />
+                {workflowReportState ? (
+                  <div className="inline-flex max-w-full items-center gap-2 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)]">
+                    <span className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-text-tertiary)]" aria-hidden="true">
+                      description
+                    </span>
+                    <span>{workflowReportState}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {isEmpty ? (
             <div className="flex flex-1 flex-col items-center justify-center p-8 pb-32">
@@ -486,6 +662,10 @@ export function ActiveSession() {
                   </div>
                 </div>
               )}
+
+              {!isMemberSession && !isMobileLayout ? (
+                <BackgroundAgentPanel tasks={completedBackgroundAgentTasks} />
+              ) : null}
 
               <MessageList compact={showWorkspacePanel} />
             </>

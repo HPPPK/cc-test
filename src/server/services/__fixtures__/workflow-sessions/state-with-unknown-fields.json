@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "requirements-to-implementation",
+    "source": "builtin",
+    "version": "1",
+    "displayName": "Requirements to implementation",
+    "description": "Linear workflow fixture",
+    "phases": [
+      {
+        "id": "requirements-clarification",
+        "label": "Requirements clarification",
+        "instructions": "Clarify requirements",
+        "requestedModel": null,
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      }
+    ],
+    "futureTemplateField": {
+      "keep": true
+    }
+  },
+  "templateIdentity": {
+    "id": "requirements-to-implementation",
+    "source": "builtin",
+    "version": "1",
+    "registryKey": "builtin:requirements-to-implementation",
+    "contentHash": "fixture-hash"
+  },
+  "sourceTemplateStatus": "current",
+  "workflowStatus": "created",
+  "activePhaseId": "requirements-clarification",
+  "phaseRuns": [
+    {
+      "phaseId": "requirements-clarification",
+      "index": 0,
+      "status": "created",
+      "startedAt": null,
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "requirements-to-implementation",
+        "templateVersion": "1",
+        "phaseId": "requirements-clarification"
+      },
+      "inputArtifactRefs": [],
+      "outputArtifactRefs": [],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null,
+      "futurePhaseField": "preserve me"
+    }
+  ],
+  "transitionHistory": [],
+  "artifactIndex": [],
+  "finalReportRef": null,
+  "revision": 1,
+  "createdAt": "2026-05-20T00:00:00.000Z",
+  "updatedAt": "2026-05-20T00:00:00.000Z",
+  "futureTopLevel": {
+    "preserved": true
+  }
+}

@@ -156,6 +156,33 @@ describe('AskUserQuestion', () => {
     })
   })
 
+  it('advances to the next question after choosing a single-select option', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [
+            {
+              header: 'Tech',
+              question: 'What technology should we use?',
+              options: [{ label: 'Web' }, { label: 'Pygame' }],
+            },
+            {
+              header: 'Scope',
+              question: 'Which features are in scope?',
+              options: [{ label: 'Basic' }, { label: 'Advanced' }],
+            },
+          ],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^Web$/ }))
+
+    expect(screen.getByText('Which features are in scope?')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Web$/ })).toBeNull()
+  })
+
   it('preserves multiSelect for single-question input shape', () => {
     render(
       <AskUserQuestion
@@ -261,6 +288,33 @@ describe('AskUserQuestion', () => {
     })
   })
 
+  it('renders answered historical questions as a compact summary instead of another input prompt', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-answered"
+        input={{
+          questions: [
+            {
+              question: 'What platform should the game use?',
+              options: [{ label: 'Terminal' }, { label: 'Browser' }],
+            },
+          ],
+        }}
+        result={{
+          answers: {
+            'What platform should the game use?': 'Browser',
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    expect(screen.getByText('Browser')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Terminal$/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
   it('keeps custom responses scoped to each question tab', () => {
     const input = {
       questions: [
@@ -291,6 +345,7 @@ describe('AskUserQuestion', () => {
       target: { value: '' },
     })
     fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
     fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
       target: { value: 'custom-q1' },
     })

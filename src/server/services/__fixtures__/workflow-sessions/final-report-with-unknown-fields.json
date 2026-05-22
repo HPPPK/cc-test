@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "reportId": "final",
+  "sessionId": "fixture-session",
+  "templateId": "requirements-to-implementation",
+  "templateVersion": "1",
+  "createdAt": "2026-05-20T00:05:00.000Z",
+  "phaseSummaries": [
+    {
+      "phaseId": "requirements-clarification",
+      "label": "Requirements clarification",
+      "status": "completed",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "requirements-clarification-output-v1",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T00:03:00.000Z"
+        }
+      ],
+      "completion": {
+        "phaseId": "requirements-clarification",
+        "passed": true,
+        "checkedAt": "2026-05-20T00:04:00.000Z",
+        "criteriaType": "manual-checklist",
+        "artifactPointers": []
+      },
+      "futurePhaseSummaryField": "preserve me"
+    }
+  ],
+  "verificationResult": {
+    "passed": true,
+    "notes": "Fixture verification passed"
+  },
+  "conversationSummary": "Workflow completed.",
+  "artifactRefs": [],
+  "futureReportField": {
+    "preserved": true
+  }
+}

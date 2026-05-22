@@ -77,6 +77,8 @@ type LcovRecord = {
   branchesTotal: number
   branchesCovered: number
   lineHits: Map<number, number>
+  functionHits: Map<string, number>
+  branchHits: Map<string, number>
 }
 
 type FileLineCoverage = {
@@ -276,6 +278,8 @@ function parseLcovRecords(content: string, options: {
         branchesTotal: 0,
         branchesCovered: 0,
         lineHits: new Map(),
+        functionHits: new Map(),
+        branchHits: new Map(),
       }
       continue
     }
@@ -286,11 +290,26 @@ function parseLcovRecords(content: string, options: {
     if (line.startsWith('FNH:')) current.functionsCovered += Number(line.slice(4)) || 0
     if (line.startsWith('BRF:')) current.branchesTotal += Number(line.slice(4)) || 0
     if (line.startsWith('BRH:')) current.branchesCovered += Number(line.slice(4)) || 0
+    if (line.startsWith('FNDA:')) {
+      const [hits, ...nameParts] = line.slice(5).split(',')
+      const name = nameParts.join(',').trim()
+      if (name) {
+        current.functionHits.set(name, (current.functionHits.get(name) ?? 0) + (Number(hits) || 0))
+      }
+    }
+    if (line.startsWith('BRDA:')) {
+      const parts = line.slice(5).split(',')
+      if (parts.length >= 4) {
+        const hits = parts[3] === '-' ? 0 : Number(parts[3]) || 0
+        const key = parts.slice(0, 3).join(',')
+        current.branchHits.set(key, (current.branchHits.get(key) ?? 0) + hits)
+      }
+    }
     if (line.startsWith('DA:')) {
       const [lineNumber, hits] = line.slice(3).split(',')
       const parsedLine = Number(lineNumber)
       if (Number.isFinite(parsedLine)) {
-        current.lineHits.set(parsedLine, Number(hits) || 0)
+        current.lineHits.set(parsedLine, (current.lineHits.get(parsedLine) ?? 0) + (Number(hits) || 0))
       }
     }
   }
@@ -308,12 +327,12 @@ function summarizeLcovRecords(records: LcovRecord[]): CoverageSummary {
   let branchesCovered = 0
 
   for (const record of records) {
-    linesTotal += record.linesTotal
-    linesCovered += record.linesCovered
-    functionsTotal += record.functionsTotal
-    functionsCovered += record.functionsCovered
-    branchesTotal += record.branchesTotal
-    branchesCovered += record.branchesCovered
+    linesTotal += record.linesTotal || record.lineHits.size
+    linesCovered += record.linesCovered || [...record.lineHits.values()].filter((hits) => hits > 0).length
+    functionsTotal += record.functionsTotal || record.functionHits.size
+    functionsCovered += record.functionsCovered || [...record.functionHits.values()].filter((hits) => hits > 0).length
+    branchesTotal += record.branchesTotal || record.branchHits.size
+    branchesCovered += record.branchesCovered || [...record.branchHits.values()].filter((hits) => hits > 0).length
   }
 
   return {
@@ -334,8 +353,9 @@ export function parseLcov(content: string, options: {
 function lcovLineCoverage(content: string, suiteId: string, scope: CoverageScope, rootDir = ROOT_DIR) {
   const coverage = new Map<string, FileLineCoverage>()
   for (const record of parseLcovRecords(content, { rootDir, scope })) {
-    const executableLines = new Set<number>()
-    const coveredLines = new Set<number>()
+    const current = coverage.get(record.file)
+    const executableLines = current?.executableLines ?? new Set<number>()
+    const coveredLines = current?.coveredLines ?? new Set<number>()
     for (const [line, hits] of record.lineHits) {
       executableLines.add(line)
       if (hits > 0) {
@@ -421,6 +441,67 @@ async function runSuite(
       error: error instanceof Error ? error.message : String(error),
     }
   }
+}
+
+function mergeLcovFiles(paths: string[], rootDir: string) {
+  const lines: string[] = []
+  for (const path of paths) {
+    if (!existsSync(path)) continue
+    const content = readFileSync(path, 'utf8').trim()
+    if (content) {
+      lines.push(content)
+    }
+  }
+  return lines.join('\n') + (lines.length > 0 ? '\n' : '')
+}
+
+const ROOT_COVERAGE_SEPARATE_FILES = new Set([
+  'src/server/__tests__/h5-access-auth.test.ts',
+  'src/tools/AgentTool/loadAgentsDir.cache.test.ts',
+])
+
+async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: string) {
+  const started = Date.now()
+  const rootDirPath = join(outputDir, 'root-server')
+  const perFileDir = join(rootDirPath, 'per-file')
+  const logPath = join(rootDirPath, 'coverage.log')
+  mkdirSync(perFileDir, { recursive: true })
+
+  const mainFiles = testFiles.filter((file) => !ROOT_COVERAGE_SEPARATE_FILES.has(file))
+  const separateFiles = testFiles.filter((file) => ROOT_COVERAGE_SEPARATE_FILES.has(file))
+  const lcovPaths: string[] = []
+  const logParts: string[] = []
+  let exitCode = 0
+
+  const mainCommand = ['bun', 'test', '--isolate', '--max-concurrency=1', '--timeout=20000', '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', join(rootDirPath, 'main'), ...mainFiles]
+  const mainLogPath = join(rootDirPath, 'main', 'coverage.log')
+  const mainResult = await runCommand(mainCommand, rootDir, mainLogPath)
+  logParts.push(existsSync(mainLogPath) ? readFileSync(mainLogPath, 'utf8') : `$ ${mainCommand.join(' ')}\n`)
+  lcovPaths.push(join(rootDirPath, 'main', 'lcov.info'))
+  if (mainResult.exitCode !== 0) {
+    exitCode = mainResult.exitCode
+  }
+
+  for (const [index, testFile] of separateFiles.entries()) {
+    const fileCoverageDir = join(perFileDir, String(index).padStart(3, '0'))
+    const command = ['bun', 'test', '--timeout=20000', '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', fileCoverageDir, testFile]
+    const fileLogPath = join(fileCoverageDir, 'coverage.log')
+    const result = await runCommand(command, rootDir, fileLogPath)
+    const log = existsSync(fileLogPath) ? readFileSync(fileLogPath, 'utf8') : ''
+    logParts.push(`\n# ${testFile}\n${log}`)
+    if (result.exitCode !== 0) {
+      exitCode = result.exitCode
+    }
+  }
+
+  writeFileSync(logPath, logParts.join('\n'))
+  const lcovPath = join(rootDirPath, 'lcov.info')
+  if (exitCode === 0) {
+    writeFileSync(lcovPath, mergeLcovFiles(lcovPaths, rootDir))
+  }
+
+  const command = [...mainCommand, ...separateFiles.map((file) => `<separate:${file}>`)]
+  return { exitCode, durationMs: Date.now() - started, logPath, lcovPath, command }
 }
 
 function loadThresholds(path = DEFAULT_THRESHOLDS_PATH): CoverageThresholds {
@@ -725,11 +806,10 @@ export async function runCoverageGate(options: {
   const suites: SuiteCoverage[] = []
   const coverageByFile = new Map<string, FileLineCoverage>()
 
-  const rootCommand = ['bun', 'test', '--timeout=20000', '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', join(outputDir, 'root-server'), ...serverFiles]
-  const rootLogPath = join(outputDir, 'root-server', 'coverage.log')
-  mkdirSync(join(outputDir, 'root-server'), { recursive: true })
-  const rootResult = await runCommand(rootCommand, rootDir, rootLogPath)
-  const rootLcovPath = join(outputDir, 'root-server', 'lcov.info')
+  const rootResult = await runRootCoverage(serverFiles, rootDir, outputDir)
+  const rootCommand = rootResult.command
+  const rootLogPath = rootResult.logPath
+  const rootLcovPath = rootResult.lcovPath
   const rootLcov = rootResult.exitCode === 0 && existsSync(rootLcovPath)
     ? readFileSync(rootLcovPath, 'utf8')
     : ''

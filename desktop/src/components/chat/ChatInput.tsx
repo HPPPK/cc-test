@@ -12,7 +12,12 @@ import {
   useWorkspaceChatContextStore,
   type WorkspaceChatReference,
 } from '../../stores/workspaceChatContextStore'
-import { sessionsApi, type SessionGitInfo } from '../../api/sessions'
+import {
+  sessionsApi,
+  type SessionGitInfo,
+  type WorkflowSessionCreateOptions,
+  type WorkflowTemplatesResponse,
+} from '../../api/sessions'
 import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 import { ModelSelector } from '../controls/ModelSelector'
 import type { AttachmentRef } from '../../types/chat'
@@ -20,6 +25,7 @@ import { AttachmentGallery } from './AttachmentGallery'
 import { ComposerDropOverlay } from './ComposerDropOverlay'
 import { ProjectContextChip } from '../shared/ProjectContextChip'
 import { RepositoryLaunchControls } from '../shared/RepositoryLaunchControls'
+import { WorkflowTemplatePicker } from '../workflow/WorkflowComponents'
 import { FileSearchMenu, type FileSearchMenuHandle } from './FileSearchMenu'
 import { LocalSlashCommandPanel, type LocalSlashCommandName } from './LocalSlashCommandPanel'
 import { ContextUsageIndicator } from './ContextUsageIndicator'
@@ -39,6 +45,7 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { useComposerFileDrop } from './useComposerFileDrop'
+import type { WorkflowTemplateSource } from '../../types/session'
 
 type GitInfo = SessionGitInfo
 
@@ -47,6 +54,19 @@ type Attachment = ComposerAttachment
 type ChatInputProps = {
   variant?: 'default' | 'hero'
   compact?: boolean
+}
+
+type WorkflowTemplateSelection = {
+  templateId: string
+  templateSource: WorkflowTemplateSource
+}
+
+type EmptySessionReplacementOptions = {
+  repository?: {
+    branch?: string | null
+    worktree?: boolean
+  }
+  workflow?: WorkflowSessionCreateOptions
 }
 
 const EMPTY_WORKSPACE_REFERENCES: WorkspaceChatReference[] = []
@@ -83,6 +103,9 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const [launchUseWorktree, setLaunchUseWorktree] = useState(false)
   const [launchReady, setLaunchReady] = useState(true)
   const [launchTransitioning, setLaunchTransitioning] = useState(false)
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
+  const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
+  const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
   const composingRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -288,6 +311,35 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   }, [activeSession?.workDir, activeTabId, gitInfo?.workDir, showLaunchControls])
 
   useEffect(() => {
+    if (!isHeroComposer || !showLaunchControls) {
+      setWorkflowTemplates([])
+      setInvalidWorkflowTemplates([])
+      setSelectedWorkflowTemplate(null)
+      return
+    }
+
+    let cancelled = false
+    setSelectedWorkflowTemplate(null)
+
+    sessionsApi.listWorkflowTemplates()
+      .then(({ templates, invalidTemplates }) => {
+        if (cancelled) return
+        setWorkflowTemplates(templates)
+        setInvalidWorkflowTemplates(invalidTemplates)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setWorkflowTemplates([])
+        setInvalidWorkflowTemplates([])
+        setSelectedWorkflowTemplate(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTabId, isHeroComposer, showLaunchControls])
+
+  useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
@@ -453,7 +505,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
 
   const replaceEmptySession = useCallback(async (
     workDir: string,
-    repository?: { branch?: string | null; worktree?: boolean },
+    options?: EmptySessionReplacementOptions,
   ) => {
     if (!activeTabId) return null
     const oldId = activeTabId
@@ -462,7 +514,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     const { disconnectSession, connectToSession } = useChatStore.getState()
     const newId = await createSession(
       workDir || undefined,
-      repository ? { repository } : undefined,
+      options,
     )
     useSessionRuntimeStore.getState().moveSelection(oldId, newId)
     disconnectSession(oldId)
@@ -564,16 +616,36 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     ]
 
     let targetSessionId = activeTabId!
-    if (showLaunchControls && activeLaunchWorkDir && launchBranch) {
+    if (showLaunchControls) {
+      const workflowTemplate = selectedWorkflowTemplate
+        ? workflowTemplates.find((template) =>
+          template.id === selectedWorkflowTemplate.templateId &&
+          template.source === selectedWorkflowTemplate.templateSource)
+        : null
+      const workflow = workflowTemplate
+        ? {
+            templateId: workflowTemplate.id,
+            templateSource: workflowTemplate.source,
+            initialPhaseId: workflowTemplate.firstPhaseId,
+          }
+        : undefined
       const shouldReplaceForRepositoryLaunch =
-        launchUseWorktree ||
-        (gitInfo?.branch ? launchBranch !== gitInfo.branch : true)
-      if (shouldReplaceForRepositoryLaunch) {
+        !!activeLaunchWorkDir &&
+        !!launchBranch &&
+        (launchUseWorktree || (gitInfo?.branch ? launchBranch !== gitInfo.branch : true))
+      const repository = shouldReplaceForRepositoryLaunch
+        ? {
+            branch: launchBranch,
+            worktree: launchUseWorktree,
+          }
+        : undefined
+
+      if (workflow || repository) {
         setLaunchTransitioning(true)
         try {
           const newSessionId = await replaceEmptySession(activeLaunchWorkDir, {
-            branch: launchBranch,
-            worktree: launchUseWorktree,
+            ...(repository ? { repository } : {}),
+            ...(workflow ? { workflow } : {}),
           })
           if (!newSessionId) return
           targetSessionId = newSessionId
@@ -958,6 +1030,19 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
               </div>
             )
           )}
+
+          {isHeroComposer && showLaunchControls && (workflowTemplates.length > 0 || invalidWorkflowTemplates.length > 0) ? (
+            <WorkflowTemplatePicker
+              templates={workflowTemplates}
+              invalidTemplates={invalidWorkflowTemplates.map((issue) => ({
+                id: issue.templateId,
+                source: issue.source,
+                message: issue.message,
+              }))}
+              selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+              onSelect={setSelectedWorkflowTemplate}
+            />
+          ) : null}
 
           {isHeroComposer ? (
             <div className="flex items-start gap-3">

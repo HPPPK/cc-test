@@ -2,7 +2,7 @@
  * API Router — 将请求路由到对应的 API handler
  */
 
-import { handleSessionsApi } from './api/sessions.js'
+import { handleSessionsApi, handleWorkflowTemplatesApi } from './api/sessions.js'
 import { handleSettingsApi } from './api/settings.js'
 import { handleModelsApi } from './api/models.js'
 import { handleScheduledTasksApi } from './api/scheduled-tasks.js'
@@ -44,6 +44,15 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
       }
       return handleSessionsApi(req, url, segments)
     }
+
+    case 'workflows':
+      if (segments[2] === 'templates') {
+        return handleWorkflowTemplatesApi(req)
+      }
+      return Response.json(
+        { error: 'Not Found', message: `Unknown workflows resource: ${segments[2]}` },
+        { status: 404 }
+      )
 
     case 'conversations':
       return handleConversationsApi(req, url, segments)

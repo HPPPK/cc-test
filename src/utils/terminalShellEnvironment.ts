@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { access } from 'node:fs/promises'
 import path from 'node:path'
 import { isEnvTruthy } from './envUtils.js'
@@ -61,12 +62,22 @@ async function findSupportedShell(
   return null
 }
 
+type SplitPathListResult = {
+  entries: string[]
+  delimiter: ':' | ';'
+}
+
 export function mergePathLists(...values: Array<string | undefined>): string | null {
   const seen = new Set<string>()
   const merged: string[] = []
+  let delimiter: ':' | ';' = ':'
 
   for (const value of values) {
-    for (const entry of (value ?? '').split(path.delimiter)) {
+    const splitValue = splitPathList(value ?? '')
+    if (splitValue.delimiter === ';') {
+      delimiter = ';'
+    }
+    for (const entry of splitValue.entries) {
       const trimmed = entry.trim()
       if (!trimmed || seen.has(trimmed)) continue
       seen.add(trimmed)
@@ -74,7 +85,43 @@ export function mergePathLists(...values: Array<string | undefined>): string | n
     }
   }
 
-  return merged.length > 0 ? merged.join(path.delimiter) : null
+  return merged.length > 0 ? merged.join(delimiter) : null
+}
+
+function isWindowsDriveSeparator(value: string, index: number): boolean {
+  if (value[index] !== ':' || index < 1) return false
+  const driveStartsEntry =
+    index === 1 || value[index - 2] === ';' || value[index - 2] === ':'
+  if (!driveStartsEntry) return false
+  const driveLetter = value[index - 1]
+  const next = value[index + 1]
+  return /^[A-Za-z]$/.test(driveLetter) && (next === '\\' || next === '/')
+}
+
+function containsWindowsPathEntry(value: string): boolean {
+  return /(?:^|[;:])[A-Za-z]:[\\/]/.test(value)
+}
+
+function splitPathList(value: string): SplitPathListResult {
+  const entries: string[] = []
+  let start = 0
+  const delimiter: ':' | ';' =
+    value.includes(';') || containsWindowsPathEntry(value) ? ';' : ':'
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index]
+    if (char !== ';' && char !== ':') continue
+    if (delimiter === ';' && char === ':' && !containsWindowsPathEntry(value)) {
+      continue
+    }
+    if (char === ':' && isWindowsDriveSeparator(value, index)) continue
+
+    entries.push(value.slice(start, index))
+    start = index + 1
+  }
+
+  entries.push(value.slice(start))
+  return { entries, delimiter }
 }
 
 function parseNullDelimitedEnv(
@@ -99,13 +146,61 @@ function parseNullDelimitedEnv(
   return env
 }
 
+function normalizeCapturedPath(env: Record<string, string>): Record<string, string> {
+  const normalizedPath = mergePathLists(env.PATH)
+  return normalizedPath ? { ...env, PATH: normalizedPath } : env
+}
+
+function unquoteShellValue(value: string): string {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+async function readShellRcEnvironment(
+  baseEnv: Record<string, string>,
+  shellPath: string,
+): Promise<Record<string, string> | null> {
+  const shellKind = getShellKind(shellPath)
+  const home = baseEnv.HOME || baseEnv.USERPROFILE
+  if (!shellKind || !home) {
+    return null
+  }
+
+  const rcPath =
+    shellKind === 'zsh'
+      ? path.join(baseEnv.ZDOTDIR ?? home, '.zshrc')
+      : path.join(home, '.bashrc')
+
+  let rcContent: string
+  try {
+    rcContent = await readFile(rcPath, 'utf8')
+  } catch {
+    return null
+  }
+
+  const env: Record<string, string> = { ...baseEnv }
+  for (const line of rcContent.split(/\r?\n/)) {
+    const match = line.match(/^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)\s*$/)
+    if (!match) continue
+    const [, key, rawValue] = match
+    env[key] = unquoteShellValue(rawValue)
+      .replace(/\$PATH\b/g, env.PATH ?? '')
+      .replace(/\$HOME\b/g, env.HOME ?? '')
+  }
+
+  return normalizeCapturedPath(env)
+}
+
 async function captureTerminalShellEnvironment(
   baseEnv: Record<string, string>,
 ): Promise<Record<string, string> | null> {
-  if (
-    process.platform === 'win32' ||
-    isEnvTruthy(baseEnv.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV)
-  ) {
+  if (isEnvTruthy(baseEnv.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV)) {
     return null
   }
 
@@ -143,11 +238,15 @@ async function captureTerminalShellEnvironment(
           logForDebugging(
             `Failed to capture terminal shell environment from ${shellPath}: ${error.message}`,
           )
+          if (process.platform === 'win32') {
+            resolve(readShellRcEnvironment(baseEnv, shellPath))
+            return
+          }
           resolve(null)
           return
         }
 
-        resolve(parseNullDelimitedEnv(stdout, TERMINAL_ENV_MARKER))
+        resolve(normalizeCapturedPath(parseNullDelimitedEnv(stdout, TERMINAL_ENV_MARKER)))
       },
     )
   })

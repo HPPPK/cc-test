@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "missing-name-template",
+      "version": "1",
+      "phases": [
+        {
+          "id": "only-phase",
+          "name": "Only Phase",
+          "instructions": "This template is missing a required name.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "empty-phases-template",
+      "version": "1",
+      "name": "Empty Phases Template",
+      "phases": []
+    },
+    {
+      "schemaVersion": 1,
+      "id": "duplicate-phase-template",
+      "version": "1",
+      "name": "Duplicate Phase Template",
+      "phases": [
+        {
+          "id": "repeat",
+          "name": "Repeat One",
+          "instructions": "First duplicate phase id.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        },
+        {
+          "id": "repeat",
+          "name": "Repeat Two",
+          "instructions": "Second duplicate phase id.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    }
+  ]
+}

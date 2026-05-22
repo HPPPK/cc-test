@@ -1,13 +1,28 @@
 import { api } from './client'
 import type { AgentTaskNotification } from '../types/chat'
-import type { SessionListItem, MessageEntry } from '../types/session'
+import type {
+  SessionListItem,
+  MessageEntry,
+  WorkflowReportResponse,
+  WorkflowSessionCreateOptions,
+  WorkflowSessionStateResponse,
+  WorkflowSessionSummary,
+  WorkflowTemplatesResponse,
+  WorkflowTransitionAction,
+  WorkflowTransitionHandoff,
+  WorkflowTransitionResponse,
+} from '../types/session'
 
 type SessionsResponse = { sessions: SessionListItem[]; total: number }
 type MessagesResponse = {
   messages: MessageEntry[]
   taskNotifications?: AgentTaskNotification[]
 }
-type CreateSessionResponse = { sessionId: string; workDir?: string }
+type CreateSessionResponse = {
+  sessionId: string
+  workDir?: string
+  workflow?: WorkflowSessionSummary
+}
 export type BatchDeleteSessionsResponse = {
   ok: boolean
   successes: string[]
@@ -39,6 +54,23 @@ export type CreateSessionRepositoryOptions = {
 export type CreateSessionRequest = {
   workDir?: string
   repository?: CreateSessionRepositoryOptions
+  workflow?: WorkflowSessionCreateOptions
+}
+export type {
+  WorkflowReportResponse,
+  WorkflowSessionCreateOptions,
+  WorkflowSessionStateResponse,
+  WorkflowTemplatesResponse,
+  WorkflowTransitionResponse,
+}
+export type WorkflowTransitionRequest = {
+  phaseId: string
+  stateVersion?: number
+  action: WorkflowTransitionAction
+  transitionId?: string
+  handoff?: WorkflowTransitionHandoff
+  rationale?: string
+  evidence?: unknown[]
 }
 export type RepositoryBranchInfo = {
   name: string
@@ -312,6 +344,22 @@ export const sessionsApi = {
       ? (input ? { workDir: input } : {})
       : (input ?? {})
     return api.post<CreateSessionResponse>('/api/sessions', body)
+  },
+
+  listWorkflowTemplates() {
+    return api.get<WorkflowTemplatesResponse>('/api/workflows/templates')
+  },
+
+  getWorkflowState(sessionId: string) {
+    return api.get<WorkflowSessionStateResponse>(`/api/sessions/${sessionId}/workflow`)
+  },
+
+  transitionWorkflow(sessionId: string, body: WorkflowTransitionRequest) {
+    return api.post<WorkflowTransitionResponse>(`/api/sessions/${sessionId}/workflow/transition`, body)
+  },
+
+  getWorkflowReport(sessionId: string) {
+    return api.get<WorkflowReportResponse>(`/api/sessions/${sessionId}/workflow/report`)
   },
 
   delete(sessionId: string) {

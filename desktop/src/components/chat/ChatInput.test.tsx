@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   delete: vi.fn(),
   list: vi.fn(),
+  listWorkflowTemplates: vi.fn(),
   getMessages: vi.fn(),
   getGitInfo: vi.fn(),
   getSlashCommands: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../../api/sessions', () => ({
     create: mocks.create,
     delete: mocks.delete,
     list: mocks.list,
+    listWorkflowTemplates: mocks.listWorkflowTemplates,
     getMessages: mocks.getMessages,
     getGitInfo: mocks.getGitInfo,
     getSlashCommands: mocks.getSlashCommands,
@@ -86,6 +88,23 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useTabStore } from '../../stores/tabStore'
 import { useTeamStore } from '../../stores/teamStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
+
+const BUILTIN_WORKFLOW_TEMPLATE = {
+  id: 'requirements-to-implementation',
+  source: 'builtin' as const,
+  version: '1.0.0',
+  name: 'Requirements to Implementation',
+  description: 'Clarify, design, plan, implement, and verify.',
+  phaseCount: 5,
+  firstPhaseId: 'requirements-clarification',
+  phaseNames: [
+    'Requirements clarification',
+    'Technical design',
+    'Implementation planning',
+    'Implementation',
+    'Verification',
+  ],
+}
 
 function okRepositoryContext() {
   return {
@@ -186,6 +205,10 @@ describe('ChatInput file mentions', () => {
     mocks.create.mockResolvedValue({ sessionId: 'created-session', workDir: '/repo' })
     mocks.delete.mockResolvedValue({ ok: true })
     mocks.list.mockResolvedValue({ sessions: [], total: 0 })
+    mocks.listWorkflowTemplates.mockResolvedValue({
+      templates: [BUILTIN_WORKFLOW_TEMPLATE],
+      invalidTemplates: [],
+    })
     mocks.getMessages.mockResolvedValue({ messages: [] })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
   })
@@ -519,6 +542,89 @@ describe('ChatInput file mentions', () => {
     expect(mocks.wsSend).toHaveBeenCalledWith('created-direct', {
       type: 'user_message',
       content: 'run on feature branch',
+      attachments: [],
+    })
+  })
+
+  it('shows workflow templates in the empty active session composer and starts a workflow session', async () => {
+    mocks.create.mockResolvedValueOnce({
+      sessionId: 'created-workflow',
+      workDir: '/repo',
+      workflow: {
+        templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
+        templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
+        currentPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        stateVersion: 1,
+      },
+    })
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Project',
+        createdAt: '2026-05-01T00:00:00.000Z',
+        modifiedAt: '2026-05-01T00:00:00.000Z',
+        messageCount: 0,
+        projectPath: '/repo',
+        workDir: '/repo',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ChatInput variant="hero" />)
+
+    const picker = await screen.findByTestId('workflow-template-picker')
+    expect(picker).toHaveAttribute('data-workflow-selected', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: /Requirements to Implementation/ }))
+    expect(picker).toHaveAttribute('data-workflow-selected', 'true')
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: {
+        value: 'Build the workflow entrypoint',
+        selectionStart: 'Build the workflow entrypoint'.length,
+      },
+    })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(mocks.create).toHaveBeenCalledWith({
+        workDir: '/repo',
+        workflow: {
+          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
+          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        },
+      })
+    })
+    expect(mocks.delete).toHaveBeenCalledWith(sessionId)
+    expect(useTabStore.getState().activeTabId).toBe('created-workflow')
+    expect(mocks.wsSend).toHaveBeenCalledWith('created-workflow', {
+      type: 'user_message',
+      content: 'Build the workflow entrypoint',
       attachments: [],
     })
   })

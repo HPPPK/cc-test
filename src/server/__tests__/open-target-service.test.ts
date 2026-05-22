@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, posix as posixPath } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createOpenTargetService } from '../services/openTargetService.js'
 
@@ -297,14 +297,14 @@ describe('openTargetService', () => {
 
   it('extracts macOS target icons from the detected app bundle icon file', async () => {
     const appPath = '/Applications/Visual Studio Code.app'
-    const iconPath = join(appPath, 'Contents', 'Resources', 'Code.icns')
+    const iconPath = posixPath.join(appPath, 'Contents', 'Resources', 'Code.icns')
     const state = createService('darwin', {
       paths: {
         [appPath]: true,
         [iconPath]: true,
       },
       plistValues: {
-        [join(appPath, 'Contents', 'Info.plist')]: 'Code.icns',
+        [posixPath.join(appPath, 'Contents', 'Info.plist')]: 'Code.icns',
       },
       iconData: new Uint8Array([9, 8, 7]),
     })
@@ -370,8 +370,8 @@ describe('openTargetService', () => {
 
   it('extracts Linux target icons from matching desktop entries', async () => {
     const applicationsDir = '/usr/share/applications'
-    const desktopPath = join(applicationsDir, 'code.desktop')
-    const iconPath = join('/usr/share/pixmaps', 'code.png')
+    const desktopPath = posixPath.join(applicationsDir, 'code.desktop')
+    const iconPath = posixPath.join('/usr/share/pixmaps', 'code.png')
     const state = createService('linux', {
       commands: {
         code: true,
@@ -399,7 +399,7 @@ describe('openTargetService', () => {
 
   it('uses the Linux folder icon for the file-manager fallback when available', async () => {
     const iconsDir = '/usr/share/icons'
-    const folderIcon = join(iconsDir, 'hicolor', '64x64', 'apps', 'folder.png')
+    const folderIcon = posixPath.join(iconsDir, 'hicolor', '64x64', 'apps', 'folder.png')
     const state = createService('linux', {
       commands: {
         'xdg-open': true,

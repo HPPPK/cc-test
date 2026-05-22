@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "branching-template",
+      "version": "1",
+      "name": "Branching Template",
+      "phases": [
+        {
+          "id": "choose",
+          "name": "Choose",
+          "instructions": "Attempts to branch, which is out of scope.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto",
+            "branches": [
+              {
+                "when": "needs-design",
+                "to": "design"
+              },
+              {
+                "when": "ready",
+                "to": "implementation"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "loop-template",
+      "version": "1",
+      "name": "Loop Template",
+      "phases": [
+        {
+          "id": "retry-until-done",
+          "name": "Retry Until Done",
+          "instructions": "Attempts to loop, which is out of scope.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto",
+            "loop": {
+              "until": "accepted"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "parallel-template",
+      "version": "1",
+      "name": "Parallel Template",
+      "parallelPhases": [
+        [
+          "research",
+          "design"
+        ]
+      ],
+      "phases": [
+        {
+          "id": "research",
+          "name": "Research",
+          "instructions": "Attempts parallel execution.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        },
+        {
+          "id": "design",
+          "name": "Design",
+          "instructions": "Attempts parallel execution.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "nested-workflow-template",
+      "version": "1",
+      "name": "Nested Workflow Template",
+      "workflows": [
+        {
+          "id": "child-workflow",
+          "phases": [
+            "child"
+          ]
+        }
+      ],
+      "phases": [
+        {
+          "id": "parent",
+          "name": "Parent",
+          "instructions": "Attempts nested workflows, which are out of scope.",
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Never startable."
+          },
+          "transition": {
+            "authority": "auto"
+          }
+        }
+      ]
+    }
+  ]
+}

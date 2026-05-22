@@ -1,10 +1,11 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom'
 
 const mocks = vi.hoisted(() => ({
   createSession: vi.fn(),
   listSessions: vi.fn(),
+  listWorkflowTemplates: vi.fn(),
   getRepositoryContext: vi.fn(),
   getMessages: vi.fn(),
   getSlashCommands: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('../api/sessions', () => ({
     getRepositoryContext: mocks.getRepositoryContext,
     getMessages: mocks.getMessages,
     getSlashCommands: mocks.getSlashCommands,
+    listWorkflowTemplates: mocks.listWorkflowTemplates,
   },
 }))
 
@@ -121,6 +123,53 @@ import { useUIStore } from '../stores/uiStore'
 import { usePluginStore } from '../stores/pluginStore'
 import type { RepositoryContextResult } from '../api/sessions'
 
+const BUILTIN_WORKFLOW_TEMPLATE = {
+  id: 'agent-development',
+  source: 'builtin' as const,
+  version: '1',
+  name: 'Agent Development',
+  description: 'Discussion to implementation workflow.',
+  phaseCount: 5,
+  firstPhaseId: 'discussion',
+  phaseNames: [
+    'Discussion',
+    'Specify',
+    'Plan',
+    'Tasks',
+    'Implement',
+  ],
+}
+
+const USER_WORKFLOW_TEMPLATE = {
+  id: 'user-linear-template',
+  source: 'user' as const,
+  version: '2026.05.20',
+  name: 'User Linear Template',
+  description: 'A valid disposable linear workflow template.',
+  phaseCount: 2,
+  firstPhaseId: 'discover',
+  phaseNames: ['Discover', 'Deliver'],
+}
+
+const LONG_WORKFLOW_TEMPLATE = {
+  id: 'long-linear-template',
+  source: 'user' as const,
+  version: '2026.05.21',
+  name: 'Long Linear Template',
+  description: 'Seven ordered phases for layout validation.',
+  phaseCount: 7,
+  firstPhaseId: 'discover',
+  phaseNames: [
+    'Discover',
+    'Shape',
+    'Specify',
+    'Plan',
+    'Build',
+    'Validate',
+    'Release',
+  ],
+}
+
 function okRepositoryContext(overrides: Partial<RepositoryContextResult> = {}): RepositoryContextResult {
   return {
     state: 'ok',
@@ -199,6 +248,10 @@ describe('EmptySession', () => {
     })
     mocks.getMessages.mockResolvedValue({ messages: [] })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
+    mocks.listWorkflowTemplates.mockResolvedValue({
+      templates: [BUILTIN_WORKFLOW_TEMPLATE],
+      invalidTemplates: [],
+    })
     mocks.listSkills.mockResolvedValue({ skills: [] })
     mocks.search.mockResolvedValue({
       currentPath: '/workspace/project',
@@ -413,6 +466,167 @@ describe('EmptySession', () => {
       ],
       ['draft-session', { type: 'prewarm_session' }],
     ])
+  })
+
+  it('keeps normal dialogue as the default and creates without workflow options', async () => {
+    render(<EmptySession />)
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Say hello in one sentence', selectionStart: 25 },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+
+    await waitFor(() => {
+      expect(mocks.createSession).toHaveBeenCalledWith({})
+    })
+    expect(mocks.createSession).not.toHaveBeenCalledWith(expect.objectContaining({
+      workflow: expect.anything(),
+    }))
+    expect(mocks.wsSend).toHaveBeenCalledWith('draft-session', {
+      type: 'user_message',
+      content: 'Say hello in one sentence',
+      attachments: [],
+    })
+  })
+
+  it('selects the built-in workflow template and creates a staged workflow session', async () => {
+    render(<EmptySession />)
+
+    const picker = await screen.findByTestId('workflow-template-picker')
+    expect(picker).toHaveAttribute('data-workflow-selected', 'false')
+    expect(screen.getByRole('button', { name: /agent development/i })).toBeInTheDocument()
+    expect(screen.getByText(/^Discussion$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Specify$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^plan$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^tasks$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Implement$/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /agent development/i }))
+    expect(picker).toHaveAttribute('data-workflow-selected', 'true')
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: {
+        value: 'Draft a tiny feature plan for validating workflow mode',
+        selectionStart: 'Draft a tiny feature plan for validating workflow mode'.length,
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+
+    await waitFor(() => {
+      expect(mocks.createSession).toHaveBeenCalledWith({
+        workflow: {
+          templateId: 'agent-development',
+          templateSource: 'builtin',
+          initialPhaseId: 'discussion',
+        },
+      })
+    })
+  })
+
+  it('previews a valid workflow with more than five phases without overflowing the composer', async () => {
+    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+      templates: [LONG_WORKFLOW_TEMPLATE],
+      invalidTemplates: [],
+    })
+
+    render(<EmptySession />)
+
+    const picker = await screen.findByTestId('workflow-template-picker')
+    const templateButton = within(picker).getByRole('button', { name: /long linear template/i })
+    expect(within(templateButton).getByText(/7 phases/i)).toBeInTheDocument()
+
+    for (const phaseName of LONG_WORKFLOW_TEMPLATE.phaseNames) {
+      expect(within(templateButton).getByText(phaseName)).toBeInTheDocument()
+    }
+
+    const phaseList = within(templateButton).getByText('Release').closest('ol')
+    expect(phaseList).toHaveClass('flex-wrap')
+    expect(screen.getByTestId('empty-session-composer-panel')).toHaveClass('overflow-visible')
+    expect(screen.getByTestId('empty-session-composer-panel')).not.toHaveClass('overflow-hidden')
+  })
+
+  it('shows invalid user workflow template issues without making them selectable', async () => {
+    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+      templates: [BUILTIN_WORKFLOW_TEMPLATE, USER_WORKFLOW_TEMPLATE],
+      invalidTemplates: [
+        {
+          source: 'user-config',
+          templateId: 'broken-local-template',
+          path: '$.templates[1].phases',
+          code: 'WORKFLOW_TEMPLATE_INVALID_PHASES',
+          message: 'Template phases must be a non-empty ordered array.',
+          severity: 'error',
+        },
+      ],
+    })
+
+    render(<EmptySession />)
+
+    expect(await screen.findByText('Invalid workflow templates')).toBeInTheDocument()
+    expect(screen.getByText('Template phases must be a non-empty ordered array.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /broken-local-template/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /user linear template/i }))
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: {
+        value: 'Use my local workflow template',
+        selectionStart: 'Use my local workflow template'.length,
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+
+    await waitFor(() => {
+      expect(mocks.createSession).toHaveBeenCalledWith({
+        workflow: {
+          templateId: 'user-linear-template',
+          templateSource: 'user',
+          initialPhaseId: 'discover',
+        },
+      })
+    })
+  })
+
+  it('surfaces builtin-id conflicts while keeping the builtin preset startable', async () => {
+    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+      templates: [BUILTIN_WORKFLOW_TEMPLATE],
+      invalidTemplates: [
+        {
+          source: 'user-config',
+          templateId: 'agent-development',
+          path: '$.templates[0].id',
+          code: 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
+          message: 'User templates cannot shadow builtin template ids.',
+          severity: 'error',
+        },
+      ],
+    })
+
+    render(<EmptySession />)
+
+    expect(await screen.findByText('User templates cannot shadow builtin template ids.')).toBeInTheDocument()
+    const builtinButtons = screen.getAllByRole('button', { name: /agent development/i })
+    expect(builtinButtons).toHaveLength(1)
+    const builtinButton = builtinButtons[0]
+    expect(builtinButton).toBeDefined()
+
+    fireEvent.click(builtinButton!)
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: {
+        value: 'Start the protected builtin workflow',
+        selectionStart: 'Start the protected builtin workflow'.length,
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+
+    await waitFor(() => {
+      expect(mocks.createSession).toHaveBeenCalledWith({
+        workflow: {
+          templateId: 'agent-development',
+          templateSource: 'builtin',
+          initialPhaseId: 'discussion',
+        },
+      })
+    })
   })
 
   it('uses native desktop file paths for draft attachments', async () => {

@@ -105,15 +105,35 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   }, [freeTexts, questions, resultAnswers, selections])
   const submitted = Object.keys(resultAnswers).length > 0 || hasSubmitted
 
+  if (Object.keys(resultAnswers).length > 0) {
+    return (
+      <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/30 bg-[var(--color-surface-container-low)] px-3 py-2">
+        <div className="flex items-start gap-2 text-xs text-[var(--color-text-secondary)]">
+          <span className="material-symbols-outlined mt-[1px] text-[14px] text-[var(--color-success)]">check_circle</span>
+          <span>
+            {t('question.answeredPrefix')}<strong>{answeredText}</strong>
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   const handleSelect = (qIndex: number, label: string) => {
     if (submitted) return
+    const question = questions[qIndex]
+    const selected = selections[qIndex] ?? []
+    const shouldAdvance =
+      question &&
+      !question.multiSelect &&
+      selected[0] !== label &&
+      qIndex < questions.length - 1
+
     setSelections((prev) => {
-      const question = questions[qIndex]
-      const selected = prev[qIndex] ?? []
+      const currentSelected = prev[qIndex] ?? []
       if (question?.multiSelect) {
-        const nextSelected = selected.includes(label)
-          ? selected.filter((value) => value !== label)
-          : [...selected, label]
+        const nextSelected = currentSelected.includes(label)
+          ? currentSelected.filter((value) => value !== label)
+          : [...currentSelected, label]
         const next = { ...prev }
         if (nextSelected.length > 0) {
           next[qIndex] = nextSelected
@@ -122,7 +142,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         }
         return next
       }
-      if (selected[0] === label) {
+      if (currentSelected[0] === label) {
         const next = { ...prev }
         delete next[qIndex]
         return next
@@ -135,6 +155,9 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
       delete next[qIndex]
       return next
     })
+    if (shouldAdvance) {
+      setActiveTab(qIndex + 1)
+    }
   }
 
   const handleFreeTextChange = (qIndex: number, value: string) => {

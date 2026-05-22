@@ -100,23 +100,28 @@ export async function writeDiffPatch(beforeDir: string, afterDir: string, patchP
   writeFileSync(patchPath, `${result.stdout}${result.stderr}`)
 }
 
-function verifyChangedFiles(testCase: BaselineCase, changed: string[]) {
-  const expected = testCase.verify.expectedFiles
+function normalizeBaselinePath(path: string) {
+  return path.replaceAll('\\', '/')
+}
+
+export function verifyChangedFiles(testCase: BaselineCase, changed: string[]) {
+  const changedFiles = changed.map(normalizeBaselinePath)
+  const expected = testCase.verify.expectedFiles?.map(normalizeBaselinePath)
   if (expected) {
-    const unexpected = changed.filter((file) => !expected.includes(file))
+    const unexpected = changedFiles.filter((file) => !expected.includes(file))
     if (unexpected.length > 0) {
       throw new Error(`unexpected changed files: ${unexpected.join(', ')}`)
     }
   }
 
-  const required = testCase.verify.requiredFiles ?? []
-  const missing = required.filter((file) => !changed.includes(file))
+  const required = testCase.verify.requiredFiles?.map(normalizeBaselinePath) ?? []
+  const missing = required.filter((file) => !changedFiles.includes(file))
   if (missing.length > 0) {
     throw new Error(`required files were not changed: ${missing.join(', ')}`)
   }
 
-  const forbidden = testCase.verify.forbiddenFiles ?? []
-  const forbiddenChanged = forbidden.filter((file) => changed.includes(file))
+  const forbidden = testCase.verify.forbiddenFiles?.map(normalizeBaselinePath) ?? []
+  const forbiddenChanged = forbidden.filter((file) => changedFiles.includes(file))
   if (forbiddenChanged.length > 0) {
     throw new Error(`forbidden files changed: ${forbiddenChanged.join(', ')}`)
   }
@@ -144,6 +149,35 @@ async function pipeToFile(stream: ReadableStream<Uint8Array> | null, path: strin
     if (done) break
     appendFileSync(path, decoder.decode(value, { stream: true }))
   }
+}
+
+export async function cleanupBaselineWorkRoot(
+  workRoot: string,
+  logPath: string,
+  remove: (path: string) => void = (path) => rmSync(path, { recursive: true, force: true }),
+  sleep: (ms: number) => Promise<void> = Bun.sleep,
+) {
+  const delaysMs = process.platform === 'win32' ? [100, 250, 500, 1_000] : [0]
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
+    try {
+      remove(workRoot)
+      return
+    } catch (error) {
+      lastError = error
+      const delay = delaysMs[attempt]
+      if (delay === undefined) {
+        break
+      }
+      if (delay > 0) {
+        await sleep(delay)
+      }
+    }
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError)
+  appendFileSync(logPath, `\n[quality-gate] Failed to remove temp work root ${workRoot}: ${message}\n`)
 }
 
 function waitForWebSocketOpen(ws: WebSocket) {
@@ -322,6 +356,6 @@ export async function executeBaselineCase(
     server.kill()
     await server.exited.catch(() => undefined)
     await Promise.all([stdoutPump, stderrPump]).catch(() => undefined)
-    rmSync(workRoot, { recursive: true, force: true })
+    await cleanupBaselineWorkRoot(workRoot, serverLogPath)
   }
 }

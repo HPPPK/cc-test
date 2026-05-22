@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import { ApiError } from '../middleware/errorHandler.js'
@@ -26,6 +27,7 @@ import {
   type PreparedSessionWorkspace,
 } from './repositoryLaunchService.js'
 import { cleanSessionTitleSource } from '../../utils/sessionTitleText.js'
+import type { WorkflowSessionMetadata } from './workflowTypes.js'
 
 // ============================================================================
 // Types
@@ -41,6 +43,7 @@ export type SessionListItem = {
   projectRoot: string | null
   workDir: string | null
   workDirExists: boolean
+  workflow?: WorkflowSessionMetadata
 }
 
 export type DeleteSessionFailure = {
@@ -197,6 +200,7 @@ type RawEntry = {
     timestamp?: string
   }
   customTitle?: string
+  workflow?: unknown
   worktreeSession?: PersistedWorktreeSession | null
   title?: string
   [key: string]: unknown
@@ -240,6 +244,10 @@ export class SessionService {
 
   private getProjectsDir(): string {
     return path.join(this.getConfigDir(), 'projects')
+  }
+
+  private getWorkflowSessionDir(sessionId: string): string {
+    return path.join(this.getConfigDir(), 'cc-haha', 'workflow-sessions', sessionId)
   }
 
   /**
@@ -314,6 +322,24 @@ export class SessionService {
     return undefined
   }
 
+  private resolveWorkflowFromEntries(entries: RawEntry[]): WorkflowSessionMetadata | undefined {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i]
+      if (entry?.type !== 'session-meta') continue
+
+      const workflow = entry.workflow
+      if (
+        workflow &&
+        typeof workflow === 'object' &&
+        !Array.isArray(workflow) &&
+        (workflow as Record<string, unknown>).mode === 'workflow'
+      ) {
+        return workflow as WorkflowSessionMetadata
+      }
+    }
+    return undefined
+  }
+
   private resolveWorktreeSessionFromEntries(entries: RawEntry[]): PersistedWorktreeSession | null | undefined {
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]
@@ -349,7 +375,12 @@ export class SessionService {
     if (!candidate) return null
 
     const canonicalCandidate = await this.canonicalizeProjectPath(candidate)
-    const gitRoot = findCanonicalGitRoot(canonicalCandidate)
+    const gitRoot = this.findCanonicalGitRootWithin(canonicalCandidate, [
+      worktreeSession?.originalCwd,
+      repository?.repoRoot,
+      workDir,
+      fallbackProjectDir ? this.desanitizePath(fallbackProjectDir) : null,
+    ])
     if (gitRoot) return gitRoot
 
     if (workDir) {
@@ -361,11 +392,76 @@ export class SessionService {
     return canonicalCandidate
   }
 
+  private findCanonicalGitRootWithin(
+    startPath: string,
+    bounds: Array<string | null | undefined>,
+  ): string | null {
+    const canonicalBounds = bounds
+      .map((bound) => (bound ? path.resolve(bound) : null))
+      .filter((bound): bound is string => !!bound)
+
+    let current = path.resolve(startPath)
+    if (existsSync(current)) {
+      try {
+        const stat = statSync(current)
+        if (!stat.isDirectory()) current = path.dirname(current)
+      } catch {
+        // Keep the resolved candidate when stat races with deletion.
+      }
+    }
+
+    while (this.isWithinAnyBound(current, canonicalBounds)) {
+      try {
+        const gitPath = path.join(current, '.git')
+        const stat = statSync(gitPath)
+        if (stat.isDirectory() || stat.isFile()) {
+          return findCanonicalGitRoot(current) ?? current.normalize('NFC')
+        }
+      } catch {
+        // Continue walking toward the bounded project root.
+      }
+
+      const parent = path.dirname(current)
+      if (parent === current) break
+      current = parent
+    }
+
+    return null
+  }
+
+  private isWithinAnyBound(candidate: string, bounds: string[]): boolean {
+    return bounds.some((bound) => {
+      const relative = path.relative(bound, candidate)
+      return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+    })
+  }
+
   private async canonicalizeProjectPath(projectPath: string): Promise<string> {
     try {
       return (await fs.realpath(projectPath)).normalize('NFC')
     } catch {
       return projectPath.normalize('NFC')
+    }
+  }
+
+  private async withCanonicalGitCeilingDirectories<T>(operation: () => Promise<T>): Promise<T> {
+    const original = process.env.GIT_CEILING_DIRECTORIES
+    if (!original) return await operation()
+
+    const delimiter = process.platform === 'win32' ? ';' : ':'
+    const entries = original.split(delimiter).map((entry) => entry.trim()).filter(Boolean)
+    const canonicalEntries = await Promise.all(entries.map(async (entry) => {
+      try {
+        return await fs.realpath(entry)
+      } catch {
+        return path.resolve(entry)
+      }
+    }))
+    process.env.GIT_CEILING_DIRECTORIES = Array.from(new Set([...entries, ...canonicalEntries])).join(delimiter)
+    try {
+      return await operation()
+    } finally {
+      process.env.GIT_CEILING_DIRECTORIES = original
     }
   }
 
@@ -1301,6 +1397,7 @@ export class SessionService {
         const workDir = this.resolveWorkDirFromEntries(entries, projectDir)
         const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
         const workDirExists = await this.pathExists(workDir)
+        const workflow = this.resolveWorkflowFromEntries(entries)
 
         // Count transcript messages only (user + assistant)
         const messageCount = entries.filter(
@@ -1328,6 +1425,7 @@ export class SessionService {
           projectRoot,
           workDir,
           workDirExists,
+          ...(workflow ? { workflow } : {}),
         }
       } catch {
         // Skip unreadable files
@@ -1358,6 +1456,7 @@ export class SessionService {
     const workDir = this.resolveWorkDirFromEntries(entries, projectDir)
     const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
     const workDirExists = await this.pathExists(workDir)
+    const workflow = this.resolveWorkflowFromEntries(entries)
 
     let createdAt = stat.birthtime.toISOString()
     for (const e of entries) {
@@ -1378,6 +1477,7 @@ export class SessionService {
       workDir,
       workDirExists,
       messages,
+      ...(workflow ? { workflow } : {}),
     }
   }
 
@@ -1413,10 +1513,12 @@ export class SessionService {
     // expand relative paths — in bundled sidecar mode the server's cwd is
     // typically '/'. Callers (IM adapters) already send absolute realPath,
     // but we log here so cwd regressions are caught early.
-    const preparedWorkspace = await resolveSessionWorkspaceLaunch(
-      resolvedWorkDir,
-      repositoryOptions,
-      sessionId,
+    const preparedWorkspace = await this.withCanonicalGitCeilingDirectories(() =>
+      resolveSessionWorkspaceLaunch(
+        resolvedWorkDir,
+        repositoryOptions,
+        sessionId,
+      )
     )
     const absWorkDir = preparedWorkspace.workDir
     console.log(
@@ -1471,6 +1573,7 @@ export class SessionService {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
     }
 
+    await fs.rm(this.getWorkflowSessionDir(sessionId), { recursive: true, force: true })
     await fs.unlink(found.filePath)
   }
 
@@ -1638,6 +1741,7 @@ export class SessionService {
     const entries = await this.readJsonlFile(found.filePath)
     const workDir = this.resolveWorkDirFromEntries(entries, found.projectDir) || fallbackWorkDir || process.cwd()
     const repository = this.resolveRepositoryFromEntries(entries)
+    const workflow = this.resolveWorkflowFromEntries(entries)
     const now = new Date().toISOString()
 
     const initialEntry = {
@@ -1656,6 +1760,7 @@ export class SessionService {
       isMeta: true,
       workDir,
       repository,
+      ...(workflow ? { workflow } : {}),
       timestamp: now,
     }
 
@@ -1672,6 +1777,7 @@ export class SessionService {
       workDir: string
       customTitle?: string | null
       repository?: PreparedSessionWorkspace['repository']
+      workflow?: WorkflowSessionMetadata
     }
   ): Promise<void> {
     const matches = await this.findSessionFiles(sessionId)
@@ -1697,6 +1803,7 @@ export class SessionService {
       isMeta: true,
       workDir: metadata.workDir,
       repository,
+      ...(metadata.workflow ? { workflow: metadata.workflow } : {}),
       timestamp: new Date().toISOString(),
     })
 

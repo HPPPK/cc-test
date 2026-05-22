@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "template": {
+    "id": "user-delivery-plan",
+    "version": "3",
+    "source": "user",
+    "snapshotId": "user-delivery-plan-v3",
+    "sourceState": "missing-template"
+  },
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "user-delivery-plan",
+    "source": "user",
+    "version": "3",
+    "displayName": "User delivery plan",
+    "description": "Persisted user template snapshot",
+    "phases": [
+      {
+        "id": "planning",
+        "label": "Planning",
+        "instructions": "Plan from the persisted snapshot.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      },
+      {
+        "id": "implementation",
+        "label": "Implementation",
+        "instructions": "Implement from the persisted snapshot.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      }
+    ],
+    "sourcePath": "removed-user-template.json",
+    "contentHash": "missing-user-template-hash"
+  },
+  "templateIdentity": {
+    "id": "user-delivery-plan",
+    "source": "user",
+    "version": "3",
+    "registryKey": "user:user-delivery-plan",
+    "contentHash": "missing-user-template-hash"
+  },
+  "sourceTemplateStatus": "missing-template",
+  "status": "running",
+  "workflowStatus": "running",
+  "activePhaseId": "implementation",
+  "phases": [
+    {
+      "id": "planning",
+      "index": 0,
+      "status": "completed",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "plan-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T01:00:00.000Z",
+          "label": "Plan summary"
+        }
+      ]
+    },
+    {
+      "id": "implementation",
+      "index": 1,
+      "status": "running",
+      "artifactPointers": []
+    }
+  ],
+  "phaseRuns": [
+    {
+      "phaseId": "planning",
+      "index": 0,
+      "status": "completed",
+      "startedAt": "2026-05-20T01:00:00.000Z",
+      "completedAt": "2026-05-20T01:05:00.000Z",
+      "instructionsProvenance": {
+        "templateId": "user-delivery-plan",
+        "templateVersion": "3",
+        "phaseId": "planning"
+      },
+      "inputArtifactRefs": [],
+      "outputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "plan-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T01:00:00.000Z",
+          "label": "Plan summary"
+        }
+      ],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null
+    },
+    {
+      "phaseId": "implementation",
+      "index": 1,
+      "status": "running",
+      "startedAt": "2026-05-20T01:06:00.000Z",
+      "completedAt": null,
+      "instructionsProvenance": {
+        "templateId": "user-delivery-plan",
+        "templateVersion": "3",
+        "phaseId": "implementation"
+      },
+      "inputArtifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "plan-summary",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T01:00:00.000Z",
+          "label": "Plan summary"
+        }
+      ],
+      "outputArtifactRefs": [],
+      "completionChecks": [],
+      "modelResolution": null,
+      "skillProvenance": [],
+      "blockedReason": null
+    }
+  ],
+  "transitionHistory": [],
+  "artifactIndex": [
+    {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "plan-summary",
+      "schemaVersion": 1,
+      "createdAt": "2026-05-20T01:00:00.000Z",
+      "label": "Plan summary"
+    }
+  ],
+  "finalReportRef": null,
+  "stateVersion": 2,
+  "revision": 2,
+  "createdAt": "2026-05-20T01:00:00.000Z",
+  "updatedAt": "2026-05-20T01:06:00.000Z",
+  "pendingConfirmation": null
+}

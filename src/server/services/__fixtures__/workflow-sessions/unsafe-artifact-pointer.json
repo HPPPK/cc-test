@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "reportId": "final",
+  "sessionId": "fixture-session",
+  "templateId": "requirements-to-implementation",
+  "templateVersion": "1",
+  "createdAt": "2026-05-20T02:06:00.000Z",
+  "phaseSummaries": [
+    {
+      "phaseId": "requirements-clarification",
+      "label": "Requirements clarification",
+      "status": "completed",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "../settings",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-20T02:00:00.000Z",
+          "label": "Escaping artifact pointer"
+        }
+      ],
+      "completion": {
+        "phaseId": "requirements-clarification",
+        "passed": true,
+        "checkedAt": "2026-05-20T02:05:00.000Z",
+        "criteriaType": "manual-checklist",
+        "artifactPointers": []
+      }
+    }
+  ],
+  "verificationResult": {
+    "passed": true,
+    "notes": "Unsafe pointer fixture must be rejected."
+  },
+  "conversationSummary": "This report attempts to escape the owning workflow session.",
+  "artifactRefs": [
+    {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "../oauth-token",
+      "schemaVersion": 1,
+      "createdAt": "2026-05-20T02:00:00.000Z",
+      "label": "Unsafe root artifact pointer"
+    }
+  ]
+}
