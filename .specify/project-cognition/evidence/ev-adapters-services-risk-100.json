@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-100",
+  "type": "source_analysis",
+  "source_path": "src/services/api/client.ts",
+  "summary": "client.ts defines createStderrLogger, resolveAnthropicClientApiKey, getAnthropicClient, getCustomHeaders, CLIENT_REQUEST_ID_HEADER, buildFetch and imports @anthropic-ai/sdk, crypto, google-auth-library, src/utils/http.js, src/utils/model/model.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "createStderrLogger",
+    "resolveAnthropicClientApiKey",
+    "getAnthropicClient",
+    "getCustomHeaders",
+    "CLIENT_REQUEST_ID_HEADER",
+    "buildFetch"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

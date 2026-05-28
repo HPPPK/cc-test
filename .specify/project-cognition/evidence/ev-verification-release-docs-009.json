@@ -1,0 +1,14 @@
+{
+  "id": "ev-verification-release-docs-009",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/Info.plist",
+  "summary": "macOS plist carries notification-related bundle metadata for the desktop application.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "NSUserNotificationAlertStyle"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

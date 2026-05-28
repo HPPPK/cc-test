@@ -489,12 +489,15 @@ describe('EmptySession', () => {
     })
   })
 
-  it('selects the built-in workflow template and creates a staged workflow session', async () => {
+  it('opens workflows from the plus menu and creates a staged workflow session', async () => {
     render(<EmptySession />)
 
-    const picker = await screen.findByTestId('workflow-template-picker')
-    expect(picker).toHaveAttribute('data-workflow-selected', 'false')
-    expect(screen.getByRole('button', { name: /agent development/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
+    const dialog = await screen.findByTestId('workflow-start-dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Start workflow' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /agent development/i })).toBeInTheDocument()
     expect(screen.getByText(/^Discussion$/i)).toBeInTheDocument()
     expect(screen.getByText(/^Specify$/i)).toBeInTheDocument()
     expect(screen.getByText(/^plan$/i)).toBeInTheDocument()
@@ -502,15 +505,8 @@ describe('EmptySession', () => {
     expect(screen.getByText(/^Implement$/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /agent development/i }))
-    expect(picker).toHaveAttribute('data-workflow-selected', 'true')
 
-    fireEvent.change(screen.getByRole('textbox'), {
-      target: {
-        value: 'Draft a tiny feature plan for validating workflow mode',
-        selectionStart: 'Draft a tiny feature plan for validating workflow mode'.length,
-      },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({
@@ -521,9 +517,12 @@ describe('EmptySession', () => {
         },
       })
     })
+    expect(mocks.wsSend).not.toHaveBeenCalledWith('draft-session', expect.objectContaining({
+      type: 'user_message',
+    }))
   })
 
-  it('previews a valid workflow with more than five phases without overflowing the composer', async () => {
+  it('previews a valid workflow with more than five phases in the start dialog', async () => {
     mocks.listWorkflowTemplates.mockResolvedValueOnce({
       templates: [LONG_WORKFLOW_TEMPLATE],
       invalidTemplates: [],
@@ -531,8 +530,11 @@ describe('EmptySession', () => {
 
     render(<EmptySession />)
 
-    const picker = await screen.findByTestId('workflow-template-picker')
-    const templateButton = within(picker).getByRole('button', { name: /long linear template/i })
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
+    const dialog = await screen.findByTestId('workflow-start-dialog')
+    const templateButton = within(dialog).getByRole('button', { name: /long linear template/i })
     expect(within(templateButton).getByText(/7 phases/i)).toBeInTheDocument()
 
     for (const phaseName of LONG_WORKFLOW_TEMPLATE.phaseNames) {
@@ -545,7 +547,7 @@ describe('EmptySession', () => {
     expect(screen.getByTestId('empty-session-composer-panel')).not.toHaveClass('overflow-hidden')
   })
 
-  it('shows invalid user workflow template issues without making them selectable', async () => {
+  it('shows invalid user workflow template issues in the start dialog without making them selectable', async () => {
     mocks.listWorkflowTemplates.mockResolvedValueOnce({
       templates: [BUILTIN_WORKFLOW_TEMPLATE, USER_WORKFLOW_TEMPLATE],
       invalidTemplates: [
@@ -562,18 +564,15 @@ describe('EmptySession', () => {
 
     render(<EmptySession />)
 
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
     expect(await screen.findByText('Invalid workflow templates')).toBeInTheDocument()
     expect(screen.getByText('Template phases must be a non-empty ordered array.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /broken-local-template/i })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /user linear template/i }))
-    fireEvent.change(screen.getByRole('textbox'), {
-      target: {
-        value: 'Use my local workflow template',
-        selectionStart: 'Use my local workflow template'.length,
-      },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({
@@ -584,6 +583,34 @@ describe('EmptySession', () => {
         },
       })
     })
+  })
+
+  it('does not start templates that have no first phase', async () => {
+    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+      templates: [{
+        ...USER_WORKFLOW_TEMPLATE,
+        id: 'not-startable',
+        name: 'No Phases Template',
+        phaseCount: 0,
+        firstPhaseId: '',
+        phaseNames: [],
+        startable: false,
+      }],
+      invalidTemplates: [],
+    })
+
+    render(<EmptySession />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
+    const dialog = await screen.findByTestId('workflow-start-dialog')
+    const templateButton = within(dialog).getByRole('button', { name: /no phases template/i })
+    expect(templateButton).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    expect(mocks.createSession).not.toHaveBeenCalled()
   })
 
   it('surfaces builtin-id conflicts while keeping the builtin preset startable', async () => {
@@ -603,6 +630,9 @@ describe('EmptySession', () => {
 
     render(<EmptySession />)
 
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
     expect(await screen.findByText('User templates cannot shadow builtin template ids.')).toBeInTheDocument()
     const builtinButtons = screen.getAllByRole('button', { name: /agent development/i })
     expect(builtinButtons).toHaveLength(1)
@@ -610,13 +640,7 @@ describe('EmptySession', () => {
     expect(builtinButton).toBeDefined()
 
     fireEvent.click(builtinButton!)
-    fireEvent.change(screen.getByRole('textbox'), {
-      target: {
-        value: 'Start the protected builtin workflow',
-        selectionStart: 'Start the protected builtin workflow'.length,
-      },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({

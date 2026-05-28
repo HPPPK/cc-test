@@ -1,0 +1,62 @@
+{
+  "id": "T012",
+  "title": "Add schema-aware workflow template editor",
+  "agent": "executor",
+  "depends_on": [
+    "T011: Workflows manager list implemented"
+  ],
+  "parallel_safe": false,
+  "story": "US1",
+  "objective": "Implement a schema-aware editor with common workflow/phase fields first and advanced fields behind disclosure.",
+  "context_navigation": {
+    "design_decision": "plan.md#Locked Planning Decisions",
+    "data_model": "data-model.md#Workflow Phase Contract",
+    "api_contract": "contracts/workflow-template-api.md#Validate",
+    "reference_implementation": "src/server/services/workflowRuntimeService.ts"
+  },
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/types/session.ts",
+    ".specify/features/005-specify-discussions-workflow/data-model.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx （新建）",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx （修改）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not make raw JSON the primary editor.",
+    "Do not flatten all advanced fields by default.",
+    "Do not allow prompt-only phases."
+  ],
+  "acceptance_criteria": [
+    "Common fields include id, name, role/type, instructions, objective, intake, output artifact, handoff, execution rules, completion criteria, transition authority.",
+    "Advanced fields are accessible behind disclosure.",
+    "Editor validation blocks missing output artifact and handoff semantics."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

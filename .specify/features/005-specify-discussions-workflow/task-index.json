@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "feature": "Workflows Template Management And Chat Entry",
+  "featureDir": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow",
+  "targetRoot": "F:/github/cc-jiangxia",
+  "totalTasks": 24,
+  "countsByPhase": {
+    "guardrails": 2,
+    "setup": 4,
+    "foundational": 3,
+    "US1": 4,
+    "US2": 2,
+    "US3": 2,
+    "US4": 6,
+    "polish": 1
+  },
+  "countsByStory": {
+    "US1": 4,
+    "US2": 2,
+    "US3": 2,
+    "US4": 6
+  },
+  "parallelSafeTasks": [
+    "T003",
+    "T004",
+    "T005",
+    "T006",
+    "T010",
+    "T014",
+    "T016",
+    "T018",
+    "T019"
+  ],
+  "tasks": [
+    { "id": "T001", "phase": "guardrails", "packet": "task-packets/T001.json", "depends_on": [], "parallel_safe": false },
+    { "id": "T002", "phase": "guardrails", "packet": "task-packets/T002.json", "depends_on": ["T001"], "parallel_safe": false },
+    { "id": "T003", "phase": "setup", "packet": "task-packets/T003.json", "depends_on": ["T001", "T002"], "parallel_safe": true },
+    { "id": "T004", "phase": "setup", "packet": "task-packets/T004.json", "depends_on": ["T001", "T002"], "parallel_safe": true },
+    { "id": "T005", "phase": "setup", "packet": "task-packets/T005.json", "depends_on": ["T001", "T002"], "parallel_safe": true },
+    { "id": "T006", "phase": "setup", "packet": "task-packets/T006.json", "depends_on": ["T001", "T002"], "parallel_safe": true },
+    { "id": "T007", "phase": "foundational", "packet": "task-packets/T007.json", "depends_on": ["T003"], "parallel_safe": false },
+    { "id": "T008", "phase": "foundational", "packet": "task-packets/T008.json", "depends_on": ["T004", "T007"], "parallel_safe": false },
+    { "id": "T009", "phase": "foundational", "packet": "task-packets/T009.json", "depends_on": ["T006", "T008"], "parallel_safe": false },
+    { "id": "T010", "phase": "US1", "packet": "task-packets/T010.json", "depends_on": ["T009"], "parallel_safe": true },
+    { "id": "T011", "phase": "US1", "packet": "task-packets/T011.json", "depends_on": ["T010"], "parallel_safe": false },
+    { "id": "T012", "phase": "US1", "packet": "task-packets/T012.json", "depends_on": ["T011"], "parallel_safe": false },
+    { "id": "T013", "phase": "US1", "packet": "task-packets/T013.json", "depends_on": ["T011", "T012"], "parallel_safe": false },
+    { "id": "T014", "phase": "US2", "packet": "task-packets/T014.json", "depends_on": ["T007", "T008"], "parallel_safe": true },
+    { "id": "T015", "phase": "US2", "packet": "task-packets/T015.json", "depends_on": ["T013", "T014"], "parallel_safe": false },
+    { "id": "T016", "phase": "US3", "packet": "task-packets/T016.json", "depends_on": ["T009"], "parallel_safe": true },
+    { "id": "T017", "phase": "US3", "packet": "task-packets/T017.json", "depends_on": ["T016"], "parallel_safe": false },
+    { "id": "T018", "phase": "US4", "packet": "task-packets/T018.json", "depends_on": ["T005", "T007", "T008"], "parallel_safe": true },
+    { "id": "T019", "phase": "US4", "packet": "task-packets/T019.json", "depends_on": ["T005"], "parallel_safe": true },
+    { "id": "T020", "phase": "US4", "packet": "task-packets/T020.json", "depends_on": ["T018", "T019"], "parallel_safe": false },
+    { "id": "T021", "phase": "US4", "packet": "task-packets/T021.json", "depends_on": ["T020"], "parallel_safe": false },
+    { "id": "T022", "phase": "US4", "packet": "task-packets/T022.json", "depends_on": ["T009", "T021"], "parallel_safe": false },
+    { "id": "T023", "phase": "US4", "packet": "task-packets/T023.json", "depends_on": ["T017", "T022"], "parallel_safe": false },
+    { "id": "T024", "phase": "polish", "packet": "task-packets/T024.json", "depends_on": ["T013", "T015", "T017", "T023"], "parallel_safe": false }
+  ],
+  "implementationReadinessAudit": {
+    "frCoverage": "pass",
+    "successCriteriaCoverage": "pass",
+    "lockedDecisionPreservation": "pass",
+    "guardrailMapping": "pass",
+    "dp1Dp2Dp3PacketReadiness": "pass",
+    "referenceFidelityMapping": "pass",
+    "unmappedTasks": "pass",
+    "writeSetConflicts": "pass"
+  },
+  "recommendedNextCommand": "/sp.implement"
+}

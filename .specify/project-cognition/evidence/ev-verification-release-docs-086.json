@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-086",
+  "type": "source_analysis",
+  "source_path": "docs/agent/images/05-architecture.png",
+  "summary": "Documentation image asset accounted for by file metadata (undefined bytes).",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:2022765",
+    "mtime:2026-05-15T06:52:03.932Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

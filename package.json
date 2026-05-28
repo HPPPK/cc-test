@@ -1,14 +1,18 @@
 {
-  "name": "claude-code-local",
+  "name": "cc-jiangxia",
   "version": "999.0.0-local",
   "private": true,
   "type": "module",
   "bin": {
+    "claude-jiangxia": "./bin/claude-jiangxia",
+    "cc-jiangxia": "./bin/cc-jiangxia",
     "claude-haha": "./bin/claude-haha"
   },
   "scripts": {
+    "claude-jiangxia": "bun run ./bin/claude-jiangxia",
+    "cc-jiangxia": "bun run ./bin/cc-jiangxia",
     "claude-haha": "bun run ./bin/claude-haha",
-    "start": "bun run ./bin/claude-haha",
+    "start": "bun run ./bin/claude-jiangxia",
     "check:pr": "bun run scripts/pr/check-pr.ts",
     "check:fast-lane": "bun run scripts/pr/fast-lane-tests.ts",
     "check:impact": "bun run scripts/pr/impact-report.ts",

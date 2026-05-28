@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-096",
+  "type": "source_analysis",
+  "source_path": "src/services/api/azureOpenAI.ts",
+  "summary": "azureOpenAI.ts defines resolveAzureOpenAIEndpoint, resolveCodexDeployment, resolveAzureOpenAIDeployment, getAzureOpenAIHeaders, buildAzureOpenAITools, contentBlocksToText and imports crypto, src/Tool.js, src/tools/ToolSearchTool/prompt.js, src/utils/http.js, src/utils/json.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "resolveAzureOpenAIEndpoint",
+    "resolveCodexDeployment",
+    "resolveAzureOpenAIDeployment",
+    "getAzureOpenAIHeaders",
+    "buildAzureOpenAITools",
+    "contentBlocksToText"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

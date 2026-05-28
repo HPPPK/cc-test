@@ -1,0 +1,19 @@
+{
+  "id": "ev-root-config-runtime-main-02",
+  "type": "source_analysis",
+  "source_path": "src/main.tsx",
+  "summary": "The main entrypoint assembles the CLI runtime by importing initialization, tools, plugins, bundled skills, MCP command registration, and then invoking `setup(...)` during action handling.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js'",
+    "import { getTools } from './tools.js'",
+    "import { initBuiltinPlugins } from './plugins/bundled/index.js'",
+    "import { initBundledSkills } from './skills/bundled/index.js'",
+    "import { registerMcpAddCommand } from 'src/commands/mcp/addCommand.js'",
+    "await setup(preSetupCwd, permissionMode, allowDangerouslySkipPermissions, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber, worktreeBaseRef, messagingSocketPath)"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-034",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/ai-card.ts",
+  "summary": "ai-card.ts defines DingTalkAiCardTarget, DingTalkAiCardInstance, DingTalkCreateCardOptions, DingTalkAiCardService, buildDeliverBody, getImCardRequestTimeoutMs",
+  "detail": "",
+  "quotes_or_symbols": [
+    "DingTalkAiCardTarget",
+    "DingTalkAiCardInstance",
+    "DingTalkCreateCardOptions",
+    "DingTalkAiCardService",
+    "buildDeliverBody",
+    "getImCardRequestTimeoutMs"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

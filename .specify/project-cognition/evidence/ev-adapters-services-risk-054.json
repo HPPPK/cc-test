@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-054",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/media.ts",
+  "summary": "media.ts defines detectFeishuFileType, guessMime, DownloadParams, FeishuMediaService and imports @larksuiteoapi/node-sdk, node:fs/promises, node:path, ../common/attachment/attachment-store.js, ../common/attachment/attachment-types.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "detectFeishuFileType",
+    "guessMime",
+    "DownloadParams",
+    "FeishuMediaService"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

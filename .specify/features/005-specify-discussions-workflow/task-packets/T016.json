@@ -1,0 +1,62 @@
+{
+  "id": "T016",
+  "title": "Add reusable Workflow start dialog",
+  "agent": "executor",
+  "depends_on": [
+    "T009: desktop workflow template API/types implemented"
+  ],
+  "parallel_safe": true,
+  "story": "US3",
+  "objective": "Add a reusable Workflows selection/start dialog showing template source, phase count, phase list, invalid warnings, and start action.",
+  "context_navigation": {
+    "design_decision": "plan.md#Locked Planning Decisions",
+    "data_model": "data-model.md#Workflow Template Validation Issue",
+    "api_contract": "contracts/linked-workflow-session.md#Desktop Flow Contract",
+    "reference_implementation": "desktop/src/components/workflow/WorkflowTemplatePicker.tsx"
+  },
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+    "desktop/src/types/session.ts",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx （新建）",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx （修改）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not start invalid templates.",
+    "Do not embed non-empty context strategy logic here beyond supported props.",
+    "Do not regress existing WorkflowTemplatePicker behavior."
+  ],
+  "acceptance_criteria": [
+    "Dialog presents template metadata and invalid diagnostics.",
+    "Start action disabled for invalid templates.",
+    "Dialog is keyboard accessible and localized."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

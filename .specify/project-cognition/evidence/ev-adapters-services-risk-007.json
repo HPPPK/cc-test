@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-007",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/message-buffer.test.ts",
+  "summary": "Test coverage for message-buffer.test.ts exercises accumulates text and flushes on complete; flushes when character threshold is reached; flushes on timer interval; does not flush empty buffer on complete",
+  "detail": "",
+  "quotes_or_symbols": [
+    "accumulates text and flushes on complete",
+    "flushes when character threshold is reached",
+    "flushes on timer interval",
+    "does not flush empty buffer on complete"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

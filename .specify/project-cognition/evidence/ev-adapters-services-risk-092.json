@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-092",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/metadata.ts",
+  "summary": "metadata.ts defines AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, sanitizeToolNameForAnalytics, isToolDetailsLoggingEnabled, isAnalyticsToolDetailsLoggingEnabled, mcpToolDetailsForAnalytics, extractMcpToolDetails and imports path, lodash-es/memoize.js, ../../utils/env.js, ../../utils/envDynamic.js, ../../utils/betas.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS",
+    "sanitizeToolNameForAnalytics",
+    "isToolDetailsLoggingEnabled",
+    "isAnalyticsToolDetailsLoggingEnabled",
+    "mcpToolDetailsForAnalytics",
+    "extractMcpToolDetails"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

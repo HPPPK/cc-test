@@ -1,0 +1,18 @@
+{
+  "id": "ev-adapters-services-risk-111",
+  "type": "source_analysis",
+  "source_path": "src/services/api/overageCreditGrant.ts",
+  "summary": "overageCreditGrant.ts defines OverageCreditGrantInfo, getCachedOverageCreditGrant, invalidateOverageCreditGrantCache, refreshOverageCreditGrantCache, formatGrantAmount and imports axios, ../../constants/oauth.js, ../../utils/auth.js, ../../utils/config.js, ../../utils/log.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "OverageCreditGrantInfo",
+    "getCachedOverageCreditGrant",
+    "invalidateOverageCreditGrantCache",
+    "refreshOverageCreditGrantCache",
+    "formatGrantAmount"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

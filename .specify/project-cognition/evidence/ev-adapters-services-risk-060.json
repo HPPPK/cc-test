@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-060",
+  "type": "source_analysis",
+  "source_path": "adapters/telegram/index.ts",
+  "summary": "index.ts defines getTgWatcher, getBuffer, getRuntimeState, clearTransientChatState and imports grammy, node:path, ../common/ws-bridge.js, ../common/message-buffer.js, ../common/message-dedup.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getTgWatcher",
+    "getBuffer",
+    "getRuntimeState",
+    "clearTransientChatState"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

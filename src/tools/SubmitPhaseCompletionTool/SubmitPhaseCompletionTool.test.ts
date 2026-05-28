@@ -4,16 +4,16 @@ import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
 import { assembleWorkflowToolPool, getAllBaseTools } from '../../tools.js'
 
 const TOOL_NAME = 'submit_phase_completion'
-const originalDesktopServerUrl = process.env.CC_HAHA_DESKTOP_SERVER_URL
-const originalWorkflowSessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID
+const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+const originalWorkflowSessionId = process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 
 afterEach(() => {
-  if (originalDesktopServerUrl === undefined) delete process.env.CC_HAHA_DESKTOP_SERVER_URL
-  else process.env.CC_HAHA_DESKTOP_SERVER_URL = originalDesktopServerUrl
+  if (originalDesktopServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+  else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = originalDesktopServerUrl
 
-  if (originalWorkflowSessionId === undefined) delete process.env.CC_HAHA_WORKFLOW_SESSION_ID
-  else process.env.CC_HAHA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
+  if (originalWorkflowSessionId === undefined) delete process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
+  else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
 
   if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
   else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
@@ -192,8 +192,8 @@ describe('SubmitPhaseCompletionTool', () => {
       },
     })
 
-    process.env.CC_HAHA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
-    process.env.CC_HAHA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
@@ -235,8 +235,8 @@ describe('SubmitPhaseCompletionTool', () => {
       },
     })
 
-    process.env.CC_HAHA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
-    process.env.CC_HAHA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()

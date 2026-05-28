@@ -1,0 +1,63 @@
+{
+  "lane_id": "story-phase-decomposition",
+  "status": "success",
+  "source_artifacts_inspected": [
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md",
+    ".specify/features/005-specify-discussions-workflow/spec.md",
+    ".specify/features/005-specify-discussions-workflow/plan.md",
+    ".specify/features/005-specify-discussions-workflow/data-model.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md",
+    ".specify/features/005-specify-discussions-workflow/workflow-state.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json"
+  ],
+  "decisions_contributed": [
+    "Decompose implementation into four user-story phases plus setup and final verification: Settings template management, import/export, empty chat workflow start, and non-empty linked workflow start.",
+    "Treat server workflow template registry and mutation API as the foundation for Settings and Chat consumers.",
+    "Make tests-first tasks explicit for every production surface under src/server and desktop/src.",
+    "Keep import/export independent from basic CRUD because preview, selected commit, rename conflicts, and unknown-field preservation are independently testable.",
+    "Split non-empty linked workflow start from empty chat workflow start because CA-005 carries separate context strategy and source-preservation obligations."
+  ],
+  "candidate_task_ids": [
+    "T001",
+    "T002",
+    "T003",
+    "T004",
+    "T005",
+    "T006",
+    "T007",
+    "T008",
+    "T009",
+    "T010",
+    "T011",
+    "T012",
+    "T013",
+    "T014",
+    "T015",
+    "T016",
+    "T017",
+    "T018",
+    "T019",
+    "T020",
+    "T021",
+    "T022",
+    "T023",
+    "T024"
+  ],
+  "join_points": [
+    "JP1 after T007: server template registry and CRUD API contract are stable enough for desktop Settings work.",
+    "JP2 after T011: Settings CRUD is independently validatable.",
+    "JP3 after T015: import/export is independently validatable.",
+    "JP4 after T017: empty/new chat workflow start is independently validatable.",
+    "JP5 after T023: linked non-empty chat start is validatable across server and desktop.",
+    "JP6 after T024: feature-level quality evidence is assembled."
+  ],
+  "blockers": [],
+  "integration_notes": [
+    "T021 is the highest-risk implementation task because summarize must use non-mutating compact-style semantics.",
+    "All production changes under src/server and desktop/src require same-area tests.",
+    "Forbidden drift includes project-level templates, built-in direct edits/deletes, overwrite-by-default imports, prompt-only phases, source-session /compact mutation, retroactive snapshot mutation, and coverage gate bypass."
+  ]
+}

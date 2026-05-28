@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-03",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/generalSettings.test.tsx",
+  "summary": "General settings tests assert tab ordering includes Workflows and H5 Access alongside existing tabs.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "moves H5 access out of General into its own Settings tab",
+    "screen.getByText('General')",
+    "screen.getByText('H5 Access')"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

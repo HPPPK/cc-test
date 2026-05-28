@@ -16,7 +16,7 @@ metadata:
 
 ## Workflow Contract Summary
 
-- **When to use**: The task is too large or risky for `sp-fast` but does not justify the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify -> plan -> tasks -> implement` flow.
+- **When to use**: The task is too large or risky for `sp-fast` but does not justify the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify -> plan -> tasks -> implement` flow.
 - **Primary objective**: Keep the task resumable and tracked while applying only the minimum planning, research, and validation depth it needs.
 - **Primary outputs**: `.planning/quick/<id>-<slug>/STATUS.md`, quick-task summary artifacts, and the scoped implementation changes for the task.
 - **Default handoff**: Resume the quick task until resolved, or escalate to /sp.specify if the scope grows into multi-capability or acceptance-criteria-heavy work.
@@ -38,12 +38,15 @@ This command will skip the full feature-spec workflow while preserving lightweig
 
 Use this for work that is too large for `sp-fast` but still too small or too well understood to justify a full spec flow: small bug fixes, small features, focused UX adjustments, template tweaks, or narrow CLI behavior changes.
 
+Before the lightweight path starts substantive execution, make the agent's understanding visible once so the user can confirm or correct the direction.
+
 ## Context
 
 - Primary inputs: the user's request, quick-task workspace state, passive learning files, the task-local project cognition query bundle with readiness and returned `minimal_live_reads`, and the smallest workflow-local state files needed for the touched area.
 - The leader owns `STATUS.md`, lane selection, join points, validation, and final summary state.
 - Quick mode is the resumable middle lane between `sp-fast` and the full specification workflow.
 - Continue in quick only when any `CA-###` consequence obligations are bounded in `STATUS.md` with affected objects, lifecycle states, dependency impact, recovery/validation proof, coverage gaps, and stop-and-reopen conditions.
+- Before substantive execution, present one Understanding Checkpoint covering the understood problem, planned outcome, scope boundary, execution approach, and validation evidence; wait for user confirmation and record it in quick `STATUS.md`.
 
 ## Senior Consequence Analysis Gate
 
@@ -51,7 +54,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -105,15 +108,16 @@ Dispatch one safe validated lane as `one-subagent` or multiple safe isolated lan
 
 ## Required Context Inputs
 
-## Project Cognition Gate
+## Project Cognition Advisory Gate
 
-This command must treat the project cognition runtime as the mandatory pre-source knowledge base.
+This command should treat the project cognition runtime as an advisory navigation index, not a mandatory pre-source gate.
 
-### Hard Rule
+### Advisory Rule
 
-Do not inspect implementation source, run reproduction or tests, compile a
-plan, prepare a fix, or emit technical recommendations until the cognition gate has
-passed.
+Use project cognition when available to find likely owners, affected paths,
+risks, verification routes, and minimal live reads. Do not treat map output as
+evidence by itself. Technical claims must be backed by live code, tests,
+scripts, configuration, or authoritative docs.
 
 ### Required Project Cognition Query
 
@@ -169,24 +173,44 @@ and minimal live reads after the minimum gate, not whether it may skip cognition
 
 ### Freshness
 
-Treat runtime freshness as a gate:
+Treat runtime freshness as map-quality diagnostics:
 
-- `missing` -> block and refresh through `sp-map-scan -> sp-map-build`
-- `stale` -> block and refresh through `sp-map-update`
-- `stale` with changed paths missing from `path_index` -> block and rebuild through `sp-map-scan -> sp-map-build`; repeating `sp-map-update` cannot create absent path coverage
-- `support_drift` -> stop and tell the user to resolve support-surface drift; do not reflexively route to `sp-map-update`
-- `partial_refresh` -> tell the user the refresh was recorded but readiness did not pass; follow `recommended_next_action`
-- `possibly_stale` -> inspect the returned affected scope; if the touched area is not safely covered, route through `sp-map-update`
+- `fresh` -> use the returned task-local bundle as an advisory first pass navigation aid
+- `missing` -> if cognition freshness is `missing`, continue with live repository evidence and recommend `$sp-map-scan`, then `$sp-map-build` as follow-up map maintenance
+- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` as follow-up map maintenance
+- `stale` with changed paths missing from `path_index` -> warn and continue with live repository evidence; recommend `$sp-map-update` first for ordinary existing-baseline gaps.
+  Use `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`
+- `support_drift` -> warn and continue with live repository evidence; recommend resolving or intentionally ignoring support-surface drift
+- `partial_refresh` -> warn that refresh data was recorded but readiness did not pass; continue with live repository evidence
+- `possibly_stale` -> inspect the returned affected scope when useful, then continue with live repository evidence
 
 Preserve the distinction between the machine freshness field and public state
-guidance: consume `freshness` as the factual state and use
-`recommended_next_action` for the operator-facing next step.
+guidance: `freshness` records map quality, while `recommended_next_action` is a
+map-maintenance recommendation.
+
+### Mutation Closeout Rule
+
+Entry stale may continue for live-evidence navigation, but it is not a
+completion waiver. If the active workflow changes source/runtime truth-owning
+surfaces, shared surfaces, command/route/contract boundaries, verification entry
+points, runtime assumptions, or other map-level coverage facts, closeout must
+record a refresh or dirty outcome: either an actual `$sp-map-update`
+refresh using the changed paths, or `project-cognition mark-dirty` when the
+required refresh cannot be completed now.
 
 ### Primary Read Restriction
 
-Do not treat handbook-first or layered project-map files as the primary runtime read surfaces. If query-returned
-coverage is insufficient, refresh the cognition runtime through `sp-map-update`; reserve `sp-map-scan -> sp-map-build` for missing, unusable, schema-incompatible, explicitly rebuilt, or architecture-replaced baselines
-instead of forcing a second handbook traversal phase.
+Do not treat handbook-first or layered project-map files as evidence. If
+query-returned coverage is insufficient, inspect live repository surfaces
+directly and recommend `sp-map-update` for ordinary existing-baseline gaps,
+localized stale cognition refresh, weak localized coverage after a usable
+baseline, or ordinary changed-path maintenance. Use `sp-map-scan -> sp-map-build`
+only for first/missing/unusable baseline, schema failure, zero active-generation
+`path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+
+The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion.
+
+Do not call `project-cognition mark-dirty` unless the active workflow explicitly requires a durable dirty-state record.
 
 **Project cognition gate:** query the active project's runtime before broad
 repository reads.
@@ -194,18 +218,19 @@ repository reads.
 Run or emulate:
 
 ```text
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json
 # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json
 ```
 
-Use the returned readiness:
+Use the returned readiness only to prepare the Understanding Checkpoint and
+write early quick-task state:
 
 - `ready`: continue with the returned task-local bundle.
 - `review`: perform only the returned `minimal_live_reads` before continuing.
 - `ambiguous`: ask the user to select the intended candidate.
-- `needs_update`: route through `$sp-map-update`.
-- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+- `needs_update`: record that `$sp-map-update` is required after the Understanding Checkpoint is confirmed; this includes adoptable missing path-index coverage.
+- `needs_rebuild`: record that `$sp-map-scan`, then `$sp-map-build`, is required after the Understanding Checkpoint is confirmed; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - `blocked`: stop and report the blocking runtime issue.
 - **CARRY FORWARD**: Write the selected capability, minimal reads, validation route,
   and known risk into quick-task `STATUS.md` before implementation
@@ -214,6 +239,22 @@ Use the returned readiness:
 Treat task-relevant coverage as insufficient when the touched area still lacks
 ownership, placement, workflow, integration, or verification guidance before
 choosing the quick-task lane shape.
+
+## Understanding Checkpoint
+
+`sp-quick` has one default understanding checkpoint before substantive execution. This is not a full spec, not a `sp-plan` substitute, and not a detailed task-plan approval. It exists so the user can confirm that the quick-task direction is correct before the workflow runs to completion.
+
+After the constitution gate, quick workspace initialization, project cognition query, and any bounded `minimal_live_reads`, present one concise checkpoint:
+
+- `Problem understood`: what you believe the user wants solved.
+- `Planned outcome`: what result you intend to deliver.
+- `Scope boundary`: what you will not do in this quick task.
+- `Execution approach`: how you expect to proceed.
+- `Validation`: what evidence will prove the quick task is complete.
+
+Wait for user confirmation before code edits, broad repository analysis, delegation, implementation commands, or validation commands. If the user corrects the understanding, revise the checkpoint once with the corrected direction and ask for confirmation again.
+
+Create or update `STATUS.md` with `understanding_confirmed: false` before any map maintenance handoff, broad repository analysis, delegation, implementation command, or validation command. Record the confirmed checkpoint in `STATUS.md`. `understanding_confirmed: false` blocks substantive execution on resume. While it is false, only read the minimal context needed to reconstruct or revise the checkpoint; you must not proceed to code edits, broad repository analysis, delegation, validation commands, `$sp-map-update`, `$sp-map-scan`, or `$sp-map-build` until the checkpoint is confirmed and `STATUS.md` is updated.
 
 ## Workflow Quality Requirements
 
@@ -231,7 +272,7 @@ Use `sp-quick` when all of these are true:
 - The task is bounded and clearly described.
 - The work is small but non-trivial.
 - A lightweight plan is useful, but a full spec package would be overhead.
-- Use this path when you want to skip the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify -> plan -> tasks -> implement` workflow for a bounded task.
+- Use this path when you want to skip the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify -> plan -> tasks -> implement` workflow for a bounded task.
 - The task does not require a new long-lived feature spec under `.specify/features/<feature>/`.
 
 If the task is trivial and local:
@@ -277,9 +318,9 @@ The following flags are available and composable:
 - The invoking runtime is the leader for the quick task. It owns scope decisions, the lightweight plan, execution strategy selection, join-point handling, validation, and the final summary artifact.
 - The leader should not blur planning, execution, and validation into a long conversational loop when the task can be dispatched through a bounded subagent.
 - Constitution first: read `.specify/memory/constitution.md` before workspace setup, clarification, lane selection, subagent dispatch, or local analysis.
-- If the project cognition runtime is missing, rebuild it through `$sp-map-scan`, then `$sp-map-build` before `STATUS.md` initialization or touched-area analysis proceeds.
+- If project cognition readiness requires `$sp-map-update`, `$sp-map-scan`, or `$sp-map-build`, record that requirement in `STATUS.md` while `understanding_confirmed: false`, present the Understanding Checkpoint, and only hand off to map maintenance after confirmation.
 - Before the first subagent is dispatched, the leader may gather only the minimum context needed to choose scope, lane shape, and execution strategy. Do not perform broad repository analysis or implementation design locally before creating `STATUS.md` and selecting the first subagent path.
-- Before implementation work starts, identify whether the quick task is best handled by one bounded subagent or by two or more independent subagents that can safely proceed in parallel.
+- Before implementation work starts, confirm the Understanding Checkpoint and persist `understanding_confirmed: true` in `STATUS.md`; only then identify whether the quick task is best handled by one bounded subagent or by two or more independent subagents that can safely proceed in parallel.
 - [AGENT] Use the shared policy function before execution begins and again at each join point: `choose_subagent_dispatch(command_name="quick", snapshot, workload_shape)`.
 - Persist the decision fields exactly: `execution_model: subagent-mandatory`, `dispatch_shape: one-subagent | parallel-subagents`, `execution_surface: native-subagents`.
 - Treat `snapshot.delegation_confidence` as a runtime/model reliability signal for the current subagent path. If confidence is `low`, prefer the native subagent workflow or record `subagent-blocked` over fragile dispatch.
@@ -290,11 +331,11 @@ The following flags are available and composable:
 - If two or more independent subagent lanes can safely run in parallel and that fan-out materially improves throughput, dispatch multiple subagents instead of serial execution.
 - `subagent-blocked` is an exception path, not a strategy choice. Use it only when the current quick-task batch cannot proceed through subagents or the native subagent workflow.
 - If subagent-blocked status is used, record the concrete reason in `STATUS.md`, including which subagent path was unavailable or blocked for the current batch.
-- The first actionable execution step after scope lock is to dispatch the first subagent batch, not to continue local deep-dive analysis.
+- The first actionable execution step after scope lock and understanding confirmation is to dispatch the first subagent batch, not to continue local deep-dive analysis.
 - Use `.specify/templates/worker-prompts/quick-worker.md` as the default contract for quick-task subagents so the subagent returns enough state for the leader to keep `STATUS.md` accurate.
 - Prefer structured subagent results compatible with the shared `WorkerTaskResult` contract when the current runtime supports them.
 - If the current integration exposes a runtime-managed result channel, use that channel. Otherwise write the normalized subagent result envelope to `.planning/quick/<id>-<slug>/worker-results/<lane-id>.json`
-- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result submit` to normalize and write the subagent result envelope.
+- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result submit` to normalize and write the subagent result envelope.
 - Preserve `reported_status` when normalizing subagent language such as `DONE_WITH_CONCERNS` or `NEEDS_CONTEXT` into canonical orchestration state.
 - Idle subagent is not an accepted result.
 - The leader must wait for and consume the structured handoff before closing the join point, declaring completion, requesting shutdown, or interrupting subagent execution.
@@ -305,7 +346,7 @@ The following flags are available and composable:
 - If a matching active workspace already exists, resume it instead of creating a second parallel quick-task directory for the same goal.
 - The minimum artifact set is:
   - `STATUS.md`: the source of truth for the current quick-task state.
-  - `SUMMARY.md`: the final outcome, `changed_code_paths`, `changed_behavior_surfaces`, verification evidence, residual risk, and `project_cognition_refresh` recommendation.
+  - `SUMMARY.md`: the final outcome, `changed_code_paths`, `changed_behavior_surfaces`, verification evidence, residual risk, and `project_cognition_refresh` outcome.
   - Optional lightweight support artifacts only when needed for the task shape, such as `PLAN.md`, `RESEARCH.md`, or `DISCUSSION.md`.
 - `STATUS.md` is the lifecycle source of truth for the quick task. `.planning/quick/index.json` is a derived projection for management and recovery commands.
 - The quick-task directory format is `<id>-<slug>`. Do not use slug-only workspace names for the enhanced quick flow.
@@ -336,6 +377,7 @@ slug: [quick-task slug]
 title: [short quick-task title]
 status: gathering | planned | executing | validating | blocked | resolved
 trigger: "[verbatim user input]"
+understanding_confirmed: false | true
 execution_model: subagent-mandatory
 dispatch_shape: one-subagent | parallel-subagents
 execution_surface: native-subagents
@@ -364,6 +406,18 @@ cognition_facts:
     - [project-cognition minimal_live_reads entry used before wider inspection]
   validation_route: [test, command, manual check, or unknown]
   known_risk: [ambiguity, weak coverage, forbidden drift, or none]
+
+## Understanding Checkpoint
+<!-- OVERWRITE/REFINE before substantive execution starts -->
+
+confirmed_problem: [what the user confirmed the quick task should solve]
+confirmed_outcome: [the result the user confirmed]
+confirmed_scope_boundary:
+  - [explicit non-goals, excluded files, excluded workflows, or escalation boundaries]
+confirmed_execution_approach:
+  - [the confirmed execution path]
+confirmed_validation:
+  - [the confirmed evidence required before closeout]
 
 ## Execution
 <!-- OVERWRITE/REFINE as the lane or batch changes -->
@@ -433,9 +487,10 @@ resume_decision: [resume here | blocked waiting | resolved]
 
 - The leader must continue automatically until the quick task is complete or a concrete blocker prevents further safe progress.
 - Do not stop after a single edit, single command, or single failed attempt when the next recovery step is obvious and low-risk.
+- Do not start execution routing while `understanding_confirmed: false`; repair or confirm the Understanding Checkpoint first.
 - Dispatch subagents when `snapshot.native_subagents` is true and the workload has one or more safe validated lanes.
 - Substantive quick-task lanes must use subagent execution once a validated `WorkerTaskPacket` or equivalent execution contract preserves quality. If that readiness bar is not met, finish compiling the missing contract first; if the contract cannot be made safe, record `subagent-blocked` and stop for escalation or recovery.
-- After `STATUS.md` is initialized and the first lane is defined, dispatch that subagent path before doing any further local repository deep dive.
+- After `STATUS.md` is initialized, `understanding_confirmed: true` is recorded, and the first lane is defined, dispatch that subagent path before doing any further local repository deep dive.
 - If multiple safe subagent lanes exist and they can improve throughput without creating write conflicts, dispatch them in parallel instead of artificially serializing the work.
 - Use `subagent-blocked` only after subagent execution is concretely unavailable for the current batch and the native subagent workflow is also unavailable or unsuitable.
 - Re-evaluate after every join point, recovery step, and validation result instead of assuming the first plan still holds.
@@ -489,11 +544,11 @@ resume_decision: [resume here | blocked waiting | resolved]
   - the change itself is implemented in code, docs, config, or templates as needed
   - at least one smallest meaningful executable verification step has run
   - any unverified surface or remaining gap is called out explicitly instead of being implied away
-- The final `SUMMARY.md` must include `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` recommending `$sp-map-update` with those changed paths whenever project cognition might be affected.
+- The final `SUMMARY.md` must include `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` with the actual `$sp-map-update` refresh or `project-cognition mark-dirty` outcome whenever project cognition might be affected.
 - `should be fine`, `likely unaffected`, or `not expected to break` are not completion evidence.
 - If the change is implemented but verification or coverage is incomplete, do not claim the task is complete. Mark the remaining gap explicitly and continue the sweep or leave the task blocked with the concrete reason.
-- If the quick task changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths before marking the quick task `resolved`. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes.
-- If a refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback with command shape `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json`, and tell the user to run `$sp-map-update` with the changed paths before the next brownfield workflow proceeds, escalating to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
+- If the quick task changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths before marking the quick task `resolved`. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. After a successful existing-baseline map-update, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+- If a refresh cannot be completed now, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback with command shape `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json`, and tell the user to run `$sp-map-update` with the changed paths before the next brownfield workflow proceeds. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
 
 ## Propagating Change Rule
 
@@ -522,28 +577,30 @@ resume_decision: [resume here | blocked waiting | resolved]
 
 - Keep `STATUS.md` accurate enough that another session can resume without chat memory.
 - Produce scoped implementation changes, verification evidence, and a truthful resolved/blocked state for the quick task.
-- `SUMMARY.md` reports changed code paths, changed behavior surfaces, verification evidence, residual risk, and the recommended `$sp-map-update` refresh when project cognition might be affected.
+- `SUMMARY.md` reports changed code paths, changed behavior surfaces, verification evidence, residual risk, and the `project_cognition_refresh` outcome when project cognition might be affected.
 - Preserve escalation history so it is clear why the task stayed quick or needed to grow.
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command quick --format json` when available so passive learning files exist and the current quick task sees relevant shared project memory.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command quick --format json` when available so passive learning files exist and the current quick task sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader quick-task context.
 - Open only learning detail docs linked from quick-task-relevant index entries.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail document without asking for routine permission.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command quick --format json` when `STATUS.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command quick --format json` when `STATUS.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
 - When durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 - Treat this as passive shared memory, not as a separate user-visible quick-task command.
 
 **This command tier: light.** Auto-capture learnings on resolution only. No review, no signal.
 
 
-## Codex Project Cognition Hard Gate
+## Codex Project Cognition Advisory Gate
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
-- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` routes through `{{invoke:map-update}}`; `needs_rebuild` routes through `{{invoke:map-scan}}`, then `{{invoke:map-build}}`; `blocked` stops with the runtime issue.
-- Treat the project cognition query bundle as the primary brownfield context surface; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should be the source of truth.
-- Treat this as a hard gate, not a best-effort reminder; do not continue until the returned readiness and task-local bundle are strong enough for the workflow.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
+- Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- Treat the project cognition query bundle as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should guide the route.
+- Treat this as advisory navigation, not a hard gate; continue with live repository evidence when the bundle is weak, stale, or missing, and use map maintenance only when it is actually useful.
+- Mutation closeout is separate from entry routing: entry stale may continue, but if the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, final state must record a refresh or dirty outcome: either an actual `{{invoke:map-update}}` refresh using the changed paths, or `project-cognition mark-dirty` when the required refresh cannot be completed now.
 - A project-cognition query is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, and relevant facts are carried into the next workflow artifact or execution state.
 - Carry forward the selected capability, minimal reads, validation route, and known risk into quick-task `STATUS.md` before implementation proceeds.
 
@@ -552,13 +609,16 @@ resume_decision: [resume here | blocked waiting | resolved]
 
 When running `sp-quick` in Codex, you are the **leader**, not the concrete implementer.
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
 
 Before code edits, test edits, or implementation commands:
 - Read `.specify/memory/constitution.md` first if it exists.
 - Read `STATUS.md` for the active quick-task workspace, or create it if this quick task is new.
+- If `understanding_confirmed` is not `true`, present the Understanding Checkpoint and wait for user confirmation before implementation work.
+- The checkpoint must cover `Problem understood`, `Planned outcome`, `Scope boundary`, `Execution approach`, and `Validation`.
+- Do not proceed to code edits, broad repository analysis, delegation, or validation commands until `understanding_confirmed: true` is recorded in `STATUS.md`.
 - Before choosing the next lane, read `STATUS.md` and any quick-task summary artifacts so resume truth comes from durable state instead of chat narration.
-- Define the smallest safe delegated lane or ready batch, and choose the `subagents-first` dispatch shape for that batch.
+- After understanding is confirmed, define the smallest safe delegated lane or ready batch, and choose the dispatch shape for that batch.
 - Dispatch `one-subagent` when one validated `WorkerTaskPacket` or equivalent execution contract preserves quality.
 - Dispatch `parallel-subagents` when two or more safe subagent lanes would materially improve throughput.
 - Use the current runtime's `native-subagents` path before considering any fallback path.
@@ -594,8 +654,8 @@ Before code edits, test edits, or implementation commands:
 4. **Lightweight planning**
    - Produce only the plan needed to execute this ad-hoc task safely.
    - Keep the work atomic and self-contained.
-   - Keep local planning shallow until the first subagent batch has been launched.
-   - Identify the smallest safe execution lanes and choose the current execution strategy before implementation starts.
+   - Keep local planning shallow until the Understanding Checkpoint is confirmed and the first subagent batch has been launched.
+   - Identify the smallest safe execution lanes and choose the current execution strategy before implementation starts, but do not dispatch until `understanding_confirmed: true` is recorded.
    - For behavior-changing work, bug fixes, and refactors, the first executable lane must produce a failing automated test or failing repro check before production edits begin.
    - Do not write production code until the RED state is captured and recorded in `STATUS.md`.
    - If no reliable automated test surface exists for the touched behavior, bootstrap the smallest viable test surface first. If that bootstrap is no longer a bounded quick-task step, stop and escalate to `$sp-specify`.
@@ -606,9 +666,10 @@ Before code edits, test edits, or implementation commands:
    - If the task includes a propagating change, write the minimal sweep plan first and list the affected surfaces that must be checked before completion.
 
 5. **Execution**
+   - Start execution only after `understanding_confirmed: true` is recorded in `STATUS.md`.
    - Execute the current quick-task lane or ready batch through the selected dispatch shape and execution surface.
    - For `one-subagent`, dispatch one subagent once the subagent-readiness bar is satisfied; otherwise finish compiling the missing contract before dispatch. If the contract cannot be made safe, record `subagent-blocked` and stop for escalation or recovery.
-   - The first concrete execution action should normally be dispatching that subagent batch, not continuing local repository analysis.
+   - The first concrete execution action after understanding confirmation should normally be dispatching that subagent batch, not continuing local repository analysis.
    - If multiple subagent lanes are safe and useful, dispatch them in parallel as the current ready batch instead of holding back fan-out without a concrete coordination reason.
    - Keep changes tightly scoped to the quick-task goal.
    - Re-evaluate dispatch at each join point instead of assuming the first choice remains correct.
@@ -640,12 +701,13 @@ Before code edits, test edits, or implementation commands:
 
 ## Codex Quick Execution Routing
 
-When running `sp-quick` in Codex, use `subagents-first` execution after `STATUS.md` exists.
+When running `sp-quick` in Codex, do not start execution routing until `STATUS.md` exists and `understanding_confirmed: true` is recorded.
 - Dispatch shape: `one-subagent`, `parallel-subagents`, or `subagent-blocked`.
 - Execution surface: `native-subagents`, `managed-team`, or `leader-inline`.
-- Subagent dispatch: No subagent dispatch path for this session.
-- Integration-native join point: Stay on the leader path or use the managed team workflow.
-- Fallback path: No managed team workflow is currently available; use leader-inline fallback only when subagents cannot proceed safely.
+- Understanding checkpoint: confirm the problem, planned outcome, scope boundary, execution approach, and validation evidence before dispatch.
+- Subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Integration-native join point: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Fallback path: Use the managed team workflow when subagents are unavailable, low-confidence, or unsuitable.
 - Once the first lane is chosen, dispatch it before continuing any leader-inline deep-dive analysis of the repository.
 - If multiple safe subagent lanes exist and they materially improve throughput, dispatch them in parallel.
 - Keep `.planning/quick/<id>-<slug>/STATUS.md` as the leader-owned source of truth.
@@ -661,9 +723,11 @@ When running `sp-quick` in Codex, use `subagents-first` execution after `STATUS.
 - Dispatch shape: `one-subagent`, `parallel-subagents`, or `subagent-blocked`
 - Execution surface: `native-subagents`, `managed-team`, or `leader-inline`
 - Delegation surface contract: preserve the native dispatch, fallback, worker result contract, and handoff path below.
-- Native subagent dispatch: No subagent dispatch path for this session.
-- Join behavior: Stay on the leader path or use the managed team workflow.
-- Managed-team fallback: No managed team workflow is currently available; use leader-inline fallback only when subagents cannot proceed safely.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Managed-team fallback: Use the managed team workflow when subagents are unavailable, low-confidence, or unsuitable.
 - Leader-inline fallback: record the reason before local execution.
 - Worker result contract: WorkerTaskResult contract with status, changed files, validation evidence, blockers, failed assumptions, and recovery guidance.
 - Result contract: WorkerTaskResult contract with status, changed files, validation evidence, blockers, failed assumptions, and recovery guidance.
@@ -705,8 +769,9 @@ When running `sp-quick` in Codex, use `subagents-first` execution after `STATUS.
 
 ## Codex Quick-Task Subagent Execution
 
-When running `sp-quick` in Codex, use `subagents-first` execution after `STATUS.md` exists.
-- Dispatch `one-subagent` or `parallel-subagents` before broad leader-inline repository analysis.
+When running `sp-quick` in Codex, start execution routing only after `STATUS.md` exists and `understanding_confirmed: true` is recorded.
+- Understanding checkpoint: confirm the problem, planned outcome, scope boundary, execution approach, and validation evidence before dispatch.
+- Dispatch `one-subagent` or `parallel-subagents` only after the Understanding Checkpoint is confirmed.
 - Use `subagent-blocked` only after native subagents and the managed-team path are unavailable or unsafe, and record the blocker reason in `STATUS.md`.
 - Use `spawn_agent` for bounded lanes such as focused repository analysis, targeted implementation, regression test updates, or validation command runs.
 - Once the first lane is chosen, dispatch it before continuing any leader-inline deep-dive analysis of the repository.

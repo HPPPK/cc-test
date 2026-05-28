@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "feature": {
+    "id": "005-specify-discussions-workflow",
+    "name": "Workflows Template Management And Chat Entry",
+    "branch": "005-specify-discussions-workflow",
+    "featureDir": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow",
+    "specPath": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\spec.md",
+    "planPath": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\plan.md"
+  },
+  "route": {
+    "currentProjectRoot": "F:\\github\\cc-jiangxia",
+    "targetProjectRoot": "F:\\github\\cc-jiangxia",
+    "nextCommand": "/sp.tasks",
+    "phaseMode": "design-only",
+    "implementationAllowed": false
+  },
+  "approval": {
+    "upstreamDiscussionUserConfirmed": true,
+    "specReviewApprovalSource": "User invoked $sp-plan after user-review-requested spec handoff on 2026-05-26.",
+    "handoffQualityGateUserConfirmedAt": null,
+    "assumption": "The $sp-plan invocation is treated as approval to proceed from spec review to design planning."
+  },
+  "adaptiveDispatch": {
+    "execution_model": "adaptive",
+    "execution_mode": "standard",
+    "workflow_status": "ready",
+    "dispatch_shape": "leader-inline",
+    "execution_surface": "leader-inline",
+    "capability_degraded": true,
+    "blocked_reason": "none",
+    "delegated_planning_lanes": "none",
+    "degradationReason": "Native subagent tool policy permits spawning only when the user explicitly asks for sub-agents, delegation, or parallel agent work."
+  },
+  "intent": {
+    "summary": "Add a unified Workflows surface for Settings template management and Chat workflow start.",
+    "mustPreserve": [
+      "MP-001",
+      "MP-002",
+      "MP-003",
+      "MP-004",
+      "MP-005",
+      "MP-006",
+      "MP-007",
+      "MP-008",
+      "MP-009",
+      "MP-010",
+      "MP-011",
+      "MP-012",
+      "MP-013",
+      "MP-014",
+      "MP-015"
+    ],
+    "outOfScope": [
+      "project-level workflow templates",
+      "built-in template in-place edits",
+      "retroactive workflow session snapshot mutation",
+      "external /workflow contract cloning",
+      "prompt-only workflow authoring",
+      "overwrite-by-default imports"
+    ]
+  },
+  "complexity": {
+    "level": "medium-high",
+    "drivers": [
+      "Settings UI CRUD/import/export",
+      "server workflow template mutation API",
+      "lossless JSON persistence",
+      "linked workflow session creation",
+      "non-mutating compact-style summary carryover",
+      "workflow snapshot compatibility"
+    ],
+    "allowedOptimizationScope": [
+      "extract workflow template API from sessions API for maintainability",
+      "extract shared workflow session creation service",
+      "reuse existing workflow UI components and shared controls",
+      "add additive client/API response fields only"
+    ],
+    "forbiddenOptimizationScope": [
+      "new workflow storage file",
+      "desktop direct file writes",
+      "source-session /compact mutation for summarize",
+      "project-level template precedence",
+      "coverage gate bypass"
+    ]
+  },
+  "cognition": {
+    "statusPath": "F:\\github\\cc-jiangxia\\.specify\\project-cognition\\status.json",
+    "freshness": "fresh",
+    "readiness": "query_ready",
+    "dirty": false,
+    "querySummary": {
+      "selectedConcepts": [
+        "term:workflows",
+        "term:workflow",
+        "term:template",
+        "term:settings",
+        "term:crud"
+      ],
+      "rejectedConcepts": [
+        "term:plan",
+        "term:implementation",
+        "term:for",
+        "term:unified",
+        "term:feature"
+      ],
+      "coverage": "path-level minimal live reads; no relationship graph nodes returned",
+      "followUp": "Artifact-only planning does not mark cognition dirty. After source/runtime route/service changes, run $sp-map-update for changed paths."
+    }
+  },
+  "artifacts": {
+    "plan": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\plan.md",
+    "research": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\research.md",
+    "dataModel": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\data-model.md",
+    "quickstart": "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\quickstart.md",
+    "contracts": [
+      "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\contracts\\workflow-template-api.md",
+      "F:\\github\\cc-jiangxia\\.specify\\features\\005-specify-discussions-workflow\\contracts\\linked-workflow-session.md"
+    ],
+    "planningEvidenceIndex": null,
+    "planningCheckpoints": null,
+    "acceptedPlanningHandoffs": []
+  },
+  "targetPaths": [
+    "F:\\github\\cc-jiangxia\\src\\server\\services\\workflowTemplateRegistryService.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\services\\workflowTypes.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\services\\workflowSessionStateService.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\services\\workflowRuntimeService.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\services\\sessionService.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\api\\sessions.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\api\\workflowTemplates.ts",
+    "F:\\github\\cc-jiangxia\\src\\server\\router.ts",
+    "F:\\github\\cc-jiangxia\\src\\services\\compact\\compact.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\pages\\Settings.tsx",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\components\\chat\\ChatInput.tsx",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\pages\\EmptySession.tsx",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\pages\\ActiveSession.tsx",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\components\\workflow",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\api\\sessions.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\types\\session.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\stores\\uiStore.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\stores\\sessionStore.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\i18n\\locales\\en.ts",
+    "F:\\github\\cc-jiangxia\\desktop\\src\\i18n\\locales\\zh.ts"
+  ],
+  "contracts": {
+    "workflowTemplateApi": {
+      "basePath": "/api/workflows/templates",
+      "requiredRoutes": [
+        "GET /api/workflows/templates",
+        "GET /api/workflows/templates/:source/:id",
+        "POST /api/workflows/templates/validate",
+        "POST /api/workflows/templates",
+        "PUT /api/workflows/templates/user/:id",
+        "DELETE /api/workflows/templates/user/:id",
+        "POST /api/workflows/templates/duplicate",
+        "POST /api/workflows/templates/import/preview",
+        "POST /api/workflows/templates/import",
+        "POST /api/workflows/templates/export"
+      ],
+      "invariants": [
+        "GET list remains backward compatible",
+        "built-ins are read-only and copyable",
+        "user writes preserve unknown fields",
+        "import conflicts default to rename",
+        "validation occurs before write"
+      ]
+    },
+    "linkedWorkflowSession": {
+      "route": "POST /api/sessions/:id/workflow/start",
+      "strategies": [
+        "inherit",
+        "summarize",
+        "clear"
+      ],
+      "invariants": [
+        "source normal chat is not converted in place",
+        "source transcript is not compacted or cleared",
+        "target workflow session receives template snapshot",
+        "summarize uses non-mutating compact-style semantics",
+        "active streaming source sessions are rejected or disabled"
+      ]
+    }
+  },
+  "consequenceObligations": [
+    {
+      "id": "CA-001",
+      "claim": "Built-in templates remain startable when user workflow config is missing, malformed, or contains invalid templates.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "Invalid user config blocks built-in template listing or start."
+    },
+    {
+      "id": "CA-002",
+      "claim": "All write paths preserve unknown fields in cc-jiangxia-owned workflows.json.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "Write behavior becomes lossy or touches protected files."
+    },
+    {
+      "id": "CA-003",
+      "claim": "Built-ins are protected and user templates cannot shadow built-in ids.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "UI/API permits built-in edit/delete or saving agent-development as user template."
+    },
+    {
+      "id": "CA-004",
+      "claim": "Existing workflow session snapshots are not mutated by source template edits.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "Implementation scans or rewrites existing workflow session state after template changes."
+    },
+    {
+      "id": "CA-005",
+      "claim": "Non-empty normal chats require context strategy and linked-session behavior.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "Workflow starts from non-empty chat without explicit strategy or mutates source chat."
+    },
+    {
+      "id": "CA-006",
+      "claim": "Custom workflow authoring preserves phase output artifacts and handoff contracts as first-class schema.",
+      "latestResolvePhase": "implement",
+      "status": "planned",
+      "stopAndReopen": "Editor/API saves prompt-only phases."
+    }
+  ],
+  "verification": {
+    "requiredNarrowChecks": [
+      "bun run check:server",
+      "bun run check:desktop"
+    ],
+    "requiredCompletionChecks": [
+      "bun run check:coverage",
+      "bun run verify"
+    ],
+    "conditionalChecks": [
+      {
+        "condition": "persistence shape changes beyond additive workflows.json fields",
+        "command": "bun run check:persistence-upgrade"
+      },
+      {
+        "condition": "summarize strategy depends on live provider availability",
+        "command": "bun run quality:providers then live baseline when credentials are available"
+      }
+    ],
+    "testAreas": [
+      "src/server/services/workflowTemplateRegistryService.test.ts",
+      "src/server/__tests__/sessions.test.ts or focused workflow API tests",
+      "desktop/src/api/sessions.test.ts",
+      "desktop/src/pages/Settings.test.tsx or focused Workflows settings tests",
+      "desktop/src/components/chat/ChatInput.test.tsx",
+      "desktop/src/pages/EmptySession.test.tsx",
+      "desktop/src/pages/ActiveSession.test.tsx",
+      "desktop/src/stores/sessionStore.test.ts"
+    ]
+  },
+  "risks": [
+    {
+      "id": "R-001",
+      "summary": "Non-mutating compact-style summary may require careful extraction from command-oriented compaction code.",
+      "mitigation": "Implement a fork/preview summary helper; stop if only mutating /compact is available."
+    },
+    {
+      "id": "R-002",
+      "summary": "Schema-aware editor could become too broad.",
+      "mitigation": "Common fields first, advanced disclosure, optional raw JSON only as secondary validation aid."
+    },
+    {
+      "id": "R-003",
+      "summary": "Import/export persistence can become lossy.",
+      "mitigation": "Centralize writes through registry service and add old-fixture regression tests."
+    }
+  ],
+  "handoff": {
+    "readyForTasks": true,
+    "recommendedNextCommand": "/sp.tasks",
+    "checklistRecommended": false,
+    "checklistReason": "Requirements were self-reviewed and no hard planning unknowns remain; use $sp-checklist only if the user wants an additional requirements-quality audit."
+  }
+}

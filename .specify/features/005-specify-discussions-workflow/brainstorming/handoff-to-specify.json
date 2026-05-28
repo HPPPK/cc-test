@@ -1,0 +1,180 @@
+{
+  "version": 2,
+  "status": "user-review-requested",
+  "entry_source": "sp-discussion",
+  "source_handoff": ".specify/discussions/workflow-template-management/handoff-to-specify.md",
+  "source_handoff_json": ".specify/discussions/workflow-template-management/handoff-to-specify.json",
+  "source_files_read": [
+    ".specify/discussions/workflow-template-management/handoff-to-specify.md",
+    ".specify/discussions/workflow-template-management/handoff-to-specify.json",
+    ".specify/discussions/workflow-template-management/discussion-log.md",
+    ".specify/discussions/workflow-template-management/requirements.md",
+    ".specify/discussions/workflow-template-management/open-questions.md",
+    ".specify/discussions/workflow-template-management/technical-options.md",
+    ".specify/discussions/workflow-template-management/project-context.md",
+    ".specify/discussions/workflow-template-management/handoff-assessment.md",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "src/server/router.ts",
+    "src/server/api/sessions.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/commands/compact/index.ts",
+    "src/commands/compact/compact.ts"
+  ],
+  "source_signal_disposition": [
+    {
+      "signal": "MP-001 Add user-facing Workflows surface for managing templates and starting sessions from chat",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Settings management or Chat entry is dropped without confirmation"
+    },
+    {
+      "signal": "MP-002 User-facing labels should use Workflows",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "User-facing label changes without confirmation"
+    },
+    {
+      "signal": "MP-003 Global user-level templates only",
+      "source": "open-questions.md Q-007",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Project-level templates enter first-version scope"
+    },
+    {
+      "signal": "MP-004 Built-ins protected and copyable",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Built-ins become editable in place"
+    },
+    {
+      "signal": "MP-005 CRUD schema-aware Settings management",
+      "source": "technical-options.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#capability-decomposition",
+      "user_confirmed": true,
+      "reopen_trigger": "Management becomes view-only or raw JSON-only"
+    },
+    {
+      "signal": "MP-006 JSON import/export with selectable import and auto-rename conflicts",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Import overwrites by default or omits selection"
+    },
+    {
+      "signal": "MP-007 Workflows are staged execution contracts",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Authoring becomes prompt-only"
+    },
+    {
+      "signal": "MP-008 Every phase requires output artifact and handoff contract",
+      "source": "open-questions.md Q-011",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Phase can save without output or handoff"
+    },
+    {
+      "signal": "MP-009 Common phase fields first, advanced collapsed",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "UI exposes all fields flat without usability decision"
+    },
+    {
+      "signal": "MP-010 Chat exposes Workflows from composer plus menu",
+      "source": "technical-options.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#scenarios-and-usage-paths",
+      "user_confirmed": true,
+      "reopen_trigger": "Entry point moves without confirmation"
+    },
+    {
+      "signal": "MP-011 Non-empty chats require explicit context handling",
+      "source": "open-questions.md Q-012",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Workflow starts from non-empty chat without context choice"
+    },
+    {
+      "signal": "MP-012 Inherit/summarize creates linked workflow session",
+      "source": "open-questions.md Q-013",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Original chat is converted in place"
+    },
+    {
+      "signal": "MP-013 Existing workflow snapshots must not be mutated",
+      "source": "requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Retroactive mutation enters requirements"
+    },
+    {
+      "signal": "MP-014 External Claude Code /workflow is not a hard contract",
+      "source": "project-context.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "External feature is used as normative requirement without fresh evidence"
+    },
+    {
+      "signal": "MP-015 No hard unknowns remain; soft details downstream",
+      "source": "handoff-assessment.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#deferred-or-future-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Soft unknown becomes product contradiction"
+    }
+  ],
+  "must_preserve": [
+    "MP-001",
+    "MP-002",
+    "MP-003",
+    "MP-004",
+    "MP-005",
+    "MP-006",
+    "MP-007",
+    "MP-008",
+    "MP-009",
+    "MP-010",
+    "MP-011",
+    "MP-012",
+    "MP-013",
+    "MP-014",
+    "MP-015"
+  ],
+  "coverage_status": "complete",
+  "planning_gate_status": "ready",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "quality_gate": {
+    "status": "self-reviewed-user-review-requested",
+    "self_reviewed_at": "2026-05-26",
+    "user_review_required": true,
+    "user_confirmed_at": null,
+    "blocked_reasons": []
+  }
+}

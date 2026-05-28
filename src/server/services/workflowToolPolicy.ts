@@ -23,6 +23,47 @@ const WORKFLOW_PHASE_FILE_EDIT_TOOLS = [
 const IMPLEMENTATION_PHASE_IDS = new Set(['implementation', 'implement'])
 const VERIFICATION_PHASE_ID = 'verification'
 
+export const WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS = [
+  'guide',
+  'list',
+  'inspect',
+  'validate',
+] as const
+
+export const WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS = [
+  'create',
+  'update',
+  'duplicate',
+  'delete',
+] as const
+
+export type WorkflowTemplateAuthoringReadOnlyOperation =
+  typeof WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS[number]
+
+export type WorkflowTemplateAuthoringMutatingOperation =
+  typeof WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS[number]
+
+export type WorkflowTemplateAuthoringOperation =
+  | WorkflowTemplateAuthoringReadOnlyOperation
+  | WorkflowTemplateAuthoringMutatingOperation
+
+export type WorkflowTemplateAuthoringOperationPolicy = {
+  operation: string
+  allowed: boolean
+  denied: boolean
+  readOnly: boolean
+  mutating: boolean
+  reason:
+    | 'read-only-operation'
+    | 'outside-active-workflow'
+    | 'implementation-phase'
+    | 'custom-policy-allows-workflow-template-authoring'
+    | 'phase-policy-denies-workflow-template-authoring'
+    | 'unknown-operation'
+  phaseId?: string
+  message: string
+}
+
 function isActiveWorkflowState(
   state: WorkflowSessionState | null | undefined,
 ): state is WorkflowSessionState {
@@ -34,6 +75,18 @@ function isActiveWorkflowState(
       && state.workflowStatus !== 'cancelled'
       && state.workflowStatus !== 'failed',
   )
+}
+
+function includesWorkflowTemplateAuthoringAllowance(policy: WorkflowPhaseActionPolicy | undefined): boolean {
+  if (!policy) return false
+  return policy.allowedActions.some((action) => {
+    const normalized = action.toLowerCase()
+    return (
+      normalized.includes('workflow template authoring')
+      || normalized.includes('author workflow templates')
+      || normalized.includes('authoring workflow templates')
+    )
+  })
 }
 
 export const BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES: Record<string, WorkflowPhaseActionPolicy> = {
@@ -138,6 +191,109 @@ export function isWorkflowPhaseToolDenied(
   state: WorkflowSessionState | null | undefined,
 ): boolean {
   return getWorkflowPhaseDisallowedTools(state).includes(toolName)
+}
+
+export function isWorkflowTemplateAuthoringReadOnlyOperation(
+  operation: string,
+): operation is WorkflowTemplateAuthoringReadOnlyOperation {
+  return (WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS as readonly string[]).includes(operation)
+}
+
+export function isWorkflowTemplateAuthoringMutatingOperation(
+  operation: string,
+): operation is WorkflowTemplateAuthoringMutatingOperation {
+  return (WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS as readonly string[]).includes(operation)
+}
+
+export function getWorkflowTemplateAuthoringOperationPolicy(
+  operation: string,
+  state: WorkflowSessionState | null | undefined,
+): WorkflowTemplateAuthoringOperationPolicy {
+  const readOnly = isWorkflowTemplateAuthoringReadOnlyOperation(operation)
+  const mutating = isWorkflowTemplateAuthoringMutatingOperation(operation)
+
+  if (readOnly) {
+    return {
+      operation,
+      allowed: true,
+      denied: false,
+      readOnly,
+      mutating,
+      reason: 'read-only-operation',
+      message: `Workflow template authoring operation "${operation}" is read-only and remains available during workflow phases.`,
+    }
+  }
+
+  if (!mutating) {
+    return {
+      operation,
+      allowed: false,
+      denied: true,
+      readOnly,
+      mutating,
+      reason: 'unknown-operation',
+      message: `Workflow template authoring operation "${operation}" is not recognized.`,
+    }
+  }
+
+  if (!isActiveWorkflowState(state)) {
+    return {
+      operation,
+      allowed: true,
+      denied: false,
+      readOnly,
+      mutating,
+      reason: 'outside-active-workflow',
+      message: `Workflow template authoring mutation "${operation}" is allowed outside active workflow sessions.`,
+    }
+  }
+
+  const phase = activePhaseDefinition(state)
+  const phaseId = phase?.id ?? state.activePhaseId
+
+  if (IMPLEMENTATION_PHASE_IDS.has(phaseId)) {
+    return {
+      operation,
+      allowed: true,
+      denied: false,
+      readOnly,
+      mutating,
+      reason: 'implementation-phase',
+      phaseId,
+      message: `Workflow template authoring mutation "${operation}" is allowed during the active implementation phase.`,
+    }
+  }
+
+  if (includesWorkflowTemplateAuthoringAllowance(phase?.actionPolicy)) {
+    return {
+      operation,
+      allowed: true,
+      denied: false,
+      readOnly,
+      mutating,
+      reason: 'custom-policy-allows-workflow-template-authoring',
+      phaseId,
+      message: `Workflow template authoring mutation "${operation}" is explicitly allowed by the active phase policy.`,
+    }
+  }
+
+  return {
+    operation,
+    allowed: false,
+    denied: true,
+    readOnly,
+    mutating,
+    reason: 'phase-policy-denies-workflow-template-authoring',
+    phaseId,
+    message: `Workflow template authoring mutation "${operation}" is denied by the active workflow phase policy.`,
+  }
+}
+
+export function isWorkflowTemplateAuthoringMutationDenied(
+  operation: string,
+  state: WorkflowSessionState | null | undefined,
+): boolean {
+  return getWorkflowTemplateAuthoringOperationPolicy(operation, state).denied
 }
 
 export function getWorkflowScopedToolNames(

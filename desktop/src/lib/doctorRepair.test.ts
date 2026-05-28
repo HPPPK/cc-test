@@ -20,8 +20,8 @@ describe('doctorRepair', () => {
     for (const key of SAFE_DOCTOR_STORAGE_KEYS) {
       window.localStorage.setItem(key, `${key}-value`)
     }
-    window.localStorage.setItem('cc-haha-chat-history', 'preserve')
-    window.localStorage.setItem('cc-haha-provider-config', 'preserve')
+    window.localStorage.setItem('cc-jiangxia-chat-history', 'preserve')
+    window.localStorage.setItem('cc-jiangxia-provider-config', 'preserve')
 
     const result = runLocalDoctorRepair(window.localStorage)
 
@@ -30,8 +30,8 @@ describe('doctorRepair', () => {
     for (const key of SAFE_DOCTOR_STORAGE_KEYS) {
       expect(window.localStorage.getItem(key)).toBeNull()
     }
-    expect(window.localStorage.getItem('cc-haha-chat-history')).toBe('preserve')
-    expect(window.localStorage.getItem('cc-haha-provider-config')).toBe('preserve')
+    expect(window.localStorage.getItem('cc-jiangxia-chat-history')).toBe('preserve')
+    expect(window.localStorage.getItem('cc-jiangxia-provider-config')).toBe('preserve')
   })
 
   it('keeps local repair non-throwing when storage access is blocked', () => {
@@ -52,13 +52,13 @@ describe('doctorRepair', () => {
 
   it('keeps local repair successful when the server doctor endpoint is unavailable', async () => {
     window.localStorage.clear()
-    window.localStorage.setItem('cc-haha-theme', 'dark')
+    window.localStorage.setItem('cc-jiangxia-theme', 'dark')
     doctorApiMock.reportAndRepair.mockRejectedValueOnce(new Error('Failed to fetch'))
 
     const result = await runDoctorRepair({ storage: window.localStorage })
 
     expect(doctorApiMock.reportAndRepair).toHaveBeenCalled()
-    expect(result.local.removedKeys).toContain('cc-haha-theme')
+    expect(result.local.removedKeys).toContain('cc-jiangxia-theme')
     expect(result.server).toBeNull()
     expect(result.serverError).toBe('Failed to fetch')
   })

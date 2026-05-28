@@ -1,5 +1,7 @@
-export const APP_ZOOM_STORAGE_KEY = 'cc-haha-app-zoom'
-export const LEGACY_UI_ZOOM_STORAGE_KEY = 'cc-haha-ui-zoom'
+export const APP_ZOOM_STORAGE_KEY = 'cc-jiangxia-app-zoom'
+export const LEGACY_UI_ZOOM_STORAGE_KEY = 'cc-jiangxia-ui-zoom'
+export const LEGACY_HAHA_APP_ZOOM_STORAGE_KEY = 'cc-haha-app-zoom'
+export const LEGACY_HAHA_UI_ZOOM_STORAGE_KEY = 'cc-haha-ui-zoom'
 export const DEFAULT_APP_ZOOM = 1
 export const MIN_APP_ZOOM = 0.5
 export const MAX_APP_ZOOM = 2
@@ -49,7 +51,12 @@ export function readStoredAppZoomLevel(storage: StorageLike | null = getDefaultS
   try {
     const stored = storage.getItem(APP_ZOOM_STORAGE_KEY)
     if (stored !== null) return normalizeAppZoomLevel(stored)
-    return normalizeAppZoomLevel(storage.getItem(LEGACY_UI_ZOOM_STORAGE_KEY))
+    const legacyHahaStored = storage.getItem(LEGACY_HAHA_APP_ZOOM_STORAGE_KEY)
+    if (legacyHahaStored !== null) return normalizeAppZoomLevel(legacyHahaStored)
+    const legacyUiStored =
+      storage.getItem(LEGACY_UI_ZOOM_STORAGE_KEY) ??
+      storage.getItem(LEGACY_HAHA_UI_ZOOM_STORAGE_KEY)
+    return normalizeAppZoomLevel(legacyUiStored)
   } catch {
     return DEFAULT_APP_ZOOM
   }

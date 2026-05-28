@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-089",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/firstPartyEventLoggingExporter.ts",
+  "summary": "firstPartyEventLoggingExporter.ts defines getStorageDir, FirstPartyEventLoggingExporter, getAxiosErrorContext and imports @opentelemetry/api, @opentelemetry/core, axios, crypto, fs/promises",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getStorageDir",
+    "FirstPartyEventLoggingExporter",
+    "getAxiosErrorContext"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

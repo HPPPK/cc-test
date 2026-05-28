@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-097",
+  "type": "source_analysis",
+  "source_path": "docs/channel/01-channel-system.md",
+  "summary": "Channel docs describe channel architecture, permission relay, and IM gateway proposal surfaces.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "channelsEnabled: true",
+    "claude/channel/permission"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

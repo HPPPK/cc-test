@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-026",
+  "type": "source_analysis",
+  "source_path": "adapters/common/pairing.ts",
+  "summary": "pairing.ts defines ImPlatform, isRateLimited, recordFailedAttempt, getConfigPath, readConfigFile, writeConfigFile and imports node:fs, node:os, node:path, node:crypto, ./config.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ImPlatform",
+    "isRateLimited",
+    "recordFailedAttempt",
+    "getConfigPath",
+    "readConfigFile",
+    "writeConfigFile"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

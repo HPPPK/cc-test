@@ -1,0 +1,14 @@
+{
+  "id": "ev-adapters-services-risk-097",
+  "type": "source_analysis",
+  "source_path": "src/services/api/bootstrap.ts",
+  "summary": "bootstrap.ts defines fetchBootstrapData and imports axios, lodash-es/isEqual.js, zod, ../../constants/oauth.js, ../../utils/config.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "fetchBootstrapData"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

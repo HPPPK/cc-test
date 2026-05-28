@@ -1,0 +1,18 @@
+{
+  "id": "ev-server-workflow-api-router-workflows",
+  "type": "source_analysis",
+  "source_path": "src/server/router.ts",
+  "summary": "Top-level API router sends /api/sessions to the sessions handler, diverts /api/sessions/:id/chat to conversations, and exposes /api/workflows/templates through the workflow template handler.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "handleApiRequest",
+    "case 'sessions'",
+    "if (subResource === 'chat')",
+    "case 'workflows'",
+    "handleWorkflowTemplatesApi"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

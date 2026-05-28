@@ -1,0 +1,22 @@
+{
+  "id": "ev-server-workflow-api-workflow-templates-api-tests",
+  "type": "source_analysis",
+  "source_path": "src/server/__tests__/workflowTemplates.test.ts",
+  "summary": "API contract tests cover builtin/user template listing, readonly builtin semantics, validation errors, authoring operations, duplication, import preview/commit conflict rules, export payloads, and stable METHOD_NOT_ALLOWED / invalid JSON errors.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "GET /api/workflows/templates",
+    "GET /api/workflows/templates/:source/:id",
+    "POST /api/workflows/templates/validate",
+    "POST /api/workflows/templates/authoring",
+    "POST /api/workflows/templates/import/preview",
+    "POST /api/workflows/templates/import",
+    "POST /api/workflows/templates/export",
+    "METHOD_NOT_ALLOWED",
+    "WORKFLOW_TEMPLATE_INVALID_JSON"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

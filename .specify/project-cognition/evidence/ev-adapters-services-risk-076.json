@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-076",
+  "type": "source_analysis",
+  "source_path": "src/memdir/teamMemPaths.ts",
+  "summary": "teamMemPaths.ts defines PathTraversalError, sanitizePathKey, isTeamMemoryEnabled, getTeamMemPath, getTeamMemEntrypoint, isTeamMemPath and imports fs/promises, path, ../services/analytics/growthbook.js, ../utils/errors.js, ./paths.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "PathTraversalError",
+    "sanitizePathKey",
+    "isTeamMemoryEnabled",
+    "getTeamMemPath",
+    "getTeamMemEntrypoint",
+    "isTeamMemPath"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

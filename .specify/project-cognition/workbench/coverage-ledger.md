@@ -1,47 +1,26 @@
 # Coverage Ledger
 
-Scan coverage summary for `sp-map-scan` on cc-haha.
+## Status
+`scan_ready`
 
-## Source and Symbol Surfaces
+## Packets
+| Packet | Assigned | Read | Evidence | Nodes | Edges | Observations |
+|---|---:|---:|---:|---:|---:|---:|
+| root-config-runtime | 8 | 10 | 10 | 7 | 6 | 3 |
+| server-workflow-api | 80 | 10 | 10 | 6 | 6 | 5 |
+| desktop-workflow-ui | 40 | 40 | 40 | 6 | 6 | 7 |
+| tools-agent-loop | 85 | 18 | 18 | 12 | 13 | 8 |
+| verification-release-docs | 120 | 120 | 120 | 5 | 4 | 4 |
+| adapters-services-risk | 120 | 120 | 120 | 7 | 5 | 5 |
 
-| Area | Total Nodes | Critical | Important | Low-Risk | Status |
-|------|------------|----------|-----------|----------|--------|
-| src/ | 38 | 12 | 20 | 6 | classified |
-| desktop/ | 14 | 5 | 8 | 1 | classified |
-| adapters/ | 5 | 0 | 5 | 0 | classified |
-| config | 3 | 2 | 1 | 0 | classified |
-| infrastructure | 3 | 0 | 3 | 0 | classified |
-| **Source Total** | **63** | **19** | **37** | **7** | **classified** |
+## Outcomes
+| Outcome | Count |
+|---|---:|
+| deep_read | 56 |
+| inventory_only | 1793 |
+| read | 200 |
+| sampled | 1285 |
 
-## Capability Surfaces
-
-| Category | Count | Critical | Important | Low-Risk |
-|----------|-------|----------|-----------|----------|
-| Capabilities | 21 | 9 | 11 | 1 |
-
-## Risk Surfaces
-
-| Category | Count | Critical | Important |
-|----------|-------|----------|-----------|
-| Security/Risk | 8 | 3 | 5 |
-| Observability | 3 | 0 | 3 |
-
-## Test Surfaces
-
-| Area | Status | Notes |
-|------|--------|-------|
-| server tests | 46 test files | src/server/__tests__/ |
-| desktop tests | Colocated | stores .test.ts + __tests__/ |
-| adapter tests | Per-package | adapters/*/__tests__/ |
-
-## Coverage Risks
-
-| Surface | Lines Coverage | Target | Gap |
-|---------|--------------|--------|-----|
-| agent-tools | 17.1% | 60% | 42.9pp |
-| agent-utils | 14.42% | 60% | 45.58pp |
-| desktop functions | 52.49% | 70% | 17.51pp |
-
-## Unknown Surfaces
-
-None. All project-relevant surfaces classified.
+## Explicit Gaps
+- gap:repository-universe-unassigned: non-packet included paths; inventory_or_sampled_in_universe; revisit When a query requires deeper evidence for paths outside the six accepted scan packets.
+- gap:large-assets-and-docs: assets, docs, workflow support files; inventory_only_or_sampled; revisit When release/docs/asset behavior changes or build validation flags them.

@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-04",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/mcpSettings.test.tsx",
+  "summary": "MCP tests verify current workdir-aware fetch/toggle behavior in the expanded settings shell.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "McpSettings",
+    "fetchServers",
+    "toggleServer"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

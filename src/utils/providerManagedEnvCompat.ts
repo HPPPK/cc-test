@@ -1,4 +1,8 @@
 const DEEPSEEK_THINKING_CAPABILITIES = 'thinking,effort,adaptive_thinking,max_effort'
+const DISABLED_THINKING_ENV_KEYS = [
+  'CC_JIANGXIA_SEND_DISABLED_THINKING',
+  'CC_HAHA_SEND_DISABLED_THINKING',
+] as const
 
 const DEEPSEEK_CAPABILITY_ENV_KEYS = [
   'ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
@@ -24,12 +28,15 @@ function looksLikeDeepSeekManagedEnv(env: Record<string, string>): boolean {
 export function normalizeLegacyDeepSeekManagedEnv(
   env: Record<string, string>,
 ): { env: Record<string, string>; changed: boolean } {
-  if (!env.CC_HAHA_SEND_DISABLED_THINKING || !looksLikeDeepSeekManagedEnv(env)) {
+  const disabledThinkingKey = DISABLED_THINKING_ENV_KEYS.find((key) => env[key])
+  if (!disabledThinkingKey || !looksLikeDeepSeekManagedEnv(env)) {
     return { env, changed: false }
   }
 
   const next = { ...env }
-  delete next.CC_HAHA_SEND_DISABLED_THINKING
+  for (const key of DISABLED_THINKING_ENV_KEYS) {
+    delete next[key]
+  }
 
   for (const key of DEEPSEEK_CAPABILITY_ENV_KEYS) {
     next[key] = DEEPSEEK_THINKING_CAPABILITIES

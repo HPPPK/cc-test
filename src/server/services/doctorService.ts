@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import type { Dirent } from 'node:fs'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import { diagnosticsService } from './diagnosticsService.js'
 
 export type DoctorItemKind = 'json' | 'jsonl' | 'directory'
@@ -161,16 +162,16 @@ export class DoctorService {
     const targets: DoctorTarget[] = [
       this.jsonTarget('user-settings', 'User settings', 'user', path.join(this.configDir, 'settings.json')),
       this.jsonTarget(
-        'cc-haha-providers',
+        'cc-jiangxia-providers',
         'Managed providers',
         'user',
-        path.join(this.configDir, 'cc-haha', 'providers.json'),
+        getAppStoragePath(this.configDir, 'providers.json'),
       ),
       this.jsonTarget(
-        'cc-haha-settings',
+        'cc-jiangxia-settings',
         'Managed provider settings',
         'user',
-        path.join(this.configDir, 'cc-haha', 'settings.json'),
+        getAppStoragePath(this.configDir, 'settings.json'),
       ),
       this.jsonTarget('adapters', 'Adapters config', 'user', path.join(this.configDir, 'adapters.json')),
       this.jsonTarget(
@@ -189,12 +190,12 @@ export class DoctorService {
         path.join(this.configDir, 'cowork_plugins'),
       ),
       this.jsonTarget('user-mcp', 'User MCP config', 'user', this.getUserMcpConfigPath()),
-      this.jsonTarget('oauth', 'OAuth tokens', 'user', path.join(this.configDir, 'cc-haha', 'oauth.json')),
+      this.jsonTarget('oauth', 'OAuth tokens', 'user', getAppStoragePath(this.configDir, 'oauth.json')),
       this.jsonTarget(
         'openai-oauth',
         'OpenAI OAuth tokens',
         'user',
-        path.join(this.configDir, 'cc-haha', 'openai-oauth.json'),
+        getAppStoragePath(this.configDir, 'openai-oauth.json'),
       ),
     ]
 

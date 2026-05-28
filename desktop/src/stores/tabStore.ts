@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { sessionsApi } from '../api/sessions'
 
-const TAB_STORAGE_KEY = 'cc-haha-open-tabs'
+const TAB_STORAGE_KEY = 'cc-jiangxia-open-tabs'
 
 export const SETTINGS_TAB_ID = '__settings__'
 export const SCHEDULED_TAB_ID = '__scheduled__'

@@ -1,0 +1,17 @@
+{
+  "id": "ev-desktop-workflow-ui-19",
+  "type": "source_analysis",
+  "source_path": "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+  "summary": "Transition controls emit confirm/reject/retry/manual_complete commands keyed by phaseId, transitionId, and stateVersion.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WorkflowTransitionCommand",
+    "action: 'manual_complete'",
+    "onConfirm",
+    "onRetry"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

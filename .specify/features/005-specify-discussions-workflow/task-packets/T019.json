@@ -1,0 +1,62 @@
+{
+  "id": "T019",
+  "title": "Add non-mutating compact-style summary helper",
+  "agent": "executor",
+  "depends_on": [
+    "T005: linked session contract tests added"
+  ],
+  "parallel_safe": true,
+  "story": "US4",
+  "objective": "Add a compact-style summary helper for workflow carryover that reuses compact prompt/message semantics without clearing or rewriting the source session.",
+  "context_navigation": {
+    "design_decision": "research.md#Compact-Style Summary Carryover",
+    "data_model": "data-model.md#Context Carryover Artifact",
+    "api_contract": "contracts/linked-workflow-session.md#summarize",
+    "reference_implementation": "src/services/compact/compact.ts"
+  },
+  "write_scope": [
+    "src/services/compact/workflowSummaryCarryover.ts",
+    "src/services/compact/prompt.ts",
+    "src/services/compact/*.test.ts"
+  ],
+  "read_scope": [
+    "src/commands/compact/compact.ts",
+    "src/services/compact/compact.ts",
+    "src/services/compact/sessionMemoryCompact.ts",
+    ".specify/features/005-specify-discussions-workflow/research.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    "src/services/compact/postCompactCleanup.ts unless only reading"
+  ],
+  "expected_outputs": [
+    "src/services/compact/workflowSummaryCarryover.ts （新建）",
+    "src/services/compact/*.test.ts （新建/修改）",
+    "src/services/compact/prompt.ts （修改，如 sharing prompt helpers is required）"
+  ],
+  "anti_goals": [
+    "Do not call /compact command execution on the source session.",
+    "Do not run cleanup that clears source history.",
+    "Do not silently fall back to clear or inherit on failure."
+  ],
+  "acceptance_criteria": [
+    "Helper can generate or surface failure for compact-style summary without mutating source messages.",
+    "Provider/runtime unavailable maps to visible error behavior for caller.",
+    "Tests prove source message inputs remain unchanged."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

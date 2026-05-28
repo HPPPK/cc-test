@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-003",
+  "type": "source_analysis",
+  "source_path": ".github/workflows/pr-quality.yml",
+  "summary": "PR quality workflow routes checks by changed area and runs desktop, server, native, docs, and coverage gates.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "bun run check:policy",
+    "bun run check:native",
+    "npm ci && npm run docs:build",
+    "bun run check:coverage"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

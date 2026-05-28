@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-105",
+  "type": "source_analysis",
+  "source_path": "docs/desktop/02-architecture.md",
+  "summary": "Desktop docs cover quick start, architecture, features, installation/build, FAQ, and H5 access.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "desktop/src-tauri/src/lib.rs",
+    "desktop/sidecars/",
+    "desktop/src-tauri/binaries/"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

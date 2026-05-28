@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-023",
+  "type": "source_analysis",
+  "source_path": "adapters/common/http-client.ts",
+  "summary": "http-client.ts defines RecentProject, GitInfo, SessionTask, AdapterHttpClient, isPathWithinAllowedRoots, resolveExistingProjectPath and imports node:fs, node:os, node:path",
+  "detail": "",
+  "quotes_or_symbols": [
+    "RecentProject",
+    "GitInfo",
+    "SessionTask",
+    "AdapterHttpClient",
+    "isPathWithinAllowedRoots",
+    "resolveExistingProjectPath"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

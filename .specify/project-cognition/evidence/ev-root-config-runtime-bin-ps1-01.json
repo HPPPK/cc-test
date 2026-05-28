@@ -1,0 +1,18 @@
+{
+  "id": "ev-root-config-runtime-bin-ps1-01",
+  "type": "source_analysis",
+  "source_path": "bin/claude-jiangxia.ps1",
+  "summary": "The Windows launcher mirrors the bash script: it computes the root from `$PSScriptRoot`, sets `CALLER_DIR`, conditionally uses `.env`, and routes to either the recovery CLI or the full CLI entrypoint.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "$ROOT_DIR = Split-Path -Parent $PSScriptRoot",
+    "$env:CALLER_DIR = Get-Location",
+    "if ($env:CC_JIANGXIA_SKIP_DOTENV -eq \"1\")",
+    "bun $EnvFileFlag ./src/localRecoveryCli.ts @args",
+    "bun $EnvFileFlag ./src/entrypoints/cli.tsx @args"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -2,38 +2,49 @@
 
 ## Objective
 
-Drive a resumable product and technical discussion that matures a rough idea into requirements and implementation options before formal specification.
+Drive a resumable product and technical discussion that locks context boundaries, matures a rough idea into requirements and implementation options, and produces one reviewed handoff contract before formal specification.
 
 ## Context
 
-- Primary inputs: the user's idea, the current discussion session under `.specify/discussions/<slug>/`, passive project memory, and project cognition when the discussion reaches source-grounded technical judgment.
+- Primary inputs: the user's idea, the current discussion session under `.specify/discussions/<slug>/`, passive project memory, boundary evidence, and project cognition only when the discussion reaches source-grounded technical judgment.
 - `discussion-state.md` is the durable session state source of truth.
 - `sp-discussion` is upstream of `sp-specify`; it does not create feature branches or write formal feature artifacts.
 
 ## Process
 
 - Create or resume the discussion session.
-- Ask one high-impact question at a time.
-- Preserve key decisions in `discussion-log.md`.
-- Keep `requirements.md`, `technical-options.md`, `project-context.md`, and `open-questions.md` current.
+- Run the Context Boundary Gate before project-specific technical options, affected-file claims, implementation-path claims, or handoff generation.
+- Use project cognition as advisory navigation only when current-project facts matter; use `--intent discussion`, read returned `minimal_live_reads`, and prove technical claims from live repository files.
+- Classify each user turn before asking a question.
+- Run the Question Evidence Gate before asking the user; answer repository-discoverable facts from live evidence.
+- Ask one boundary, product, trade-off, evidence-conflict, or high-impact question at a time only when the answer cannot be proven from available evidence.
+- Append compact ordinary-turn events to `discussion-log.md`.
+- Refresh `requirements.md`, `technical-options.md`, `project-context.md`, and `open-questions.md` only at semantic checkpoints.
+- If the user asks to transfer functionality into another project, lock `target_project_root` immediately before technicalizing.
 - When the user explicitly asks to hand off or continue the next stage, write `handoff-assessment.md` first.
-- If assessment returns `split-required`, maintain `split-plan.md` as the candidate backlog and generate `handoffs/<candidate_id>-handoff-to-specify.md` and `handoffs/<candidate_id>-handoff-to-specify.json` only after the user selects a stable candidate ID such as `CAND-001` or `CAND-002`.
-- Refresh latest selected candidate copy files `handoff-to-specify.md` and `handoff-to-specify.json` together for compatibility and include Must-Preserve Ledger plus coverage fields.
+- After functional discussion is stable and when no explicit handoff request is active, offer an optional UI and interaction discussion for UI-facing requirements; record `ui_discussion_status` and preserve confirmed or deferred UI decisions; the UI pass is not a mandatory handoff gate.
+- If explicit handoff is already requested, run handoff assessment first and return to UI discussion only when UI decisions block readiness or the user reopens UI discussion.
+- If the direction is coherent and boundary-locked after explicit handoff request, write exactly one draft handoff package: `handoff-to-specify.md` and `handoff-to-specify.json`.
+- If the direction is too broad to express as one coherent package, continue the discussion instead of writing candidate-specific handoff files.
+- Run handoff self-review and require user confirmation before marking `handoff-ready`.
+- When senior consequence analysis triggers, preserve `CA-###` obligations, affected objects, lifecycle states, dependency impact, recovery/validation needs, coverage gaps, and stop-and-reopen conditions in the unified handoff pair.
 
 ## Output Contract
 
 - Maintain the independent discussion state and artifacts under `.specify/discussions/<slug>/`.
-- Provide 2-3 project-grounded technical options when implementation strategy affects the requirement.
+- Provide 2-3 project-grounded technical options only after the relevant boundary is locked.
 - Report unresolved questions honestly instead of forcing planning readiness.
-- Keep `handoff-to-specify.md` and `handoff-to-specify.json` as latest selected candidate copy files, not the only handoff output.
-- Keep candidate-specific handoffs under `handoffs/` canonical when split mode is active.
-- When explicit handoff is requested, write both Markdown and JSON with a Must-Preserve Ledger.
-- Do not mark handoff ready if a confirmed goal, non-goal, decision, critical reference, trade-off rationale, or blocking question is missing from the ledger.
+- Write `handoff-to-specify.md` and `handoff-to-specify.json` together as a draft pair; both files are mandatory, and the pair becomes handoff-ready only after self-review and user confirmation.
+- Do not write separate split planning artifacts or candidate-specific handoff files.
+- When explicit handoff is requested, include `handoff_goal`, `context_boundary`, `implementation_target`, `source_evidence`, `blocking_unknowns`, `downstream_instructions`, `quality_gate`, and a Must-Preserve Ledger.
+- Do not mark handoff ready if role objects, target path context, evidence provenance, self-review status, user confirmation, or blocking unknown handling is missing.
 - Preserve `coverage_status`, `planning_gate_status`, `hard_unknown_count`, and `open_conflict_count` for the downstream fidelity gate.
+- For UI-facing work, preserve `ui_discussion_status`; confirmed UI decisions; deferred UI unknowns; and Markdown-carried ASCII sketches with JSON fields `ui_sketches_present`, `ui_sketch_summary`, and `ui_sketch_reference`.
 
 ## Guardrails
 
 - Do not edit source code or tests.
 - Do not create feature branches or feature directories.
 - Do not automatically invoke or route into `sp-specify`.
-- Do not make project-specific technical claims before the staged cognition gate passes.
+- Do not make project-specific technical claims before the Context Boundary Gate and staged cognition gate pass.
+- Do not use current project cognition to prove another project's implementation facts.

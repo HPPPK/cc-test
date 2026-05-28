@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { isRemoteManagedSettingsEligible } from '../services/remoteManagedSettings/syncCache.js'
 import { clearCACertsCache } from './caCerts.js'
 import { getGlobalConfig } from './config.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getAppStorageReadPaths } from './appIdentity.js'
 import {
   isProviderManagedEnvVar,
   SAFE_ENV_VARS,
@@ -94,20 +94,23 @@ function filterSettingsEnv(
 }
 
 /**
- * Read env vars from ~/.claude/cc-haha/settings.json (Haha-specific provider
+ * Read env vars from ~/.claude/cc-jiangxia/settings.json (Jiangxia-specific provider
  * config). This file is written by ProviderService.syncToSettings() and
  * contains ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, model defaults, etc.
  * Returns an empty object if the file doesn't exist or is invalid.
  */
-function getCcHahaSettingsEnv(): Record<string, string> {
-  try {
-    const ccHahaSettings = join(getClaudeConfigHomeDir(), 'cc-haha', 'settings.json')
-    const raw = readFileSync(ccHahaSettings, 'utf-8')
-    const parsed = JSON.parse(raw) as { env?: Record<string, string> }
-    return normalizeLegacyDeepSeekManagedEnv(parsed.env ?? {}).env
-  } catch {
-    return {}
+function getJiangxiaSettingsEnv(): Record<string, string> {
+  for (const settingsPath of getAppStorageReadPaths(getClaudeConfigHomeDir(), 'settings.json')) {
+    try {
+      const raw = readFileSync(settingsPath, 'utf-8')
+      const parsed = JSON.parse(raw) as { env?: Record<string, string> }
+      return normalizeLegacyDeepSeekManagedEnv(parsed.env ?? {}).env
+    } catch {
+      // Try the legacy cc-haha file if the canonical cc-jiangxia file is absent
+      // or unreadable. ProviderService writes future changes to cc-jiangxia.
+    }
   }
+  return {}
 }
 
 /**
@@ -168,11 +171,11 @@ export function applySafeConfigEnvironmentVariables(): void {
     )
   }
 
-  // cc-haha provider isolation: apply env from ~/.claude/cc-haha/settings.json
-  // AFTER userSettings so Haha-specific provider config takes priority over
-  // the original Claude Code's settings. This prevents Haha from polluting
+  // cc-jiangxia provider isolation: apply env from managed settings AFTER
+  // userSettings so Jiangxia-specific provider config takes priority over
+  // the original Claude Code's settings. This prevents Jiangxia from polluting
   // ~/.claude/settings.json while still allowing it to override provider vars.
-  Object.assign(process.env, filterSettingsEnv(getCcHahaSettingsEnv()))
+  Object.assign(process.env, filterSettingsEnv(getJiangxiaSettingsEnv()))
 
   // Compute remote-managed-settings eligibility now, with userSettings and
   // flagSettings env applied. Eligibility reads CLAUDE_CODE_USE_BEDROCK,
@@ -215,9 +218,9 @@ export function applyConfigEnvironmentVariables(): void {
 
   Object.assign(process.env, filterSettingsEnv(getSettings_DEPRECATED()?.env))
 
-  // cc-haha provider isolation: same as in applySafeConfigEnvironmentVariables,
-  // apply Haha-specific env last so it overrides the original settings.
-  Object.assign(process.env, filterSettingsEnv(getCcHahaSettingsEnv()))
+  // cc-jiangxia provider isolation: same as in applySafeConfigEnvironmentVariables,
+  // apply Jiangxia-specific env last so it overrides the original settings.
+  Object.assign(process.env, filterSettingsEnv(getJiangxiaSettingsEnv()))
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()

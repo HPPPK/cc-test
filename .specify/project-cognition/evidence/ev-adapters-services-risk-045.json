@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-045",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/markdown-style.test.ts",
+  "summary": "Test coverage for markdown-style.test.ts exercises H1 → H4 (cardVersion=1 简化检查); H2 → H5 (cardVersion=1); H3 → H5 (cardVersion=1); 混合 H1+H2+H3 全部降级 (cardVersion=1)",
+  "detail": "",
+  "quotes_or_symbols": [
+    "H1 → H4 (cardVersion=1 简化检查)",
+    "H2 → H5 (cardVersion=1)",
+    "H3 → H5 (cardVersion=1)",
+    "混合 H1+H2+H3 全部降级 (cardVersion=1)"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

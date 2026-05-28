@@ -41,7 +41,7 @@ After connection, the phone opens the existing chat product with a mobile-optimi
 
 ### Server Configuration
 
-Persist H5 settings in the existing cc-haha managed settings path (`~/.claude/cc-haha/settings.json`), preserving unknown fields and keeping the user-owned `~/.claude/settings.json` untouched:
+Persist H5 settings in the existing cc-jiangxia managed settings path (`~/.claude/cc-jiangxia/settings.json`), preserving unknown fields and keeping the user-owned `~/.claude/settings.json` untouched:
 
 ```ts
 type H5AccessSettings = {

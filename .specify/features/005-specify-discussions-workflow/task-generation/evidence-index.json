@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "command": "sp-tasks",
+  "featureDir": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "workflow_status": "ready",
+  "dispatch_shape": "parallel-subagents",
+  "execution_surface": "native-subagents",
+  "capability_degraded": false,
+  "blocked_reason": "none",
+  "accepted_handoffs": [
+    {
+      "lane_id": "story-phase-decomposition",
+      "handoff_path": "task-generation/handoffs/story-phase-decomposition.json",
+      "integration_status": "integrated",
+      "consumers": [
+        "tasks.md phases",
+        "task-index.json task counts",
+        "task-packets/T001.json through T024.json",
+        "join points JP1-JP6"
+      ]
+    },
+    {
+      "lane_id": "dependency-graph-analysis",
+      "handoff_path": "task-generation/handoffs/dependency-graph-analysis.json",
+      "integration_status": "integrated",
+      "consumers": [
+        "tasks.md dependency graph",
+        "tasks.md parallel batches",
+        "handoff-to-tasks.json dependencyEdges",
+        "CA-001 through CA-006 mappings"
+      ]
+    },
+    {
+      "lane_id": "write-set-parallel-safety",
+      "handoff_path": "task-generation/handoffs/write-set-parallel-safety.json",
+      "integration_status": "integrated",
+      "consumers": [
+        "Task Guardrail Index",
+        "per-task write_scope and forbidden fields",
+        "parallel_safe flags",
+        "verification commands",
+        "task-packets/*.json"
+      ]
+    }
+  ],
+  "join_points": [
+    {
+      "id": "JP1",
+      "after": [
+        "T007"
+      ],
+      "validation": "bun run check:server"
+    },
+    {
+      "id": "JP2",
+      "after": [
+        "T011"
+      ],
+      "validation": "bun run check:desktop"
+    },
+    {
+      "id": "JP3",
+      "after": [
+        "T015"
+      ],
+      "validation": "bun run check:server && bun run check:desktop"
+    },
+    {
+      "id": "JP4",
+      "after": [
+        "T017"
+      ],
+      "validation": "bun run check:desktop"
+    },
+    {
+      "id": "JP5",
+      "after": [
+        "T023"
+      ],
+      "validation": "bun run check:server && bun run check:desktop"
+    },
+    {
+      "id": "JP6",
+      "after": [
+        "T024"
+      ],
+      "validation": "bun run check:coverage && bun run verify"
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "gap": "Project cognition returned path-level coverage and no relationship nodes.",
+      "routing": "Continue with live repository evidence for task generation; recommend $sp-map-update after source/runtime route and service changes."
+    },
+    {
+      "gap": "Provider-backed summarize live evidence may be unavailable during implementation.",
+      "routing": "Run non-live gates and record exact provider/quota blocker if live provider evidence cannot run."
+    }
+  ]
+}

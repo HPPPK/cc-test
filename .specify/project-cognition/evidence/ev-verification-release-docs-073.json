@@ -1,0 +1,14 @@
+{
+  "id": "ev-verification-release-docs-073",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/tauri.release-ci.json",
+  "summary": "CI release override keeps updater artifact generation enabled for release builds.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "createUpdaterArtifacts"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

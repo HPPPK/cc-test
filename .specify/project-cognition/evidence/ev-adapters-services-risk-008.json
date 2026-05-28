@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-008",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/message-dedup.test.ts",
+  "summary": "Test coverage for message-dedup.test.ts exercises returns true for new messages; returns false for duplicate messages; allows same ID after TTL expires; evicts oldest entry when at capacity",
+  "detail": "",
+  "quotes_or_symbols": [
+    "returns true for new messages",
+    "returns false for duplicate messages",
+    "allows same ID after TTL expires",
+    "evicts oldest entry when at capacity"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

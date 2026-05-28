@@ -1,0 +1,17 @@
+{
+  "id": "ev-desktop-workflow-ui-35",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/Settings.tsx",
+  "summary": "Settings shell declares a dedicated 'workflows' tab and renders WorkflowsSettings with WorkflowTemplateManager between H5 Access and Adapters.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "type SettingsTab",
+    "activeTab === 'workflows'",
+    "WorkflowsSettings",
+    "WorkflowTemplateManager"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

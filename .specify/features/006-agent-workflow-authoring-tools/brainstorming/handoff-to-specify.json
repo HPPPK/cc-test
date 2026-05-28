@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "status": "ready-for-plan",
+  "entry_source": "sp-discussion",
+  "source_handoff": ".specify/discussions/agent-workflow-authoring-tools/handoff-to-specify.md",
+  "source_handoff_json": ".specify/discussions/agent-workflow-authoring-tools/handoff-to-specify.json",
+  "handoff_goal": "Plan a globally available internal agent tool capability that lets the agent inspect, explain, validate, create, update, duplicate/copy, and delete workflow templates through conversation while preserving existing Workflows validation, persistence, field guidance, permission, Settings compatibility, and session-snapshot safety rules.",
+  "context_boundary": {
+    "current_project_root": "F:\\github\\cc-jiangxia",
+    "current_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Built-in agent tools, workflow template registry/API, workflow template persistence, workflow runtime/session behavior, workflow tool policy, and desktop workflow management surfaces.",
+        "evidence_source": "User request plus live repository reads.",
+        "notes": "The user is extending the current repository's Workflows feature."
+      }
+    ],
+    "target_project_root": "F:\\github\\cc-jiangxia",
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Add an internal tool capability so agents can author and mutate workflow templates from ordinary chat.",
+        "evidence_source": "User request plus live repository reads.",
+        "notes": "No cross-project transfer or external target was requested."
+      }
+    ],
+    "reference_projects": [
+      ".specify/discussions/workflow-template-management/"
+    ],
+    "external_systems": [],
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "actual_project_to_change": "current repository",
+    "local_target_root": "F:\\github\\cc-jiangxia",
+    "target_paths_or_modules": [
+      "src/tools",
+      "src/tools.ts",
+      "src/Tool.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/api/workflowTemplates.ts",
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "desktop/src/api/sessions.ts",
+      "desktop/src/types/session.ts",
+      "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+      "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "src/server/__tests__/workflowTemplates.test.ts"
+    ],
+    "target_paths_still_to_verify": [],
+    "target_project_cognition_status": "fresh/query_ready during plan intake; advisory only",
+    "cognition_authority_rule": "Project cognition narrows navigation only; implementation facts must be backed by live repository reads and tests."
+  },
+  "source_files_read": [
+    ".specify/discussions/agent-workflow-authoring-tools/discussion-log.md",
+    ".specify/discussions/agent-workflow-authoring-tools/requirements.md",
+    ".specify/discussions/agent-workflow-authoring-tools/open-questions.md",
+    ".specify/discussions/agent-workflow-authoring-tools/technical-options.md",
+    ".specify/discussions/agent-workflow-authoring-tools/project-context.md",
+    ".specify/discussions/agent-workflow-authoring-tools/handoff-to-specify.md",
+    ".specify/discussions/agent-workflow-authoring-tools/handoff-to-specify.json",
+    ".specify/memory/constitution.md",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md",
+    "src/tools.ts",
+    "src/Tool.ts",
+    "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "source_signal_disposition": [
+    {
+      "id": "MP-001",
+      "signal": "Provide an internal agent tool capability for conversational workflow template authoring and optimization.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#goal-and-users"
+    },
+    {
+      "id": "MP-002",
+      "signal": "Create workflow from natural-language phases and persist it for Settings refetch.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#scenario-1---create-a-workflow-from-conversation"
+    },
+    {
+      "id": "MP-003",
+      "signal": "Optimize an existing workflow through a validated update or safe copy.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#scenario-2---optimize-an-existing-user-workflow"
+    },
+    {
+      "id": "MP-004",
+      "signal": "First scope includes list, inspect, field guide, validate, create, update, duplicate/copy, and delete.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#capability-decomposition"
+    },
+    {
+      "id": "MP-005",
+      "signal": "Valid user-template create/update writes directly without mandatory preview.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#locked-decisions"
+    },
+    {
+      "id": "MP-006",
+      "signal": "Tool is globally available in ordinary chat but respects active workflow phase action policy.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements"
+    },
+    {
+      "id": "MP-007",
+      "signal": "Builtin templates are read-only mutation targets; builtin edits copy to user template.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#scenario-3---modify-a-builtin-workflow-safely"
+    },
+    {
+      "id": "MP-008",
+      "signal": "Update/delete re-read current template and reject stale writes.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#safety-permission-and-stale-write-rules"
+    },
+    {
+      "id": "MP-009",
+      "signal": "Delete is destructive and only valid for uniquely identified user templates.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#scenario-4---delete-a-user-template"
+    },
+    {
+      "id": "MP-010",
+      "signal": "Builtin copy naming uses <builtin-id>-custom with numeric suffixes and <Builtin Name> Custom.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#scenario-3---modify-a-builtin-workflow-safely"
+    },
+    {
+      "id": "MP-011",
+      "signal": "Agent must have discoverable schema-aligned field guide.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#workflow-template-field-guide"
+    },
+    {
+      "id": "MP-012",
+      "signal": "Do not mutate protected non-workflow user state.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#out-of-scope"
+    },
+    {
+      "id": "MP-013",
+      "signal": "Do not support parallel, nested, branching, or loop workflows in first scope.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#out-of-scope"
+    },
+    {
+      "id": "MP-014",
+      "signal": "Do not mutate active or historical workflow session snapshots.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements"
+    },
+    {
+      "id": "MP-015",
+      "signal": "Reuse or share existing registry/API validation and persistence semantics.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#non-functional-requirements"
+    },
+    {
+      "id": "MP-016",
+      "signal": "Live source evidence, not stale/blocked project cognition, proves current project facts.",
+      "disposition": "preserved",
+      "artifact_location": "context.md#relevant-repository-context"
+    },
+    {
+      "id": "MP-017",
+      "signal": "Option A direct validated authoring tool is selected.",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#approach-comparison"
+    },
+    {
+      "id": "MP-018",
+      "signal": "Invalid, risky, stale, ambiguous, or permission-denied operations must not write and must return actionable diagnostics.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#edge-cases-and-failure-paths"
+    },
+    {
+      "id": "MP-019",
+      "signal": "Settings Workflows remains compatible and can display agent-authored templates after reload/refetch.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#requirements"
+    },
+    {
+      "id": "MP-020",
+      "signal": "Tool results must make persistence state auditable in transcript.",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#requirements"
+    },
+    {
+      "id": "MP-021",
+      "signal": "Decide whether desktop-launched sessions need a desktop-server-backed path.",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#deferred-or-future-scope"
+    },
+    {
+      "id": "MP-022",
+      "signal": "Decide how the field guide stays aligned with validation.",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#deferred-or-future-scope"
+    }
+  ],
+  "must_preserve": [
+    "Direct validated writes for user-template create/update; no mandatory preview step.",
+    "Global ordinary-chat availability with active workflow phase-policy and permission gating.",
+    "Builtin templates are read-only and modified only through copy-then-edit.",
+    "Delete only uniquely identified user templates and treat delete as destructive.",
+    "Update/delete stale-write rejection; create current id conflict checks.",
+    "Field guide must be discoverable and validation-aligned.",
+    "Settings Workflows compatibility through the same persisted registry/store after reload/refetch.",
+    "Template edits affect future workflow sessions only.",
+    "No protected non-workflow user state mutation."
+  ],
+  "coverage_status": "live-evidence-backed; project cognition advisory only",
+  "planning_gate_status": "ready",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "quality_gate": {
+    "status": "user-confirmed",
+    "section_shape_confirmed_at": "2026-05-27",
+    "user_confirmed": true,
+    "user_confirmed_at": "2026-05-27T16:24:21.6018805+08:00",
+    "self_review_required": true,
+    "user_review_required": true,
+    "next_command_after_user_review": "/sp.plan"
+  }
+}

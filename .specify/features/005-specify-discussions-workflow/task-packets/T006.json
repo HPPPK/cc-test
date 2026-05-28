@@ -1,0 +1,60 @@
+{
+  "id": "T006",
+  "title": "Add desktop workflow template API/client tests",
+  "agent": "test-engineer",
+  "depends_on": [
+    "T001: implementation guardrails recorded",
+    "T002: protected paths confirmed"
+  ],
+  "parallel_safe": true,
+  "story": null,
+  "objective": "Add failing desktop API tests for workflow template detail, validate, create, update, delete, duplicate, import preview, import commit, export, and linked start client methods.",
+  "context_navigation": {
+    "design_decision": "plan.md#Dispatch Compilation Hints",
+    "data_model": "data-model.md#Workflow Template Validation Issue",
+    "api_contract": "contracts/workflow-template-api.md#Test Contract",
+    "reference_implementation": "desktop/src/api/sessions.test.ts"
+  },
+  "write_scope": [
+    "desktop/src/api/sessions.test.ts"
+  ],
+  "read_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/api/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not implement client methods.",
+    "Do not mock direct filesystem writes.",
+    "Do not hide invalidTemplates from response expectations."
+  ],
+  "acceptance_criteria": [
+    "Tests fail until client methods and types exist.",
+    "Route paths match the contracts.",
+    "Tests cover diagnostic fields and linked start payload shape."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

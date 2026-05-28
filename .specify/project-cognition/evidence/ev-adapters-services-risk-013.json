@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-013",
+  "type": "source_analysis",
+  "source_path": "adapters/common/attachment/__tests__/attachment-limits.test.ts",
+  "summary": "Test coverage for attachment-limits.test.ts exercises accepts a 1 MB PNG image; rejects an 11 MB image as too_large; rejects an unsupported image mime; rejects image/heic (not supported by Claude API)",
+  "detail": "",
+  "quotes_or_symbols": [
+    "accepts a 1 MB PNG image",
+    "rejects an 11 MB image as too_large",
+    "rejects an unsupported image mime",
+    "rejects image/heic (not supported by Claude API)"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

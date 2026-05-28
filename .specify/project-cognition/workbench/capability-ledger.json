@@ -1,32 +1,90 @@
 {
-  "command": "map-scan",
-  "timestamp": "2026-05-16T21:59:00Z",
-  "capabilities": [
-    {"id": "cap-tui", "name": "Terminal UI (Ink REPL)", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-desktop", "name": "Desktop App (Tauri 2 + React)", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-commands", "name": "Slash Commands (70+)", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-agent", "name": "Multi-Agent Orchestration", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-skills", "name": "Skills System", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-memory", "name": "Cross-Session Memory System", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-mcp", "name": "MCP Protocol Support", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-lsp", "name": "LSP Integration", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-tools", "name": "Agent Tool Ecosystem (59 tools)", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-model-providers", "name": "Multi-Model Provider Support", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-computer-use", "name": "Computer Use (Desktop Control)", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-im-integration", "name": "IM Platform Integration (4 platforms)", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-worktree", "name": "Git Worktree Isolation", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-teams", "name": "Agent Teams Collaboration", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-plan-mode", "name": "Plan Mode", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-voice", "name": "Voice Mode", "criticality": "low-risk", "coverage": "implemented"},
-    {"id": "cap-h5-remote", "name": "H5 Remote Access", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-plugins", "name": "Plugin System", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-quality-gate", "name": "Quality Gate Automation", "criticality": "important", "coverage": "implemented"},
-    {"id": "cap-auth", "name": "Authentication System", "criticality": "critical", "coverage": "implemented"},
-    {"id": "cap-doctor", "name": "Installation Diagnostics", "criticality": "important", "coverage": "implemented"}
-  ],
-  "coverage_by_capability": {
-    "critical": {"total": 9, "classified": 9, "unknown": 0},
-    "important": {"total": 11, "classified": 11, "unknown": 0},
-    "low_risk": {"total": 1, "classified": 1, "unknown": 0}
-  }
+  "schema_version": 1,
+  "generated_at": "2026-05-28T03:28:41.238Z",
+  "command": "sp-map-scan",
+  "rows": [
+    {
+      "id": "cap:root-runtime",
+      "title": "Root CLI/runtime startup",
+      "node_ids": [
+        "node:root-main-runtime",
+        "node:root-setup-orchestrator"
+      ],
+      "packet_ids": [
+        "root-config-runtime"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    },
+    {
+      "id": "cap:workflow-server-api",
+      "title": "Workflow session and template APIs",
+      "node_ids": [
+        "server.api.sessions.workflow",
+        "server.api.workflow_templates",
+        "server.service.workflow_runtime"
+      ],
+      "packet_ids": [
+        "server-workflow-api"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    },
+    {
+      "id": "cap:desktop-workflow-ui",
+      "title": "Desktop workflow authoring and launch UI",
+      "node_ids": [
+        "desktop.workflow.empty-session",
+        "desktop.workflow.start-dialog",
+        "desktop.workflow.template-manager"
+      ],
+      "packet_ids": [
+        "desktop-workflow-ui"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    },
+    {
+      "id": "cap:agent-loop-tools",
+      "title": "Agent tool execution and in-process teammate runtime",
+      "node_ids": [
+        "node.agent_tool",
+        "node.agent_runner",
+        "node.inprocess_runner"
+      ],
+      "packet_ids": [
+        "tools-agent-loop"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    },
+    {
+      "id": "cap:adapter-service-risk",
+      "title": "IM adapters, memory, API, analytics, auto-dream surfaces",
+      "node_ids": [
+        "node.adapters.im_runtime",
+        "node.services.memory",
+        "node.services.api"
+      ],
+      "packet_ids": [
+        "adapters-services-risk"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    },
+    {
+      "id": "cap:verification-release-docs",
+      "title": "Release, docs, Tauri packaging, and desktop assets",
+      "node_ids": [
+        "workflow:desktop-release-pipeline",
+        "workflow:docs-publishing",
+        "module:desktop-tauri-packaging"
+      ],
+      "packet_ids": [
+        "verification-release-docs"
+      ],
+      "confidence": "medium",
+      "status": "provisional_scan"
+    }
+  ]
 }

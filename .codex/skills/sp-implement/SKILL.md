@@ -70,7 +70,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -86,12 +86,14 @@ Stand down only for docs-only wording changes, trivial isolated fixes, or local 
 If the gate triggers and the current workflow cannot preserve the required outputs, stop and route to the workflow that can. Do not mark ready, resolved, handoff-ready, planning-ready, or complete while triggered consequence obligations remain unresolved, unmapped, or unsupported by validation evidence.
 
 
-## Codex Project Cognition Hard Gate
+## Codex Project Cognition Advisory Gate
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json` before any implementation actions. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
-- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` routes through `{{invoke:map-update}}`; `needs_rebuild` routes through `{{invoke:map-scan}}`, then `{{invoke:map-build}}`; `blocked` stops with the runtime issue.
-- Treat the project cognition query bundle as the primary brownfield context surface; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should be the source of truth.
-- Treat this as a hard gate, not a best-effort reminder; do not continue until the returned readiness and task-local bundle are strong enough for the workflow.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` before any implementation actions. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
+- Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- Treat the project cognition query bundle as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should guide the route.
+- Treat this as advisory navigation, not a hard gate; continue with live repository evidence when the bundle is weak, stale, or missing, and use map maintenance only when it is actually useful.
+- Mutation closeout is separate from entry routing: entry stale may continue, but if the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, final state must record a refresh or dirty outcome: either an actual `{{invoke:map-update}}` refresh using the changed paths, or `project-cognition mark-dirty` when the required refresh cannot be completed now.
 - A project-cognition query is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, and relevant facts are carried into the next workflow artifact or execution state.
 - Carry forward the selected capability, minimal live reads, boundary constraints, required references, validation route, and evidence gaps into `implement-tracker.md` or the current `WorkerTaskPacket` before dispatch or code edits.
 
@@ -211,12 +213,12 @@ After checks complete, record results in `implement-tracker.md`:
 - Keep `workflow-state.md` and `implement-tracker.md` aligned so execution state, next batch, open blockers, and resume instructions stay durable.
 - Validate each `WorkerTaskPacket` before dispatch and require a `WorkerTaskResult` plus structured handoff before accepting a join point.
 - Update durable state before compaction-risk transitions, long validation phases, join points, subagent fan-out, or any stop where resume will depend on more than the visible conversation.
-- When execution changes map-level truth surfaces, refresh the project cognition runtime through `/sp-map-update` using the changed paths, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes. Rebuild through `/sp-map-scan` followed by `/sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement.
-- If a refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback. Preserve origin semantics in the dirty record when available: `origin-command=implement`, `origin-feature-dir=$FEATURE_DIR`, `origin-lane-id=$LANE_ID`, and the validated packet file. Only omit lane or packet details when the current runtime truly cannot resolve them, so a later same-lane `sp-implement` resume can warn while upstream brownfield entrypoints still refresh before continuing.
+- When execution changes map-level truth surfaces, refresh the project cognition runtime through `/sp-map-update` using the changed paths, then use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for successful existing-baseline incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+- If a refresh cannot be completed now, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback. Preserve origin semantics in the dirty record when available: `origin-command=implement`, `origin-feature-dir=$FEATURE_DIR`, `origin-lane-id=$LANE_ID`, and the validated packet file. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Only omit lane or packet details when the current runtime truly cannot resolve them, so a later same-lane `sp-implement` resume can warn while upstream brownfield entrypoints still refresh before continuing.
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command implement --format json` when available so passive learning files exist and the current implementation run sees relevant shared project memory.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command implement --format json` when available so passive learning files exist and the current implementation run sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader execution context.
 - Open only learning detail docs linked from implementation-relevant index entries, especially repeated pitfalls, recovery paths, or project constraints for the touched area.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
@@ -312,7 +314,7 @@ human_needed_checks:
 ### Resume Audit Gate
 
 - On every resume, treat checked tasks as claims that need evidence, not evidence themselves.
-- If `implement-tracker.md` is `resolved`, all tasks appear checked, or the previous session exit is unknown, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify implement resume-audit --feature-dir \"$FEATURE_DIR\" --format json` before final reporting or new closeout.
+- If `implement-tracker.md` is `resolved`, all tasks appear checked, or the previous session exit is unknown, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify implement resume-audit --feature-dir \"$FEATURE_DIR\" --format json` before final reporting or new closeout.
 - Treat `terminal-audit-required` as validation/recovery work, not completion.
 - Require consumer evidence for tasks that create UI components, routes, providers, registries, factories, configs, tests, API handlers, or other reusable surfaces.
 - Do not preserve `resolved` when the audit finds missing wiring, missing validation evidence, stale subagent handoff, unresolved `open_gaps`, or unexecuted planned validation tasks.
@@ -321,7 +323,7 @@ human_needed_checks:
 ## Outline
 
 1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
-   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command implement --ensure-worktree` before guessing from branch-only context.
+   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify lane resolve --command implement --ensure-worktree` before guessing from branch-only context.
    - When lane resolution returns a materialized lane worktree, treat that worktree as the execution context for this implementation lane instead of dispatching from the leader workspace by default.
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
@@ -376,12 +378,12 @@ human_needed_checks:
    - **IF TRACKER EXISTS WITH STATUS `executing` OR `recovering`**: Resume from the recorded `current_batch`, `failed_tasks`, and `retry_attempts` rather than recomputing progress from chat narration.
    - **IF LANE RESOLUTION OR SESSION-STATE RECONCILE RETURNS `uncertain`**: stop and surface the conflict instead of guessing which lane to continue.
    - **IF `$ARGUMENTS` IS NON-EMPTY**: Extract any high-signal execution constraints, environment facts, build instructions, startup instructions, or recovery hints and record them under `## User Execution Notes` in `implement-tracker.md` before choosing the next batch.
-   - **REQUIRED**: Query project cognition with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json`.
+   - **REQUIRED**: Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json`.
    - **IF READINESS IS `needs_rebuild`**: Run `/sp-map-scan` followed by `/sp-map-build` before continuing.
-   - **IF READINESS IS `needs_update` OR TOO WEAK FOR THE TOUCHED AREA**: Use `/sp-map-update` with the changed paths. Rebuild through `/sp-map-scan` followed by `/sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement.
+   - **IF READINESS IS `needs_update` OR TOO WEAK FOR THE TOUCHED AREA**: Use `/sp-map-update` with the changed paths. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
    - **IF READINESS IS `review`**: Inspect only the returned `minimal_live_reads` before trusting the runtime for implementation decisions.
    - **TREAT TASK-RELEVANT COVERAGE AS INSUFFICIENT** when the touched area is named only vaguely, lacks ownership or placement guidance, or lacks workflow, constraint, integration, or regression-sensitive testing guidance.
-   - **IF TASK-RELEVANT COVERAGE IS INSUFFICIENT**: use returned testing artifacts and refresh through `/sp-map-update` with changed paths or affected surfaces; rebuild through `/sp-map-scan` followed by `/sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly being rebuilt, or invalidated by broad architecture replacement; then inspect the returned minimum live files needed to replace guesswork with evidence.
+   - **IF TASK-RELEVANT COVERAGE IS INSUFFICIENT**: use returned testing artifacts and refresh through `/sp-map-update` with changed paths or affected surfaces. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; then inspect the returned minimum live files needed to replace guesswork with evidence.
    - **REQUIRED**: Read `.specify/memory/constitution.md` if present.
    - **REQUIRED**: Read `.specify/memory/project-rules.md` if present.
    - **REQUIRED**: Read `.specify/memory/learnings/INDEX.md` if present.
@@ -404,7 +406,7 @@ human_needed_checks:
     - **REQUIRED FOR SUBAGENT EXECUTION**: Use `.specify/templates/worker-prompts/implementer.md` as the default implementer subagent contract and pair post-implementation reviews with `.specify/templates/worker-prompts/spec-reviewer.md` and `.specify/templates/worker-prompts/code-quality-reviewer.md`
     - **REQUIRED FOR SUBAGENT EXECUTION**: Prefer structured handoffs compatible with the shared `WorkerTaskResult` contract whenever the current runtime exposes structured subagent results
     - **REQUIRED FOR SUBAGENT EXECUTION**: If the current integration exposes a runtime-managed result channel, use that channel. Otherwise write the normalized subagent result envelope to `FEATURE_DIR/worker-results/<task-id>.json`
-    - **REQUIRED FOR SUBAGENT EXECUTION**: When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result submit` to normalize and write the result envelope
+    - **REQUIRED FOR SUBAGENT EXECUTION**: When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result submit` to normalize and write the result envelope
     - **REQUIRED FOR SUBAGENT EXECUTION**: Preserve `reported_status` when normalizing subagent language such as `DONE_WITH_CONCERNS` or `NEEDS_CONTEXT` into canonical orchestration state
     - **REQUIRED FOR SUBAGENT EXECUTION**: Idle subagent is not an accepted result.
     - **REQUIRED FOR SUBAGENT EXECUTION**: [AGENT] The leader must wait for and consume the structured handoff before closing the join point, declaring completion, requesting shutdown, or interrupting subagent execution.
@@ -420,15 +422,16 @@ human_needed_checks:
 - Do not accept a successful worker result for a packet with consequence obligations unless it includes validation evidence for each obligation ID or records a blocked stop-and-reopen condition.
 - Keep unresolved consequence obligations visible in `implement-tracker.md` open gaps and final reporting until they are resolved, deferred by an upstream artifact, or routed to `/sp.debug`, `/sp.tasks`, `/sp.plan`, `/sp.deep-research`, or `/sp.clarify`.
 
-## Project Cognition Gate
+## Project Cognition Advisory Gate
 
-This command must treat the project cognition runtime as the mandatory pre-source knowledge base.
+This command should treat the project cognition runtime as an advisory navigation index, not a mandatory pre-source gate.
 
-### Hard Rule
+### Advisory Rule
 
-Do not inspect implementation source, run reproduction or tests, compile a
-plan, prepare a fix, or emit technical recommendations until the cognition gate has
-passed.
+Use project cognition when available to find likely owners, affected paths,
+risks, verification routes, and minimal live reads. Do not treat map output as
+evidence by itself. Technical claims must be backed by live code, tests,
+scripts, configuration, or authoritative docs.
 
 ### Required Project Cognition Query
 
@@ -484,24 +487,44 @@ and minimal live reads after the minimum gate, not whether it may skip cognition
 
 ### Freshness
 
-Treat runtime freshness as a gate:
+Treat runtime freshness as map-quality diagnostics:
 
-- `missing` -> block and refresh through `sp-map-scan -> sp-map-build`
-- `stale` -> block and refresh through `sp-map-update`
-- `stale` with changed paths missing from `path_index` -> block and rebuild through `sp-map-scan -> sp-map-build`; repeating `sp-map-update` cannot create absent path coverage
-- `support_drift` -> stop and tell the user to resolve support-surface drift; do not reflexively route to `sp-map-update`
-- `partial_refresh` -> tell the user the refresh was recorded but readiness did not pass; follow `recommended_next_action`
-- `possibly_stale` -> inspect the returned affected scope; if the touched area is not safely covered, route through `sp-map-update`
+- `fresh` -> use the returned task-local bundle as an advisory first pass navigation aid
+- `missing` -> if cognition freshness is `missing`, continue with live repository evidence and recommend `$sp-map-scan`, then `$sp-map-build` as follow-up map maintenance
+- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` as follow-up map maintenance
+- `stale` with changed paths missing from `path_index` -> warn and continue with live repository evidence; recommend `$sp-map-update` first for ordinary existing-baseline gaps.
+  Use `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`
+- `support_drift` -> warn and continue with live repository evidence; recommend resolving or intentionally ignoring support-surface drift
+- `partial_refresh` -> warn that refresh data was recorded but readiness did not pass; continue with live repository evidence
+- `possibly_stale` -> inspect the returned affected scope when useful, then continue with live repository evidence
 
 Preserve the distinction between the machine freshness field and public state
-guidance: consume `freshness` as the factual state and use
-`recommended_next_action` for the operator-facing next step.
+guidance: `freshness` records map quality, while `recommended_next_action` is a
+map-maintenance recommendation.
+
+### Mutation Closeout Rule
+
+Entry stale may continue for live-evidence navigation, but it is not a
+completion waiver. If the active workflow changes source/runtime truth-owning
+surfaces, shared surfaces, command/route/contract boundaries, verification entry
+points, runtime assumptions, or other map-level coverage facts, closeout must
+record a refresh or dirty outcome: either an actual `$sp-map-update`
+refresh using the changed paths, or `project-cognition mark-dirty` when the
+required refresh cannot be completed now.
 
 ### Primary Read Restriction
 
-Do not treat handbook-first or layered project-map files as the primary runtime read surfaces. If query-returned
-coverage is insufficient, refresh the cognition runtime through `sp-map-update`; reserve `sp-map-scan -> sp-map-build` for missing, unusable, schema-incompatible, explicitly rebuilt, or architecture-replaced baselines
-instead of forcing a second handbook traversal phase.
+Do not treat handbook-first or layered project-map files as evidence. If
+query-returned coverage is insufficient, inspect live repository surfaces
+directly and recommend `sp-map-update` for ordinary existing-baseline gaps,
+localized stale cognition refresh, weak localized coverage after a usable
+baseline, or ordinary changed-path maintenance. Use `sp-map-scan -> sp-map-build`
+only for first/missing/unusable baseline, schema failure, zero active-generation
+`path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+
+The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion.
+
+Do not call `project-cognition mark-dirty` unless the active workflow explicitly requires a durable dirty-state record.
 
 **Project cognition gate:** query the active project's runtime before broad
 repository reads.
@@ -509,9 +532,9 @@ repository reads.
 Run or emulate:
 
 ```text
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json
 # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json
 ```
 
 Use the returned readiness:
@@ -519,8 +542,8 @@ Use the returned readiness:
 - `ready`: continue with the returned task-local bundle.
 - `review`: perform only the returned `minimal_live_reads` before continuing.
 - `ambiguous`: ask the user to select the intended candidate.
-- `needs_update`: route through `$sp-map-update`.
-- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+- `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
+- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - `blocked`: stop and report the blocking runtime issue.
 - **CARRY FORWARD**: Before dispatch or code edits, write the selected
   capability, minimal live reads, boundary constraints, required references,
@@ -761,17 +784,17 @@ After each task completion, emit a gate self-check. After all tasks, emit a fina
      - `plan_gap`: the current plan/tasks do not cover the work needed to satisfy the feature goal; update `plan.md` and `tasks.md`, set tracker status to `replanning`, then continue from the next ready batch after the replan
      - `spec_gap`: the requirement itself is ambiguous, contradictory, or newly changed; stop autonomous replanning, keep the gap explicit in the tracker, and recommend `/sp.clarify`
      - `feasibility_gap`: the requirement is clear but the implementation chain is unproven; stop autonomous replanning, keep the gap explicit in the tracker, and recommend `/sp.deep-research`
-   - Before final completion reporting, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` recommending `$sp-map-update` with those changed paths whenever project cognition might be affected.
-   - If the completed implementation changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, including unresolved `open_gaps`, refresh the project cognition runtime through `$sp-map-update` using the changed paths. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes.
-   - If you cannot complete that refresh in the current pass, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback, preserve `origin-command=implement`, `origin-feature-dir=$FEATURE_DIR`, `origin-lane-id=$LANE_ID`, and the validated packet file when available, and tell the user to run `$sp-map-update` with the changed paths before the next brownfield workflow proceeds, escalating to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above. The same lane's later `sp-implement` resume may continue with a warning only when the recorded dirty scope overlaps the current packet scope, but upstream brownfield entrypoints and other features must refresh first.
+   - Before final completion reporting, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` with the actual `$sp-map-update` refresh or `project-cognition mark-dirty` outcome whenever project cognition might be affected.
+   - If the completed implementation changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, including unresolved `open_gaps`, refresh the project cognition runtime through `$sp-map-update` using the changed paths. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. After a successful existing-baseline map-update, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+   - If you cannot complete that refresh in the current pass, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback, preserve `origin-command=implement`, `origin-feature-dir=$FEATURE_DIR`, `origin-lane-id=$LANE_ID`, and the validated packet file when available, and tell the user to run `$sp-map-update` with the changed paths before the next brownfield workflow proceeds. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above. The same lane's later `sp-implement` resume may continue with a warning only when the recorded dirty scope overlaps the current packet scope, but upstream brownfield entrypoints and other features must refresh first.
    - Only mark the tracker `resolved` after required tasks are complete, blockers are cleared, and the validation pass is truthfully green or explicitly waiting on recorded human verification
-   - [AGENT] Before the final completion report, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify implement closeout --feature-dir \"$FEATURE_DIR\" --format json` so implementation session state is validated and retry-heavy patterns are auto-captured from `implement-tracker.md`.
+   - [AGENT] Before the final completion report, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify implement closeout --feature-dir \"$FEATURE_DIR\" --format json` so implementation session state is validated and retry-heavy patterns are auto-captured from `implement-tracker.md`.
 - [AGENT] If the closeout auto-capture pass produced no captured lesson but you still discovered a reusable `pitfall`, `recovery_path`, or `project_constraint`, use the manual `learning capture` helper surface to create or merge an index/detail entry.
   Required options: `--command`, `--type`, `--summary`, `--evidence`
 - [AGENT] Before the final completion report, apply the Learning Reflex and record any reusable `pitfall`, `recovery_path`, `verification_gap`, `state_surface_gap`, or `project_constraint` in `.specify/memory/learnings/INDEX.md` plus a linked detail document when durable state did not already preserve it.
-   - Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
+   - Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
    - Only ask for confirmation when a new learning is highest-signal, such as an explicit user default, clear cross-stage reuse, or repeated recurrence that should become shared project memory.
-   - Report final status with summary of completed work, changed code paths, changed behavior surfaces, verification evidence, recommended `$sp-map-update` refresh when applicable, remaining human-needed checks, and any unresolved gaps
+   - Report final status with summary of completed work, changed code paths, changed behavior surfaces, verification evidence, `project_cognition_refresh` outcome when applicable, remaining human-needed checks, and any unresolved gaps
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/sp.tasks` first to regenerate the task list.
 
@@ -810,8 +833,10 @@ Note: This command assumes a complete task breakdown exists in tasks.md. If task
 - Dispatch shape: `one-subagent`, `parallel-subagents`, or `subagent-blocked`
 - Execution surface: `native-subagents`, `managed-team`, or `leader-inline`
 - Delegation surface contract: preserve the native dispatch, fallback, worker result contract, and handoff path below.
-- Native subagent dispatch: No subagent dispatch path for this session.
-- Join behavior: Stay on the leader path and keep the current lane explicit.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
 - Managed-team fallback: No in-command team fallback for `sp-implement`; if subagents cannot proceed safely, stay on the leader path and record why.
 - Leader-inline fallback: record the reason before local execution.
 - Worker result contract: WorkerTaskResult contract with status, changed files, validation evidence, blockers, failed assumptions, and recovery guidance.

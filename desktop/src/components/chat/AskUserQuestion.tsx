@@ -64,6 +64,63 @@ function getSelectedAnswer(question: Question, selected: string[] | undefined) {
   return question.multiSelect ? selected.join(', ') : selected[0] ?? ''
 }
 
+function resultContentToText(result: unknown): string | null {
+  if (typeof result === 'string') return result
+  if (!Array.isArray(result)) return null
+
+  const text = result
+    .map((block) => {
+      if (typeof block === 'string') return block
+      if (!block || typeof block !== 'object') return ''
+      const textBlock = block as { type?: unknown; text?: unknown }
+      return textBlock.type === 'text' && typeof textBlock.text === 'string'
+        ? textBlock.text
+        : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+
+  return text || null
+}
+
+function decodePersistedResultText(text: string): string {
+  return text
+    .replace(/&quot;|&#34;|&#x22;/gi, '"')
+    .replace(/&apos;|&#39;|&#x27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+}
+
+function parsePersistedResultAnswers(result: unknown, questions: Question[]): Record<string, string> {
+  const text = resultContentToText(result)
+  if (!text) return {}
+
+  const decoded = decodePersistedResultText(text)
+  const prefix = 'User has answered your questions: '
+  const start = decoded.indexOf(prefix)
+  if (start === -1) return {}
+
+  const suffix = ". You can now continue with the user's answers in mind."
+  const bodyStart = start + prefix.length
+  const suffixStart = decoded.indexOf(suffix, bodyStart)
+  const body = decoded.slice(bodyStart, suffixStart === -1 ? undefined : suffixStart)
+  const answers: Record<string, string> = {}
+
+  for (const question of questions) {
+    const marker = `"${question.question}"="`
+    const answerStart = body.indexOf(marker)
+    if (answerStart === -1) continue
+
+    const valueStart = answerStart + marker.length
+    const valueEnd = body.indexOf('"', valueStart)
+    const value = body.slice(valueStart, valueEnd === -1 ? undefined : valueEnd).trim()
+    if (value) answers[question.question] = value
+  }
+
+  return answers
+}
+
 export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) {
   const { respondToPermission } = useChatStore()
   const activeTabId = useTabStore((s) => s.activeTabId)
@@ -83,12 +140,14 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   const activeQuestion = questions[safeActiveTab]
 
   const resultAnswers = useMemo(() => {
-    if (!result || typeof result !== 'object') return {}
-    const answers = (result as { answers?: unknown }).answers
-    return answers && typeof answers === 'object'
-      ? answers as Record<string, string>
-      : {}
-  }, [result])
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      const answers = (result as { answers?: unknown }).answers
+      if (answers && typeof answers === 'object') {
+        return answers as Record<string, string>
+      }
+    }
+    return parsePersistedResultAnswers(result, questions)
+  }, [questions, result])
 
   const pendingRequest = pendingPermission?.toolUseId === toolUseId ? pendingPermission : null
   const answeredText = useMemo(() => {

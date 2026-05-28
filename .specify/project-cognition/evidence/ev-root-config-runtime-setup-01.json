@@ -1,0 +1,21 @@
+{
+  "id": "ev-root-config-runtime-setup-01",
+  "type": "source_analysis",
+  "source_path": "src/setup.ts",
+  "summary": "The `setup` function establishes session identity and startup services, including optional UDS messaging, teammate snapshot capture, terminal backup restoration, cwd/project-root initialization, and hooks snapshot capture.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "export async function setup(",
+    "switchSession(asSessionId(customSessionId))",
+    "await m.startUdsMessaging(",
+    "captureTeammateModeSnapshot()",
+    "setCwd(cwd)",
+    "setProjectRoot(cwd)",
+    "captureHooksConfigSnapshot()",
+    "initializeFileChangedWatcher(cwd)"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

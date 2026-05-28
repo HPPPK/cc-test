@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-102",
+  "type": "source_analysis",
+  "source_path": "src/services/api/emptyUsage.test.ts",
+  "summary": "Test coverage for emptyUsage.test.ts exercises fills missing provider usage with zero-valued usage; preserves reported token fields while defaulting missing nested fields; keeps cost calculation safe for provider responses without usage",
+  "detail": "",
+  "quotes_or_symbols": [
+    "fills missing provider usage with zero-valued usage",
+    "preserves reported token fields while defaulting missing nested fields",
+    "keeps cost calculation safe for provider responses without usage"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

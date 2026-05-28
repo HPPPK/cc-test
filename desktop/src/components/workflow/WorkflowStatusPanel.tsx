@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 type ArtifactPointer = {
   id?: string
   label?: string
@@ -80,65 +82,82 @@ const STATUS_LABELS: Record<WorkflowStatusPanelSummary['status'], string> = {
 }
 
 export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
   if (!workflow) return null
 
   const phaseName = resolvePhaseName(workflow)
   const requestedModel = workflow.model?.requested ?? workflow.model?.requestedModel
   const actualModel = workflow.model?.actual ?? workflow.model?.actualModel
   const statePointer = pointerText(workflow.statePointer)
+  const fallbackLabel = typeof workflow.model?.fallbackApplied === 'boolean'
+    ? workflow.model.fallbackApplied ? 'Fallback applied' : 'No fallback'
+    : null
+  const detailRows = [
+    { label: 'Transition authority', value: workflow.transitionAuthority ?? 'auto' },
+    { label: 'State pointer', value: statePointer, mono: true },
+    requestedModel ? { label: 'Requested model', value: requestedModel } : null,
+    actualModel ? { label: 'Actual model', value: actualModel } : null,
+    workflow.model?.providerId ? { label: 'Provider', value: workflow.model.providerId } : null,
+    workflow.model?.source ? { label: 'Model source', value: workflow.model.source } : null,
+    fallbackLabel ? { label: 'Fallback', value: fallbackLabel } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string; mono?: boolean }>
 
   return (
     <section
       data-testid="workflow-status-panel"
-      className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3 text-[12px]"
+      className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 text-[12px]"
     >
-      <div className="flex flex-wrap items-start gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
             {humanize(workflow.templateId)}
           </div>
-          <div className="mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
-            {workflow.templateSource} {workflow.templateVersion}
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-text-tertiary)]">
+            <span className="truncate">{workflow.templateSource} {workflow.templateVersion}</span>
+            <span className="text-[var(--color-border)]" aria-hidden="true">/</span>
+            <span className="truncate">
+              {phaseName} · Phase {Math.max(workflow.activePhaseIndex + 1, 1)} of {workflow.phaseCount}
+            </span>
           </div>
         </div>
         <StatusBadge status={workflow.status} />
       </div>
 
-      <div className="mt-3">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-[var(--color-text-primary)]">{phaseName}</span>
-          <span className="text-[var(--color-text-tertiary)]">
-            Phase {Math.max(workflow.activePhaseIndex + 1, 1)} of {workflow.phaseCount}
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--color-border)]">
+        <div
+          className="h-full rounded-full bg-[var(--color-brand)] transition-all"
+          style={{ width: `${progressPercent(workflow)}%` }}
+        />
+      </div>
+
+      <div className="mt-2">
+        <button
+          type="button"
+          aria-expanded={detailsOpen}
+          aria-controls="workflow-status-details"
+          onClick={() => setDetailsOpen((open) => !open)}
+          className="flex max-w-full items-center gap-2 text-[11px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+        >
+          <span className={`material-symbols-outlined text-[14px] transition-transform ${detailsOpen ? 'rotate-90' : ''}`} aria-hidden="true">
+            chevron_right
           </span>
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-border)]">
-          <div
-            className="h-full rounded-full bg-[var(--color-brand)] transition-all"
-            style={{ width: `${progressPercent(workflow)}%` }}
-          />
+          <span className="font-medium">Workflow details</span>
+        </button>
+        <div id="workflow-status-details" hidden={!detailsOpen}>
+          <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+            {detailRows.map((row) => (
+              <InfoRow key={row.label} label={row.label} value={row.value} mono={row.mono} />
+            ))}
+          </dl>
+          {workflow.model?.fallbackReason && (
+            <div className="mt-2 rounded-[8px] border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-text-secondary)]">
+              {workflow.model.fallbackReason}
+            </div>
+          )}
         </div>
       </div>
 
-      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-        <InfoRow label="Transition authority" value={workflow.transitionAuthority ?? 'auto'} />
-        <InfoRow label="State pointer" value={statePointer} mono />
-        {requestedModel && <InfoRow label="Requested model" value={requestedModel} />}
-        {actualModel && <InfoRow label="Actual model" value={actualModel} />}
-        {workflow.model?.providerId && <InfoRow label="Provider" value={workflow.model.providerId} />}
-        {workflow.model?.source && <InfoRow label="Model source" value={workflow.model.source} />}
-        {typeof workflow.model?.fallbackApplied === 'boolean' && (
-          <InfoRow
-            label="Fallback"
-            value={workflow.model.fallbackApplied ? 'Fallback applied' : 'No fallback'}
-          />
-        )}
-      </dl>
-
-      {workflow.model?.fallbackReason && (
-        <div className="mt-2 rounded-[8px] border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-text-secondary)]">
-          {workflow.model.fallbackReason}
-        </div>
-      )}
 
       {workflow.blockedReason && (
         <div className="mt-2 rounded-[8px] border border-[var(--color-error)]/20 bg-[var(--color-error)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-error)]">

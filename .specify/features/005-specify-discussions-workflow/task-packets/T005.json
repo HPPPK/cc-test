@@ -1,0 +1,61 @@
+{
+  "id": "T005",
+  "title": "Add linked workflow session contract tests",
+  "agent": "test-engineer",
+  "depends_on": [
+    "T001: implementation guardrails recorded",
+    "T002: protected paths confirmed"
+  ],
+  "parallel_safe": true,
+  "story": null,
+  "objective": "Add failing server contract tests for POST /api/sessions/:id/workflow/start clear, inherit, summarize, source preservation, active source rejection, provenance, idempotency, and target snapshot creation.",
+  "context_navigation": {
+    "design_decision": "plan.md#Operational Consequence Design",
+    "data_model": "data-model.md#Linked Workflow Session Request",
+    "api_contract": "contracts/linked-workflow-session.md#Route",
+    "reference_implementation": "src/server/__tests__/sessions.test.ts"
+  },
+  "write_scope": [
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/api/sessions.ts",
+    "src/server/services/sessionService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/services/compact/compact.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "src/server/api/sessions.ts",
+    "src/server/services/**",
+    "src/services/compact/**",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "src/server/__tests__/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not implement linked start.",
+    "Do not call real providers in tests.",
+    "Do not mutate real transcripts."
+  ],
+  "acceptance_criteria": [
+    "Tests prove source transcript/metadata remains unchanged for clear, inherit, summarize.",
+    "Tests require target workflow session snapshot and link provenance.",
+    "Tests assert summarize unavailable returns visible error without fallback."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

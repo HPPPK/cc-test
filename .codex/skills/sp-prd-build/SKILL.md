@@ -245,3 +245,14 @@ Classification-aware export rule:
 - `sp-prd-build` must not silently fill critical evidence gaps.
 - `sp-prd-build` must not strip `Evidence`, `Inference`, or `Unknown` labels from consequential claims.
 - If the scan package is incomplete, route back to `sp-prd-scan` instead of guessing.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

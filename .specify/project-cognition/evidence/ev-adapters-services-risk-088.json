@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-088",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/firstPartyEventLogger.ts",
+  "summary": "firstPartyEventLogger.ts defines EventSamplingConfig, getEventSamplingConfig, shouldSampleEvent, getBatchConfig, shutdown1PEventLogging, is1PEventLoggingEnabled and imports @opentelemetry/api-logs, @opentelemetry/resources, crypto, lodash-es, ../../utils/config.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "EventSamplingConfig",
+    "getEventSamplingConfig",
+    "shouldSampleEvent",
+    "getBatchConfig",
+    "shutdown1PEventLogging",
+    "is1PEventLoggingEnabled"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

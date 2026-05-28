@@ -1,0 +1,63 @@
+{
+  "id": "T020",
+  "title": "Add linked workflow session service",
+  "agent": "executor",
+  "depends_on": [
+    "T018: shared workflow session creation helper extracted",
+    "T019: non-mutating summary helper added"
+  ],
+  "parallel_safe": false,
+  "story": "US4",
+  "objective": "Implement workflowSessionLinkService for source validation, context strategy handling, provenance, carryover artifact/startup prompt coordination, and target workflow session creation.",
+  "context_navigation": {
+    "design_decision": "plan.md#Boundary Ownership",
+    "data_model": "data-model.md#Linked Workflow Session Provenance",
+    "api_contract": "contracts/linked-workflow-session.md#State Rules",
+    "reference_implementation": "src/server/services/sessionService.ts"
+  },
+  "write_scope": [
+    "src/server/services/workflowSessionLinkService.ts",
+    "src/server/services/sessionService.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/services/compact/workflowSummaryCarryover.ts"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl outside test temp dirs",
+    "~/.claude/settings.json"
+  ],
+  "expected_outputs": [
+    "src/server/services/workflowSessionLinkService.ts （新建）",
+    "src/server/services/sessionService.ts （修改，如 source read helpers are required）",
+    "src/server/__tests__/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not convert source chat in place.",
+    "Do not accept workflow sessions as sources in first release.",
+    "Do not ignore active streaming/tool-executing state.",
+    "Do not mutate source transcript."
+  ],
+  "acceptance_criteria": [
+    "clear, inherit, and summarize strategies create target workflow sessions with provenance.",
+    "Source normal chat remains unchanged.",
+    "Active/unsupported sources return contract errors.",
+    "clientRequestId behavior is deterministic."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

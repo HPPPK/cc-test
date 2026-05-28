@@ -22,12 +22,13 @@ import {
   getCliComputerUseCapabilities,
   isComputerUseSupportedPlatform,
 } from './common.js'
+import { getJiangxiaEnvValue } from '../appIdentity.js'
 import { callPythonHelper } from './pythonBridge.js'
 
 const SCREENSHOT_JPEG_QUALITY = 0.75
 const MOVE_SETTLE_MS = 50
 const hostBundleId =
-  process.env.CC_HAHA_COMPUTER_USE_HOST_BUNDLE_ID || CLI_HOST_BUNDLE_ID
+  getJiangxiaEnvValue('COMPUTER_USE_HOST_BUNDLE_ID') || CLI_HOST_BUNDLE_ID
 
 type PythonDisplayGeometry = DisplayGeometry
 

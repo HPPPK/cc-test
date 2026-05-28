@@ -1,75 +1,36 @@
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 
 import {
   BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES,
 } from './workflowToolPolicy.js'
+import {
+  WORKFLOW_TEMPLATE_BUILTIN_ID,
+  WORKFLOW_TEMPLATE_SCHEMA_VERSION,
+  isNonEmptyString,
+  isRecord,
+  validateAndNormalizeUserConfigTemplate,
+  type WorkflowTemplateRegistryPhase,
+  type WorkflowTemplateRegistryTemplate,
+  type WorkflowTemplateValidationIssue,
+} from './workflowTemplateValidation.js'
 import type {
   WorkflowPhaseActionPolicy,
   WorkflowPhasePrompt,
-  WorkflowTemplateSource,
 } from './workflowTypes.js'
 
-export type WorkflowTemplateValidationIssue = {
-  source: 'user-config' | 'builtin'
-  templateId?: string
-  path: string
-  code: string
-  message: string
-  severity: 'error' | 'warning'
-}
-
-export type WorkflowTemplateRegistrySkillDeclaration = {
-  name: string
-  source?: 'user' | 'project' | 'builtin' | 'unknown'
-  reason?: string
-  [key: string]: unknown
-}
-
-export type WorkflowTemplateRegistryRequiredArtifact = {
-  id: string
-  name?: string
-  description?: string
-  required: boolean
-  [key: string]: unknown
-}
-
-export type WorkflowTemplateRegistryCompletionCriteria = {
-  type: 'manual-checklist' | 'artifact-required' | 'agent-reported'
-  description: string
-  [key: string]: unknown
-}
-
-export type WorkflowTemplateRegistryTransitionPolicy = {
-  authority: 'auto' | 'user-confirmation'
-  [key: string]: unknown
-}
-
-export type WorkflowTemplateRegistryPhase = {
-  id: string
-  name: string
-  instructions: string
-  requestedModel?: unknown
-  skills: WorkflowTemplateRegistrySkillDeclaration[]
-  requiredArtifacts: WorkflowTemplateRegistryRequiredArtifact[]
-  completionCriteria: WorkflowTemplateRegistryCompletionCriteria
-  transition: WorkflowTemplateRegistryTransitionPolicy
-  actionPolicy?: WorkflowPhaseActionPolicy
-  phasePrompt?: WorkflowPhasePrompt
-  [key: string]: unknown
-}
-
-export type WorkflowTemplateRegistryTemplate = {
-  schemaVersion: 1
-  id: string
-  source: WorkflowTemplateSource
-  version: string
-  name: string
-  description: string
-  phases: WorkflowTemplateRegistryPhase[]
-  [key: string]: unknown
-}
+export type {
+  WorkflowTemplateRegistryCompletionCriteria,
+  WorkflowTemplateRegistryOutputArtifact,
+  WorkflowTemplateRegistryPhase,
+  WorkflowTemplateRegistryRequiredArtifact,
+  WorkflowTemplateRegistrySkillDeclaration,
+  WorkflowTemplateRegistryTemplate,
+  WorkflowTemplateRegistryTransitionPolicy,
+  WorkflowTemplateValidationIssue,
+} from './workflowTemplateValidation.js'
 
 export type WorkflowTemplateRegistryListResult = {
   templates: WorkflowTemplateRegistryTemplate[]
@@ -82,8 +43,8 @@ type WorkflowConfigFile = {
   [key: string]: unknown
 }
 
-const BUILTIN_TEMPLATE_ID = 'agent-development'
-const USER_CONFIG_SCHEMA_VERSION = 1
+const BUILTIN_TEMPLATE_ID = WORKFLOW_TEMPLATE_BUILTIN_ID
+const USER_CONFIG_SCHEMA_VERSION = WORKFLOW_TEMPLATE_SCHEMA_VERSION
 
 const BUILTIN_WORKFLOW_PHASE_PROMPTS: Record<string, WorkflowPhasePrompt> = {
   discussion: {
@@ -330,366 +291,13 @@ function getConfigDir(): string {
 }
 
 function getWorkflowConfigPath(): string {
-  return path.join(getConfigDir(), 'cc-haha', 'workflows.json')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0
+  return getAppStoragePath(getConfigDir(), 'workflows.json')
 }
 
 function errnoCode(error: unknown): string | undefined {
   return error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
     ? error.code
     : undefined
-}
-
-function issue(
-  pathValue: string,
-  code: string,
-  message: string,
-  templateId?: string,
-): WorkflowTemplateValidationIssue {
-  return {
-    source: 'user-config',
-    templateId,
-    path: pathValue,
-    code,
-    message,
-    severity: 'error',
-  }
-}
-
-function normalizeRequiredArtifacts(value: unknown): WorkflowTemplateRegistryRequiredArtifact[] {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .filter(isRecord)
-    .filter((artifact) => isNonEmptyString(artifact.id))
-    .map((artifact) => ({
-      ...artifact,
-      id: artifact.id as string,
-      name: isNonEmptyString(artifact.name) ? artifact.name : undefined,
-      description: isNonEmptyString(artifact.description) ? artifact.description : undefined,
-      required: typeof artifact.required === 'boolean' ? artifact.required : false,
-    }))
-}
-
-function normalizeSkills(value: unknown): WorkflowTemplateRegistrySkillDeclaration[] {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .filter(isRecord)
-    .filter((skill) => isNonEmptyString(skill.name))
-    .map((skill) => ({
-      ...skill,
-      name: skill.name as string,
-      source:
-        skill.source === 'user' ||
-        skill.source === 'project' ||
-        skill.source === 'builtin' ||
-        skill.source === 'unknown'
-          ? skill.source
-          : undefined,
-      reason: isNonEmptyString(skill.reason) ? skill.reason : undefined,
-    }))
-}
-
-function normalizeCompletionCriteria(value: unknown): WorkflowTemplateRegistryCompletionCriteria | null {
-  if (!isRecord(value)) return null
-  if (
-    value.type !== 'manual-checklist' &&
-    value.type !== 'artifact-required' &&
-    value.type !== 'agent-reported'
-  ) {
-    return null
-  }
-  if (!isNonEmptyString(value.description)) return null
-
-  return {
-    ...value,
-    type: value.type,
-    description: value.description,
-  }
-}
-
-function normalizeTransition(value: unknown): WorkflowTemplateRegistryTransitionPolicy | null {
-  if (!isRecord(value)) return null
-  if (value.authority !== 'auto' && value.authority !== 'user-confirmation') return null
-
-  return {
-    ...value,
-    authority: value.authority,
-  }
-}
-
-function normalizeActionPolicy(value: unknown): WorkflowPhaseActionPolicy | undefined {
-  if (!isRecord(value)) return undefined
-  const allowedActions = Array.isArray(value.allowedActions)
-    ? value.allowedActions.filter(isNonEmptyString)
-    : []
-  const forbiddenActions = Array.isArray(value.forbiddenActions)
-    ? value.forbiddenActions.filter(isNonEmptyString)
-    : []
-
-  if (allowedActions.length === 0 && forbiddenActions.length === 0) return undefined
-  return {
-    allowedActions,
-    forbiddenActions,
-  }
-}
-
-function normalizeStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter(isNonEmptyString) : []
-}
-
-function normalizePhasePrompt(value: unknown): WorkflowPhasePrompt | undefined {
-  if (!isRecord(value)) return undefined
-  if (!isNonEmptyString(value.objective)) return undefined
-  if (!isRecord(value.outputArtifact)) return undefined
-  if (!isNonEmptyString(value.outputArtifact.name)) return undefined
-
-  const handoffInput = normalizeStringList(value.handoffInput)
-  const executionRules = normalizeStringList(value.executionRules)
-  const sections = normalizeStringList(value.outputArtifact.sections)
-  const completionRules = normalizeStringList(value.completionRules)
-
-  if (
-    handoffInput.length === 0 &&
-    executionRules.length === 0 &&
-    sections.length === 0 &&
-    completionRules.length === 0
-  ) {
-    return undefined
-  }
-
-  return {
-    objective: value.objective,
-    handoffInput,
-    executionRules,
-    outputArtifact: {
-      name: value.outputArtifact.name,
-      sections,
-    },
-    completionRules,
-  }
-}
-
-function validateLinearOnly(
-  template: Record<string, unknown>,
-  templatePath: string,
-  templateId: string | undefined,
-): WorkflowTemplateValidationIssue[] {
-  const issues: WorkflowTemplateValidationIssue[] = []
-
-  if ('parallelPhases' in template || 'parallel' in template) {
-    issues.push(issue(
-      templatePath,
-      'WORKFLOW_TEMPLATE_PARALLEL_UNSUPPORTED',
-      'Parallel workflow definitions are not supported in the first release.',
-      templateId,
-    ))
-  }
-
-  if ('workflows' in template || 'nestedWorkflows' in template || 'childWorkflows' in template) {
-    issues.push(issue(
-      templatePath,
-      'WORKFLOW_TEMPLATE_NESTED_UNSUPPORTED',
-      'Nested workflow definitions are not supported in the first release.',
-      templateId,
-    ))
-  }
-
-  const phases = Array.isArray(template.phases) ? template.phases : []
-  phases.forEach((phase, phaseIndex) => {
-    if (!isRecord(phase)) return
-    const transition = isRecord(phase.transition) ? phase.transition : {}
-    if ('branches' in transition || 'branch' in transition || 'next' in transition || 'edges' in transition) {
-      issues.push(issue(
-        `${templatePath}.phases[${phaseIndex}].transition`,
-        'WORKFLOW_TEMPLATE_BRANCHING_UNSUPPORTED',
-        'Branching workflow definitions are not supported in the first release.',
-        templateId,
-      ))
-    }
-    if ('loop' in transition || 'repeat' in transition || 'until' in transition) {
-      issues.push(issue(
-        `${templatePath}.phases[${phaseIndex}].transition`,
-        'WORKFLOW_TEMPLATE_LOOP_UNSUPPORTED',
-        'Loop workflow definitions are not supported in the first release.',
-        templateId,
-      ))
-    }
-  })
-
-  return issues
-}
-
-function validateAndNormalizeUserTemplate(
-  value: unknown,
-  index: number,
-): { template: WorkflowTemplateRegistryTemplate | null, issues: WorkflowTemplateValidationIssue[] } {
-  const templatePath = `$.templates[${index}]`
-  if (!isRecord(value)) {
-    return {
-      template: null,
-      issues: [issue(templatePath, 'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD', 'Template must be an object.')],
-    }
-  }
-
-  const templateId = isNonEmptyString(value.id) ? value.id : undefined
-  const issues: WorkflowTemplateValidationIssue[] = []
-
-  if (
-    !isNonEmptyString(value.id) ||
-    !isNonEmptyString(value.version) ||
-    !isNonEmptyString(value.name) ||
-    !Array.isArray(value.phases)
-  ) {
-    issues.push(issue(
-      templatePath,
-      'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
-      'Template requires id, version, name, and phases fields.',
-      templateId,
-    ))
-  }
-
-  if (isNonEmptyString(value.id) && /[\\/]/.test(value.id)) {
-    issues.push(issue(
-      `${templatePath}.id`,
-      'WORKFLOW_TEMPLATE_INVALID_ID',
-      'Template id must be a stable slug and cannot contain path separators.',
-      templateId,
-    ))
-  }
-
-  if (value.id === BUILTIN_TEMPLATE_ID) {
-    issues.push(issue(
-      `${templatePath}.id`,
-      'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
-      'User templates cannot shadow builtin template ids.',
-      templateId,
-    ))
-  }
-
-  if (!Array.isArray(value.phases) || value.phases.length === 0) {
-    issues.push(issue(
-      `${templatePath}.phases`,
-      'WORKFLOW_TEMPLATE_INVALID_PHASES',
-      'Template phases must be a non-empty ordered array.',
-      templateId,
-    ))
-  }
-
-  issues.push(...validateLinearOnly(value, templatePath, templateId))
-
-  const normalizedPhases: WorkflowTemplateRegistryPhase[] = []
-  const phaseIds = new Set<string>()
-  if (Array.isArray(value.phases)) {
-    value.phases.forEach((phase, phaseIndex) => {
-      const phasePath = `${templatePath}.phases[${phaseIndex}]`
-      if (!isRecord(phase)) {
-        issues.push(issue(
-          phasePath,
-          'WORKFLOW_TEMPLATE_INVALID_PHASES',
-          'Phase must be an object.',
-          templateId,
-        ))
-        return
-      }
-
-      if (!isNonEmptyString(phase.id)) {
-        issues.push(issue(
-          `${phasePath}.id`,
-          'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
-          'Phase requires an id.',
-          templateId,
-        ))
-      } else if (phaseIds.has(phase.id)) {
-        issues.push(issue(
-          `${phasePath}.id`,
-          'WORKFLOW_PHASE_DUPLICATE_ID',
-          'Phase ids must be unique within a template.',
-          templateId,
-        ))
-      } else {
-        phaseIds.add(phase.id)
-      }
-
-      if (!isNonEmptyString(phase.name) || !isNonEmptyString(phase.instructions)) {
-        issues.push(issue(
-          phasePath,
-          'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
-          'Phase requires name and instructions fields.',
-          templateId,
-        ))
-      }
-
-      const completionCriteria = normalizeCompletionCriteria(phase.completionCriteria)
-      if (!completionCriteria) {
-        issues.push(issue(
-          `${phasePath}.completionCriteria`,
-          'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
-          'Phase requires valid completion criteria.',
-          templateId,
-        ))
-      }
-
-      const transition = normalizeTransition(phase.transition)
-      if (!transition) {
-        issues.push(issue(
-          `${phasePath}.transition`,
-          'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
-          'Phase requires a valid transition authority.',
-          templateId,
-        ))
-      }
-
-      if (
-        isNonEmptyString(phase.id) &&
-        isNonEmptyString(phase.name) &&
-        isNonEmptyString(phase.instructions) &&
-        completionCriteria &&
-        transition
-      ) {
-        const actionPolicy = normalizeActionPolicy(phase.actionPolicy)
-        const phasePrompt = normalizePhasePrompt(phase.phasePrompt)
-        normalizedPhases.push({
-          ...phase,
-          id: phase.id,
-          name: phase.name,
-          instructions: phase.instructions,
-          skills: normalizeSkills(phase.skills),
-          requiredArtifacts: normalizeRequiredArtifacts(phase.requiredArtifacts),
-          completionCriteria,
-          transition,
-          ...(actionPolicy ? { actionPolicy } : {}),
-          ...(phasePrompt ? { phasePrompt } : {}),
-        })
-      }
-    })
-  }
-
-  if (issues.length > 0 || !templateId || !isNonEmptyString(value.version) || !isNonEmptyString(value.name)) {
-    return { template: null, issues }
-  }
-
-  return {
-    issues,
-    template: {
-      ...value,
-      schemaVersion: USER_CONFIG_SCHEMA_VERSION,
-      id: templateId,
-      source: 'user',
-      version: value.version,
-      name: value.name,
-      description: isNonEmptyString(value.description) ? value.description : '',
-      phases: normalizedPhases,
-    },
-  }
 }
 
 function parseUserConfig(raw: string, filePath: string): {
@@ -785,6 +393,40 @@ async function readUserConfig(configPath: string): Promise<{
   }
 
   return { ...parseUserConfig(raw, configPath), missing: false }
+}
+
+function assertValidWritePayload(
+  templates: unknown[],
+  existingIssues: WorkflowTemplateValidationIssue[],
+): void {
+  if (existingIssues.length > 0) {
+    throw new Error(`Workflow config is invalid and cannot be overwritten: ${existingIssues[0]?.code ?? 'WORKFLOW_CONFIG_INVALID'}`)
+  }
+
+  const validationResults = templates.map((template, index) =>
+    validateAndNormalizeUserConfigTemplate(template, index),
+  )
+  const issues = validationResults.flatMap((result) => result.issues)
+  const ids = new Map<string, number>()
+  validationResults.forEach(({ template }) => {
+    if (!template) return
+    ids.set(template.id, (ids.get(template.id) ?? 0) + 1)
+  })
+  for (const [id, count] of ids) {
+    if (count <= 1) continue
+    issues.push({
+      source: 'user-config',
+      path: '$.templates',
+      code: 'WORKFLOW_TEMPLATE_DUPLICATE_ID',
+      message: 'User template ids must be unique.',
+      templateId: id,
+      severity: 'error',
+    })
+  }
+
+  if (issues.length > 0) {
+    throw new Error(`Workflow template payload is invalid: ${issues[0]?.code ?? 'WORKFLOW_TEMPLATE_INVALID'}`)
+  }
 }
 
 function mergePhaseUnknownFields(
@@ -889,7 +531,8 @@ export class WorkflowTemplateRegistryService {
 
   async writeTemplates(templates: unknown[]): Promise<void> {
     const configPath = getWorkflowConfigPath()
-    const { config, missing } = await readUserConfig(configPath)
+    const { config, issues } = await readUserConfig(configPath)
+    assertValidWritePayload(templates, issues)
     const existingConfig: WorkflowConfigFile = config ?? {
       schemaVersion: USER_CONFIG_SCHEMA_VERSION,
       templates: [],
@@ -915,9 +558,7 @@ export class WorkflowTemplateRegistryService {
     await fs.mkdir(path.dirname(configPath), { recursive: true })
     await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, 'utf-8')
 
-    if (!missing || cachedConfigPath === configPath) {
-      resetWorkflowTemplateRegistryForTests()
-    }
+    resetWorkflowTemplateRegistryForTests()
   }
 
   private async loadTemplates(configPath: string): Promise<WorkflowTemplateRegistryListResult> {
@@ -935,7 +576,7 @@ export class WorkflowTemplateRegistryService {
 
     const byId = new Map<string, WorkflowTemplateRegistryTemplate[]>()
     const validationResults = config.templates?.map((template, index) =>
-      validateAndNormalizeUserTemplate(template, index),
+      validateAndNormalizeUserConfigTemplate(template, index),
     ) ?? []
 
     validationResults.forEach(({ template, issues: templateIssues }) => {
@@ -948,12 +589,14 @@ export class WorkflowTemplateRegistryService {
 
     for (const [id, matchingTemplates] of byId) {
       if (matchingTemplates.length <= 1) continue
-      invalidTemplates.push(issue(
-        '$.templates',
-        'WORKFLOW_TEMPLATE_DUPLICATE_ID',
-        'User template ids must be unique.',
-        id,
-      ))
+      invalidTemplates.push({
+        source: 'user-config',
+        path: '$.templates',
+        code: 'WORKFLOW_TEMPLATE_DUPLICATE_ID',
+        message: 'User template ids must be unique.',
+        templateId: id,
+        severity: 'error',
+      })
     }
 
     for (const [id, matchingTemplates] of byId) {

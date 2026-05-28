@@ -1,0 +1,434 @@
+{
+  "lane_id": "write-set-parallel-safety",
+  "status": "accepted_candidate",
+  "summary": "Feature 006 should be split around shared validation/registry ownership, authoring service orchestration, local API routing, tool registration/rendering, and phase-policy enforcement. Desktop frontend changes are optional and should not be assigned by default. All mutating paths must preserve guide/list/inspect/validate/create/update/duplicate/delete capability, route persistence through WorkflowTemplateRegistryService, and prove no-write behavior for invalid, stale, builtin-protected, ambiguous, denied, and desktop-server-failure cases.",
+  "write_sets": [
+    {
+      "task": "T001",
+      "files": [
+        "src/server/services/workflowTemplateValidation.ts",
+        "src/server/services/workflowTemplateRegistryService.ts",
+        "src/server/services/workflowTemplateRegistryService.test.ts"
+      ],
+      "conflicts_with": [
+        "T002",
+        "T003"
+      ],
+      "parallel_safe_with": [
+        "T004",
+        "T005"
+      ],
+      "reason": "Owns extraction of current validation semantics from registry/API into one shared module while preserving registry persistence, unknown-field merge behavior, malformed-config no-write behavior, builtin id protection, linear-only rejection, issue codes, and cache invalidation. This is a dependency for authoring service and API parity work."
+    },
+    {
+      "task": "T002",
+      "files": [
+        "src/server/services/workflowTemplateAuthoringService.ts",
+        "src/server/services/workflowTemplateAuthoringService.test.ts"
+      ],
+      "conflicts_with": [
+        "T001",
+        "T003",
+        "T006"
+      ],
+      "parallel_safe_with": [
+        "T004",
+        "T005"
+      ],
+      "reason": "Owns operation orchestration, result envelope, basisHash computation, create/update/duplicate/delete no-write paths, builtin copy naming, and registry re-read-before-write behavior. It consumes T001 validation and is consumed by API and tool work."
+    },
+    {
+      "task": "T003",
+      "files": [
+        "src/server/api/workflowTemplates.ts",
+        "src/server/__tests__/workflowTemplates.test.ts"
+      ],
+      "conflicts_with": [
+        "T001",
+        "T002",
+        "T006"
+      ],
+      "parallel_safe_with": [
+        "T004",
+        "T005"
+      ],
+      "reason": "Owns local authoring endpoint routing, HTTP status mapping, API validation parity, and existing manual endpoint compatibility. Must not diverge from shared validation or bypass authoring service for the new POST /api/workflows/templates/authoring contract."
+    },
+    {
+      "task": "T004",
+      "files": [
+        "src/server/services/workflowTemplateAuthoringGuide.ts",
+        "src/server/services/workflowTemplateAuthoringGuide.test.ts"
+      ],
+      "conflicts_with": [
+        "T001"
+      ],
+      "parallel_safe_with": [
+        "T002",
+        "T003",
+        "T005",
+        "T006"
+      ],
+      "reason": "Owns deterministic static field guide and drift tests for required field groups, allowed completion/transition values, unsupported workflow shapes, and repairable issue codes. It may read shared validation constants from T001; merge order should avoid duplicate constants."
+    },
+    {
+      "task": "T005",
+      "files": [
+        "src/server/services/workflowToolPolicy.ts",
+        "src/server/services/workflowToolPolicy.test.ts"
+      ],
+      "conflicts_with": [
+        "T006"
+      ],
+      "parallel_safe_with": [
+        "T001",
+        "T002",
+        "T003",
+        "T004"
+      ],
+      "reason": "Owns operation-level workflow phase policy for template-authoring mutations. Must not add the whole tool name to getWorkflowPhaseDisallowedTools in a way that blocks read-only guide/list/inspect/validate operations."
+    },
+    {
+      "task": "T006",
+      "files": [
+        "src/tools.ts",
+        "src/Tool.ts",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "conflicts_with": [
+        "T002",
+        "T003",
+        "T005"
+      ],
+      "parallel_safe_with": [
+        "T004"
+      ],
+      "reason": "Owns new global built-in tool registration, input/output schema, metadata methods, permission classifier text, desktop-server delegation when CC_JIANGXIA_DESKTOP_SERVER_URL is configured, transcript rendering, and tool tests. src/Tool.ts should be read-only unless the existing Tool interface cannot express the required metadata."
+    },
+    {
+      "task": "T007",
+      "files": [
+        "desktop/src/api/sessions.ts",
+        "desktop/src/types/session.ts",
+        "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx"
+      ],
+      "conflicts_with": [
+        "T003"
+      ],
+      "parallel_safe_with": [
+        "T001",
+        "T002",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "reason": "Optional only. Assign this task only if implementation deliberately exposes authoring endpoint types to the desktop frontend or changes Settings Workflows behavior. The approved plan does not require a desktop UI redesign or desktop client changes."
+    }
+  ],
+  "shared_surfaces": [
+    {
+      "path": "src/tools.ts",
+      "join_owner": "T006",
+      "notes": "Single join point for importing WorkflowTemplateAuthoringTool and adding it to getAllBaseTools. Avoid concurrent edits here from service/API tasks."
+    },
+    {
+      "path": "src/server/services/workflowTemplateRegistryService.ts",
+      "join_owner": "T001",
+      "notes": "Storage boundary and cache invalidation owner. Other tasks may read types and list/write semantics but must not introduce alternate persistence or duplicate validation logic."
+    },
+    {
+      "path": "src/server/api/workflowTemplates.ts",
+      "join_owner": "T003",
+      "notes": "API route join point for existing manual endpoints and new authoring endpoint. Keep manual endpoint compatibility while sharing service/validation logic."
+    },
+    {
+      "path": "src/server/services/workflowToolPolicy.ts",
+      "join_owner": "T005",
+      "notes": "Policy join point. Mutating authoring operations must be denied by operation policy while read-only operations stay available."
+    },
+    {
+      "path": "desktop/src/api/sessions.ts",
+      "join_owner": "T007",
+      "notes": "Optional desktop client join point. Do not touch unless frontend code needs the internal authoring endpoint; Settings refetch should continue using existing list/get/create/update/delete methods."
+    }
+  ],
+  "forbidden_paths": [
+    ".specify/features/006-agent-workflow-authoring-tools/tasks.md",
+    ".specify/features/006-agent-workflow-authoring-tools/task-generation/task-index.json",
+    ".specify/features/006-agent-workflow-authoring-tools/task-generation/task-packets/**",
+    ".specify/features/006-agent-workflow-authoring-tools/workflow-state.md",
+    ".specify/features/006-agent-workflow-authoring-tools/spec.md",
+    ".specify/features/006-agent-workflow-authoring-tools/data-model.md",
+    ".specify/features/006-agent-workflow-authoring-tools/research.md",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/cc-jiangxia/providers.json",
+    "~/.claude/cc-jiangxia/settings.json",
+    "~/.claude/adapters.json",
+    "~/.claude/adapter-sessions.json",
+    "~/.claude/skills/**",
+    ".claude/skills/**",
+    ".mcp.json",
+    "~/.claude/plugins/**",
+    "~/.claude/teams/**",
+    "~/.claude/cc-jiangxia/*oauth*.json",
+    "desktop/src/**",
+    "desktop/src-tauri/**"
+  ],
+  "packet_guardrails": [
+    {
+      "guardrail_id": "G-REGISTRY-WRITER-ONLY",
+      "applies_to": [
+        "T001",
+        "T002",
+        "T003",
+        "T006"
+      ],
+      "rule": "All persisted workflow template mutations must call WorkflowTemplateRegistryService.writeTemplates; do not create a separate file writer, localStorage key, tool-private store, or direct writes to protected state."
+    },
+    {
+      "guardrail_id": "G-SHARED-VALIDATION",
+      "applies_to": [
+        "T001",
+        "T002",
+        "T003",
+        "T004",
+        "T006"
+      ],
+      "rule": "Validation semantics and issue codes must be shared from the validation module or its constants; do not copy/paste a second validator into the tool or API."
+    },
+    {
+      "guardrail_id": "G-NO-WRITE-FAILURES",
+      "applies_to": [
+        "T001",
+        "T002",
+        "T003",
+        "T005",
+        "T006"
+      ],
+      "rule": "Invalid, malformed, stale, denied, ambiguous, missing-target, builtin update/delete, builtin id shadowing, and desktop endpoint failure paths must return diagnostics with persisted:false and leave workflow config unchanged."
+    },
+    {
+      "guardrail_id": "G-BUILTIN-READONLY",
+      "applies_to": [
+        "T001",
+        "T002",
+        "T003",
+        "T006"
+      ],
+      "rule": "Builtin templates must not be directly updated, deleted, or shadowed. Builtin modification intent is duplicate-to-user first, using agent-development-custom, then -2, -3 naming when target fields are omitted."
+    },
+    {
+      "guardrail_id": "G-STALE-BASIS",
+      "applies_to": [
+        "T002",
+        "T003",
+        "T006"
+      ],
+      "rule": "Update and delete require selector.source=user plus basisHash from list/inspect. Re-read the registry immediately before write and reject mismatches with WORKFLOW_TEMPLATE_STALE_BASIS and nextAction inspect-and-retry."
+    },
+    {
+      "guardrail_id": "G-DESKTOP-SERVER-NO-FALLBACK",
+      "applies_to": [
+        "T003",
+        "T006",
+        "T007"
+      ],
+      "rule": "When CC_JIANGXIA_DESKTOP_SERVER_URL is present, mutating tool operations must use the local server authoring endpoint. If that endpoint fails or is unavailable, return a visible failed/no-write result and do not silently direct-write from the child process."
+    },
+    {
+      "guardrail_id": "G-PHASE-POLICY-OPERATIONAL",
+      "applies_to": [
+        "T005",
+        "T006"
+      ],
+      "rule": "Global tool registration must respect active workflow phase policy at the operation level. Read-only operations remain available; create/update/duplicate/delete are denied in disallowed active phases."
+    },
+    {
+      "guardrail_id": "G-SESSION-SNAPSHOT-SAFETY",
+      "applies_to": [
+        "T002",
+        "T003",
+        "T006",
+        "T007"
+      ],
+      "rule": "Do not call WorkflowRuntimeService or mutate active/historical workflow session snapshots, transcripts, provider config, MCP config, skills, plugin state, OAuth tokens, adapters, teams, or session records."
+    },
+    {
+      "guardrail_id": "G-DESKTOP-OPTIONAL",
+      "applies_to": [
+        "T007"
+      ],
+      "rule": "Do not force desktop UI/API client changes into the implementation packet. Create T007 only if desktop source is intentionally touched; otherwise leave desktop files read-only and rely on existing Settings refetch."
+    },
+    {
+      "guardrail_id": "G-NO-CAPABILITY-REMOVAL",
+      "applies_to": [
+        "T002",
+        "T003",
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "rule": "Do not remove or defer any first-scope operation: guide, list, inspect, validate, create, update, duplicate, delete. Surface minimization may consolidate operations only inside workflow_template_authoring."
+    }
+  ],
+  "does_not_remove": {
+    "T001": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T002": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T003": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T004": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T005": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T006": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ],
+    "T007": [
+      "guide",
+      "list",
+      "inspect",
+      "validate",
+      "create",
+      "update",
+      "duplicate",
+      "delete"
+    ]
+  },
+  "desktop_optionality": {
+    "touch_desktop_by_default": false,
+    "if_touched_commands": [
+      "bun run check:desktop"
+    ],
+    "notes": "Desktop UI/client changes are not required by the approved plan. The compatibility requirement is satisfied by the root local server authoring endpoint plus existing Settings Workflows refetch/list behavior. If any file under desktop/src is touched, add same-area desktop tests where behavior changes and run bun run check:desktop."
+  },
+  "verification_expectations": [
+    {
+      "task": "T001",
+      "commands": [
+        "bun test src/server/services/workflowTemplateRegistryService.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Prove shared validation preserves current registry/API-required issue codes, unknown-field preservation, malformed-config write blocking, builtin id conflict, duplicate id handling, required phase fields, required output artifacts, handoff fields, transition authority, and unsupported linear-only shape rejection."
+    },
+    {
+      "task": "T002",
+      "commands": [
+        "bun test src/server/services/workflowTemplateAuthoringService.test.ts",
+        "bun test src/server/services/workflowTemplateRegistryService.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Cover guide/list/inspect/validate/create/update/duplicate/delete result envelopes, SHA-256 basisHash stability, stale update/delete no-write, builtin copy naming, user conflict rejection, malformed existing config rejection, and session snapshot non-mutation by absence of runtime-service writes."
+    },
+    {
+      "task": "T003",
+      "commands": [
+        "bun test src/server/__tests__/workflowTemplates.test.ts",
+        "bun test src/server/services/workflowTemplateAuthoringService.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Cover POST /api/workflows/templates/authoring success and handled rejection envelopes, non-2xx malformed request handling, existing manual endpoint compatibility, cache-owning server writes, and Settings-compatible list/refetch after mutation."
+    },
+    {
+      "task": "T004",
+      "commands": [
+        "bun test src/server/services/workflowTemplateAuthoringGuide.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Assert guide includes required field groups, allowed completion criteria types, transition authorities, unsupported parallel/nested/branch/loop shapes, and repair hints mapped to validation issue codes."
+    },
+    {
+      "task": "T005",
+      "commands": [
+        "bun test src/server/services/workflowToolPolicy.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Prove read-only operations are not denied, mutating operations are denied in non-implementation active phases and verification by default, and mutating operations are allowed outside workflows or in implementation/implement phases."
+    },
+    {
+      "task": "T006",
+      "commands": [
+        "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+        "bun test src/server/services/workflowToolPolicy.test.ts",
+        "bun run check:server"
+      ],
+      "notes": "Cover tool schema, isReadOnly, isDestructive delete-only, isConcurrencySafe false, global registration, permission/classifier summaries, phase-policy validation, direct service path, desktop-server delegation path, no fallback on endpoint failure, and transcript-auditable result rendering."
+    },
+    {
+      "task": "T007",
+      "commands": [
+        "bun run check:desktop"
+      ],
+      "notes": "Run only if desktop source is touched. Verify Settings Workflows still lists/refetches templates and no desktop UI redesign or separate store is introduced."
+    },
+    {
+      "task": "ALL",
+      "commands": [
+        "bun run verify"
+      ],
+      "notes": "Final implementation handoff must include changed files, tests added, final quality report path, coverage report path, pass/fail/skip counts, and explicit live/desktop-server blockers if any."
+    }
+  ],
+  "notes_for_leader": [
+    "Recommended dependency order: T001 first, then T002, then T003/T005/T004 in parallel where merge timing allows, then T006 integration, with T007 omitted unless desktop source is deliberately touched.",
+    "Join owner should sequence edits to src/tools.ts, workflowTemplateRegistryService.ts, workflowTemplates.ts, and workflowToolPolicy.ts to avoid parallel merge collisions.",
+    "The current code already has duplicate validation logic in workflowTemplateRegistryService.ts and workflowTemplates.ts; T001 should collapse this before T002/T003 finalize behavior.",
+    "The existing desktop WorkflowTemplateManager and WorkflowTemplateEditor already consume manual endpoints; do not require them to call the internal authoring endpoint unless product scope changes.",
+    "Current src/Tool.ts already supports isReadOnly, isDestructive, isConcurrencySafe, validateInput, checkPermissions, rendering, and max result size; treat it as read-only unless a concrete type gap appears.",
+    "Do not let a packet satisfy registration by adding the new tool only to workflow-scoped tools; the plan requires global ordinary-chat availability with operation-level policy gating.",
+    "Forbidden paths include desktop/src/** by default for non-T007 packets; if T007 is activated, narrow the write scope to the exact desktop files listed in its write set and require check:desktop.",
+    "Every packet should read plan.md, plan-contract.json, quickstart.md, workflow-authoring-tool.md, workflow-authoring-api.md, and its listed source references before editing."
+  ]
+}

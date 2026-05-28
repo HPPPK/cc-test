@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-05",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/memorySettings.test.tsx",
+  "summary": "Memory settings tests confirm pending path routing and file opening through shared settings navigation.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "pendingMemoryPath",
+    "openFile",
+    "MemorySettings"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

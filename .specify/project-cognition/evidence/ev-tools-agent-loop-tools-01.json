@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-tools-01",
+  "type": "source_analysis",
+  "source_path": "src/tools.ts",
+  "summary": "Root tool registry exposes AgentTool in the default built-in pool and assembles merged tool pools with permission filtering and MCP tool deduplication.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getAllBaseTools",
+    "AgentTool",
+    "assembleToolPool",
+    "assembleWorkflowToolPool"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -24,7 +24,7 @@ async function callAuthorizedApps(method: string, body?: unknown): Promise<Respo
 }
 
 beforeEach(async () => {
-  configDir = await mkdtemp(join(tmpdir(), 'cc-haha-computer-use-api-'))
+  configDir = await mkdtemp(join(tmpdir(), 'cc-jiangxia-computer-use-api-'))
   process.env.CLAUDE_CONFIG_DIR = configDir
 })
 
@@ -60,7 +60,7 @@ describe('Computer Use API authorized app config', () => {
     expect(await getRes.json()).toMatchObject({ enabled: false })
 
     const raw = await readFile(
-      join(configDir!, 'cc-haha', 'computer-use-config.json'),
+      join(configDir!, 'cc-jiangxia', 'computer-use-config.json'),
       'utf8',
     )
     expect(JSON.parse(raw)).toMatchObject({ enabled: false })

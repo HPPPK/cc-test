@@ -25,7 +25,7 @@ describe('ConversationService', () => {
   let originalWorkflowSessionId: string | undefined
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-haha-conversation-service-'))
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-conversation-service-'))
     originalConfigDir = process.env.CLAUDE_CONFIG_DIR
     originalApiKey = process.env.ANTHROPIC_API_KEY
     originalAuthToken = process.env.ANTHROPIC_AUTH_TOKEN
@@ -39,8 +39,8 @@ describe('ConversationService', () => {
     originalPath = process.env.PATH
     originalShell = process.env.SHELL
     originalZdotdir = process.env.ZDOTDIR
-    originalDisableTerminalShellEnv = process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
-    originalWorkflowSessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID
+    originalDisableTerminalShellEnv = process.env.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV
+    originalWorkflowSessionId = process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
 
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     process.env.ANTHROPIC_API_KEY = 'stale-parent-api-key'
@@ -53,8 +53,8 @@ describe('ConversationService', () => {
     delete process.env.CLAUDE_CODE_ENTRYPOINT
     delete process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST
     delete process.env.CLAUDE_CODE_DIAGNOSTICS_FILE
-    process.env.CC_HAHA_WORKFLOW_SESSION_ID = 'stale-parent-workflow-session'
-    process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = '1'
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'stale-parent-workflow-session'
+    process.env.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV = '1'
     resetTerminalShellEnvironmentCacheForTests()
   })
 
@@ -98,11 +98,11 @@ describe('ConversationService', () => {
     if (originalZdotdir === undefined) delete process.env.ZDOTDIR
     else process.env.ZDOTDIR = originalZdotdir
 
-    if (originalDisableTerminalShellEnv === undefined) delete process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
-    else process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV = originalDisableTerminalShellEnv
+    if (originalDisableTerminalShellEnv === undefined) delete process.env.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV
+    else process.env.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV = originalDisableTerminalShellEnv
 
-    if (originalWorkflowSessionId === undefined) delete process.env.CC_HAHA_WORKFLOW_SESSION_ID
-    else process.env.CC_HAHA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
+    if (originalWorkflowSessionId === undefined) delete process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
+    else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
 
     resetTerminalShellEnvironmentCacheForTests()
     await fs.rm(tmpDir, { recursive: true, force: true })
@@ -134,21 +134,21 @@ describe('ConversationService', () => {
 
   test('keeps inherited provider env when no desktop provider config exists', async () => {
     const service = new ConversationService() as any
-    const env = (await service.buildChildEnv('D:\\workspace\\code\\myself_code\\cc-haha')) as Record<string, string>
+    const env = (await service.buildChildEnv('D:\\workspace\\code\\myself_code\\cc-jiangxia')) as Record<string, string>
 
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe('test-token')
     expect(env.ANTHROPIC_BASE_URL).toBe('https://example.invalid/anthropic')
     expect(env.ANTHROPIC_MODEL).toBe('test-model')
-    expect(env.CLAUDE_CODE_DIAGNOSTICS_FILE).toBe(path.join(tmpDir, 'cc-haha', 'diagnostics', 'cli-diagnostics.jsonl'))
+    expect(env.CLAUDE_CODE_DIAGNOSTICS_FILE).toBe(path.join(tmpDir, 'cc-jiangxia', 'diagnostics', 'cli-diagnostics.jsonl'))
     expect(env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE).toBe(
-      `${path.join(tmpDir, 'projects', 'D--workspace-code-myself-code-cc-haha', 'memory')}${path.sep}`,
+      `${path.join(tmpDir, 'projects', 'D--workspace-code-myself-code-cc-jiangxia', 'memory')}${path.sep}`,
     )
     await expect(fs.stat(path.dirname(env.CLAUDE_CODE_DIAGNOSTICS_FILE))).resolves.toBeTruthy()
   })
 
   test('buildChildEnv pins desktop memory to the current sanitized project directory', async () => {
     const service = new ConversationService() as any
-    const workDir = path.join(tmpDir, 'workspace', 'myself_code', 'claude-code-haha')
+    const workDir = path.join(tmpDir, 'workspace', 'myself_code', 'claude-code-jiangxia')
     await fs.mkdir(workDir, { recursive: true })
 
     const env = (await service.buildChildEnv(workDir)) as Record<string, string>
@@ -176,7 +176,7 @@ describe('ConversationService', () => {
       ].join('\n'),
     )
 
-    delete process.env.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV
+    delete process.env.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV
     process.env.HOME = tmpDir
     process.env.SHELL = shellPath
     process.env.PATH = '/usr/bin:/bin'
@@ -192,35 +192,35 @@ describe('ConversationService', () => {
   })
 
   test('strips inherited provider env when desktop provider config exists', async () => {
-    const ccHahaDir = path.join(tmpDir, 'cc-haha')
-    await fs.mkdir(ccHahaDir, { recursive: true })
+    const ccJiangxiaDir = path.join(tmpDir, 'cc-jiangxia')
+    await fs.mkdir(ccJiangxiaDir, { recursive: true })
     await fs.writeFile(
-      path.join(ccHahaDir, 'providers.json'),
+      path.join(ccJiangxiaDir, 'providers.json'),
       JSON.stringify({ activeId: null, providers: [] }),
       'utf-8',
     )
 
     const service = new ConversationService() as any
-    const env = (await service.buildChildEnv('D:\\workspace\\code\\myself_code\\cc-haha')) as Record<string, string>
+    const env = (await service.buildChildEnv('D:\\workspace\\code\\myself_code\\cc-jiangxia')) as Record<string, string>
 
     expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
     expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(env.ANTHROPIC_MODEL).toBeUndefined()
   })
 
-  test('buildChildEnv injects CLAUDE_CODE_OAUTH_TOKEN when official mode + haha oauth token exists', async () => {
-    const ccHahaDir = path.join(tmpDir, 'cc-haha')
-    await fs.mkdir(ccHahaDir, { recursive: true })
+  test('buildChildEnv injects CLAUDE_CODE_OAUTH_TOKEN when official mode + Jiangxia oauth token exists', async () => {
+    const ccJiangxiaDir = path.join(tmpDir, 'cc-jiangxia')
+    await fs.mkdir(ccJiangxiaDir, { recursive: true })
     await fs.writeFile(
-      path.join(ccHahaDir, 'settings.json'),
+      path.join(ccJiangxiaDir, 'settings.json'),
       JSON.stringify({ env: {} }),
       'utf-8',
     )
 
-    const { hahaOAuthService } = await import('../services/hahaOAuthService.js')
-    await hahaOAuthService.saveTokens({
-      accessToken: 'haha-fresh-token',
-      refreshToken: 'haha-refresh-xxx',
+    const { jiangxiaOAuthService } = await import('../services/jiangxiaOAuthService.js')
+    await jiangxiaOAuthService.saveTokens({
+      accessToken: 'jiangxia-fresh-token',
+      refreshToken: 'jiangxia-refresh-xxx',
       expiresAt: Date.now() + 30 * 60_000,
       scopes: ['user:inference'],
       subscriptionType: 'max',
@@ -230,21 +230,21 @@ describe('ConversationService', () => {
     const env = (await service.buildChildEnv('/tmp')) as Record<string, string>
 
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop')
-    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('haha-fresh-token')
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('jiangxia-fresh-token')
   })
 
   test('buildChildEnv does NOT inject CLAUDE_CODE_OAUTH_TOKEN when not official mode', async () => {
-    const ccHahaDir = path.join(tmpDir, 'cc-haha')
-    await fs.mkdir(ccHahaDir, { recursive: true })
+    const ccJiangxiaDir = path.join(tmpDir, 'cc-jiangxia')
+    await fs.mkdir(ccJiangxiaDir, { recursive: true })
     await fs.writeFile(
-      path.join(ccHahaDir, 'settings.json'),
+      path.join(ccJiangxiaDir, 'settings.json'),
       JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'custom-provider-token' } }),
       'utf-8',
     )
 
-    const { hahaOAuthService } = await import('../services/hahaOAuthService.js')
-    await hahaOAuthService.saveTokens({
-      accessToken: 'haha-token-should-not-be-used',
+    const { jiangxiaOAuthService } = await import('../services/jiangxiaOAuthService.js')
+    await jiangxiaOAuthService.saveTokens({
+      accessToken: 'jiangxia-token-should-not-be-used',
       refreshToken: null,
       expiresAt: null,
       scopes: [],
@@ -345,16 +345,16 @@ describe('ConversationService', () => {
   })
 
   test('buildChildEnv can force official auth even when a custom default provider exists', async () => {
-    const ccHahaDir = path.join(tmpDir, 'cc-haha')
-    await fs.mkdir(ccHahaDir, { recursive: true })
+    const ccJiangxiaDir = path.join(tmpDir, 'cc-jiangxia')
+    await fs.mkdir(ccJiangxiaDir, { recursive: true })
     await fs.writeFile(
-      path.join(ccHahaDir, 'settings.json'),
+      path.join(ccJiangxiaDir, 'settings.json'),
       JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'custom-provider-token' } }),
       'utf-8',
     )
 
-    const { hahaOAuthService } = await import('../services/hahaOAuthService.js')
-    await hahaOAuthService.saveTokens({
+    const { jiangxiaOAuthService } = await import('../services/jiangxiaOAuthService.js')
+    await jiangxiaOAuthService.saveTokens({
       accessToken: 'forced-official-token',
       refreshToken: 'forced-official-refresh',
       expiresAt: Date.now() + 30 * 60_000,
@@ -373,10 +373,10 @@ describe('ConversationService', () => {
   })
 
   test('buildChildEnv does not leak inherited CLAUDE_CODE_OAUTH_TOKEN when official token is unavailable', async () => {
-    const ccHahaDir = path.join(tmpDir, 'cc-haha')
-    await fs.mkdir(ccHahaDir, { recursive: true })
+    const ccJiangxiaDir = path.join(tmpDir, 'cc-jiangxia')
+    await fs.mkdir(ccJiangxiaDir, { recursive: true })
     await fs.writeFile(
-      path.join(ccHahaDir, 'settings.json'),
+      path.join(ccJiangxiaDir, 'settings.json'),
       JSON.stringify({ env: {} }),
       'utf-8',
     )
@@ -395,10 +395,10 @@ describe('ConversationService', () => {
       'ws://127.0.0.1:3456/sdk/test-session?token=test-token',
     )) as Record<string, string>
 
-    expect(env.CC_HAHA_COMPUTER_USE_HOST_BUNDLE_ID).toBe(
-      'com.claude-code-haha.desktop',
+    expect(env.CC_JIANGXIA_COMPUTER_USE_HOST_BUNDLE_ID).toBe(
+      'com.claude-code-jiangxia.desktop',
     )
-    expect(env.CC_HAHA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
+    expect(env.CC_JIANGXIA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
     expect(env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING).toBe('1')
   })
 
@@ -412,7 +412,7 @@ describe('ConversationService', () => {
       expect(args[2]).toContain('preload.ts')
       expect(args[3]).toContain(path.join('src', 'entrypoints', 'cli.tsx'))
     } else {
-      expect(args[0]).toContain(path.join('bin', 'claude-haha'))
+      expect(args[0]).toContain(path.join('bin', 'claude-jiangxia'))
     }
   })
 
@@ -457,9 +457,9 @@ describe('ConversationService', () => {
     )) as Record<string, string>
     const dialogueEnv = (await service.buildChildEnv('/tmp')) as Record<string, string>
 
-    expect(sdkEnv.CC_HAHA_WORKFLOW_SESSION_ID).toBe('workflow-session')
-    expect(sdkEnv.CC_HAHA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
-    expect(dialogueEnv.CC_HAHA_WORKFLOW_SESSION_ID).toBeUndefined()
+    expect(sdkEnv.CC_JIANGXIA_WORKFLOW_SESSION_ID).toBe('workflow-session')
+    expect(sdkEnv.CC_JIANGXIA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
+    expect(dialogueEnv.CC_JIANGXIA_WORKFLOW_SESSION_ID).toBeUndefined()
   })
 
   test('buildChildEnv asks desktop SDK sessions to wait briefly for MCP tools', async () => {
@@ -469,8 +469,8 @@ describe('ConversationService', () => {
       'ws://127.0.0.1:3456/sdk/test-session?token=test-token',
     )) as Record<string, string>
 
-    expect(env.CC_HAHA_DESKTOP_AWAIT_MCP).toBe('1')
-    expect(env.CC_HAHA_DESKTOP_AWAIT_MCP_TIMEOUT_MS).toBe('5000')
+    expect(env.CC_JIANGXIA_DESKTOP_AWAIT_MCP).toBe('1')
+    expect(env.CC_JIANGXIA_DESKTOP_AWAIT_MCP_TIMEOUT_MS).toBe('5000')
   })
 
   test('buildSessionCliArgs forwards the selected runtime model and effort to the CLI process', () => {

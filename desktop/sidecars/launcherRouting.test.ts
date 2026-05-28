@@ -17,11 +17,11 @@ describe('resolveSidecarInvocation', () => {
     })
   })
 
-  it('defaults claude-haha invocations to cli mode', () => {
+  it('defaults claude-jiangxia invocations to cli mode', () => {
     expect(
       resolveSidecarInvocation(
         ['plugin', 'install', 'demo'],
-        '/Users/demo/.local/bin/claude-haha',
+        '/Users/demo/.local/bin/claude-jiangxia',
         null,
       ),
     ).toEqual({
@@ -29,6 +29,23 @@ describe('resolveSidecarInvocation', () => {
       restArgs: ['plugin', 'install', 'demo'],
       defaultAppRoot: '/Users/demo/.local/bin',
     })
+  })
+
+  it('recognizes renamed and legacy desktop CLI aliases', () => {
+    expect(
+      resolveSidecarInvocation(
+        ['plugin', 'install', 'demo'],
+        '/Users/demo/.local/bin/cc-jiangxia',
+        null,
+      ).mode,
+    ).toBe('cli')
+    expect(
+      resolveSidecarInvocation(
+        ['plugin', 'install', 'demo'],
+        '/Users/demo/.local/bin/claude-haha',
+        null,
+      ).mode,
+    ).toBe('cli')
   })
 })
 

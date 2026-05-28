@@ -1,0 +1,1578 @@
+{
+  "packet_id": "desktop-workflow-ui",
+  "acceptance": "pass",
+  "assigned_paths": [
+    "desktop/src/__tests__/agentsSettings.test.tsx",
+    "desktop/src/__tests__/diagnosticsSettings.test.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/__tests__/mcpSettings.test.tsx",
+    "desktop/src/__tests__/memorySettings.test.tsx",
+    "desktop/src/__tests__/pluginsSettings.test.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    "desktop/src/api/sessions.test.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowReportLink.tsx",
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+    "desktop/src/lib/__tests__/providerSettingsJson.test.ts",
+    "desktop/src/lib/providerSettingsJson.ts",
+    "desktop/src/pages/ActivitySettings.test.tsx",
+    "desktop/src/pages/ActivitySettings.tsx",
+    "desktop/src/pages/AdapterSettings.test.tsx",
+    "desktop/src/pages/AdapterSettings.tsx",
+    "desktop/src/pages/ComputerUseSettings.test.tsx",
+    "desktop/src/pages/ComputerUseSettings.tsx",
+    "desktop/src/pages/DiagnosticsSettings.tsx",
+    "desktop/src/pages/EmptySession.test.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/pages/McpSettings.tsx",
+    "desktop/src/pages/MemorySettings.tsx",
+    "desktop/src/pages/Settings.test.tsx",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/pages/TerminalSettings.test.tsx",
+    "desktop/src/pages/TerminalSettings.tsx",
+    "desktop/src/stores/uiStore.test.ts",
+    "desktop/src/stores/uiStore.ts",
+    "desktop/src/types/session.ts"
+  ],
+  "paths_read": [
+    "desktop/src/__tests__/agentsSettings.test.tsx",
+    "desktop/src/__tests__/diagnosticsSettings.test.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/__tests__/mcpSettings.test.tsx",
+    "desktop/src/__tests__/memorySettings.test.tsx",
+    "desktop/src/__tests__/pluginsSettings.test.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    "desktop/src/api/sessions.test.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowReportLink.tsx",
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+    "desktop/src/lib/__tests__/providerSettingsJson.test.ts",
+    "desktop/src/lib/providerSettingsJson.ts",
+    "desktop/src/pages/ActivitySettings.test.tsx",
+    "desktop/src/pages/ActivitySettings.tsx",
+    "desktop/src/pages/AdapterSettings.test.tsx",
+    "desktop/src/pages/AdapterSettings.tsx",
+    "desktop/src/pages/ComputerUseSettings.test.tsx",
+    "desktop/src/pages/ComputerUseSettings.tsx",
+    "desktop/src/pages/DiagnosticsSettings.tsx",
+    "desktop/src/pages/EmptySession.test.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/pages/McpSettings.tsx",
+    "desktop/src/pages/MemorySettings.tsx",
+    "desktop/src/pages/Settings.test.tsx",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/pages/TerminalSettings.test.tsx",
+    "desktop/src/pages/TerminalSettings.tsx",
+    "desktop/src/stores/uiStore.test.ts",
+    "desktop/src/stores/uiStore.ts",
+    "desktop/src/types/session.ts"
+  ],
+  "coverage": [
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/agentsSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-01"
+      ],
+      "confidence": "medium",
+      "criticality": "medium",
+      "classification": "settings-tab-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/diagnosticsSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-02"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/generalSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-03"
+      ],
+      "confidence": "medium",
+      "criticality": "medium",
+      "classification": "settings-navigation-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/mcpSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-04"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/memorySettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-05"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/pluginsSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-06"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/__tests__/skillsSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-07"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/api/sessions.test.ts",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-08"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-api-contract-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/api/sessions.ts",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-09"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-api-client",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-10"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-component-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowComponents.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-11"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "workflow-component-barrel",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-12"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "workflow-template-import-export-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowReportLink.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-13"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "workflow-report-link-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-14"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-start-dialog-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-15"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-session-status-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-16"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-template-editor-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-17"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-template-manager-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-18"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "workflow-template-picker-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-19"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-transition-controls-ui",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-20"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "workflow-template-localization-helper",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/lib/__tests__/providerSettingsJson.test.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-21"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/lib/providerSettingsJson.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-22"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "settings-json-helper",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/ActivitySettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-23"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/ActivitySettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-24"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/AdapterSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-25"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/AdapterSettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-26"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/ComputerUseSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-27"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/ComputerUseSettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-28"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/DiagnosticsSettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-29"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/EmptySession.test.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-launch-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/EmptySession.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-31"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-launch-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/McpSettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-32"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/MemorySettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-33"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/Settings.test.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-34"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-settings-tab-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/Settings.tsx",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-35"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "settings-shell-and-workflows-tab",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/TerminalSettings.test.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-36"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/pages/TerminalSettings.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-37"
+      ],
+      "confidence": "medium",
+      "criticality": "low",
+      "classification": "adjacent-settings-page",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/stores/uiStore.test.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-38"
+      ],
+      "confidence": "medium",
+      "criticality": "medium",
+      "classification": "ui-store-regression-test",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/stores/uiStore.ts",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-39"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "ui-navigation-store",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "path": "desktop/src/types/session.ts",
+      "outcome": "deep_read",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-40"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "workflow-session-type-contract",
+      "coverage_scope": "assigned"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-desktop-workflow-ui-01",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/agentsSettings.test.tsx",
+      "summary": "Settings tests keep agent/skill/plugin tabs available around the workflow tab addition.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "Settings",
+        "switchToAgentsTab",
+        "switchToSkillsTab"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-02",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/diagnosticsSettings.test.tsx",
+      "summary": "Diagnostics tab tests confirm other settings surfaces still load through Settings after tab expansion.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "Settings > Diagnostics tab",
+        "fireEvent.click(screen.getByText('Diagnostics'))"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-03",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/generalSettings.test.tsx",
+      "summary": "General settings tests assert tab ordering includes Workflows and H5 Access alongside existing tabs.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "moves H5 access out of General into its own Settings tab",
+        "screen.getByText('General')",
+        "screen.getByText('H5 Access')"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-04",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/mcpSettings.test.tsx",
+      "summary": "MCP tests verify current workdir-aware fetch/toggle behavior in the expanded settings shell.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "McpSettings",
+        "fetchServers",
+        "toggleServer"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-05",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/memorySettings.test.tsx",
+      "summary": "Memory settings tests confirm pending path routing and file opening through shared settings navigation.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "pendingMemoryPath",
+        "openFile",
+        "MemorySettings"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-06",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/pluginsSettings.test.tsx",
+      "summary": "Plugin tab tests confirm plugin detail navigation continues to coexist with shared settings tabs.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "switchToPluginsTab",
+        "Plugin Detail",
+        "Installed Plugins"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-07",
+      "type": "source_analysis",
+      "source_path": "desktop/src/__tests__/skillsSettings.test.tsx",
+      "summary": "Skills tab tests confirm the skills browser and detail view still route through Settings.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "switchToSkillsTab",
+        "Skill Browser",
+        "selectedSkillReturnTab"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-08",
+      "type": "source_analysis",
+      "source_path": "desktop/src/api/sessions.test.ts",
+      "summary": "API tests lock workflow template, transition, report, and linked-start endpoint contracts used by desktop workflow UI.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "listWorkflowTemplates",
+        "getWorkflowTemplate",
+        "transitionWorkflow",
+        "startLinkedWorkflowSession"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-09",
+      "type": "source_analysis",
+      "source_path": "desktop/src/api/sessions.ts",
+      "summary": "Desktop API client exposes workflow template CRUD/import/export plus workflow state, transition, and report routes.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "/api/workflows/templates",
+        "/api/workflows/templates/import/preview",
+        "/api/sessions/${sessionId}/workflow/transition"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-10",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+      "summary": "Workflow component tests cover manager, picker, start dialog, status panel, transition controls, report link, and localization.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "WorkflowTemplateManager",
+        "WorkflowStartDialog",
+        "WorkflowStatusPanel",
+        "WorkflowTransitionControls"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-11",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowComponents.tsx",
+      "summary": "Workflow barrel re-exports the picker, status panel, report link, transition controls, and related public types.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "export { WorkflowTemplatePicker }",
+        "export type { WorkflowTransitionCommand }"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-12",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+      "summary": "Import/export dialog previews payloads before commit and exports selected templates through sessionsApi.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "previewWorkflowTemplateImport",
+        "commitWorkflowTemplateImport",
+        "exportWorkflowTemplates"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-13",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowReportLink.tsx",
+      "summary": "Completed workflow sessions render a durable report pointer only when reportPointer and completed status exist.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "workflow.status !== 'completed'",
+        "pointer?.uri ?? pointer?.artifactId"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-14",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+      "summary": "Start dialog sorts templates, disables non-startable entries, shows invalid diagnostics, and returns template id/source/initial phase on start.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "onStart",
+        "initialPhaseId",
+        "isTemplateStartable"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-15",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+      "summary": "Status panel renders workflow lifecycle, phase progress, model fallback info, state pointers, and read-only artifact history.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "WorkflowStatusPanelSummary",
+        "STATUS_LABELS",
+        "ArtifactCard",
+        "progressPercent"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-16",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "summary": "Template editor converts between UI draft state and workflow template drafts, validates required fields, and server-validates before save.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "toTemplateDraft",
+        "validateWorkflowTemplate",
+        "createWorkflowTemplate",
+        "updateWorkflowTemplate"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-17",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+      "summary": "Template manager is the settings-hosted workflow admin surface for list, edit, delete, duplicate, import, export, and refresh.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "loadTemplates",
+        "handleEditTemplate",
+        "handleCopyTemplate",
+        "WorkflowImportExportDialog"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-18",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+      "summary": "Template picker shows only startable templates, tracks explicit selection, and surfaces invalid-template messages separately.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "startableTemplates",
+        "data-workflow-selected",
+        "invalidTemplates"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-19",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+      "summary": "Transition controls emit confirm/reject/retry/manual_complete commands keyed by phaseId, transitionId, and stateVersion.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "WorkflowTransitionCommand",
+        "action: 'manual_complete'",
+        "onConfirm",
+        "onRetry"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-20",
+      "type": "source_analysis",
+      "source_path": "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+      "summary": "Builtin workflow names, descriptions, and phase labels are localized with fallback to server-provided text.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "localizeWorkflowTemplateDisplay",
+        "workflowTemplateSourceLabel"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-21",
+      "type": "source_analysis",
+      "source_path": "desktop/src/lib/__tests__/providerSettingsJson.test.ts",
+      "summary": "Provider settings helper tests confirm settings JSON masking and restoration for secrets.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "maskSettingsJsonSecrets",
+        "restoreSettingsJsonSecrets"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-22",
+      "type": "source_analysis",
+      "source_path": "desktop/src/lib/providerSettingsJson.ts",
+      "summary": "Settings JSON helper strips provider-managed env keys and masks API secrets used by settings pages.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "API_KEY_JSON_PLACEHOLDER",
+        "stripProviderSettingsJsonEnv"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-23",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/ActivitySettings.test.tsx",
+      "summary": "Activity page tests confirm expanded settings shell still renders other tab content and hover UI.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "ActivitySettings",
+        "Token usage",
+        "role='tooltip'"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-24",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/ActivitySettings.tsx",
+      "summary": "Activity settings page is an adjacent tab with heatmap and summary metrics, not part of workflow execution.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "ActivitySettings",
+        "buildHeatmapDays",
+        "settings.activity.title"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-25",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/AdapterSettings.test.tsx",
+      "summary": "Adapter page tests verify Feishu onboarding content survives alongside workflow tab changes.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "AdapterSettings Feishu onboarding",
+        "FEISHU_CREATE_BOT_URL"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-26",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/AdapterSettings.tsx",
+      "summary": "Adapter settings is an adjacent IM integration page with pairing and per-platform forms.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "AdapterSettings",
+        "generatePairingCode",
+        "activeIm"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-27",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/ComputerUseSettings.test.tsx",
+      "summary": "Computer use tests verify independent config writes within the same settings shell.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "ComputerUseSettings",
+        "setAuthorizedApps",
+        "Enabled"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-28",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/ComputerUseSettings.tsx",
+      "summary": "Computer use page is an adjacent settings surface for environment checks and app authorization.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "ComputerUseSettings",
+        "computerUseApi.getStatus",
+        "toggleComputerUseEnabled"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-29",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/DiagnosticsSettings.tsx",
+      "summary": "Diagnostics page is another settings tab with status, bundle export, and Doctor actions.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "DiagnosticsSettings",
+        "diagnosticsApi.getStatus",
+        "DoctorPanel"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-30",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/EmptySession.test.tsx",
+      "summary": "EmptySession tests pin workflow launch UX: plus-menu entry, start dialog rendering, startable filtering, invalid-template diagnostics, and workflow session creation payloads.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "opens workflows from the plus menu",
+        "createSession",
+        "workflow: { templateId, templateSource, initialPhaseId }"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-31",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/EmptySession.tsx",
+      "summary": "EmptySession loads workflow templates on mount, opens WorkflowStartDialog from composer tools, and creates sessions with workflow options via useSessionStore.createSession.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "sessionsApi.listWorkflowTemplates()",
+        "setWorkflowDialogOpen(true)",
+        "handleStartWorkflow",
+        "createSession(..., { workflow: { ... } })"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-32",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/McpSettings.tsx",
+      "summary": "MCP page is an adjacent settings surface for server list/detail/editor flows.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "McpSettings",
+        "fetchServers",
+        "beginCreate",
+        "beginEdit"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-33",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/MemorySettings.tsx",
+      "summary": "Memory page is an adjacent settings surface with resource tree, editor, and preview panes.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "MemorySettings",
+        "pendingMemoryPath",
+        "resolveMarkdownMemoryLink"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-34",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/Settings.test.tsx",
+      "summary": "Settings tests explicitly verify the Workflows tab, its heading/description, and pendingSettingsTab routing.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "Settings Workflows tab",
+        "pendingSettingsTab: 'workflows'",
+        "Workflow Template Manager"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-35",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/Settings.tsx",
+      "summary": "Settings shell declares a dedicated 'workflows' tab and renders WorkflowsSettings with WorkflowTemplateManager between H5 Access and Adapters.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "type SettingsTab",
+        "activeTab === 'workflows'",
+        "WorkflowsSettings",
+        "WorkflowTemplateManager"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-36",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/TerminalSettings.test.tsx",
+      "summary": "Terminal tests show terminal preferences coexist with the broader settings shell.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "TerminalSettings",
+        "showPreferences",
+        "Save"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-37",
+      "type": "source_analysis",
+      "source_path": "desktop/src/pages/TerminalSettings.tsx",
+      "summary": "Terminal page is an adjacent settings surface for embedded shell sessions and Windows shell preferences.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "TerminalSettings",
+        "showPreferences",
+        "startTerminal"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-38",
+      "type": "source_analysis",
+      "source_path": "desktop/src/stores/uiStore.test.ts",
+      "summary": "uiStore tests cover theme handling around the same navigation store that carries pendingSettingsTab.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "uiStore theme handling",
+        "initializeTheme"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-39",
+      "type": "source_analysis",
+      "source_path": "desktop/src/stores/uiStore.ts",
+      "summary": "uiStore defines the 'workflows' SettingsTab option plus pendingSettingsTab used for cross-view navigation into the Workflows tab.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "type SettingsTab",
+        "'workflows'",
+        "pendingSettingsTab",
+        "setPendingSettingsTab"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-desktop-workflow-ui-40",
+      "type": "source_analysis",
+      "source_path": "desktop/src/types/session.ts",
+      "summary": "Shared session types define workflow lifecycle, template list/detail/import/export contracts, transition requests, and workflow session summaries used across the desktop UI.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "WorkflowSessionSummary",
+        "WorkflowTemplateListItem",
+        "WorkflowTemplateImportPreviewResponse",
+        "WorkflowTransitionRequest"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "desktop-workflow-ui",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    }
+  ],
+  "provisional_nodes": [
+    {
+      "id": "desktop.workflow.empty-session",
+      "type": "ui-page",
+      "title": "EmptySession Workflow Launcher",
+      "paths": [
+        "desktop/src/pages/EmptySession.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "role": "new-session composer",
+        "workflow_entry": "plus-menu opens workflow dialog",
+        "session_creation": "useSessionStore.createSession with workflow options"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.start-dialog",
+      "type": "ui-component",
+      "title": "WorkflowStartDialog",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowStartDialog.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-14"
+      ],
+      "attrs": {
+        "selection_model": "templateId + templateSource",
+        "start_gate": "firstPhaseId and startable validation"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.settings-tab",
+      "type": "ui-page",
+      "title": "Settings Workflows Tab",
+      "paths": [
+        "desktop/src/pages/Settings.tsx",
+        "desktop/src/pages/Settings.test.tsx",
+        "desktop/src/stores/uiStore.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-34",
+        "ev-desktop-workflow-ui-35",
+        "ev-desktop-workflow-ui-39"
+      ],
+      "attrs": {
+        "tab_id": "workflows",
+        "routing": "pendingSettingsTab",
+        "host_component": "WorkflowsSettings"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.template-manager",
+      "type": "ui-component",
+      "title": "WorkflowTemplateManager",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+        "desktop/src/components/workflow/WorkflowImportExportDialog.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-12",
+        "ev-desktop-workflow-ui-16",
+        "ev-desktop-workflow-ui-17"
+      ],
+      "attrs": {
+        "capabilities": [
+          "list",
+          "edit",
+          "delete",
+          "duplicate",
+          "import",
+          "export",
+          "refresh"
+        ],
+        "ownership": "desktop workflow template administration"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.runtime-status",
+      "type": "ui-component",
+      "title": "Workflow Runtime Status Components",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+        "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+        "desktop/src/components/workflow/WorkflowReportLink.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-13",
+        "ev-desktop-workflow-ui-15",
+        "ev-desktop-workflow-ui-19"
+      ],
+      "attrs": {
+        "surfaces": [
+          "lifecycle",
+          "artifact history",
+          "confirm/reject/retry/manual completion",
+          "final report link"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.api-client",
+      "type": "api-client",
+      "title": "sessionsApi Workflow Endpoints",
+      "paths": [
+        "desktop/src/api/sessions.ts",
+        "desktop/src/api/sessions.test.ts",
+        "desktop/src/types/session.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-08",
+        "ev-desktop-workflow-ui-09",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "routes": [
+          "/api/workflows/templates",
+          "/api/workflows/templates/import/preview",
+          "/api/sessions/:id/workflow",
+          "/api/sessions/:id/workflow/transition",
+          "/api/sessions/:id/workflow/report"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    }
+  ],
+  "provisional_edges": [
+    {
+      "id": "edge:desktop-workflow-ui:13",
+      "type": "opens",
+      "title": "edge:desktop-workflow-ui:13",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.start-dialog",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "trigger": "composer plus-menu Workflows action"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:14",
+      "type": "loads_templates_via",
+      "title": "edge:desktop-workflow-ui:14",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-09",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "method": "sessionsApi.listWorkflowTemplates"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:15",
+      "type": "creates_workflow_session_via",
+      "title": "edge:desktop-workflow-ui:15",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "carrier": "workflow create options",
+        "fields": [
+          "templateId",
+          "templateSource",
+          "initialPhaseId"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:16",
+      "type": "hosts",
+      "title": "edge:desktop-workflow-ui:16",
+      "source_id": "desktop.workflow.settings-tab",
+      "target_id": "desktop.workflow.template-manager",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-34",
+        "ev-desktop-workflow-ui-35"
+      ],
+      "attrs": {
+        "component": "WorkflowsSettings"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:17",
+      "type": "manages_templates_via",
+      "title": "edge:desktop-workflow-ui:17",
+      "source_id": "desktop.workflow.template-manager",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-12",
+        "ev-desktop-workflow-ui-16",
+        "ev-desktop-workflow-ui-17"
+      ],
+      "attrs": {
+        "methods": [
+          "listWorkflowTemplates",
+          "getWorkflowTemplate",
+          "validateWorkflowTemplate",
+          "createWorkflowTemplate",
+          "updateWorkflowTemplate",
+          "deleteWorkflowTemplate",
+          "duplicateWorkflowTemplate",
+          "previewWorkflowTemplateImport",
+          "commitWorkflowTemplateImport",
+          "exportWorkflowTemplates"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:18",
+      "type": "matches_transition_contract",
+      "title": "edge:desktop-workflow-ui:18",
+      "source_id": "desktop.workflow.runtime-status",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-08",
+        "ev-desktop-workflow-ui-19",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "request_type": "WorkflowTransitionRequest",
+        "version_field": "stateVersion"
+      },
+      "packet_id": "desktop-workflow-ui"
+    }
+  ],
+  "observations": [
+    {
+      "id": "obs:desktop-workflow-ui:1",
+      "observation_type": "note",
+      "summary": "Workflow entry is opt-in from EmptySession. Default dialogue creation remains unchanged until the user opens the Workflows tool and explicitly selects a template.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:2",
+      "observation_type": "note",
+      "summary": "Workflow template administration is isolated under a dedicated Settings tab and does not reuse the general/H5 settings sections.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:3",
+      "observation_type": "note",
+      "summary": "Template editing is server-validated before mutation: the editor runs local required-field checks, then calls sessionsApi.validateWorkflowTemplate before create/update.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:4",
+      "observation_type": "note",
+      "summary": "Invalid workflow templates are intentionally visible as diagnostics in both launch and management surfaces, but they are not rendered as startable/selectable workflow buttons.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:5",
+      "observation_type": "note",
+      "summary": "Runtime workflow UI is split between read-only status/history rendering and command emission; transition controls emit structured commands rather than mutating workflow artifacts locally.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:6",
+      "observation_type": "note",
+      "summary": "Navigation into the Workflows tab is store-driven through uiStore.pendingSettingsTab, allowing slash-command or other surfaces to route users directly into workflow settings.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "obs:desktop-workflow-ui:7",
+      "observation_type": "note",
+      "summary": "Workflow API surface is centralized in sessionsApi and typed through desktop/src/types/session.ts, including template import/export, linked-start, report retrieval, and transition request contracts.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
+    }
+  ],
+  "confidence": "high"
+}

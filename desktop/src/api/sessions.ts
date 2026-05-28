@@ -2,11 +2,30 @@ import { api } from './client'
 import type { AgentTaskNotification } from '../types/chat'
 import type {
   SessionListItem,
+  LinkedWorkflowSessionCreateRequest,
+  LinkedWorkflowSessionCreateResponse,
+  LinkedWorkflowSessionStartErrorBody,
+  LinkedWorkflowSessionStartErrorCode,
   MessageEntry,
   WorkflowReportResponse,
   WorkflowSessionCreateOptions,
   WorkflowSessionStateResponse,
   WorkflowSessionSummary,
+  WorkflowTemplateCreateRequest,
+  WorkflowTemplateDeleteResponse,
+  WorkflowTemplateDetailResponse,
+  WorkflowTemplateDuplicateRequest,
+  WorkflowTemplateExportRequest,
+  WorkflowTemplateExportResponse,
+  WorkflowTemplateImportCommitRequest,
+  WorkflowTemplateImportCommitResponse,
+  WorkflowTemplateImportPreviewRequest,
+  WorkflowTemplateImportPreviewResponse,
+  WorkflowTemplateMutationResponse,
+  WorkflowTemplateSource,
+  WorkflowTemplateUpdateRequest,
+  WorkflowTemplateValidateRequest,
+  WorkflowTemplateValidateResponse,
   WorkflowTemplatesResponse,
   WorkflowTransitionAction,
   WorkflowTransitionHandoff,
@@ -57,9 +76,28 @@ export type CreateSessionRequest = {
   workflow?: WorkflowSessionCreateOptions
 }
 export type {
+  LinkedWorkflowSessionCreateRequest,
+  LinkedWorkflowSessionCreateResponse,
+  LinkedWorkflowSessionStartErrorBody,
+  LinkedWorkflowSessionStartErrorCode,
   WorkflowReportResponse,
   WorkflowSessionCreateOptions,
   WorkflowSessionStateResponse,
+  WorkflowTemplateCreateRequest,
+  WorkflowTemplateDeleteResponse,
+  WorkflowTemplateDetailResponse,
+  WorkflowTemplateDuplicateRequest,
+  WorkflowTemplateExportRequest,
+  WorkflowTemplateExportResponse,
+  WorkflowTemplateImportCommitRequest,
+  WorkflowTemplateImportCommitResponse,
+  WorkflowTemplateImportPreviewRequest,
+  WorkflowTemplateImportPreviewResponse,
+  WorkflowTemplateMutationResponse,
+  WorkflowTemplateSource,
+  WorkflowTemplateUpdateRequest,
+  WorkflowTemplateValidateRequest,
+  WorkflowTemplateValidateResponse,
   WorkflowTemplatesResponse,
   WorkflowTransitionResponse,
 }
@@ -348,6 +386,56 @@ export const sessionsApi = {
 
   listWorkflowTemplates() {
     return api.get<WorkflowTemplatesResponse>('/api/workflows/templates')
+  },
+
+  getWorkflowTemplate(source: WorkflowTemplateSource, id: string) {
+    return api.get<WorkflowTemplateDetailResponse>(
+      `/api/workflows/templates/${encodeURIComponent(source)}/${encodeURIComponent(id)}`,
+    )
+  },
+
+  validateWorkflowTemplate(body: WorkflowTemplateValidateRequest) {
+    return api.post<WorkflowTemplateValidateResponse>('/api/workflows/templates/validate', body)
+  },
+
+  createWorkflowTemplate(body: WorkflowTemplateCreateRequest) {
+    return api.post<WorkflowTemplateMutationResponse>('/api/workflows/templates', body)
+  },
+
+  updateWorkflowTemplate(id: string, body: WorkflowTemplateUpdateRequest) {
+    return api.put<WorkflowTemplateMutationResponse>(
+      `/api/workflows/templates/user/${encodeURIComponent(id)}`,
+      body,
+    )
+  },
+
+  deleteWorkflowTemplate(id: string) {
+    return api.delete<WorkflowTemplateDeleteResponse>(
+      `/api/workflows/templates/user/${encodeURIComponent(id)}`,
+    )
+  },
+
+  duplicateWorkflowTemplate(body: WorkflowTemplateDuplicateRequest) {
+    return api.post<WorkflowTemplateMutationResponse>('/api/workflows/templates/duplicate', body)
+  },
+
+  previewWorkflowTemplateImport(body: WorkflowTemplateImportPreviewRequest) {
+    return api.post<WorkflowTemplateImportPreviewResponse>('/api/workflows/templates/import/preview', body)
+  },
+
+  commitWorkflowTemplateImport(body: WorkflowTemplateImportCommitRequest) {
+    return api.post<WorkflowTemplateImportCommitResponse>('/api/workflows/templates/import', body)
+  },
+
+  exportWorkflowTemplates(body: WorkflowTemplateExportRequest) {
+    return api.post<WorkflowTemplateExportResponse>('/api/workflows/templates/export', body)
+  },
+
+  startLinkedWorkflowSession(sourceSessionId: string, body: LinkedWorkflowSessionCreateRequest) {
+    return api.post<LinkedWorkflowSessionCreateResponse>(
+      `/api/sessions/${sourceSessionId}/workflow/start`,
+      body,
+    )
   },
 
   getWorkflowState(sessionId: string) {

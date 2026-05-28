@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-36",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/TerminalSettings.test.tsx",
+  "summary": "Terminal tests show terminal preferences coexist with the broader settings shell.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "TerminalSettings",
+    "showPreferences",
+    "Save"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

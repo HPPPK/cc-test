@@ -2,6 +2,7 @@
 
 export type SessionMode = 'dialogue' | 'workflow'
 export type WorkflowTemplateSource = 'builtin' | 'user'
+export type WorkflowTemplateValidationIssueSource = 'user-config' | 'builtin' | 'request' | 'import'
 export type WorkflowLifecycleStatus =
   | 'created'
   | 'running'
@@ -93,12 +94,76 @@ export type WorkflowSessionCreateOptions = {
 }
 
 export type WorkflowTemplateValidationIssue = {
-  source: string
+  source: WorkflowTemplateValidationIssueSource | (string & {})
   templateId?: string
   path: string
   code: string
   message: string
   severity: 'error' | 'warning'
+}
+
+export type WorkflowTemplateSkillDeclaration = {
+  name: string
+  source?: 'user' | 'project' | 'builtin' | 'unknown'
+  reason?: string
+  [key: string]: unknown
+}
+
+export type WorkflowTemplateRequiredArtifact = {
+  id: string
+  name?: string
+  description?: string
+  required: boolean
+  [key: string]: unknown
+}
+
+export type WorkflowTemplateOutputArtifact = {
+  id: string
+  name: string
+  kind: string
+  description: string
+  required: true
+  sections?: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowTemplateCompletionCriteria = {
+  type?: 'manual-checklist' | 'artifact-required' | 'agent-reported' | (string & {})
+  description: string
+  [key: string]: unknown
+}
+
+export type WorkflowTemplateTransitionPolicy = {
+  authority: 'auto' | 'user-confirmation'
+  [key: string]: unknown
+}
+
+export type WorkflowTemplatePhase = {
+  id: string
+  name: string
+  instructions: string
+  requestedModel?: unknown
+  objective?: string
+  requiredIntake?: string[]
+  handoffRules?: string[]
+  executionRules?: string[]
+  outputArtifact?: WorkflowTemplateOutputArtifact
+  skills?: WorkflowTemplateSkillDeclaration[]
+  requiredArtifacts?: WorkflowTemplateRequiredArtifact[]
+  completionCriteria?: WorkflowTemplateCompletionCriteria
+  transition?: WorkflowTemplateTransitionPolicy
+  [key: string]: unknown
+}
+
+export type WorkflowTemplateDraft = {
+  schemaVersion: 1
+  id: string
+  source?: WorkflowTemplateSource
+  version: string
+  name: string
+  description?: string
+  phases: WorkflowTemplatePhase[]
+  [key: string]: unknown
 }
 
 export type WorkflowTemplateListItem = {
@@ -109,11 +174,173 @@ export type WorkflowTemplateListItem = {
   description?: string
   phaseCount: number
   firstPhaseId: string
+  phaseNames?: string[]
+  startable?: boolean
+  editable?: boolean
+  copyable?: boolean
 }
 
 export type WorkflowTemplatesResponse = {
   templates: WorkflowTemplateListItem[]
   invalidTemplates: WorkflowTemplateValidationIssue[]
+}
+
+export type WorkflowTemplateDetail = WorkflowTemplateDraft & {
+  source: WorkflowTemplateSource
+  description: string
+  editable: boolean
+  copyable: boolean
+}
+
+export type WorkflowTemplateDetailResponse = {
+  template: WorkflowTemplateDetail
+  invalidTemplates?: WorkflowTemplateValidationIssue[]
+  issues?: WorkflowTemplateValidationIssue[]
+}
+
+export type WorkflowTemplateValidateRequest = {
+  template: WorkflowTemplateDraft
+}
+
+export type WorkflowTemplateValidateResponse = {
+  valid: boolean
+  template: WorkflowTemplateDetail | null
+  issues: WorkflowTemplateValidationIssue[]
+}
+
+export type WorkflowTemplateCreateRequest = {
+  template: WorkflowTemplateDraft
+}
+
+export type WorkflowTemplateUpdateRequest = {
+  template: WorkflowTemplateDraft
+}
+
+export type WorkflowTemplateMutationResponse = WorkflowTemplatesResponse & {
+  template: WorkflowTemplateDetail
+}
+
+export type WorkflowTemplateDeleteResponse = WorkflowTemplatesResponse & {
+  ok?: boolean
+}
+
+export type WorkflowTemplateDuplicateRequest = {
+  source: WorkflowTemplateSource
+  id: string
+  targetId: string
+  targetName?: string
+}
+
+export type WorkflowTemplateImportPayload = {
+  schemaVersion: 1
+  templates: WorkflowTemplateDraft[]
+  [key: string]: unknown
+} | WorkflowTemplateDraft
+
+export type WorkflowTemplateImportPreviewRequest = {
+  payload: WorkflowTemplateImportPayload
+}
+
+export type WorkflowTemplateImportConflict = 'none' | 'builtin-template' | 'user-template'
+export type WorkflowTemplateImportResolution = 'add' | 'rename' | 'overwrite'
+
+export type WorkflowTemplateImportCandidate = {
+  importId: string
+  originalId: string
+  proposedId: string
+  name: string
+  version: string
+  phaseCount: number
+  conflict: WorkflowTemplateImportConflict
+  defaultResolution: 'add' | 'rename'
+  selectable: boolean
+  issues: WorkflowTemplateValidationIssue[]
+}
+
+export type WorkflowTemplateImportPreviewResponse = {
+  schemaVersion: 1
+  candidates: WorkflowTemplateImportCandidate[]
+  invalidTemplates: WorkflowTemplateValidationIssue[]
+  canCommit: boolean
+}
+
+export type WorkflowTemplateImportSelection = {
+  importId: string
+  resolution: WorkflowTemplateImportResolution
+  targetId?: string
+}
+
+export type WorkflowTemplateImportCommitRequest = {
+  payload: WorkflowTemplateImportPayload
+  selections: WorkflowTemplateImportSelection[]
+}
+
+export type WorkflowTemplateImportedTemplate = {
+  importId: string
+  id: string
+  resolution: WorkflowTemplateImportResolution
+}
+
+export type WorkflowTemplateImportCommitResponse = WorkflowTemplatesResponse & {
+  imported?: WorkflowTemplateImportedTemplate[]
+}
+
+export type WorkflowTemplateSelector = {
+  source: WorkflowTemplateSource
+  id: string
+}
+
+export type WorkflowTemplateExportRequest = {
+  templates: WorkflowTemplateSelector[]
+  mode?: 'selected' | (string & {})
+}
+
+export type WorkflowTemplateExportResponse = {
+  schemaVersion: 1
+  exportedAt: string
+  templates: WorkflowTemplateDetail[]
+}
+
+export type LinkedWorkflowContextStrategy = 'inherit' | 'summarize' | 'clear'
+
+export type LinkedWorkflowSessionCreateRequest = {
+  workflow: WorkflowSessionCreateOptions
+  contextStrategy: LinkedWorkflowContextStrategy
+  summaryInstructions?: string
+  clientRequestId?: string
+}
+
+export type LinkedWorkflowSessionLink = {
+  sourceSessionId: string
+  targetSessionId: string
+  contextStrategy: LinkedWorkflowContextStrategy
+  summaryArtifactId?: string
+  sourceMessageCount: number
+  createdAt: string
+  clientRequestId?: string
+}
+
+export type LinkedWorkflowSessionCreateResponse = {
+  sessionId: string
+  workDir?: string
+  workflow: WorkflowSessionSummary
+  link: LinkedWorkflowSessionLink
+}
+
+export type LinkedWorkflowSessionStartErrorCode =
+  | 'SESSION_NOT_FOUND'
+  | 'WORKFLOW_TEMPLATE_INVALID'
+  | 'WORKFLOW_TEMPLATE_NOT_FOUND'
+  | 'WORKFLOW_SOURCE_INVALID'
+  | 'WORKFLOW_SOURCE_ACTIVE'
+  | 'WORKFLOW_LINK_DUPLICATE'
+  | 'WORKFLOW_CONTEXT_TOO_LARGE'
+  | 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE'
+
+export type LinkedWorkflowSessionStartErrorBody = {
+  error?: LinkedWorkflowSessionStartErrorCode
+  code?: LinkedWorkflowSessionStartErrorCode
+  message: string
 }
 
 export type WorkflowSessionStateResponse = {

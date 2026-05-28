@@ -1,0 +1,63 @@
+{
+  "id": "T011",
+  "title": "Add Workflows manager list, diagnostics, and built-in copy affordances",
+  "agent": "executor",
+  "depends_on": [
+    "T010: Settings Workflows tab routing added"
+  ],
+  "parallel_safe": false,
+  "story": "US1",
+  "objective": "Implement Workflows manager list with source, id, version, phase count, startability, diagnostics, and built-in copy affordance.",
+  "context_navigation": {
+    "design_decision": "plan.md#Research Inputs",
+    "data_model": "data-model.md#Workflow Template Validation Issue",
+    "api_contract": "contracts/workflow-template-api.md#Compatibility",
+    "reference_implementation": "desktop/src/components/workflow/WorkflowComponents.tsx"
+  },
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx （新建）",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx （修改）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not make built-ins editable or deletable.",
+    "Do not hide invalid templates.",
+    "Do not write workflow config directly."
+  ],
+  "acceptance_criteria": [
+    "Built-ins render read-only and copyable.",
+    "Invalid templates display actionable diagnostics.",
+    "User templates render edit/delete/export affordances.",
+    "No direct filesystem API is used."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

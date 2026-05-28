@@ -8,7 +8,7 @@ import { useTabStore } from './tabStore'
 
 const MEMBER_POLL_INTERVAL_MS = 1500
 const MEMBER_TRANSCRIPT_MATCH_WINDOW_MS = 120_000
-const ACTIVE_TEAM_STORAGE_KEY = 'cc-haha-active-team'
+const ACTIVE_TEAM_STORAGE_KEY = 'cc-jiangxia-active-team'
 
 /** Check if a member name is valid (not a CLI flag, API method, or empty string) */
 function isValidMemberName(name: string | undefined): boolean {

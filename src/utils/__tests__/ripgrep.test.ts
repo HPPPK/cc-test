@@ -22,12 +22,12 @@ describe('isUsableBuiltinRipgrepPath', () => {
 
   test('rejects missing paths', () => {
     expect(
-      isUsableBuiltinRipgrepPath(join(tmpdir(), 'missing-cc-haha-rg')),
+      isUsableBuiltinRipgrepPath(join(tmpdir(), 'missing-cc-jiangxia-rg')),
     ).toBe(false)
   })
 
   test('accepts real filesystem paths', async () => {
-    const filePath = join(tmpdir(), `cc-haha-rg-${Date.now()}`)
+    const filePath = join(tmpdir(), `cc-jiangxia-rg-${Date.now()}`)
     await writeFile(filePath, '')
     tempFiles.push(filePath)
 

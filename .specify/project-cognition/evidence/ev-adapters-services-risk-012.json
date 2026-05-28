@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-012",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/ws-bridge.test.ts",
+  "summary": "Test coverage for ws-bridge.test.ts exercises connectSession connects with provided sessionId; connectSession for different chatIds creates separate sessions; resetSession removes the session; sendUserMessage returns false when no open connection",
+  "detail": "",
+  "quotes_or_symbols": [
+    "connectSession connects with provided sessionId",
+    "connectSession for different chatIds creates separate sessions",
+    "resetSession removes the session",
+    "sendUserMessage returns false when no open connection"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

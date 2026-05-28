@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-047",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/streaming-card.test.ts",
+  "summary": "Test coverage for streaming-card.test.ts exercises Schema 2.0 + streaming_mode + element_id; Schema 2.0, 无 streaming_mode, 单 markdown 元素; 空字符串保底为单空格; 红色 header + markdown body",
+  "detail": "",
+  "quotes_or_symbols": [
+    "Schema 2.0 + streaming_mode + element_id",
+    "Schema 2.0, 无 streaming_mode, 单 markdown 元素",
+    "空字符串保底为单空格",
+    "红色 header + markdown body"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

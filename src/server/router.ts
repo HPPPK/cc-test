@@ -2,7 +2,8 @@
  * API Router — 将请求路由到对应的 API handler
  */
 
-import { handleSessionsApi, handleWorkflowTemplatesApi } from './api/sessions.js'
+import { handleSessionsApi } from './api/sessions.js'
+import { handleWorkflowTemplatesApi } from './api/workflowTemplates.js'
 import { handleSettingsApi } from './api/settings.js'
 import { handleModelsApi } from './api/models.js'
 import { handleScheduledTasksApi } from './api/scheduled-tasks.js'
@@ -17,8 +18,8 @@ import { handleAdaptersApi } from './api/adapters.js'
 import { handlePluginsApi } from './api/plugins.js'
 import { handleSkillsApi } from './api/skills.js'
 import { handleComputerUseApi } from './api/computer-use.js'
-import { handleHahaOAuthApi } from './api/haha-oauth.js'
-import { handleHahaOpenAIOAuthApi } from './api/haha-openai-oauth.js'
+import { handleJiangxiaOAuthApi } from './api/jiangxia-oauth.js'
+import { handleJiangxiaOpenAIOAuthApi } from './api/jiangxia-openai-oauth.js'
 import { handleMcpApi } from './api/mcp.js'
 import { handleDiagnosticsApi } from './api/diagnostics.js'
 import { handleDoctorApi } from './api/doctor.js'
@@ -47,7 +48,7 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'workflows':
       if (segments[2] === 'templates') {
-        return handleWorkflowTemplatesApi(req)
+        return handleWorkflowTemplatesApi(req, url, segments)
       }
       return Response.json(
         { error: 'Not Found', message: `Unknown workflows resource: ${segments[2]}` },
@@ -86,11 +87,13 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
     case 'providers':
       return handleProvidersApi(req, url, segments)
 
+    case 'jiangxia-oauth':
     case 'haha-oauth':
-      return handleHahaOAuthApi(req, url, segments)
+      return handleJiangxiaOAuthApi(req, url, segments)
 
+    case 'jiangxia-openai-oauth':
     case 'haha-openai-oauth':
-      return handleHahaOpenAIOAuthApi(req, url, segments)
+      return handleJiangxiaOpenAIOAuthApi(req, url, segments)
 
     case 'adapters':
       return handleAdaptersApi(req, url, segments)

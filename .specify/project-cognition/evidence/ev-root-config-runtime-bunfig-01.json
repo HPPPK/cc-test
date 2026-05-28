@@ -1,0 +1,14 @@
+{
+  "id": "ev-root-config-runtime-bunfig-01",
+  "type": "source_analysis",
+  "source_path": "bunfig.toml",
+  "summary": "Bun preloads `./preload.ts` for root runtime startup.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "preload = [\"./preload.ts\"]"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

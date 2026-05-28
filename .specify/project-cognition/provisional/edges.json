@@ -1,62 +1,732 @@
 {
-  "command": "map-scan",
-  "timestamp": "2026-05-16T21:59:00Z",
+  "schema_version": 1,
+  "generated_at": "2026-05-28T03:28:41.238Z",
+  "command": "sp-map-scan",
   "edges": [
-    {"source": "bin-launcher", "target": "src-entrypoints", "type": "executes"},
-    {"source": "src-entrypoints", "target": "src-main", "type": "imports"},
-    {"source": "src-main", "target": "src-query-engine", "type": "runs"},
-    {"source": "src-query-engine", "target": "src-tools-registry", "type": "calls"},
-    {"source": "src-query-engine", "target": "src-commands-registry", "type": "calls"},
-    {"source": "src-tools-registry", "target": "src-tools", "type": "registers"},
-    {"source": "src-commands-registry", "target": "src-commands", "type": "registers"},
-    {"source": "src-commands", "target": "src-services", "type": "uses"},
-    {"source": "src-commands", "target": "src-tools", "type": "uses"},
-    {"source": "src-tools", "target": "src-services", "type": "uses"},
-    {"source": "src-tools", "target": "src-utils", "type": "uses"},
-    {"source": "src-services", "target": "src-utils", "type": "uses"},
-    {"source": "src-services", "target": "src-constants", "type": "uses"},
-    {"source": "src-services", "target": "src-types", "type": "uses"},
-    {"source": "src-server", "target": "src-services", "type": "uses"},
-    {"source": "src-server-api", "target": "src-server-services", "type": "calls"},
-    {"source": "src-server-ws", "target": "src-server-services", "type": "calls"},
-    {"source": "desktop-api", "target": "src-server", "type": "communicates-with (HTTP/WS)"},
-    {"source": "desktop-stores", "target": "desktop-api", "type": "calls"},
-    {"source": "desktop-components", "target": "desktop-stores", "type": "subscribes"},
-    {"source": "desktop-app", "target": "desktop-components", "type": "renders"},
-    {"source": "desktop-app", "target": "desktop-pages", "type": "renders"},
-    {"source": "adapters-common", "target": "src-server", "type": "depends-on (via @server/*)"},
-    {"source": "adapters-feishu", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-dingtalk", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-telegram", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-wechat", "target": "adapters-common", "type": "depends-on"},
-    {"source": "cap-tui", "target": "src-main", "type": "implemented-by"},
-    {"source": "cap-desktop", "target": "desktop-app", "type": "implemented-by"},
-    {"source": "cap-commands", "target": "src-commands", "type": "implemented-by"},
-    {"source": "cap-tools", "target": "src-tools", "type": "implemented-by"},
-    {"source": "cap-agent", "target": "cap-tools", "type": "depends-on"},
-    {"source": "cap-agent", "target": "cap-worktree", "type": "uses"},
-    {"source": "cap-agent", "target": "cap-teams", "type": "uses"},
-    {"source": "cap-mcp", "target": "cap-tools", "type": "extends"},
-    {"source": "cap-lsp", "target": "cap-tools", "type": "extends"},
-    {"source": "cap-memory", "target": "src-services", "type": "implemented-by"},
-    {"source": "cap-skills", "target": "cap-commands", "type": "extends"},
-    {"source": "cap-computer-use", "target": "src-server-services", "type": "implemented-by"},
-    {"source": "cap-im-integration", "target": "adapters-common", "type": "implemented-by"},
-    {"source": "cap-plan-mode", "target": "cap-agent", "type": "related-to"},
-    {"source": "cap-auth", "target": "risk-oauth", "type": "exposes"},
-    {"source": "cap-quality-gate", "target": "scripts-quality-gate", "type": "implemented-by"},
-    {"source": "risk-permissions", "target": "src-utils", "type": "protects"},
-    {"source": "risk-mcp", "target": "cap-mcp", "type": "exposes"},
-    {"source": "risk-plugins", "target": "cap-plugins", "type": "exposes"},
-    {"source": "risk-doctor", "target": "risk-persistence", "type": "may-modify"},
-    {"source": "risk-h5-access", "target": "risk-permissions", "type": "bypasses"},
-    {"source": "obs-telemetry", "target": "src-services", "type": "monitors"},
-    {"source": "obs-doctor", "target": "risk-doctor", "type": "controls"},
-    {"source": "cov-agent-tools", "target": "src-tools", "type": "under-tested"},
-    {"source": "cov-agent-utils", "target": "src-utils", "type": "under-tested"},
-    {"source": "quarantine-tests", "target": "src-server", "type": "unstable"},
-    {"source": "server-tests", "target": "src-server", "type": "tests"},
-    {"source": "desktop-tests", "target": "desktop-stores", "type": "tests"},
-    {"source": "adapter-tests", "target": "adapters-common", "type": "tests"}
+    {
+      "id": "edge:root-config-runtime:1",
+      "type": "governs",
+      "title": "edge:root-config-runtime:1",
+      "source_id": "node:root-runtime-policy",
+      "target_id": "node:root-manifest",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-agents-01",
+        "ev-root-config-runtime-pkg-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:2",
+      "type": "declares_binary",
+      "title": "edge:root-config-runtime:2",
+      "source_id": "node:root-manifest",
+      "target_id": "node:launcher-bash",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-pkg-01",
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:3",
+      "type": "dispatches_to",
+      "title": "edge:root-config-runtime:3",
+      "source_id": "node:launcher-bash",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:4",
+      "type": "dispatches_to",
+      "title": "edge:root-config-runtime:4",
+      "source_id": "node:launcher-powershell",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-ps1-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:5",
+      "type": "configures_runtime",
+      "title": "edge:root-config-runtime:5",
+      "source_id": "node:typescript-runtime-config",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-tsconfig-01",
+        "ev-root-config-runtime-bunfig-01",
+        "ev-root-config-runtime-main-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:6",
+      "type": "invokes",
+      "title": "edge:root-config-runtime:6",
+      "source_id": "node:main-runtime-entry",
+      "target_id": "node:setup-orchestrator",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-main-02",
+        "ev-root-config-runtime-setup-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:server-workflow-api:7",
+      "type": "routes_to",
+      "title": "edge:server-workflow-api:7",
+      "source_id": "server.router.api",
+      "target_id": "server.api.sessions.workflow",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-router-workflows"
+      ],
+      "attrs": {
+        "match": "/api/sessions/*"
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:server-workflow-api:8",
+      "type": "routes_to",
+      "title": "edge:server-workflow-api:8",
+      "source_id": "server.router.api",
+      "target_id": "server.api.workflow_templates",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-router-workflows"
+      ],
+      "attrs": {
+        "match": "/api/workflows/templates/*"
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:server-workflow-api:9",
+      "type": "uses",
+      "title": "edge:server-workflow-api:9",
+      "source_id": "server.api.sessions.workflow",
+      "target_id": "server.service.workflow_runtime",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-server-workflow-api-sessions-workflow-routes",
+        "ev-server-workflow-api-workflow-runtime-tests"
+      ],
+      "attrs": {
+        "operations": [
+          "transitionWorkflow",
+          "startLinkedWorkflow"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:server-workflow-api:10",
+      "type": "uses",
+      "title": "edge:server-workflow-api:10",
+      "source_id": "server.api.sessions.workflow",
+      "target_id": "server.service.workflow_final_report",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-sessions-workflow-routes",
+        "ev-server-workflow-api-workflow-final-report-builder"
+      ],
+      "attrs": {
+        "operations": [
+          "buildWorkflowFinalReport"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:server-workflow-api:11",
+      "type": "uses",
+      "title": "edge:server-workflow-api:11",
+      "source_id": "server.api.sessions.workflow",
+      "target_id": "server.service.workflow_report_store",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-sessions-workflow-routes",
+        "ev-server-workflow-api-workflow-report-store"
+      ],
+      "attrs": {
+        "operations": [
+          "getWorkflowReport",
+          "persistWorkflowFinalReportIfReady"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:server-workflow-api:12",
+      "type": "feeds",
+      "title": "edge:server-workflow-api:12",
+      "source_id": "server.service.workflow_final_report",
+      "target_id": "server.service.workflow_report_store",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-workflow-final-report-builder",
+        "ev-server-workflow-api-workflow-report-store"
+      ],
+      "attrs": {
+        "artifact": "WorkflowFinalReport"
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:13",
+      "type": "opens",
+      "title": "edge:desktop-workflow-ui:13",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.start-dialog",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "trigger": "composer plus-menu Workflows action"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:14",
+      "type": "loads_templates_via",
+      "title": "edge:desktop-workflow-ui:14",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-09",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "method": "sessionsApi.listWorkflowTemplates"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:15",
+      "type": "creates_workflow_session_via",
+      "title": "edge:desktop-workflow-ui:15",
+      "source_id": "desktop.workflow.empty-session",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "carrier": "workflow create options",
+        "fields": [
+          "templateId",
+          "templateSource",
+          "initialPhaseId"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:16",
+      "type": "hosts",
+      "title": "edge:desktop-workflow-ui:16",
+      "source_id": "desktop.workflow.settings-tab",
+      "target_id": "desktop.workflow.template-manager",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-34",
+        "ev-desktop-workflow-ui-35"
+      ],
+      "attrs": {
+        "component": "WorkflowsSettings"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:17",
+      "type": "manages_templates_via",
+      "title": "edge:desktop-workflow-ui:17",
+      "source_id": "desktop.workflow.template-manager",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-12",
+        "ev-desktop-workflow-ui-16",
+        "ev-desktop-workflow-ui-17"
+      ],
+      "attrs": {
+        "methods": [
+          "listWorkflowTemplates",
+          "getWorkflowTemplate",
+          "validateWorkflowTemplate",
+          "createWorkflowTemplate",
+          "updateWorkflowTemplate",
+          "deleteWorkflowTemplate",
+          "duplicateWorkflowTemplate",
+          "previewWorkflowTemplateImport",
+          "commitWorkflowTemplateImport",
+          "exportWorkflowTemplates"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge:desktop-workflow-ui:18",
+      "type": "matches_transition_contract",
+      "title": "edge:desktop-workflow-ui:18",
+      "source_id": "desktop.workflow.runtime-status",
+      "target_id": "desktop.workflow.api-client",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-08",
+        "ev-desktop-workflow-ui-19",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "request_type": "WorkflowTransitionRequest",
+        "version_field": "stateVersion"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "edge.toolpool.agenttool",
+      "type": "registers",
+      "title": "Tool pool exposes AgentTool",
+      "source_id": "node.tool_pool",
+      "target_id": "node.agent_tool",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-tools-01"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.agenttool.runner",
+      "type": "invokes",
+      "title": "AgentTool delegates execution to runAgent",
+      "source_id": "node.agent_tool",
+      "target_id": "node.agent_runner",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-01",
+        "ev-tools-agent-loop-agent-02"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.agenttool.localtasks",
+      "type": "registers",
+      "title": "AgentTool uses local task state for background agents",
+      "source_id": "node.agent_tool",
+      "target_id": "node.local_agent_tasks",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-01",
+        "ev-tools-agent-loop-task-01"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.agenttool.remotetasks",
+      "type": "registers",
+      "title": "AgentTool can register remote agent tasks",
+      "source_id": "node.agent_tool",
+      "target_id": "node.remote_agent_tasks",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-01",
+        "ev-tools-agent-loop-task-04"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.swarm.registry.backend",
+      "type": "selects",
+      "title": "Swarm registry resolves in-process backend",
+      "source_id": "node.swarm_registry",
+      "target_id": "node.inprocess_backend",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-01",
+        "ev-tools-agent-loop-swarm-02"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.backend.spawn",
+      "type": "spawns",
+      "title": "In-process backend spawns teammate task/context",
+      "source_id": "node.inprocess_backend",
+      "target_id": "node.local_agent_tasks",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-02",
+        "ev-tools-agent-loop-swarm-03",
+        "ev-tools-agent-loop-task-05"
+      ],
+      "attrs": {
+        "task_type": "in_process_teammate"
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.backend.runner",
+      "type": "starts",
+      "title": "In-process backend starts teammate runner",
+      "source_id": "node.inprocess_backend",
+      "target_id": "node.inprocess_runner",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-02",
+        "ev-tools-agent-loop-swarm-04"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.runner.agent",
+      "type": "wraps",
+      "title": "In-process runner wraps the shared runAgent loop",
+      "source_id": "node.inprocess_runner",
+      "target_id": "node.agent_runner",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-04",
+        "ev-tools-agent-loop-agent-02"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.runner.permission",
+      "type": "mediates",
+      "title": "In-process runner uses permission sync for leader-approved tool requests",
+      "source_id": "node.inprocess_runner",
+      "target_id": "node.permission_sync",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-04",
+        "ev-tools-agent-loop-swarm-05"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.runner.compaction",
+      "type": "invokes",
+      "title": "In-process runner compacts long teammate histories",
+      "source_id": "node.inprocess_runner",
+      "target_id": "node.compaction",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-04",
+        "ev-tools-agent-loop-compact-01"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.compaction.sessionmemory",
+      "type": "variant",
+      "title": "Session-memory compaction reuses compaction boundary helpers",
+      "source_id": "node.compaction",
+      "target_id": "node.compaction",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-tools-agent-loop-compact-01",
+        "ev-tools-agent-loop-compact-02"
+      ],
+      "attrs": {
+        "variant": "session-memory"
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.agenttool.builtins",
+      "type": "loads",
+      "title": "AgentTool prompt/dispatch depends on built-in agent catalog",
+      "source_id": "node.agent_tool",
+      "target_id": "node.builtin_agents",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-01",
+        "ev-tools-agent-loop-agent-03"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge.runtime.backend",
+      "type": "supplies",
+      "title": "Teammate runtime selection supplies provider/model env overlays to teammate execution",
+      "source_id": "node.teammate_runtime",
+      "target_id": "node.inprocess_backend",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-02",
+        "ev-tools-agent-loop-swarm-03",
+        "ev-tools-agent-loop-swarm-06"
+      ],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "edge:release-workflow-uses-tauri-packaging",
+      "type": "drives",
+      "title": "edge:release-workflow-uses-tauri-packaging",
+      "source_id": "workflow:desktop-release-pipeline",
+      "target_id": "module:desktop-tauri-packaging",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-001",
+        "ev-verification-release-docs-005",
+        "ev-verification-release-docs-072"
+      ],
+      "attrs": {
+        "rationale": "GitHub release workflows read Tauri version/config and build package bundles."
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "edge:tauri-packaging-emits-release-assets",
+      "type": "packages",
+      "title": "edge:tauri-packaging-emits-release-assets",
+      "source_id": "module:desktop-tauri-packaging",
+      "target_id": "module:desktop-release-assets",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-010",
+        "ev-verification-release-docs-013",
+        "ev-verification-release-docs-072"
+      ],
+      "attrs": {
+        "rationale": "Tauri config plus icon set define packaged desktop assets and bundle identity."
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "edge:docs-publishing-serves-docs-corpus",
+      "type": "publishes",
+      "title": "edge:docs-publishing-serves-docs-corpus",
+      "source_id": "workflow:docs-publishing",
+      "target_id": "docs:agent-desktop-channel",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-002",
+        "ev-verification-release-docs-076"
+      ],
+      "attrs": {
+        "rationale": "Docs workflow builds docs/ via VitePress config and deploys to GitHub Pages."
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "edge:desktop-docs-reference-tauri-packaging",
+      "type": "documents",
+      "title": "edge:desktop-docs-reference-tauri-packaging",
+      "source_id": "docs:agent-desktop-channel",
+      "target_id": "module:desktop-tauri-packaging",
+      "paths": [],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-verification-release-docs-101",
+        "ev-verification-release-docs-102",
+        "ev-verification-release-docs-106"
+      ],
+      "attrs": {
+        "rationale": "Desktop architecture and installation docs explicitly describe desktop/src-tauri and build outputs."
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "edge.adapters_runtime_uses_ws_bridge",
+      "type": "uses",
+      "title": "Adapter runtimes use WsBridge",
+      "source_id": "node.adapters.im_runtime",
+      "target_id": "node.adapters.ws_bridge",
+      "paths": [
+        "adapters/telegram/index.ts",
+        "adapters/feishu/index.ts",
+        "adapters/dingtalk/index.ts",
+        "adapters/wechat/index.ts",
+        "adapters/common/ws-bridge.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-adapters-services-risk-061",
+        "ev-adapters-services-risk-052",
+        "ev-adapters-services-risk-036",
+        "ev-adapters-services-risk-066",
+        "ev-adapters-services-risk-029"
+      ],
+      "attrs": {
+        "from": "node.adapters.im_runtime",
+        "to": "node.adapters.ws_bridge",
+        "symbols": [
+          "WsBridge",
+          "ServerMessage"
+        ]
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "edge.adapters_runtime_uses_attachment_pipeline",
+      "type": "uses",
+      "title": "Adapter runtimes use attachment pipeline",
+      "source_id": "node.adapters.im_runtime",
+      "target_id": "node.adapters.attachment_pipeline",
+      "paths": [
+        "adapters/telegram/index.ts",
+        "adapters/feishu/index.ts",
+        "adapters/dingtalk/index.ts",
+        "adapters/wechat/index.ts",
+        "adapters/common/attachment/attachment-store.ts",
+        "adapters/common/attachment/attachment-limits.ts",
+        "adapters/common/attachment/image-block-watcher.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-adapters-services-risk-061",
+        "ev-adapters-services-risk-052",
+        "ev-adapters-services-risk-036",
+        "ev-adapters-services-risk-066",
+        "ev-adapters-services-risk-017",
+        "ev-adapters-services-risk-016",
+        "ev-adapters-services-risk-019"
+      ],
+      "attrs": {
+        "from": "node.adapters.im_runtime",
+        "to": "node.adapters.attachment_pipeline"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "edge.memory_depends_on_analytics",
+      "type": "depends_on",
+      "title": "Memory services consult analytics feature flags",
+      "source_id": "node.services.memory",
+      "target_id": "node.services.analytics",
+      "paths": [
+        "src/memdir/memdir.ts",
+        "src/services/analytics/growthbook.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-072",
+        "ev-adapters-services-risk-092"
+      ],
+      "attrs": {
+        "from": "node.services.memory",
+        "to": "node.services.analytics",
+        "symbols": [
+          "getFeatureValue_CACHED_MAY_BE_STALE"
+        ]
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "edge.auto_dream_depends_on_memory",
+      "type": "depends_on",
+      "title": "AutoDream depends on memory paths and consolidation lock",
+      "source_id": "node.services.auto_dream",
+      "target_id": "node.services.memory",
+      "paths": [
+        "src/services/autoDream/autoDream.ts",
+        "src/services/autoDream/consolidationLock.ts",
+        "src/memdir/paths.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-118",
+        "ev-adapters-services-risk-120",
+        "ev-adapters-services-risk-077"
+      ],
+      "attrs": {
+        "from": "node.services.auto_dream",
+        "to": "node.services.memory"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "edge.api_services_emit_analytics",
+      "type": "emits_to",
+      "title": "API services emit analytics and diagnostics",
+      "source_id": "node.services.api",
+      "target_id": "node.services.analytics",
+      "paths": [
+        "src/services/api/logging.ts",
+        "src/services/analytics/index.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-112",
+        "ev-adapters-services-risk-093"
+      ],
+      "attrs": {
+        "from": "node.services.api",
+        "to": "node.services.analytics",
+        "symbols": [
+          "logAPIQuery",
+          "logAPISuccess",
+          "logEvent"
+        ]
+      },
+      "packet_id": "adapters-services-risk"
+    }
   ]
 }

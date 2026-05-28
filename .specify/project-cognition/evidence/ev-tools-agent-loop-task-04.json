@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-task-04",
+  "type": "source_analysis",
+  "source_path": "src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+  "summary": "Remote agent tasks wrap teleported/cloud sessions with persisted sidecar metadata, poll-based restoration, specialized review/ultraplan extraction, and task notifications.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "RemoteAgentTaskState",
+    "registerRemoteAgentTask",
+    "restoreRemoteAgentTasks",
+    "extractReviewFromLog",
+    "getRemoteTaskSessionUrl"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

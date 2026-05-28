@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-053",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/markdown-style.ts",
+  "summary": "markdown-style.ts defines FEISHU_CARD_TABLE_LIMIT, optimizeMarkdownForFeishu, _optimizeMarkdownForFeishu, stripInvalidImageKeys, MarkdownTableMatch, findMarkdownTablesOutsideCodeBlocks",
+  "detail": "",
+  "quotes_or_symbols": [
+    "FEISHU_CARD_TABLE_LIMIT",
+    "optimizeMarkdownForFeishu",
+    "_optimizeMarkdownForFeishu",
+    "stripInvalidImageKeys",
+    "MarkdownTableMatch",
+    "findMarkdownTablesOutsideCodeBlocks"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-066",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/media.ts",
+  "summary": "media.ts defines collectWechatMediaCandidates, WechatMediaService, buildCdnDownloadUrl, parseAesKey, decryptAesEcb, inferMime and imports node:crypto, ../common/attachment/attachment-store.js, ../common/attachment/attachment-types.js, ./protocol.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "collectWechatMediaCandidates",
+    "WechatMediaService",
+    "buildCdnDownloadUrl",
+    "parseAesKey",
+    "decryptAesEcb",
+    "inferMime"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

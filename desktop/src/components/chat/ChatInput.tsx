@@ -18,6 +18,7 @@ import {
   type WorkflowSessionCreateOptions,
   type WorkflowTemplatesResponse,
 } from '../../api/sessions'
+import { ApiError } from '../../api/client'
 import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 import { ModelSelector } from '../controls/ModelSelector'
 import type { AttachmentRef } from '../../types/chat'
@@ -25,7 +26,10 @@ import { AttachmentGallery } from './AttachmentGallery'
 import { ComposerDropOverlay } from './ComposerDropOverlay'
 import { ProjectContextChip } from '../shared/ProjectContextChip'
 import { RepositoryLaunchControls } from '../shared/RepositoryLaunchControls'
-import { WorkflowTemplatePicker } from '../workflow/WorkflowComponents'
+import {
+  WorkflowStartDialog,
+  type WorkflowStartDialogSelection,
+} from '../workflow/WorkflowStartDialog'
 import { FileSearchMenu, type FileSearchMenuHandle } from './FileSearchMenu'
 import { LocalSlashCommandPanel, type LocalSlashCommandName } from './LocalSlashCommandPanel'
 import { ContextUsageIndicator } from './ContextUsageIndicator'
@@ -45,7 +49,7 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { useComposerFileDrop } from './useComposerFileDrop'
-import type { WorkflowTemplateSource } from '../../types/session'
+import type { LinkedWorkflowContextStrategy, WorkflowTemplateSource } from '../../types/session'
 
 type GitInfo = SessionGitInfo
 
@@ -106,6 +110,12 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
   const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
   const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
+  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const [workflowContextDialogOpen, setWorkflowContextDialogOpen] = useState(false)
+  const [pendingLinkedWorkflowSelection, setPendingLinkedWorkflowSelection] =
+    useState<WorkflowStartDialogSelection | null>(null)
+  const [linkedWorkflowStarting, setLinkedWorkflowStarting] = useState(false)
+  const [summaryInstructions, setSummaryInstructions] = useState('')
   const composingRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -171,6 +181,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     isMemberSession && sessionState?.connectionState === 'disconnected'
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
+  const canOpenWorkflowDialog = !isMemberSession && !!activeTabId && !activeSession?.workflow
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
   const isHeroComposer = variant === 'hero' && !isMemberSession && !compact
   const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
@@ -311,10 +322,13 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   }, [activeSession?.workDir, activeTabId, gitInfo?.workDir, showLaunchControls])
 
   useEffect(() => {
-    if (!isHeroComposer || !showLaunchControls) {
+    if (!canOpenWorkflowDialog) {
       setWorkflowTemplates([])
       setInvalidWorkflowTemplates([])
       setSelectedWorkflowTemplate(null)
+      setWorkflowDialogOpen(false)
+      setWorkflowContextDialogOpen(false)
+      setPendingLinkedWorkflowSelection(null)
       return
     }
 
@@ -337,7 +351,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     return () => {
       cancelled = true
     }
-  }, [activeTabId, isHeroComposer, showLaunchControls])
+  }, [activeTabId, canOpenWorkflowDialog])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -617,18 +631,6 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
 
     let targetSessionId = activeTabId!
     if (showLaunchControls) {
-      const workflowTemplate = selectedWorkflowTemplate
-        ? workflowTemplates.find((template) =>
-          template.id === selectedWorkflowTemplate.templateId &&
-          template.source === selectedWorkflowTemplate.templateSource)
-        : null
-      const workflow = workflowTemplate
-        ? {
-            templateId: workflowTemplate.id,
-            templateSource: workflowTemplate.source,
-            initialPhaseId: workflowTemplate.firstPhaseId,
-          }
-        : undefined
       const shouldReplaceForRepositoryLaunch =
         !!activeLaunchWorkDir &&
         !!launchBranch &&
@@ -640,12 +642,11 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           }
         : undefined
 
-      if (workflow || repository) {
+      if (repository) {
         setLaunchTransitioning(true)
         try {
           const newSessionId = await replaceEmptySession(activeLaunchWorkDir, {
             ...(repository ? { repository } : {}),
-            ...(workflow ? { workflow } : {}),
           })
           if (!newSessionId) return
           targetSessionId = newSessionId
@@ -860,6 +861,129 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     })
   }
 
+  const openWorkflowDialog = () => {
+    if (!canOpenWorkflowDialog || isActive || linkedWorkflowStarting) {
+      if (isActive && messageCount > 0) {
+        useUIStore.getState().addToast({
+          type: 'warning',
+          message: t('workflows.linkedStart.error.sourceActive'),
+        })
+      }
+      return
+    }
+    setPlusMenuOpen(false)
+    setSlashMenuOpen(false)
+    setFileSearchOpen(false)
+    setWorkflowDialogOpen(true)
+  }
+
+  const handleStartWorkflow = async (selection: WorkflowStartDialogSelection) => {
+    if (!showLaunchControls) {
+      if (!activeTabId || !canOpenWorkflowDialog || messageCount === 0 || isActive || linkedWorkflowStarting) return
+      setPendingLinkedWorkflowSelection(selection)
+      setSummaryInstructions('')
+      setWorkflowDialogOpen(false)
+      setWorkflowContextDialogOpen(true)
+      return
+    }
+
+    if (launchTransitioning || !launchReady) return
+
+    const shouldReplaceForRepositoryLaunch =
+      !!activeLaunchWorkDir &&
+      !!launchBranch &&
+      (launchUseWorktree || (gitInfo?.branch ? launchBranch !== gitInfo.branch : true))
+    const repository = shouldReplaceForRepositoryLaunch
+      ? {
+          branch: launchBranch,
+          worktree: launchUseWorktree,
+        }
+      : undefined
+
+    setLaunchTransitioning(true)
+    try {
+      await replaceEmptySession(activeLaunchWorkDir, {
+        ...(repository ? { repository } : {}),
+        workflow: {
+          templateId: selection.templateId,
+          templateSource: selection.templateSource,
+          initialPhaseId: selection.initialPhaseId,
+        },
+      })
+      setWorkflowDialogOpen(false)
+    } catch (error) {
+      useUIStore.getState().addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : t('empty.failedToCreate'),
+      })
+    } finally {
+      setLaunchTransitioning(false)
+    }
+  }
+
+  const handleStartLinkedWorkflow = async (contextStrategy: LinkedWorkflowContextStrategy) => {
+    if (!activeTabId || !pendingLinkedWorkflowSelection || linkedWorkflowStarting) return
+    if (isActive) {
+      useUIStore.getState().addToast({
+        type: 'warning',
+        message: t('workflows.linkedStart.error.sourceActive'),
+      })
+      return
+    }
+
+    setLinkedWorkflowStarting(true)
+    try {
+      const response = await sessionsApi.startLinkedWorkflowSession(activeTabId, {
+        workflow: {
+          templateId: pendingLinkedWorkflowSelection.templateId,
+          templateSource: pendingLinkedWorkflowSelection.templateSource,
+          initialPhaseId: pendingLinkedWorkflowSelection.initialPhaseId,
+        },
+        contextStrategy,
+        ...(contextStrategy === 'summarize' && summaryInstructions.trim()
+          ? { summaryInstructions: summaryInstructions.trim() }
+          : {}),
+        clientRequestId: `desktop-linked-workflow-${activeTabId}-${Date.now()}`,
+      })
+
+      const now = new Date().toISOString()
+      useSessionStore.setState((state) => {
+        const existing = state.sessions.find((session) => session.id === response.sessionId)
+        const nextSession = {
+          id: response.sessionId,
+          title: existing?.title ?? 'New Session',
+          createdAt: existing?.createdAt ?? now,
+          modifiedAt: now,
+          messageCount: existing?.messageCount ?? 0,
+          projectPath: existing?.projectPath ?? '',
+          workDir: response.workDir ?? existing?.workDir ?? activeSession?.workDir ?? null,
+          projectRoot: response.workDir ?? existing?.projectRoot ?? activeSession?.projectRoot ?? null,
+          workDirExists: existing?.workDirExists ?? true,
+          workflow: response.workflow,
+        }
+        return {
+          sessions: [
+            nextSession,
+            ...state.sessions.filter((session) => session.id !== response.sessionId),
+          ],
+          activeSessionId: response.sessionId,
+        }
+      })
+      useTabStore.getState().openTab(response.sessionId, 'New Session', 'session')
+      useChatStore.getState().connectToSession(response.sessionId)
+      setWorkflowContextDialogOpen(false)
+      setPendingLinkedWorkflowSelection(null)
+      setSummaryInstructions('')
+    } catch (error) {
+      useUIStore.getState().addToast({
+        type: 'error',
+        message: getLinkedWorkflowStartErrorMessage(error, t),
+      })
+    } finally {
+      setLinkedWorkflowStarting(false)
+    }
+  }
+
   const composerPlaceholder =
     isHeroComposer
       ? t('empty.placeholder')
@@ -885,6 +1009,34 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
             : `bg-[var(--color-surface)] ${isMobileComposer ? 'px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2' : 'px-4 py-4'}`
       }
     >
+      <WorkflowStartDialog
+        open={workflowDialogOpen}
+        templates={workflowTemplates}
+        invalidTemplates={invalidWorkflowTemplates}
+        selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+        onSelect={setSelectedWorkflowTemplate}
+        onStart={handleStartWorkflow}
+        onClose={() => setWorkflowDialogOpen(false)}
+        starting={launchTransitioning || linkedWorkflowStarting}
+      />
+      <WorkflowContextStrategyDialog
+        open={workflowContextDialogOpen}
+        starting={linkedWorkflowStarting}
+        summaryInstructions={summaryInstructions}
+        onSummaryInstructionsChange={setSummaryInstructions}
+        onStart={handleStartLinkedWorkflow}
+        onBack={() => {
+          if (linkedWorkflowStarting) return
+          setWorkflowContextDialogOpen(false)
+          setWorkflowDialogOpen(true)
+        }}
+        onClose={() => {
+          if (linkedWorkflowStarting) return
+          setWorkflowContextDialogOpen(false)
+          setPendingLinkedWorkflowSelection(null)
+          setSummaryInstructions('')
+        }}
+      />
       <div
         className={
           isHeroComposer
@@ -1031,19 +1183,6 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
             )
           )}
 
-          {isHeroComposer && showLaunchControls && (workflowTemplates.length > 0 || invalidWorkflowTemplates.length > 0) ? (
-            <WorkflowTemplatePicker
-              templates={workflowTemplates}
-              invalidTemplates={invalidWorkflowTemplates.map((issue) => ({
-                id: issue.templateId,
-                source: issue.source,
-                message: issue.message,
-              }))}
-              selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
-              onSelect={setSelectedWorkflowTemplate}
-            />
-          ) : null}
-
           {isHeroComposer ? (
             <div className="flex items-start gap-3">
               <textarea
@@ -1111,6 +1250,17 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
                           <span className="w-[24px] text-center text-[18px] font-bold text-[var(--color-text-secondary)]">/</span>
                           <span className="text-sm text-[var(--color-text-primary)]">{slashCommandsLabel}</span>
                         </button>
+                        {canOpenWorkflowDialog ? (
+                          <button
+                            onClick={openWorkflowDialog}
+                            disabled={isActive || linkedWorkflowStarting}
+                            title={isActive && messageCount > 0 ? t('workflows.linkedStart.error.sourceActive') : undefined}
+                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+                          >
+                            <span className="material-symbols-outlined text-[18px] text-[var(--color-text-secondary)]">account_tree</span>
+                            <span className="text-sm text-[var(--color-text-primary)]">{t('settings.workflows.title')}</span>
+                          </button>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -1212,4 +1362,196 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       </div>
     </div>
   )
+}
+
+function WorkflowContextStrategyDialog({
+  open,
+  starting,
+  summaryInstructions,
+  onSummaryInstructionsChange,
+  onStart,
+  onBack,
+  onClose,
+}: {
+  open: boolean
+  starting: boolean
+  summaryInstructions: string
+  onSummaryInstructionsChange: (value: string) => void
+  onStart: (strategy: LinkedWorkflowContextStrategy) => void
+  onBack: () => void
+  onClose: () => void
+}) {
+  const t = useTranslation()
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    dialogRef.current?.focus()
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !starting) onClose()
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workflow-context-strategy-title"
+        aria-describedby="workflow-context-strategy-description"
+        tabIndex={-1}
+        data-testid="workflow-context-strategy-dialog"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !starting) onClose()
+        }}
+        className="flex w-full max-w-xl flex-col overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl focus-visible:outline-none"
+      >
+        <header className="flex min-w-0 items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3">
+          <div className="min-w-0">
+            <h2
+              id="workflow-context-strategy-title"
+              className="text-base font-semibold text-[var(--color-text-primary)]"
+            >
+              {t('workflows.linkedStart.title')}
+            </h2>
+            <p
+              id="workflow-context-strategy-description"
+              className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]"
+            >
+              {t('workflows.linkedStart.description')}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label={t('workflows.startDialog.close')}
+            disabled={starting}
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <div className="space-y-3 p-4">
+          <ContextStrategyButton
+            icon="backspace"
+            title={t('workflows.linkedStart.clear.title')}
+            description={t('workflows.linkedStart.clear.description')}
+            disabled={starting}
+            onClick={() => onStart('clear')}
+          />
+          <ContextStrategyButton
+            icon="content_copy"
+            title={t('workflows.linkedStart.inherit.title')}
+            description={t('workflows.linkedStart.inherit.description')}
+            disabled={starting}
+            onClick={() => onStart('inherit')}
+          />
+          <div className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
+            <ContextStrategyButton
+              icon="summarize"
+              title={t('workflows.linkedStart.summarize.title')}
+              description={t('workflows.linkedStart.summarize.description')}
+              disabled={starting}
+              onClick={() => onStart('summarize')}
+              embedded
+            />
+            <label className="mt-3 block text-xs font-medium text-[var(--color-text-secondary)]">
+              {t('workflows.linkedStart.summaryInstructions')}
+              <textarea
+                value={summaryInstructions}
+                onChange={(event) => onSummaryInstructionsChange(event.target.value)}
+                disabled={starting}
+                rows={3}
+                placeholder={t('workflows.linkedStart.summaryInstructionsPlaceholder')}
+                className="mt-1 w-full resize-none rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm leading-5 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-brand)] disabled:opacity-60"
+              />
+            </label>
+          </div>
+        </div>
+
+        <footer className="flex items-center justify-between gap-2 border-t border-[var(--color-border)] px-4 py-3">
+          <button
+            type="button"
+            disabled={starting}
+            onClick={onBack}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <span className="material-symbols-outlined text-[17px]" aria-hidden="true">arrow_back</span>
+            {t('workflows.linkedStart.back')}
+          </button>
+          <span className="text-xs text-[var(--color-text-tertiary)]" aria-live="polite">
+            {starting ? t('workflows.startDialog.starting') : t('workflows.linkedStart.footerHint')}
+          </span>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+function ContextStrategyButton({
+  icon,
+  title,
+  description,
+  disabled,
+  embedded = false,
+  onClick,
+}: {
+  icon: string
+  title: string
+  description: string
+  disabled: boolean
+  embedded?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex w-full items-start gap-3 rounded-[8px] text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35 disabled:cursor-not-allowed disabled:opacity-55 ${
+        embedded
+          ? 'p-0 hover:bg-transparent'
+          : 'border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3 hover:bg-[var(--color-surface-hover)]'
+      }`}
+    >
+      <span className="material-symbols-outlined mt-0.5 text-[18px] text-[var(--color-text-secondary)]" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-[var(--color-text-secondary)]">{description}</span>
+      </span>
+    </button>
+  )
+}
+
+function getLinkedWorkflowStartErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>) {
+  if (error instanceof ApiError) {
+    const body = error.body
+    const code = body && typeof body === 'object'
+      ? ('code' in body && typeof body.code === 'string'
+          ? body.code
+          : 'error' in body && typeof body.error === 'string'
+            ? body.error
+            : null)
+      : null
+
+    if (code === 'WORKFLOW_SOURCE_ACTIVE') return t('workflows.linkedStart.error.sourceActive')
+    if (code === 'WORKFLOW_CONTEXT_TOO_LARGE') return t('workflows.linkedStart.error.contextTooLarge')
+    if (code === 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE') return t('workflows.linkedStart.error.summaryUnavailable')
+    if (error.message) return t('workflows.linkedStart.error.withDetail', { detail: error.message })
+  }
+
+  if (error instanceof Error && error.message) {
+    return t('workflows.linkedStart.error.withDetail', { detail: error.message })
+  }
+
+  return t('workflows.linkedStart.error.generic')
 }

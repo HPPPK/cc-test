@@ -1,8 +1,8 @@
 /**
  * Provider Service — preset-based provider configuration
  *
- * Storage: ~/.claude/cc-haha/providers.json (lightweight index)
- * Active provider env vars written to ~/.claude/cc-haha/settings.json
+ * Storage: ~/.claude/cc-jiangxia/providers.json (lightweight index)
+ * Active provider env vars written to ~/.claude/cc-jiangxia/settings.json
  * (isolated from the original Claude Code's ~/.claude/settings.json)
  */
 
@@ -18,6 +18,7 @@ import { openaiChatToAnthropic } from '../proxy/transform/openaiChatToAnthropic.
 import { openaiResponsesToAnthropic } from '../proxy/transform/openaiResponsesToAnthropic.js'
 import type { AnthropicRequest, AnthropicResponse } from '../proxy/transform/types.js'
 import { PROVIDER_PRESETS } from '../config/providerPresets.js'
+import { getAppStorageDir } from '../../utils/appIdentity.js'
 import { MODEL_CONTEXT_WINDOWS_ENV_KEY } from '../../utils/model/modelContextWindows.js'
 import {
   CURRENT_PROVIDER_INDEX_SCHEMA_VERSION,
@@ -195,12 +196,12 @@ export class ProviderService {
     return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
   }
 
-  private getCcHahaDir(): string {
-    return path.join(this.getConfigDir(), 'cc-haha')
+  private getAppDir(): string {
+    return getAppStorageDir(this.getConfigDir())
   }
 
   private getIndexPath(): string {
-    return path.join(this.getCcHahaDir(), 'providers.json')
+    return path.join(this.getAppDir(), 'providers.json')
   }
 
   private async readIndex(): Promise<ProvidersIndex> {
@@ -454,17 +455,17 @@ export class ProviderService {
 
   /**
    * Check whether any usable auth exists:
-   *  1. A cc-haha provider is active → has auth
+   *  1. A cc-jiangxia provider is active → has auth
    *  2. Original ~/.claude/settings.json has ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY → has auth
    *  3. process.env already has ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN → has auth
    *  4. None of the above → needs setup
    */
   async checkAuthStatus(): Promise<{
     hasAuth: boolean
-    source: 'cc-haha-provider' | 'original-settings' | 'env' | 'none'
+    source: 'cc-jiangxia-provider' | 'original-settings' | 'env' | 'none'
     activeProvider?: string
   }> {
-    // 1. Check cc-haha active provider
+    // 1. Check cc-jiangxia active provider
     const index = await this.readIndex()
     if (index.activeId) {
       const provider = index.providers.find(p => p.id === index.activeId)
@@ -473,7 +474,7 @@ export class ProviderService {
         const needsProxy = provider.apiFormat != null && provider.apiFormat !== 'anthropic'
         const authEnv = buildProviderAuthEnv(provider, presetDefaultEnv, needsProxy)
         if (Object.values(authEnv).some(value => value.length > 0)) {
-          return { hasAuth: true, source: 'cc-haha-provider', activeProvider: provider.name }
+          return { hasAuth: true, source: 'cc-jiangxia-provider', activeProvider: provider.name }
         }
       }
     }

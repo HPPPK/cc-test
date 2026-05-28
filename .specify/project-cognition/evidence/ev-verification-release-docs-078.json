@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-078",
+  "type": "source_analysis",
+  "source_path": "docs/.vitepress/theme/index.ts",
+  "summary": "VitePress theme entry registers the custom docs theme.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "enhanceApp",
+    "theme"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

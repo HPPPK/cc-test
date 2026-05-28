@@ -1,0 +1,20 @@
+{
+  "id": "ev-root-config-runtime-pkg-01",
+  "type": "source_analysis",
+  "source_path": "package.json",
+  "summary": "The root manifest is ESM, exposes the `claude-jiangxia` binary through `./bin/claude-jiangxia`, and routes local startup and verification through Bun scripts such as `start`, `verify`, `check:server`, and `quality:pr`.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "\"name\": \"claude-code-local\"",
+    "\"type\": \"module\"",
+    "\"bin\": { \"claude-jiangxia\": \"./bin/claude-jiangxia\" }",
+    "\"start\": \"bun run ./bin/claude-jiangxia\"",
+    "\"verify\": \"bun run quality:pr\"",
+    "\"check:server\": \"bun run scripts/pr/run-server-tests.ts\"",
+    "\"quality:pr\": \"bun run quality:gate --mode pr\""
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

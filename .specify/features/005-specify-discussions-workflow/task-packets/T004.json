@@ -1,0 +1,62 @@
+{
+  "id": "T004",
+  "title": "Add workflow template API contract tests",
+  "agent": "test-engineer",
+  "depends_on": [
+    "T001: implementation guardrails recorded",
+    "T002: protected paths confirmed"
+  ],
+  "parallel_safe": true,
+  "story": null,
+  "objective": "Add failing contract tests for workflow template list compatibility, detail, validate, create, update, delete, duplicate, import preview, import commit, export, 405s, and stable error codes.",
+  "context_navigation": {
+    "design_decision": "plan.md#Boundary Ownership",
+    "data_model": "data-model.md#Import Preview",
+    "api_contract": "contracts/workflow-template-api.md#Base Path",
+    "reference_implementation": "src/server/__tests__/sessions.test.ts"
+  },
+  "write_scope": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/api/sessions.ts",
+    "src/server/router.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "src/server/api/**",
+    "src/server/router.ts",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "src/server/__tests__/workflowTemplates.test.ts （新建）",
+    "src/server/__tests__/sessions.test.ts （修改，如 shared helpers are needed）"
+  ],
+  "anti_goals": [
+    "Do not implement routes.",
+    "Do not alter router behavior.",
+    "Do not assert overwrite-by-default import behavior."
+  ],
+  "acceptance_criteria": [
+    "Tests fail for routes that do not exist yet.",
+    "GET /api/workflows/templates compatibility remains asserted.",
+    "Tests assert preview does not write and commit recomputes validation."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

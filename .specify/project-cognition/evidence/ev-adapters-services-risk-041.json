@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-041",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/cardkit.test.ts",
+  "summary": "Test coverage for cardkit.test.ts exercises 构造 card_json payload 并返回 card_id; 兼容顶层 card_id（某些 SDK 包装层）; non-zero code 抛 CardKitApiError; code=0 但缺 card_id 抛错",
+  "detail": "",
+  "quotes_or_symbols": [
+    "构造 card_json payload 并返回 card_id",
+    "兼容顶层 card_id（某些 SDK 包装层）",
+    "non-zero code 抛 CardKitApiError",
+    "code=0 但缺 card_id 抛错"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

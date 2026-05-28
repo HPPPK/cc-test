@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-005",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/format.test.ts",
+  "summary": "Test coverage for format.test.ts exercises returns single chunk for short text; splits at paragraph boundary; splits at newline if no paragraph break; hard-splits at limit if no natural break",
+  "detail": "",
+  "quotes_or_symbols": [
+    "returns single chunk for short text",
+    "splits at paragraph boundary",
+    "splits at newline if no paragraph break",
+    "hard-splits at limit if no natural break"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

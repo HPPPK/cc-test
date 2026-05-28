@@ -1,0 +1,19 @@
+{
+  "id": "ev-server-workflow-api-workflow-report-store-tests",
+  "type": "source_analysis",
+  "source_path": "src/server/services/workflowReportStore.test.ts",
+  "summary": "Report store tests verify immutable final report pointers, idempotent create behavior, preservation of unknown fields, rejection of unsafe artifact pointers, and non-mutation of protected user-owned files.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WorkflowReportStore",
+    "writes final reports before exposing a safe immutable report pointer",
+    "keeps report creation idempotent",
+    "preserves unknown report fields",
+    "rejects unsafe artifact pointer fixtures",
+    "does not mutate protected user-owned files"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

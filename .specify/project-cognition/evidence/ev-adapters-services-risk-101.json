@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-101",
+  "type": "source_analysis",
+  "source_path": "src/services/api/dumpPrompts.ts",
+  "summary": "dumpPrompts.ts defines hashString, getLastApiRequests, clearApiRequestCache, clearDumpState, clearAllDumpState, addApiRequestToCache and imports @anthropic-ai/sdk, crypto, fs, path, src/bootstrap/state.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "hashString",
+    "getLastApiRequests",
+    "clearApiRequestCache",
+    "clearDumpState",
+    "clearAllDumpState",
+    "addApiRequestToCache"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

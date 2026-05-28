@@ -1,0 +1,24 @@
+{
+  "id": "ev-server-workflow-api-workflow-templates-api",
+  "type": "source_analysis",
+  "source_path": "src/server/api/workflowTemplates.ts",
+  "summary": "Workflow template API supports listing, detail, validation, create/update/delete, duplicate, import preview/commit, export, and authoring operations while separating builtin and user sources.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "handleWorkflowTemplatesApi",
+    "listTemplates",
+    "validateTemplate",
+    "createTemplate",
+    "updateTemplate",
+    "deleteTemplate",
+    "duplicateTemplate",
+    "previewImport",
+    "commitImport",
+    "exportTemplates",
+    "WorkflowTemplateAuthoringService"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

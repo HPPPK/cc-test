@@ -1,0 +1,62 @@
+{
+  "id": "T003",
+  "title": "Add registry validation and persistence regression tests",
+  "agent": "test-engineer",
+  "depends_on": [
+    "T001: implementation guardrails recorded",
+    "T002: protected paths confirmed"
+  ],
+  "parallel_safe": true,
+  "story": null,
+  "objective": "Add failing registry tests for malformed config fallback, built-in id protection, required phase output/handoff contracts, unsupported non-linear definitions, unknown-field preservation, and cache reset.",
+  "context_navigation": {
+    "design_decision": "plan.md#Operational Consequence Design",
+    "data_model": "data-model.md#Workflow Template Document",
+    "api_contract": "contracts/workflow-template-api.md#Validate",
+    "reference_implementation": "src/server/services/workflowTemplateRegistryService.test.ts"
+  },
+  "write_scope": [
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/__fixtures__/workflow-templates/*"
+  ],
+  "read_scope": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTypes.ts",
+    ".specify/features/005-specify-discussions-workflow/data-model.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    ".mcp.json"
+  ],
+  "expected_outputs": [
+    "src/server/services/workflowTemplateRegistryService.test.ts （修改）",
+    "src/server/services/__fixtures__/workflow-templates/* （新建/修改，如现有模式需要）"
+  ],
+  "anti_goals": [
+    "Do not change production code.",
+    "Do not lower or skip existing assertions.",
+    "Do not write to real user workflow config."
+  ],
+  "acceptance_criteria": [
+    "Tests fail before implementation for missing output/handoff validation or import/write behavior.",
+    "Tests cover CA-001, CA-002, CA-003, CA-006.",
+    "Tests use isolated temp config patterns already present in the registry test suite."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

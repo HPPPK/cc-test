@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-070",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/tauri-config.test.ts",
+  "summary": "Tauri config test file verifies packaging configuration invariants.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "describe(",
+    "expect(",
+    "tauri"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

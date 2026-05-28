@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-080",
+  "type": "source_analysis",
+  "source_path": "src/services/MagicDocs/prompts.ts",
+  "summary": "prompts.ts defines getUpdatePromptTemplate, substituteVariables, buildMagicDocsUpdatePrompt and imports path, ../../utils/envUtils.js, ../../utils/fsOperations.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getUpdatePromptTemplate",
+    "substituteVariables",
+    "buildMagicDocsUpdatePrompt"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

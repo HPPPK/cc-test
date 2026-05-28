@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-task-02",
+  "type": "source_analysis",
+  "source_path": "src/tasks/LocalMainSessionTask.ts",
+  "summary": "Backgrounding the main session reuses local_agent task state but stores output in an isolated transcript file and runs an independent query loop.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "registerMainSessionTask",
+    "startBackgroundSession",
+    "completeMainSessionTask",
+    "foregroundMainSessionTask"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

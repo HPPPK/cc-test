@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-075",
+  "type": "source_analysis",
+  "source_path": "src/memdir/paths.ts",
+  "summary": "paths.ts defines isAutoMemoryEnabled, isExtractModeActive, getMemoryBaseDir, validateMemoryPath, getAutoMemPathOverride, getAutoMemPathSetting and imports lodash-es/memoize.js, os, path, ../services/analytics/growthbook.js, ../utils/git.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "isAutoMemoryEnabled",
+    "isExtractModeActive",
+    "getMemoryBaseDir",
+    "validateMemoryPath",
+    "getAutoMemPathOverride",
+    "getAutoMemPathSetting"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

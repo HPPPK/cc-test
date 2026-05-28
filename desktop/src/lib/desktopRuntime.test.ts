@@ -24,6 +24,7 @@ import {
   H5_TOKEN_STORAGE_KEY,
   initializeDesktopServerUrl,
   isLoopbackHostname,
+  readStoredH5Connection,
   requiresH5AuthForServerUrl,
   saveAndVerifyH5Connection,
 } from './desktopRuntime'
@@ -100,6 +101,16 @@ describe('desktopRuntime browser H5 bootstrap', () => {
     expect(clientMocks.setBaseUrl).toHaveBeenLastCalledWith('http://[::1]:3456')
     expect(clientMocks.setAuthToken).toHaveBeenLastCalledWith(null)
     expect(clientMocks.postVerify).not.toHaveBeenCalled()
+  })
+
+  it('reads legacy cc-haha H5 connection storage when current keys are absent', () => {
+    window.localStorage.setItem('cc-haha-h5-server-url', 'https://public.example.com/app')
+    window.localStorage.setItem('cc-haha-h5-token', 'legacy-h5-token')
+
+    expect(readStoredH5Connection()).toEqual({
+      serverUrl: 'https://public.example.com/app',
+      token: 'legacy-h5-token',
+    })
   })
 
   it('uses the current browser origin when the H5 shell is served by the desktop server', async () => {

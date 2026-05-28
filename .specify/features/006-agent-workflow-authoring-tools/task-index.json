@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "feature": "006-agent-workflow-authoring-tools",
+  "status": "ready-for-implement",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "dispatch_shape": "parallel-subagents",
+  "execution_surface": "native-subagents",
+  "capability_degraded": false,
+  "tasks": [
+    {"id": "T001", "phase": "setup", "story": null, "parallel_safe": false, "depends_on": [], "write_scope": ["src/server/services/workflowTemplateAuthoringService.test.ts"], "operations": ["validate", "create", "update", "duplicate", "delete"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts"]},
+    {"id": "T002", "phase": "foundation", "story": null, "parallel_safe": false, "depends_on": ["T001"], "write_scope": ["src/server/services/workflowTemplateValidation.ts", "src/server/services/workflowTemplateRegistryService.ts", "src/server/api/workflowTemplates.ts"], "operations": ["validate"], "verify_commands": ["bun test src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts"]},
+    {"id": "T003", "phase": "foundation", "story": null, "parallel_safe": true, "depends_on": ["T002"], "write_scope": ["src/server/services/workflowTemplateAuthoringGuide.ts", "src/server/services/workflowTemplateAuthoringGuide.test.ts"], "operations": ["guide", "validate"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringGuide.test.ts"]},
+    {"id": "T004", "phase": "foundation", "story": null, "parallel_safe": true, "depends_on": ["T002"], "write_scope": ["src/server/services/workflowToolPolicy.ts", "src/server/services/workflowToolPolicy.test.ts"], "operations": ["guide", "list", "inspect", "validate", "create", "update", "duplicate", "delete"], "verify_commands": ["bun test src/server/services/workflowToolPolicy.test.ts"]},
+    {"id": "T005", "phase": "foundation", "story": null, "parallel_safe": false, "depends_on": ["T002", "T003"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.ts", "src/server/services/workflowTemplateAuthoringService.test.ts"], "operations": ["guide", "list", "inspect", "validate"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts"]},
+    {"id": "T006", "phase": "US1", "story": "US1", "parallel_safe": false, "depends_on": ["T005"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.test.ts", "src/server/__tests__/workflowTemplates.test.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"], "operations": ["guide", "list", "validate", "create"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T007", "phase": "US1", "story": "US1", "parallel_safe": false, "depends_on": ["T006"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.ts", "src/server/api/workflowTemplates.ts"], "operations": ["validate", "create", "list"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts"]},
+    {"id": "T008", "phase": "US1", "story": "US1", "parallel_safe": false, "depends_on": ["T004", "T007"], "write_scope": ["src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts", "src/tools.ts"], "operations": ["guide", "list", "validate", "create"], "verify_commands": ["bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T009", "phase": "US2", "story": "US2", "parallel_safe": false, "depends_on": ["T008"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.test.ts", "src/server/services/workflowTemplateRegistryService.test.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"], "operations": ["inspect", "validate", "update"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/services/workflowTemplateRegistryService.test.ts"]},
+    {"id": "T010", "phase": "US2", "story": "US2", "parallel_safe": false, "depends_on": ["T009"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.ts", "src/server/api/workflowTemplates.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"], "operations": ["inspect", "validate", "update"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T011", "phase": "US3", "story": "US3", "parallel_safe": false, "depends_on": ["T010"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.test.ts", "src/server/__tests__/workflowTemplates.test.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"], "operations": ["duplicate", "update"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts"]},
+    {"id": "T012", "phase": "US3", "story": "US3", "parallel_safe": false, "depends_on": ["T011"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.ts", "src/server/api/workflowTemplates.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"], "operations": ["duplicate"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T013", "phase": "US4", "story": "US4", "parallel_safe": false, "depends_on": ["T012"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.test.ts", "src/server/__tests__/workflowTemplates.test.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"], "operations": ["inspect", "delete", "list"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T014", "phase": "US4", "story": "US4", "parallel_safe": false, "depends_on": ["T013"], "write_scope": ["src/server/services/workflowTemplateAuthoringService.ts", "src/server/api/workflowTemplates.ts", "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"], "operations": ["delete", "list"], "verify_commands": ["bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"]},
+    {"id": "T015", "phase": "integration", "story": null, "parallel_safe": false, "depends_on": ["T014"], "write_scope": ["src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts", "src/server/__tests__/workflowTemplates.test.ts", "src/server/services/workflowTemplateAuthoringService.test.ts"], "operations": ["create", "update", "duplicate", "delete"], "verify_commands": ["bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateAuthoringService.test.ts"]},
+    {"id": "T016", "phase": "verification", "story": null, "parallel_safe": false, "depends_on": ["T015"], "write_scope": ["artifacts/quality-runs/", "artifacts/coverage/"], "operations": ["guide", "list", "inspect", "validate", "create", "update", "duplicate", "delete"], "verify_commands": ["bun run check:server", "bun run verify"]}
+  ],
+  "parallel_batches": [
+    {"id": "B1", "tasks": ["T003", "T004"], "join_point": "JP1", "reason": "Distinct guide and policy files after shared validation extraction"}
+  ],
+  "join_points": [
+    {"id": "JP1", "after": ["T001", "T002", "T003", "T004", "T005"], "validation_command": "bun test src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateAuthoringGuide.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowTemplateAuthoringService.test.ts"},
+    {"id": "JP2", "after": ["T006", "T007", "T008"], "validation_command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"},
+    {"id": "JP3", "after": ["T009", "T010"], "validation_command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"},
+    {"id": "JP4", "after": ["T011", "T012"], "validation_command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"},
+    {"id": "JP5", "after": ["T013", "T014"], "validation_command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"},
+    {"id": "JP6", "after": ["T015", "T016"], "validation_command": "bun run check:server && bun run verify"}
+  ],
+  "consequence_gate": {
+    "triggered": true,
+    "status": "mapped",
+    "trigger_reason": "workflow template persistence, destructive delete, stale writes, desktop/server route, and global tool policy"
+  },
+  "consequence_obligations": ["CA-001", "CA-002", "CA-003", "CA-004", "CA-005", "CA-006", "CA-007", "CA-008", "CA-009", "CA-010", "CA-011"],
+  "stop_and_reopen_conditions": [
+    "mandatory preview-only persistence is required",
+    "direct builtin mutation/deletion/shadowing is proposed",
+    "writes outside workflow template config are required",
+    "active workflow session snapshots must be mutated",
+    "global tool bypasses phase policy",
+    "field guide cannot be tested against validation",
+    "unsupported non-linear workflow shapes are required"
+  ],
+  "next_command": "/sp.implement"
+}

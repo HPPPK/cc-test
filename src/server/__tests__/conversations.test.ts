@@ -16,20 +16,39 @@ import { SessionService, sessionService } from '../services/sessionService.js'
 import { ProviderService } from '../services/providerService.js'
 
 async function rmWithRetry(targetPath: string): Promise<void> {
-  const attempts = process.platform === 'win32' ? 5 : 1
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  const retryableCodes = ['EBUSY', 'EPERM', 'ENOTEMPTY']
+  const delays = process.platform === 'win32'
+    ? [0, 100, 200, 400, 800, 1200, 1600, 2000, 3000]
+    : [0]
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
+    }
+
     try {
       await fs.rm(targetPath, { recursive: true, force: true })
       return
     } catch (error) {
-      if (
-        attempt === attempts - 1 ||
-        !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code || '')
-      ) {
+      lastError = error
+      if (!retryableCodes.includes((error as NodeJS.ErrnoException).code || '')) {
         throw error
       }
-      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
     }
+  }
+
+  if (process.platform === 'win32' && lastError) {
+    console.warn(
+      `[test cleanup] Deferred removal for locked temp path ${targetPath}: ${
+        (lastError as Error).message || String(lastError)
+      }`,
+    )
+    return
+  }
+
+  if (lastError) {
+    throw lastError
   }
 }
 
@@ -1413,7 +1432,7 @@ describe('WebSocket Chat Integration', () => {
   })
 
   it('should keep a long desktop session alive in a /tmp project across engineering turns', async () => {
-    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-haha-issue247-project-'))
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-issue247-project-'))
     let sessionId: string | undefined
 
     try {
@@ -1450,7 +1469,7 @@ describe('WebSocket Chat Integration', () => {
       }
     } finally {
       if (sessionId) {
-        await conversationService.stopSession(sessionId)
+        await conversationService.stopSessionAndWait(sessionId)
       }
       await rmWithRetry(projectDir)
     }

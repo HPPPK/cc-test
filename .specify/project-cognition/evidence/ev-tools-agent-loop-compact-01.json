@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-compact-01",
+  "type": "source_analysis",
+  "source_path": "src/services/compact/compact.ts",
+  "summary": "The main compaction engine summarizes prior context, strips/reinjects selected attachments, restores file state, and supports prompt-too-long retries plus cache-sharing forked compaction.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "compactConversation",
+    "buildPostCompactMessages",
+    "createPostCompactFileAttachments",
+    "createAsyncAgentAttachmentsIfNeeded",
+    "truncateHeadForPTLRetry"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

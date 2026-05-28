@@ -1,0 +1,53 @@
+# Build output and cache directories
+node_modules/
+desktop/node_modules/
+adapters/*/node_modules/
+dist/
+build/
+desktop/build/
+desktop/build-artifacts/
+desktop/dist/
+.out/
+*.tsbuildinfo
+
+# Vendor/cache/build output where deep read is not cognition-relevant
+desktop/src-tauri/target/
+target/
+artifacts/
+
+# Generated manifest files
+package-lock.json
+bun.lock
+desktop/bun.lock
+desktop/package-lock.json
+pnpm-lock.yaml
+yarn.lock
+desktop/yarn.lock
+
+# IDE and OS metadata
+.idea/
+.vscode/
+*.swo
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Runtime state
+.opencode/state/
+.opencode/sessions/
+.planning/
+
+# Git internals (excluded from project cognition by default)
+.git/
+.gitattributes
+.gitignore
+.gitmodules
+
+# Environment files - user-local, not project cognition
+.env
+.env.local
+.env.*.local

@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-046",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/media.test.ts",
+  "summary": "Test coverage for media.test.ts exercises downloadResource writes a local file and returns LocalAttachment; uploadImage returns an image_key and sends the buffer through; uploadFile returns a file_key and uses stream file_type mapping; sendImageMessage posts msg_type=image",
+  "detail": "",
+  "quotes_or_symbols": [
+    "downloadResource writes a local file and returns LocalAttachment",
+    "uploadImage returns an image_key and sends the buffer through",
+    "uploadFile returns a file_key and uses stream file_type mapping",
+    "sendImageMessage posts msg_type=image"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

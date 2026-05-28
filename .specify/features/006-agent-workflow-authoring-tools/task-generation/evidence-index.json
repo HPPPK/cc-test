@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "feature": "006-agent-workflow-authoring-tools",
+  "accepted_handoffs": [
+    {
+      "lane_id": "story-phase-decomposition",
+      "path": ".specify/features/006-agent-workflow-authoring-tools/task-generation/handoffs/story-phase-decomposition.json",
+      "consumed_by": ["tasks.md phases", "capability coverage", "story counts", "task packet capability_operations"]
+    },
+    {
+      "lane_id": "dependency-graph-analysis",
+      "path": ".specify/features/006-agent-workflow-authoring-tools/task-generation/handoffs/dependency-graph-analysis.json",
+      "consumed_by": ["dependency order", "join points JP1-JP6", "parallel batch B1", "verification gates"]
+    },
+    {
+      "lane_id": "write-set-parallel-safety",
+      "path": ".specify/features/006-agent-workflow-authoring-tools/task-generation/handoffs/write-set-parallel-safety.json",
+      "consumed_by": ["Task Guardrail Index", "write_scope fields", "forbidden path fields", "desktop optionality", "packet guardrails"]
+    }
+  ],
+  "rejected_handoffs": [],
+  "synthesis_notes": [
+    "Leader renumbered lane suggestions into T001-T016.",
+    "Desktop source remains optional and is not a default write scope.",
+    "All accepted handoffs shaped at least one task, dependency, guardrail, join point, or packet field."
+  ]
+}

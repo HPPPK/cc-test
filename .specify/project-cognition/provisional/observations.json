@@ -1,125 +1,283 @@
 {
-  "command": "map-scan",
-  "timestamp": "2026-05-16T21:59:00Z",
+  "schema_version": 1,
+  "generated_at": "2026-05-28T03:28:41.238Z",
+  "command": "sp-map-scan",
   "observations": [
     {
-      "id": "obs-1",
-      "type": "architecture",
-      "description": "The project has a dual-architecture: a Bun CLI (Ink TUI) and a Tauri 2 desktop app (React+Vite+Zustand) that connects to the CLI's HTTP/WS server.",
-      "confidence": "high",
-      "evidence_paths": ["src/entrypoints/cli.tsx", "desktop/src/main.tsx", "src/server/index.ts"]
+      "id": "obs:root-config-runtime:1",
+      "observation_type": "note",
+      "summary": "Repository-universe was used only to confirm packet scope and path existence; it is not included as graph evidence.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
     },
     {
-      "id": "obs-2",
-      "type": "architecture",
-      "description": "The server bridges CLI agent capabilities to the desktop frontend via 26 REST API routes and WebSocket session events.",
-      "confidence": "high",
-      "evidence_paths": ["src/server/router.ts", "src/server/ws/handler.ts"]
+      "id": "obs:root-config-runtime:2",
+      "observation_type": "note",
+      "summary": "Both launcher scripts converge on the same runtime targets and honor the same dotenv-suppression and recovery-mode environment controls.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
     },
     {
-      "id": "obs-3",
-      "type": "architecture",
-      "description": "IM adapters (Telegram, Feishu, WeChat, DingTalk) share a common library under adapters/common/ and depend on the server via tsconfig paths.",
-      "confidence": "high",
-      "evidence_paths": ["adapters/common/", "adapters/package.json"]
+      "id": "obs:root-config-runtime:3",
+      "observation_type": "note",
+      "summary": "The root runtime stack is layered as policy -> manifest/config -> OS launchers -> `src/main.tsx` -> `setup()` orchestration.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
     },
     {
-      "id": "obs-4",
-      "type": "coverage",
-      "description": "Agent-tools and agent-utils have critical coverage gaps (17.1% and 14.42% lines respectively) — the largest untested surface in the project.",
-      "confidence": "high",
-      "evidence_paths": ["scripts/quality-gate/coverage-thresholds.json", "scripts/quality-gate/coverage-baseline.json"]
+      "id": "obs:server-workflow-api:1",
+      "observation_type": "note",
+      "summary": "Workflow HTTP entry points are split between session-scoped state/report routes in src/server/api/sessions.ts and global template management routes in src/server/api/workflowTemplates.ts.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "server-workflow-api"
     },
     {
-      "id": "obs-5",
-      "type": "coverage",
-      "description": "5 server tests are quarantined due to timing instability: cron-scheduler, providers-real, tasks, e2e:business-flow, e2e:full-flow.",
-      "confidence": "high",
-      "evidence_paths": ["scripts/quality-gate/quarantine.json"]
+      "id": "obs:server-workflow-api:2",
+      "observation_type": "note",
+      "summary": "The router treats workflow templates as a top-level /api/workflows/templates surface, while workflow execution stays nested under /api/sessions/:id/workflow/*.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "server-workflow-api"
     },
     {
-      "id": "obs-6",
-      "type": "risk",
-      "description": "MCP, OAuth, and plugin systems are the highest-risk external trust boundaries — they handle third-party code execution, credential management, and hot-reloaded plugin code.",
-      "confidence": "high",
-      "evidence_paths": ["src/services/mcp/", "src/services/oauth/", "src/services/plugins/"]
+      "id": "obs:server-workflow-api:3",
+      "observation_type": "note",
+      "summary": "Final report persistence is explicitly gated by completed workflow state and immutable session-scoped artifact pointers; corrupt or missing reports are surfaced as recoverable read states instead of silent regeneration.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "server-workflow-api"
     },
     {
-      "id": "obs-7",
-      "type": "risk",
-      "description": "Permission system spans 27 files across filesystem, shell, and approval sub-systems with auto-mode and YOLO classifier prompting — a sensitive security boundary.",
-      "confidence": "high",
-      "evidence_paths": ["src/utils/permissions/"]
+      "id": "obs:server-workflow-api:4",
+      "observation_type": "note",
+      "summary": "WorkflowRuntimeService behavior was inferred from its contract tests because the packet assigned the runtime test file but not the implementation file itself.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "server-workflow-api"
     },
     {
-      "id": "obs-8",
-      "type": "risk",
-      "description": "Doctor repair is deny-by-default for persistence mutations, protecting transcripts, config, OAuth tokens, and team/session records.",
-      "confidence": "high",
-      "evidence_paths": ["AGENTS.md", "desktop/src/lib/doctorRepair.ts"]
+      "id": "obs:server-workflow-api:5",
+      "observation_type": "note",
+      "summary": "Most other assigned server test files in this packet were not on the traced workflow execution path and are therefore accounted for as inventory-only rather than graph evidence.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "server-workflow-api"
     },
     {
-      "id": "obs-9",
-      "type": "evolution",
-      "description": "Recent git history shows Desktop UI/UX (36 commits) as the most active area, followed by Memory/Projects (19), Goals/Agent Loop (18), and Settings/Zoom (15).",
-      "confidence": "high",
-      "evidence_paths": ["git log"]
+      "id": "obs:desktop-workflow-ui:1",
+      "observation_type": "note",
+      "summary": "Workflow entry is opt-in from EmptySession. Default dialogue creation remains unchanged until the user opens the Workflows tool and explicitly selects a template.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-10",
-      "type": "evolution",
-      "description": "Volatility hotspots include ActiveSession.tsx (11 changes), MessageList.tsx (9), zh.ts/en.ts i18n (7 each), chatStore.ts (6), goalState.ts (6), teamStore.ts (6 new area).",
-      "confidence": "high",
-      "evidence_paths": ["git log --name-only"]
+      "id": "obs:desktop-workflow-ui:2",
+      "observation_type": "note",
+      "summary": "Workflow template administration is isolated under a dedicated Settings tab and does not reuse the general/H5 settings sections.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-11",
-      "type": "architecture",
-      "description": "Desktop state management uses 22 Zustand stores — chatStore (1728 lines) is the largest, followed by sessionStore, uiStore, settingsStore, providerStore.",
-      "confidence": "high",
-      "evidence_paths": ["desktop/src/stores/"]
+      "id": "obs:desktop-workflow-ui:3",
+      "observation_type": "note",
+      "summary": "Template editing is server-validated before mutation: the editor runs local required-field checks, then calls sessionsApi.validateWorkflowTemplate before create/update.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-12",
-      "type": "architecture",
-      "description": "The agent tool ecosystem has 59+ tools organized in individual directories under src/tools/, registered through src/tools.ts.",
-      "confidence": "high",
-      "evidence_paths": ["src/tools/", "src/tools.ts"]
+      "id": "obs:desktop-workflow-ui:4",
+      "observation_type": "note",
+      "summary": "Invalid workflow templates are intentionally visible as diagnostics in both launch and management surfaces, but they are not rendered as startable/selectable workflow buttons.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-13",
-      "type": "capability",
-      "description": "21 capabilities identified across CLI, desktop, tools, services, and adapters — TUI, Desktop, Commands, Agent, Skills, Memory, MCP, LSP, Tools, Models, Computer Use, IM, Worktree, Teams, Plan, Voice, H5, Plugins, Quality Gate, Auth, Doctor.",
-      "confidence": "high",
-      "evidence_paths": ["src/commands/", "src/tools/", "desktop/src/", "adapters/"]
+      "id": "obs:desktop-workflow-ui:5",
+      "observation_type": "note",
+      "summary": "Runtime workflow UI is split between read-only status/history rendering and command emission; transition controls emit structured commands rather than mutating workflow artifacts locally.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-14",
-      "type": "architecture",
-      "description": "The quality gate system supports 3 modes (pr/baseline/release) with enforcement across provider-smoke, desktop-smoke, coverage, quarantine, and persistence-upgrade.",
-      "confidence": "high",
-      "evidence_paths": ["scripts/quality-gate/"]
+      "id": "obs:desktop-workflow-ui:6",
+      "observation_type": "note",
+      "summary": "Navigation into the Workflows tab is store-driven through uiStore.pendingSettingsTab, allowing slash-command or other surfaces to route users directly into workflow settings.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-15",
-      "type": "architecture",
-      "description": "Bun is the primary runtime with npm used only for docs build (VitePress requires npm ci). Cargo builds the Tauri native layer.",
-      "confidence": "high",
-      "evidence_paths": ["package.json", "desktop/src-tauri/Cargo.toml"]
+      "id": "obs:desktop-workflow-ui:7",
+      "observation_type": "note",
+      "summary": "Workflow API surface is centralized in sessionsApi and typed through desktop/src/types/session.ts, including template import/export, linked-start, report retrieval, and transition request contracts.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "desktop-workflow-ui"
     },
     {
-      "id": "obs-16",
-      "type": "uncertainty",
-      "description": "Exact import graph within src/utils/ (346 modules) was not analyzed — dependency edges here are inferred from directory structure and partial reads.",
-      "confidence": "medium",
-      "evidence_paths": ["src/utils/"]
+      "id": "obs:tools-agent-loop:1",
+      "observation_type": "note",
+      "summary": "Primary execution path traced: src/tools.ts -> AgentTool.call() -> runAgent() or task registration, with swarm and compaction subsystems attached as side paths.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
     },
     {
-      "id": "obs-17",
-      "type": "uncertainty",
-      "description": "Specific API route mapping between desktop/src/api/ and src/server/api/ was not exhaustively validated — route paths are inferred from filename conventions.",
-      "confidence": "medium",
-      "evidence_paths": ["desktop/src/api/", "src/server/api/"]
+      "id": "obs:tools-agent-loop:2",
+      "observation_type": "note",
+      "summary": "Backgrounded local agents and backgrounded main-session queries both rely on task-backed transcript output files rather than direct foreground stream ownership.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:3",
+      "observation_type": "note",
+      "summary": "In-process teammate execution is not a separate agent runtime; it wraps the shared runAgent() loop inside AsyncLocalStorage-backed teammate context and AppState task state.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:4",
+      "observation_type": "note",
+      "summary": "Permission escalation inside in-process swarms first prefers the leader ToolUseConfirm queue and only falls back to mailbox/file synchronization when the bridge is unavailable.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:5",
+      "observation_type": "note",
+      "summary": "Conversation compaction is actively used by the in-process teammate loop before each turn when token estimates exceed the autocompact threshold.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:6",
+      "observation_type": "note",
+      "summary": "reactiveCompact.ts in this lane is an autogenerated external-build stub, so graph evidence should treat it as a placeholder surface rather than a live implementation path.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:7",
+      "observation_type": "note",
+      "summary": "Remote agent tasks are structurally separate from local_agent tasks: they persist sidecar metadata, restore across resume, and parse remote session logs for ultraplan/review outputs.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:tools-agent-loop:8",
+      "observation_type": "note",
+      "summary": "Teammate runtime selection explicitly clears inherited provider-managed environment variables when a provider/model override is supplied, preventing credential bleed across teammates.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "obs:release-workflow-enforces-notes-version-match",
+      "observation_type": "note",
+      "summary": "The desktop release lane ties tag/app version to a matching release-notes filename before publishing.",
+      "evidence_ids": [
+        "ev-verification-release-docs-005"
+      ],
+      "attrs": {
+        "risk_surface": "release correctness"
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "obs:docs-workflow-uses-npm-not-bun",
+      "observation_type": "note",
+      "summary": "The docs publishing surface uses npm ci and Node 22, which is operationally distinct from Bun-based project workflows.",
+      "evidence_ids": [
+        "ev-verification-release-docs-002",
+        "ev-verification-release-docs-003"
+      ],
+      "attrs": {
+        "risk_surface": "toolchain split"
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "obs:tauri-native-surface-includes-updater-and-sidecar-lifecycle",
+      "observation_type": "note",
+      "summary": "The native desktop runtime bundles updater plugin support and explicit sidecar/process lifecycle management inside the Tauri library.",
+      "evidence_ids": [
+        "ev-verification-release-docs-068",
+        "ev-verification-release-docs-072",
+        "ev-verification-release-docs-073"
+      ],
+      "attrs": {
+        "risk_surface": "native packaging/runtime"
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "obs:docs-corpus-is-bilingual-but-english-agent-section-is-partial",
+      "observation_type": "note",
+      "summary": "The assigned docs corpus includes bilingual agent content, but only the English agent subsection was in this packet scope, not English desktop/channel docs.",
+      "evidence_ids": [
+        "ev-verification-release-docs-079",
+        "ev-verification-release-docs-111"
+      ],
+      "attrs": {
+        "scope_note": "packet bounded coverage"
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "obs:adapters-services-risk:1",
+      "observation_type": "note",
+      "summary": "All four IM adapter entrypoints follow the same control loop: authorize/pair user, resolve or create a Claude session through AdapterHttpClient, attach a WsBridge handler, then stream server messages back through platform-specific UX primitives.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "obs:adapters-services-risk:2",
+      "observation_type": "note",
+      "summary": "Attachment handling is centralized in shared adapter/common modules: AttachmentStore stages downloaded media under ~/.claude/im-downloads, checkAttachmentLimit applies platform/API size guards, and ImageBlockWatcher converts assistant markdown images into outbound upload work.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "obs:adapters-services-risk:3",
+      "observation_type": "note",
+      "summary": "WsBridge serializes server-message handlers per chatId with handlerChains, which reduces race risk when adapter handlers await outbound IM API calls.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "obs:adapters-services-risk:4",
+      "observation_type": "note",
+      "summary": "The memory lane is feature-flag aware: memdir.ts imports growthbook gating and path/session helpers, while AutoDream layers a consolidation lock and forked agent execution on top of the same memory directory model.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "obs:adapters-services-risk:5",
+      "observation_type": "note",
+      "summary": "The API lane is broad and risk-heavy in this packet: client/provider wrappers, error shaping, prompt cache diffing, files API, usage and quota fetchers, and retry logic all sit under src/services/api with analytics hooks nearby.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "adapters-services-risk"
     }
   ]
 }

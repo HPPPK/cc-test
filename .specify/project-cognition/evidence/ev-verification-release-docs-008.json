@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-008",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/Cargo.toml",
+  "summary": "Tauri Rust package pins runtime/build crates and updater, shell, dialog, process, notification, and single-instance plugins.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "tauri =",
+    "tauri-plugin-updater",
+    "tauri-plugin-single-instance",
+    "crate-type"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

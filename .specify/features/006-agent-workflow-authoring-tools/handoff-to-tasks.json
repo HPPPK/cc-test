@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "feature": "006-agent-workflow-authoring-tools",
+  "status": "ready-for-implement",
+  "source_plan": ".specify/features/006-agent-workflow-authoring-tools/plan-contract.json",
+  "tasks_md": ".specify/features/006-agent-workflow-authoring-tools/tasks.md",
+  "task_index": ".specify/features/006-agent-workflow-authoring-tools/task-index.json",
+  "task_packets_dir": ".specify/features/006-agent-workflow-authoring-tools/task-packets",
+  "task_count": 16,
+  "story_task_counts": {
+    "setup": 1,
+    "foundational": 4,
+    "US1": 3,
+    "US2": 2,
+    "US3": 2,
+    "US4": 2,
+    "integration": 1,
+    "verification": 1
+  },
+  "capability_operations": ["guide", "list", "inspect", "validate", "create", "update", "duplicate", "delete"],
+  "delivery_shape": "serial phases with one foundational parallel batch and story-by-story TDD slices",
+  "current_ready_batch": ["T001"],
+  "parallel_batches": [
+    {
+      "id": "B1",
+      "tasks": ["T003", "T004"],
+      "join_point": "JP1",
+      "reason": "Distinct guide and policy files after shared validation extraction"
+    }
+  ],
+  "join_points": ["JP1", "JP2", "JP3", "JP4", "JP5", "JP6"],
+  "delegated_task_generation_lanes": ["story-phase-decomposition", "dependency-graph-analysis", "write-set-parallel-safety"],
+  "evidence_index": ".specify/features/006-agent-workflow-authoring-tools/task-generation/evidence-index.json",
+  "checkpoints": ".specify/features/006-agent-workflow-authoring-tools/task-generation/checkpoints.ndjson",
+  "required_final_verification": ["bun run check:server", "bun run verify"],
+  "next_command": "/sp.implement"
+}

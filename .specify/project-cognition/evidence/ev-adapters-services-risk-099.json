@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-099",
+  "type": "source_analysis",
+  "source_path": "src/services/api/client.test.ts",
+  "summary": "Test coverage for client.test.ts exercises does not inherit a local api key when a provider auth token is explicit; preserves an explicit api key when the caller opts into dual auth; falls back to the local api key when no provider auth token is present; passes bearer-token provider auth without an SDK api key",
+  "detail": "",
+  "quotes_or_symbols": [
+    "does not inherit a local api key when a provider auth token is explicit",
+    "preserves an explicit api key when the caller opts into dual auth",
+    "falls back to the local api key when no provider auth token is present",
+    "passes bearer-token provider auth without an SDK api key"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

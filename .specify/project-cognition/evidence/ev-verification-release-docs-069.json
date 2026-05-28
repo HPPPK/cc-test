@@ -1,0 +1,14 @@
+{
+  "id": "ev-verification-release-docs-069",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/src/main.rs",
+  "summary": "Tauri binary entrypoint delegates startup to claude_code_desktop_lib::run().",
+  "detail": "",
+  "quotes_or_symbols": [
+    "claude_code_desktop_lib::run()"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -75,7 +75,7 @@ describe('terminal shell environment', () => {
     const merged = mergeTerminalShellEnvironment(
       {
         PATH: '/usr/bin:/bin',
-        CC_HAHA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456',
+        CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456',
         TOOL_HOME: '/base/tool',
       },
       {
@@ -88,7 +88,7 @@ describe('terminal shell environment', () => {
     expect(merged.PATH).toBe('/opt/homebrew/bin:/usr/bin:/bin')
     expect(merged.NVM_DIR).toBe('/Users/test/.nvm')
     expect(merged.TOOL_HOME).toBe('/base/tool')
-    expect(merged.CC_HAHA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
+    expect(merged.CC_JIANGXIA_DESKTOP_SERVER_URL).toBe('http://127.0.0.1:3456')
   })
 
   const windowsPathIt = process.platform === 'win32' ? it : it.skip
@@ -113,7 +113,7 @@ describe('terminal shell environment', () => {
       HOME: tmpDir,
       SHELL: path.join(tmpDir, 'zsh'),
       PATH: '/usr/bin:/bin',
-      CC_HAHA_DISABLE_TERMINAL_SHELL_ENV: '1',
+      CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV: '1',
     })
 
     expect(env).toBeNull()

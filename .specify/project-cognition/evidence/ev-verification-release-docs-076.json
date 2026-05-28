@@ -1,0 +1,19 @@
+{
+  "id": "ev-verification-release-docs-076",
+  "type": "source_analysis",
+  "source_path": "docs/.vitepress/config.mts",
+  "summary": "VitePress config defines bilingual nav/sidebar trees for agent, channel, and desktop documentation sections.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "nav:",
+    "sidebar:",
+    "/agent/",
+    "/desktop/",
+    "/channel/",
+    "/en/agent/"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

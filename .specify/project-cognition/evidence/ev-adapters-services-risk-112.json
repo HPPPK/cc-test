@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-112",
+  "type": "source_analysis",
+  "source_path": "src/services/api/promptCacheBreakDetection.ts",
+  "summary": "promptCacheBreakDetection.ts defines getCacheBreakDiffPath, CACHE_TTL_1HOUR_MS, isExcludedModel, getTrackingKey, stripCacheControl, computeHash and imports @anthropic-ai/sdk/resources/beta/messages/messages.mjs, @anthropic-ai/sdk/resources/index.mjs, diff, fs/promises, path",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getCacheBreakDiffPath",
+    "CACHE_TTL_1HOUR_MS",
+    "isExcludedModel",
+    "getTrackingKey",
+    "stripCacheControl",
+    "computeHash"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

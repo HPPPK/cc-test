@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-27",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/ComputerUseSettings.test.tsx",
+  "summary": "Computer use tests verify independent config writes within the same settings shell.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ComputerUseSettings",
+    "setAuthorizedApps",
+    "Enabled"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

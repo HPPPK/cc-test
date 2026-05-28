@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-050",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/extract-payload.ts",
+  "summary": "extract-payload.ts defines PendingDownload, InboundPayload, extractInboundPayload",
+  "detail": "",
+  "quotes_or_symbols": [
+    "PendingDownload",
+    "InboundPayload",
+    "extractInboundPayload"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

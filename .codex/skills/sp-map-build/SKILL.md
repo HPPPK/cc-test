@@ -38,10 +38,15 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 
 - Primary inputs: `.specify/project-cognition/status.json`, `.specify/project-cognition/evidence/`, `.specify/project-cognition/provisional/nodes.json`, `.specify/project-cognition/provisional/edges.json`, `.specify/project-cognition/provisional/observations.json`, and live repository evidence.
 - This command owns the query-backed cognition runtime outputs: `.specify/project-cognition/status.json` and `.specify/project-cognition/project-cognition.db`.
-- After the SQLite DB is published, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` before `validate-build` so `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id` are written from the DB into the metadata table and status entrypoint.
+- Run `C:\Users\11034\.specify\bin\project-cognition.exe build-from-scan --format json` after scan and package validation; it owns DB import, metadata, status publication, and DB/status agreement.
+- [AGENT] Treat sparse path-index gates as build preflight; do not publish query-ready status when `validate-build` would fail `path_index_to_included_ratio`, critical path, or important path checks.
+- Do not construct `.specify/project-cognition/project-cognition.db` with manual SQL as the normal workflow path.
 - If the evidence baseline is incomplete or the accepted evidence cannot support graph reconstruction, produce a scan gap report and return to `sp-map-scan`.
+- If scan packet intake exposes contract-invalid, systemic packet-family failures, or `paths_read` values that are not concrete path arrays, preserve the scan gap report and route back to `sp-map-scan`; this is not only a local patch in build.
 - Record accepted and rejected reconstruction evidence as DB/runtime update records and queryable task-local bundle readiness metadata. Treat any raw graph or slice files as compatibility/export artifacts, not runtime truth.
 - Apply project cognition ignore rules from root `.cognitionignore` and `.specify/project-cognition/.cognitionignore`; rejected paths remain outside graph evidence and DB route indexes even when scan artifacts mention them.
+- Validate `repository-universe.json` as the canonical scan boundary before graph reconstruction; excluded paths are boundary facts, not graph evidence.
+- If native subagent dispatch is unavailable or a substantive build lane cannot complete, persist `subagent_blocked` in machine-readable state and block baseline activation until recovery. `coverage-ledger.json.open_gaps[]` may use `low_risk_open_gap` only with owner, reason, evidence expectation, and revisit condition.
 
 ## Mandatory Subagent Execution
 
@@ -61,7 +66,7 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command map-build --format json` when available so passive learning files exist and repeated graph-build blind spots can be promoted at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command map-build --format json` when available so passive learning files exist and repeated graph-build blind spots can be promoted at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader graph-build context.
 - Open only learning detail docs linked from map-build-relevant index entries.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
@@ -75,9 +80,30 @@ Reconstruct or refresh the query-backed project cognition runtime from a complet
 - Validate scan inputs before execution and compile/validate `MapBuildPacket` inputs before dispatch.
 - Dispatch only validated packetized build lanes as `one-subagent` or `parallel-subagents`.
 - If overlap, missing packet data, missing required references, or unsafe acceptance criteria prevent safe dispatch, record `subagent-blocked` and stop for escalation or recovery.
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` immediately after publishing `.specify/project-cognition/project-cognition.db` so DB metadata and `.specify/project-cognition/status.json` agree on `baseline_state`, `graph_ready`, `graph_store_path`, and `active_generation_id`.
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` after publishing runtime metadata.
-- Use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`.
+- Run `C:\Users\11034\.specify\bin\project-cognition.exe validate-scan --format json` before graph import.
+- Run `C:\Users\11034\.specify\bin\project-cognition.exe build-from-scan --format json` after scan and package validation; this owns DB import, metadata, status publication, and DB/status agreement.
+- If `build-from-scan` returns `status=blocked`, report its `errors`, identity reconciliation details from `identity_reconciliation`, `rejections`, `merge_records`, and `recovery_action` and do not proceed to build validation.
+- Run `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json` after `build-from-scan`.
+
+## Machine-Readable Blocked State
+
+Human workflow prose may say `subagent-blocked`, but persisted machine fields use
+`subagent_blocked`.
+
+If a substantive scan/build lane cannot dispatch or complete, write:
+
+- `.specify/project-cognition/status.json` with `baseline_state=blocked` and
+  `subagent_blocked` in `stale_reasons` or `dirty_reasons`
+- `.specify/project-cognition/workbench/map-state.md` with
+  `readiness=blocked`, `blocking_reason=subagent_blocked`, blocked lane ids,
+  blocked scope, and recovery condition
+- `.specify/project-cognition/workbench/coverage-ledger.json.open_gaps[]` with
+  `reason="subagent_blocked"`, `lane_id`, `packet_id`, `blocked_scope`,
+  `criticality`, `owner`, `status="blocked"`, and `recovery_condition`
+
+`unknown` blocks, `blocked`, `critical_open_gap`, and `subagent_blocked` block baseline
+activation. `low_risk_open_gap` may pass only with owner, reason,
+`evidence_expectation`, and `revisit_condition`.
 
 ## Hard Boundary
 
@@ -97,9 +123,33 @@ Before writing query-backed truth, read:
 - `.specify/project-cognition/provisional/observations.json`
 - `.specify/project-cognition/coverage.json`
 - `.specify/project-cognition/workbench/coverage-ledger.json`
+- `.specify/project-cognition/workbench/scan-queue.json`
+- `.specify/project-cognition/workbench/handoff-ledger.json`
 - `.specify/project-cognition/workbench/scan-packets/`
 
 If those artifacts are missing, stop and route back to `/sp-map-scan`.
+
+## Boundary Acceptance
+
+`sp-map-build` must validate `.specify/project-cognition/workbench/repository-universe.json` before publishing runtime truth.
+
+- Every `included_paths` entry must appear in `coverage.json`, `coverage-ledger.json`, or an accepted non-blocking gap.
+- Every included path is represented in scan coverage or an accepted gap.
+- Every `excluded_paths` entry must stay only in the boundary artifact or grouped exclusion ledger.
+- Excluded paths are represented only by the boundary artifact, not by graph-facing coverage rows.
+- Excluded paths must not appear in graph-facing coverage rows, evidence rows, provisional graph rows, DB path indexes, route indexes, or `minimal_live_reads`.
+- If repository-universe, coverage, and packet handoffs cannot explain the same path universe, return a scan gap report and route back to `sp-map-scan`.
+- If scan packet acceptance reports `fail_contract` or `fail_systemic`, route back to `sp-map-scan` with a scan gap report because the repair is not only a local patch.
+- `path_index_to_included_ratio` must be computed from included paths minus true exclusions and `accepted_nonblocking_gap_paths`.
+- Critical and important included paths must remain in the sparse path-index denominator unless they are true repository-universe exclusions.
+- `build-from-scan` must not set `freshness=fresh`, must not set `readiness=query_ready`, and must not set `graph_ready=true` until sparse path-index gates pass.
+
+## Path Index Source Contract
+
+build-from-scan creates DB path_index rows from nodes.json `paths`. It does not read `attrs_json.path`, raw node metadata, or `coverage.json` as path-index sources.
+coverage.json rows without matching node paths are recorded as rejected coverage with reason `no_node_relation`. If `validate-build` reports
+`active_generation_has_no_path_index_rows`, route back to `sp-map-scan` to repair
+node `paths` in the scan package instead of inserting SQL manually.
 
 ## Output Contract
 
@@ -119,7 +169,12 @@ Do not publish handbook-first runtime truth from this command. Do not publish ra
 - Do not guess and continue when required scan inputs are incomplete.
 - Do not treat raw scan prose or raw Markdown checklist items alone as accepted build evidence.
 - Do not accept packet results without inspected paths, evidence, and confidence.
+- Do not accept packet results whose `paths_read` is a boolean, summary flag, or anything other than a non-empty array of concrete paths.
+- Do not accept read/deep_read packet results whose `evidence_ids` are missing from the scan evidence package or point only to a different `source_path`.
+- Do not accept orphan packet results that do not correspond to a `scan-packets/<lane-id>.md` input packet.
 - Do not perform a structural-only refresh and call it success.
+- Do not accept manual SQL, sqlite shell scripting, hand-picked node subsets, or leader-memory graph reconstruction as normal build paths.
+- Do not locally patch around contract-invalid or systemic scan packet failures.
 - If the build lane cannot be safely packetized or delegated, record `subagent-blocked` and stop for escalation or recovery.
 - If a delegated lane returns unresolved evidence gaps, preserve the scan gap report and stop for escalation or recovery instead of inventing closure.
 
@@ -133,7 +188,9 @@ Do not publish handbook-first runtime truth from this command. Do not publish ra
 - Raw scan prose or raw Markdown checklist items alone are insufficient.
 - raw scan prose or raw Markdown checklist items alone
 - Packet evidence intake must reject packet results without paths read.
+- Packet evidence intake must require `paths_read` to be a non-empty array of concrete paths, not `true` or another summary flag.
 - Packet evidence intake must reject packet results that only summarize without evidence.
+- Packet evidence intake must reject non-`pass` packet outcomes until the scan lane is repacked, repaired, or recorded as an explicit unresolved gap.
 - derived-only evidence is insufficient for final graph acceptance.
 - Structural-only refresh is a failed build.
 - The build phase is not a scaffold, migration, or file-moving command.
@@ -216,27 +273,40 @@ At minimum, claims must include:
 
 Before reporting completion:
 
-- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition publish-runtime-metadata --format json` after publishing `.specify/project-cognition/project-cognition.db`
-- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` after publishing runtime metadata
-- use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only after `validate-build` returns `status=ok` and `readiness=query_ready`
-- confirm that `.specify/project-cognition/project-cognition.db` was written and can be queried through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json`
+- run `C:\Users\11034\.specify\bin\project-cognition.exe validate-scan --format json` before graph import
+- run `C:\Users\11034\.specify\bin\project-cognition.exe build-from-scan --format json`; if it returns `status=blocked`, report its `errors`, identity reconciliation details from `identity_reconciliation`, `rejections`, `merge_records`, and `recovery_action`
+- run `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json` after `build-from-scan`
+- report completion only after `validate-build` returns `status=ok` and `readiness=query_ready`
+- confirm that `.specify/project-cognition/project-cognition.db` was written and can be queried through `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json`
 - if `validate-build` returns `status=blocked`, report the specific DB, schema, active generation, status, or smoke-query error and do not mark the baseline fresh
 - confirm that `status.json` reflects a query-ready baseline
 - confirm that the runtime remains query-backed and does not advertise raw graph JSON or handbook-first outputs as runtime truth
 - report whether follow-on localized maintenance should continue through `map-update` for future touched-area drift
-- every `critical` row appears in at least one final handbook target
-- every `important` row appears in a final handbook target
+- every `critical` row is covered by active runtime path and route indexes
+- every `important` row is reachable through active runtime path and route indexes
 - every scan packet is consumed
 - every accepted packet result has paths read and confidence
-- every final handbook target is backed by at least one accepted packet evidence row
+- every graph claim is backed by at least one accepted packet evidence row
+- query bundle and route reachability are validated through runtime query surfaces
 - no final report claims success for a structural-only refresh
 - `map_state_file` records accepted packet results
 - owner, consumer, change propagation, and verification routes remain explicit
 - known unknowns or known-unknowns remain visible
 - the excluded bucket has a reason and revisit condition
-- every critical shared surface can be discovered from the relevant handbook
-- every key verification entry point can be located from the relevant handbook
+- every critical shared surface can be discovered through runtime query surfaces
+- every key verification entry point can be located through runtime query surfaces
 - required_reads contain only reference-only or hard-excluded exceptions when runtime compatibility outputs are mentioned
+
+## Codex Map Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Keep map packet/result schemas from this workflow authoritative; do not substitute implementation `WorkerTaskResult` fields for map scan/build/update packet contracts.
 
 ## Codex Subagents-First Dispatch
 

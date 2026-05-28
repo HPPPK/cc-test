@@ -18,8 +18,8 @@ metadata:
 
 - **When to use**: Planning artifacts already exist and the remaining gap is concrete execution slicing rather than more design work.
 - **Primary objective**: Produce `tasks.md` with dependency ordering, guardrail carry-forward, execution batches, and join points.
-- **Primary outputs**: `FEATURE_DIR/tasks.md`, `FEATURE_DIR/handoff-to-tasks.json`, `FEATURE_DIR/task-index.json`, `FEATURE_DIR/task-packets/*.json`, `FEATURE_DIR/task-generation/handoffs/<lane-id>.json`, `FEATURE_DIR/task-generation/evidence-index.json`, `FEATURE_DIR/task-generation/checkpoints.ndjson`, and `workflow-state.md`.
-- **Default handoff**: /sp.analyze for normal completed or non-escalated task generation; /sp.plan, /sp.clarify, or /sp.deep-research when escalated remediation exposes missing upstream truth; only continue to /sp.implement after analyze clears upstream drift.
+- **Primary outputs**: `FEATURE_DIR/tasks.md` and `workflow-state.md`; `task-index.json` when useful for light mode; `handoff-to-tasks.json`, `task-packets/*.json`, `task-generation/handoffs/<lane-id>.json`, `task-generation/evidence-index.json`, and `task-generation/checkpoints.ndjson` when standard/heavy mode uses delegated task-generation lanes or downstream delegated implementation needs packets.
+- **Default handoff**: /sp.implement for a clean completed task package; /sp.analyze only when a persisted legacy or diagnostic state explicitly records that route; /sp.plan, /sp.clarify, or /sp.deep-research when escalated remediation exposes missing upstream truth.
 - **Execution note**: This summary is routing metadata only. Follow the full contract below end-to-end rather than inferring behavior from the description alone.
 
 ## User Input
@@ -43,8 +43,13 @@ Convert the plan package into dependency-aware execution tasks that preserve pla
 ## Process
 
 - Load the current plan package and recover the active workflow-state context.
+- Load implementation target boundary from `plan.md`, `plan-contract.json`, and `brainstorming/handoff-to-specify.json`.
+- Carry target root, target-relative paths or discovery steps, evidence status, relevant `MP-*` obligations, and boundary constraints into every implementation-shaping task.
+- Reject task packages that silently use the current repository when the handoff identifies another implementation target.
+- Mark reference project paths as reference-only or transfer evidence instead of implementation paths.
 - Carry locked planning decisions and implementation constitution rules forward into execution slices.
 - Map every open `CA-###` consequence obligation to tasks, packet fields, validation commands, join points, or explicit stop-and-reopen conditions.
+- Map every preserved operation-shaped capability such as new/create/scaffold/authoring/template creation to implementation tasks, validation tasks, packet fields, or explicit user-confirmed deferrals. Do not degrade a confirmed operation to manual copy docs or static template-only support.
 - Generate dependency ordering, parallel-safe batches, join points, and guardrail indexes.
 - Validate the resulting task graph before handing off to analysis or implementation.
 
@@ -81,6 +86,8 @@ Every task written into `tasks.md` MUST carry the enriched fields below so that 
 
 - `expected_outputs`: Concrete file list with annotations: `（新建）` or `（修改）`.
 - `anti_goals`: Behaviors explicitly forbidden for this task. Examples: "do not introduce new dependencies", "do not modify the public API surface", "do not touch the database schema".
+- `does_not_remove`: Capability operations, acceptance signals, and preserved entry points this task's anti-goals must not delete.
+- `capability_operations`: Upstream operation-shaped capabilities this task implements, validates, preserves, defers, or explicitly does not own.
 
 **Acceptance & Verification**
 
@@ -116,7 +123,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -131,39 +138,40 @@ Stand down only for docs-only wording changes, trivial isolated fixes, or local 
 
 If the gate triggers and the current workflow cannot preserve the required outputs, stop and route to the workflow that can. Do not mark ready, resolved, handoff-ready, planning-ready, or complete while triggered consequence obligations remain unresolved, unmapped, or unsupported by validation evidence.
 
-## Mandatory Subagent Execution
+## Adaptive Plan/Tasks Execution
 
-All substantive work in ordinary `sp-*` workflows MUST use subagents once a validated lane exists.
+This partial is command-scoped for `sp-plan` and `sp-tasks` only. It does not change the mandatory subagent contract used by implementation, debug, map, PRD, or other workflows.
 
-The leader orchestrates: route, split tasks, prepare task contracts, dispatch subagents, wait for structured handoffs, integrate results, verify, and update state.
+Select the execution mode before dispatch:
 
-Before dispatch, every subagent lane MUST have a task contract with:
-- objective
-- authoritative inputs
-- allowed read scope
-- allowed write scope
-- forbidden paths or forbidden drift
-- acceptance checks
-- required validation evidence
-- structured handoff format
+- `light`: low-risk, single-lane artifact work that is safe for leader-inline synthesis.
+- `standard`: bounded planning or task-generation work where native subagents should be used when available.
+- `heavy`: safety-critical, cross-boundary, high-risk, or hard-to-packetize work that requires safe native delegation before synthesis continues.
 
-A lane is dispatch-ready only when its validated packet or equivalent execution contract contains all required fields.
+Record the adaptive decision fields exactly:
 
-If a validated lane exists, leader-inline execution of that lane's substantive work is forbidden.
+- `execution_model: adaptive`
+- `execution_mode: light | standard | heavy`
+- `workflow_status: ready | blocked`
+- `dispatch_shape: leader-inline | one-subagent | parallel-subagents | subagent-blocked`
+- `execution_surface: leader-inline | native-subagents | none`
+- `capability_degraded: false | true`
+- `blocked_reason: required when blocked`
 
-If no validated lane can be packetized safely, the workflow MUST mark `subagent-blocked` and stop.
+Use `choose_subagent_dispatch(command_name="plan" | "tasks", snapshot, workload_shape)` as the shared policy contract. Derive `workload_shape.lightweight_safe` from workload shape and risk keys; do not invent a separate template-only boolean.
 
-Idle, silent, or prose-only subagent output is not an accepted result.
+Dispatch rules:
 
-A workflow MAY continue past a join point only after the required structured handoff and required evidence are present.
+- Light mode records `dispatch_shape: leader-inline`, `execution_surface: leader-inline`, `workflow_status: ready`, and `capability_degraded: false`.
+- Standard mode uses native subagents when available: one validated lane records `one-subagent`; two or more isolated lanes record `parallel-subagents`.
+- Standard mode may degrade to leader-inline only when native subagents are unavailable and no high-risk trigger is present; record `capability_degraded: true`.
+- Heavy mode must use native subagents with safely packetized lanes. If native subagents are unavailable, or if the work cannot be packetized safely, record `workflow_status: blocked`, `dispatch_shape: subagent-blocked`, `execution_surface: none`, and `blocked_reason`.
 
-Keep delegated lanes bounded and role-specific. Use fixed analysis or verification roles when the parent workflow defines them explicitly, rather than ad hoc managed-team structures.
+Artifact-writing delegated lanes must use writable, execution-capable native subagents. If the runtime exposes role, sandbox, or permission choices, select a role/sandbox that can write the declared handoff file. Do not dispatch a read-only explorer, reviewer, or diagnostic lane when the lane must write a filesystem handoff; read-only lanes may provide supplemental evidence, but they do not satisfy `one-subagent` or `parallel-subagents` handoff requirements. The lane contract's allowed write scope must include the exact expected handoff path and must forbid unrelated writes unless the command explicitly assigns an additional generated artifact. If a delegated lane returns prose, idle state, or an unwritten handoff, stop or re-dispatch with a writable lane and the valid handoff path.
 
-Use `execution_model: subagent-mandatory`.
-Use `dispatch_shape: one-subagent | parallel-subagents`.
-Use `execution_surface: native-subagents`.
+Delegated lanes still require structured handoffs before synthesis. If delegated lanes were used, consume the evidence index and every accepted handoff before final output. If no lanes were delegated, report the delegated-lane field as `none`.
 
-Do not rely on leader-inline fallback semantics or managed-team lifecycle language in this shared partial. The parent workflow must state any command-specific analysis roles, join points, or escalation rules directly.
+Managed-team fallback is not part of adaptive plan/tasks dispatch. Do not route blocked adaptive planning or task generation to `sp-teams`, managed-team lifecycle language, or a durable team fallback from this command.
 
 
 ## Pre-Execution Checks
@@ -208,12 +216,12 @@ Do not rely on leader-inline fallback semantics or managed-team lifecycle langua
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command tasks --format json` when available so passive learning files exist, the current task-generation run sees relevant shared project memory, and repeated high-signal lessons can be surfaced through the learning index at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command tasks --format json` when available so passive learning files exist, the current task-generation run sees relevant shared project memory, and repeated high-signal lessons can be surfaced through the learning index at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader task-generation context.
 - Open only learning detail docs linked from task-generation-relevant index entries, especially repeated workflow gaps, project constraints, or validation misses that should influence task decomposition.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
 - [AGENT] When task-shaping friction exposes artifact rewrites, route changes, false starts, hidden dependencies, validation gaps, or reusable constraints, make sure `workflow-state.md` captures that durable context.
-- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command tasks --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command tasks --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - [AGENT] When the durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 - Treat this as passive shared memory, not as a separate user-visible workflow.
 
@@ -228,17 +236,17 @@ Do not rely on leader-inline fallback semantics or managed-team lifecycle langua
   - `phase_mode: task-generation-only`
   - `forbidden_actions: edit source code, edit tests, implement behavior, start execution from task-generation artifacts`
 - Do not implement code, edit source files, edit tests, or treat task generation as permission to start execution.
-- Implementation remains blocked until `$sp-analyze` confirms the current task package does not need upstream regeneration.
+- Implementation remains blocked until this task package passes the Implementation-Readiness Task Self-Audit and `WORKFLOW_STATE_FILE` records `next_command: /sp.implement`. Run `$sp-analyze` only when an existing state file explicitly records a legacy or diagnostic analysis route.
 - If `WORKFLOW_STATE_FILE` records a blocked `sp-analyze` gate with `next_command: /sp.tasks`, enter remediation mode before regenerating `tasks.md`.
 - In remediation mode, read the prior `Analyze Gate` blocker bundle first. Do not start from a blank task-generation pass.
 - No more than one task-layer remediation cycle is expected. If repeated `sp-tasks -> sp-analyze` loops occur for blockers that were detectable before remediation, treat that as a previous analyze miss or a tasks self-audit failure. Do not treat repeated task/analyze loops as normal workflow.
-- Do not hand off directly to `$sp-implement` from `sp-tasks`; the analyze gate is mandatory unless the user is explicitly resuming a previously cleared execution state.
+- Hand off directly to `$sp-implement` from `sp-tasks` after a clean self-audit. Preserve `$sp-analyze` only when explicit legacy or diagnostic workflow state requires that route.
 - When resuming after compaction, re-read `WORKFLOW_STATE_FILE` before proceeding.
 
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
-   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command tasks --ensure-worktree` before guessing from branch-only context.
+   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify lane resolve --command tasks --ensure-worktree` before guessing from branch-only context.
    - When lane resolution returns a materialized lane worktree, continue task generation from that isolated worktree context so downstream execution packets inherit the same lane boundary.
    - Set `WORKFLOW_STATE_FILE` to `FEATURE_DIR/workflow-state.md`.
    - [AGENT] Create or resume `WORKFLOW_STATE_FILE` before substantial task-generation analysis.
@@ -274,25 +282,32 @@ Do not rely on leader-inline fallback semantics or managed-team lifecycle langua
    - **Required when present**: workflow-state.md (current phase lock, allowed actions, forbidden actions, resume contract, active profile, activated gates, task-shaping rules, and required evidence)
    - **Optional**: references.md (retained sources, reusable insights, spec impact mapping)
    - **Required when present**: `plan.md#Must-Preserve Carry-Forward` and `MP-*` obligations from `brainstorming/handoff-to-specify.json`
+   - Read the implementation target boundary from `plan.md#Implementation Target Boundary`, `plan-contract.json`, and `brainstorming/handoff-to-specify.json`.
+   - Every implementation-shaping task must state target root, target-relative path or path discovery step, evidence status, relevant `MP-*` obligations, boundary constraints, and forbidden drift.
+   - Must not silently point to the current repository unless the handoff says the current repository is the implementation target.
+   - If a task uses a reference project path, state why that path is reference-only or transfer evidence.
+   - Stop task generation when the target root is required but missing or when target-relative paths cannot be discovered without guessing.
    - **Optional**: data-model.md (entities), contracts/ (interface contracts), research.md (decisions), quickstart.md (test scenarios)
    - **Required when present**: `.specify/memory/constitution.md` (project constitution and mandatory principles that tasks must preserve)
    - **Required when present**: `.specify/memory/project-rules.md` (shared project defaults that task generation should preserve)
    - **Required when present**: `.specify/memory/learnings/INDEX.md` (searchable reusable learning index that may shape decomposition, validation, or guardrails)
    - **Required when relevant index entries exist**: open only the linked learning detail docs relevant to task generation so repeated workflow gaps, project constraints, and validation misses are not rediscovered from scratch
-   - **Required**: [AGENT] Query project cognition with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent plan --query-plan \"<query_plan_json>\" --format json`.
+   - **Required**: [AGENT] Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json`.
    - **If topical coverage is missing/stale/too broad or task-relevant coverage is insufficient**: record a planning advisory in the feature artifacts, inspect the minimum live files still needed to replace guesswork with evidence, and carry explicit assumptions or follow-up tasks instead of requiring a project cognition refresh during artifact-only task generation
    - **Required**: Read `.specify/templates/workflow-state-template.md`
    - Note: Not all projects have all documents. Generate tasks based on what's available.
 
-## Project Cognition Gate
+## Project Cognition Advisory Gate
 
-This command must treat the project cognition runtime as the mandatory pre-source knowledge base.
+This planning-only command should treat the project cognition runtime as an
+advisory navigation index, not a mandatory pre-source gate.
 
-### Hard Rule
+### Advisory Rule
 
-Do not inspect implementation source, run reproduction or tests, compile a
-plan, prepare a fix, or emit technical recommendations until the cognition gate has
-passed.
+Use project cognition when available to find likely owners, affected paths,
+risks, verification routes, and minimal live reads. Do not treat map output as
+evidence by itself. Technical claims must be backed by live code, tests,
+scripts, configuration, or authoritative docs.
 
 ### Required Project Cognition Query
 
@@ -348,24 +363,32 @@ and minimal live reads after the minimum gate, not whether it may skip cognition
 
 ### Freshness
 
-Treat runtime freshness as a gate:
+Treat runtime freshness as map-quality diagnostics:
 
-- `missing` -> block and refresh through `sp-map-scan -> sp-map-build`
-- `stale` -> block and refresh through `sp-map-update`
-- `stale` with changed paths missing from `path_index` -> block and rebuild through `sp-map-scan -> sp-map-build`; repeating `sp-map-update` cannot create absent path coverage
-- `support_drift` -> stop and tell the user to resolve support-surface drift; do not reflexively route to `sp-map-update`
-- `partial_refresh` -> tell the user the refresh was recorded but readiness did not pass; follow `recommended_next_action`
-- `possibly_stale` -> inspect the returned affected scope; if the touched area is not safely covered, route through `sp-map-update`
+- `fresh` -> use the returned task-local bundle as an advisory first pass navigation aid
+- `missing` -> if cognition freshness is `missing`, stop and tell the user to run `$sp-map-scan`, then `$sp-map-build`; wait for that rebuild before continuing
+- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` as follow-up map maintenance
+- `stale` with changed paths missing from `path_index` -> warn and continue with live repository evidence; recommend `$sp-map-update` first for ordinary existing-baseline gaps.
+  Use `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`
+- `support_drift` -> warn and continue with live repository evidence; recommend resolving or intentionally ignoring support-surface drift
+- `partial_refresh` -> warn that refresh data was recorded but readiness did not pass; continue with live repository evidence
+- `possibly_stale` -> inspect the returned affected scope when useful, then continue with live repository evidence
 
 Preserve the distinction between the machine freshness field and public state
-guidance: consume `freshness` as the factual state and use
-`recommended_next_action` for the operator-facing next step.
+guidance: `freshness` records map quality, while `recommended_next_action` is a
+map-maintenance recommendation.
 
 ### Primary Read Restriction
 
-Do not treat handbook-first or layered project-map files as the primary runtime read surfaces. If query-returned
-coverage is insufficient, refresh the cognition runtime through `sp-map-update`; reserve `sp-map-scan -> sp-map-build` for missing, unusable, schema-incompatible, explicitly rebuilt, or architecture-replaced baselines
-instead of forcing a second handbook traversal phase.
+Do not treat handbook-first or layered project-map files as evidence. If
+query-returned coverage is insufficient, inspect live repository surfaces
+directly and recommend `sp-map-update` for ordinary existing-baseline gaps,
+localized stale cognition refresh, weak localized coverage after a usable
+baseline, or ordinary changed-path maintenance. Use `sp-map-scan -> sp-map-build`
+only for first/missing/unusable baseline, schema failure, zero active-generation
+`path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+
+The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion.
 
 **Project cognition gate:** query the active project's runtime before broad
 repository reads.
@@ -373,9 +396,9 @@ repository reads.
 Run or emulate:
 
 ```text
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --format json
 # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent plan --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json
 ```
 
 Use the returned readiness:
@@ -383,8 +406,8 @@ Use the returned readiness:
 - `ready`: continue with the returned task-local bundle.
 - `review`: perform only the returned `minimal_live_reads` before continuing.
 - `ambiguous`: ask the user to select the intended candidate.
-- `needs_update`: record a planning advisory, perform the returned `minimal_live_reads`, and continue without requiring `$sp-map-update` during `sp-tasks`.
-- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+- `needs_update`: record a planning advisory, perform the returned `minimal_live_reads`, and continue without requiring `$sp-map-update` during `sp-tasks`; this includes adoptable missing path-index coverage.
+- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - `blocked`: stop and report the blocking runtime issue.
 - **CARRY FORWARD**: Carry cognition-derived required references, write scopes,
   validation commands, forbidden drift, and known unknowns into `tasks.md`,
@@ -404,25 +427,40 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
 - Preserve `CA-###` IDs verbatim in `tasks.md`, handoff-to-tasks metadata, task-index metadata, and worker packet shaping instructions so `sp-analyze` and `sp-implement` cannot drop them.
 - If a consequence obligation is unmapped, do not emit a normal `/sp.analyze` handoff. Repair the task package or route back to `$sp-plan`, `$sp-clarify`, or `$sp-deep-research` with the unmapped obligation named.
 
+## Capability Operation Coverage
+
+Before finalizing `tasks.md`, map every preserved or in-scope operation-shaped capability from `spec.md`, `alignment.md`, `context.md`, `plan.md#Capability Preservation Plan`, `plan-contract.json`, and `brainstorming/handoff-to-specify.json`.
+
+- Operation-shaped capabilities include new/create/scaffold/authoring/template-creation, CLI path, TUI path, lifecycle action, API entry point, and any user workflow verb that changes implementation or validation shape.
+- For each capability operation, create at least one implementation task, test/quickstart task, join point, packet field, or explicit deferred note with user confirmation.
+- Treat template-only task output as insufficient for a confirmed create/scaffold capability unless the plan explicitly selected manual copy as the entry point.
+- Detect semantic degradation: if an upstream create/scaffold operation becomes manual copy docs, static template-only support, or an authoring guide with no executable entry point, stop and route back to `$sp-plan` or `$sp-clarify`.
+- Anti-goals must include a does-not-remove guard when they restrict command, route, API, lifecycle, or public surface growth. Example: "Do not add public commands beyond X; does-not-remove guard: preserve scaffold capability via TUI route or core API."
+- Do not generate an anti-goal that forbids a public command and also leaves the underlying operation without another selected entry point.
+
 4. **Execute task generation workflow**:
     - [AGENT] Before task decomposition begins, split work only into the supported task-generation lanes: `story and phase decomposition`, `dependency graph analysis`, and `write-set and parallel-safety analysis`.
     - [AGENT] Before dispatch begins, assess workload shape and the current agent capability snapshot, then apply the shared policy contract: `choose_subagent_dispatch(command_name="tasks", snapshot, workload_shape)`
     - Before emitting high-risk batches, classify whether they need extra review: `classify_review_gate_policy(workload_shape)`
     - The chosen dispatch shape applies to the **current ready batch**, not automatically to the entire feature or task graph.
+    - Do not use the current batch execution strategy as a blanket label for the whole feature.
     - Primary decomposition goal: maximize safe native-subagent throughput for later `sp-implement` runs by isolating write sets and turning ready work into a dispatch-ready lane packet instead of a vague checklist.
-    - Before dispatching any task-generation lane, persist a `task_generation_checkpoint` record to `task-generation/checkpoints.ndjson` with the lane id, dispatch shape, authoritative inputs, expected handoff path, and current workflow-state summary.
+    - Persist the adaptive decision fields exactly: `execution_model: adaptive`, `execution_mode: light | standard | heavy`, `workflow_status: ready | blocked`, `dispatch_shape: leader-inline | one-subagent | parallel-subagents | subagent-blocked`, `execution_surface: leader-inline | native-subagents | none`, `capability_degraded: false | true`, and `blocked_reason: required when blocked`.
+    - Adaptive decision order:
+      - If the task-generation workload is lightweight safe, use `execution_mode: light`, `dispatch_shape: leader-inline`, and `execution_surface: leader-inline`; no task-generation lane handoff files are required.
+      - If the workload is standard and native subagents are available, dispatch `one-subagent` for exactly one validated isolated lane or `parallel-subagents` for two or more isolated lanes.
+      - If the workload is standard, native subagents are unavailable, and no high-risk trigger is present, continue leader-inline with `capability_degraded: true`.
+      - If the workload is heavy or safety-critical and native subagents are unavailable, or if heavy task generation cannot be packetized safely, record `workflow_status: blocked`, `dispatch_shape: subagent-blocked`, `execution_surface: none`, and a concrete `blocked_reason`; stop before synthesizing `tasks.md`.
+    - Managed-team fallback is not part of adaptive plan/tasks dispatch.
+    - Artifact-writing delegated task-generation lanes must be dispatched as writable, execution-capable native subagent lanes. If the runtime exposes role, sandbox, or permission choices, select a role/sandbox that can write the declared handoff file; a read-only lane is not valid for `task-generation/handoffs/<lane-id>.json`.
+    - Do not dispatch a read-only explorer, reviewer, or diagnostic lane to satisfy a delegated task-generation lane that must write a handoff. Such lanes may inform the leader only as supplemental evidence, and they do not satisfy `one-subagent` or `parallel-subagents` task-generation handoff requirements.
+    - The delegated lane contract's allowed write scope must include the exact expected handoff path, `task-generation/handoffs/<lane-id>.json`, and must forbid writes outside that path unless the lane is explicitly assigned a task-generation artifact.
+    - Before dispatching any delegated task-generation lane, persist a `task_generation_checkpoint` record to `task-generation/checkpoints.ndjson` with the lane id, dispatch shape, authoritative inputs, expected handoff path, and current workflow-state summary.
    - Each delegated lane must persist the lane's structured handoff to `task-generation/handoffs/<lane-id>.json` before the leader accepts the lane, waits at a join point, or synthesizes `tasks.md`.
-   - Update `task-generation/evidence-index.json` after each accepted lane handoff with lane id, handoff path, source artifacts inspected, decisions or constraints contributed, affected task IDs or batch IDs, blocker status, and integration status.
-    - Consume `task-generation/evidence-index.json` before final task synthesis: for every accepted handoff, mark the handoff as `integrated`, `deferred`, or `blocked`, and name the target task ID, dependency edge, write-set decision, parallel batch, join point, guardrail, packet field, or escalation that consumed it.
-    - Do not synthesize `tasks.md` from chat-only lane results. If a lane reports only prose, idle state, or an unwritten handoff, mark `subagent-blocked`, write the blocker to `workflow-state.md`, and stop or re-dispatch with a valid handoff path.
-    - When resuming after compaction, re-read `workflow-state.md`, `task-generation/checkpoints.ndjson`, `task-generation/evidence-index.json`, and all accepted `task-generation/handoffs/<lane-id>.json` files before continuing task synthesis.
-    - Persist the decision fields exactly: `execution_model: subagent-mandatory`, `dispatch_shape: one-subagent | parallel-subagents`, `execution_surface: native-subagents`.
-    - Decision order is fixed:
-      - If exactly one validated isolated lane exists, dispatch `one-subagent`.
-      - If two or more validated isolated lanes exist, dispatch `parallel-subagents`.
-      - If overlap or missing contract prevents safe dispatch, mark `subagent-blocked` and stop.
-    - Leader-only decomposition is forbidden once a validated lane exists.
-    - Task-generation collaboration is determined only by validated lane count and write-set isolation. Do not make a separate judgment about whether collaboration is justified.
+   - Update `task-generation/evidence-index.json` after each accepted delegated lane handoff with lane id, handoff path, source artifacts inspected, decisions or constraints contributed, affected task IDs or batch IDs, blocker status, and integration status.
+    - Consume `task-generation/evidence-index.json` before final task synthesis when delegated lanes were used: for every accepted handoff, mark the handoff as `integrated`, `deferred`, or `blocked`, and name the target task ID, dependency edge, write-set decision, parallel batch, join point, guardrail, packet field, or escalation that consumed it.
+    - Do not synthesize `tasks.md` from chat-only delegated lane results. If a delegated lane reports only prose, idle state, or an unwritten handoff, mark `subagent-blocked`, write the blocker to `workflow-state.md`, and stop or re-dispatch with a writable lane and a valid handoff path.
+    - When resuming after compaction and delegated lanes were used, re-read `workflow-state.md`, `task-generation/checkpoints.ndjson`, `task-generation/evidence-index.json`, and all accepted `task-generation/handoffs/<lane-id>.json` files before continuing task synthesis.
     - Required join points:
       - before writing `tasks.md`
       - before emitting canonical parallel batches and join points
@@ -430,8 +468,8 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
     - Extract the active profile, activated gates, task-shaping rules, and required evidence obligations from `workflow-state.md`; `sp-tasks` consumes the same profile contract or active profile that `sp-specify`/`sp-plan` persisted, not a newly invented taxonomy.
     - Read `plan-contract.json` as authoritative task-generation input when present.
     - Read `planning/evidence-index.json` and all accepted `planning/handoffs/*.json` when present; treat accepted planning lane contributions as upstream planning inputs, not discarded background evidence.
-    - Emit `handoff-to-tasks.json`, `task-index.json`, and per-task packet JSON under `task-packets/` alongside `tasks.md`.
-    - In `handoff-to-tasks.json` and `task-index.json`, include references to the accepted `task-generation/handoffs/<lane-id>.json` files that shaped each task, dependency edge, write-set decision, parallel batch, join point, guardrail, or escalation.
+    - Emit `handoff-to-tasks.json`, `task-index.json`, and per-task packet JSON under `task-packets/` when standard/heavy mode uses delegated task-generation lanes or downstream delegated implementation needs packets; in light mode, emit only the minimum light-mode `tasks.md` contract unless `task-index.json` is useful.
+    - When delegated task-generation handoffs exist, include references in `handoff-to-tasks.json` and `task-index.json` to the accepted `task-generation/handoffs/<lane-id>.json` files that shaped each task, dependency edge, write-set decision, parallel batch, join point, guardrail, or escalation.
     - Do not mark task generation complete while `task-generation/evidence-index.json` contains an accepted handoff without an explicit consuming task, packet field, dependency edge, deferral, escalation, or blocker reason.
     - Carry complexity level, must-preserve invariants, allowed optimization scope, and stop-and-reopen conditions into each task packet.
     - Keep `sp-tasks` aligned with the persisted first-release profile contract: `active_profile` must be one of the two supported profiles, `Standard Delivery` or `Reference-Implementation`.
@@ -462,8 +500,8 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
     - Do not generate `tasks.md` from an artifact set that is missing required design inputs.
     - Only optional artifacts may be absent without blocking task generation.
     - Generate tasks organized by user story (see Task Generation Rules below)
-    - Treat tests as default deliverables for behavior changes, bug fixes, and refactors
-    - If the touched area lacks a reliable automated test surface, add explicit bootstrap tasks to establish the smallest runnable test surface first before implementation tasks for that slice
+    - Treat tests as default deliverables for product behavior changes, bug fixes, refactors with regression risk, public API contracts, persistence/migration changes, security-sensitive behavior, and generated outputs consumed by users or tools
+    - If the touched area lacks a reliable automated test surface, add the smallest runnable test surface only when the change risk requires automated proof; otherwise record the no-new-test rationale, replacement validation, and residual risk
     - Top-level tasks should fit one bounded implementation slice: roughly 10-20 minutes, one stable objective, one isolated write set, and one verification path
     - A subagent can still execute the task internally through smaller 2-5 minute atomic steps, but do not explode the public task list into coordinator-hostile micro-tasks
     - Stop decomposition once the current executable window is atomic. Leave later phases at the coarser story or phase level when their exact shape depends on earlier join-point evidence
@@ -490,7 +528,7 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
     - Add explicit join points after every parallel batch so downstream tasks know where synchronization happens
     - For every explicit join point, include a validation target, a validation command or concrete manual check, and a pass condition
     - Create parallel execution examples per user story
-    - **Analyze-Compatible Task Self-Audit**: Before finalizing `tasks.md`, run the task-layer subset of the `sp-analyze` checks against the generated task package.
+    - **Implementation-Readiness Task Self-Audit**: Before finalizing `tasks.md`, run the task-layer subset of the `sp-analyze` checks against the generated task package.
     - Confirm every buildable `FR-*` and buildable success criterion has at least one task, checkpoint, or explicit deferred note.
     - Confirm every locked planning decision that affects implementation, compatibility, rollout, validation, sequencing, architecture shape, or guardrails appears in `tasks.md`.
     - Confirm `Implementation Constitution` rules from `plan.md` are preserved through a guardrail phase, `Task Guardrail Index`, task notes, or explicit escalation.
@@ -512,7 +550,7 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
    - Phase 1: Setup tasks (project initialization)
    - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
    - Phase 3+: One phase per user story (in priority order from spec.md)
-   - Each phase includes: story goal, independent test criteria, required test tasks for behavior changes/bug fixes/refactors/regression-sensitive modules, implementation tasks
+   - Each phase includes: story goal, independent validation criteria, risk-required test tasks, no-new-test rationale where tests are omitted, implementation tasks
    - Final Phase: Polish & cross-cutting concerns
    - All tasks must follow the strict checklist format (see Task Generation Rules below)
    - Clear file paths for each task
@@ -533,12 +571,20 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
 6. **Report**: Output path to generated tasks.md and summary:
     - Total task count
     - Task count per user story
-    - task-generation evidence paths: `task-generation/evidence-index.json`, `task-generation/checkpoints.ndjson`, and accepted `task-generation/handoffs/<lane-id>.json` files
+    - task-generation evidence paths when delegated lanes were used: `task-generation/evidence-index.json`, `task-generation/checkpoints.ndjson`, and accepted `task-generation/handoffs/<lane-id>.json` files; otherwise report `delegated_task_generation_lanes: none`
+    - execution_model: adaptive
+    - execution_mode: light | standard | heavy
+    - workflow_status: ready | blocked
+    - dispatch_shape: leader-inline | one-subagent | parallel-subagents | subagent-blocked
+    - execution_surface: leader-inline | native-subagents | none
+    - capability_degraded: false | true
+    - blocked_reason: required when blocked
     - Feature delivery shape (whole task graph)
     - Parallel opportunities identified
     - Parallel batch count and the join points that gate downstream work
-    - Independent test criteria for each story
-    - Suggested first release scope (based on the smallest coherent release slice, not automatically limited to just User Story 1)
+    - Independent validation criteria for each story, including risk and behavior driven validation, no-new-test rationale where tests are omitted, replacement validation, and residual risk
+    - Confirmed delivery scope and user-confirmed delivery sequence, including any user-confirmed deferrals or constraint-driven scope adjustments
+    - Scope reduction requires user confirmation; do not infer a smaller release from User Story 1 or the smallest independently testable story
     - Confirm first-release profile scope stayed within the two supported profiles: `Standard Delivery` and `Reference-Implementation`
     - Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
     - workflow-state path
@@ -549,7 +595,7 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
       - not_applicable count
       - escalated count
       - evidence sections or task IDs for resolved findings
-    - Analyze-Compatible Task Self-Audit result:
+    - Implementation-Readiness Task Self-Audit result:
       - coverage mapping status
       - locked decision preservation status
       - guardrail mapping status
@@ -557,7 +603,7 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
       - reference fidelity mapping status
       - unmapped task status
       - write-set conflict status
-    - Recommended next command: `$sp-analyze` for normal completed or non-escalated task generation.
+    - Recommended next command: `$sp-implement` for normal completed or non-escalated task generation.
     - For escalated remediation: preserve the upstream `next_command` (`/sp.plan`, `/sp.clarify`, or `/sp.deep-research`) and stop without an analyze handoff.
     - cognition follow-up: if artifact-only task generation exposes future shared surfaces, workflow joins, or validation entry points that the current project cognition runtime does not yet encode, record that as an advisory in `workflow-state.md` or `tasks.md`; do not mark project cognition dirty or require a refresh until actual source/runtime changes make the runtime truth out of date.
    - before final completion text, write or update `WORKFLOW_STATE_FILE` so it records:
@@ -566,7 +612,7 @@ Before the task package is complete, map every triggered `CA-###` consequence ob
      - current authoritative files
      - exit criteria for task-generation completion
      - the next action required before handoff
-     - `next_command: /sp.analyze` only for normal completed or non-escalated task generation
+     - `next_command: /sp.implement` for normal completed or non-escalated task generation
      - escalated remediation preserves the upstream `next_command` (`/sp.plan`, `/sp.clarify`, or `/sp.deep-research`) and stops without an analyze handoff
 
 7. **Check for extension hooks**: After tasks.md is generated, check if `.specify/extensions.yml` exists in the project root.
@@ -606,7 +652,9 @@ The tasks.md should be immediately executable - each task must be specific enoug
 
 **CRITICAL**: Tasks MUST be organized by user story to enable independent implementation and testing.
 
-**Tests are default deliverables**: Generate test tasks by default for affected behavior changes, bug fixes, and regression-sensitive modules. Only omit tests when the change is clearly docs-only/process-only or the plan explicitly allows the omission.
+**Risk and behavior driven validation**: Generate test tasks by default for product behavior changes, bug fixes, refactors with regression risk, public API contracts, persistence/migration changes, security-sensitive behavior, and generated outputs consumed by users or tools. Only omit new tests when `tasks.md` records the no-new-test rationale, replacement validation, and residual risk.
+
+**Minimum light-mode `tasks.md` contract**: When `execution_mode: light`, `tasks.md` must still include the confirmed delivery boundary, ordered executable tasks, dependencies, validation commands or concrete manual checks, no-new-test rationale where tests are omitted, replacement validation, residual risk, and the recommended next command.
 
 ### Checklist Format (REQUIRED)
 
@@ -663,12 +711,12 @@ Every task MUST strictly follow this format:
      - Models needed for that story
      - Services needed for that story
      - Interfaces/UI needed for that story
-     - Tests specific to that story for behavior changes, bug fixes, refactors, and regression-sensitive modules
+     - Tests specific to that story when risk and behavior driven validation requires them
    - Mark story dependencies (most stories should be independent)
 
 2. **From Contracts**:
    - Map each interface contract → to the user story it serves
-   - For behavior changes, bug fixes, refactors, and regression-sensitive modules: Each affected interface contract → contract test tasks by default before implementation in that story's phase
+   - For public API, behavior, bugfix, persistence, security, or regression-sensitive contract changes: affected interface contracts → contract test tasks by default before implementation in that story's phase
 
 3. **From Data Model**:
    - Map each entity to the user story(ies) that need it
@@ -702,21 +750,34 @@ Every task MUST strictly follow this format:
   - Each phase should be a complete, independently testable increment
 - **Final Phase**: Polish & Cross-Cutting Concerns
 
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.
+
 ## Project Cognition Freshness Closeout
 
 - This workflow is artifact-only unless the user explicitly requested source/runtime changes; do not call `project-cognition mark-dirty`, `project-cognition complete-refresh`, or `project-cognition validate-build --format json` just because `sp-specify`, `sp-plan`, or `sp-tasks` wrote planning artifacts.
 - When later actual source/runtime changes update truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other cognition coverage facts, refresh through `/sp-map-update` using the changed paths.
-- After a successful refresh, update git-baseline freshness with `project-cognition record-refresh` or `project-cognition complete-refresh`; use `complete-refresh` only after build acceptance passes.
-- If a full refresh can be completed now, run `/sp-map-scan` followed by `/sp-map-build`, then `project-cognition validate-build --format json`, and only then `project-cognition complete-refresh --format json` when validation is ready.
+- After a successful incremental `sp-map-update`, update git-baseline freshness with `project-cognition record-refresh` or `project-cognition complete-refresh`; do not use `complete-refresh` to finish first baseline construction.
+- If a first baseline or structural recovery refresh can be completed now, run `/sp-map-scan` followed by `/sp-map-build`; `sp-map-build` owns `project-cognition build-from-scan --format json`, then `project-cognition validate-build --format json`, and completion when validation is ready.
 - If refresh cannot be completed now, use the manual override/fallback path with `project-cognition mark-dirty --reason "<reason>" --format json` and report the required follow-up.
-- Run `/sp-map-scan` followed by `/sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly being rebuilt, or invalidated by broad architecture replacement.
+- Use `/sp-map-update` for ordinary existing-baseline gaps. Use `/sp-map-scan` followed by `/sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 
-## Codex Subagents-First Dispatch
+## Codex Adaptive Dispatch
 
-When running `sp-tasks` in Codex, use the subagents-first dispatch model.
-- Use `spawn_agent` for bounded lanes when `dispatch_shape` is `one-subagent` or `parallel-subagents`.
+When running `sp-tasks` in Codex, apply the adaptive dispatch decision recorded by `choose_subagent_dispatch`.
+- Light mode records `dispatch_shape: leader-inline` and `execution_surface: leader-inline`; do not spawn task-generation lanes for light work.
+- Standard mode uses `spawn_agent` for bounded lanes when `dispatch_shape` is `one-subagent` or `parallel-subagents`.
+- Standard native-unavailable degradation records `execution_surface: leader-inline` and `capability_degraded: true` only when no high-risk trigger is present.
+- Heavy or safety-critical blocked work records `dispatch_shape: subagent-blocked` and `execution_surface: none` with `blocked_reason`.
 - Launch all independent lanes in the current `parallel-subagents` wave before waiting.
-- Use `leader-inline-fallback` only after recording why Codex native subagents are unavailable or unsafe.
 - Suggested bounded lanes include story and phase decomposition, dependency graph analysis, and write-set or parallel-safety analysis.
 - Use `wait_agent` only at the documented join points before writing `tasks.md` and before emitting canonical parallel batches and join points.
 - Use `close_agent` after integrating finished subagent results.

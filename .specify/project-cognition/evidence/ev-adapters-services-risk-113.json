@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-113",
+  "type": "source_analysis",
+  "source_path": "src/services/api/referral.ts",
+  "summary": "referral.ts defines fetchReferralEligibility, fetchReferralRedemptions, shouldCheckForPasses, checkCachedPassesEligibility, formatCreditAmount, getCachedReferrerReward and imports axios, ../../constants/oauth.js, ../../utils/config.js, ../../utils/debug.js, ../../utils/log.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "fetchReferralEligibility",
+    "fetchReferralRedemptions",
+    "shouldCheckForPasses",
+    "checkCachedPassesEligibility",
+    "formatCreditAmount",
+    "getCachedReferrerReward"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

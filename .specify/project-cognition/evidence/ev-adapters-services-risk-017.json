@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-017",
+  "type": "source_analysis",
+  "source_path": "adapters/common/attachment/attachment-store.ts",
+  "summary": "attachment-store.ts defines AttachmentStoreConfig, defaultRoot, sanitizeFilename, AttachmentStore and imports node:fs/promises, node:fs, node:path, node:os, ./attachment-types.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AttachmentStoreConfig",
+    "defaultRoot",
+    "sanitizeFilename",
+    "AttachmentStore"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

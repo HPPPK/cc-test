@@ -1,0 +1,21 @@
+{
+  "id": "ev-server-workflow-api-sessions-workflow-tests",
+  "type": "source_analysis",
+  "source_path": "src/server/__tests__/sessions.test.ts",
+  "summary": "Sessions API tests enumerate workflow error codes and validate session-scoped workflow behavior including creation metadata, linked workflow start, state projection, transition flows, report availability, and workflow fixture-backed state persistence.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WORKFLOW_ERROR_CODES",
+    "makeWorkflowSessionMetaEntry",
+    "writeWorkflowSessionStateFixture",
+    "makePendingWorkflowTransitionState",
+    "WORKFLOW_REPORT_NOT_READY",
+    "WORKFLOW_REPORT_UNAVAILABLE",
+    "WorkflowSessionCreateService",
+    "WorkflowSessionLinkService"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

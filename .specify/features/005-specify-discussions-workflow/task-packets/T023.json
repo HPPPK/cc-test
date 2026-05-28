@@ -1,0 +1,74 @@
+{
+  "id": "T023",
+  "title": "Wire non-empty Chat Workflows context strategy UI",
+  "agent": "executor",
+  "depends_on": [
+    "T017: empty/new composer Workflows launch wired",
+    "T022: desktop linked workflow start API/types added"
+  ],
+  "parallel_safe": false,
+  "story": "US4",
+  "objective": "Add non-empty normal chat Workflows flow with explicit inherit/summarize/clear strategy, linked-start API call, target session navigation, active source disablement, and actionable errors.",
+  "context_navigation": {
+    "design_decision": "plan.md#Locked Planning Decisions",
+    "data_model": "data-model.md#Linked Workflow Session Lifecycle",
+    "api_contract": "contracts/linked-workflow-session.md#Desktop Flow Contract",
+    "reference_implementation": "desktop/src/components/chat/ChatInput.tsx"
+  },
+  "write_scope": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/stores/sessionStore.ts",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/pages/ActiveSession.test.tsx",
+    "desktop/src/stores/sessionStore.test.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/api/sessions.ts",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/chat/ChatInput.tsx （修改）",
+    "desktop/src/pages/ActiveSession.tsx （修改）",
+    "desktop/src/stores/sessionStore.ts （修改，如 navigation state requires it）",
+    "desktop/src/components/chat/ChatInput.test.tsx （修改）",
+    "desktop/src/pages/ActiveSession.test.tsx （修改）",
+    "desktop/src/stores/sessionStore.test.ts （修改，如 store behavior changes）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not start workflow mode without explicit context strategy.",
+    "Do not clear or overwrite source chat UI on failure.",
+    "Do not silently substitute strategy on summarize failure.",
+    "Do not regress existing composer menu behavior."
+  ],
+  "acceptance_criteria": [
+    "Non-empty normal chats show strategy dialog before linked start.",
+    "clear/inherit/summarize send correct payloads.",
+    "Successful start opens/connects returned workflow session.",
+    "Active streaming state disables or surfaces 409.",
+    "Failures keep source chat unchanged and show actionable message."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

@@ -10,20 +10,19 @@
 - phase_mode: [planning-only | design-only | task-generation-only | execution-only | analysis-only | research-only]
 - summary: [Short current-state summary for resume and hook context]
 
-## Fixed Lifecycle State
+## Stage State
 
-- current_stage: [facts-lock | route-lock | intent-lock | complexity-lock | intent-analysis | intent-confirmation | question-batch | batch-adversarial-review | completeness-audit | final-handoff-decision]
-- current_domain: [goal-and-users | triggers-and-primary-flow | boundaries-and-non-goals | failure-paths-exceptions-and-permissions | dependencies-constraints-and-upstream-downstream-impact | acceptance-and-completeness-gap-closure | none]
-- next_action: [Smallest next discovery action to take]
-- blocker_reason: [None | Why progress is blocked or why a domain was reopened]
+- current_stage: [context-intake | clarification | approach-comparison | section-approval | artifact-writing | artifact-review | user-review | plan-design | task-generation | analysis | implementation | research]
+- current_domain: [scope | acceptance | integration | compatibility | security | data-shape | external-dependency | none]
+- next_action: [Smallest next workflow action to take]
+- blocker_reason: [None | Why progress is blocked]
 - final_handoff_decision: [/sp.plan | /sp.clarify | /sp.deep-research | undecided]
 
-## Brainstorming Locks
+## Review State
 
-- facts_lock: [pending | active | closed]
-- route_lock: [pending | active | closed]
-- intent_lock: [pending | active | closed]
-- complexity_lock: [pending | active | closed]
+- last_user_reviewed_artifact_state: [not-requested | requested | changes-requested | approved]
+- source_files_read: [none | discussion source files read | repo context read]
+- source_signal_disposition_status: [not-applicable | incomplete | complete]
 
 ## Unknown Handling
 
@@ -34,8 +33,8 @@
 ## Reopen Contract
 
 - reopen_source: [none | specify | plan | tasks | implement]
-- reopen_target: [none | brainstorming | specify | plan | tasks]
-- reopen_reason: [why a prior truth layer must be reopened]
+- reopen_target: [none | specify | plan | tasks]
+- reopen_reason: [why a prior artifact must be reopened]
 
 ## Analyze Gate
 

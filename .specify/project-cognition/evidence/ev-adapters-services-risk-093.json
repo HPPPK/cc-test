@@ -1,0 +1,18 @@
+{
+  "id": "ev-adapters-services-risk-093",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/sink.ts",
+  "summary": "sink.ts defines shouldTrackDatadog, logEventImpl, logEventAsyncImpl, initializeAnalyticsGates, initializeAnalyticsSink and imports ./datadog.js, ./firstPartyEventLogger.js, ./growthbook.js, ./index.js, ./sinkKillswitch.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "shouldTrackDatadog",
+    "logEventImpl",
+    "logEventAsyncImpl",
+    "initializeAnalyticsGates",
+    "initializeAnalyticsSink"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

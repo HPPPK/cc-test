@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-swarm-03",
+  "type": "source_analysis",
+  "source_path": "src/utils/swarm/spawnInProcess.ts",
+  "summary": "In-process spawn creates teammate identity/context, task state, abort controls, cleanup registration, and task removal hooks before execution starts.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "spawnInProcessTeammate",
+    "createTeammateContext",
+    "InProcessTeammateTaskState",
+    "killInProcessTeammate"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

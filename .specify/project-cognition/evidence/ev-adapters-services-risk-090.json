@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-090",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/growthbook.ts",
+  "summary": "growthbook.ts defines GrowthBookUserAttributes, callSafe, onGrowthBookRefresh, getEnvOverrides, hasGrowthBookEnvOverride, getConfigOverrides and imports @growthbook/growthbook, lodash-es, ../../constants/keys.js, ../../utils/debug.js, ../../utils/errors.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "GrowthBookUserAttributes",
+    "callSafe",
+    "onGrowthBookRefresh",
+    "getEnvOverrides",
+    "hasGrowthBookEnvOverride",
+    "getConfigOverrides"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-037",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/media.ts",
+  "summary": "media.ts defines DingTalkMediaService, buildImageName, inferMime and imports node:path, ../common/attachment/attachment-store.js, ../common/attachment/attachment-types.js, ./helpers.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "DingTalkMediaService",
+    "buildImageName",
+    "inferMime"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

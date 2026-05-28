@@ -1,0 +1,17 @@
+{
+  "id": "ev-desktop-workflow-ui-17",
+  "type": "source_analysis",
+  "source_path": "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+  "summary": "Template manager is the settings-hosted workflow admin surface for list, edit, delete, duplicate, import, export, and refresh.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "loadTemplates",
+    "handleEditTemplate",
+    "handleCopyTemplate",
+    "WorkflowImportExportDialog"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

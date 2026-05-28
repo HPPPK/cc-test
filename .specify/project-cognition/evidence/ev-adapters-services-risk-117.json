@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-117",
+  "type": "source_analysis",
+  "source_path": "src/services/api/withRetry.ts",
+  "summary": "withRetry.ts defines BASE_DELAY_MS, shouldRetry529, isPersistentRetryEnabled, isTransientCapacityError, isStaleConnectionError, RetryContext and imports bun:bundle, @anthropic-ai/sdk, src/constants/querySource.js, src/types/message.js, src/utils/aws.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "BASE_DELAY_MS",
+    "shouldRetry529",
+    "isPersistentRetryEnabled",
+    "isTransientCapacityError",
+    "isStaleConnectionError",
+    "RetryContext"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

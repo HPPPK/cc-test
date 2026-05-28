@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-055",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/path-safety.ts",
+  "summary": "path-safety.ts defines isOutsideWorkDir, usesWindowsPath, stripTrailingSeparators and imports node:path",
+  "detail": "",
+  "quotes_or_symbols": [
+    "isOutsideWorkDir",
+    "usesWindowsPath",
+    "stripTrailingSeparators"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "ev-desktop-workflow-ui-02",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/diagnosticsSettings.test.tsx",
+  "summary": "Diagnostics tab tests confirm other settings surfaces still load through Settings after tab expansion.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "Settings > Diagnostics tab",
+    "fireEvent.click(screen.getByText('Diagnostics'))"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

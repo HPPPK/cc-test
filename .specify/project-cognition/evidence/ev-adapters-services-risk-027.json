@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-027",
+  "type": "source_analysis",
+  "source_path": "adapters/common/permission.ts",
+  "summary": "permission.ts defines PermissionDecision, getSinglePendingRequestId, parsePermissionCommand, parsePermitCallbackData, formatPermissionInstructions, formatPermissionDecisionStatus",
+  "detail": "",
+  "quotes_or_symbols": [
+    "PermissionDecision",
+    "getSinglePendingRequestId",
+    "parsePermissionCommand",
+    "parsePermitCallbackData",
+    "formatPermissionInstructions",
+    "formatPermissionDecisionStatus"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

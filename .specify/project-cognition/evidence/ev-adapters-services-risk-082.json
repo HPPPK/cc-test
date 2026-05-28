@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-082",
+  "type": "source_analysis",
+  "source_path": "src/services/PromptSuggestion/speculation.ts",
+  "summary": "speculation.ts defines safeRemoveOverlay, getOverlayPath, denySpeculation, ActiveSpeculationState, logSpeculation, countToolsInMessages and imports crypto, fs, fs/promises, path, ../../bootstrap/state.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "safeRemoveOverlay",
+    "getOverlayPath",
+    "denySpeculation",
+    "ActiveSpeculationState",
+    "logSpeculation",
+    "countToolsInMessages"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

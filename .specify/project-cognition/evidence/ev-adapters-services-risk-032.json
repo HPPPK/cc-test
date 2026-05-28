@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-032",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/__tests__/permission-card.test.ts",
+  "summary": "Test coverage for permission-card.test.ts exercises builds template params with three permission actions; parses nested card private params; parses compact callback values; ignores callbacks without permission action data",
+  "detail": "",
+  "quotes_or_symbols": [
+    "builds template params with three permission actions",
+    "parses nested card private params",
+    "parses compact callback values",
+    "ignores callbacks without permission action data"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,67 @@
+{
+  "id": "T002",
+  "title": "Confirm target write boundaries and protected paths",
+  "agent": "security-reviewer",
+  "depends_on": [
+    "T001: implementation guardrails recorded"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Confirm target root, allowed write scopes, protected paths, and forbidden drift before implementation dispatch.",
+  "context_navigation": {
+    "design_decision": "plan.md#Implementation Target Boundary",
+    "data_model": "data-model.md#Migration And Persistence Notes",
+    "api_contract": "contracts/workflow-template-api.md#Security And Validation",
+    "reference_implementation": "AGENTS.md#Persistent Storage Compatibility"
+  },
+  "write_scope": [
+    ".specify/features/005-specify-discussions-workflow/handoff-to-tasks.json",
+    ".specify/features/005-specify-discussions-workflow/workflow-state.md"
+  ],
+  "read_scope": [
+    ".specify/features/005-specify-discussions-workflow/plan.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json",
+    ".specify/features/005-specify-discussions-workflow/tasks.md",
+    "AGENTS.md"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "**/*credential*",
+    "**/*secret*",
+    "src/**",
+    "desktop/src/**",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    "~/.claude/cc-jiangxia/providers.json",
+    "~/.claude/cc-jiangxia/settings.json",
+    ".mcp.json",
+    "artifacts/quality-runs/**",
+    "artifacts/coverage/**"
+  ],
+  "expected_outputs": [
+    ".specify/features/005-specify-discussions-workflow/handoff-to-tasks.json （修改）"
+  ],
+  "anti_goals": [
+    "Do not implement any repair or migration flow.",
+    "Do not authorize protected-file mutation.",
+    "Do not add broad filesystem write permissions."
+  ],
+  "acceptance_criteria": [
+    "Protected paths are listed in handoff-to-tasks.json and task packets.",
+    "Target root is explicitly F:/github/cc-jiangxia.",
+    "Implementation writes are limited to planned source/test/artifact surfaces."
+  ],
+  "verify_commands": [
+    "manual protected-path review"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

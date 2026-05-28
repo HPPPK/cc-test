@@ -1,4 +1,4 @@
-# cc-haha Constitution
+# cc-jiangxia Constitution
 
 ## Core Principles
 
@@ -124,16 +124,22 @@ The system MUST make failures easy to detect, explain, and reproduce.
   source inspection, planning, debugging, implementation, task decomposition,
   or subagent dispatch. The query result MUST guide routing, minimal live
   reads, boundary constraints, and verification strategy.
-- **Technical Source of Truth**: Maintain
-  `.specify/project-cognition/status.json` and workflow-appropriate cognition
-  slices as the default brownfield runtime truth surface. Legacy handbook or
-  project-map exports are compatibility surfaces only. Use `map-update` for
-  localized stale cognition runtime refresh; use `map-scan` followed by
-  `map-build` when no usable baseline remains or a full rebuild is required.
-  Keep cognition status, slices, and freshness state in sync whenever
-  navigation meaning changes. If the project cognition runtime is missing,
-  generate it before structural work continues; if it is stale or too weak for
-  the touched area, refresh it before structural work continues.
+- **Technical Evidence**: Treat `.specify/project-cognition/status.json` and
+  workflow-appropriate cognition query bundles as the advisory project cognition index.
+  Legacy handbook or project-map exports are compatibility surfaces only.
+  Map points, code proves: technical claims and completion claims MUST be
+  backed by live project evidence, not by project cognition output alone.
+  Recommend `map-update` for localized stale cognition, ordinary changed-path
+  map maintenance, ordinary existing-baseline gaps, and weak localized coverage
+  after a usable baseline. Recommend `map-scan` followed by `map-build` only for
+  first/missing/unusable baseline, schema failure, zero active-generation
+  `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- **Follow Project Style and Structure**: Before implementing, inspect and follow
+  the current project's established style, file organization, naming
+  conventions, helper APIs, framework patterns, and architecture boundaries.
+  Extend existing patterns when they satisfy the requirement. If a broader
+  architecture improvement appears warranted, present the recommendation,
+  trade-offs, and expected impact to the user before changing direction.
 - **Encoding Preservation**: When modifying an existing file, changes MUST
   preserve the file's existing character encoding and BOM behavior unless the
   task explicitly requires an encoding conversion.
@@ -173,4 +179,4 @@ explicit higher-priority instruction overrides it.
 - **Runtime Guidance**: Repository-specific guidance files may add stricter
   rules, but they MUST NOT silently weaken this constitution.
 
-**Version**: 1.2.0 | **Ratified**: 2026-05-16 | **Last Amended**: 2026-05-16
+**Version**: 1.3.0 | **Ratified**: 2026-05-26 | **Last Amended**: 2026-05-26

@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-044",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/flush-controller.test.ts",
+  "summary": "Test coverage for flush-controller.test.ts exercises 在 cardMessageReady=false 时不 flush; setCardMessageReady(true) 后 flush 可执行; setCardMessageReady(true) 同步初始化 lastUpdateTime —— 刚 ready 时 throttledUpdate 被节流窗口阻挡; complete() 后拒绝新 flush",
+  "detail": "",
+  "quotes_or_symbols": [
+    "在 cardMessageReady=false 时不 flush",
+    "setCardMessageReady(true) 后 flush 可执行",
+    "setCardMessageReady(true) 同步初始化 lastUpdateTime —— 刚 ready 时 throttledUpdate 被节流窗口阻挡",
+    "complete() 后拒绝新 flush"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

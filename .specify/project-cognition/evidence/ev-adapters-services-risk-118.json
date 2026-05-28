@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-118",
+  "type": "source_analysis",
+  "source_path": "src/services/autoDream/autoDream.ts",
+  "summary": "autoDream.ts defines getConfig, isGateOpen, isForced, initAutoDream, makeDreamProgressWatcher, executeAutoDream and imports ../../utils/hooks/postSamplingHooks.js, ../../types/message.js, ../../utils/debug.js, ../../Tool.js, ../analytics/index.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getConfig",
+    "isGateOpen",
+    "isForced",
+    "initAutoDream",
+    "makeDreamProgressWatcher",
+    "executeAutoDream"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

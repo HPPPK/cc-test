@@ -1,0 +1,65 @@
+{
+  "id": "T007",
+  "title": "Extend workflow template registry validation and lossless writes",
+  "agent": "executor",
+  "depends_on": [
+    "T003: registry validation tests added"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Implement registry validation and persistence behavior for required phase output/handoff contracts, import/update/delete support, unknown-field preservation, built-in protection, and cache reset.",
+  "context_navigation": {
+    "design_decision": "plan.md#Implementation Constitution",
+    "data_model": "data-model.md#Workflow Phase Contract",
+    "api_contract": "contracts/workflow-template-api.md#Validate",
+    "reference_implementation": "src/server/services/workflowTemplateRegistryService.ts"
+  },
+  "write_scope": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/workflowTypes.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    ".specify/features/005-specify-discussions-workflow/data-model.md",
+    ".specify/features/005-specify-discussions-workflow/plan.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    ".mcp.json"
+  ],
+  "expected_outputs": [
+    "src/server/services/workflowTemplateRegistryService.ts （修改）",
+    "src/server/services/workflowTemplateRegistryService.test.ts （修改）",
+    "src/server/services/workflowTypes.ts （修改，如 type additions are required）"
+  ],
+  "anti_goals": [
+    "Do not add project-level template storage.",
+    "Do not mutate workflow session snapshots.",
+    "Do not save prompt-only phases.",
+    "Do not overwrite malformed user config silently."
+  ],
+  "acceptance_criteria": [
+    "Built-in template remains startable for missing/malformed config.",
+    "Built-in id shadowing and duplicate ids are rejected.",
+    "Missing output artifact or handoff semantics are rejected.",
+    "Unknown fields are preserved on valid writes.",
+    "Registry cache resets after successful writes."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

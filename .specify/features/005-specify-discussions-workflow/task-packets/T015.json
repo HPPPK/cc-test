@@ -1,0 +1,66 @@
+{
+  "id": "T015",
+  "title": "Add Settings import/export dialogs",
+  "agent": "executor",
+  "depends_on": [
+    "T013: Settings CRUD flows wired",
+    "T014: server import/export behavior implemented"
+  ],
+  "parallel_safe": false,
+  "story": "US2",
+  "objective": "Implement Settings import/export dialogs for selected export, JSON import preview, candidate selection, rename conflicts, and commit feedback.",
+  "context_navigation": {
+    "design_decision": "plan.md#Locked Planning Decisions",
+    "data_model": "data-model.md#Import Lifecycle",
+    "api_contract": "contracts/workflow-template-api.md#Import Commit",
+    "reference_implementation": "desktop/src/components/workflow/WorkflowTemplateManager.tsx"
+  },
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx （新建）",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx （修改）",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx （修改）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not commit import without preview.",
+    "Do not overwrite conflicts by default.",
+    "Do not include protected user state in export."
+  ],
+  "acceptance_criteria": [
+    "Import preview lists candidates, invalid templates, conflicts, rename outcomes, and selectable entries.",
+    "Commit sends selected import ids/resolutions.",
+    "Export supports selected templates.",
+    "User sees actionable errors and list refreshes on success."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

@@ -143,10 +143,10 @@ async function buildOfficialRuntimeEnv(): Promise<Record<string, string>> {
   }
 
   try {
-    const { hahaOAuthService } = await import(
-      '../../server/services/hahaOAuthService.js'
+    const { jiangxiaOAuthService } = await import(
+      '../../server/services/jiangxiaOAuthService.js'
     )
-    const token = await hahaOAuthService.ensureFreshAccessToken()
+    const token = await jiangxiaOAuthService.ensureFreshAccessToken()
     if (token) {
       env.CLAUDE_CODE_OAUTH_TOKEN = token
     }

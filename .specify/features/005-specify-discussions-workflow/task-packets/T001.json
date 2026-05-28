@@ -1,0 +1,64 @@
+{
+  "id": "T001",
+  "title": "Read and record implementation guardrails",
+  "agent": "executor",
+  "depends_on": [],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Confirm implementation guardrails from the approved plan package before any code or test edits.",
+  "context_navigation": {
+    "design_decision": "plan.md#Implementation Constitution",
+    "data_model": "data-model.md#Overview",
+    "api_contract": "contracts/workflow-template-api.md#Security And Validation",
+    "reference_implementation": "AGENTS.md#Feature Quality Contract"
+  },
+  "write_scope": [
+    ".specify/features/005-specify-discussions-workflow/handoff-to-tasks.json",
+    ".specify/features/005-specify-discussions-workflow/workflow-state.md"
+  ],
+  "read_scope": [
+    ".specify/features/005-specify-discussions-workflow/plan.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json",
+    ".specify/memory/constitution.md",
+    "AGENTS.md"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "**/*credential*",
+    "**/*secret*",
+    "src/**",
+    "desktop/src/**",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    ".mcp.json",
+    "artifacts/quality-runs/**",
+    "artifacts/coverage/**"
+  ],
+  "expected_outputs": [
+    ".specify/features/005-specify-discussions-workflow/handoff-to-tasks.json （修改）",
+    ".specify/features/005-specify-discussions-workflow/workflow-state.md （修改）"
+  ],
+  "anti_goals": [
+    "Do not edit source code or tests.",
+    "Do not narrow the confirmed delivery scope.",
+    "Do not remove MP or CA obligations."
+  ],
+  "acceptance_criteria": [
+    "Guardrails G1-G10 are present in tasks.md or handoff-to-tasks.json.",
+    "workflow-state.md remains phase_mode task-generation-only until implementation starts.",
+    "next_command remains /sp.implement after task readiness is confirmed."
+  ],
+  "verify_commands": [
+    "manual review of tasks.md and workflow-state.md"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

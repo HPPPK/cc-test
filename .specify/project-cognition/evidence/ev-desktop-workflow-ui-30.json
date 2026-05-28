@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-30",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/EmptySession.test.tsx",
+  "summary": "EmptySession tests pin workflow launch UX: plus-menu entry, start dialog rendering, startable filtering, invalid-template diagnostics, and workflow session creation payloads.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "opens workflows from the plus menu",
+    "createSession",
+    "workflow: { templateId, templateSource, initialPhaseId }"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-058",
+  "type": "source_analysis",
+  "source_path": "adapters/telegram/__tests__/media.test.ts",
+  "summary": "Test coverage for media.test.ts exercises downloadFile fetches the real URL and stores a LocalAttachment; sendPhoto calls bot.api.sendPhoto with InputFile-like payload; sendDocument calls bot.api.sendDocument",
+  "detail": "",
+  "quotes_or_symbols": [
+    "downloadFile fetches the real URL and stores a LocalAttachment",
+    "sendPhoto calls bot.api.sendPhoto with InputFile-like payload",
+    "sendDocument calls bot.api.sendDocument"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

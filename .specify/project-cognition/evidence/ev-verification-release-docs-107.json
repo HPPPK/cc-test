@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-107",
+  "type": "source_analysis",
+  "source_path": "docs/desktop/04-installation.md",
+  "summary": "Desktop docs cover quick start, architecture, features, installation/build, FAQ, and H5 access.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "安装",
+    "构建"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

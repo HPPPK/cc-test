@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ApiError } from '../middleware/errorHandler.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import type {
   WorkflowArtifactPointer,
   WorkflowPhaseArtifact,
@@ -37,7 +38,7 @@ function configDir(): string {
 }
 
 function workflowSessionDir(sessionId: string): string {
-  return path.join(configDir(), 'cc-haha', 'workflow-sessions', sessionId)
+  return getAppStoragePath(configDir(), 'workflow-sessions', sessionId)
 }
 
 function assertSafeArtifactId(artifactId: unknown): asserts artifactId is string {

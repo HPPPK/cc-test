@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-064",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/__tests__/typing.test.ts",
+  "summary": "Test coverage for typing.test.ts exercises sends typing immediately and keeps it alive until stopped; does not create duplicate keepalive timers for the same chat",
+  "detail": "",
+  "quotes_or_symbols": [
+    "sends typing immediately and keeps it alive until stopped",
+    "does not create duplicate keepalive timers for the same chat"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

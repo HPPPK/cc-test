@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-119",
+  "type": "source_analysis",
+  "source_path": "docs/en/agent/images/06-context-passing.png",
+  "summary": "Documentation image asset accounted for by file metadata (undefined bytes).",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:118908",
+    "mtime:2026-05-15T06:52:03.979Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

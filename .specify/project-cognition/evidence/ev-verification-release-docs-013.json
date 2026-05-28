@@ -1,0 +1,14 @@
+{
+  "id": "ev-verification-release-docs-013",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/build.rs",
+  "summary": "Rust build script delegates native build-time configuration to tauri_build.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "tauri_build::build"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

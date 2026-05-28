@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-098",
+  "type": "source_analysis",
+  "source_path": "docs/channel/02-im-gateway-proposal.md",
+  "summary": "Channel docs describe channel architecture, permission relay, and IM gateway proposal surfaces.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "组织策略门控",
+    "WhatsApp",
+    "Slack",
+    "Microsoft Teams"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

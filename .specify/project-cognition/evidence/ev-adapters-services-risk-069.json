@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-069",
+  "type": "source_analysis",
+  "source_path": "src/memdir/findRelevantMemories.ts",
+  "summary": "findRelevantMemories.ts defines RelevantMemory, findRelevantMemories and imports bun:bundle, ../utils/debug.js, ../utils/errors.js, ../utils/model/model.js, ../utils/sideQuery.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "RelevantMemory",
+    "findRelevantMemories"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

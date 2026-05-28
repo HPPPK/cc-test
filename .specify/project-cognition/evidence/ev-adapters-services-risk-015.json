@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-015",
+  "type": "source_analysis",
+  "source_path": "adapters/common/attachment/__tests__/image-block-watcher.test.ts",
+  "summary": "Test coverage for image-block-watcher.test.ts exercises extracts a markdown image with http URL; extracts a markdown image with absolute local path; extracts a markdown image with file:// URL as path; extracts a data URI as base64",
+  "detail": "",
+  "quotes_or_symbols": [
+    "extracts a markdown image with http URL",
+    "extracts a markdown image with absolute local path",
+    "extracts a markdown image with file:// URL as path",
+    "extracts a data URI as base64"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

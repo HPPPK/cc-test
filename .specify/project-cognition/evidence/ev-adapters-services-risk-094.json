@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-094",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/sinkKillswitch.ts",
+  "summary": "sinkKillswitch.ts defines SinkName, isSinkKilled and imports ./growthbook.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "SinkName",
+    "isSinkKilled"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

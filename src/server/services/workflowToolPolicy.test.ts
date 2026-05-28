@@ -2,8 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import type { WorkflowSessionState } from './workflowTypes.js'
 import * as workflowToolPolicy from './workflowToolPolicy.js'
 import {
+  WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS,
+  WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS,
+  getWorkflowTemplateAuthoringOperationPolicy,
   getWorkflowPhaseActionPolicy,
   getWorkflowPhaseDisallowedTools,
+  isWorkflowTemplateAuthoringMutationDenied,
+  isWorkflowTemplateAuthoringMutatingOperation,
+  isWorkflowTemplateAuthoringReadOnlyOperation,
   isWorkflowPhaseToolDenied,
 } from './workflowToolPolicy.js'
 
@@ -78,6 +84,38 @@ function workflowStateWithSkills(): WorkflowSessionState {
   } as WorkflowSessionState
 }
 
+function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): WorkflowSessionState {
+  return {
+    ...stateFor(activePhaseId),
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: 'custom-authoring',
+      source: 'user',
+      version: '1',
+      displayName: 'Custom Authoring',
+      description: 'Custom policy fixture',
+      phases: [
+        {
+          id: activePhaseId,
+          label: 'Custom phase',
+          instructions: 'Run custom authoring policy.',
+          requestedModel: null,
+          actionPolicy: {
+            allowedActions: [
+              'Workflow template authoring',
+              'Record validation diagnostics',
+            ],
+            forbiddenActions: ['Edit unrelated files'],
+          },
+          requiredArtifacts: [],
+          completionCriteria: ['custom policy satisfied'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+  } as WorkflowSessionState
+}
+
 describe('workflowToolPolicy', () => {
   test('defines explicit allowed and forbidden actions for the builtin five-phase workflow', () => {
     const requirements = getWorkflowPhaseActionPolicy(stateFor('requirements-clarification'))
@@ -135,6 +173,139 @@ describe('workflowToolPolicy', () => {
     expect(isWorkflowPhaseToolDenied('Bash', stateFor('verification'))).toBe(false)
     expect(isWorkflowPhaseToolDenied('Write', stateFor('verification'))).toBe(true)
     expect(getWorkflowPhaseDisallowedTools(stateFor(null))).toEqual([])
+  })
+
+  test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
+    expect(WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS).toEqual([
+      'guide',
+      'list',
+      'inspect',
+      'validate',
+    ])
+    expect(WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS).toEqual([
+      'create',
+      'update',
+      'duplicate',
+      'delete',
+    ])
+
+    for (const operation of WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS) {
+      expect(isWorkflowTemplateAuthoringReadOnlyOperation(operation)).toBe(true)
+      expect(isWorkflowTemplateAuthoringMutatingOperation(operation)).toBe(false)
+    }
+
+    for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
+      expect(isWorkflowTemplateAuthoringReadOnlyOperation(operation)).toBe(false)
+      expect(isWorkflowTemplateAuthoringMutatingOperation(operation)).toBe(true)
+    }
+  })
+
+  test('keeps read-only workflow template authoring operations available in non-implementation phases', () => {
+    for (const phaseId of ['requirements-clarification', 'technical-design', 'implementation-planning', 'verification']) {
+      for (const operation of WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS) {
+        const result = getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(phaseId))
+
+        expect(result).toMatchObject({
+          operation,
+          allowed: true,
+          denied: false,
+          readOnly: true,
+          mutating: false,
+          reason: 'read-only-operation',
+        })
+      }
+    }
+
+    expect(getWorkflowPhaseDisallowedTools(stateFor('requirements-clarification'))).not.toContain(
+      'workflow_template_authoring',
+    )
+  })
+
+  test('denies workflow template authoring mutations before implementation and during verification', () => {
+    for (const phaseId of ['requirements-clarification', 'technical-design', 'implementation-planning', 'verification']) {
+      for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
+        const result = getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(phaseId))
+
+        expect(result).toMatchObject({
+          operation,
+          allowed: false,
+          denied: true,
+          readOnly: false,
+          mutating: true,
+          phaseId,
+          reason: 'phase-policy-denies-workflow-template-authoring',
+        })
+        expect(result.message).toContain('denied')
+        expect(isWorkflowTemplateAuthoringMutationDenied(operation, stateFor(phaseId))).toBe(true)
+      }
+    }
+  })
+
+  test('allows workflow template authoring mutations outside active workflows and in implementation phases', () => {
+    const nonWorkflowState = {
+      mode: 'dialogue',
+    } as unknown as WorkflowSessionState
+
+    for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, undefined)).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        reason: 'outside-active-workflow',
+      })
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(null))).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        reason: 'outside-active-workflow',
+      })
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, nonWorkflowState)).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        reason: 'outside-active-workflow',
+      })
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor('implementation'))).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        phaseId: 'implementation',
+        reason: 'implementation-phase',
+      })
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor('implement'))).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        phaseId: 'implement',
+        reason: 'implementation-phase',
+      })
+    }
+  })
+
+  test('allows workflow template authoring mutations when custom phase policy explicitly allows them', () => {
+    const state = workflowStateWithCustomAuthoringPolicy('workflow-maintenance')
+
+    for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
+      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, state)).toMatchObject({
+        operation,
+        allowed: true,
+        denied: false,
+        phaseId: 'workflow-maintenance',
+        reason: 'custom-policy-allows-workflow-template-authoring',
+      })
+      expect(isWorkflowTemplateAuthoringMutationDenied(operation, state)).toBe(false)
+    }
+  })
+
+  test('fails closed for unknown workflow template authoring operations', () => {
+    expect(getWorkflowTemplateAuthoringOperationPolicy('publish', stateFor('implementation'))).toMatchObject({
+      operation: 'publish',
+      allowed: false,
+      denied: true,
+      readOnly: false,
+      mutating: false,
+      reason: 'unknown-operation',
+    })
   })
 
   test('exposes submit_phase_completion only for active workflow sessions', () => {

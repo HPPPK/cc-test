@@ -7,7 +7,7 @@ import { changedFilesForLocalPrCheck } from './changed-files.js'
 import { selectFastLaneTests } from './change-policy.js'
 
 const root = process.cwd()
-const MAX_CHANGED_TEST_FILES = Number(process.env.CC_HAHA_FAST_LANE_MAX_CHANGED_TEST_FILES || '20')
+const MAX_CHANGED_TEST_FILES = Number(process.env.CC_JIANGXIA_FAST_LANE_MAX_CHANGED_TEST_FILES || '20')
 
 function normalizePath(path: string) {
   return path.split(sep).join('/')

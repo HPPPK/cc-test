@@ -1,0 +1,76 @@
+{
+  "id": "T024",
+  "title": "Run integration verification, quickstart smoke, coverage, and PR gate evidence",
+  "agent": "quality-reviewer",
+  "depends_on": [
+    "T013: Settings CRUD flows wired",
+    "T015: Settings import/export dialogs implemented",
+    "T017: empty/new composer Workflows launch wired",
+    "T023: non-empty Chat Workflows strategy UI wired"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Run full feature verification and record changed files, tests, quality report, coverage report, live/provider blocker, residual risks, and project cognition follow-up.",
+  "context_navigation": {
+    "design_decision": "plan.md#Packet Validation Gates",
+    "data_model": "data-model.md#State Transitions",
+    "api_contract": "quickstart.md#Evidence To Record In Handoff",
+    "reference_implementation": "AGENTS.md#Quality Gate Automation"
+  },
+  "write_scope": [
+    "Only files already touched by T003-T023 when fixing integration defects",
+    "implementation handoff notes created by the implementation workflow"
+  ],
+  "read_scope": [
+    ".specify/features/005-specify-discussions-workflow/quickstart.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json",
+    "artifacts/quality-runs/**",
+    "artifacts/coverage/**"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "**/*credential*",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl",
+    "artifacts/quality-runs/** committed to git",
+    "artifacts/coverage/** committed to git",
+    "scripts/quality-gate/coverage-baseline.json unless explicitly approved",
+    "scripts/quality-gate/coverage-thresholds.json unless explicitly approved"
+  ],
+  "expected_outputs": [
+    "No committed generated artifacts",
+    "Implementation handoff evidence （新建/修改 by implementation workflow）",
+    "Focused fixes in previously touched source/test files only if gates expose defects"
+  ],
+  "anti_goals": [
+    "Do not lower coverage gates.",
+    "Do not claim ready without gate evidence or exact blocker.",
+    "Do not commit artifacts/quality-runs or artifacts/coverage."
+  ],
+  "acceptance_criteria": [
+    "bun run check:server passes.",
+    "bun run check:desktop passes.",
+    "bun run check:coverage passes.",
+    "bun run verify passes.",
+    "Quickstart scenarios are covered by automated tests or manual smoke evidence/blocker.",
+    "Provider-backed summarize live evidence is run when credentials exist, otherwise exact blocker is recorded.",
+    "Project cognition follow-up is recorded for source/runtime route/service changes."
+  ],
+  "verify_commands": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run check:coverage",
+    "bun run verify"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

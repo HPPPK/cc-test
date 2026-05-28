@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-042",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/extract-payload.test.ts",
+  "summary": "Test coverage for extract-payload.test.ts exercises pulls text out of a text message; pulls text out of a post (rich text) message; identifies an image message as a pending image download; identifies a file message as a pending file download with file_name",
+  "detail": "",
+  "quotes_or_symbols": [
+    "pulls text out of a text message",
+    "pulls text out of a post (rich text) message",
+    "identifies an image message as a pending image download",
+    "identifies a file message as a pending file download with file_name"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

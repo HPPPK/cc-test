@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-029",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml",
+  "summary": "Android launcher asset metadata participates in mobile packaging icon generation.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:265",
+    "mtime:2026-05-15T06:52:03.844Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-task-03",
+  "type": "source_analysis",
+  "source_path": "src/tasks/stopTask.ts",
+  "summary": "Task stopping is centralized: it validates task existence/running state, dispatches to the task implementation kill handler, and suppresses duplicate shell-stop notifications.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "stopTask",
+    "StopTaskError",
+    "getTaskByType",
+    "emitTaskTerminatedSdk"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

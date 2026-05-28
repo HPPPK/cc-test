@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-120",
+  "type": "source_analysis",
+  "source_path": "src/services/autoDream/consolidationLock.ts",
+  "summary": "consolidationLock.ts defines lockPath, readLastConsolidatedAt, tryAcquireConsolidationLock, rollbackConsolidationLock, listSessionsTouchedSince, recordConsolidation and imports fs/promises, path, ../../bootstrap/state.js, ../../memdir/paths.js, ../../utils/debug.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "lockPath",
+    "readLastConsolidatedAt",
+    "tryAcquireConsolidationLock",
+    "rollbackConsolidationLock",
+    "listSessionsTouchedSince",
+    "recordConsolidation"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-28T03:28:41.238Z",
+  "command": "sp-map-scan",
+  "execution_surface": "native-subagents",
+  "events": [
+    {
+      "event_type": "dispatch",
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "agent_id": "019e6c8e-62cb-7bf1-8b73-956a04d1fe53",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 8
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "agent_id": "019e6c8e-62cb-7bf1-8b73-956a04d1fe53",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/root-config-runtime.json",
+      "acceptance": "pass"
+    },
+    {
+      "event_type": "dispatch",
+      "packet_id": "server-workflow-api",
+      "lane_id": "server-workflow-api",
+      "agent_id": "019e6c8e-63c1-7fb0-ab90-1720913d27df",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 80
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "server-workflow-api",
+      "lane_id": "server-workflow-api",
+      "agent_id": "019e6c8e-63c1-7fb0-ab90-1720913d27df",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/server-workflow-api.json",
+      "acceptance": "pass"
+    },
+    {
+      "event_type": "dispatch",
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "agent_id": "019e6c8e-64ac-7ae2-b6c2-8b94eea25079",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 40
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "desktop-workflow-ui",
+      "lane_id": "desktop-workflow-ui",
+      "agent_id": "019e6c8e-64ac-7ae2-b6c2-8b94eea25079",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/desktop-workflow-ui.json",
+      "acceptance": "pass"
+    },
+    {
+      "event_type": "dispatch",
+      "packet_id": "tools-agent-loop",
+      "lane_id": "tools-agent-loop",
+      "agent_id": "019e6c8e-65bb-7932-8e7e-a6926228e7ed",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 85
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "tools-agent-loop",
+      "lane_id": "tools-agent-loop",
+      "agent_id": "019e6c8e-65bb-7932-8e7e-a6926228e7ed",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/tools-agent-loop.json",
+      "acceptance": "pass"
+    },
+    {
+      "event_type": "dispatch",
+      "packet_id": "verification-release-docs",
+      "lane_id": "verification-release-docs",
+      "agent_id": "019e6c8e-66df-73d2-8ac7-c01771a60dec",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 120
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "verification-release-docs",
+      "lane_id": "verification-release-docs",
+      "agent_id": "019e6c8e-66df-73d2-8ac7-c01771a60dec",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/verification-release-docs.json",
+      "acceptance": "pass"
+    },
+    {
+      "event_type": "dispatch",
+      "packet_id": "adapters-services-risk",
+      "lane_id": "adapters-services-risk",
+      "agent_id": "019e6c8e-67f2-7721-9120-8216910ee395",
+      "occurred_at": "2026-05-28T03:08:09.197Z",
+      "assigned_paths": 120
+    },
+    {
+      "event_type": "return_acceptance",
+      "packet_id": "adapters-services-risk",
+      "lane_id": "adapters-services-risk",
+      "agent_id": "019e6c8e-67f2-7721-9120-8216910ee395",
+      "occurred_at": "2026-05-28T03:28:41.238Z",
+      "result_path": ".specify/project-cognition/workbench/worker-results/adapters-services-risk.json",
+      "acceptance": "pass"
+    }
+  ]
+}

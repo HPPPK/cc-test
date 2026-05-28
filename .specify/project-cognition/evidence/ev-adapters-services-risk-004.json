@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-004",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/config.test.ts",
+  "summary": "Test coverage for config.test.ts exercises uses the user shell working directory when no default project is configured; keeps the explicit default project ahead of the platform default work dir; accepts ADAPTER_DEFAULT_PROJECT_DIR as a sidecar-friendly default work dir override; loads DingTalk permission card template id from file or env",
+  "detail": "",
+  "quotes_or_symbols": [
+    "uses the user shell working directory when no default project is configured",
+    "keeps the explicit default project ahead of the platform default work dir",
+    "accepts ADAPTER_DEFAULT_PROJECT_DIR as a sidecar-friendly default work dir override",
+    "loads DingTalk permission card template id from file or env"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,602 @@
+{
+  "packet_id": "root-config-runtime",
+  "acceptance": "pass",
+  "assigned_paths": [
+    "AGENTS.md",
+    "package.json",
+    "tsconfig.json",
+    "bunfig.toml",
+    "bin/claude-jiangxia",
+    "bin/claude-jiangxia.ps1",
+    "src/main.tsx",
+    "src/setup.ts"
+  ],
+  "paths_read": [
+    ".specify/project-cognition/workbench/scan-packets/root-config-runtime.md",
+    ".specify/project-cognition/workbench/repository-universe.json",
+    "AGENTS.md",
+    "package.json",
+    "tsconfig.json",
+    "bunfig.toml",
+    "bin/claude-jiangxia",
+    "bin/claude-jiangxia.ps1",
+    "src/main.tsx",
+    "src/setup.ts"
+  ],
+  "coverage": [
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "AGENTS.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-agents-01"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "repo_policy",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "package.json",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-pkg-01"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "root_manifest",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "tsconfig.json",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-tsconfig-01"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "typescript_runtime_config",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "bunfig.toml",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-bunfig-01"
+      ],
+      "confidence": "high",
+      "criticality": "medium",
+      "classification": "bun_runtime_config",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "bin/claude-jiangxia",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "launcher_script",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "bin/claude-jiangxia.ps1",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-ps1-01"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "launcher_script",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "src/main.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-main-01",
+        "ev-root-config-runtime-main-02"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "primary_runtime_entry",
+      "coverage_scope": "assigned"
+    },
+    {
+      "packet_id": "root-config-runtime",
+      "lane_id": "root-config-runtime",
+      "path": "src/setup.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "ev-root-config-runtime-setup-01",
+        "ev-root-config-runtime-setup-02"
+      ],
+      "confidence": "high",
+      "criticality": "high",
+      "classification": "startup_orchestration",
+      "coverage_scope": "assigned"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-root-config-runtime-agents-01",
+      "type": "source_analysis",
+      "source_path": "AGENTS.md",
+      "summary": "Root repository policy identifies the root package as a Bun-based CLI and local server, names `bin/claude-jiangxia` as the executable entrypoint, and defines `bun run verify` as the standard local quality gate.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "The root package is the Bun-based CLI and local server.",
+        "`bin/claude-jiangxia` is the executable entrypoint.",
+        "`bun run verify`: one-command local PR verification entrypoint"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-pkg-01",
+      "type": "source_analysis",
+      "source_path": "package.json",
+      "summary": "The root manifest is ESM, exposes the `claude-jiangxia` binary through `./bin/claude-jiangxia`, and routes local startup and verification through Bun scripts such as `start`, `verify`, `check:server`, and `quality:pr`.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "\"name\": \"claude-code-local\"",
+        "\"type\": \"module\"",
+        "\"bin\": { \"claude-jiangxia\": \"./bin/claude-jiangxia\" }",
+        "\"start\": \"bun run ./bin/claude-jiangxia\"",
+        "\"verify\": \"bun run quality:pr\"",
+        "\"check:server\": \"bun run scripts/pr/run-server-tests.ts\"",
+        "\"quality:pr\": \"bun run quality:gate --mode pr\""
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-tsconfig-01",
+      "type": "source_analysis",
+      "source_path": "tsconfig.json",
+      "summary": "TypeScript is configured for Bun/ESM execution with bundler resolution, React JSX, `allowJs`, and root-relative path aliases including `src/*` and local stubs.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "\"target\": \"ESNext\"",
+        "\"module\": \"ESNext\"",
+        "\"moduleResolution\": \"bundler\"",
+        "\"allowJs\": true",
+        "\"jsx\": \"react-jsx\"",
+        "\"baseUrl\": \".\"",
+        "\"src/*\": [\"./src/*\"]",
+        "\"types\": [\"bun-types\"]"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-bunfig-01",
+      "type": "source_analysis",
+      "source_path": "bunfig.toml",
+      "summary": "Bun preloads `./preload.ts` for root runtime startup.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "preload = [\"./preload.ts\"]"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-bin-bash-01",
+      "type": "source_analysis",
+      "source_path": "bin/claude-jiangxia",
+      "summary": "The POSIX launcher resolves the repo root, exports `CALLER_DIR`, conditionally suppresses Bun dotenv loading via `CC_JIANGXIA_SKIP_DOTENV`, and dispatches either `src/localRecoveryCli.ts` or `src/entrypoints/cli.tsx`.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "ROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\"",
+        "export CALLER_DIR=\"${CALLER_DIR:-$(pwd -W 2>/dev/null || pwd)}\"",
+        "if [[ \"${CC_JIANGXIA_SKIP_DOTENV:-0}\" == \"1\" ]]",
+        "exec bun $ENV_FILE_FLAG ./src/localRecoveryCli.ts \"$@\"",
+        "exec bun $ENV_FILE_FLAG ./src/entrypoints/cli.tsx \"$@\""
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-bin-ps1-01",
+      "type": "source_analysis",
+      "source_path": "bin/claude-jiangxia.ps1",
+      "summary": "The Windows launcher mirrors the bash script: it computes the root from `$PSScriptRoot`, sets `CALLER_DIR`, conditionally uses `.env`, and routes to either the recovery CLI or the full CLI entrypoint.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "$ROOT_DIR = Split-Path -Parent $PSScriptRoot",
+        "$env:CALLER_DIR = Get-Location",
+        "if ($env:CC_JIANGXIA_SKIP_DOTENV -eq \"1\")",
+        "bun $EnvFileFlag ./src/localRecoveryCli.ts @args",
+        "bun $EnvFileFlag ./src/entrypoints/cli.tsx @args"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-main-01",
+      "type": "source_analysis",
+      "source_path": "src/main.tsx",
+      "summary": "The main runtime entry performs startup profiling and parallel prefetch side effects before heavy imports by checkpointing entry, starting MDM raw reads, and starting keychain prefetch.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "profileCheckpoint('main_tsx_entry')",
+        "startMdmRawRead()",
+        "startKeychainPrefetch()",
+        "profileCheckpoint('main_tsx_imports_loaded')"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-main-02",
+      "type": "source_analysis",
+      "source_path": "src/main.tsx",
+      "summary": "The main entrypoint assembles the CLI runtime by importing initialization, tools, plugins, bundled skills, MCP command registration, and then invoking `setup(...)` during action handling.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js'",
+        "import { getTools } from './tools.js'",
+        "import { initBuiltinPlugins } from './plugins/bundled/index.js'",
+        "import { initBundledSkills } from './skills/bundled/index.js'",
+        "import { registerMcpAddCommand } from 'src/commands/mcp/addCommand.js'",
+        "await setup(preSetupCwd, permissionMode, allowDangerouslySkipPermissions, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber, worktreeBaseRef, messagingSocketPath)"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-setup-01",
+      "type": "source_analysis",
+      "source_path": "src/setup.ts",
+      "summary": "The `setup` function establishes session identity and startup services, including optional UDS messaging, teammate snapshot capture, terminal backup restoration, cwd/project-root initialization, and hooks snapshot capture.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "export async function setup(",
+        "switchSession(asSessionId(customSessionId))",
+        "await m.startUdsMessaging(",
+        "captureTeammateModeSnapshot()",
+        "setCwd(cwd)",
+        "setProjectRoot(cwd)",
+        "captureHooksConfigSnapshot()",
+        "initializeFileChangedWatcher(cwd)"
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    },
+    {
+      "id": "ev-root-config-runtime-setup-02",
+      "type": "source_analysis",
+      "source_path": "src/setup.ts",
+      "summary": "Setup also owns worktree/tmux session creation, background runtime initialization, analytics sink attachment, startup event emission, API key prefetch, and release-notes prefetch for interactive sessions.",
+      "detail": "",
+      "quotes_or_symbols": [
+        "createWorktreeForSession(",
+        "createTmuxSessionForWorktree(",
+        "initSessionMemory()",
+        "initSinks()",
+        "logEvent('tengu_started', {})",
+        "void prefetchApiKeyFromApiKeyHelperIfSafe(getIsNonInteractiveSession())",
+        "const { hasReleaseNotes } = await checkForReleaseNotes("
+      ],
+      "content": "",
+      "key_findings": null,
+      "packet_id": "root-config-runtime",
+      "collected_at": "2026-05-28T03:28:41.238Z"
+    }
+  ],
+  "provisional_nodes": [
+    {
+      "id": "node:root-manifest",
+      "type": "config",
+      "title": "Root Bun Manifest",
+      "paths": [
+        "package.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-pkg-01"
+      ],
+      "attrs": {
+        "package_manager": "bun",
+        "module_type": "esm",
+        "binary_name": "claude-jiangxia",
+        "verification_entrypoint": "bun run verify"
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:typescript-runtime-config",
+      "type": "config",
+      "title": "TypeScript Runtime Config",
+      "paths": [
+        "tsconfig.json",
+        "bunfig.toml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-tsconfig-01",
+        "ev-root-config-runtime-bunfig-01"
+      ],
+      "attrs": {
+        "module_resolution": "bundler",
+        "jsx": "react-jsx",
+        "preload": "./preload.ts",
+        "bun_types": true
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:launcher-bash",
+      "type": "entrypoint",
+      "title": "POSIX CLI Launcher",
+      "paths": [
+        "bin/claude-jiangxia"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {
+        "platform": "posix",
+        "env_controls": [
+          "CALLER_DIR",
+          "CC_JIANGXIA_SKIP_DOTENV",
+          "CLAUDE_CODE_FORCE_RECOVERY_CLI"
+        ],
+        "targets": [
+          "./src/localRecoveryCli.ts",
+          "./src/entrypoints/cli.tsx"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:launcher-powershell",
+      "type": "entrypoint",
+      "title": "Windows CLI Launcher",
+      "paths": [
+        "bin/claude-jiangxia.ps1"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-ps1-01"
+      ],
+      "attrs": {
+        "platform": "windows",
+        "env_controls": [
+          "CALLER_DIR",
+          "CC_JIANGXIA_SKIP_DOTENV",
+          "CLAUDE_CODE_FORCE_RECOVERY_CLI"
+        ],
+        "targets": [
+          "./src/localRecoveryCli.ts",
+          "./src/entrypoints/cli.tsx"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:main-runtime-entry",
+      "type": "entrypoint",
+      "title": "Main CLI Runtime Entry",
+      "paths": [
+        "src/main.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-main-01",
+        "ev-root-config-runtime-main-02"
+      ],
+      "attrs": {
+        "startup_side_effects": [
+          "startup_profiler",
+          "mdm_prefetch",
+          "keychain_prefetch"
+        ],
+        "integrates": [
+          "init",
+          "tools",
+          "bundled_plugins",
+          "bundled_skills",
+          "mcp_commands",
+          "setup"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:setup-orchestrator",
+      "type": "runtime",
+      "title": "Startup Setup Orchestrator",
+      "paths": [
+        "src/setup.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-setup-01",
+        "ev-root-config-runtime-setup-02"
+      ],
+      "attrs": {
+        "responsibilities": [
+          "session_switch",
+          "uds_messaging",
+          "worktree_setup",
+          "hooks_snapshot",
+          "analytics_sinks",
+          "api_key_prefetch",
+          "release_notes_prefetch"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:root-runtime-policy",
+      "type": "policy",
+      "title": "Root Runtime And Verification Policy",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-agents-01"
+      ],
+      "attrs": {
+        "runtime_surface": "cli_and_local_server",
+        "verification_command": "bun run verify",
+        "entrypoint": "bin/claude-jiangxia"
+      },
+      "packet_id": "root-config-runtime"
+    }
+  ],
+  "provisional_edges": [
+    {
+      "id": "edge:root-config-runtime:1",
+      "type": "governs",
+      "title": "edge:root-config-runtime:1",
+      "source_id": "node:root-runtime-policy",
+      "target_id": "node:root-manifest",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-agents-01",
+        "ev-root-config-runtime-pkg-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:2",
+      "type": "declares_binary",
+      "title": "edge:root-config-runtime:2",
+      "source_id": "node:root-manifest",
+      "target_id": "node:launcher-bash",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-pkg-01",
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:3",
+      "type": "dispatches_to",
+      "title": "edge:root-config-runtime:3",
+      "source_id": "node:launcher-bash",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:4",
+      "type": "dispatches_to",
+      "title": "edge:root-config-runtime:4",
+      "source_id": "node:launcher-powershell",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-ps1-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:5",
+      "type": "configures_runtime",
+      "title": "edge:root-config-runtime:5",
+      "source_id": "node:typescript-runtime-config",
+      "target_id": "node:main-runtime-entry",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-tsconfig-01",
+        "ev-root-config-runtime-bunfig-01",
+        "ev-root-config-runtime-main-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "edge:root-config-runtime:6",
+      "type": "invokes",
+      "title": "edge:root-config-runtime:6",
+      "source_id": "node:main-runtime-entry",
+      "target_id": "node:setup-orchestrator",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-main-02",
+        "ev-root-config-runtime-setup-01"
+      ],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    }
+  ],
+  "observations": [
+    {
+      "id": "obs:root-config-runtime:1",
+      "observation_type": "note",
+      "summary": "Repository-universe was used only to confirm packet scope and path existence; it is not included as graph evidence.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "obs:root-config-runtime:2",
+      "observation_type": "note",
+      "summary": "Both launcher scripts converge on the same runtime targets and honor the same dotenv-suppression and recovery-mode environment controls.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "obs:root-config-runtime:3",
+      "observation_type": "note",
+      "summary": "The root runtime stack is layered as policy -> manifest/config -> OS launchers -> `src/main.tsx` -> `setup()` orchestration.",
+      "evidence_ids": [],
+      "attrs": {},
+      "packet_id": "root-config-runtime"
+    }
+  ],
+  "confidence": "high"
+}

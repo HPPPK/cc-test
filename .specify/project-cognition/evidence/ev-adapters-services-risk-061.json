@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-061",
+  "type": "source_analysis",
+  "source_path": "adapters/telegram/media.ts",
+  "summary": "media.ts defines extOf, classifyKind, DownloadHint, TelegramMediaService and imports grammy, ../common/attachment/attachment-store.js, ../common/attachment/attachment-types.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "extOf",
+    "classifyKind",
+    "DownloadHint",
+    "TelegramMediaService"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

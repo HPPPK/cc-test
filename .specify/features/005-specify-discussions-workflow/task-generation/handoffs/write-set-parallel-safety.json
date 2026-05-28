@@ -1,0 +1,216 @@
+{
+  "lane_id": "write-set-parallel-safety",
+  "status": "success",
+  "source_artifacts_inspected": [
+    ".specify/features/005-specify-discussions-workflow/plan.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json",
+    ".specify/features/005-specify-discussions-workflow/context.md",
+    ".specify/features/005-specify-discussions-workflow/data-model.md",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md",
+    "targeted live reads under src/server and desktop/src"
+  ],
+  "write_set_inventory": [
+    {
+      "surface": "server workflow template registry and validation",
+      "files": [
+        "src/server/services/workflowTemplateRegistryService.ts",
+        "src/server/services/workflowTemplateRegistryService.test.ts",
+        "src/server/services/workflowTypes.ts",
+        "src/server/services/workflowTypes.test.ts",
+        "src/server/services/__fixtures__/workflow-templates/*"
+      ],
+      "conflict_notes": "Only one packet should modify registry internals at a time."
+    },
+    {
+      "surface": "server workflow template API",
+      "files": [
+        "src/server/api/workflowTemplates.ts",
+        "src/server/router.ts",
+        "src/server/api/sessions.ts",
+        "src/server/__tests__/workflowTemplates.test.ts",
+        "src/server/__tests__/sessions.test.ts"
+      ],
+      "conflict_notes": "Router and sessions API changes require a serial integration point."
+    },
+    {
+      "surface": "server linked workflow session creation",
+      "files": [
+        "src/server/services/workflowSessionCreateService.ts",
+        "src/server/services/workflowSessionLinkService.ts",
+        "src/server/services/sessionService.ts",
+        "src/server/api/sessions.ts",
+        "src/server/__tests__/sessions.test.ts"
+      ],
+      "conflict_notes": "Coordinate with template API extraction because both may touch sessions.ts."
+    },
+    {
+      "surface": "non-mutating compact-style summary",
+      "files": [
+        "src/services/compact/compact.ts",
+        "src/services/compact/prompt.ts",
+        "src/services/compact/*summary*.ts",
+        "src/commands/compact/compact.ts",
+        "src/services/compact/*.test.ts"
+      ],
+      "conflict_notes": "Must not call cleanup or command paths that clear source conversation history."
+    },
+    {
+      "surface": "desktop API and workflow types",
+      "files": [
+        "desktop/src/api/sessions.ts",
+        "desktop/src/api/sessions.test.ts",
+        "desktop/src/types/session.ts"
+      ],
+      "conflict_notes": "Land before Settings and Chat UI consumers."
+    },
+    {
+      "surface": "desktop Settings Workflows management",
+      "files": [
+        "desktop/src/pages/Settings.tsx",
+        "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+        "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+        "desktop/src/stores/uiStore.ts",
+        "desktop/src/i18n/locales/en.ts",
+        "desktop/src/i18n/locales/zh.ts",
+        "desktop/src/pages/Settings.test.tsx",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+      ],
+      "conflict_notes": "Use Settings-specific components and stable i18n namespaces."
+    },
+    {
+      "surface": "desktop composer workflow start",
+      "files": [
+        "desktop/src/components/chat/ChatInput.tsx",
+        "desktop/src/components/chat/ChatInput.test.tsx",
+        "desktop/src/pages/EmptySession.tsx",
+        "desktop/src/pages/EmptySession.test.tsx",
+        "desktop/src/pages/ActiveSession.tsx",
+        "desktop/src/pages/ActiveSession.test.tsx",
+        "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+        "desktop/src/stores/sessionStore.ts",
+        "desktop/src/stores/sessionStore.test.ts"
+      ],
+      "conflict_notes": "ChatInput is high-churn; avoid concurrent edits with unrelated composer work."
+    }
+  ],
+  "parallel_safety_decisions": {
+    "safe_parallel_batches": [
+      {
+        "tasks": [
+          "T003",
+          "T004",
+          "T005"
+        ],
+        "rationale": "Tests touch separate server registry/API, linked session, and desktop API files."
+      },
+      {
+        "tasks": [
+          "T010",
+          "T012",
+          "T016",
+          "T020"
+        ],
+        "rationale": "Settings tab, import/export tests, empty chat tests, and session-create service have isolated write scopes."
+      }
+    ],
+    "must_serialize": [
+      "T006 before T007 and T014 because API behavior depends on registry validation and write preservation.",
+      "T008 before T010, T011, T013, and T023 because UI tasks consume stable client methods and response types.",
+      "T021 before T022 because linked summarize must call the non-mutating helper.",
+      "T022 before T023 because desktop non-empty start consumes linked route semantics.",
+      "T024 after all story tasks."
+    ],
+    "shared_surface_conflicts": [
+      "src/server/api/sessions.ts",
+      "src/server/router.ts",
+      "desktop/src/components/chat/ChatInput.tsx",
+      "desktop/src/i18n/locales/en.ts",
+      "desktop/src/i18n/locales/zh.ts",
+      "desktop/src/components/workflow/WorkflowComponents.tsx"
+    ]
+  },
+  "forbidden_paths": [
+    ".env",
+    ".env.*",
+    "**/*credential*",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    "F:/github/cc-jiangxia/.claude/settings.json",
+    "~/.claude/cc-jiangxia/providers.json",
+    "~/.claude/cc-jiangxia/settings.json",
+    "~/.claude/adapters.json",
+    "~/.claude/adapter-sessions.json",
+    "~/.claude/skills/**",
+    "F:/github/cc-jiangxia/.claude/skills/**",
+    ".mcp.json",
+    "managed MCP config",
+    "~/.claude/plugins/**",
+    "~/.claude/teams/**",
+    "~/.claude/cc-jiangxia/*oauth*.json",
+    "artifacts/quality-runs/**",
+    "artifacts/coverage/**",
+    "node_modules/**",
+    "desktop/node_modules/**",
+    "adapters/**/node_modules/**"
+  ],
+  "packet_guardrails": [
+    "Desktop must never write workflows.json directly.",
+    "Only ~/.claude/cc-jiangxia/workflows.json is writable for user templates.",
+    "Malformed workflows.json must not be silently overwritten.",
+    "Built-in templates are read-only and cannot be shadowed by user ids.",
+    "Import preview is read-only and conflicts default to rename.",
+    "Template edits/import/delete must not mutate existing workflow-session state.",
+    "Non-empty normal chat starts must create a new linked workflow session.",
+    "Summarize must use non-mutating compact-style semantics.",
+    "Same-area tests are required for every production file touched under src/server and desktop/src."
+  ],
+  "verification_matrix": [
+    {
+      "surface": "template registry persistence",
+      "commands": [
+        "bun run check:server"
+      ]
+    },
+    {
+      "surface": "workflow template API",
+      "commands": [
+        "bun run check:server"
+      ]
+    },
+    {
+      "surface": "linked workflow session API",
+      "commands": [
+        "bun run check:server"
+      ]
+    },
+    {
+      "surface": "desktop Settings Workflows",
+      "commands": [
+        "bun run check:desktop"
+      ]
+    },
+    {
+      "surface": "desktop Chat workflow start",
+      "commands": [
+        "bun run check:desktop"
+      ]
+    },
+    {
+      "surface": "feature completion",
+      "commands": [
+        "bun run check:coverage",
+        "bun run verify"
+      ]
+    }
+  ],
+  "blockers": [],
+  "integration_notes": [
+    "Recommended order: registry validation, template API, desktop API/types, Settings UI, summary helper, linked-session service/API, ChatInput integration, final verification.",
+    "Use new workflow-specific components under desktop/src/components/workflow and minimal wiring in Settings.tsx and ChatInput.tsx.",
+    "Do not mark implementation complete until changed files, tests added, gate commands, quality report path, coverage report path, and live/provider blocker are recorded."
+  ]
+}

@@ -39,14 +39,17 @@ Drive a resumable debugging workflow that finds the real failure mechanism befor
 - Primary inputs: the user's report, the active debug-session state, the failing runtime or verification evidence, and the task-local project cognition query bundle with readiness and returned `minimal_live_reads`.
 - The debug session file under `.planning/debug/` is the durable state source of truth for this workflow.
 - Delegated helpers are evidence collectors, not owners of the overall investigation.
+- Debug execution is complexity-based: small focused investigations may stay leader-inline, while broad or independent evidence lanes use one or more subagents.
 
 
-## Codex Project Cognition Hard Gate
+## Codex Project Cognition Advisory Gate
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
-- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` routes through `{{invoke:map-update}}`; `needs_rebuild` routes through `{{invoke:map-scan}}`, then `{{invoke:map-build}}`; `blocked` stops with the runtime issue.
-- Treat the project cognition query bundle as the primary brownfield context surface; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should be the source of truth.
-- Treat this as a hard gate, not a best-effort reminder; do not continue until the returned readiness and task-local bundle are strong enough for the workflow.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
+- Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- Treat the project cognition query bundle as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should guide the route.
+- Treat this as advisory navigation, not a hard gate; continue with live repository evidence when the bundle is weak, stale, or missing, and use map maintenance only when it is actually useful.
+- Mutation closeout is separate from entry routing: entry stale may continue, but if the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, final state must record a refresh or dirty outcome: either an actual `{{invoke:map-update}}` refresh using the changed paths, or `project-cognition mark-dirty` when the required refresh cannot be completed now.
 - A project-cognition query is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, and relevant facts are carried into the next workflow artifact or execution state.
 - Carry forward the selected capability or symptom, evidence routes, minimal reads, competing truths, and unresolved coverage gaps into debug session state before root-cause claims.
 
@@ -69,6 +72,7 @@ Drive a resumable debugging workflow that finds the real failure mechanism befor
 - No speculative fixes before evidence supports the failure mechanism.
 - No final resolution without fresh verification evidence.
 - No subagent may take ownership of the debug session state.
+- No subagent-assisted work may continue without a safe lane; blocked debug execution records `subagent-blocked`, `execution_surface: none`, and a concrete blocked reason.
 
 ## Senior Consequence Analysis Gate
 
@@ -76,7 +80,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -91,17 +95,25 @@ Stand down only for docs-only wording changes, trivial isolated fixes, or local 
 
 If the gate triggers and the current workflow cannot preserve the required outputs, stop and route to the workflow that can. Do not mark ready, resolved, handoff-ready, planning-ready, or complete while triggered consequence obligations remain unresolved, unmapped, or unsupported by validation evidence.
 
-## Mandatory Subagent Execution
+## Complexity-Based Debug Execution
 
-All substantive tasks in ordinary `sp-*` workflows default to and must use subagents.
+`sp-debug` is leader-owned and evidence-first. Choose the execution path from the shape of the investigation, then record the decision in the debug session file.
 
-The leader orchestrates: route, split tasks, prepare task contracts, dispatch subagents, wait for structured handoffs, integrate results, verify, and update state.
+Use `leader-inline` when the investigation is small, focused, and has a short evidence chain, such as one failing test, one clear error, one local module, or one reproduction path.
 
-Before dispatch, every subagent lane needs a task contract with objective, authoritative inputs, allowed read/write scope, forbidden paths, acceptance checks, verification evidence, and structured handoff format.
+Use `subagent-assisted` when the investigation has multiple independent evidence lanes, broad surface area, multiple plausible causes, multiple modules or logs to inspect, independent repro or verification lanes, or meaningful parallelism.
 
-Use `execution_model: subagent-mandatory`.
-Use `dispatch_shape: one-subagent | parallel-subagents`.
-Use `execution_surface: native-subagents`.
+Use `blocked` when the next safe step is unsafe, unavailable, or unpacketizable. Preserve the blocked state as `dispatch_shape: subagent-blocked`, `execution_surface: none`, and a concrete `blocked_reason`.
+
+Persist these fields in the debug session:
+
+- `execution_model: leader-inline | subagent-assisted | blocked`
+- `dispatch_shape: leader-inline | one-subagent | parallel-subagents | subagent-blocked`
+- `execution_surface: leader-inline | native-subagents | none`
+- `dispatch_reason: [why this execution path was selected]`
+- `blocked_reason: [required for subagent-blocked or none]`
+
+Subagents may collect evidence or execute a bounded lane. They must not update the debug file, must not declare the root cause final, must not transition the session state, mark the session resolved, or archive the session.
 
 
 ## Role
@@ -110,10 +122,10 @@ You are the debug session leader. Investigate a bug using a persistent, resumabl
 - The user is the reporter. They describe symptoms and confirm whether the final behavior is fixed.
 - You are the workflow leader and orchestrator.
 - You own routing, task splitting, task contracts, dispatch, join points, integration, verification, and state updates.
-- Subagents own the substantive task lanes assigned through task contracts.
+- Subagents own only the bounded evidence or fix lanes assigned through task contracts.
 - The leader owns the session file, the current hypothesis, all state transitions, the final fix decision, and the verification checkpoint.
 - Evidence-collection subagents do not own the investigation and must not decide that the bug is resolved.
-- You are not the default evidence worker for every lane; substantive evidence work belongs on subagent lanes after observer framing and task contracts are ready.
+- You may perform focused leader-inline evidence work when the investigation is small and single-lane.
 - When the investigation splits into safe bounded lanes, route, integrate, and decide rather than manually performing every lane sequentially.
 
 ## Operating Principles
@@ -155,7 +167,7 @@ When a defect touches lifecycle, running-state, shared-state, destructive behavi
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command debug --format json` when available so passive learning files exist and the current debug run sees relevant shared project memory.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command debug --format json` when available so passive learning files exist and the current debug run sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader command-local context.
 - Open only learning detail docs linked from debug-relevant index entries, especially repeated pitfalls, recovery paths, or project constraints for the failing area.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
@@ -184,14 +196,14 @@ When a defect touches lifecycle, running-state, shared-state, destructive behavi
 
 When running `sp-debug` in Codex, you are the **leader**, not a freeform debugger.
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
 
-Before applying fixes or running multiple independent investigation actions yourself:
-- Read the current debug session state and identify whether the investigation has two or more independent evidence-gathering lanes.
-- If the current stage is `investigating` and there are two or more bounded evidence-gathering lanes, you **MUST** dispatch subagents before continuing with more sequential evidence collection yourself.
+Before applying fixes or running investigation actions:
+- Read the current debug session state and choose `execution_model: leader-inline | subagent-assisted | blocked` from the investigation shape.
+- Use `leader-inline` for a small focused investigation with one short evidence chain.
+- Use `subagent-assisted` when there are two or more independent evidence-gathering lanes, broad surface area, or meaningful parallelism.
+- If the next step is unsafe, unavailable, or unpacketizable, record `subagent-blocked`, `execution_surface: none`, and a concrete `blocked_reason` before stopping.
 - Rejoin only at the current investigation join point, then integrate returned results on the leader path.
-- If subagent evidence collection is unavailable or unsuitable, record `subagent-blocked` and use the managed team workflow before widening leader-inline investigation work.
-- Do **not** skip subagents just because the evidence tasks look easy; use managed-team or `subagent-blocked` only when the current investigation does not have safe parallel lanes.
 
 
 ## Codex Deep Debug Intake Dispatch
@@ -244,8 +256,9 @@ If project cognition is missing, ambiguous, stale, or insufficient for the faili
    - Append every disproven theory to `Eliminated`.
 
 4. **Fix and Verify**
-   - Packetize the smallest safe fix that addresses the confirmed root cause and delegate it through a validated subagent lane.
-   - If the fix lane cannot be safely packetized or dispatched, record `subagent-blocked` with the escalation or recovery reason instead of making the fix directly.
+   - Apply the minimum code change needed to address the confirmed root cause when `execution_model: leader-inline`.
+   - When `execution_model: subagent-assisted`, delegate it through a validated subagent lane and integrate the returned handoff on the leader path.
+   - When the fix cannot proceed safely, cannot be packetized, or cannot be verified, record `subagent-blocked` with `execution_surface: none` and a concrete blocked reason instead of layering a speculative fix.
    - Verify with the reproduction steps and relevant tests.
 
 5. **Human Verification**
@@ -258,15 +271,16 @@ If project cognition is missing, ambiguous, stale, or insufficient for the faili
 
 ## Required Context Inputs
 
-## Project Cognition Gate
+## Project Cognition Advisory Gate
 
-This command must treat the project cognition runtime as the mandatory pre-source knowledge base.
+This command should treat the project cognition runtime as an advisory navigation index, not a mandatory pre-source gate.
 
-### Hard Rule
+### Advisory Rule
 
-Do not inspect implementation source, run reproduction or tests, compile a
-plan, prepare a fix, or emit technical recommendations until the cognition gate has
-passed.
+Use project cognition when available to find likely owners, affected paths,
+risks, verification routes, and minimal live reads. Do not treat map output as
+evidence by itself. Technical claims must be backed by live code, tests,
+scripts, configuration, or authoritative docs.
 
 ### Required Project Cognition Query
 
@@ -322,24 +336,44 @@ and minimal live reads after the minimum gate, not whether it may skip cognition
 
 ### Freshness
 
-Treat runtime freshness as a gate:
+Treat runtime freshness as map-quality diagnostics:
 
-- `missing` -> block and refresh through `sp-map-scan -> sp-map-build`
-- `stale` -> block and refresh through `sp-map-update`
-- `stale` with changed paths missing from `path_index` -> block and rebuild through `sp-map-scan -> sp-map-build`; repeating `sp-map-update` cannot create absent path coverage
-- `support_drift` -> stop and tell the user to resolve support-surface drift; do not reflexively route to `sp-map-update`
-- `partial_refresh` -> tell the user the refresh was recorded but readiness did not pass; follow `recommended_next_action`
-- `possibly_stale` -> inspect the returned affected scope; if the touched area is not safely covered, route through `sp-map-update`
+- `fresh` -> use the returned task-local bundle as an advisory first pass navigation aid
+- `missing` -> if cognition freshness is `missing`, continue with live repository evidence and recommend `$sp-map-scan`, then `$sp-map-build` as follow-up map maintenance
+- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` as follow-up map maintenance
+- `stale` with changed paths missing from `path_index` -> warn and continue with live repository evidence; recommend `$sp-map-update` first for ordinary existing-baseline gaps.
+  Use `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`
+- `support_drift` -> warn and continue with live repository evidence; recommend resolving or intentionally ignoring support-surface drift
+- `partial_refresh` -> warn that refresh data was recorded but readiness did not pass; continue with live repository evidence
+- `possibly_stale` -> inspect the returned affected scope when useful, then continue with live repository evidence
 
 Preserve the distinction between the machine freshness field and public state
-guidance: consume `freshness` as the factual state and use
-`recommended_next_action` for the operator-facing next step.
+guidance: `freshness` records map quality, while `recommended_next_action` is a
+map-maintenance recommendation.
+
+### Mutation Closeout Rule
+
+Entry stale may continue for live-evidence navigation, but it is not a
+completion waiver. If the active workflow changes source/runtime truth-owning
+surfaces, shared surfaces, command/route/contract boundaries, verification entry
+points, runtime assumptions, or other map-level coverage facts, closeout must
+record a refresh or dirty outcome: either an actual `$sp-map-update`
+refresh using the changed paths, or `project-cognition mark-dirty` when the
+required refresh cannot be completed now.
 
 ### Primary Read Restriction
 
-Do not treat handbook-first or layered project-map files as the primary runtime read surfaces. If query-returned
-coverage is insufficient, refresh the cognition runtime through `sp-map-update`; reserve `sp-map-scan -> sp-map-build` for missing, unusable, schema-incompatible, explicitly rebuilt, or architecture-replaced baselines
-instead of forcing a second handbook traversal phase.
+Do not treat handbook-first or layered project-map files as evidence. If
+query-returned coverage is insufficient, inspect live repository surfaces
+directly and recommend `sp-map-update` for ordinary existing-baseline gaps,
+localized stale cognition refresh, weak localized coverage after a usable
+baseline, or ordinary changed-path maintenance. Use `sp-map-scan -> sp-map-build`
+only for first/missing/unusable baseline, schema failure, zero active-generation
+`path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+
+The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion.
+
+Do not call `project-cognition mark-dirty` unless the active workflow explicitly requires a durable dirty-state record.
 
 **This command tier: light.** Pass the cognition gate before investigation
 moves into reproduction, logs, tests, or source-code reads.
@@ -352,9 +386,9 @@ repository reads.
 Run or emulate:
 
 ```text
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent debug --query=\"$ARGUMENTS\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json
 # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent debug --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json
 ```
 
 Use the returned readiness:
@@ -362,8 +396,8 @@ Use the returned readiness:
 - `ready`: continue with the returned task-local bundle.
 - `review`: perform only the returned `minimal_live_reads` before continuing.
 - `ambiguous`: ask the user to select the intended candidate.
-- `needs_update`: route through `$sp-map-update`.
-- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+- `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
+- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - `blocked`: stop and report the blocking runtime issue.
 - **CARRY FORWARD**: Write the selected capability or symptom, evidence routes,
   minimal reads, competing truths, and unresolved coverage gaps into debug
@@ -373,15 +407,15 @@ Use the returned readiness:
 
 ### Intake Inputs
 - Read `.planning/debug/[slug].md` before each resumed action; treat it as the investigation source of truth.
-- Query project cognition with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent debug --query-plan \"<query_plan_json>\" --format json` before trusting existing brownfield routing assumptions.
+- Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before trusting existing brownfield routing assumptions.
 - If truth ownership, competing truths, stale assumptions, or contradiction signals remain ambiguous, perform only the returned `minimal_live_reads` before continuing.
 - [AGENT] If cognition freshness is `missing`, stop and tell the user to run `$sp-map-scan`, then `$sp-map-build`; wait for that rebuild before root-cause analysis continues.
 - [AGENT] If cognition freshness is `stale`, stop and tell the user to use `$sp-map-update`; wait for that refresh before root-cause analysis continues.
 - [AGENT] If cognition freshness is `support_drift`, stop and tell the user to resolve support-surface drift; do not reflexively route to `$sp-map-update`.
 - [AGENT] If cognition freshness is `partial_refresh`, stop and tell the user the refresh was recorded but readiness did not pass; follow `recommended_next_action`.
-- [AGENT] If cognition freshness is `possibly_stale`, inspect the changed paths, reasons, and slice coverage. Use `$sp-map-update` with the changed paths; rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement.
+- [AGENT] If cognition freshness is `possibly_stale`, inspect the changed paths, reasons, and slice coverage. Use `$sp-map-update` with the changed paths. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - Treat task-relevant cognition coverage as insufficient when the failing area is named only vaguely, lacks ownership or placement guidance, or lacks workflow, constraint, integration, or regression-sensitive testing guidance.
-- [AGENT] If task-relevant cognition coverage is insufficient for the failing area, stop and tell the user to refresh through `$sp-map-update` with changed paths or affected surfaces; rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly being rebuilt, or invalidated by broad architecture replacement; wait for that refresh before root-cause analysis continues.
+- [AGENT] If task-relevant cognition coverage is insufficient for the failing area, stop and tell the user to refresh through `$sp-map-update` with changed paths or affected surfaces. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; wait for that refresh before root-cause analysis continues.
 - Use the debug cognition slice to identify likely truth-owning layers, adjacent workflows, and observability entry points before forming a hypothesis.
 - Read `.specify/memory/constitution.md` if present before forming or validating a fix so the investigation honors project-level MUST/SHOULD constraints.
 - Read `.specify/memory/project-rules.md` if present before forming or validating a fix.
@@ -624,13 +658,15 @@ Repeated failure does not reopen observer-shape choices. It upgrades downstream 
 - Candidate queue entries must be consumed explicitly: confirm them, rule them out, or deprioritize them with evidence. Do not let high-priority candidates silently disappear from the session.
 
 - During `investigating`, determine whether the current investigation has one or more safe evidence-collection lanes before running multiple independent evidence-gathering actions sequentially.
-- [AGENT] Use the shared policy function with the current capability snapshot: `choose_subagent_dispatch(command_name="debug", snapshot, workload_shape)`.
-- Persist the decision fields exactly: `execution_model: subagent-mandatory`, `dispatch_shape: one-subagent | parallel-subagents`, `execution_surface: native-subagents`.
-- Treat runtime safety as a dispatch-blocking decision. If a validated evidence lane cannot be packetized or dispatched safely, use `subagent-blocked` and stop instead of widening brittle native fan-out.
+- [AGENT] Use the shared policy function with the current capability snapshot when the investigation has safe delegated lanes: `choose_subagent_dispatch(command_name="debug", snapshot, workload_shape)`.
+- Persist the decision fields exactly: `execution_model: leader-inline | subagent-assisted | blocked`, `dispatch_shape: leader-inline | one-subagent | parallel-subagents | subagent-blocked`, `execution_surface: leader-inline | native-subagents | none`, `dispatch_reason`, and `blocked_reason` when blocked.
+- Treat runtime safety as a dispatch-blocking decision. If the next step is unsafe, unavailable, or unpacketizable, use `subagent-blocked`, record `execution_surface: none`, and stop instead of widening brittle native fan-out.
 - Debug routing decision order:
-  - One safe validated evidence lane -> `one-subagent` on `native-subagents` when available.
-  - Two or more independent evidence lanes -> `parallel-subagents` on `native-subagents` when available.  - No safe lane, shared mutable state, missing contract, incomplete packet, or unavailable delegation -> `subagent-blocked` with a recorded reason.
-- Dispatch that single subagent only when the evidence-lane contract is complete: probe intent, required evidence, authoritative inputs, and validation targets must all be recorded before dispatch.
+  - Small focused investigation with one short evidence chain -> `leader-inline`.
+  - One safe validated evidence lane where isolation improves quality -> `one-subagent` on `native-subagents` when available.
+  - Two or more independent evidence lanes -> `parallel-subagents` on `native-subagents` when available.
+  - No safe lane, shared mutable state, missing contract, incomplete packet, unavailable delegation, or unsafe next step -> `subagent-blocked` with `execution_surface: none` and a recorded reason.
+- Dispatch a subagent only when the evidence-lane contract is complete: probe intent, required evidence, authoritative inputs, and validation targets must all be recorded before dispatch.
 - If that subagent-readiness bar is not met, compile the missing evidence-lane contract before dispatch; if the lane cannot be made safe, record `subagent-blocked` and stop for escalation or recovery.
 - `parallel-subagents` means the leader dispatches bounded evidence-gathering subagents and rejoins at an explicit join point.
 - `native-subagents` means the leader uses the current runtime native subagent surface for dispatched evidence lanes.
@@ -650,7 +686,7 @@ Repeated failure does not reopen observer-shape choices. It upgrades downstream 
 - Use `.specify/templates/worker-prompts/debug-investigator.md` as the default evidence-collector contract whenever the current integration can dispatch a debug subagent.
 - If the current runtime supports structured subagent results, prefer a stable evidence payload over freeform summaries so the leader can merge findings without reinterpretation.
 - If the current integration exposes a runtime-managed result channel, use that channel. Otherwise write the normalized evidence/result envelope to `.planning/debug/results/<session-slug>/<lane-id>.json`
-- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify result submit` to normalize and write the evidence/result envelope.
+- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result submit` to normalize and write the evidence/result envelope.
 - Preserve `reported_status` when normalizing subagent language such as `DONE_WITH_CONCERNS` or `NEEDS_CONTEXT` into canonical orchestration state.
 - Idle subagent is not an accepted result.
 - [AGENT] The leader must wait for and consume the structured handoff before closing the join point, declaring completion, requesting shutdown, or interrupting subagent execution.
@@ -685,7 +721,8 @@ The session file must always make it clear:
 - Write a failing automated repro test before changing production code.
 - Do not modify production behavior until the RED state is proven.
 - If no reliable automated test surface exists for the failing behavior, add the missing harness first or route through `/sp-quick` or `/sp-specify` before code changes.
-- Apply the minimum code change needed to address that root cause.
+- Apply the minimum code change needed to address the confirmed root cause when `execution_model: leader-inline`; when `execution_model: subagent-assisted`, delegate it through a validated subagent lane and integrate the returned evidence on the leader path.
+- If the fix cannot proceed safely, cannot be packetized for the selected execution path, or cannot be verified, record `subagent-blocked` with `execution_surface: none` and a concrete `blocked_reason`.
 - Fix the owning control-plane failure first. Do not treat a UI/status smoothing change as sufficient unless the closed loop is proven healthy end-to-end.
 - Classify the fix before verification:
   - write the classification to `fix_scope`
@@ -709,15 +746,15 @@ The session file must always make it clear:
 - If automated verification or human verification fails repeatedly without producing a stronger causal explanation, stop the local fix loop and create or refresh `.planning/debug/[slug].research.md` before another code change.
 - Use that debug-local research checkpoint to record the missing contract facts, environment assumptions, external references, or repository evidence needed to break the loop.
 - Treat the returned `project-cognition query` bundle and readiness as the truth source for brownfield debug runtime coverage; use only returned `minimal_live_reads` when needed.
-- Before moving to `awaiting_human_verify` or `resolved`, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` recommending `$sp-map-update` with those changed paths whenever project cognition might be affected.
-- If the fix changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other cognition coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths before moving to `awaiting_human_verify` or `resolved`. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes.
-- If that refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and tell the user to run `$sp-map-update` with the changed paths before later brownfield work proceeds, escalating to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
+- Before moving to `awaiting_human_verify` or `resolved`, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` with the actual `$sp-map-update` refresh or `project-cognition mark-dirty` outcome whenever project cognition might be affected.
+- If the fix changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other cognition coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths before moving to `awaiting_human_verify` or `resolved`. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. After a successful existing-baseline map-update, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+- If that refresh cannot be completed now, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and tell the user to run `$sp-map-update` with the changed paths before later brownfield work proceeds. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
 - [AGENT] Resolved debug sessions should auto-capture reusable lessons from the persisted debug session state into index/detail entries.
-- [AGENT] If you are finalizing outside the normal debug CLI closeout path, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command debug --session-file .planning/debug/[slug].md --format json`.
+- [AGENT] If you are finalizing outside the normal debug CLI closeout path, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command debug --session-file .planning/debug/[slug].md --format json`.
 - [AGENT] If the auto-capture pass produced no captured lesson but you still discovered a reusable `pitfall`, `recovery_path`, or `project_constraint`, use the manual `learning capture` helper surface to create or merge an index/detail entry.
   Required options: `--command`, `--type`, `--summary`, `--evidence`
 - [AGENT] Before leaving the debug session in a terminal state, apply the Learning Reflex and record any reusable `pitfall`, `recovery_path`, `tooling_trap`, `false_lead_pattern`, or `project_constraint` in `.specify/memory/learnings/INDEX.md` plus a linked detail document when durable state did not already preserve it.
-- Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
+- Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
 - Only ask for confirmation when a new learning is highest-signal, such as an explicit user default, clear cross-stage reuse, or repeated recurrence that should become shared project memory.
 
 ## Checkpoint Protocol
@@ -735,13 +772,17 @@ To begin the debug session:
 
 ## Codex Investigation Routing Contract
 
-When running `sp-debug` in Codex, treat the `investigating` stage as a leader-led `subagents-first` routing decision.
-- Dispatch shape: `parallel-subagents` for independent evidence lanes, or `subagent-blocked` with a recorded reason when delegation is unavailable or unsafe.
-- Execution surface: `native-subagents` first, `managed-team` only when durable team state is needed, and `leader-inline` only as fallback.
-- Subagent dispatch: No subagent dispatch path for this session.
-- Integration-native join point: Stay on the leader path or use the managed team workflow.
-- Fallback path: No managed team workflow is currently available; use leader-inline fallback only when subagents cannot proceed safely.
-- If there are two or more independent evidence-gathering lanes, dispatch subagents whenever the current runtime can support it safely.
+When running `sp-debug` in Codex, treat `investigating` as a complexity-based leader decision.
+- Execution model: `leader-inline | subagent-assisted | blocked`.
+- Dispatch shape: `leader-inline`, `one-subagent`, `parallel-subagents`, or `subagent-blocked`.
+- Execution surface: `leader-inline`, `native-subagents`, or `none`.
+- Subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Integration-native join point: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Fallback path: No managed-team or leader-inline fallback for `sp-debug`; choose `leader-inline` up front for a small focused investigation, or record `subagent-blocked` with `execution_surface: none` when the next safe step cannot proceed.
+- Small focused investigation -> `leader-inline`.
+- One safe isolated evidence lane -> `one-subagent` when the current runtime supports it safely.
+- Two or more independent evidence lanes -> `parallel-subagents` when the current runtime supports it safely.
+- Unsafe, unavailable, or unpacketizable next step -> `subagent-blocked` with `execution_surface: none` and `blocked_reason`.
 - Suitable subagent tasks include running targeted tests or repro commands, collecting logs and exit codes, searching for error text, tracing isolated code paths, and gathering evidence after diagnostic logging has been added.
 - Read `diagnostic_profile` from the debug session before choosing subagent lanes.
 - Subagents must return facts, command results, and observations; they must not update the debug file, declare the root cause final, or transition the session state.
@@ -753,9 +794,11 @@ When running `sp-debug` in Codex, treat the `investigating` stage as a leader-le
 - Dispatch shape: `one-subagent`, `parallel-subagents`, or `subagent-blocked`
 - Execution surface: `native-subagents`, `managed-team`, or `leader-inline`
 - Delegation surface contract: preserve the native dispatch, fallback, worker result contract, and handoff path below.
-- Native subagent dispatch: No subagent dispatch path for this session.
-- Join behavior: Stay on the leader path or use the managed team workflow.
-- Managed-team fallback: No managed team workflow is currently available; use leader-inline fallback only when subagents cannot proceed safely.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Managed-team fallback: No managed-team or leader-inline fallback for `sp-debug`; choose `leader-inline` up front for a small focused investigation, or record `subagent-blocked` with `execution_surface: none` when the next safe step cannot proceed.
 - Leader-inline fallback: record the reason before local execution.
 - Worker result contract: Fact-only evidence payload: hypothesis tested, commands run, files inspected, observations, confidence, blocker.
 - Result contract: Fact-only evidence payload: hypothesis tested, commands run, files inspected, observations, confidence, blocker.
@@ -797,9 +840,14 @@ When running `sp-debug` in Codex, treat the `investigating` stage as a leader-le
 
 ## Codex Subagent Evidence Collection
 
-When running `sp-debug` in Codex, treat the `investigating` stage as leader-led `subagents-first` evidence collection.
-- Use `parallel-subagents` on `native-subagents` when there are two or more independent evidence-gathering lanes.
-- Use `subagent-blocked` only after recording why evidence delegation is unavailable, unsafe, or not packetized.
+When running `sp-debug` in Codex, choose leader-inline or subagent-assisted evidence collection from the investigation shape.
+- Execution model: `leader-inline | subagent-assisted | blocked`.
+- Dispatch shape: `leader-inline`, `one-subagent`, `parallel-subagents`, or `subagent-blocked`.
+- Execution surface: `leader-inline`, `native-subagents`, or `none`.
+- Small focused investigation -> `leader-inline`.
+- One safe isolated evidence lane -> `one-subagent` when the current runtime supports it safely.
+- Two or more independent evidence lanes -> `parallel-subagents` when the current runtime supports it safely.
+- Unsafe, unavailable, or unpacketizable next step -> `subagent-blocked` with `execution_surface: none` and `blocked_reason`.
 - If there are two or more independent evidence-gathering lanes, dispatch subagents through `spawn_agent` instead of doing manual sequential investigation.
 - Suitable subagent tasks include running targeted tests or repro commands, collecting logs and exit codes, searching for error text, tracing isolated code paths, and gathering evidence after diagnostic logging has been added.
 - Read `diagnostic_profile` from the debug session before choosing subagent lanes.

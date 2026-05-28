@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-071",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/tauri.conf.json",
+  "summary": "Base Tauri config sets product identity, frontend dist path, plugins, and updater artifact creation.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "productName",
+    "identifier",
+    "frontendDist",
+    "createUpdaterArtifacts"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

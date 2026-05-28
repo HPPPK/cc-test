@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-07",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/skillsSettings.test.tsx",
+  "summary": "Skills tab tests confirm the skills browser and detail view still route through Settings.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "switchToSkillsTab",
+    "Skill Browser",
+    "selectedSkillReturnTab"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

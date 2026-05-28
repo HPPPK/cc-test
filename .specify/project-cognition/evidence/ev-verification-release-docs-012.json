@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-012",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/app-icon.svg",
+  "summary": "Vector icon asset participates in desktop packaging and release branding surfaces.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:196",
+    "mtime:2026-05-15T06:52:03.840Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

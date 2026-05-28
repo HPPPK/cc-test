@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-070",
+  "type": "source_analysis",
+  "source_path": "src/memdir/memdir.ts",
+  "summary": "memdir.ts defines ENTRYPOINT_NAME, MAX_ENTRYPOINT_LINES, MAX_ENTRYPOINT_BYTES, EntrypointTruncation, truncateEntrypointContent, DIR_EXISTS_GUIDANCE and imports bun:bundle, path, ../utils/fsOperations.js, ./paths.js, ../bootstrap/state.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ENTRYPOINT_NAME",
+    "MAX_ENTRYPOINT_LINES",
+    "MAX_ENTRYPOINT_BYTES",
+    "EntrypointTruncation",
+    "truncateEntrypointContent",
+    "DIR_EXISTS_GUIDANCE"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

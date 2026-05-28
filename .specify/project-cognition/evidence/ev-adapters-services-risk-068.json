@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-068",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/typing.ts",
+  "summary": "typing.ts defines WechatTypingStatus, WechatTypingController",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WechatTypingStatus",
+    "WechatTypingController"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

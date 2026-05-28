@@ -1,0 +1,18 @@
+{
+  "id": "ev-root-config-runtime-bin-bash-01",
+  "type": "source_analysis",
+  "source_path": "bin/claude-jiangxia",
+  "summary": "The POSIX launcher resolves the repo root, exports `CALLER_DIR`, conditionally suppresses Bun dotenv loading via `CC_JIANGXIA_SKIP_DOTENV`, and dispatches either `src/localRecoveryCli.ts` or `src/entrypoints/cli.tsx`.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ROOT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\"",
+    "export CALLER_DIR=\"${CALLER_DIR:-$(pwd -W 2>/dev/null || pwd)}\"",
+    "if [[ \"${CC_JIANGXIA_SKIP_DOTENV:-0}\" == \"1\" ]]",
+    "exec bun $ENV_FILE_FLAG ./src/localRecoveryCli.ts \"$@\"",
+    "exec bun $ENV_FILE_FLAG ./src/entrypoints/cli.tsx \"$@\""
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

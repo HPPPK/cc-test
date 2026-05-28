@@ -1,0 +1,21 @@
+{
+  "id": "ev-server-workflow-api-workflow-report-store",
+  "type": "source_analysis",
+  "source_path": "src/server/services/workflowReportStore.ts",
+  "summary": "Workflow report store keeps reports under ~/.claude/cc-jiangxia/workflow-sessions/<sessionId>/reports/final.json, validates pointer scope, treats missing/corrupt reports as recoverable reads, and only creates reports from completed workflow state.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "workflowSessionDir",
+    "validateReportScope",
+    "canCreateFinalReport",
+    "readFinalReport",
+    "createFinalReport",
+    "atomicWriteJson",
+    "recoveryStatus: 'report-missing'",
+    "recoveryStatus: 'report-corrupt'"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

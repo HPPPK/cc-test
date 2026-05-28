@@ -16,7 +16,6 @@
  */
 
 import * as fs from 'node:fs/promises'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import { sessionService } from '../services/sessionService.js'
 import { conversationService } from '../services/conversationService.js'
@@ -33,11 +32,9 @@ import {
   getRepositoryContext,
   type CreateSessionRepositoryOptions,
 } from '../services/repositoryLaunchService.js'
-import {
-  WorkflowTemplateRegistryService,
-  type WorkflowTemplateRegistryTemplate,
-} from '../services/workflowTemplateRegistryService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
+import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
+import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
 import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
@@ -47,13 +44,14 @@ import {
   type WorkflowSessionMetadata,
   type WorkflowSessionState,
   type WorkflowSessionSummary,
-  type WorkflowTemplate,
   type WorkflowTransitionRecord,
   type WorkflowTransitionRequest,
 } from '../services/workflowTypes.js'
 import {
+  WorkflowTemplateRegistryService,
+} from '../services/workflowTemplateRegistryService.js'
+import {
   stateToWorkflowMetadata,
-  workflowSummaryFromMetadata,
   workflowSummaryFromState,
 } from '../services/workflowSummary.js'
 import {
@@ -64,7 +62,6 @@ import {
   type RewindTargetSelector,
 } from '../services/sessionRewindService.js'
 import { SessionStore } from '../../../adapters/common/session-store.js'
-import { sanitizePath as sanitizePortablePath } from '../../utils/sessionStoragePortable.js'
 
 const workspaceService = new WorkspaceService(
   async (sessionId) => (
@@ -76,10 +73,18 @@ const workspaceService = new WorkspaceService(
 )
 const workflowTemplateRegistryService = new WorkflowTemplateRegistryService()
 const workflowSessionStateService = new WorkflowSessionStateService()
+const workflowSessionCreateService = new WorkflowSessionCreateService({
+  registryService: workflowTemplateRegistryService,
+  stateService: workflowSessionStateService,
+})
+const workflowSessionLinkService = new WorkflowSessionLinkService({
+  createService: workflowSessionCreateService,
+  stateService: workflowSessionStateService,
+  isSourceActive: (sessionId) => conversationService.hasSession(sessionId),
+})
 const workflowReportStore = new WorkflowReportStore()
 const workflowRuntimeService = new WorkflowRuntimeService()
 
-const WORKFLOW_CREATE_KEYS = new Set(['templateId', 'templateSource', 'initialPhaseId'])
 const workflowTransitionPromises = new Map<string, Promise<unknown>>()
 
 class WorkflowApiError extends ApiError {
@@ -347,14 +352,18 @@ async function createSession(req: Request): Promise<Response> {
 
   const workflowTemplate = body.workflow === undefined
     ? null
-    : await resolveWorkflowCreateTemplate(body.workflow)
+    : await workflowSessionCreateService.resolveTemplate(body.workflow)
   const result = await sessionService.createSession(body.workDir, body.repository)
   let response: { sessionId: string; workDir: string; workflow?: WorkflowSessionSummary } = result
 
   if (workflowTemplate) {
     response = {
       ...result,
-      workflow: await createWorkflowSessionMetadata(result.sessionId, result.workDir, workflowTemplate),
+      workflow: await workflowSessionCreateService.createWorkflowSessionMetadata(
+        result.sessionId,
+        result.workDir,
+        workflowTemplate,
+      ),
     }
   }
 
@@ -399,188 +408,6 @@ export async function handleWorkflowTemplatesApi(req: Request): Promise<Response
   }
 }
 
-async function resolveWorkflowCreateTemplate(
-  workflow: WorkflowSessionCreateOptions,
-): Promise<WorkflowTemplateRegistryTemplate> {
-  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow must be an object')
-  }
-
-  for (const key of Object.keys(workflow)) {
-    if (!WORKFLOW_CREATE_KEYS.has(key)) {
-      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', `Unsupported workflow field: ${key}`)
-    }
-  }
-
-  if (typeof workflow.templateId !== 'string' || workflow.templateId.trim().length === 0) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateId is required')
-  }
-
-  if (
-    workflow.templateSource !== undefined &&
-    workflow.templateSource !== 'builtin' &&
-    workflow.templateSource !== 'user'
-  ) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateSource must be builtin or user')
-  }
-
-  if (
-    workflow.initialPhaseId !== undefined &&
-    (typeof workflow.initialPhaseId !== 'string' || workflow.initialPhaseId.trim().length === 0)
-  ) {
-    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'workflow.initialPhaseId must be a non-empty string')
-  }
-
-  const registry = await workflowTemplateRegistryService.listTemplates()
-  const candidates = registry.templates.filter((template) =>
-    template.id === workflow.templateId &&
-    (workflow.templateSource === undefined || template.source === workflow.templateSource)
-  )
-
-  if (candidates.length === 0) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
-  }
-  if (candidates.length > 1) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_CONFLICT', 'Workflow template resolution is ambiguous')
-  }
-
-  const template = candidates[0]!
-  const firstPhaseId = template.phases[0]?.id
-  if (!firstPhaseId) {
-    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Workflow template has no startable phases')
-  }
-  if (workflow.initialPhaseId !== undefined && workflow.initialPhaseId !== firstPhaseId) {
-    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'initialPhaseId must name the first workflow phase')
-  }
-
-  return template
-}
-
-async function createWorkflowSessionMetadata(
-  sessionId: string,
-  workDir: string,
-  registryTemplate: WorkflowTemplateRegistryTemplate,
-): Promise<WorkflowSessionSummary> {
-  const now = new Date().toISOString()
-  const templateSnapshot = toWorkflowTemplate(registryTemplate)
-  const templateSnapshotId = `${registryTemplate.id}-v${registryTemplate.version}`
-  const phases = registryTemplate.phases.map((phase, index) => ({
-    id: phase.id,
-    index,
-    status: 'created' as const,
-    artifactPointers: [],
-  }))
-  const phaseRuns = registryTemplate.phases.map((phase, index) => ({
-    phaseId: phase.id,
-    index,
-    status: 'created' as const,
-    startedAt: null,
-    completedAt: null,
-    instructionsProvenance: {
-      templateId: registryTemplate.id,
-      templateVersion: registryTemplate.version,
-      phaseId: phase.id,
-    },
-    inputArtifactRefs: [],
-    outputArtifactRefs: [],
-    completionChecks: [],
-    modelResolution: null,
-    skillProvenance: [],
-    blockedReason: null,
-  }))
-  const state = {
-    schemaVersion: 1,
-    sessionId,
-    mode: 'workflow',
-    template: {
-      id: registryTemplate.id,
-      version: registryTemplate.version,
-      source: registryTemplate.source,
-      snapshotId: templateSnapshotId,
-      sourceState: 'current',
-    },
-    templateSnapshot,
-    templateIdentity: {
-      id: registryTemplate.id,
-      source: registryTemplate.source,
-      version: registryTemplate.version,
-      registryKey: `${registryTemplate.source}:${registryTemplate.id}`,
-    },
-    sourceTemplateStatus: 'current',
-    status: 'created',
-    workflowStatus: 'created',
-    activePhaseId: registryTemplate.phases[0]?.id ?? null,
-    phases,
-    phaseRuns,
-    transitionHistory: [],
-    artifactIndex: [],
-    finalReportRef: null,
-    stateVersion: 1,
-    revision: 1,
-    createdAt: now,
-    updatedAt: now,
-    pendingConfirmation: null,
-  } satisfies WorkflowSessionState
-
-  const { pointer } = await workflowSessionStateService.writeState(sessionId, state)
-  const metadata = stateToWorkflowMetadata(state, pointer)
-  await appendWorkflowMetadata(sessionId, workDir, metadata)
-  return workflowSummaryFromMetadata(metadata)
-}
-
-function toWorkflowTemplate(template: WorkflowTemplateRegistryTemplate): WorkflowTemplate {
-  return {
-    schemaVersion: template.schemaVersion,
-    id: template.id,
-    source: template.source,
-    version: template.version,
-    displayName: template.name,
-    description: template.description,
-    phases: template.phases.map((phase) => ({
-      id: phase.id,
-      label: phase.name,
-      instructions: phase.instructions,
-      requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : null,
-      skillDeclarations: phase.skills.map((skill) => ({
-        ...skill,
-        source: 'template',
-        guidance: skill.reason || '',
-      })),
-      requiredArtifacts: phase.requiredArtifacts.map((artifact) => ({
-        ...artifact,
-        kind: 'json',
-        description: artifact.description || artifact.name || artifact.id,
-      })),
-      completionCriteria: phase.completionCriteria,
-      transitionAuthority: phase.transition.authority,
-      ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
-      ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
-    })),
-    registryKey: `${template.source}:${template.id}`,
-  }
-}
-
-async function appendWorkflowMetadata(
-  sessionId: string,
-  workDir: string,
-  workflow: WorkflowSessionMetadata,
-): Promise<void> {
-  const projectDir = sanitizePortablePath(workDir)
-  const filePath = path.join(configDir(), 'projects', projectDir, `${sessionId}.jsonl`)
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.appendFile(
-    filePath,
-    `${JSON.stringify({
-      type: 'session-meta',
-      isMeta: true,
-      workDir,
-      workflow,
-      timestamp: workflow.updatedAt,
-    })}\n`,
-    'utf-8',
-  )
-}
-
 async function handleWorkflowSessionRoute(
   req: Request,
   sessionId: string,
@@ -593,12 +420,28 @@ async function handleWorkflowSessionRoute(
     case 'transition':
       if (req.method !== 'POST') return methodNotAllowed(req.method)
       return await transitionWorkflow(req, sessionId)
+    case 'start':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await startLinkedWorkflow(req, sessionId)
     case 'report':
       if (req.method !== 'GET') return methodNotAllowed(req.method)
       return await getWorkflowReport(sessionId)
     default:
       throw ApiError.notFound(`Unknown workflow resource: ${workflowResource}`)
   }
+}
+
+async function startLinkedWorkflow(req: Request, sessionId: string): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Invalid JSON body')
+  }
+
+  const result = await workflowSessionLinkService.createLinkedWorkflowSession(sessionId, body)
+  const { created, ...response } = result
+  return Response.json(response, { status: created ? 201 : 200 })
 }
 
 async function getWorkflowState(sessionId: string): Promise<Response> {
@@ -711,7 +554,11 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
     await persistWorkflowFinalReportIfReady(result.state)
     const detail = await sessionService.getSession(sessionId)
     const workDir = detail.workDir || process.cwd()
-    await appendWorkflowMetadata(sessionId, workDir, stateToWorkflowMetadata(result.state, pointer))
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      workDir,
+      stateToWorkflowMetadata(result.state, pointer),
+    )
     for (const notification of result.notifications) {
       sendToSession(sessionId, workflowNotificationForDesktop(notification) as any)
     }
@@ -863,10 +710,6 @@ async function requireWorkflowSession(sessionId: string): Promise<WorkflowSessio
     throw workflowError(409, 'WORKFLOW_NOT_ENABLED', 'Workflow mode is not enabled for this session')
   }
   return detail.workflow
-}
-
-function configDir(): string {
-  return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
 }
 
 function workflowError(statusCode: number, code: string, message: string): WorkflowApiError {

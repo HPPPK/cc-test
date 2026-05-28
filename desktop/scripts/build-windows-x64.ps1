@@ -113,10 +113,10 @@ function Get-StagedArtifactName {
 
   switch -Regex ($ArtifactName) {
     '^latest\.json$' { return 'latest.json' }
-    '\.msi\.zip\.sig$' { return "Claude-Code-Haha_${appVersion}_windows_x64_msi.msi.zip.sig" }
-    '\.msi\.zip$' { return "Claude-Code-Haha_${appVersion}_windows_x64_msi.msi.zip" }
-    '\.msi\.sig$' { return "Claude-Code-Haha_${appVersion}_windows_x64_msi.msi.sig" }
-    '\.msi$' { return "Claude-Code-Haha_${appVersion}_windows_x64_msi.msi" }
+    '\.msi\.zip\.sig$' { return "Claude-Code-Jiangxia_${appVersion}_windows_x64_msi.msi.zip.sig" }
+    '\.msi\.zip$' { return "Claude-Code-Jiangxia_${appVersion}_windows_x64_msi.msi.zip" }
+    '\.msi\.sig$' { return "Claude-Code-Jiangxia_${appVersion}_windows_x64_msi.msi.sig" }
+    '\.msi$' { return "Claude-Code-Jiangxia_${appVersion}_windows_x64_msi.msi" }
     default { return $ArtifactName }
   }
 }
@@ -201,7 +201,7 @@ $tauriBuildArgs = @(
 
 $tempConfigPath = $null
 if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
-  $tempConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) 'cc-haha.tauri.local.windows.json'
+  $tempConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) 'cc-jiangxia.tauri.local.windows.json'
   $tempConfig = @{
     bundle = @{
       createUpdaterArtifacts = $false

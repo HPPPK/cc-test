@@ -1,0 +1,21 @@
+{
+  "id": "ev-root-config-runtime-tsconfig-01",
+  "type": "source_analysis",
+  "source_path": "tsconfig.json",
+  "summary": "TypeScript is configured for Bun/ESM execution with bundler resolution, React JSX, `allowJs`, and root-relative path aliases including `src/*` and local stubs.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "\"target\": \"ESNext\"",
+    "\"module\": \"ESNext\"",
+    "\"moduleResolution\": \"bundler\"",
+    "\"allowJs\": true",
+    "\"jsx\": \"react-jsx\"",
+    "\"baseUrl\": \".\"",
+    "\"src/*\": [\"./src/*\"]",
+    "\"types\": [\"bun-types\"]"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

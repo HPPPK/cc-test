@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-swarm-02",
+  "type": "source_analysis",
+  "source_path": "src/utils/swarm/backends/InProcessBackend.ts",
+  "summary": "The in-process backend adapts teammate spawn, messaging, graceful termination, kill, and liveness checks onto AppState-managed in-process tasks.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "InProcessBackend",
+    "spawn",
+    "startInProcessTeammate",
+    "terminate",
+    "kill"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

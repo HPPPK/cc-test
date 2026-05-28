@@ -28,7 +28,7 @@ type NativeNotificationSender = (options: NativeNotificationPayload) => Promise<
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported'
 type PluginPermissionState = DesktopNotificationPermission | 'prompt' | 'prompt-with-rationale'
 
-const TARGET_EXTRA_KEY = 'ccHahaTarget'
+const TARGET_EXTRA_KEY = 'ccJiangxiaTarget'
 const notifiedKeys = new Set<string>()
 const pendingKeys = new Set<string>()
 const lastNotificationAtByScope = new Map<string, number>()

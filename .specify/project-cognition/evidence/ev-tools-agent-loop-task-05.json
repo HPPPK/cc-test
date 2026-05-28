@@ -1,0 +1,16 @@
+{
+  "id": "ev-tools-agent-loop-task-05",
+  "type": "source_analysis",
+  "source_path": "src/tasks/types.ts",
+  "summary": "The unified task surface includes local shell, local agent, remote agent, in-process teammate, workflow, monitor, and dream task variants.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "TaskState",
+    "BackgroundTaskState",
+    "isBackgroundTask"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

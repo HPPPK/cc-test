@@ -1,0 +1,18 @@
+{
+  "id": "ev-adapters-services-risk-079",
+  "type": "source_analysis",
+  "source_path": "src/services/MagicDocs/magicDocs.ts",
+  "summary": "magicDocs.ts defines clearTrackedMagicDocs, detectMagicDocHeader, registerMagicDoc, getMagicDocsAgent, initMagicDocs and imports ../../Tool.js, ../../tools/AgentTool/loadAgentsDir.js, ../../tools/AgentTool/runAgent.js, ../../tools/FileEditTool/constants.js, ../../utils/errors.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "clearTrackedMagicDocs",
+    "detectMagicDocHeader",
+    "registerMagicDoc",
+    "getMagicDocsAgent",
+    "initMagicDocs"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -11,7 +11,10 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
 import { RepositoryLaunchControls } from '../components/shared/RepositoryLaunchControls'
-import { WorkflowTemplatePicker } from '../components/workflow/WorkflowComponents'
+import {
+  WorkflowStartDialog,
+  type WorkflowStartDialogSelection,
+} from '../components/workflow/WorkflowStartDialog'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
 import { ModelSelector } from '../components/controls/ModelSelector'
 import { AttachmentGallery } from '../components/chat/AttachmentGallery'
@@ -105,6 +108,7 @@ export function EmptySession() {
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
   const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
   const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
+  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -302,24 +306,10 @@ export function EmptySession() {
     setIsSubmitting(true)
     try {
       const explicitDraftSelection = useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
-      const workflowTemplate = selectedWorkflowTemplate
-        ? workflowTemplates.find((template) =>
-          template.id === selectedWorkflowTemplate.templateId &&
-          template.source === selectedWorkflowTemplate.templateSource)
-        : null
       const sessionId = await createSession(
         workDir || undefined,
         {
           ...(selectedBranch ? { repository: { branch: selectedBranch, worktree: useWorktree } } : {}),
-          ...(workflowTemplate
-            ? {
-                workflow: {
-                  templateId: workflowTemplate.id,
-                  templateSource: workflowTemplate.source,
-                  initialPhaseId: workflowTemplate.firstPhaseId,
-                },
-              }
-            : {}),
         },
       )
       if (explicitDraftSelection) {
@@ -341,6 +331,41 @@ export function EmptySession() {
       }
       setInput('')
       setAttachments([])
+    } catch (error) {
+      addToast({
+        type: 'error',
+        message: resolveCreateSessionErrorMessage(error, t),
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleStartWorkflow = async (selection: WorkflowStartDialogSelection) => {
+    if (isSubmitting || !repositoryLaunchReady) return
+
+    setIsSubmitting(true)
+    try {
+      const explicitDraftSelection = useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
+      const sessionId = await createSession(
+        workDir || undefined,
+        {
+          ...(selectedBranch ? { repository: { branch: selectedBranch, worktree: useWorktree } } : {}),
+          workflow: {
+            templateId: selection.templateId,
+            templateSource: selection.templateSource,
+            initialPhaseId: selection.initialPhaseId,
+          },
+        },
+      )
+      if (explicitDraftSelection) {
+        useSessionRuntimeStore.getState().setSelection(sessionId, explicitDraftSelection)
+        useSessionRuntimeStore.getState().clearSelection(DRAFT_RUNTIME_SELECTION_KEY)
+      }
+      setActiveView('code')
+      useTabStore.getState().openTab(sessionId, 'New Session')
+      connectToSession(sessionId)
+      setWorkflowDialogOpen(false)
     } catch (error) {
       addToast({
         type: 'error',
@@ -567,8 +592,25 @@ export function EmptySession() {
     })
   }
 
+  const openWorkflowDialog = () => {
+    setPlusMenuOpen(false)
+    setSlashMenuOpen(false)
+    setFileSearchOpen(false)
+    setWorkflowDialogOpen(true)
+  }
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-[var(--color-surface)]">
+      <WorkflowStartDialog
+        open={workflowDialogOpen}
+        templates={workflowTemplates}
+        invalidTemplates={invalidWorkflowTemplates}
+        selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+        onSelect={setSelectedWorkflowTemplate}
+        onStart={handleStartWorkflow}
+        onClose={() => setWorkflowDialogOpen(false)}
+        starting={isSubmitting}
+      />
       <div className={`flex flex-1 flex-col items-center justify-center ${
         isMobileComposer ? 'px-6 pb-[230px] pt-10' : 'p-8 pb-32'
       }`}>
@@ -577,7 +619,7 @@ export function EmptySession() {
         }`}>
           <img
             src="/app-icon.png"
-            alt="Claude Code Haha"
+            alt="Claude Code Jiangxia"
             className={isMobileComposer ? 'mb-4 h-16 w-16' : 'mb-6 h-24 w-24'}
           />
           <h1
@@ -720,19 +762,6 @@ export function EmptySession() {
                 <AttachmentGallery attachments={attachments} variant="composer" onRemove={removeAttachment} />
               )}
 
-              {workflowTemplates.length > 0 || invalidWorkflowTemplates.length > 0 ? (
-                <WorkflowTemplatePicker
-                  templates={workflowTemplates}
-                  invalidTemplates={invalidWorkflowTemplates.map((issue) => ({
-                    id: issue.templateId,
-                    source: issue.source,
-                    message: issue.message,
-                  }))}
-                  selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
-                  onSelect={setSelectedWorkflowTemplate}
-                />
-              ) : null}
-
               <div className="flex items-start gap-3">
                 <textarea
                   ref={textareaRef}
@@ -781,6 +810,13 @@ export function EmptySession() {
                         >
                           <span className="w-5 text-center text-[18px] font-bold text-[var(--color-text-secondary)]">/</span>
                           {t('empty.slashCommands')}
+                        </button>
+                        <button
+                          onClick={openWorkflowDialog}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+                        >
+                          <span className="material-symbols-outlined text-[18px] text-[var(--color-text-secondary)]">account_tree</span>
+                          {t('settings.workflows.title')}
                         </button>
                       </div>
                     )}

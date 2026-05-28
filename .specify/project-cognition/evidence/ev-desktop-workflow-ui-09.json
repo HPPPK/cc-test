@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-09",
+  "type": "source_analysis",
+  "source_path": "desktop/src/api/sessions.ts",
+  "summary": "Desktop API client exposes workflow template CRUD/import/export plus workflow state, transition, and report routes.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "/api/workflows/templates",
+    "/api/workflows/templates/import/preview",
+    "/api/sessions/${sessionId}/workflow/transition"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

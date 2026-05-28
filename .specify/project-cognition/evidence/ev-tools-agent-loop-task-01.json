@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-task-01",
+  "type": "source_analysis",
+  "source_path": "src/tasks/LocalAgentTask/LocalAgentTask.tsx",
+  "summary": "Local agent tasks hold background agent lifecycle state, progress summaries, notifications, and foreground/background transitions for asynchronously running subagents.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "LocalAgentTask",
+    "registerAsyncAgent",
+    "registerAgentForeground",
+    "updateAgentProgress",
+    "enqueueAgentNotification"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

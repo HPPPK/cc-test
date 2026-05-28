@@ -3,6 +3,8 @@ import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { SubmitPhaseCompletionTool } from './tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
+import { WorkflowTemplateAuthoringTool } from './tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.js'
+import { getJiangxiaEnvValue } from './utils/appIdentity.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
@@ -214,6 +216,7 @@ export function getAllBaseTools(): Tools {
     TaskStopTool,
     AskUserQuestionTool,
     SkillTool,
+    WorkflowTemplateAuthoringTool,
     EnterPlanModeTool,
     ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
     ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
@@ -377,7 +380,7 @@ export function assembleToolPool(
 }
 
 function getDesktopWorkflowScopedTools(): Tools {
-  const sessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID?.trim()
+  const sessionId = getJiangxiaEnvValue('WORKFLOW_SESSION_ID')?.trim()
   return sessionId ? [SubmitPhaseCompletionTool] : []
 }
 

@@ -43,9 +43,9 @@ Required context inputs:
   Run or emulate:
 
   ```text
-  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent research --query=\"$ARGUMENTS\" --format json
+  C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent research --query=\"$ARGUMENTS\" --format json
   # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-  uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent research --query-plan \"<query_plan_json>\" --format json
+  C:\Users\11034\.specify\bin\project-cognition.exe query --intent research --query-plan \"<query_plan_json>\" --format json
   ```
 
   Use the returned readiness:
@@ -53,8 +53,8 @@ Required context inputs:
   - `ready`: continue with the returned task-local bundle.
   - `review`: perform only the returned `minimal_live_reads` before continuing.
   - `ambiguous`: ask the user to select the intended candidate.
-  - `needs_update`: route through `$sp-map-update`.
-  - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+  - `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
+  - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
   - `blocked`: stop and report the blocking runtime issue.
 - `PROJECT-HANDBOOK.md` only when compatibility/export evidence is explicitly relevant.
 - `.specify/prd/status.json` as the stable PRD scan freshness record when present.
@@ -238,3 +238,14 @@ Reject results that omit `paths_read`, collapse evidence into prose-only summary
 - Do not let `critical` or `high` capabilities pass with shallow evidence only.
 - Do not hide unknowns that block a later build step.
 - When refusal is required, report the smallest safe repair instead of softening the gap into narrative prose.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

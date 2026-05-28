@@ -1,0 +1,14 @@
+{
+  "id": "ev-adapters-services-risk-020",
+  "type": "source_analysis",
+  "source_path": "adapters/common/chat-queue.ts",
+  "summary": "chat-queue.ts defines enqueue",
+  "detail": "",
+  "quotes_or_symbols": [
+    "enqueue"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

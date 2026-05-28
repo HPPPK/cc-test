@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-105",
+  "type": "source_analysis",
+  "source_path": "src/services/api/errors.ts",
+  "summary": "errors.ts defines API_ERROR_MESSAGE_PREFIX, startsWithApiErrorPrefix, PROMPT_TOO_LONG_ERROR_MESSAGE, isPromptTooLongMessage, parsePromptTooLongTokenCounts, getPromptTooLongTokenGap and imports src/constants/betas.js, src/entrypoints/agentSdkTypes.js, src/utils/model/modelStrings.js, src/utils/model/providers.js, ../../bootstrap/state.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "API_ERROR_MESSAGE_PREFIX",
+    "startsWithApiErrorPrefix",
+    "PROMPT_TOO_LONG_ERROR_MESSAGE",
+    "isPromptTooLongMessage",
+    "parsePromptTooLongTokenCounts",
+    "getPromptTooLongTokenGap"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

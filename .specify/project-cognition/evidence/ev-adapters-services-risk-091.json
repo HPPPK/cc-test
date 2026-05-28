@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-091",
+  "type": "source_analysis",
+  "source_path": "src/services/analytics/index.ts",
+  "summary": "index.ts defines AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED, stripProtoFields, AnalyticsSink, attachAnalyticsSink, logEvent",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS",
+    "AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED",
+    "stripProtoFields",
+    "AnalyticsSink",
+    "attachAnalyticsSink",
+    "logEvent"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

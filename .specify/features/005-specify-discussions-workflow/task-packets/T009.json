@@ -1,0 +1,61 @@
+{
+  "id": "T009",
+  "title": "Add desktop workflow template API methods and types",
+  "agent": "executor",
+  "depends_on": [
+    "T006: desktop API tests added",
+    "T008: server workflow template routes implemented"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Add desktop TypeScript types and API client methods for workflow template management and linked workflow start.",
+  "context_navigation": {
+    "design_decision": "plan.md#Dispatch Compilation Hints",
+    "data_model": "data-model.md#Workflow Template Validation Issue",
+    "api_contract": "contracts/workflow-template-api.md#Compatibility",
+    "reference_implementation": "desktop/src/api/sessions.ts"
+  },
+  "write_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/sessions.test.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.tsx",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/api/sessions.ts （修改）",
+    "desktop/src/types/session.ts （修改）",
+    "desktop/src/api/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not add desktop filesystem writes.",
+    "Do not create client-only schema divergent from server.",
+    "Do not drop existing listWorkflowTemplates compatibility."
+  ],
+  "acceptance_criteria": [
+    "Client methods match route paths and payloads.",
+    "Types include diagnostics, import candidates, export payloads, linked start response, and error-relevant fields.",
+    "Existing API tests still pass."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

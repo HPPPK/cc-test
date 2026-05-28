@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-111",
+  "type": "source_analysis",
+  "source_path": "docs/en/agent/01-usage-guide.md",
+  "summary": "English agent docs mirror the multi-agent usage, implementation, and framework material.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "TeamCreate",
+    "TeamDelete",
+    "Agent Teams"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

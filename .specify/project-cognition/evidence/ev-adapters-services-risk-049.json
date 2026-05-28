@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-049",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/cardkit.ts",
+  "summary": "cardkit.ts defines STREAMING_ELEMENT_ID, CardKitApiError, getImCardRequestTimeoutMs, withImCardRequestTimeout, assertCardKitOk, createCardEntity and imports @larksuiteoapi/node-sdk",
+  "detail": "",
+  "quotes_or_symbols": [
+    "STREAMING_ELEMENT_ID",
+    "CardKitApiError",
+    "getImCardRequestTimeoutMs",
+    "withImCardRequestTimeout",
+    "assertCardKitOk",
+    "createCardEntity"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

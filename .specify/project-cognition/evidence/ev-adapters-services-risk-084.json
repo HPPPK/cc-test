@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-084",
+  "type": "source_analysis",
+  "source_path": "src/services/SessionMemory/sessionMemory.ts",
+  "summary": "sessionMemory.ts defines isSessionMemoryGateEnabled, getSessionMemoryRemoteConfig, resetLastMemoryMessageUuid, countToolCallsSince, shouldExtractMemory, initSessionMemory and imports fs/promises, lodash-es/memoize.js, ../../bootstrap/state.js, ../../constants/prompts.js, ../../context.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "isSessionMemoryGateEnabled",
+    "getSessionMemoryRemoteConfig",
+    "resetLastMemoryMessageUuid",
+    "countToolCallsSince",
+    "shouldExtractMemory",
+    "initSessionMemory"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

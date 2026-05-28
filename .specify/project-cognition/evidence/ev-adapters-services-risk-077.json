@@ -1,0 +1,14 @@
+{
+  "id": "ev-adapters-services-risk-077",
+  "type": "source_analysis",
+  "source_path": "src/memdir/teamMemPrompts.ts",
+  "summary": "teamMemPrompts.ts defines buildCombinedMemoryPrompt and imports ./paths.js, ./teamMemPaths.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "buildCombinedMemoryPrompt"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

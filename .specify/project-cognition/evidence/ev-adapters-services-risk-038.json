@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-038",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/permission-card.ts",
+  "summary": "permission-card.ts defines DINGTALK_PERMISSION_CARD_CALLBACK_ROUTE, DingTalkPermissionCardAction, buildDingTalkPermissionCardParams, parseDingTalkPermissionCardAction, parseMaybeJson, collectValues and imports ../common/format.js, ../common/permission.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "DINGTALK_PERMISSION_CARD_CALLBACK_ROUTE",
+    "DingTalkPermissionCardAction",
+    "buildDingTalkPermissionCardParams",
+    "parseDingTalkPermissionCardAction",
+    "parseMaybeJson",
+    "collectValues"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

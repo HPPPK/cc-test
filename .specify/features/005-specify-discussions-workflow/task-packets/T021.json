@@ -1,0 +1,60 @@
+{
+  "id": "T021",
+  "title": "Add linked workflow start API route",
+  "agent": "api-reviewer",
+  "depends_on": [
+    "T020: linked workflow session service implemented"
+  ],
+  "parallel_safe": false,
+  "story": "US4",
+  "objective": "Expose POST /api/sessions/:id/workflow/start with request validation, stable error codes, and linked workflow session service delegation.",
+  "context_navigation": {
+    "design_decision": "research.md#Linked Workflow Session API",
+    "data_model": "data-model.md#Linked Workflow Session Request",
+    "api_contract": "contracts/linked-workflow-session.md#Request",
+    "reference_implementation": "src/server/api/sessions.ts"
+  },
+  "write_scope": [
+    "src/server/api/sessions.ts",
+    "src/server/router.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowSessionLinkService.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json"
+  ],
+  "expected_outputs": [
+    "src/server/api/sessions.ts （修改）",
+    "src/server/router.ts （修改，如 route dispatch requires it）",
+    "src/server/__tests__/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not overload POST /api/sessions with source lifecycle semantics.",
+    "Do not return vague generic errors for contract cases.",
+    "Do not expose protected paths."
+  ],
+  "acceptance_criteria": [
+    "Route validates workflow, contextStrategy, summaryInstructions, and clientRequestId.",
+    "Contract error codes are covered.",
+    "Route returns target session workflow summary and link metadata.",
+    "Source mutation tests pass."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

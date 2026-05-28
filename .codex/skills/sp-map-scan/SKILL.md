@@ -18,7 +18,7 @@ metadata:
 
 - **When to use**: A workflow needs reliable brownfield cognition and no graph-native baseline exists yet, or a full baseline rebuild is explicitly required.
 - **Primary objective**: Enumerate all project-relevant in-repo evidence, build provisional nodes and candidate edges, and publish the scan artifacts required for graph reconstruction.
-- **Primary outputs**: `.specify/project-cognition/status.json`, `.specify/project-cognition/evidence/`, `.specify/project-cognition/provisional/nodes.json`, `.specify/project-cognition/provisional/edges.json`, `.specify/project-cognition/provisional/observations.json`, `.specify/project-cognition/coverage.json`, `.specify/project-cognition/workbench/coverage-ledger.*`, and `.specify/project-cognition/workbench/map-state.md`.
+- **Primary outputs**: `.specify/project-cognition/status.json`, `.specify/project-cognition/evidence/`, `.specify/project-cognition/provisional/nodes.json`, `.specify/project-cognition/provisional/edges.json`, `.specify/project-cognition/provisional/observations.json`, `.specify/project-cognition/coverage.json`, `.specify/project-cognition/workbench/coverage-ledger.*`, `.specify/project-cognition/workbench/scan-queue.json`, `.specify/project-cognition/workbench/handoff-ledger.json`, and `.specify/project-cognition/workbench/map-state.md`.
 - **Default handoff**: $sp-map-build after the evidence baseline is complete and the scan outputs are ready for graph reconstruction.
 - **Execution note**: This summary is routing metadata only. Follow the full contract below end-to-end rather than inferring behavior from the description alone.
 
@@ -41,8 +41,13 @@ Generate a complete graph-native evidence baseline for the current codebase.
 - Legacy atlas artifacts such as `PROJECT-HANDBOOK.md` may be read only when explicitly relevant to migration or export parity; they must not become scan targets.
 - `.specify/**` is workflow/runtime state, not project graph evidence; `.specify/**` paths may be read only for command operation or validation and must not become scan targets or graph paths.
 - Apply project cognition ignore rules from root `.cognitionignore` and `.specify/project-cognition/.cognitionignore` before accepting repository-universe, evidence, coverage, or packet scope. These files use gitignore-compatible patterns for project cognition only.
+- Before subagent dispatch, write the canonical boundary in `.specify/project-cognition/workbench/repository-universe.json`; do not rely on user-maintained `.cognitionignore` as the primary boundary mechanism.
+- [AGENT] Treat `scan-queue.json` and `handoff-ledger.json` as required scan workbench artifacts before `validate-scan`.
+- Stage the canonical boundary artifact before dispatch, then accept scan packets only after the leader verifies packet-local ledger accounting for every assigned path and a `worker-results/<packet-id>.json` handoff whose `paths_read` is a non-empty concrete path array.
+- Treat `.cognitionignore` as an override source recorded in `decision_source`; excluded paths stay in boundary accounting and out of graph-facing coverage.
 - The resulting evidence baseline must let `sp-map-build` reconstruct the project cognition graph from live-surface evidence without inventing scan scope.
 - Maintain `.specify/project-cognition/status.json` as the baseline state surface for graph-native cognition readiness.
+- If native subagent dispatch is unavailable or a substantive scan lane cannot complete, persist `subagent_blocked` in machine-readable state and block baseline activation until recovery. `coverage-ledger.json.open_gaps[]` may use `low_risk_open_gap` only with owner, reason, evidence expectation, and revisit condition.
 
 ## Mandatory Subagent Execution
 
@@ -63,9 +68,29 @@ Use `execution_surface: native-subagents`.
 - Wait for every dispatched lane's structured handoff before accepting scan coverage.
 - If a safe scan lane cannot be packetized or delegated, record `subagent-blocked` and stop for escalation or recovery.
 
+## Machine-Readable Blocked State
+
+Human workflow prose may say `subagent-blocked`, but persisted machine fields use
+`subagent_blocked`.
+
+If a substantive scan/build lane cannot dispatch or complete, write:
+
+- `.specify/project-cognition/status.json` with `baseline_state=blocked` and
+  `subagent_blocked` in `stale_reasons` or `dirty_reasons`
+- `.specify/project-cognition/workbench/map-state.md` with
+  `readiness=blocked`, `blocking_reason=subagent_blocked`, blocked lane ids,
+  blocked scope, and recovery condition
+- `.specify/project-cognition/workbench/coverage-ledger.json.open_gaps[]` with
+  `reason="subagent_blocked"`, `lane_id`, `packet_id`, `blocked_scope`,
+  `criticality`, `owner`, `status="blocked"`, and `recovery_condition`
+
+`unknown` blocks, `blocked`, `critical_open_gap`, and `subagent_blocked` block baseline
+activation. `low_risk_open_gap` may pass only with owner, reason,
+`evidence_expectation`, and `revisit_condition`.
+
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader scan context.
 - Passive learning files are workflow guidance, not scan evidence.
 - `.specify/**` must never enter the project cognition graph.
@@ -95,7 +120,10 @@ The only canonical outputs for this command are:
 - `.specify/project-cognition/workbench/map-scan.md`
 - `.specify/project-cognition/workbench/coverage-ledger.md`
 - `.specify/project-cognition/workbench/coverage-ledger.json`
+- `.specify/project-cognition/workbench/scan-queue.json`
+- `.specify/project-cognition/workbench/handoff-ledger.json`
 - `.specify/project-cognition/workbench/scan-packets/<lane-id>.md`
+- `.specify/project-cognition/workbench/worker-results/<packet-id>.json`
 - `.specify/project-cognition/workbench/map-state.md`
 - `.specify/project-cognition/workbench/repository-universe.json`
 - `.specify/project-cognition/workbench/capability-ledger.json`
@@ -104,6 +132,44 @@ The only canonical outputs for this command are:
 - `map-state.md` as the scan-stage workbench state surface
 
 Do not create handbook-first brownfield truth, alternate mapping trees, or canonical runtime documents during `sp-map-scan`.
+
+## Machine-Readable Scan Artifact Schema
+
+Write canonical JSON fields, not agent-local aliases. The runtime accepts a few
+legacy aliases for compatibility, but new scan packets must emit the canonical
+shape below so `sp-map-build` can reconstruct the graph without manual repair.
+
+`provisional/nodes.json` must contain a top-level `nodes` array. Each node row
+uses:
+
+- `id`: stable node identity. Do not write placeholder values such as `NO_ID`.
+- `type`: node class such as `capability`, `module`, `file`, `page`, `command`, `test`, or `state`.
+- `title`: human-readable node title.
+- `paths`: concrete repository file paths owned or represented by this node. build-from-scan creates path_index rows only from nodes[].paths.
+- `confidence`: `verified`, `high`, `medium`, `low`, or `provisional`.
+- `evidence_ids`: evidence row IDs that justify the node.
+- `attrs`: optional object for secondary metadata.
+
+Compatibility aliases accepted by the runtime are `node_id` for `id`, `kind` for
+`type`, `label` or `name` for `title`, and `attrs_json` for `attrs`. These are
+fallbacks only; do not use them in newly generated scan artifacts.
+
+`provisional/edges.json` must contain a top-level `edges` array. Each edge row
+uses `id`, `type`, `source_id`, `target_id`, `confidence`, `evidence_ids`, and
+optional `attrs`. `source_id` and `target_id` should reference node IDs. The
+runtime can resolve a file path endpoint to a node only when exactly one node
+lists that path in `nodes[].paths`. Compatibility aliases accepted by the
+runtime are `source`, `target`, `source_node_id`, `target_node_id`, `kind`, and
+`attrs_json`.
+
+`provisional/observations.json` must contain a top-level `observations` array.
+Each row uses `id`, `observation_type`, `summary`, `evidence_ids`, and optional
+`attrs`. string observations are accepted only as compatibility input and are normalized as `observation_type: note`; new scan artifacts must write objects.
+
+`coverage.json` must contain a top-level `rows` array with `path` values for
+coverage accounting. Compatibility input may use a top-level `coverage` array,
+but new scan artifacts must write `rows`; do not maintain separate `rows` and
+`coverage` lists that can drift. coverage.json does not create path_index rows by itself; every queryable path must also appear in at least one node's `paths` array.
 
 ## Guardrails
 
@@ -120,9 +186,18 @@ Do not create handbook-first brownfield truth, alternate mapping trees, or canon
 
 - `MAP_STATE_FILE=.specify/project-cognition/workbench/map-state.md`
 - Treat `.specify/project-cognition/workbench/map-state.md` as the refresh-workbench state surface for scan progress, accepted packets, and unresolved gaps.
+- `scan-queue.json` is the leader-owned scheduler queue. Every `scan-packets/<packet-id>.md` file must have exactly one queue row.
+- `handoff-ledger.json` records every dispatch and return event. Every `worker-results/<packet-id>.json` file must have a matching queue row and return event.
+- The leader loop is: leader receives worker result, leader reads durable scan state, leader validates handoff quality, leader updates queue, coverage, and handoff ledgers, leader plans next packets, and leader dispatches the next bounded wave.
+- Worker packet acceptance is separate from path coverage outcome. If a packet exceeds budget, the worker returns `acceptance=fail_gap`, marks affected paths as `coverage[].outcome="overflow"`, and includes split recommendations.
+- New worker results must write top-level `acceptance`. Top-level `outcome` is a legacy alias only and must not appear in generated worker prompt examples.
+- `accepted_nonblocking_gap_paths` contains only low-risk paths with owner, reason, evidence expectation, revisit condition, and `low_risk_open_gap` status.
 - Scan packets are executable read instructions, not final truth documents.
 - `MapScanPacket` is the required packet contract for each delegated scan lane.
 - Each packet must declare `mode: read_only` and a `result_handoff_path`.
+- Each `result_handoff_path` must point to `.specify/project-cognition/workbench/worker-results/<packet-id>.json`.
+- Every `scan-packets/<lane-id>.md` file must have exactly one matching `worker-results/<lane-id>.json` handoff, and worker results without a matching scan packet are invalid.
+- Worker result handoffs are the machine-checkable evidence surface for packet acceptance.
 - Prefer `rg --files` for inventory discovery before escalating to deeper reads.
 - Filter `rg --files`, Git-tracked file lists, and any user-provided scan hints through `.cognitionignore` before writing `.specify/project-cognition/workbench/repository-universe.json`.
 - Raw inventory notes or raw chat summaries are not sufficient.
@@ -130,6 +205,29 @@ Do not create handbook-first brownfield truth, alternate mapping trees, or canon
 - The leader must wait for every dispatched scan lane to return a structured handoff before closing the scan stage.
 - Even when freshness is `fresh`, `sp-map-scan` still reasons from the git baseline diff before deciding whether the refresh workbench needs new coverage.
 - Reference-only material is a live surface only for refresh-workbench validation; it must not become a scan target by default.
+
+## Canonical Boundary Contract
+
+- `.specify/project-cognition/workbench/repository-universe.json` is the canonical boundary artifact.
+- It must include `schema_version`, `candidate_universe`, `included_paths`, `excluded_paths`, `ambiguous_paths`, `dispositions`, `criticality`, `classification_reasons`, and `decision_source`.
+- Every candidate path must receive exactly one disposition: `deep_read`, `sampled`, `inventory_only`, `excluded`, or `blocked`.
+- Disposition is separate from criticality. Criticality remains `critical`, `important`, or `low_risk`.
+- sampled and inventory_only are not free-form convenience labels; they must align with the recorded disposition and criticality in `repository-universe.json`.
+- Critical entrypoints, shared state, configuration, tests, verification surfaces, and generated-surface propagation chains should not pass as `sampled` unless the boundary artifact already records an explicit accepted gap or an equally explicit lower-depth decision.
+- `sampled` and `inventory_only` are acceptable only when the disposition and criticality together justify them.
+- Excluded paths must not appear in graph-facing `coverage.json` rows, evidence rows, provisional nodes, provisional edges, observations, path indexes, route indexes, or `minimal_live_reads`.
+- `MapScanPacket` must include bounded `assigned_paths`.
+- Each packet carries a packet-local task ledger with `todo`, `doing`, `done`, `blocked`, and `overflow`.
+- Each accepted worker result must repeat `assigned_paths`, include `paths_read` as a non-empty array of concrete repository paths, include packet-local `coverage` rows for the final outcome of each assigned path, and include confidence.
+- `paths_read: true`, summary-only read claims, and boolean read flags are invalid.
+- `read` and `deep_read` outcomes must reference existing `evidence_ids`, and at least one referenced evidence row must have `source_path` equal to the covered path.
+- Subagents must account for every assigned path with evidence, `sampled`, `inventory_only`, `excluded`, `blocked`, or `overflow`.
+- If assigned paths do not fit in context, the subagent must return `acceptance=fail_gap`, mark path-level `coverage[].outcome="overflow"` or `coverage[].outcome="blocked"`, and include split or recovery recommendations; the leader records queue state `overflow` or `blocked`.
+- Leader acceptance has two gates: a coverage gate that requires every assigned path to have a declared outcome, and a quality gate that rejects summary-only or inconsistent evidence.
+- The leader may classify packet failure as `fail_gap`, `fail_quality`, `fail_contract`, or `fail_systemic`.
+- `fail_quality` must return a machine-checkable repack subset naming at least one of `paths[]`, `claim_ids[]`, `coverage_row_ids[]`, or `evidence_ids[]`; otherwise treat it as `fail_contract`.
+- Any acceptance value other than `pass` blocks scan acceptance until the leader repacks, repairs, or explicitly records the unresolved gap.
+- `fail_contract` and `fail_systemic` do not use local patch-only redispatch; repair the packet schema/boundary or repack the affected packet family.
 
 ## Scan Duties
 
@@ -244,11 +342,22 @@ Before reporting completion:
 
 - confirm that the evidence baseline exists under `.specify/project-cognition/`
 - confirm that provisional nodes and candidate edges were written
-- run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-scan --format json` before handoff to `sp-map-build`
+- run `C:\Users\11034\.specify\bin\project-cognition.exe validate-scan --format json` before handoff to `sp-map-build`
 - `sp-map-scan` may report complete only after `validate-scan` returns `status=ok` and `readiness=scan_ready`
 - if `validate-scan` returns `status=blocked`, report the blocking errors and do not claim the scan package is build-ready
 - confirm that the scan still has not published final cognition truth
 - report any open uncertainty that `sp-map-build` must reconcile
+
+## Codex Map Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Keep map packet/result schemas from this workflow authoritative; do not substitute implementation `WorkerTaskResult` fields for map scan/build/update packet contracts.
 
 ## Codex Subagents-First Dispatch
 

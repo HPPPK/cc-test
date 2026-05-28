@@ -210,7 +210,9 @@ async function requestJson(
 }
 
 function getImCardRequestTimeoutMs(): number {
-  const raw = process.env.CC_HAHA_IM_CARD_REQUEST_TIMEOUT_MS
+  const raw =
+    process.env.CC_JIANGXIA_IM_CARD_REQUEST_TIMEOUT_MS ??
+    process.env.CC_HAHA_IM_CARD_REQUEST_TIMEOUT_MS
   const parsed = raw ? Number(raw) : DEFAULT_IM_CARD_REQUEST_TIMEOUT_MS
   return Number.isFinite(parsed) && parsed > 0
     ? parsed

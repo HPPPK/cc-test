@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-085",
+  "type": "source_analysis",
+  "source_path": "src/services/SessionMemory/sessionMemoryUtils.ts",
+  "summary": "sessionMemoryUtils.ts defines SessionMemoryConfig, DEFAULT_SESSION_MEMORY_CONFIG, getLastSummarizedMessageId, setLastSummarizedMessageId, markExtractionStarted, markExtractionCompleted and imports ../../utils/errors.js, ../../utils/fsOperations.js, ../../utils/permissions/filesystem.js, ../../utils/sleep.js, ../analytics/index.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "SessionMemoryConfig",
+    "DEFAULT_SESSION_MEMORY_CONFIG",
+    "getLastSummarizedMessageId",
+    "setLastSummarizedMessageId",
+    "markExtractionStarted",
+    "markExtractionCompleted"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

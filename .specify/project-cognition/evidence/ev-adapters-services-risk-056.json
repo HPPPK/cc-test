@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-056",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/streaming-card.ts",
+  "summary": "streaming-card.ts defines buildInitialStreamingCard, buildRenderedCard, buildErrorCard, truncateReasoningPreview, StreamingCardPhase, StreamingCardDeps and imports @larksuiteoapi/node-sdk, ./flush-controller.js, ./card-errors.js, ./markdown-style.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "buildInitialStreamingCard",
+    "buildRenderedCard",
+    "buildErrorCard",
+    "truncateReasoningPreview",
+    "StreamingCardPhase",
+    "StreamingCardDeps"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

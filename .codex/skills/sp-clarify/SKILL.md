@@ -66,7 +66,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -134,16 +134,16 @@ Goal: Strengthen an existing spec package after `/sp.specify` by closing plannin
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command clarify --format json` when available so this repair pass can consume existing project rules and learnings.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command clarify --format json` when available so this repair pass can consume existing project rules and learnings.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader clarification context.
 - Open only learning detail docs linked from clarification-relevant index entries, especially repeated workflow gaps, user preferences, or project constraints for the touched area.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
 - When clarification friction exposes user corrections, scope changes, route changes, false starts, hidden dependencies, validation gaps, or reusable constraints, make sure `workflow-state.md` captures that durable context.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command clarify --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command clarify --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - When the durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 
 1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly` from repo root once (`--json --paths-only` / `-Json -PathsOnly`). Parse:
-   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command clarify --ensure-worktree` before guessing from branch-only context.
+   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify lane resolve --command clarify --ensure-worktree` before guessing from branch-only context.
    - When lane resolution returns a materialized lane worktree, continue clarification from that isolated worktree context so the repaired spec package stays bound to the active feature lane.
    - `FEATURE_DIR`
    - `FEATURE_SPEC`
@@ -181,9 +181,9 @@ Goal: Strengthen an existing spec package after `/sp.specify` by closing plannin
      Run or emulate:
 
      ```text
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json
+     C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --format json
      # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent plan --query-plan \"<query_plan_json>\" --format json
+     C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json
      ```
 
      Use the returned readiness:
@@ -191,8 +191,8 @@ Goal: Strengthen an existing spec package after `/sp.specify` by closing plannin
      - `ready`: continue with the returned task-local bundle.
      - `review`: perform only the returned `minimal_live_reads` before continuing.
      - `ambiguous`: ask the user to select the intended candidate.
-     - `needs_update`: record a planning advisory, perform the returned `minimal_live_reads`, and continue without requiring `$sp-map-update` during `sp-clarify`.
-     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+     - `needs_update`: record a planning advisory, perform the returned `minimal_live_reads`, and continue without requiring `$sp-map-update` during `sp-clarify`; this includes adoptable missing path-index coverage.
+     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
      - `blocked`: stop and report the blocking runtime issue.
      - **CARRY FORWARD**: Use project-cognition facts to decide whether an
        apparent requirement gap is already answered by repository truth. Preserve
@@ -217,6 +217,7 @@ Goal: Strengthen an existing spec package after `/sp.specify` by closing plannin
 
 6. Clarification loop for high-impact gaps:
    - Ask only the minimum number of questions required to make planning reliable again.
+   - Do not use scope minimization as a shortcut to resolve ambiguity. Preserve the user's confirmed product scope; scope reduction requires user confirmation or a named constraint that blocks reliable planning.
    - Present exactly one unresolved high-impact question at a time.
    - Prefer questions that lock behavior, boundary handling, compatibility, or acceptance proof rather than reopening broad ideation.
    - Use the user's current language for user-visible questions and confirmations.
@@ -331,6 +332,17 @@ When communicating findings and completion, use a structured terminal presentati
     EXECUTE_COMMAND: {command}
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.
 
 ## Codex Structured Question Preference
 

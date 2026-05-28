@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-068",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/src/macos_notifications.m",
+  "summary": "Objective-C notification bridge creates macOS notification requests with UUID identifiers.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "UNNotificationRequest",
+    "identifier = [[NSUUID UUID] UUIDString]"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

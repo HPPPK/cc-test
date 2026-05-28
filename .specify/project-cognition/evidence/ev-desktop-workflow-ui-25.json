@@ -1,0 +1,15 @@
+{
+  "id": "ev-desktop-workflow-ui-25",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/AdapterSettings.test.tsx",
+  "summary": "Adapter page tests verify Feishu onboarding content survives alongside workflow tab changes.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AdapterSettings Feishu onboarding",
+    "FEISHU_CREATE_BOT_URL"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

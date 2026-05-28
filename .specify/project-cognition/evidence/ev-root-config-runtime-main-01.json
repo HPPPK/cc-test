@@ -1,0 +1,17 @@
+{
+  "id": "ev-root-config-runtime-main-01",
+  "type": "source_analysis",
+  "source_path": "src/main.tsx",
+  "summary": "The main runtime entry performs startup profiling and parallel prefetch side effects before heavy imports by checkpointing entry, starting MDM raw reads, and starting keychain prefetch.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "profileCheckpoint('main_tsx_entry')",
+    "startMdmRawRead()",
+    "startKeychainPrefetch()",
+    "profileCheckpoint('main_tsx_imports_loaded')"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

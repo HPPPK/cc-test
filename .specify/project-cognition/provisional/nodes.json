@@ -1,168 +1,1154 @@
 {
-  "command": "map-scan",
-  "timestamp": "2026-05-16T21:59:00Z",
+  "schema_version": 1,
+  "generated_at": "2026-05-28T03:28:41.238Z",
+  "command": "sp-map-scan",
   "nodes": [
-    {"id": "src-entrypoints", "type": "source-area", "label": "src/ entrypoints (CLI, Init, MCP, Agent SDK types)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-main", "type": "source-area", "label": "src/main.tsx (root CLI bootstrap, 4749 lines)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-tool-def", "type": "source-area", "label": "src/Tool.ts (Tool type system, buildTool, findToolByName)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-tools-registry", "type": "source-area", "label": "src/tools.ts (tool registry, 58 tool modules)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-task-def", "type": "source-area", "label": "src/Task.ts (Task type system, TaskType, TaskHandle)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-commands-registry", "type": "source-area", "label": "src/commands.ts (command registry, 115+ modules)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-query-engine", "type": "source-area", "label": "src/query.ts / QueryEngine.ts (message loop/query engine)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-ink-renderer", "type": "source-area", "label": "src/ink.ts (Ink TUI renderer, ThemeProvider wrapper)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-setup", "type": "source-area", "label": "src/setup.ts (session initialization, memory, config)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-screens", "type": "source-area", "label": "src/screens/ (REPL, Doctor, ResumeConversation)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-components", "type": "source-area", "label": "src/components/ (149 Ink TUI components)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-commands", "type": "source-area", "label": "src/commands/ (115+ command modules)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-tools", "type": "source-area", "label": "src/tools/ (59 tool modules: Bash, FileEdit, Grep, Glob, etc.)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-services", "type": "source-area", "label": "src/services/ (API, MCP, OAuth, plugins, LSP, analytics, memory, voice)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-state", "type": "source-area", "label": "src/state/ (AppState, AppStateStore, selectors)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-types", "type": "source-area", "label": "src/types/ (message, tools, commands, permissions, hooks, ids)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-utils", "type": "source-area", "label": "src/utils/ (346+ utility modules)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-constants", "type": "source-area", "label": "src/constants/ (API limits, betas, errors, keys, product)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-server", "type": "source-area", "label": "src/server/ (HTTP/WS server for desktop app, 46 test files)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-server-api", "type": "source-area", "label": "src/server/api/ (26 API route handlers)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-server-ws", "type": "source-area", "label": "src/server/ws/ (WebSocket events and handler)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-server-proxy", "type": "source-area", "label": "src/server/proxy/ (protocol-translating reverse proxy)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-server-services", "type": "source-area", "label": "src/server/services/ (31 services: provider, session, team, cron)", "category": "source-surface", "criticality": "critical"},
-    {"id": "src-server-middleware", "type": "source-area", "label": "src/server/middleware/ (auth, CORS, error handling)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-skills", "type": "source-area", "label": "src/skills/ (bundled skills, MCP skill builders)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-plugins", "type": "source-area", "label": "src/plugins/ (builtin plugins system)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-vim", "type": "source-area", "label": "src/vim/ (Vim-mode motions, operators, text objects)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "src-coordinator", "type": "source-area", "label": "src/coordinator/ (multi-agent coordinator)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-daemon", "type": "source-area", "label": "src/daemon/ (background daemon worker registry)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-native-ts", "type": "source-area", "label": "src/native-ts/ (native bindings)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "src-migrations", "type": "source-area", "label": "src/migrations/ (11 model/config migration scripts)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-voice", "type": "source-area", "label": "src/voice/ (voice mode toggle)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "src-bridge", "type": "source-area", "label": "src/bridge/ (remote control bridge)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-proactive", "type": "source-area", "label": "src/proactive/ (proactive suggestions)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "src-jobs", "type": "source-area", "label": "src/jobs/ (background jobs)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-goals", "type": "source-area", "label": "src/goals/ (goal system)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-tasks", "type": "source-area", "label": "src/tasks.ts + src/tasks/ (task system)", "category": "source-surface", "criticality": "important"},
-    {"id": "src-memdir", "type": "source-area", "label": "src/memdir/ (memory directory)", "category": "source-surface", "criticality": "important"},
-    {"id": "bin-launcher", "type": "source-area", "label": "bin/claude-haha (Bash launcher entrypoint)", "category": "source-surface", "criticality": "critical"},
-    {"id": "preload-ts", "type": "source-area", "label": "preload.ts (injects MACRO globals)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "desktop-entrypoint", "type": "source-area", "label": "desktop/src/main.tsx (React bootstrap)", "category": "source-surface", "criticality": "critical"},
-    {"id": "desktop-app", "type": "source-area", "label": "desktop/src/App.tsx (AppShell root)", "category": "source-surface", "criticality": "critical"},
-    {"id": "desktop-api", "type": "source-area", "label": "desktop/src/api/ (27 API client modules)", "category": "source-surface", "criticality": "critical"},
-    {"id": "desktop-components", "type": "source-area", "label": "desktop/src/components/ (React UI components)", "category": "source-surface", "criticality": "important"},
-    {"id": "desktop-stores", "type": "source-area", "label": "desktop/src/stores/ (22 Zustand stores)", "category": "source-surface", "criticality": "critical"},
-    {"id": "desktop-pages", "type": "source-area", "label": "desktop/src/pages/ (22 page components)", "category": "source-surface", "criticality": "important"},
-    {"id": "desktop-hooks", "type": "source-area", "label": "desktop/src/hooks/ (keyboard, mobile viewport, notifications)", "category": "source-surface", "criticality": "important"},
-    {"id": "desktop-types", "type": "source-area", "label": "desktop/src/types/ (15 type modules)", "category": "source-surface", "criticality": "important"},
-    {"id": "desktop-i18n", "type": "source-area", "label": "desktop/src/i18n/ (i18n zh/en locales)", "category": "source-surface", "criticality": "important"},
-    {"id": "desktop-theme", "type": "source-area", "label": "desktop/src/theme/ (Tailwind CSS, globals)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "desktop-lib", "type": "source-area", "label": "desktop/src/lib/ (zoom, notifications, persistence migrations)", "category": "source-surface", "criticality": "important"},
-    {"id": "adapters-common", "type": "source-area", "label": "adapters/common/ (shared adapter library)", "category": "source-surface", "criticality": "important"},
-    {"id": "adapters-feishu", "type": "source-area", "label": "adapters/feishu/ (Feishu/Lark IM adapter)", "category": "source-surface", "criticality": "important"},
-    {"id": "adapters-dingtalk", "type": "source-area", "label": "adapters/dingtalk/ (DingTalk IM adapter)", "category": "source-surface", "criticality": "important"},
-    {"id": "adapters-telegram", "type": "source-area", "label": "adapters/telegram/ (Telegram Bot adapter)", "category": "source-surface", "criticality": "important"},
-    {"id": "adapters-wechat", "type": "source-area", "label": "adapters/wechat/ (WeChat adapter)", "category": "source-surface", "criticality": "important"},
-    {"id": "stubs", "type": "source-area", "label": "stubs/ (Chrome MCP stub, color-diff NAPI stub)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "root-package", "type": "source-area", "label": "package.json (CLI config)", "category": "config-surface", "criticality": "critical"},
-    {"id": "desktop-package", "type": "source-area", "label": "desktop/package.json", "category": "config-surface", "criticality": "critical"},
-    {"id": "adapters-package", "type": "source-area", "label": "adapters/package.json", "category": "config-surface", "criticality": "important"},
-    {"id": "docs-layer", "type": "source-area", "label": "docs/ (VitePress documentation site)", "category": "doc-surface", "criticality": "important"},
-    {"id": "scripts-quality-gate", "type": "source-area", "label": "scripts/quality-gate/ (CI quality automation)", "category": "infrastructure", "criticality": "important"},
-    {"id": "scripts-pr", "type": "source-area", "label": "scripts/pr/ (PR change policy, impact report)", "category": "infrastructure", "criticality": "important"},
-    {"id": "ci-cd-workflows", "type": "infrastructure", "label": ".github/workflows/ (5 CI/CD workflows)", "category": "infrastructure", "criticality": "important"},
-    {"id": "tauri-native", "type": "arch-layer", "label": "desktop/src-tauri/ (Tauri native Rust layer)", "category": "arch-layer", "criticality": "important"},
-    {"id": "runtime-python", "type": "source-area", "label": "runtime/ (Python sandbox helper scripts)", "category": "source-surface", "criticality": "low-risk"},
-    {"id": "cap-tui", "type": "capability", "label": "Terminal UI (Ink REPL)", "category": "capability", "criticality": "critical"},
-    {"id": "cap-desktop", "type": "capability", "label": "Desktop App (Tauri 2 + React)", "category": "capability", "criticality": "critical"},
-    {"id": "cap-commands", "type": "capability", "label": "Slash Commands (70+)", "category": "capability", "criticality": "critical"},
-    {"id": "cap-agent", "type": "capability", "label": "Multi-Agent Orchestration", "category": "capability", "criticality": "critical"},
-    {"id": "cap-skills", "type": "capability", "label": "Skills System", "category": "capability", "criticality": "important"},
-    {"id": "cap-memory", "type": "capability", "label": "Cross-Session Memory System", "category": "capability", "criticality": "important"},
-    {"id": "cap-mcp", "type": "capability", "label": "MCP Protocol Support", "category": "capability", "criticality": "critical"},
-    {"id": "cap-lsp", "type": "capability", "label": "LSP Integration", "category": "capability", "criticality": "important"},
-    {"id": "cap-tools", "type": "capability", "label": "Agent Tool Ecosystem (59 tools)", "category": "capability", "criticality": "critical"},
-    {"id": "cap-model-providers", "type": "capability", "label": "Multi-Model Provider Support", "category": "capability", "criticality": "critical"},
-    {"id": "cap-computer-use", "type": "capability", "label": "Computer Use (Desktop Control)", "category": "capability", "criticality": "important"},
-    {"id": "cap-im-integration", "type": "capability", "label": "IM Platform Integration (4 platforms)", "category": "capability", "criticality": "important"},
-    {"id": "cap-worktree", "type": "capability", "label": "Git Worktree Isolation", "category": "capability", "criticality": "important"},
-    {"id": "cap-teams", "type": "capability", "label": "Agent Teams Collaboration", "category": "capability", "criticality": "important"},
-    {"id": "cap-plan-mode", "type": "capability", "label": "Plan Mode", "category": "capability", "criticality": "important"},
-    {"id": "cap-voice", "type": "capability", "label": "Voice Mode", "category": "capability", "criticality": "low-risk"},
-    {"id": "cap-h5-remote", "type": "capability", "label": "H5 Remote Access", "category": "capability", "criticality": "important"},
-    {"id": "cap-plugins", "type": "capability", "label": "Plugin System", "category": "capability", "criticality": "important"},
-    {"id": "cap-quality-gate", "type": "capability", "label": "Quality Gate Automation", "category": "capability", "criticality": "important"},
-    {"id": "cap-auth", "type": "capability", "label": "Authentication System (OAuth, API keys)", "category": "capability", "criticality": "critical"},
-    {"id": "risk-permissions", "type": "risk", "label": "Permission system (27 files)", "category": "risk", "criticality": "critical"},
-    {"id": "risk-oauth", "type": "risk", "label": "OAuth credential management", "category": "risk", "criticality": "critical"},
-    {"id": "risk-mcp", "type": "risk", "label": "MCP external code execution", "category": "risk", "criticality": "critical"},
-    {"id": "risk-plugins", "type": "risk", "label": "Third-party plugin risk", "category": "risk", "criticality": "important"},
-    {"id": "risk-persistence", "type": "risk", "label": "Persistence data integrity", "category": "risk", "criticality": "important"},
-    {"id": "risk-doctor", "type": "risk", "label": "Doctor repair (deny-by-default)", "category": "risk", "criticality": "important"},
-    {"id": "risk-computer-use", "type": "risk", "label": "Computer Use (native Python bridge)", "category": "risk", "criticality": "important"},
-    {"id": "risk-h5-access", "type": "risk", "label": "H5 LAN remote access", "category": "risk", "criticality": "important"},
-    {"id": "obs-telemetry", "type": "observability", "label": "Analytics and telemetry", "category": "observability", "criticality": "important"},
-    {"id": "obs-doctor", "type": "observability", "label": "Doctor diagnostics system", "category": "observability", "criticality": "important"},
-    {"id": "obs-errors", "type": "observability", "label": "Error tracking", "category": "observability", "criticality": "important"},
-    {"id": "cov-agent-tools", "type": "coverage", "label": "Coverage gap: agent-tools (17.1% lines)", "category": "coverage", "criticality": "important"},
-    {"id": "cov-agent-utils", "type": "coverage", "label": "Coverage gap: agent-utils (14.42% lines)", "category": "coverage", "criticality": "important"},
-    {"id": "cov-desktop-fn", "type": "coverage", "label": "Coverage gap: desktop functions (52.49%)", "category": "coverage", "criticality": "important"},
-    {"id": "quarantine-tests", "type": "coverage", "label": "5 quarantined server tests", "category": "coverage", "criticality": "important"},
-    {"id": "adapter-tests", "type": "test-surface", "label": "adapter tests (per-package __tests__/)", "category": "test-surface", "criticality": "important"},
-    {"id": "server-tests", "type": "test-surface", "label": "src/server/__tests__/ (46 test files)", "category": "test-surface", "criticality": "critical"},
-    {"id": "desktop-tests", "type": "test-surface", "label": "desktop/src/__tests__/ + stores .test.ts/.test.tsx", "category": "test-surface", "criticality": "critical"},
-    {"id": "release-notes", "type": "doc-surface", "label": "release-notes/ (18 versions v0.1.0-v0.2.7)", "category": "doc-surface", "criticality": "low-risk"}
-  ],
-  "edges": [
-    {"source": "bin-launcher", "target": "src-entrypoints", "type": "executes"},
-    {"source": "src-entrypoints", "target": "src-main", "type": "imports"},
-    {"source": "src-main", "target": "src-query-engine", "type": "runs"},
-    {"source": "src-query-engine", "target": "src-tools-registry", "type": "calls"},
-    {"source": "src-query-engine", "target": "src-commands-registry", "type": "calls"},
-    {"source": "src-tools-registry", "target": "src-tools", "type": "registers"},
-    {"source": "src-commands-registry", "target": "src-commands", "type": "registers"},
-    {"source": "src-commands", "target": "src-services", "type": "uses"},
-    {"source": "src-commands", "target": "src-tools", "type": "uses"},
-    {"source": "src-tools", "target": "src-services", "type": "uses"},
-    {"source": "src-tools", "target": "src-utils", "type": "uses"},
-    {"source": "src-services", "target": "src-utils", "type": "uses"},
-    {"source": "src-services", "target": "src-constants", "type": "uses"},
-    {"source": "src-services", "target": "src-types", "type": "uses"},
-    {"source": "src-server", "target": "src-services", "type": "uses"},
-    {"source": "src-server-api", "target": "src-server-services", "type": "calls"},
-    {"source": "src-server-ws", "target": "src-server-services", "type": "calls"},
-    {"source": "desktop-api", "target": "src-server", "type": "communicates-with (HTTP/WS)"},
-    {"source": "desktop-stores", "target": "desktop-api", "type": "calls"},
-    {"source": "desktop-components", "target": "desktop-stores", "type": "subscribes"},
-    {"source": "desktop-app", "target": "desktop-components", "type": "renders"},
-    {"source": "desktop-app", "target": "desktop-pages", "type": "renders"},
-    {"source": "adapters-common", "target": "src-server", "type": "depends-on (via @server/*)"},
-    {"source": "adapters-feishu", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-dingtalk", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-telegram", "target": "adapters-common", "type": "depends-on"},
-    {"source": "adapters-wechat", "target": "adapters-common", "type": "depends-on"},
-    {"source": "cap-tui", "target": "src-main", "type": "implemented-by"},
-    {"source": "cap-desktop", "target": "desktop-app", "type": "implemented-by"},
-    {"source": "cap-commands", "target": "src-commands", "type": "implemented-by"},
-    {"source": "cap-tools", "target": "src-tools", "type": "implemented-by"},
-    {"source": "cap-agent", "target": "cap-tools", "type": "depends-on"},
-    {"source": "cap-agent", "target": "cap-worktree", "type": "uses"},
-    {"source": "cap-agent", "target": "cap-teams", "type": "uses"},
-    {"source": "cap-mcp", "target": "cap-tools", "type": "extends"},
-    {"source": "cap-lsp", "target": "cap-tools", "type": "extends"},
-    {"source": "cap-memory", "target": "src-services", "type": "implemented-by"},
-    {"source": "cap-skills", "target": "cap-commands", "type": "extends"},
-    {"source": "cap-computer-use", "target": "src-server-services", "type": "implemented-by"},
-    {"source": "cap-im-integration", "target": "adapters-common", "type": "implemented-by"},
-    {"source": "cap-plan-mode", "target": "cap-agent", "type": "related-to"},
-    {"source": "cap-auth", "target": "risk-oauth", "type": "exposes"},
-    {"source": "risk-permissions", "target": "src-utils", "type": "protects"},
-    {"source": "risk-mcp", "target": "cap-mcp", "type": "exposes"},
-    {"source": "risk-plugins", "target": "cap-plugins", "type": "exposes"},
-    {"source": "risk-doctor", "target": "risk-persistence", "type": "may-modify"},
-    {"source": "risk-h5-access", "target": "risk-permissions", "type": "bypasses"},
-    {"source": "obs-telemetry", "target": "src-services", "type": "monitors"},
-    {"source": "obs-doctor", "target": "risk-doctor", "type": "controls"},
-    {"source": "cov-agent-tools", "target": "src-tools", "type": "under-tested"},
-    {"source": "cov-agent-utils", "target": "src-utils", "type": "under-tested"},
-    {"source": "quarantine-tests", "target": "src-server", "type": "unstable"},
-    {"source": "server-tests", "target": "src-server", "type": "tests"},
-    {"source": "desktop-tests", "target": "desktop-stores", "type": "tests"},
-    {"source": "adapter-tests", "target": "adapters-common", "type": "tests"}
+    {
+      "id": "node:root-manifest",
+      "type": "config",
+      "title": "Root Bun Manifest",
+      "paths": [
+        "package.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-pkg-01"
+      ],
+      "attrs": {
+        "package_manager": "bun",
+        "module_type": "esm",
+        "binary_name": "claude-jiangxia",
+        "verification_entrypoint": "bun run verify"
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:typescript-runtime-config",
+      "type": "config",
+      "title": "TypeScript Runtime Config",
+      "paths": [
+        "tsconfig.json",
+        "bunfig.toml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-tsconfig-01",
+        "ev-root-config-runtime-bunfig-01"
+      ],
+      "attrs": {
+        "module_resolution": "bundler",
+        "jsx": "react-jsx",
+        "preload": "./preload.ts",
+        "bun_types": true
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:launcher-bash",
+      "type": "entrypoint",
+      "title": "POSIX CLI Launcher",
+      "paths": [
+        "bin/claude-jiangxia"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-bash-01"
+      ],
+      "attrs": {
+        "platform": "posix",
+        "env_controls": [
+          "CALLER_DIR",
+          "CC_JIANGXIA_SKIP_DOTENV",
+          "CLAUDE_CODE_FORCE_RECOVERY_CLI"
+        ],
+        "targets": [
+          "./src/localRecoveryCli.ts",
+          "./src/entrypoints/cli.tsx"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:launcher-powershell",
+      "type": "entrypoint",
+      "title": "Windows CLI Launcher",
+      "paths": [
+        "bin/claude-jiangxia.ps1"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-bin-ps1-01"
+      ],
+      "attrs": {
+        "platform": "windows",
+        "env_controls": [
+          "CALLER_DIR",
+          "CC_JIANGXIA_SKIP_DOTENV",
+          "CLAUDE_CODE_FORCE_RECOVERY_CLI"
+        ],
+        "targets": [
+          "./src/localRecoveryCli.ts",
+          "./src/entrypoints/cli.tsx"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:main-runtime-entry",
+      "type": "entrypoint",
+      "title": "Main CLI Runtime Entry",
+      "paths": [
+        "src/main.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-main-01",
+        "ev-root-config-runtime-main-02"
+      ],
+      "attrs": {
+        "startup_side_effects": [
+          "startup_profiler",
+          "mdm_prefetch",
+          "keychain_prefetch"
+        ],
+        "integrates": [
+          "init",
+          "tools",
+          "bundled_plugins",
+          "bundled_skills",
+          "mcp_commands",
+          "setup"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:setup-orchestrator",
+      "type": "runtime",
+      "title": "Startup Setup Orchestrator",
+      "paths": [
+        "src/setup.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-setup-01",
+        "ev-root-config-runtime-setup-02"
+      ],
+      "attrs": {
+        "responsibilities": [
+          "session_switch",
+          "uds_messaging",
+          "worktree_setup",
+          "hooks_snapshot",
+          "analytics_sinks",
+          "api_key_prefetch",
+          "release_notes_prefetch"
+        ]
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "node:root-runtime-policy",
+      "type": "policy",
+      "title": "Root Runtime And Verification Policy",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-root-config-runtime-agents-01"
+      ],
+      "attrs": {
+        "runtime_surface": "cli_and_local_server",
+        "verification_command": "bun run verify",
+        "entrypoint": "bin/claude-jiangxia"
+      },
+      "packet_id": "root-config-runtime"
+    },
+    {
+      "id": "server.router.api",
+      "type": "module",
+      "title": "Server API Router",
+      "paths": [
+        "src/server/router.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-router-workflows"
+      ],
+      "attrs": {
+        "exports": [
+          "handleApiRequest"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "server.api.sessions.workflow",
+      "type": "module",
+      "title": "Sessions Workflow API",
+      "paths": [
+        "src/server/api/sessions.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-sessions-workflow-routes",
+        "ev-server-workflow-api-sessions-workflow-tests"
+      ],
+      "attrs": {
+        "routes": [
+          "GET /api/sessions/:id/workflow",
+          "POST /api/sessions/:id/workflow/start",
+          "POST /api/sessions/:id/workflow/transition",
+          "GET /api/sessions/:id/workflow/report"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "server.api.workflow_templates",
+      "type": "module",
+      "title": "Workflow Templates API",
+      "paths": [
+        "src/server/api/workflowTemplates.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-workflow-templates-api",
+        "ev-server-workflow-api-workflow-templates-api-tests"
+      ],
+      "attrs": {
+        "routes": [
+          "GET /api/workflows/templates",
+          "POST /api/workflows/templates",
+          "POST /api/workflows/templates/authoring",
+          "POST /api/workflows/templates/import/preview",
+          "POST /api/workflows/templates/import",
+          "POST /api/workflows/templates/export"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "server.service.workflow_runtime",
+      "type": "service",
+      "title": "Workflow Runtime Service",
+      "paths": [
+        "src/server/services/workflowRuntimeService.test.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-server-workflow-api-workflow-runtime-tests"
+      ],
+      "attrs": {
+        "contract_methods": [
+          "startPhase",
+          "assemblePrompt",
+          "applyTransition",
+          "submitPhaseCompletion"
+        ]
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "server.service.workflow_final_report",
+      "type": "service",
+      "title": "Workflow Final Report Builder",
+      "paths": [
+        "src/server/services/workflowFinalReport.ts",
+        "src/server/services/workflowFinalReport.test.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-workflow-final-report-builder",
+        "ev-server-workflow-api-workflow-final-report-tests"
+      ],
+      "attrs": {
+        "export": "buildWorkflowFinalReport"
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "server.service.workflow_report_store",
+      "type": "service",
+      "title": "Workflow Report Store",
+      "paths": [
+        "src/server/services/workflowReportStore.ts",
+        "src/server/services/workflowReportStore.test.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-server-workflow-api-workflow-report-store",
+        "ev-server-workflow-api-workflow-report-store-tests"
+      ],
+      "attrs": {
+        "storage_path_pattern": "~/.claude/cc-jiangxia/workflow-sessions/<sessionId>/reports/final.json"
+      },
+      "packet_id": "server-workflow-api"
+    },
+    {
+      "id": "desktop.workflow.empty-session",
+      "type": "ui-page",
+      "title": "EmptySession Workflow Launcher",
+      "paths": [
+        "desktop/src/pages/EmptySession.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-30",
+        "ev-desktop-workflow-ui-31"
+      ],
+      "attrs": {
+        "role": "new-session composer",
+        "workflow_entry": "plus-menu opens workflow dialog",
+        "session_creation": "useSessionStore.createSession with workflow options"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.start-dialog",
+      "type": "ui-component",
+      "title": "WorkflowStartDialog",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowStartDialog.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-14"
+      ],
+      "attrs": {
+        "selection_model": "templateId + templateSource",
+        "start_gate": "firstPhaseId and startable validation"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.settings-tab",
+      "type": "ui-page",
+      "title": "Settings Workflows Tab",
+      "paths": [
+        "desktop/src/pages/Settings.tsx",
+        "desktop/src/pages/Settings.test.tsx",
+        "desktop/src/stores/uiStore.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-34",
+        "ev-desktop-workflow-ui-35",
+        "ev-desktop-workflow-ui-39"
+      ],
+      "attrs": {
+        "tab_id": "workflows",
+        "routing": "pendingSettingsTab",
+        "host_component": "WorkflowsSettings"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.template-manager",
+      "type": "ui-component",
+      "title": "WorkflowTemplateManager",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+        "desktop/src/components/workflow/WorkflowImportExportDialog.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-12",
+        "ev-desktop-workflow-ui-16",
+        "ev-desktop-workflow-ui-17"
+      ],
+      "attrs": {
+        "capabilities": [
+          "list",
+          "edit",
+          "delete",
+          "duplicate",
+          "import",
+          "export",
+          "refresh"
+        ],
+        "ownership": "desktop workflow template administration"
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.runtime-status",
+      "type": "ui-component",
+      "title": "Workflow Runtime Status Components",
+      "paths": [
+        "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+        "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+        "desktop/src/components/workflow/WorkflowReportLink.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-13",
+        "ev-desktop-workflow-ui-15",
+        "ev-desktop-workflow-ui-19"
+      ],
+      "attrs": {
+        "surfaces": [
+          "lifecycle",
+          "artifact history",
+          "confirm/reject/retry/manual completion",
+          "final report link"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "desktop.workflow.api-client",
+      "type": "api-client",
+      "title": "sessionsApi Workflow Endpoints",
+      "paths": [
+        "desktop/src/api/sessions.ts",
+        "desktop/src/api/sessions.test.ts",
+        "desktop/src/types/session.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-desktop-workflow-ui-08",
+        "ev-desktop-workflow-ui-09",
+        "ev-desktop-workflow-ui-40"
+      ],
+      "attrs": {
+        "routes": [
+          "/api/workflows/templates",
+          "/api/workflows/templates/import/preview",
+          "/api/sessions/:id/workflow",
+          "/api/sessions/:id/workflow/transition",
+          "/api/sessions/:id/workflow/report"
+        ]
+      },
+      "packet_id": "desktop-workflow-ui"
+    },
+    {
+      "id": "node.tool_pool",
+      "type": "module",
+      "title": "Tool Pool Assembly",
+      "paths": [
+        "src/tools.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-tools-01"
+      ],
+      "attrs": {
+        "role": "tool-registry",
+        "exported_symbols": [
+          "getAllBaseTools",
+          "assembleToolPool",
+          "assembleWorkflowToolPool"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.agent_tool",
+      "type": "module",
+      "title": "AgentTool Entrypoint",
+      "paths": [
+        "src/tools/AgentTool/AgentTool.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-01"
+      ],
+      "attrs": {
+        "role": "subagent-launch",
+        "supports": [
+          "background",
+          "teammate",
+          "remote",
+          "worktree"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.agent_runner",
+      "type": "module",
+      "title": "runAgent Runtime",
+      "paths": [
+        "src/tools/AgentTool/runAgent.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-02"
+      ],
+      "attrs": {
+        "role": "agent-query-runtime",
+        "responsibilities": [
+          "context-build",
+          "mcp-init",
+          "transcript-recording",
+          "cleanup"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.builtin_agents",
+      "type": "module",
+      "title": "Built-In Agent Catalog",
+      "paths": [
+        "src/tools/AgentTool/builtInAgents.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-agent-03"
+      ],
+      "attrs": {
+        "role": "agent-catalog",
+        "built_ins": [
+          "general-purpose",
+          "statusline",
+          "explore",
+          "plan",
+          "verification",
+          "claude-code-guide"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.local_agent_tasks",
+      "type": "module",
+      "title": "Local Agent Task State",
+      "paths": [
+        "src/tasks/LocalAgentTask/LocalAgentTask.tsx",
+        "src/tasks/LocalMainSessionTask.ts",
+        "src/tasks/types.ts",
+        "src/tasks/stopTask.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-task-01",
+        "ev-tools-agent-loop-task-02",
+        "ev-tools-agent-loop-task-03",
+        "ev-tools-agent-loop-task-05"
+      ],
+      "attrs": {
+        "role": "task-lifecycle",
+        "task_kinds": [
+          "local_agent",
+          "main-session"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.remote_agent_tasks",
+      "type": "module",
+      "title": "Remote Agent Task Runtime",
+      "paths": [
+        "src/tasks/RemoteAgentTask/RemoteAgentTask.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-task-04"
+      ],
+      "attrs": {
+        "role": "remote-session-task",
+        "features": [
+          "restore",
+          "poll",
+          "review-extraction",
+          "ultraplan"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.swarm_registry",
+      "type": "module",
+      "title": "Swarm Backend Registry",
+      "paths": [
+        "src/utils/swarm/backends/registry.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-01"
+      ],
+      "attrs": {
+        "role": "backend-selection",
+        "modes": [
+          "tmux",
+          "iterm2",
+          "in-process"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.inprocess_backend",
+      "type": "module",
+      "title": "In-Process Backend",
+      "paths": [
+        "src/utils/swarm/backends/InProcessBackend.ts",
+        "src/utils/swarm/spawnInProcess.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-02",
+        "ev-tools-agent-loop-swarm-03"
+      ],
+      "attrs": {
+        "role": "teammate-executor",
+        "transport": "mailbox-plus-appstate"
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.inprocess_runner",
+      "type": "module",
+      "title": "In-Process Teammate Runner",
+      "paths": [
+        "src/utils/swarm/inProcessRunner.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-04"
+      ],
+      "attrs": {
+        "role": "teammate-agent-loop",
+        "features": [
+          "permission-bridge",
+          "idle-loop",
+          "compaction"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.permission_sync",
+      "type": "module",
+      "title": "Swarm Permission Sync",
+      "paths": [
+        "src/utils/swarm/permissionSync.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-05"
+      ],
+      "attrs": {
+        "role": "leader-worker-permission-bridge",
+        "channels": [
+          "filesystem",
+          "mailbox"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.teammate_runtime",
+      "type": "module",
+      "title": "Teammate Runtime Selection",
+      "paths": [
+        "src/utils/swarm/teammateRuntime.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-swarm-06"
+      ],
+      "attrs": {
+        "role": "provider-model-env-selection",
+        "outputs": [
+          "runtime",
+          "env",
+          "clearInheritedProviderEnv"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "node.compaction",
+      "type": "module",
+      "title": "Conversation Compaction Engine",
+      "paths": [
+        "src/services/compact/compact.ts",
+        "src/services/compact/sessionMemoryCompact.ts",
+        "src/services/compact/reactiveCompact.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-tools-agent-loop-compact-01",
+        "ev-tools-agent-loop-compact-02",
+        "ev-tools-agent-loop-compact-03"
+      ],
+      "attrs": {
+        "role": "context-reduction",
+        "variants": [
+          "streaming-summary",
+          "session-memory",
+          "stubbed-reactive"
+        ]
+      },
+      "packet_id": "tools-agent-loop"
+    },
+    {
+      "id": "workflow:desktop-release-pipeline",
+      "type": "command",
+      "title": "Desktop Release and Quality Workflows",
+      "paths": [
+        ".github/workflows/build-desktop-dev.yml",
+        ".github/workflows/pr-quality.yml",
+        ".github/workflows/pr-triage.yml",
+        ".github/workflows/release-desktop.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-001",
+        "ev-verification-release-docs-003",
+        "ev-verification-release-docs-004",
+        "ev-verification-release-docs-005"
+      ],
+      "attrs": {
+        "area": "release",
+        "responsibilities": [
+          "dev desktop matrix build",
+          "PR change-policy gating",
+          "release tag/release-notes validation"
+        ]
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "workflow:docs-publishing",
+      "type": "command",
+      "title": "Docs Build and Publishing Pipeline",
+      "paths": [
+        ".github/workflows/deploy-docs.yml",
+        "docs/.vitepress/config.mts",
+        "docs/.vitepress/theme/custom.css",
+        "docs/.vitepress/theme/index.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-002",
+        "ev-verification-release-docs-076",
+        "ev-verification-release-docs-077",
+        "ev-verification-release-docs-078"
+      ],
+      "attrs": {
+        "area": "docs",
+        "runtime": "VitePress on GitHub Pages"
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "module:desktop-tauri-packaging",
+      "type": "module",
+      "title": "Desktop Tauri Packaging Surface",
+      "paths": [
+        "desktop/package.json",
+        "desktop/src-tauri/Cargo.toml",
+        "desktop/src-tauri/Cargo.lock",
+        "desktop/src-tauri/build.rs",
+        "desktop/src-tauri/src/lib.rs",
+        "desktop/src-tauri/src/main.rs",
+        "desktop/src-tauri/tauri.conf.json",
+        "desktop/src-tauri/tauri.release-ci.json",
+        "desktop/src-tauri/tauri.macos.conf.json",
+        "desktop/src-tauri/tauri.windows.conf.json",
+        "desktop/src-tauri/capabilities/default.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-006",
+        "ev-verification-release-docs-008",
+        "ev-verification-release-docs-013",
+        "ev-verification-release-docs-068",
+        "ev-verification-release-docs-070",
+        "ev-verification-release-docs-072",
+        "ev-verification-release-docs-073"
+      ],
+      "attrs": {
+        "area": "native",
+        "packaging_targets": [
+          "macOS",
+          "Windows",
+          "Linux"
+        ],
+        "updater_artifacts": true
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "module:desktop-release-assets",
+      "type": "module",
+      "title": "Desktop Release Asset Bundle",
+      "paths": [
+        "desktop/src-tauri/app-icon-macos.svg",
+        "desktop/src-tauri/app-icon.png",
+        "desktop/src-tauri/app-icon.svg",
+        "desktop/src-tauri/icons/128x128.png",
+        "desktop/src-tauri/icons/128x128@2x.png",
+        "desktop/src-tauri/icons/32x32.png",
+        "desktop/src-tauri/icons/64x64.png",
+        "desktop/src-tauri/icons/Square107x107Logo.png",
+        "desktop/src-tauri/icons/Square142x142Logo.png",
+        "desktop/src-tauri/icons/Square150x150Logo.png",
+        "desktop/src-tauri/icons/Square284x284Logo.png",
+        "desktop/src-tauri/icons/Square30x30Logo.png",
+        "desktop/src-tauri/icons/Square310x310Logo.png",
+        "desktop/src-tauri/icons/Square44x44Logo.png",
+        "desktop/src-tauri/icons/Square71x71Logo.png",
+        "desktop/src-tauri/icons/Square89x89Logo.png",
+        "desktop/src-tauri/icons/StoreLogo.png",
+        "desktop/src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml",
+        "desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png",
+        "desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png",
+        "desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_round.png",
+        "desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher.png",
+        "desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher_foreground.png",
+        "desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher_round.png",
+        "desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher.png",
+        "desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_foreground.png",
+        "desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_round.png",
+        "desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher.png",
+        "desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png",
+        "desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_round.png",
+        "desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher.png",
+        "desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png",
+        "desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png",
+        "desktop/src-tauri/icons/android/values/ic_launcher_background.xml",
+        "desktop/src-tauri/icons/icon.icns",
+        "desktop/src-tauri/icons/icon.ico",
+        "desktop/src-tauri/icons/icon.png",
+        "desktop/src-tauri/icons/ios/AppIcon-20x20@1x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-20x20@2x-1.png",
+        "desktop/src-tauri/icons/ios/AppIcon-20x20@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-20x20@3x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-29x29@1x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-29x29@2x-1.png",
+        "desktop/src-tauri/icons/ios/AppIcon-29x29@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-29x29@3x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-40x40@1x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-40x40@2x-1.png",
+        "desktop/src-tauri/icons/ios/AppIcon-40x40@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-40x40@3x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-512@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-60x60@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-60x60@3x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-76x76@1x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-76x76@2x.png",
+        "desktop/src-tauri/icons/ios/AppIcon-83.5x83.5@2x.png"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-verification-release-docs-010",
+        "ev-verification-release-docs-011",
+        "ev-verification-release-docs-012",
+        "ev-verification-release-docs-015",
+        "ev-verification-release-docs-016",
+        "ev-verification-release-docs-017",
+        "ev-verification-release-docs-018",
+        "ev-verification-release-docs-019",
+        "ev-verification-release-docs-020",
+        "ev-verification-release-docs-021",
+        "ev-verification-release-docs-022",
+        "ev-verification-release-docs-023",
+        "ev-verification-release-docs-024",
+        "ev-verification-release-docs-025",
+        "ev-verification-release-docs-026",
+        "ev-verification-release-docs-027",
+        "ev-verification-release-docs-028",
+        "ev-verification-release-docs-029",
+        "ev-verification-release-docs-030",
+        "ev-verification-release-docs-031",
+        "ev-verification-release-docs-032",
+        "ev-verification-release-docs-033",
+        "ev-verification-release-docs-034",
+        "ev-verification-release-docs-035",
+        "ev-verification-release-docs-036",
+        "ev-verification-release-docs-037",
+        "ev-verification-release-docs-038",
+        "ev-verification-release-docs-039",
+        "ev-verification-release-docs-040",
+        "ev-verification-release-docs-041",
+        "ev-verification-release-docs-042",
+        "ev-verification-release-docs-043",
+        "ev-verification-release-docs-044",
+        "ev-verification-release-docs-045",
+        "ev-verification-release-docs-046",
+        "ev-verification-release-docs-047",
+        "ev-verification-release-docs-048",
+        "ev-verification-release-docs-049",
+        "ev-verification-release-docs-050",
+        "ev-verification-release-docs-051",
+        "ev-verification-release-docs-052",
+        "ev-verification-release-docs-053",
+        "ev-verification-release-docs-054",
+        "ev-verification-release-docs-055",
+        "ev-verification-release-docs-056",
+        "ev-verification-release-docs-057",
+        "ev-verification-release-docs-058",
+        "ev-verification-release-docs-059",
+        "ev-verification-release-docs-060",
+        "ev-verification-release-docs-061",
+        "ev-verification-release-docs-062",
+        "ev-verification-release-docs-063",
+        "ev-verification-release-docs-064",
+        "ev-verification-release-docs-065",
+        "ev-verification-release-docs-066"
+      ],
+      "attrs": {
+        "area": "branding",
+        "asset_kinds": [
+          "png",
+          "svg",
+          "ico",
+          "icns",
+          "android xml launcher metadata"
+        ]
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "docs:agent-desktop-channel",
+      "type": "capability",
+      "title": "Agent, Channel, and Desktop Documentation Corpus",
+      "paths": [
+        "docs/.vitepress/config.mts",
+        "docs/.vitepress/theme/custom.css",
+        "docs/.vitepress/theme/index.ts",
+        "docs/agent/01-usage-guide.md",
+        "docs/agent/02-implementation.md",
+        "docs/agent/03-agent-framework.md",
+        "docs/agent/images/01-agent-overview.png",
+        "docs/agent/images/02-agent-types.png",
+        "docs/agent/images/03-spawn-flow.png",
+        "docs/agent/images/04-agent-teams.png",
+        "docs/agent/images/05-architecture.png",
+        "docs/agent/images/06-context-passing.png",
+        "docs/agent/images/07-tool-pool.png",
+        "docs/agent/images/08-background-task.png",
+        "docs/agent/images/09-teams-mailbox.png",
+        "docs/agent/images/10-fork-cache.png",
+        "docs/agent/images/11-agent-framework-overview.png",
+        "docs/agent/images/12-agent-core-loop.png",
+        "docs/agent/images/13-system-prompt-pipeline.png",
+        "docs/agent/images/14-context-compression.png",
+        "docs/agent/index.md",
+        "docs/channel/01-channel-system.md",
+        "docs/channel/02-im-gateway-proposal.md",
+        "docs/channel/images/01-channel-overview.png",
+        "docs/channel/images/02-message-flow.png",
+        "docs/channel/images/03-access-control.png",
+        "docs/channel/images/04-permission-relay.png",
+        "docs/channel/index.md",
+        "docs/desktop/01-quick-start.md",
+        "docs/desktop/02-architecture.md",
+        "docs/desktop/03-features.md",
+        "docs/desktop/04-installation.md",
+        "docs/desktop/05-FAQ.md",
+        "docs/desktop/06-h5-access.md",
+        "docs/desktop/index.md",
+        "docs/en/agent/01-usage-guide.md",
+        "docs/en/agent/02-implementation.md",
+        "docs/en/agent/03-agent-framework.md",
+        "docs/en/agent/images/01-agent-overview.png",
+        "docs/en/agent/images/02-agent-types.png",
+        "docs/en/agent/images/03-spawn-flow.png",
+        "docs/en/agent/images/04-agent-teams.png",
+        "docs/en/agent/images/05-architecture.png",
+        "docs/en/agent/images/06-context-passing.png",
+        "docs/en/agent/images/07-tool-pool.png"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-verification-release-docs-076",
+        "ev-verification-release-docs-077",
+        "ev-verification-release-docs-078",
+        "ev-verification-release-docs-079",
+        "ev-verification-release-docs-080",
+        "ev-verification-release-docs-081",
+        "ev-verification-release-docs-082",
+        "ev-verification-release-docs-083",
+        "ev-verification-release-docs-084",
+        "ev-verification-release-docs-085",
+        "ev-verification-release-docs-086",
+        "ev-verification-release-docs-087",
+        "ev-verification-release-docs-088",
+        "ev-verification-release-docs-089",
+        "ev-verification-release-docs-090",
+        "ev-verification-release-docs-091",
+        "ev-verification-release-docs-092",
+        "ev-verification-release-docs-093",
+        "ev-verification-release-docs-094",
+        "ev-verification-release-docs-095"
+      ],
+      "attrs": {
+        "locales": [
+          "zh",
+          "en"
+        ],
+        "sections": [
+          "agent",
+          "channel",
+          "desktop"
+        ]
+      },
+      "packet_id": "verification-release-docs"
+    },
+    {
+      "id": "node.adapters.im_runtime",
+      "type": "subsystem",
+      "title": "IM Adapter Runtime",
+      "paths": [
+        "adapters/telegram/index.ts",
+        "adapters/feishu/index.ts",
+        "adapters/dingtalk/index.ts",
+        "adapters/wechat/index.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-adapters-services-risk-061",
+        "ev-adapters-services-risk-052",
+        "ev-adapters-services-risk-036",
+        "ev-adapters-services-risk-066"
+      ],
+      "attrs": {
+        "role": "platform adapter entrypoints",
+        "platforms": [
+          "telegram",
+          "feishu",
+          "dingtalk",
+          "wechat"
+        ]
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.adapters.ws_bridge",
+      "type": "component",
+      "title": "Adapter WebSocket Bridge",
+      "paths": [
+        "adapters/common/ws-bridge.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-adapters-services-risk-029"
+      ],
+      "attrs": {
+        "role": "chatId to sessionId websocket transport",
+        "key_symbols": [
+          "AttachmentRef",
+          "ServerMessage",
+          "MessageHandler",
+          "WsBridge"
+        ]
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.adapters.attachment_pipeline",
+      "type": "component",
+      "title": "Attachment Pipeline",
+      "paths": [
+        "adapters/common/attachment/attachment-store.ts",
+        "adapters/common/attachment/attachment-limits.ts",
+        "adapters/common/attachment/image-block-watcher.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "ev-adapters-services-risk-017",
+        "ev-adapters-services-risk-016",
+        "ev-adapters-services-risk-019"
+      ],
+      "attrs": {
+        "role": "inbound staging and outbound markdown image extraction"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.services.memory",
+      "type": "subsystem",
+      "title": "Memory Directory Services",
+      "paths": [
+        "src/memdir/memdir.ts",
+        "src/memdir/memoryScan.ts",
+        "src/memdir/findRelevantMemories.ts",
+        "src/memdir/paths.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-072",
+        "ev-adapters-services-risk-074",
+        "ev-adapters-services-risk-071",
+        "ev-adapters-services-risk-077"
+      ],
+      "attrs": {
+        "role": "memory prompt construction and scan helpers"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.services.api",
+      "type": "subsystem",
+      "title": "API Service Layer",
+      "paths": [
+        "src/services/api/client.ts",
+        "src/services/api/claude.ts",
+        "src/services/api/errors.ts",
+        "src/services/api/withRetry.ts",
+        "src/services/api/filesApi.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-102",
+        "ev-adapters-services-risk-100",
+        "ev-adapters-services-risk-107",
+        "ev-adapters-services-risk-117",
+        "ev-adapters-services-risk-108"
+      ],
+      "attrs": {
+        "role": "provider calls, retries, usage, files, and API error shaping"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.services.analytics",
+      "type": "subsystem",
+      "title": "Analytics Services",
+      "paths": [
+        "src/services/analytics/index.ts",
+        "src/services/analytics/growthbook.ts",
+        "src/services/analytics/sink.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-093",
+        "ev-adapters-services-risk-092",
+        "ev-adapters-services-risk-095"
+      ],
+      "attrs": {
+        "role": "event logging, feature flags, export sinks"
+      },
+      "packet_id": "adapters-services-risk"
+    },
+    {
+      "id": "node.services.auto_dream",
+      "type": "component",
+      "title": "AutoDream Consolidation",
+      "paths": [
+        "src/services/autoDream/autoDream.ts",
+        "src/services/autoDream/config.ts",
+        "src/services/autoDream/consolidationLock.ts"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "ev-adapters-services-risk-118",
+        "ev-adapters-services-risk-119",
+        "ev-adapters-services-risk-120"
+      ],
+      "attrs": {
+        "role": "background memory consolidation with lock-gated forked agent runs"
+      },
+      "packet_id": "adapters-services-risk"
+    }
   ]
 }

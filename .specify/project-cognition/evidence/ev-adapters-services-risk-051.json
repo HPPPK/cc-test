@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-051",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/flush-controller.ts",
+  "summary": "flush-controller.ts defines THROTTLE, FlushController",
+  "detail": "",
+  "quotes_or_symbols": [
+    "THROTTLE",
+    "FlushController"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

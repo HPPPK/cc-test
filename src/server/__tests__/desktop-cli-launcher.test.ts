@@ -69,12 +69,12 @@ describe('ensureDesktopCliLauncherInstalled', () => {
     process.env.CLAUDE_CLI_PATH = sourcePath
 
     const status = await ensureDesktopCliLauncherInstalled()
-    const launcherPath = join(tempHome, '.local', 'bin', 'claude-haha')
+    const launcherPath = join(tempHome, '.local', 'bin', 'claude-jiangxia')
     const shellConfigPath = join(tempHome, '.zshrc')
 
     expect(status.supported).toBe(true)
     expect(status.installed).toBe(true)
-    expect(status.command).toBe('claude-haha')
+    expect(status.command).toBe('claude-jiangxia')
     expect(status.launcherPath).toBe(launcherPath)
     expect(status.availableInNewTerminals).toBe(true)
     expect(status.needsTerminalRestart).toBe(true)
@@ -95,6 +95,6 @@ describe('ensureDesktopCliLauncherInstalled', () => {
 
     expect(status.supported).toBe(false)
     expect(status.installed).toBe(false)
-    expect(status.command).toBe('claude-haha')
+    expect(status.command).toBe('claude-jiangxia')
   })
 })

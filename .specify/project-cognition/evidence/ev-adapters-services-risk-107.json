@@ -1,0 +1,14 @@
+{
+  "id": "ev-adapters-services-risk-107",
+  "type": "source_analysis",
+  "source_path": "src/services/api/firstTokenDate.ts",
+  "summary": "firstTokenDate.ts defines fetchAndStoreClaudeCodeFirstTokenDate and imports axios, ../../constants/oauth.js, ../../utils/config.js, ../../utils/http.js, ../../utils/log.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "fetchAndStoreClaudeCodeFirstTokenDate"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

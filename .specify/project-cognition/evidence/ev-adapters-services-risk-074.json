@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-074",
+  "type": "source_analysis",
+  "source_path": "src/memdir/memoryTypes.ts",
+  "summary": "memoryTypes.ts defines MEMORY_TYPES, MemoryType, parseMemoryType, TYPES_SECTION_COMBINED, TYPES_SECTION_INDIVIDUAL, WHAT_NOT_TO_SAVE_SECTION",
+  "detail": "",
+  "quotes_or_symbols": [
+    "MEMORY_TYPES",
+    "MemoryType",
+    "parseMemoryType",
+    "TYPES_SECTION_COMBINED",
+    "TYPES_SECTION_INDIVIDUAL",
+    "WHAT_NOT_TO_SAVE_SECTION"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

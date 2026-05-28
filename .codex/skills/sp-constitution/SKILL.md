@@ -43,9 +43,9 @@ Create or update the project constitution as the authoritative rule layer for do
 
 ## Process
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command constitution --format json` when available so passive learning files exist and relevant shared memory is visible before broader context collection.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command constitution --format json` when available so passive learning files exist and relevant shared memory is visible before broader context collection.
 - Load the current constitution, then read `.specify/memory/project-rules.md` and `.specify/memory/learnings/INDEX.md` in that order before broader repository context. Open only relevant learning detail docs linked from the index.
-- If the repository already has code and you need repo-derived evidence, read `.specify/project-cognition/status.json` plus the smallest relevant cognition slice or graph artifact first to assess git-baseline freshness before trusting any compatibility/export artifact. If the cognition baseline is missing, run `/sp-map-scan` followed by `/sp-map-build` before continuing or explicitly report the refresh as a blocking follow-up. If the cognition runtime is stale or too weak for the touched area, use `/sp-map-update` when possible before broader work continues.
+- If the repository already has code and you need repo-derived evidence, read `.specify/project-cognition/status.json` plus the smallest relevant query-backed cognition artifact first to assess map freshness as advisory navigation before trusting any compatibility/export artifact. If the cognition baseline is stale or too weak for an ordinary existing-baseline touched area, continue from live repository evidence and recommend `/sp-map-update` as follow-up map maintenance. Use `/sp-map-scan -> /sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 - Load the current constitution and identify unresolved placeholders or requested changes.
 - Derive the right version bump and updated governance metadata.
 - Rewrite the constitution and propagate any downstream template, docs, compatibility/export output, project cognition runtime, or lower-memory updates required by the amendment.
@@ -90,12 +90,12 @@ constitution and propagate any amendments across dependent artifacts.
 **Note**: If `.specify/memory/constitution.md` does not exist yet, it should
 have been initialized from `.specify/templates/constitution-template.md`
 during project setup. That project-local template may be the default product
-constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify init`. If it is
+constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify init`. If it is
 missing, copy the template first.
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command constitution --format json` when
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command constitution --format json` when
   available so passive learning files exist before deeper context collection.
 - Read `.specify/memory/constitution.md`,
   `.specify/memory/project-rules.md`, and
@@ -112,7 +112,7 @@ missing, copy the template first.
   changes, hidden dependencies, or promotion friction, make sure durable state
   captures that reusable learning pressure instead of treating it as chat-only
   discussion.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - When the durable state does not capture the reusable lesson cleanly, update
   `.specify/memory/learnings/INDEX.md` and a linked detail document with the
   command, type, summary, and evidence.
@@ -122,13 +122,9 @@ missing, copy the template first.
 
 ## Repository Context and Navigation Freshness
 
-- If repo-derived evidence is needed, read `.specify/project-cognition/status.json` plus the smallest relevant slice or graph artifact first to assess git-baseline freshness as the truth source before trusting any compatibility/export artifact.
-- If the navigation system is missing or stale for an existing codebase, run
-  `/sp-map-scan` followed by `/sp-map-build` before continuing or mark the refresh as a blocking
-  follow-up rather than fabricating repository context.
-- If an amendment affects project cognition runtime truth and a full refresh can be completed now,
-  do it, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json`, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes;
-  otherwise use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback.
+- If repo-derived evidence is needed, read `.specify/project-cognition/status.json` plus the smallest relevant query bundle or graph artifact first to assess map freshness as advisory navigation before trusting any compatibility/export artifact.
+- If the navigation system is stale or weak for an existing usable baseline, continue with live repository evidence and recommend `/sp-map-update` as follow-up map maintenance rather than fabricating repository context. Use `/sp-map-scan` followed by `/sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- If an amendment affects project cognition coverage facts, report the changed paths and recommend `/sp-map-update` as follow-up map maintenance. Do not call `project-cognition mark-dirty`, `project-cognition validate-build`, `project-cognition complete-refresh`, `/sp-map-update`, or `/sp-map-scan -> /sp-map-build` as a completion requirement for this ordinary workflow unless the user explicitly requested map maintenance.
 - If the amendment changes structure, ownership, workflows, testing strategy, integrations, or operator expectations, mark the related project cognition compatibility/export surface for refresh in the Sync Impact Report even if the constitution update itself is complete. Use this exact framing: mark the related project cognition compatibility/export surface for refresh.
 
 ## Downstream Re-entry Contract
@@ -180,7 +176,7 @@ Follow this execution flow:
 2. Collect or derive missing and revised values:
    - If user input (conversation) supplies a value, use it.
    - Otherwise infer from existing repo context (README, docs,
-     project cognition runtime evidence, compatibility/export references when explicitly relevant, prior constitution versions if embedded).
+     project cognition runtime truth, compatibility/export references when explicitly relevant, prior constitution versions if embedded).
    - For governance dates: `RATIFICATION_DATE` is the original adoption date
      (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes
      are made, otherwise keep the previous value.
@@ -276,3 +272,14 @@ Impact Report under deferred items.
 
 Do not create a new template; always operate on the existing
 `.specify/memory/constitution.md` file.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

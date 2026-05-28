@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe('workflow session mode smoke', () => {
   test('drives workflow creation, websocket transition, resume, and dialogue compatibility without live credentials', async () => {
-    process.env.CLAUDE_CONFIG_DIR = join(tmpdir(), 'cc-haha-real-profile-sentinel')
+    process.env.CLAUDE_CONFIG_DIR = join(tmpdir(), 'cc-jiangxia-real-profile-sentinel')
     const result = await runWorkflowSessionModeSmoke({
       rootDir: process.cwd(),
       keepProfile: true,
@@ -29,7 +29,7 @@ describe('workflow session mode smoke', () => {
 
     try {
       expect(result.configDir).not.toBe(process.env.CLAUDE_CONFIG_DIR)
-      expect(result.configDir).toContain('cc-haha-workflow-session-smoke-')
+      expect(result.configDir).toContain('cc-jiangxia-workflow-session-smoke-')
       expect(existsSync(result.configDir)).toBe(true)
       expect(result.workflowSessionId).toMatch(/^[0-9a-f-]{36}$/)
       expect(result.dialogueSessionId).toMatch(/^[0-9a-f-]{36}$/)
@@ -62,7 +62,7 @@ describe('workflow session mode smoke', () => {
   })
 
   test('returns a quality-gate lane result and removes its isolated profile by default', async () => {
-    const artifactDir = await mkdtemp(join(tmpdir(), 'cc-haha-workflow-session-artifacts-'))
+    const artifactDir = await mkdtemp(join(tmpdir(), 'cc-jiangxia-workflow-session-artifacts-'))
 
     try {
       const result = await executeWorkflowSessionModeSmoke(

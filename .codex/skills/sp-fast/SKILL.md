@@ -41,6 +41,7 @@ Use this for small fixes that are faster to execute than to plan: typo fixes, ti
 - Primary inputs: the user's request, the smallest relevant local files, passive learning files, and the project cognition safety gate.
 - This path exists only for truly local work; the moment that assumption breaks, the task must leave the fast lane.
 - Fast-path output is intentionally small and should not spawn planning artifacts.
+- Do not call `project-cognition mark-dirty` as a completion requirement for fast-path work; map maintenance stays follow-up-only unless actual source/runtime changes occur.
 - Upgrade out of fast immediately when senior consequence analysis triggers for lifecycle, running-state, destructive-operation, shared-state, downstream consumer, compatibility, security, or multiple-behavior impact; record only the stand-down reason if it does not trigger.
 
 ## Senior Consequence Analysis Gate
@@ -49,7 +50,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -148,9 +149,9 @@ Fast path does not load the full passive learning layer.
      Run or emulate:
 
      ```text
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json
+     C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json
      # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
-     uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json
+     C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json
      ```
 
      Use the returned readiness:
@@ -158,8 +159,8 @@ Fast path does not load the full passive learning layer.
      - `ready`: continue with the returned task-local bundle.
      - `review`: perform only the returned `minimal_live_reads` before continuing.
      - `ambiguous`: ask the user to select the intended candidate.
-     - `needs_update`: route through `$sp-map-update`.
-     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`.
+     - `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
+     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
      - `blocked`: stop and report the blocking runtime issue.
      - **CARRY FORWARD**: Use project-cognition signals to decide whether
        fast-path execution is still safe. Carry the selected capability, minimal reads,
@@ -190,14 +191,14 @@ Fast path does not load the full passive learning layer.
    - Include `changed_code_paths` with modified, added, deleted, and renamed paths.
    - Include `changed_behavior_surfaces` for commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions affected by the change.
    - Include `verification_evidence` with the exact checks run and the result.
-   - Include `project_cognition_refresh` recommending `$sp-map-update` with the changed paths whenever project cognition might be affected.
-   - If the fast-path change unexpectedly touched truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths. Do not route to `$sp-map-scan` or `$sp-map-build` for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. Rebuild through `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement; then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json` and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` only when build acceptance passes.
-   - If a refresh cannot be completed now, use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and recommend `$sp-map-update` with the changed paths; escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
+   - Include `project_cognition_refresh` with the actual `$sp-map-update` refresh or `project-cognition mark-dirty` outcome whenever project cognition might be affected.
+   - If the fast-path change unexpectedly touched truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Do not route to `$sp-map-scan` or `$sp-map-build` for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. After a successful existing-baseline map-update, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+   - If a refresh cannot be completed now, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback, record that dirty outcome in `project_cognition_refresh`, and tell the user to run `$sp-map-update` with the changed paths before the next brownfield workflow proceeds; escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
 
 ## Output Contract
 
 - Keep the outcome to one tightly scoped change set plus the minimum truthful verification evidence.
-- Report what changed, which code paths were modified/added/deleted/renamed, which behavior surfaces moved, how it was verified, what residual risk remains, and whether `$sp-map-update` should refresh the cognition runtime from those changed paths.
+- Report what changed, which code paths were modified/added/deleted/renamed, which behavior surfaces moved, how it was verified, what residual risk remains, and the `project_cognition_refresh` outcome when the cognition runtime was affected.
 
 ## Guardrails
 

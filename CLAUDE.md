@@ -1,4 +1,4 @@
-# cc-haha Development Guidelines
+# cc-jiangxia Development Guidelines
 
 Auto-generated from all feature plans. Last updated: 2026-05-16
 

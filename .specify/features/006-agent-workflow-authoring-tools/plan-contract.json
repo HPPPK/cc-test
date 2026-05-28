@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "status": "ready-for-tasks",
+  "route": "sp-plan",
+  "intent": "Design a globally available internal agent workflow-template authoring tool and its shared validation, persistence, desktop-server, stale-write, field-guide, permission, and verification boundaries.",
+  "complexity_level": "standard",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "workflow_status": "ready",
+  "dispatch_shape": "leader-inline",
+  "execution_surface": "leader-inline",
+  "capability_degraded": true,
+  "blocked_reason": "none",
+  "delegated_planning_lanes": "none",
+  "must_preserve": [
+    "Direct validated writes for user-template create/update; no mandatory preview step.",
+    "Global ordinary-chat availability with active workflow phase-policy and permission gating.",
+    "Builtin templates are read-only and modified only through copy-then-edit.",
+    "Delete only uniquely identified user templates and treat delete as destructive.",
+    "Update/delete stale-write rejection; create current id conflict checks.",
+    "Field guide must be discoverable and validation-aligned.",
+    "Settings Workflows compatibility through the same persisted registry/store after reload/refetch.",
+    "Template edits affect future workflow sessions only.",
+    "No protected non-workflow user state mutation."
+  ],
+  "allowed_optimization_scope": [
+    "Refactor shared workflow template validation to remove drift between registry, API, and tool.",
+    "Add a small authoring service abstraction when it centralizes operation orchestration and stale-write checks.",
+    "Add local desktop/server authoring route for cache-owning process writes.",
+    "Avoid desktop UI changes unless implementation proves they are necessary for compatibility."
+  ],
+  "acceptance_obligations": [
+    "Agent can guide, validate, create, update, duplicate, and delete workflow templates through the tool.",
+    "Valid create/update writes persist directly to the existing workflow registry store.",
+    "Settings Workflows can show agent-authored templates after reload/refetch.",
+    "Builtin edit requests copy to a user template first.",
+    "Stale update/delete and all invalid/denied/ambiguous operations leave config unchanged.",
+    "Tool results are transcript-auditable and deterministic enough for tests."
+  ],
+  "capability_operations": [
+    "guide",
+    "list",
+    "inspect",
+    "validate",
+    "create",
+    "update",
+    "duplicate",
+    "delete"
+  ],
+  "capability_preservation": {
+    "required": true,
+    "operations": [
+      {
+        "operation": "guide",
+        "entry_point": "workflow_template_authoring operation=guide",
+        "kind": "read-only",
+        "proof": "field guide tests"
+      },
+      {
+        "operation": "list",
+        "entry_point": "workflow_template_authoring operation=list",
+        "kind": "read-only",
+        "proof": "tool/service list tests"
+      },
+      {
+        "operation": "inspect",
+        "entry_point": "workflow_template_authoring operation=inspect",
+        "kind": "read-only",
+        "proof": "basisHash and validation-state tests"
+      },
+      {
+        "operation": "validate",
+        "entry_point": "workflow_template_authoring operation=validate",
+        "kind": "read-only",
+        "proof": "registry/API parity tests"
+      },
+      {
+        "operation": "create",
+        "entry_point": "workflow_template_authoring operation=create",
+        "kind": "mutation",
+        "proof": "create success and conflict no-write tests"
+      },
+      {
+        "operation": "update",
+        "entry_point": "workflow_template_authoring operation=update",
+        "kind": "mutation",
+        "proof": "fresh update and stale rejection tests"
+      },
+      {
+        "operation": "duplicate",
+        "entry_point": "workflow_template_authoring operation=duplicate",
+        "kind": "mutation",
+        "proof": "builtin copy naming and conflict tests"
+      },
+      {
+        "operation": "delete",
+        "entry_point": "workflow_template_authoring operation=delete",
+        "kind": "destructive mutation",
+        "proof": "delete destructive metadata and no-write rejection tests"
+      }
+    ],
+    "surface_minimization_policy": "A single operation-discriminated tool is preferred, but command-surface minimization must not delete capability; remap preserved operations to an explicit entry point or record a user-confirmed deferral."
+  },
+  "mp_obligations": [
+    {
+      "id": "MP-001",
+      "status": "preserved",
+      "artifact": "plan.md#summary"
+    },
+    {
+      "id": "MP-002",
+      "status": "preserved",
+      "artifact": "quickstart.md#scenario-1-create-from-conversation"
+    },
+    {
+      "id": "MP-003",
+      "status": "preserved",
+      "artifact": "plan.md#stale-write-protocol"
+    },
+    {
+      "id": "MP-004",
+      "status": "preserved",
+      "artifact": "contracts/workflow-authoring-tool.md#input-contract"
+    },
+    {
+      "id": "MP-005",
+      "status": "preserved",
+      "artifact": "plan.md#locked-planning-decisions"
+    },
+    {
+      "id": "MP-006",
+      "status": "preserved",
+      "artifact": "plan.md#phase-policy-integration"
+    },
+    {
+      "id": "MP-007",
+      "status": "preserved",
+      "artifact": "plan.md#builtin-copy-design"
+    },
+    {
+      "id": "MP-008",
+      "status": "preserved",
+      "artifact": "data-model.md#entity-workflowtemplatebasis"
+    },
+    {
+      "id": "MP-009",
+      "status": "preserved",
+      "artifact": "contracts/workflow-authoring-tool.md#delete"
+    },
+    {
+      "id": "MP-010",
+      "status": "preserved",
+      "artifact": "plan.md#builtin-copy-design"
+    },
+    {
+      "id": "MP-011",
+      "status": "preserved",
+      "artifact": "plan.md#field-guide-design"
+    },
+    {
+      "id": "MP-012",
+      "status": "preserved",
+      "artifact": "plan.md#implementation-constitution"
+    },
+    {
+      "id": "MP-013",
+      "status": "preserved",
+      "artifact": "data-model.md#entity-workflowtemplatedraft"
+    },
+    {
+      "id": "MP-014",
+      "status": "preserved",
+      "artifact": "plan.md#runtime-snapshot-safety"
+    },
+    {
+      "id": "MP-015",
+      "status": "preserved",
+      "artifact": "plan.md#shared-validation-and-service-plan"
+    },
+    {
+      "id": "MP-016",
+      "status": "preserved",
+      "artifact": "plan.md#alignment-inputs"
+    },
+    {
+      "id": "MP-017",
+      "status": "preserved",
+      "artifact": "plan.md#summary"
+    },
+    {
+      "id": "MP-018",
+      "status": "preserved",
+      "artifact": "contracts/workflow-authoring-tool.md#no-write-rejection-contract"
+    },
+    {
+      "id": "MP-019",
+      "status": "preserved",
+      "artifact": "plan.md#desktop-runtime-path"
+    },
+    {
+      "id": "MP-020",
+      "status": "preserved",
+      "artifact": "plan.md#result-contract"
+    },
+    {
+      "id": "MP-021",
+      "status": "resolved",
+      "artifact": "plan.md#desktop-runtime-path",
+      "decision": "Use local desktop/server authoring endpoint when CC_JIANGXIA_DESKTOP_SERVER_URL is configured."
+    },
+    {
+      "id": "MP-022",
+      "status": "resolved",
+      "artifact": "plan.md#field-guide-design",
+      "decision": "Use a colocated static guide plus drift tests for first implementation."
+    }
+  ],
+  "open_conflicts": [],
+  "hard_unknown_count": 0,
+  "soft_unknown_count": 0,
+  "planning_gate_status": "ready",
+  "context_boundary": {
+    "current_project_root": "F:\\github\\cc-jiangxia",
+    "target_project_root": "F:\\github\\cc-jiangxia",
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "actual_project_to_change": "current repository",
+    "local_target_root": "F:\\github\\cc-jiangxia",
+    "target_paths_or_modules": [
+      "src/tools.ts",
+      "src/tools/WorkflowTemplateAuthoringTool/",
+      "src/server/services/workflowTemplateAuthoringService.ts",
+      "src/server/services/workflowTemplateValidation.ts",
+      "src/server/services/workflowTemplateAuthoringGuide.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "src/server/api/workflowTemplates.ts",
+      "src/server/__tests__/workflowTemplates.test.ts",
+      "desktop/src/api/sessions.ts",
+      "desktop/src/types/session.ts"
+    ],
+    "desktop_paths_optional": true,
+    "target_paths_still_to_verify": [],
+    "target_project_cognition_status": "fresh/query_ready during plan intake; advisory only"
+  },
+  "target_project_root": "F:\\github\\cc-jiangxia",
+  "target_relative_paths": [
+    "src/tools.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/api/workflowTemplates.ts"
+  ],
+  "target_evidence_status": "project cognition query plus live source reads",
+  "reference_projects": [
+    ".specify/discussions/workflow-template-management/"
+  ],
+  "boundary_constraints": [
+    "Use WorkflowTemplateRegistryService for persistence.",
+    "Do not write protected non-workflow state.",
+    "Do not mutate active or historical workflow session snapshots.",
+    "Do not directly mutate builtin templates.",
+    "Keep first-scope workflows linear-only.",
+    "Route desktop-launched writes through the local server when configured."
+  ],
+  "handoff_to_tasks_ready": true,
+  "consequence_gate": {
+    "triggered": true,
+    "trigger_reason": "Feature mutates user workflow config, affects future workflow execution, has destructive delete behavior, and crosses tool/server/desktop/runtime compatibility surfaces.",
+    "status": "mapped",
+    "stand_down_reason": null
+  },
+  "consequence_analysis": {
+    "affected_object_map": [
+      "workflow template registry and workflows.json",
+      "builtin agent-development template",
+      "user workflow templates",
+      "global tool pool",
+      "tool permission/destructive metadata",
+      "workflow phase policy",
+      "desktop server workflow template API",
+      "Settings Workflows refetch behavior",
+      "workflow session template snapshots",
+      "tool transcript results"
+    ],
+    "state_behavior_matrix": [
+      {
+        "state": "missing config",
+        "behavior": "list returns builtins; valid create may create config through registry service"
+      },
+      {
+        "state": "invalid or malformed config",
+        "behavior": "write operations reject and leave file unchanged"
+      },
+      {
+        "state": "builtin edit request",
+        "behavior": "copy builtin to user template before modification"
+      },
+      {
+        "state": "stale update/delete",
+        "behavior": "reject with persisted false and inspect-and-retry"
+      },
+      {
+        "state": "active workflow session",
+        "behavior": "template snapshot remains unchanged"
+      }
+    ],
+    "dependency_impact": [
+      "Shared validation affects registry, API, and tool; tests must prove parity.",
+      "Desktop server authoring endpoint affects local server API tests and tool routing tests.",
+      "Phase policy affects mutating tool availability during workflow sessions."
+    ],
+    "recovery_and_validation": [
+      "No-write rejection for invalid, stale, denied, ambiguous, builtin-protected, or server-unavailable paths.",
+      "Registry re-read after successful mutation.",
+      "Tool result includes operation, persisted flag, diagnostics, and next action."
+    ],
+    "coverage_gaps": [
+      {
+        "gap": "Exact implementation endpoint shape may change if tasks choose to extend existing endpoints instead.",
+        "owner": "sp-tasks/sp-implement",
+        "latest_safe_resolve_phase": "tasks",
+        "routing_decision": "continue with preferred authoring endpoint contract"
+      }
+    ]
+  },
+  "consequence_obligations": [
+    {
+      "id": "CA-001",
+      "claim": "Valid create/update writes directly and rejected operations do not write.",
+      "status": "planned",
+      "artifact": "plan.md#operational-consequence-design"
+    },
+    {
+      "id": "CA-002",
+      "claim": "Only workflow template config is mutated and unknown fields are preserved.",
+      "status": "planned",
+      "artifact": "plan.md#implementation-constitution"
+    },
+    {
+      "id": "CA-003",
+      "claim": "Validation semantics are shared with registry/API.",
+      "status": "planned",
+      "artifact": "plan.md#shared-validation-and-service-plan"
+    },
+    {
+      "id": "CA-004",
+      "claim": "Builtin mutation uses copy-then-edit.",
+      "status": "planned",
+      "artifact": "plan.md#builtin-copy-design"
+    },
+    {
+      "id": "CA-005",
+      "claim": "Template edits do not mutate session snapshots.",
+      "status": "planned",
+      "artifact": "plan.md#runtime-snapshot-safety"
+    },
+    {
+      "id": "CA-006",
+      "claim": "Tool results are transcript-auditable.",
+      "status": "planned",
+      "artifact": "plan.md#result-contract"
+    },
+    {
+      "id": "CA-007",
+      "claim": "Update/delete reject stale basis.",
+      "status": "planned",
+      "artifact": "plan.md#stale-write-protocol"
+    },
+    {
+      "id": "CA-008",
+      "claim": "Global tool respects active phase policy.",
+      "status": "planned",
+      "artifact": "plan.md#phase-policy-integration"
+    },
+    {
+      "id": "CA-009",
+      "claim": "Delete is destructive and user-template-only.",
+      "status": "planned",
+      "artifact": "contracts/workflow-authoring-tool.md#delete"
+    },
+    {
+      "id": "CA-010",
+      "claim": "Builtin copy naming uses confirmed defaults and suffixes.",
+      "status": "planned",
+      "artifact": "plan.md#builtin-copy-design"
+    },
+    {
+      "id": "CA-011",
+      "claim": "Field guide is discoverable and validation-aligned.",
+      "status": "planned",
+      "artifact": "plan.md#field-guide-design"
+    }
+  ],
+  "operational_consequence_decisions": [
+    "Use SHA-256 basis hashes for update/delete stale-write protection.",
+    "Use local desktop/server authoring endpoint when CC_JIANGXIA_DESKTOP_SERVER_URL is present.",
+    "Use static colocated field guide with drift tests for first implementation.",
+    "Use operation-level policy gate rather than whole-tool disallow list."
+  ],
+  "stop_and_reopen_conditions": [
+    "Mandatory preview-only persistence is reintroduced for valid user-template create/update.",
+    "Direct builtin mutation, deletion, or builtin id shadowing is proposed.",
+    "Implementation writes outside the workflow template config/registry service.",
+    "Template edit mutates active or historical workflow session snapshots.",
+    "Global authoring tool bypasses active workflow phase action policy.",
+    "Field guide cannot be tested against validation concepts.",
+    "Unsupported non-linear workflow shapes are accepted without explicit product decision."
+  ],
+  "recommended_next_command": "/sp.tasks",
+  "generated_artifacts": [
+    ".specify/features/006-agent-workflow-authoring-tools/plan.md",
+    ".specify/features/006-agent-workflow-authoring-tools/research.md",
+    ".specify/features/006-agent-workflow-authoring-tools/data-model.md",
+    ".specify/features/006-agent-workflow-authoring-tools/contracts/workflow-authoring-tool.md",
+    ".specify/features/006-agent-workflow-authoring-tools/contracts/workflow-authoring-api.md",
+    ".specify/features/006-agent-workflow-authoring-tools/quickstart.md",
+    ".specify/features/006-agent-workflow-authoring-tools/plan-contract.json"
+  ]
+}

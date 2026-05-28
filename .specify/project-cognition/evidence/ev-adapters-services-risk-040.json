@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-040",
+  "type": "source_analysis",
+  "source_path": "adapters/feishu/__tests__/card-errors.test.ts",
+  "summary": "Test coverage for card-errors.test.ts exercises 从 err.code 直接提取; 从 err.data.code 提取; 从 err.response.data.code 提取（Axios 风格）; 数字字符串被强制转成 number",
+  "detail": "",
+  "quotes_or_symbols": [
+    "从 err.code 直接提取",
+    "从 err.data.code 提取",
+    "从 err.response.data.code 提取（Axios 风格）",
+    "数字字符串被强制转成 number"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

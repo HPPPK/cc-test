@@ -1,13 +1,16 @@
 import { THEME_MODES } from '../types/settings'
 import {
   APP_ZOOM_STORAGE_KEY,
+  LEGACY_HAHA_APP_ZOOM_STORAGE_KEY,
+  LEGACY_HAHA_UI_ZOOM_STORAGE_KEY,
   LEGACY_UI_ZOOM_STORAGE_KEY,
   isValidStoredAppZoomLevel,
   normalizeAppZoomLevel,
 } from './appZoom'
 
 export const CURRENT_DESKTOP_PERSISTENCE_SCHEMA_VERSION = 1
-export const DESKTOP_PERSISTENCE_VERSION_KEY = 'cc-haha.persistence.schemaVersion'
+export const DESKTOP_PERSISTENCE_VERSION_KEY = 'cc-jiangxia.persistence.schemaVersion'
+export const LEGACY_DESKTOP_PERSISTENCE_VERSION_KEY = 'cc-haha.persistence.schemaVersion'
 
 type DesktopMigrationReport = {
   migratedKeys: string[]
@@ -15,10 +18,30 @@ type DesktopMigrationReport = {
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
-const TAB_STORAGE_KEY = 'cc-haha-open-tabs'
-const SESSION_RUNTIME_STORAGE_KEY = 'cc-haha-session-runtime'
-const THEME_STORAGE_KEY = 'cc-haha-theme'
-const LOCALE_STORAGE_KEY = 'cc-haha-locale'
+const TAB_STORAGE_KEY = 'cc-jiangxia-open-tabs'
+const SESSION_RUNTIME_STORAGE_KEY = 'cc-jiangxia-session-runtime'
+const THEME_STORAGE_KEY = 'cc-jiangxia-theme'
+const LOCALE_STORAGE_KEY = 'cc-jiangxia-locale'
+const LEGACY_HAHA_TAB_STORAGE_KEY = 'cc-haha-open-tabs'
+const LEGACY_HAHA_SESSION_RUNTIME_STORAGE_KEY = 'cc-haha-session-runtime'
+const LEGACY_HAHA_THEME_STORAGE_KEY = 'cc-haha-theme'
+const LEGACY_HAHA_LOCALE_STORAGE_KEY = 'cc-haha-locale'
+const LEGACY_HAHA_H5_SERVER_URL_STORAGE_KEY = 'cc-haha-h5-server-url'
+const LEGACY_HAHA_H5_TOKEN_STORAGE_KEY = 'cc-haha-h5-token'
+const H5_SERVER_URL_STORAGE_KEY = 'cc-jiangxia-h5-server-url'
+const H5_TOKEN_STORAGE_KEY = 'cc-jiangxia-h5-token'
+
+const RENAMED_STORAGE_KEYS: Array<[legacyKey: string, currentKey: string]> = [
+  [LEGACY_HAHA_TAB_STORAGE_KEY, TAB_STORAGE_KEY],
+  [LEGACY_HAHA_SESSION_RUNTIME_STORAGE_KEY, SESSION_RUNTIME_STORAGE_KEY],
+  [LEGACY_HAHA_THEME_STORAGE_KEY, THEME_STORAGE_KEY],
+  [LEGACY_HAHA_LOCALE_STORAGE_KEY, LOCALE_STORAGE_KEY],
+  [LEGACY_HAHA_APP_ZOOM_STORAGE_KEY, APP_ZOOM_STORAGE_KEY],
+  [LEGACY_HAHA_UI_ZOOM_STORAGE_KEY, LEGACY_UI_ZOOM_STORAGE_KEY],
+  [LEGACY_HAHA_H5_SERVER_URL_STORAGE_KEY, H5_SERVER_URL_STORAGE_KEY],
+  [LEGACY_HAHA_H5_TOKEN_STORAGE_KEY, H5_TOKEN_STORAGE_KEY],
+  [LEGACY_DESKTOP_PERSISTENCE_VERSION_KEY, DESKTOP_PERSISTENCE_VERSION_KEY],
+]
 
 function readJson(storage: StorageLike, key: string): unknown {
   const raw = storage.getItem(key)
@@ -32,6 +55,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function writeJson(storage: StorageLike, key: string, value: unknown): void {
   storage.setItem(key, JSON.stringify(value))
+}
+
+function migrateRenamedStorageKeys(storage: StorageLike, report: DesktopMigrationReport): void {
+  for (const [legacyKey, currentKey] of RENAMED_STORAGE_KEYS) {
+    const legacyValue = storage.getItem(legacyKey)
+    if (legacyValue === null) continue
+
+    if (storage.getItem(currentKey) === null) {
+      storage.setItem(currentKey, legacyValue)
+      report.migratedKeys.push(currentKey)
+    }
+    storage.removeItem(legacyKey)
+    report.migratedKeys.push(legacyKey)
+  }
 }
 
 function migrateTabs(storage: StorageLike, report: DesktopMigrationReport): void {
@@ -137,6 +174,12 @@ function normalizeAppZoomKey(storage: StorageLike, report: DesktopMigrationRepor
     storage.removeItem(LEGACY_UI_ZOOM_STORAGE_KEY)
     report.migratedKeys.push(LEGACY_UI_ZOOM_STORAGE_KEY)
   }
+  for (const oldKey of [LEGACY_HAHA_APP_ZOOM_STORAGE_KEY, LEGACY_HAHA_UI_ZOOM_STORAGE_KEY]) {
+    if (storage.getItem(oldKey) !== null) {
+      storage.removeItem(oldKey)
+      report.migratedKeys.push(oldKey)
+    }
+  }
 }
 
 function runMigrationStep(
@@ -163,6 +206,7 @@ export function runDesktopPersistenceMigrations(storage: StorageLike | null = ge
   const report: DesktopMigrationReport = { migratedKeys: [] }
   if (!storage) return report
 
+  runMigrationStep(report, DESKTOP_PERSISTENCE_VERSION_KEY, () => migrateRenamedStorageKeys(storage, report))
   runMigrationStep(report, TAB_STORAGE_KEY, () => migrateTabs(storage, report))
   runMigrationStep(report, SESSION_RUNTIME_STORAGE_KEY, () => migrateSessionRuntime(storage, report))
   runMigrationStep(report, THEME_STORAGE_KEY, () => normalizeEnumKey(storage, THEME_STORAGE_KEY, [...THEME_MODES], report))

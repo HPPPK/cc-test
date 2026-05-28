@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-swarm-05",
+  "type": "source_analysis",
+  "source_path": "src/utils/swarm/permissionSync.ts",
+  "summary": "Swarm permission sync supports both file-backed and mailbox-based leader/worker permission request-response flows, including sandbox host approvals.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "createPermissionRequest",
+    "writePermissionRequest",
+    "sendPermissionRequestViaMailbox",
+    "sendPermissionResponseViaMailbox",
+    "sendSandboxPermissionRequestViaMailbox"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

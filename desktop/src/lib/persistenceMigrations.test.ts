@@ -11,7 +11,7 @@ describe('desktop persistence migrations', () => {
   })
 
   test('migrates legacy open-tab arrays into the current tab persistence shape', () => {
-    window.localStorage.setItem('cc-haha-open-tabs', JSON.stringify([
+    window.localStorage.setItem('cc-jiangxia-open-tabs', JSON.stringify([
       { sessionId: 'session-1', title: 'Old tab' },
       { sessionId: '__terminal__legacy', title: 'Terminal 1', type: 'terminal' },
       { sessionId: 123, title: 'bad' },
@@ -19,17 +19,62 @@ describe('desktop persistence migrations', () => {
 
     const report = runDesktopPersistenceMigrations()
 
-    expect(report.migratedKeys).toContain('cc-haha-open-tabs')
-    expect(JSON.parse(window.localStorage.getItem('cc-haha-open-tabs') || '{}')).toEqual({
+    expect(report.migratedKeys).toContain('cc-jiangxia-open-tabs')
+    expect(JSON.parse(window.localStorage.getItem('cc-jiangxia-open-tabs') || '{}')).toEqual({
       openTabs: [{ sessionId: 'session-1', title: 'Old tab', type: 'session' }],
       activeTabId: 'session-1',
     })
     expect(window.localStorage.getItem(DESKTOP_PERSISTENCE_VERSION_KEY)).toBe(String(CURRENT_DESKTOP_PERSISTENCE_SCHEMA_VERSION))
   })
 
+  test('renames cc-haha localStorage keys into cc-jiangxia keys without clearing unrelated data', () => {
+    window.localStorage.setItem('cc-haha-open-tabs', JSON.stringify([
+      { sessionId: 'legacy-session', title: 'Legacy tab' },
+    ]))
+    window.localStorage.setItem('cc-haha-session-runtime', JSON.stringify({
+      legacy: { providerId: null, modelId: 'legacy-model' },
+    }))
+    window.localStorage.setItem('cc-haha-theme', 'dark')
+    window.localStorage.setItem('cc-haha-locale', 'en')
+    window.localStorage.setItem('cc-haha-app-zoom', '1.15')
+    window.localStorage.setItem('cc-haha-h5-server-url', 'https://public.example.com')
+    window.localStorage.setItem('cc-haha-h5-token', 'legacy-token')
+    window.localStorage.setItem('unrelated-user-key', 'keep')
+
+    const report = runDesktopPersistenceMigrations()
+
+    expect(report.migratedKeys).toEqual(expect.arrayContaining([
+      'cc-haha-open-tabs',
+      'cc-jiangxia-open-tabs',
+      'cc-haha-session-runtime',
+      'cc-jiangxia-session-runtime',
+      'cc-haha-theme',
+      'cc-jiangxia-theme',
+      'cc-haha-locale',
+      'cc-jiangxia-locale',
+      'cc-haha-app-zoom',
+      'cc-jiangxia-app-zoom',
+      'cc-haha-h5-server-url',
+      'cc-jiangxia-h5-server-url',
+      'cc-haha-h5-token',
+      'cc-jiangxia-h5-token',
+    ]))
+    expect(JSON.parse(window.localStorage.getItem('cc-jiangxia-open-tabs') || '{}')).toEqual({
+      openTabs: [{ sessionId: 'legacy-session', title: 'Legacy tab', type: 'session' }],
+      activeTabId: 'legacy-session',
+    })
+    expect(window.localStorage.getItem('cc-jiangxia-theme')).toBe('dark')
+    expect(window.localStorage.getItem('cc-jiangxia-locale')).toBe('en')
+    expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBe('1.15')
+    expect(window.localStorage.getItem('cc-jiangxia-h5-server-url')).toBe('https://public.example.com')
+    expect(window.localStorage.getItem('cc-jiangxia-h5-token')).toBe('legacy-token')
+    expect(window.localStorage.getItem('cc-haha-open-tabs')).toBeNull()
+    expect(window.localStorage.getItem('unrelated-user-key')).toBe('keep')
+  })
+
   test('filters stale session runtime selections without clearing unrelated keys', () => {
     window.localStorage.setItem('unrelated-user-key', 'keep')
-    window.localStorage.setItem('cc-haha-session-runtime', JSON.stringify({
+    window.localStorage.setItem('cc-jiangxia-session-runtime', JSON.stringify({
       good: { providerId: null, modelId: 'claude-sonnet' },
       alsoGood: { providerId: 'provider-1', modelId: 'gpt-5.4' },
       bad: { providerId: 'provider-2' },
@@ -37,7 +82,7 @@ describe('desktop persistence migrations', () => {
 
     runDesktopPersistenceMigrations()
 
-    expect(JSON.parse(window.localStorage.getItem('cc-haha-session-runtime') || '{}')).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('cc-jiangxia-session-runtime') || '{}')).toEqual({
       alsoGood: { providerId: 'provider-1', modelId: 'gpt-5.4' },
       good: { providerId: null, modelId: 'claude-sonnet' },
     })
@@ -45,53 +90,53 @@ describe('desktop persistence migrations', () => {
   })
 
   test('removes malformed known keys without throwing during startup', () => {
-    window.localStorage.setItem('cc-haha-open-tabs', '{"openTabs":')
-    window.localStorage.setItem('cc-haha-theme', 'sepia')
+    window.localStorage.setItem('cc-jiangxia-open-tabs', '{"openTabs":')
+    window.localStorage.setItem('cc-jiangxia-theme', 'sepia')
 
     const report = runDesktopPersistenceMigrations()
 
-    expect(report.migratedKeys).toContain('cc-haha-open-tabs')
-    expect(report.migratedKeys).toContain('cc-haha-theme')
-    expect(window.localStorage.getItem('cc-haha-open-tabs')).toBeNull()
-    expect(window.localStorage.getItem('cc-haha-theme')).toBeNull()
+    expect(report.migratedKeys).toContain('cc-jiangxia-open-tabs')
+    expect(report.migratedKeys).toContain('cc-jiangxia-theme')
+    expect(window.localStorage.getItem('cc-jiangxia-open-tabs')).toBeNull()
+    expect(window.localStorage.getItem('cc-jiangxia-theme')).toBeNull()
   })
 
   test('preserves the pure white theme as a valid persisted theme', () => {
-    window.localStorage.setItem('cc-haha-theme', 'white')
+    window.localStorage.setItem('cc-jiangxia-theme', 'white')
 
     const report = runDesktopPersistenceMigrations()
 
-    expect(report.migratedKeys).not.toContain('cc-haha-theme')
-    expect(window.localStorage.getItem('cc-haha-theme')).toBe('white')
+    expect(report.migratedKeys).not.toContain('cc-jiangxia-theme')
+    expect(window.localStorage.getItem('cc-jiangxia-theme')).toBe('white')
   })
 
   test('preserves valid app zoom and removes invalid app zoom values', () => {
-    window.localStorage.setItem('cc-haha-app-zoom', '1.2')
+    window.localStorage.setItem('cc-jiangxia-app-zoom', '1.2')
 
     const validReport = runDesktopPersistenceMigrations()
 
-    expect(validReport.migratedKeys).not.toContain('cc-haha-app-zoom')
-    expect(window.localStorage.getItem('cc-haha-app-zoom')).toBe('1.2')
+    expect(validReport.migratedKeys).not.toContain('cc-jiangxia-app-zoom')
+    expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBe('1.2')
 
-    window.localStorage.setItem('cc-haha-app-zoom', '4')
+    window.localStorage.setItem('cc-jiangxia-app-zoom', '4')
 
     const invalidReport = runDesktopPersistenceMigrations()
 
-    expect(invalidReport.migratedKeys).toContain('cc-haha-app-zoom')
-    expect(window.localStorage.getItem('cc-haha-app-zoom')).toBeNull()
+    expect(invalidReport.migratedKeys).toContain('cc-jiangxia-app-zoom')
+    expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBeNull()
   })
 
   test('migrates the legacy UI zoom key into app zoom storage', () => {
-    window.localStorage.setItem('cc-haha-ui-zoom', '1.25')
+    window.localStorage.setItem('cc-jiangxia-ui-zoom', '1.25')
 
     const report = runDesktopPersistenceMigrations()
 
     expect(report.migratedKeys).toEqual(expect.arrayContaining([
-      'cc-haha-app-zoom',
-      'cc-haha-ui-zoom',
+      'cc-jiangxia-app-zoom',
+      'cc-jiangxia-ui-zoom',
     ]))
-    expect(window.localStorage.getItem('cc-haha-app-zoom')).toBe('1.25')
-    expect(window.localStorage.getItem('cc-haha-ui-zoom')).toBeNull()
+    expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBe('1.25')
+    expect(window.localStorage.getItem('cc-jiangxia-ui-zoom')).toBeNull()
   })
 
   test('does not throw if schema version persistence is blocked', () => {
@@ -126,11 +171,11 @@ describe('desktop persistence migrations', () => {
     const report = runDesktopPersistenceMigrations(storage)
 
     expect(report.migratedKeys).toEqual(expect.arrayContaining([
-      'cc-haha-open-tabs',
-      'cc-haha-session-runtime',
-      'cc-haha-theme',
-      'cc-haha-locale',
-      'cc-haha-app-zoom',
+      'cc-jiangxia-open-tabs',
+      'cc-jiangxia-session-runtime',
+      'cc-jiangxia-theme',
+      'cc-jiangxia-locale',
+      'cc-jiangxia-app-zoom',
       DESKTOP_PERSISTENCE_VERSION_KEY,
     ]))
   })

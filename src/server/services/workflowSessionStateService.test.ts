@@ -13,7 +13,7 @@ let tmpDir: string
 let originalConfigDir: string | undefined
 
 beforeEach(async () => {
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-haha-workflow-state-'))
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-workflow-state-'))
   originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   process.env.CLAUDE_CONFIG_DIR = tmpDir
 })
@@ -28,11 +28,11 @@ afterEach(async () => {
 })
 
 function statePath(sessionId = SESSION_ID): string {
-  return path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  return path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
 }
 
 function artifactPath(sessionId: string, artifactId: string): string {
-  return path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'artifacts', `${artifactId}.json`)
+  return path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'artifacts', `${artifactId}.json`)
 }
 
 async function readJson(filePath: string): Promise<Record<string, unknown>> {
@@ -117,7 +117,7 @@ function makeState(overrides: Record<string, unknown> = {}): Record<string, unkn
 }
 
 describe('WorkflowSessionStateService', () => {
-  test('writes schema-versioned workflow state atomically under cc-haha workflow-sessions', async () => {
+  test('writes schema-versioned workflow state atomically under cc-jiangxia workflow-sessions', async () => {
     const service = new WorkflowSessionStateService()
     const state = makeState()
 
@@ -139,7 +139,7 @@ describe('WorkflowSessionStateService', () => {
     expect(persisted.sessionId).toBe(SESSION_ID)
     expect(persisted.mode).toBe('workflow')
     expect(sessionDirFiles.filter((name) => name.includes('.tmp.'))).toEqual([])
-    expect(statePath()).toContain(path.join('cc-haha', 'workflow-sessions', SESSION_ID, 'state.json'))
+    expect(statePath()).toContain(path.join('cc-jiangxia', 'workflow-sessions', SESSION_ID, 'state.json'))
   })
 
   test('serializes concurrent updates and preserves unknown fields while incrementing revisions', async () => {
@@ -186,7 +186,7 @@ describe('WorkflowSessionStateService', () => {
     await fs.mkdir(path.dirname(statePath()), { recursive: true })
     await fs.copyFile(path.join(FIXTURE_DIR, 'corrupt-state.json'), statePath())
     const corrupt = await service.readState(SESSION_ID)
-    const ccHahaFiles = await fs.readdir(path.join(tmpDir, 'cc-haha'), { recursive: true })
+    const ccJiangxiaFiles = await fs.readdir(path.join(tmpDir, 'cc-jiangxia'), { recursive: true })
 
     expect(missing).toMatchObject({
       exists: false,
@@ -200,8 +200,8 @@ describe('WorkflowSessionStateService', () => {
       recoveryStatus: 'state-corrupt',
       errorCode: 'WORKFLOW_STATE_UNAVAILABLE',
     })
-    expect(ccHahaFiles.some((file) => String(file).startsWith('settings.json'))).toBe(false)
-    expect(await fs.readdir(tmpDir)).toEqual(['cc-haha'])
+    expect(ccJiangxiaFiles.some((file) => String(file).startsWith('settings.json'))).toBe(false)
+    expect(await fs.readdir(tmpDir)).toEqual(['cc-jiangxia'])
   })
 
   test('preserves pending, accepted, rejected, and superseded artifact lifecycle states on resume', async () => {
@@ -378,7 +378,7 @@ describe('WorkflowSessionStateService', () => {
     const service = new WorkflowSessionStateService()
     const protectedFiles = [
       path.join(tmpDir, 'settings.json'),
-      path.join(tmpDir, 'cc-haha', 'providers.json'),
+      path.join(tmpDir, 'cc-jiangxia', 'providers.json'),
       path.join(tmpDir, 'adapter-sessions.json'),
       path.join(tmpDir, 'projects', 'session.jsonl'),
     ]

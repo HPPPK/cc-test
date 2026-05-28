@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-009",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/pairing.test.ts",
+  "summary": "Test coverage for pairing.test.ts exercises checks DingTalk paired users with the same shared access rule; keeps empty DingTalk allow and pair lists closed by default",
+  "detail": "",
+  "quotes_or_symbols": [
+    "checks DingTalk paired users with the same shared access rule",
+    "keeps empty DingTalk allow and pair lists closed by default"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

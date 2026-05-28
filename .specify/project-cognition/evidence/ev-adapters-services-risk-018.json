@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-018",
+  "type": "source_analysis",
+  "source_path": "adapters/common/attachment/attachment-types.ts",
+  "summary": "attachment-types.ts defines ImPlatform, LocalAttachment, PendingUpload and imports ../ws-bridge.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ImPlatform",
+    "LocalAttachment",
+    "PendingUpload"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

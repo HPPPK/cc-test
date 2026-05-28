@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-swarm-01",
+  "type": "source_analysis",
+  "source_path": "src/utils/swarm/backends/registry.ts",
+  "summary": "The swarm backend registry chooses between pane backends and in-process execution, caches detection results, and exposes the teammate executor abstraction.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "detectAndGetBackend",
+    "isInProcessEnabled",
+    "getTeammateExecutor",
+    "markInProcessFallback"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

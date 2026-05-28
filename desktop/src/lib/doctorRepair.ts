@@ -3,13 +3,20 @@ import { APP_ZOOM_STORAGE_KEY, LEGACY_UI_ZOOM_STORAGE_KEY } from './appZoom'
 import { DESKTOP_PERSISTENCE_VERSION_KEY } from './persistenceMigrations'
 
 export const SAFE_DOCTOR_STORAGE_KEYS = [
+  'cc-jiangxia-open-tabs',
   'cc-haha-open-tabs',
+  'cc-jiangxia-session-runtime',
   'cc-haha-session-runtime',
+  'cc-jiangxia-theme',
   'cc-haha-theme',
+  'cc-jiangxia-locale',
   'cc-haha-locale',
   APP_ZOOM_STORAGE_KEY,
   LEGACY_UI_ZOOM_STORAGE_KEY,
   DESKTOP_PERSISTENCE_VERSION_KEY,
+  'cc-haha-app-zoom',
+  'cc-haha-ui-zoom',
+  'cc-haha.persistence.schemaVersion',
 ] as const
 
 type DoctorStorage = Pick<Storage, 'getItem' | 'removeItem'>

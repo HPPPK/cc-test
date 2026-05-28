@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-14",
+  "type": "source_analysis",
+  "source_path": "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+  "summary": "Start dialog sorts templates, disables non-startable entries, shows invalid diagnostics, and returns template id/source/initial phase on start.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "onStart",
+    "initialPhaseId",
+    "isTemplateStartable"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

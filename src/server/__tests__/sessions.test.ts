@@ -19,11 +19,18 @@ import { clearInstalledPluginsCache } from '../../utils/plugins/installedPlugins
 import { clearPluginCache } from '../../utils/plugins/pluginLoader.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { updateSessionSlashCommands } from '../ws/handler.js'
+import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
+import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
 
 const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TEMPLATE_NOT_FOUND',
   'WORKFLOW_TEMPLATE_INVALID',
   'WORKFLOW_TEMPLATE_CONFLICT',
+  'WORKFLOW_SOURCE_INVALID',
+  'WORKFLOW_SOURCE_ACTIVE',
+  'WORKFLOW_LINK_DUPLICATE',
+  'WORKFLOW_CONTEXT_TOO_LARGE',
+  'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE',
   'WORKFLOW_NOT_ENABLED',
   'WORKFLOW_STATE_UNAVAILABLE',
   'WORKFLOW_STATE_CONFLICT',
@@ -464,7 +471,7 @@ async function writeWorkflowSessionStateFixture(
     await loadWorkflowSessionFixture(fixtureName),
     sessionId,
   ) as Record<string, unknown>
-  const statePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  const statePath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
   await fs.mkdir(path.dirname(statePath), { recursive: true })
   await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8')
   return state
@@ -474,9 +481,14 @@ async function writeWorkflowSessionState(
   sessionId: string,
   state: Record<string, unknown>,
 ): Promise<void> {
-  const statePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  const statePath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
   await fs.mkdir(path.dirname(statePath), { recursive: true })
   await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8')
+}
+
+async function readWorkflowSessionState(sessionId: string): Promise<Record<string, unknown>> {
+  const statePath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
+  return JSON.parse(await fs.readFile(statePath, 'utf-8')) as Record<string, unknown>
 }
 
 function makePendingWorkflowTransitionState(
@@ -721,7 +733,7 @@ async function writeWorkflowFinalReportFixture(
     await loadWorkflowSessionFixture(fixtureName),
     sessionId,
   ) as Record<string, unknown>
-  const reportPath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+  const reportPath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'reports', 'final.json')
   await fs.mkdir(path.dirname(reportPath), { recursive: true })
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf-8')
   return report
@@ -1904,7 +1916,7 @@ describe('SessionService', () => {
   })
 
   it('should throw when workDir does not exist', async () => {
-    expect(service.createSession('/tmp/definitely-missing-claude-code-haha')).rejects.toThrow(
+    expect(service.createSession('/tmp/definitely-missing-claude-code-jiangxia')).rejects.toThrow(
       'Working directory does not exist'
     )
   })
@@ -1936,10 +1948,10 @@ describe('SessionService', () => {
       makeWorkflowSessionMetaEntry(otherSessionId, '/tmp/other-workflow-project'),
     ])
 
-    const workflowRoot = path.join(tmpDir, 'cc-haha', 'workflow-sessions')
+    const workflowRoot = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')
     const sessionWorkflowDir = path.join(workflowRoot, sessionId)
     const otherWorkflowDir = path.join(workflowRoot, otherSessionId)
-    const unrelatedCcHahaFile = path.join(tmpDir, 'cc-haha', 'settings.json')
+    const unrelatedCcJiangxiaFile = path.join(tmpDir, 'cc-jiangxia', 'settings.json')
     await fs.mkdir(path.join(sessionWorkflowDir, 'artifacts'), { recursive: true })
     await fs.mkdir(path.join(sessionWorkflowDir, 'reports'), { recursive: true })
     await fs.mkdir(path.join(otherWorkflowDir, 'reports'), { recursive: true })
@@ -1947,14 +1959,14 @@ describe('SessionService', () => {
     await fs.writeFile(path.join(sessionWorkflowDir, 'artifacts', 'phase-1.json'), '{"artifact":true}\n', 'utf-8')
     await fs.writeFile(path.join(sessionWorkflowDir, 'reports', 'final.json'), '{"report":true}\n', 'utf-8')
     await fs.writeFile(path.join(otherWorkflowDir, 'state.json'), '{"sessionId":"other"}\n', 'utf-8')
-    await fs.writeFile(unrelatedCcHahaFile, '{"keep":true}\n', 'utf-8')
+    await fs.writeFile(unrelatedCcJiangxiaFile, '{"keep":true}\n', 'utf-8')
 
     await service.deleteSession(sessionId)
 
     await expect(fs.access(sessionFilePath)).rejects.toThrow()
     await expect(fs.access(sessionWorkflowDir)).rejects.toThrow()
     await expect(fs.access(path.join(otherWorkflowDir, 'state.json'))).resolves.toBeNull()
-    await expect(fs.readFile(unrelatedCcHahaFile, 'utf-8')).resolves.toContain('"keep":true')
+    await expect(fs.readFile(unrelatedCcJiangxiaFile, 'utf-8')).resolves.toContain('"keep":true')
   })
 
   it('should throw when deleting non-existent session', async () => {
@@ -2433,6 +2445,532 @@ describe('Sessions API', () => {
           }),
         }),
       ])
+
+      const sharedCreateService = new WorkflowSessionCreateService()
+      const resolvedTemplate = await sharedCreateService.resolveTemplate({
+        templateId: 'agent-development',
+        templateSource: 'builtin',
+        initialPhaseId: 'discussion',
+      })
+      expect(resolvedTemplate.id).toBe('agent-development')
+      expect(resolvedTemplate.phases[0]?.id).toBe('discussion')
+    })
+
+    describe('Linked workflow session start contract', () => {
+      async function createSourceDialogueSession(
+        strategy: 'clear' | 'inherit' | 'summarize',
+      ): Promise<{
+        sessionId: string
+        workDir: string
+        filePath: string
+        beforeRaw: string
+        beforeDetail: Awaited<ReturnType<SessionService['getSession']>>
+      }> {
+        const sessionId = crypto.randomUUID()
+        const workDir = path.join(tmpDir, `linked-workflow-source-${strategy}`)
+        const userId = crypto.randomUUID()
+        await fs.mkdir(workDir, { recursive: true })
+        const filePath = await writeSessionFile(sanitizePath(workDir), sessionId, [
+          makeSessionMetaEntry(workDir),
+          {
+            ...makeUserEntry(`Discuss linked workflow ${strategy}`, userId),
+            cwd: workDir,
+            sessionId,
+          },
+          makeAssistantEntry(`Recorded source context for ${strategy}.`, userId),
+        ])
+        const beforeRaw = await fs.readFile(filePath, 'utf-8')
+        const beforeDetail = await service.getSession(sessionId)
+
+        return { sessionId, workDir, filePath, beforeRaw, beforeDetail }
+      }
+
+      async function startLinkedWorkflow(
+        sourceSessionId: string,
+        body: Record<string, unknown>,
+      ): Promise<Response> {
+        return await fetch(`${baseUrl}/api/sessions/${sourceSessionId}/workflow/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      }
+
+      async function expectSourceSessionUnchanged(
+        source: Awaited<ReturnType<typeof createSourceDialogueSession>>,
+      ): Promise<void> {
+        expect(await fs.readFile(source.filePath, 'utf-8')).toBe(source.beforeRaw)
+        const afterDetail = await service.getSession(source.sessionId)
+        expect(afterDetail?.workflow).toBeUndefined()
+        expect(afterDetail?.messages).toEqual(source.beforeDetail?.messages)
+      }
+
+      async function expectLinkedWorkflowCreated(
+        body: {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        },
+        source: Awaited<ReturnType<typeof createSourceDialogueSession>>,
+        strategy: 'clear' | 'inherit' | 'summarize',
+        clientRequestId: string,
+      ): Promise<void> {
+        expect(body.sessionId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        )
+        expect(body.sessionId).not.toBe(source.sessionId)
+        expect(body.workDir).toBe(await fs.realpath(source.workDir))
+        expect(body.workflow).toMatchObject({
+          mode: 'workflow',
+          templateId: 'agent-development',
+          templateVersion: '1',
+          templateSource: 'builtin',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'created',
+          activePhaseId: 'discussion',
+          activePhaseIndex: 0,
+          phaseCount: 5,
+          pendingConfirmation: false,
+          statePointer: {
+            kind: 'workflow-state',
+            sessionId: body.sessionId,
+            artifactId: 'state',
+            schemaVersion: 1,
+          },
+        })
+        expect(body.link).toMatchObject({
+          sourceSessionId: source.sessionId,
+          targetSessionId: body.sessionId,
+          contextStrategy: strategy,
+          sourceMessageCount: 2,
+          clientRequestId,
+        })
+        expect(typeof body.link?.createdAt).toBe('string')
+
+        const targetDetail = await service.getSession(body.sessionId!)
+        expect(targetDetail?.workflow).toMatchObject({
+          mode: 'workflow',
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+        })
+
+        const targetState = await readWorkflowSessionState(body.sessionId!)
+        expect(targetState).toMatchObject({
+          sessionId: body.sessionId,
+          mode: 'workflow',
+          template: {
+            id: 'agent-development',
+            version: '1',
+            source: 'builtin',
+            snapshotId: 'agent-development-v1',
+          },
+          templateSnapshot: {
+            id: 'agent-development',
+            source: 'builtin',
+            version: '1',
+          },
+          link: {
+            sourceSessionId: source.sessionId,
+            sourceMessageCount: 2,
+            contextStrategy: strategy,
+            clientRequestId,
+          },
+        })
+        expectNoAbsolutePathLeak(body.workflow)
+        expectNoAbsolutePathLeak(body.link)
+      }
+
+      async function expectLinkedWorkflowServiceCreated(
+        body: {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        },
+        source: Awaited<ReturnType<typeof createSourceDialogueSession>>,
+        strategy: 'clear' | 'inherit' | 'summarize',
+        clientRequestId: string,
+      ): Promise<void> {
+        await expectLinkedWorkflowCreated(body, source, strategy, clientRequestId)
+        await expectSourceSessionUnchanged(source)
+      }
+
+      function createLinkService(options: ConstructorParameters<typeof WorkflowSessionLinkService>[0] = {}) {
+        return new WorkflowSessionLinkService(options)
+      }
+
+      it('WorkflowSessionLinkService clear should create linked target provenance without source context or source mutation', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const clientRequestId = 'service-linked-clear-0001'
+
+        const result = await createLinkService().createLinkedWorkflowSession(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId,
+        })
+
+        expect(result.created).toBe(true)
+        await expectLinkedWorkflowServiceCreated(result, source, 'clear', clientRequestId)
+        expect(result.link.summaryArtifactId).toBeUndefined()
+        const targetState = await readWorkflowSessionState(result.sessionId)
+        expect(JSON.stringify(targetState)).not.toContain('Discuss linked workflow clear')
+      })
+
+      it('WorkflowSessionLinkService inherit should store bounded context carryover on the target only', async () => {
+        const source = await createSourceDialogueSession('inherit')
+        const clientRequestId = 'service-linked-inherit-0001'
+
+        const result = await createLinkService().createLinkedWorkflowSession(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'inherit',
+          clientRequestId,
+        })
+
+        await expectLinkedWorkflowServiceCreated(result, source, 'inherit', clientRequestId)
+        expect(result.link.summaryArtifactId).toBe('context-carryover')
+        const targetState = await readWorkflowSessionState(result.sessionId)
+        expect(targetState.contextCarryover).toMatchObject({
+          artifactId: 'context-carryover',
+          pointer: {
+            artifactId: 'context-carryover',
+            sessionId: result.sessionId,
+          },
+        })
+        expect(JSON.stringify(targetState)).toContain('Discuss linked workflow inherit')
+        const artifactPath = path.join(
+          tmpDir,
+          'cc-jiangxia',
+          'workflow-sessions',
+          result.sessionId,
+          'artifacts',
+          'context-carryover.json',
+        )
+        const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf-8')) as Record<string, unknown>
+        expect(artifact.content).toMatchObject({
+          sourceSessionId: source.sessionId,
+          targetSessionId: result.sessionId,
+          strategy: 'inherit',
+        })
+        expect(JSON.stringify(artifact.content)).toContain('Discuss linked workflow inherit')
+      })
+
+      it('WorkflowSessionLinkService summarize should coordinate non-mutating compact-style carryover on the target', async () => {
+        const source = await createSourceDialogueSession('summarize')
+        const clientRequestId = 'service-linked-summarize-0001'
+
+        const result = await createLinkService({
+          summaryContext: {} as never,
+          summaryCarryover: async ({ messages, summaryInstructions }) => ({
+            content: `Summary: ${summaryInstructions}`,
+            rawSummary: `Raw: ${summaryInstructions}`,
+            sourceMessageIds: messages.map((message) => message.uuid),
+          }),
+        }).createLinkedWorkflowSession(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'summarize',
+          summaryInstructions: 'Preserve decisions.',
+          clientRequestId,
+        })
+
+        await expectLinkedWorkflowServiceCreated(result, source, 'summarize', clientRequestId)
+        expect(result.link.summaryArtifactId).toBe('context-carryover')
+        const targetState = await readWorkflowSessionState(result.sessionId)
+        expect(targetState.startupPrompt).toContain('Summary: Preserve decisions.')
+        expect(JSON.stringify(targetState)).not.toContain('Recorded source context for summarize.')
+        const artifactPath = path.join(
+          tmpDir,
+          'cc-jiangxia',
+          'workflow-sessions',
+          result.sessionId,
+          'artifacts',
+          'context-carryover.json',
+        )
+        const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf-8')) as Record<string, unknown>
+        expect(JSON.stringify(artifact.content)).toContain('Summary: Preserve decisions.')
+      })
+
+      it('WorkflowSessionLinkService should reject workflow, active, oversize inherit, and unavailable summarize sources without target creation', async () => {
+        const workflowSourceSessionId = crypto.randomUUID()
+        const workflowWorkDir = path.join(tmpDir, 'service-linked-workflow-source-is-workflow')
+        const sourceFilePath = await writeSessionFile(sanitizePath(workflowWorkDir), workflowSourceSessionId, [
+          makeWorkflowSessionMetaEntry(workflowSourceSessionId, workflowWorkDir),
+          makeUserEntry('Existing workflow source invalid'),
+        ])
+        const sourceRawBefore = await fs.readFile(sourceFilePath, 'utf-8')
+        const service = createLinkService()
+
+        await expect(service.createLinkedWorkflowSession(workflowSourceSessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId: 'service-linked-workflow-source-invalid-0001',
+        })).rejects.toMatchObject({ statusCode: 400, code: 'WORKFLOW_SOURCE_INVALID' })
+        expect(await fs.readFile(sourceFilePath, 'utf-8')).toBe(sourceRawBefore)
+
+        const activeSource = await createSourceDialogueSession('clear')
+        await expect(createLinkService({
+          isSourceActive: (sessionId) => sessionId === activeSource.sessionId,
+        }).createLinkedWorkflowSession(activeSource.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId: 'service-linked-active-source-0001',
+        })).rejects.toMatchObject({ statusCode: 409, code: 'WORKFLOW_SOURCE_ACTIVE' })
+        await expectSourceSessionUnchanged(activeSource)
+
+        const inheritSource = await createSourceDialogueSession('inherit')
+        await expect(createLinkService({ inheritMaxCharacters: 1 }).createLinkedWorkflowSession(inheritSource.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'inherit',
+          clientRequestId: 'service-linked-inherit-too-large-0001',
+        })).rejects.toMatchObject({ statusCode: 422, code: 'WORKFLOW_CONTEXT_TOO_LARGE' })
+        await expectSourceSessionUnchanged(inheritSource)
+
+        const summarizeSource = await createSourceDialogueSession('summarize')
+        await expect(service.createLinkedWorkflowSession(summarizeSource.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'summarize',
+          clientRequestId: 'service-linked-summary-unavailable-0001',
+        })).rejects.toMatchObject({
+          statusCode: 503,
+          code: 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE',
+        })
+        await expectSourceSessionUnchanged(summarizeSource)
+      })
+
+      it('WorkflowSessionLinkService should replay duplicate clientRequestId deterministically', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const clientRequestId = 'service-linked-idempotency-0001'
+        const request = {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId,
+        }
+        const service = createLinkService()
+
+        const first = await service.createLinkedWorkflowSession(source.sessionId, request)
+        const second = await service.createLinkedWorkflowSession(source.sessionId, request)
+
+        expect(first.created).toBe(true)
+        expect(second.created).toBe(false)
+        expect(second.sessionId).toBe(first.sessionId)
+        expect(second.workflow).toEqual(first.workflow)
+        expect(second.link).toEqual(first.link)
+        const snapshotFiles = (await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')))
+          .filter((filePath) => filePath.endsWith(`${path.sep}state.json`))
+        expect(snapshotFiles).toHaveLength(1)
+        await expectSourceSessionUnchanged(source)
+      })
+
+      it('POST /api/sessions/:id/workflow/start clear should create a linked target without changing source transcript or metadata', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const clientRequestId = 'linked-clear-0001'
+
+        const res = await startLinkedWorkflow(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId,
+        })
+        expect(res.status).toBe(201)
+
+        const body = await res.json() as {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+        await expectLinkedWorkflowCreated(body, source, 'clear', clientRequestId)
+        expect(body.link?.summaryArtifactId).toBeUndefined()
+        const targetState = await readWorkflowSessionState(body.sessionId!)
+        expect(JSON.stringify(targetState)).not.toContain('Discuss linked workflow clear')
+        await expectSourceSessionUnchanged(source)
+      })
+
+      it('POST /api/sessions/:id/workflow/start inherit should create target provenance and preserve the source session', async () => {
+        const source = await createSourceDialogueSession('inherit')
+        const clientRequestId = 'linked-inherit-0001'
+
+        const res = await startLinkedWorkflow(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'inherit',
+          clientRequestId,
+        })
+        expect(res.status).toBe(201)
+
+        const body = await res.json() as {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+        await expectLinkedWorkflowCreated(body, source, 'inherit', clientRequestId)
+        const targetState = await readWorkflowSessionState(body.sessionId!)
+        expect(targetState.link).toMatchObject({
+          contextStrategy: 'inherit',
+          sourceMessageCount: 2,
+        })
+        expect(JSON.stringify(targetState)).toContain('Discuss linked workflow inherit')
+        await expectSourceSessionUnchanged(source)
+      })
+
+      it('POST /api/sessions/:id/workflow/start summarize should return a visible unavailable error without fallback or source mutation', async () => {
+        const source = await createSourceDialogueSession('summarize')
+        const workflowRoot = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')
+        const beforeArtifacts = await collectFiles(workflowRoot)
+
+        const res = await startLinkedWorkflow(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'summarize',
+          summaryInstructions: 'Require a provider-backed summary.',
+          clientRequestId: 'linked-summary-unavailable-0001',
+        })
+        expect(res.status).toBe(503)
+
+        const body = await res.json() as { error?: unknown; code?: unknown; message?: unknown }
+        expectWorkflowErrorShape(body, 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE')
+        expect(String(body.message)).toContain('summar')
+        expect(await collectFiles(workflowRoot)).toEqual(beforeArtifacts)
+        await expectSourceSessionUnchanged(source)
+      })
+
+      it('POST /api/sessions/:id/workflow/start should reject workflow source sessions without changing their snapshot', async () => {
+        const sourceSessionId = crypto.randomUUID()
+        const workDir = path.join(tmpDir, 'linked-workflow-source-is-workflow')
+        const sourceFilePath = await writeSessionFile(sanitizePath(workDir), sourceSessionId, [
+          makeWorkflowSessionMetaEntry(sourceSessionId, workDir),
+          makeUserEntry('Existing workflow session must not become a linked source'),
+        ])
+        const sourceState = makePendingWorkflowTransitionState(sourceSessionId)
+        await writeWorkflowSessionState(sourceSessionId, sourceState)
+        const sourceRawBefore = await fs.readFile(sourceFilePath, 'utf-8')
+
+        const res = await startLinkedWorkflow(sourceSessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId: 'linked-workflow-source-invalid-0001',
+        })
+        expect(res.status).toBe(400)
+
+        const body = await res.json() as { error?: unknown; code?: unknown; message?: unknown }
+        expectWorkflowErrorShape(body, 'WORKFLOW_SOURCE_INVALID')
+        expect(await readWorkflowSessionState(sourceSessionId)).toEqual(sourceState)
+        expect(await fs.readFile(sourceFilePath, 'utf-8')).toBe(sourceRawBefore)
+      })
+
+      it('POST /api/sessions/:id/workflow/start should reject active source sessions without creating a target', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const workflowRoot = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')
+        const beforeArtifacts = await collectFiles(workflowRoot)
+        const sessionsMap = (conversationService as any).sessions as Map<string, { workDir: string }>
+
+        sessionsMap.set(source.sessionId, { workDir: source.workDir })
+
+        try {
+          const res = await startLinkedWorkflow(source.sessionId, {
+            workflow: {
+              templateId: 'agent-development',
+              templateSource: 'builtin',
+              initialPhaseId: 'discussion',
+            },
+            contextStrategy: 'clear',
+            clientRequestId: 'linked-active-source-0001',
+          })
+          expect(res.status).toBe(409)
+
+          const body = await res.json() as { error?: unknown; code?: unknown; message?: unknown }
+          expectWorkflowErrorShape(body, 'WORKFLOW_SOURCE_ACTIVE')
+          expect(await collectFiles(workflowRoot)).toEqual(beforeArtifacts)
+          await expectSourceSessionUnchanged(source)
+        } finally {
+          sessionsMap.delete(source.sessionId)
+        }
+      })
+
+      it('POST /api/sessions/:id/workflow/start should replay duplicate clientRequestId without creating another target snapshot', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const clientRequestId = 'linked-idempotency-0001'
+        const request = {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId,
+        }
+
+        const firstRes = await startLinkedWorkflow(source.sessionId, request)
+        expect(firstRes.status).toBe(201)
+        const first = await firstRes.json() as {
+          sessionId?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+
+        const secondRes = await startLinkedWorkflow(source.sessionId, request)
+        expect(secondRes.status).toBe(200)
+        const second = await secondRes.json() as {
+          sessionId?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+
+        expect(second.sessionId).toBe(first.sessionId)
+        expect(second.workflow).toEqual(first.workflow)
+        expect(second.link).toEqual(first.link)
+
+        const snapshotFiles = (await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')))
+          .filter((filePath) => filePath.endsWith(`${path.sep}state.json`))
+        expect(snapshotFiles).toHaveLength(1)
+        await expectSourceSessionUnchanged(source)
+      })
     })
 
     it('POST /api/sessions/:id/workflow/transition should advance a pending workflow confirmation', async () => {
@@ -3166,7 +3704,7 @@ describe('Sessions API', () => {
 
       for (const testCase of cases) {
         const projectsBefore = await collectFiles(path.join(tmpDir, 'projects'))
-        const workflowArtifactsBefore = await collectFiles(path.join(tmpDir, 'cc-haha', 'workflow-sessions'))
+        const workflowArtifactsBefore = await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions'))
 
         const res = await fetch(`${baseUrl}/api/sessions`, {
           method: 'POST',
@@ -3180,14 +3718,14 @@ describe('Sessions API', () => {
         expectNoAbsolutePathLeak(body)
         expect(await collectFiles(path.join(tmpDir, 'projects')), testCase.name).toEqual(projectsBefore)
         expect(
-          await collectFiles(path.join(tmpDir, 'cc-haha', 'workflow-sessions')),
+          await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')),
           testCase.name,
         ).toEqual(workflowArtifactsBefore)
       }
     })
 
     it('GET /api/workflows/templates should return builtin templates and invalid user template issues', async () => {
-      const workflowConfigPath = path.join(tmpDir, 'cc-haha', 'workflows.json')
+      const workflowConfigPath = path.join(tmpDir, 'cc-jiangxia', 'workflows.json')
       await fs.mkdir(path.dirname(workflowConfigPath), { recursive: true })
       await fs.writeFile(
         workflowConfigPath,
@@ -3494,7 +4032,7 @@ describe('Sessions API', () => {
       expect(res.status).toBe(409)
       expectWorkflowErrorShape(body, 'WORKFLOW_STATE_CONFLICT')
 
-      const persistedStatePath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+      const persistedStatePath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
       const stateAfter = JSON.parse(await fs.readFile(persistedStatePath, 'utf-8')) as Record<string, unknown>
       expect(stateAfter.activePhaseId).toBe(stateBefore.activePhaseId)
       expect(stateAfter.workflowStatus).toBe(stateBefore.workflowStatus)
@@ -3577,7 +4115,7 @@ describe('Sessions API', () => {
         }),
         makeAssistantEntry('Workflow completed before report recovery was checked.'),
       ])
-      const reportDir = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports')
+      const reportDir = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'reports')
       await fs.mkdir(reportDir, { recursive: true })
       const filesBefore = await collectFiles(reportDir)
 
@@ -3605,7 +4143,7 @@ describe('Sessions API', () => {
           reportRef: reportPointer,
         }),
       ])
-      const reportPath = path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+      const reportPath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'reports', 'final.json')
       await fs.mkdir(path.dirname(reportPath), { recursive: true })
       await fs.copyFile(
         path.join(process.cwd(), 'src/server/services/__fixtures__/workflow-sessions/corrupt-final-report.json'),

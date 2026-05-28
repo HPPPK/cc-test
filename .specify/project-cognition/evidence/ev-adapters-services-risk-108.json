@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-108",
+  "type": "source_analysis",
+  "source_path": "src/services/api/grove.ts",
+  "summary": "grove.ts defines AccountSettings, GroveConfig, ApiResult, getGroveSettings, markGroveNoticeViewed, updateGroveSettings and imports axios, lodash-es/memoize.js, src/utils/auth.js, src/utils/debug.js, src/utils/gracefulShutdown.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AccountSettings",
+    "GroveConfig",
+    "ApiResult",
+    "getGroveSettings",
+    "markGroveNoticeViewed",
+    "updateGroveSettings"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

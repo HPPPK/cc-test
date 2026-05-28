@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-33",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/MemorySettings.tsx",
+  "summary": "Memory page is an adjacent settings surface with resource tree, editor, and preview panes.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "MemorySettings",
+    "pendingMemoryPath",
+    "resolveMarkdownMemoryLink"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

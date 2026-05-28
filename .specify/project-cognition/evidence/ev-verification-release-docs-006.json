@@ -1,0 +1,19 @@
+{
+  "id": "ev-verification-release-docs-006",
+  "type": "source_analysis",
+  "source_path": "desktop/package.json",
+  "summary": "Desktop package declares the web build/test/lint/Tauri scripts and desktop app version.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "name",
+    "version",
+    "build",
+    "test",
+    "lint",
+    "tauri"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

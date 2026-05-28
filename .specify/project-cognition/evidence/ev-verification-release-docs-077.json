@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-077",
+  "type": "source_analysis",
+  "source_path": "docs/.vitepress/theme/custom.css",
+  "summary": "Custom CSS provides the docs site visual overrides.",
+  "detail": "",
+  "quotes_or_symbols": [
+    ":root",
+    ".vitepress"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

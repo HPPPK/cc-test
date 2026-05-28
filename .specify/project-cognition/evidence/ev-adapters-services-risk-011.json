@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-011",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/session-store.test.ts",
+  "summary": "Test coverage for session-store.test.ts exercises returns null for unknown chatId; stores and retrieves a session; overwrites existing entry on set; deletes an entry",
+  "detail": "",
+  "quotes_or_symbols": [
+    "returns null for unknown chatId",
+    "stores and retrieves a session",
+    "overwrites existing entry on set",
+    "deletes an entry"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -10,6 +10,7 @@ import type {
   CompletionSubmission,
   WorkflowSessionState,
 } from '../../server/services/workflowTypes.js'
+import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 
 const evidenceSchema = z.record(z.string(), z.unknown())
@@ -74,8 +75,8 @@ function messageForStatus(status: Output['status']): string {
 }
 
 function getDesktopWorkflowApiContext(): { serverUrl: string; sessionId: string } | null {
-  const serverUrl = process.env.CC_HAHA_DESKTOP_SERVER_URL?.trim()
-  const sessionId = process.env.CC_HAHA_WORKFLOW_SESSION_ID?.trim()
+  const serverUrl = getJiangxiaEnvValue('DESKTOP_SERVER_URL')?.trim()
+  const sessionId = getJiangxiaEnvValue('WORKFLOW_SESSION_ID')?.trim()
   if (!serverUrl || !sessionId) return null
   return { serverUrl: serverUrl.replace(/\/+$/, ''), sessionId }
 }

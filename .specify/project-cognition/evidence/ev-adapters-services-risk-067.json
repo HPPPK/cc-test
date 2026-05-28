@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-067",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/protocol.ts",
+  "summary": "protocol.ts defines WECHAT_DEFAULT_BASE_URL, WECHAT_DEFAULT_BOT_TYPE, WechatQrStartResult, WechatQrPollResult, WechatMessageItem, WechatCdnMedia and imports node:crypto",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WECHAT_DEFAULT_BASE_URL",
+    "WECHAT_DEFAULT_BOT_TYPE",
+    "WechatQrStartResult",
+    "WechatQrPollResult",
+    "WechatMessageItem",
+    "WechatCdnMedia"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

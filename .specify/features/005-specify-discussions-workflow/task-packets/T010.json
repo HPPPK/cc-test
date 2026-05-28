@@ -1,0 +1,63 @@
+{
+  "id": "T010",
+  "title": "Add Settings Workflows tab routing and localized labels",
+  "agent": "executor",
+  "depends_on": [
+    "T009: desktop workflow template API/types implemented"
+  ],
+  "parallel_safe": true,
+  "story": "US1",
+  "objective": "Add the Workflows Settings tab using existing SettingsTab and i18n patterns.",
+  "context_navigation": {
+    "design_decision": "plan.md#Locked Planning Decisions",
+    "data_model": "data-model.md#Workflow Template Draft",
+    "api_contract": "contracts/workflow-template-api.md#Compatibility",
+    "reference_implementation": "desktop/src/pages/Settings.tsx"
+  },
+  "write_scope": [
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/stores/uiStore.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    "desktop/src/pages/Settings.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/__tests__/*Settings.test.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.tsx"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/pages/Settings.tsx （修改）",
+    "desktop/src/stores/uiStore.ts （修改）",
+    "desktop/src/i18n/locales/en.ts （修改）",
+    "desktop/src/i18n/locales/zh.ts （修改）",
+    "desktop/src/pages/Settings.test.tsx （新建/修改）"
+  ],
+  "anti_goals": [
+    "Do not implement the full editor in Settings.tsx.",
+    "Do not use labels other than Workflows.",
+    "Do not remove existing Settings tabs."
+  ],
+  "acceptance_criteria": [
+    "Settings can route to a Workflows tab.",
+    "English and Chinese labels exist.",
+    "Existing pendingSettingsTab behavior supports Workflows."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

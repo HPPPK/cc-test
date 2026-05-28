@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-01",
+  "type": "source_analysis",
+  "source_path": "desktop/src/__tests__/agentsSettings.test.tsx",
+  "summary": "Settings tests keep agent/skill/plugin tabs available around the workflow tab addition.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "Settings",
+    "switchToAgentsTab",
+    "switchToSkillsTab"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

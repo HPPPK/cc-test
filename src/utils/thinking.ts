@@ -7,6 +7,7 @@ import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getJiangxiaEnvValue } from './appIdentity.js'
 import { getRuntimeEnvValue } from './runtimeEnv.js'
 
 export type ThinkingConfig =
@@ -183,5 +184,8 @@ export function shouldEnableThinkingByDefault(): boolean {
 }
 
 export function shouldSendExplicitDisabledThinking(): boolean {
-  return isEnvTruthy(getRuntimeEnvValue('CC_HAHA_SEND_DISABLED_THINKING'))
+  return isEnvTruthy(
+    getRuntimeEnvValue('CC_JIANGXIA_SEND_DISABLED_THINKING') ??
+    getJiangxiaEnvValue('SEND_DISABLED_THINKING'),
+  )
 }

@@ -77,12 +77,12 @@ Use `execution_surface: native-subagents`.
 Goal: Read the current stage artifact, project cognition artifact, or explicitly requested compatibility/export atlas artifact and explain it in plain language so the user can understand what the system currently believes, what is decided, what is still open, and what the next phase or next relevant view will do.
 
 1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly` from repo root once (`--json --paths-only` / `-Json -PathsOnly`) and parse the available feature paths.
-   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command explain --ensure-worktree` before guessing from branch-only context.
+   - If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify lane resolve --command explain --ensure-worktree` before guessing from branch-only context.
    - When lane resolution returns a materialized lane worktree, explain artifacts from that isolated worktree context so the explanation stays attached to the active feature lane.
 
 2. Resolve the stage artifact deterministically:
    - If the user explicitly names a stage, honor it.
-   - If the user explicitly asks about project cognition, touched-area state, or brownfield runtime truth, resolve `.specify/project-cognition/status.json` and the smallest matching slice first.
+   - If the user explicitly asks about project cognition, touched-area state, or brownfield runtime truth, resolve `.specify/project-cognition/status.json` and the smallest matching query-backed artifact first.
    - Explain handbook artifacts only when the user explicitly requests the compatibility/export surfaces themselves.
    - If the user explicitly asks for a compatibility/export handbook, `PROJECT-HANDBOOK.md`, `architecture`, `structure`, `conventions`, `integrations`, `workflows`, `testing`, or `operations` artifact, resolve that artifact directly.
    - Explain the architecture, cognition, or compatibility/export atlas artifact directly instead of forcing a planning-stage fallback.
@@ -150,3 +150,14 @@ The explanation must remain stage-aware:
 - Use the user's current language for user-visible output unless literal command names, file paths, or fixed status values must remain unchanged.
 - Prefer clarity over jargon.
 - Do not invent missing state; if something is absent, say it is absent.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

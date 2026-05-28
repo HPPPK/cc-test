@@ -4,6 +4,13 @@
 node_modules
 openspec
 .DS_Store
+Thumbs.db
+dist/
+build/
+*.log
+*.tmp
+*.swp
+.vscode/
 
 # Computer Use runtime (auto-generated)
 .runtime/
@@ -23,9 +30,8 @@ extracted-natives/
 # E2E screenshots
 e2e-*.png
 
-# Quality gate reports
-artifacts/quality-runs/
-artifacts/coverage/
+# Local run outputs and quality gate reports
+artifacts/
 
 # Desktop build output
 desktop/dist/

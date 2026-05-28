@@ -1,0 +1,330 @@
+{
+  "lane_id": "dependency-graph-analysis",
+  "status": "accepted_candidate",
+  "summary": "Safe implementation sequence for feature 006 starts by freezing shared contracts and tests, then extracts shared validation before building the authoring service, API endpoint, tool, registration, and final desktop/server routing verification. The critical blockers are validation extraction, basis-hash/stale-write primitives, phase-policy mutation gating, and authoring service contract stabilization before API/tool consumers are wired.",
+  "dependency_edges": [
+    {
+      "from": "T001",
+      "to": "T002",
+      "reason": "Contract fixtures and valid template factories should be available before extracting validation so parity assertions can be written against existing registry/API behavior."
+    },
+    {
+      "from": "T002",
+      "to": "T003",
+      "reason": "Shared validation extraction must land before the field guide can assert required fields, allowed values, unsupported shapes, and issue-code repair hints without drifting."
+    },
+    {
+      "from": "T002",
+      "to": "T004",
+      "reason": "Authoring service validation, conflict checks, and no-write mutation paths must call the shared validator rather than copying registry/API validation."
+    },
+    {
+      "from": "T004",
+      "to": "T005",
+      "reason": "Basis hash helpers are part of the authoring service contract and must exist before update/delete stale-write behavior is finalized."
+    },
+    {
+      "from": "T005",
+      "to": "T006",
+      "reason": "Create/update/duplicate/delete orchestration depends on stable basis-hash and validation result shapes."
+    },
+    {
+      "from": "T006",
+      "to": "T007",
+      "reason": "The local authoring API route should wrap the service contract after service result envelopes, status mapping, and no-write behavior are stable."
+    },
+    {
+      "from": "T002",
+      "to": "T007",
+      "reason": "Existing manual API endpoints should be migrated to shared validation before the new authoring endpoint is tested for parity."
+    },
+    {
+      "from": "T008",
+      "to": "T009",
+      "reason": "Operation-level phase-policy helper must exist before tool input validation can deny mutating operations without blocking read-only operations."
+    },
+    {
+      "from": "T006",
+      "to": "T009",
+      "reason": "Tool direct-service calls and result rendering depend on the finalized authoring service operation/result contract."
+    },
+    {
+      "from": "T007",
+      "to": "T009",
+      "reason": "Tool desktop-server routing depends on the authoring API endpoint path and response envelope."
+    },
+    {
+      "from": "T009",
+      "to": "T010",
+      "reason": "Global tool registration should happen only after tool metadata, schema, permissions, phase gating, and routing tests exist."
+    },
+    {
+      "from": "T007",
+      "to": "T011",
+      "reason": "Desktop-server routing tests need the server endpoint available before verifying no direct-write fallback when CC_JIANGXIA_DESKTOP_SERVER_URL is set."
+    },
+    {
+      "from": "T009",
+      "to": "T011",
+      "reason": "Desktop-server routing is tool behavior and must be verified through the tool call path."
+    },
+    {
+      "from": "T006",
+      "to": "T012",
+      "reason": "Runtime snapshot safety checks depend on mutating service operations existing so tests can assert they do not call or mutate workflow runtime/session state."
+    },
+    {
+      "from": "T010",
+      "to": "T013",
+      "reason": "Final integration verification should run only after registration makes the new built-in tool visible in the assembled tool pools."
+    },
+    {
+      "from": "T011",
+      "to": "T013",
+      "reason": "Final verification must include the desktop/server route and failure behavior before PR-readiness gates."
+    },
+    {
+      "from": "T012",
+      "to": "T013",
+      "reason": "Final verification must prove active/historical workflow sessions remain untouched by authoring mutations."
+    }
+  ],
+  "parallel_batches": [
+    {
+      "id": "B1",
+      "tasks": [
+        "T001"
+      ],
+      "join_point": "JP1",
+      "safety_reason": "Initial contract/test fixture work is read-only or test-only and establishes stable expected behavior before production extraction."
+    },
+    {
+      "id": "B2",
+      "tasks": [
+        "T003",
+        "T008"
+      ],
+      "join_point": "JP3",
+      "safety_reason": "Field guide alignment and phase-policy helper work touch separate service files after shared validation is available; neither should mutate persistence or route behavior."
+    },
+    {
+      "id": "B3",
+      "tasks": [
+        "T007",
+        "T009"
+      ],
+      "join_point": "JP5",
+      "safety_reason": "API wrapper and tool implementation can proceed in parallel once the service contract is stable, but both must join before registration and desktop routing verification."
+    },
+    {
+      "id": "B4",
+      "tasks": [
+        "T011",
+        "T012"
+      ],
+      "join_point": "JP6",
+      "safety_reason": "Desktop-server routing tests and runtime snapshot safety tests validate independent integration risks after API/tool/service surfaces exist."
+    }
+  ],
+  "join_points": [
+    {
+      "id": "JP1",
+      "after": [
+        "T001"
+      ],
+      "validation_target": "Baseline fixtures and existing behavior coverage for workflow template registry/API/tool patterns",
+      "validation_command": "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/services/workflowToolPolicy.test.ts",
+      "pass_condition": "Existing tests pass before production behavior is refactored; new fixture helpers do not change runtime behavior."
+    },
+    {
+      "id": "JP2",
+      "after": [
+        "T002"
+      ],
+      "validation_target": "Shared validation extraction parity",
+      "validation_command": "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+      "pass_condition": "Registry and manual API validation still reject/normalize the same required fields, builtin conflicts, duplicate ids, unsupported shapes, and malformed configs."
+    },
+    {
+      "id": "JP3",
+      "after": [
+        "T003",
+        "T008"
+      ],
+      "validation_target": "Guide drift and phase-policy mutation gating",
+      "validation_command": "bun test src/server/services/workflowTemplateAuthoringGuide.test.ts src/server/services/workflowToolPolicy.test.ts",
+      "pass_condition": "Guide tests cover required groups/allowed values/unsupported shapes/repair hints, and policy tests prove read-only operations stay allowed while mutations are denied outside allowed phases."
+    },
+    {
+      "id": "JP4",
+      "after": [
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "validation_target": "Authoring service contract, stale-write protocol, no-write failures, builtin copy, and persistence boundaries",
+      "validation_command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+      "pass_condition": "All service operations return the required envelope; invalid, stale, builtin, malformed-config, missing-target, and conflict cases keep workflow config unchanged."
+    },
+    {
+      "id": "JP5",
+      "after": [
+        "T007",
+        "T009",
+        "T010"
+      ],
+      "validation_target": "Authoring API, tool metadata/schema/result rendering, and global registration",
+      "validation_command": "bun test src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "pass_condition": "Authoring endpoint maps service results correctly; tool read-only/destructive/concurrency metadata is correct; registered tool appears in base/assembled pools only after tests pass."
+    },
+    {
+      "id": "JP6",
+      "after": [
+        "T011",
+        "T012"
+      ],
+      "validation_target": "Desktop-server routing, no silent fallback, Settings refetch compatibility, and workflow session snapshot safety",
+      "validation_command": "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateAuthoringService.test.ts",
+      "pass_condition": "When CC_JIANGXIA_DESKTOP_SERVER_URL is set the tool posts to /api/workflows/templates/authoring, failed endpoint responses are no-write failures, successful server writes are visible via list/refetch, and runtime session state is not mutated."
+    },
+    {
+      "id": "JP7",
+      "after": [
+        "T013"
+      ],
+      "validation_target": "Full server/tool quality gate for implementation readiness",
+      "validation_command": "bun run check:server && bun run verify",
+      "pass_condition": "Server check and non-live PR gate pass, or blockers are recorded with latest artifact paths and failed lane logs."
+    }
+  ],
+  "serial_tasks": [
+    {
+      "task": "T001",
+      "reason": "Create/organize test fixtures and contract helper expectations first so later refactors can prove no behavior drift."
+    },
+    {
+      "task": "T002",
+      "reason": "Extract shared workflow template validation before authoring service/API/tool work; this is the main foundational blocker."
+    },
+    {
+      "task": "T004",
+      "reason": "Define authoring operation/result types and service skeleton after validation extraction so all consumers share one contract."
+    },
+    {
+      "task": "T005",
+      "reason": "Implement canonical SHA-256 basis-hash helpers before update/delete mutation orchestration."
+    },
+    {
+      "task": "T006",
+      "reason": "Implement create/update/duplicate/delete service behavior only after validation and stale-write primitives are stable."
+    },
+    {
+      "task": "T010",
+      "reason": "Register the tool globally only after tool tests pass; premature registration risks exposing an unguarded mutating capability."
+    },
+    {
+      "task": "T013",
+      "reason": "Run final focused and project gates after all joins; this is the readiness gate and should not be parallelized with source edits."
+    }
+  ],
+  "verification_gates": [
+    {
+      "phase": "foundation",
+      "commands": [
+        "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+        "bun test src/server/services/workflowToolPolicy.test.ts"
+      ],
+      "purpose": "Prove baseline registry/API/policy behavior before validation extraction and policy changes."
+    },
+    {
+      "phase": "US1",
+      "commands": [
+        "bun test src/server/services/workflowTemplateAuthoringGuide.test.ts",
+        "bun test src/server/services/workflowTemplateAuthoringService.test.ts"
+      ],
+      "purpose": "Verify guide/list/inspect/validate and create-from-conversation support with shared validation and deterministic result envelopes."
+    },
+    {
+      "phase": "US2",
+      "commands": [
+        "bun test src/server/services/workflowTemplateAuthoringService.test.ts",
+        "bun test src/server/__tests__/workflowTemplates.test.ts"
+      ],
+      "purpose": "Verify update, stale-write rejection, builtin copy-then-edit, unknown-field preservation, and no-write failure behavior."
+    },
+    {
+      "phase": "US3",
+      "commands": [
+        "bun test src/server/services/workflowToolPolicy.test.ts",
+        "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "purpose": "Verify global tool availability with operation-level read-only/mutating/destructive metadata and active workflow phase-policy denial."
+    },
+    {
+      "phase": "US4",
+      "commands": [
+        "bun test src/server/__tests__/workflowTemplates.test.ts",
+        "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "purpose": "Verify local desktop/server authoring endpoint, desktop URL routing, no silent direct-write fallback, and Settings refetch compatibility."
+    },
+    {
+      "phase": "final",
+      "commands": [
+        "bun run check:server",
+        "bun run verify"
+      ],
+      "purpose": "Run the required server/tool quality gate and final non-live project PR verification."
+    }
+  ],
+  "risk_checkpoints": [
+    {
+      "risk": "Validation drift between registry, manual API, authoring API, and tool.",
+      "checkpoint": "JP2 requires shared validation parity tests before any authoring service or route is accepted.",
+      "owner_task": "T002"
+    },
+    {
+      "risk": "Authoring service writes over malformed config, invalid drafts, stale manual edits, or builtin templates.",
+      "checkpoint": "JP4 requires no-write assertions for malformed config, invalid candidate, builtin mutation/delete, conflicts, missing targets, and stale basis hash.",
+      "owner_task": "T006"
+    },
+    {
+      "risk": "Global registration exposes mutating authoring in forbidden workflow phases.",
+      "checkpoint": "JP3 and JP5 require operation-level phase-policy tests before registration.",
+      "owner_task": "T008"
+    },
+    {
+      "risk": "Whole-tool phase filtering blocks safe guide/list/inspect/validate operations.",
+      "checkpoint": "Policy tests must prove read-only operations remain allowed even when mutation is denied.",
+      "owner_task": "T008"
+    },
+    {
+      "risk": "Desktop-launched tool direct-writes and leaves desktop server registry cache stale.",
+      "checkpoint": "JP6 requires CC_JIANGXIA_DESKTOP_SERVER_URL tests proving POST /api/workflows/templates/authoring is used and direct-write fallback is not used on endpoint failure.",
+      "owner_task": "T011"
+    },
+    {
+      "risk": "Tool registration happens before schema, metadata, routing, and permission tests.",
+      "checkpoint": "T010 is serial and depends on JP5 preconditions from tool/API tests.",
+      "owner_task": "T010"
+    },
+    {
+      "risk": "Authoring mutations accidentally touch active or historical workflow session snapshots.",
+      "checkpoint": "JP6 requires service/runtime safety assertions that WorkflowRuntimeService/session state is not called or mutated by authoring operations.",
+      "owner_task": "T012"
+    },
+    {
+      "risk": "Field guide becomes prompt text that drifts from validation rules.",
+      "checkpoint": "JP3 requires guide drift tests against required fields, allowed values, unsupported shapes, and repairable issue codes.",
+      "owner_task": "T003"
+    }
+  ],
+  "notes_for_leader": [
+    "Suggested task IDs are provisional; preserve the dependency shape if renumbering.",
+    "Do not let API route work begin before the authoring service result envelope is stable.",
+    "Do not let tool registration happen before tool tests cover read-only, destructive, concurrency-safe=false, permission classifier text, phase denial, direct-service routing, and desktop-server routing.",
+    "Keep validation extraction as an early serial blocker; a tool-only validator violates the plan and creates the highest drift risk.",
+    "Treat desktop source edits as optional; if implementation touches desktop/src, add same-area Vitest/Testing Library coverage and run bun run check:desktop.",
+    "Final implementation handoff should include changed files, tests added, quality report path, coverage report path, pass/fail/skip counts, and explicit live-provider blocker if any live lane is unavailable."
+  ]
+}

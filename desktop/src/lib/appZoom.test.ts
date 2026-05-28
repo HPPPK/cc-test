@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   APP_ZOOM_STORAGE_KEY,
+  LEGACY_HAHA_APP_ZOOM_STORAGE_KEY,
+  LEGACY_HAHA_UI_ZOOM_STORAGE_KEY,
   LEGACY_UI_ZOOM_STORAGE_KEY,
   applyAppZoomLevel,
   getAppZoomKeyboardAction,
@@ -46,6 +48,24 @@ describe('appZoom', () => {
     await initializeAppZoom()
 
     expect(document.documentElement.getAttribute('data-app-zoom-percent')).toBe('125')
+    expect(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)).toBeNull()
+  })
+
+  it('reads the legacy cc-haha app zoom key when the current key is absent', async () => {
+    window.localStorage.setItem(LEGACY_HAHA_APP_ZOOM_STORAGE_KEY, '1.35')
+
+    await initializeAppZoom()
+
+    expect(document.documentElement.getAttribute('data-app-zoom-percent')).toBe('135')
+    expect(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)).toBeNull()
+  })
+
+  it('reads the legacy cc-haha UI zoom key when newer keys are absent', async () => {
+    window.localStorage.setItem(LEGACY_HAHA_UI_ZOOM_STORAGE_KEY, '1.45')
+
+    await initializeAppZoom()
+
+    expect(document.documentElement.getAttribute('data-app-zoom-percent')).toBe('145')
     expect(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)).toBeNull()
   })
 

@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-001",
+  "type": "source_analysis",
+  "source_path": ".github/workflows/build-desktop-dev.yml",
+  "summary": "Development desktop build workflow fans out platform matrix builds, disables updater artifacts, and uploads CI bundles as artifacts.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "workflow_dispatch",
+    "bunx tauri build",
+    "createUpdaterArtifacts:false",
+    "desktop/build-artifacts"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

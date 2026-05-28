@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-080",
+  "type": "source_analysis",
+  "source_path": "docs/agent/02-implementation.md",
+  "summary": "Agent docs describe multi-agent usage, implementation internals, and framework architecture, including teams and spawn flows.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "spawnTeammate()",
+    "TeamFile",
+    "src/tools/shared/spawnMultiAgent.ts"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

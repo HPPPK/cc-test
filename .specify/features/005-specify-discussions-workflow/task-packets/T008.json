@@ -1,0 +1,67 @@
+{
+  "id": "T008",
+  "title": "Add workflow template mutation API and route integration",
+  "agent": "api-reviewer",
+  "depends_on": [
+    "T004: workflow template API tests added",
+    "T007: registry validation/write behavior implemented"
+  ],
+  "parallel_safe": false,
+  "story": null,
+  "objective": "Implement server-owned workflow template mutation API routes under /api/workflows/templates and route them without breaking GET list compatibility.",
+  "context_navigation": {
+    "design_decision": "plan.md#Boundary Ownership",
+    "data_model": "data-model.md#Import Preview",
+    "api_contract": "contracts/workflow-template-api.md#Base Path",
+    "reference_implementation": "src/server/api/sessions.ts"
+  },
+  "write_scope": [
+    "src/server/api/workflowTemplates.ts",
+    "src/server/router.ts",
+    "src/server/api/sessions.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl",
+    ".mcp.json"
+  ],
+  "expected_outputs": [
+    "src/server/api/workflowTemplates.ts （新建）",
+    "src/server/router.ts （修改）",
+    "src/server/api/sessions.ts （修改/精简，如 extracting GET handler）",
+    "src/server/__tests__/workflowTemplates.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not create /api/settings/workflows.",
+    "Do not allow built-in edit/delete.",
+    "Do not trust preview objects during import commit.",
+    "Do not expose protected absolute paths."
+  ],
+  "acceptance_criteria": [
+    "GET /api/workflows/templates remains backward compatible.",
+    "All contract routes validate request bodies and return stable error codes.",
+    "Preview does not write.",
+    "Import commit recomputes validation from payload and selections.",
+    "Unsupported methods return 405."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-095",
+  "type": "source_analysis",
+  "source_path": "src/services/api/adminRequests.ts",
+  "summary": "adminRequests.ts defines AdminRequestType, AdminRequestStatus, AdminRequestSeatUpgradeDetails, AdminRequestCreateParams, AdminRequest, createAdminRequest and imports axios, ../../constants/oauth.js, ../../utils/teleport/api.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AdminRequestType",
+    "AdminRequestStatus",
+    "AdminRequestSeatUpgradeDetails",
+    "AdminRequestCreateParams",
+    "AdminRequest",
+    "createAdminRequest"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

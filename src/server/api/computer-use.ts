@@ -433,7 +433,7 @@ async function runSetup(): Promise<SetupResult> {
 }
 
 // ============================================================================
-// Authorized Apps configuration — stored in ~/.claude/cc-haha/computer-use-config.json
+// Authorized Apps configuration — stored in ~/.claude/cc-jiangxia/computer-use-config.json
 // ============================================================================
 
 type AuthorizedApp = {

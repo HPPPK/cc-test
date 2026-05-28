@@ -1,0 +1,15 @@
+{
+  "id": "ev-desktop-workflow-ui-11",
+  "type": "source_analysis",
+  "source_path": "desktop/src/components/workflow/WorkflowComponents.tsx",
+  "summary": "Workflow barrel re-exports the picker, status panel, report link, transition controls, and related public types.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "export { WorkflowTemplatePicker }",
+    "export type { WorkflowTransitionCommand }"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -11,6 +11,7 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 import { ApiError } from '../middleware/errorHandler.js'
 import { sanitizePath as sanitizePortablePath } from '../../utils/sessionStoragePortable.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import type { FileHistorySnapshot } from '../../utils/fileHistory.js'
 import { findCanonicalGitRoot } from '../../utils/git.js'
 import { calculateUSDCost, MODEL_COSTS } from '../../utils/modelCost.js'
@@ -247,7 +248,7 @@ export class SessionService {
   }
 
   private getWorkflowSessionDir(sessionId: string): string {
-    return path.join(this.getConfigDir(), 'cc-haha', 'workflow-sessions', sessionId)
+    return getAppStoragePath(this.getConfigDir(), 'workflow-sessions', sessionId)
   }
 
   /**

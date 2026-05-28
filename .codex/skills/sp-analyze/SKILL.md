@@ -66,7 +66,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness drives routing. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect only the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, `needs_update`, `needs_rebuild`, or `blocked`, follow the workflow's routing rules before asserting consequence behavior. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
 
 Required output when the gate triggers:
 
@@ -153,12 +153,12 @@ When recommending manual implementation resumption to the user, tell them to run
 - Keep `workflow-state.md` current as the durable gate-state source of truth for whether implementation may proceed, which stage must reopen, and what evidence supports the decision.
 - Verify the analysis report, cleared or blocked gate result, and any durable artifact outcomes before final reporting instead of relying on chat narration.
 - Update durable analysis state before compaction-risk transitions, large findings synthesis, remediation handoffs, or any stop where resume will depend on more than the visible conversation.
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning start --command analyze --format json` when available so passive learning files exist and the current analysis sees relevant shared project memory.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command analyze --format json` when available so passive learning files exist and the current analysis sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader analysis context.
 - Open only learning detail docs linked from analysis-relevant index entries.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
 - When analysis friction exposes repeated artifact rewrites, route changes, false starts, hidden dependencies, validation gaps, or reusable constraints, make sure `workflow-state.md` captures that durable context.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify learning capture-auto --command analyze --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command analyze --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - When durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 
 ## Execution Steps
@@ -167,7 +167,7 @@ When recommending manual implementation resumption to the user, tell them to run
 
 Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
 
-- If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify lane resolve --command analyze --ensure-worktree` before guessing from branch-only context.
+- If `FEATURE_DIR` is not already explicit, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify lane resolve --command analyze --ensure-worktree` before guessing from branch-only context.
 - When lane resolution returns a materialized lane worktree, continue analysis from that isolated worktree context so downstream gate decisions stay attached to the same lane boundary.
 
 - SPEC = FEATURE_DIR/spec.md
@@ -188,10 +188,10 @@ For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot
 ### 2. Ensure project cognition runtime exists
 
 - Choose the cognition intent before querying: use `plan` when analyzing planning-only artifacts or upstream spec/plan drift, use `implement` when analyzing task execution, remediation, or code-change blockers, and preserve the originating workflow intent when this command is reviewing another `sp-*` workflow's output.
-- Query project cognition with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent plan --query=\"$ARGUMENTS\" --format json` or `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition lexicon --intent implement --query=\"$ARGUMENTS\" --format json` according to that chosen intent, inspect `concept_candidates`, choose `selected_concepts`, record `rejected_concepts` with `selection_reason`, then generate a query_plan from returned concept candidates containing `selected_concepts`, `rejected_concepts`, `expanded_queries`, and `paths`, then run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent <chosen-intent> --query-plan \"<query_plan_json>\" --format json`. For implementation or remediation analysis, the concrete query command is `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition query --intent implement --query-plan \"<query_plan_json>\" --format json`.
-- If readiness is `needs_rebuild`, stop and tell the user to run `$sp-map-scan`, then `$sp-map-build`; wait for that rebuild before continuing.
-- If readiness is `needs_update` or the returned bundle is too weak for the touched area, use `$sp-map-update` with the changed paths or affected surfaces.
-- Escalate to `$sp-map-scan`, then `$sp-map-build` only when the baseline is missing, unusable, schema-incompatible, explicitly requested for rebuild, or invalidated by broad architecture replacement.
+- Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --format json` or `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --format json` according to that chosen intent, inspect `concept_candidates`, choose `selected_concepts`, record `rejected_concepts` with `selection_reason`, then generate a query_plan from returned concept candidates containing `selected_concepts`, `rejected_concepts`, `expanded_queries`, and `paths`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent <chosen-intent> --query-plan \"<query_plan_json>\" --format json`. For implementation or remediation analysis, the concrete query command is `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json`.
+- If readiness is `needs_rebuild`, stop and tell the user to run `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
+- If readiness is `needs_update` or the returned bundle is too weak for the touched area, use `$sp-map-update` with the changed paths or affected surfaces; this includes adoptable missing path-index coverage.
+- Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
 - If readiness is `review`, inspect only the returned `minimal_live_reads` before trusting the runtime for analysis.
 - Carry selected/rejected concepts, `selection_reason`, `route_pack`, and
   `minimal_live_reads` into the analysis report and `workflow-state.md`
@@ -514,3 +514,14 @@ Ask the user: "Would you like me to draft concrete remediation edits and the exa
 ## Invocation Context
 
 $ARGUMENTS
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

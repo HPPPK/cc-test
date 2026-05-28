@@ -1,0 +1,16 @@
+{
+  "id": "ev-root-config-runtime-agents-01",
+  "type": "source_analysis",
+  "source_path": "AGENTS.md",
+  "summary": "Root repository policy identifies the root package as a Bun-based CLI and local server, names `bin/claude-jiangxia` as the executable entrypoint, and defines `bun run verify` as the standard local quality gate.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "The root package is the Bun-based CLI and local server.",
+    "`bin/claude-jiangxia` is the executable entrypoint.",
+    "`bun run verify`: one-command local PR verification entrypoint"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ev-tools-agent-loop-compact-02",
+  "type": "source_analysis",
+  "source_path": "src/services/compact/sessionMemoryCompact.ts",
+  "summary": "Session-memory compaction is an alternate compaction path that preserves a suffix of live messages while using extracted session memory as the summary source.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "trySessionMemoryCompaction",
+    "calculateMessagesToKeepIndex",
+    "adjustIndexToPreserveAPIInvariants",
+    "createCompactionResultFromSessionMemory"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

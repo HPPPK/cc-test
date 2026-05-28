@@ -1,0 +1,21 @@
+{
+  "id": "ev-server-workflow-api-workflow-runtime-tests",
+  "type": "source_analysis",
+  "source_path": "src/server/services/workflowRuntimeService.test.ts",
+  "summary": "Runtime service tests define the workflow transition contract: model fallback, prompt assembly with phase guardrails, pending confirmation, stale-state rejection, idempotent transitions, and final report pointer emission on final confirmation.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WorkflowRuntimeService",
+    "startPhase",
+    "assemblePrompt",
+    "applyTransition",
+    "submitPhaseCompletion",
+    "WORKFLOW_STATE_STALE",
+    "WORKFLOW_PENDING_CONFLICT",
+    "workflow_report_ready"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

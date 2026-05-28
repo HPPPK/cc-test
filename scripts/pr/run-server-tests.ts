@@ -7,8 +7,8 @@ import { loadQuarantineManifest, quarantinedPathSet } from '../quality-gate/quar
 const root = process.cwd()
 const roots = ['src/server', 'src/tools', 'src/utils']
 const excludedFiles = quarantinedPathSet(loadQuarantineManifest(undefined, { enforceReviewDate: true }))
-const testTimeoutMs = process.env.CC_HAHA_SERVER_TEST_TIMEOUT_MS?.trim() || '20000'
-const isolateFiles = process.env.CC_HAHA_SERVER_TEST_ISOLATE_FILES === '1'
+const testTimeoutMs = process.env.CC_JIANGXIA_SERVER_TEST_TIMEOUT_MS?.trim() || '20000'
+const isolateFiles = process.env.CC_JIANGXIA_SERVER_TEST_ISOLATE_FILES === '1'
 
 function normalize(path: string) {
   return relative(root, path).split(sep).join('/')

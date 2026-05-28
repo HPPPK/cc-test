@@ -1,0 +1,896 @@
+{
+  "discussion_slug": "agent-workflow-authoring-tools",
+  "handoff_goal": "Specify a globally available internal agent tool capability that lets the agent inspect, explain, validate, create, update, duplicate/copy, and delete workflow templates through conversation while preserving existing Workflows validation, persistence, field guidance, permission, and session-snapshot safety rules.",
+  "handoff_status": "handoff-ready",
+  "created_at": "2026-05-27T12:53:44.0184349+08:00",
+  "coverage_status": "live-evidence-backed; project cognition stale/blocked and used only as advisory",
+  "planning_gate_status": "ready-for-specify-user-confirmed",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "context_boundary": {
+    "current_project_root": "F:\\github\\cc-jiangxia",
+    "current_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Built-in agent tools, workflow template registry/API, workflow template persistence, workflow runtime/session behavior, workflow tool policy, and desktop workflow management surfaces.",
+        "evidence_source": "User request plus live repository reads.",
+        "notes": "The user is extending the current repository's Workflows feature."
+      }
+    ],
+    "target_project_root": "F:\\github\\cc-jiangxia",
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Add an internal tool capability so agents can author and mutate workflow templates from ordinary chat.",
+        "evidence_source": "User request plus live repository reads.",
+        "notes": "No cross-project transfer or external target was requested."
+      }
+    ],
+    "reference_projects": [
+      ".specify/discussions/workflow-template-management/"
+    ],
+    "external_systems": [],
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "actual_project_to_change": "current repository",
+    "local_target_root": "F:\\github\\cc-jiangxia",
+    "target_paths_or_modules": [
+      "src/tools",
+      "src/tools.ts",
+      "src/Tool.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/api/workflowTemplates.ts",
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "desktop/src/api/sessions.ts",
+      "desktop/src/types/session.ts",
+      "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+      "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "src/server/__tests__/workflowTemplates.test.ts"
+    ],
+    "target_paths_still_to_verify": [
+      "Exact new tool file/module placement under src/tools.",
+      "Whether desktop-launched sessions need a desktop-server-backed authoring path or can use direct registry-service writes.",
+      "Whether field guide content should be generated from shared schema metadata, validator annotations, or a static tested guide colocated with validation."
+    ],
+    "target_project_cognition_status": "stale/blocked; advisory only",
+    "current_project_cognition_cannot_prove_other_project_facts": true,
+    "cognition_authority_rule": "Current project cognition cannot prove implementation facts. Downstream work must use live repository reads for final code claims."
+  },
+  "source_evidence": [
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "discussion conversation and requirements.md",
+      "claim": "The desired capability is direct conversational workflow authoring through agent tools."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "open-questions.md Q-001",
+      "claim": "Valid user-template create/update should write directly without mandatory preview."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "open-questions.md Q-002",
+      "claim": "The tool should be globally available in ordinary chat, with active workflow phase-policy gating."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "open-questions.md Q-003/Q-005",
+      "claim": "Existing user templates update in place; builtin templates copy to a user-owned template before editing."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "open-questions.md Q-004",
+      "claim": "Delete is first-scope but only for uniquely identified user templates and must be destructive."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "open-questions.md Q-006",
+      "claim": "The agent needs explicit field guidance/schema help before authoring workflows."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/tools.ts",
+      "claim": "Built-in tools are assembled centrally and workflow-scoped tools are added separately."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/Tool.ts",
+      "claim": "Tool contract supports schema, validation, permission, read-only/destructive metadata, and transcript rendering hooks."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+      "claim": "Current workflow-specific tool submits phase completion only; it does not mutate workflow templates."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/server/services/workflowTemplateRegistryService.ts",
+      "claim": "Registry validates templates, preserves unknown fields, writes user workflow config, rejects builtin ID shadowing, and defines the current required field contract."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/server/api/workflowTemplates.ts",
+      "claim": "Manual API already supports list/detail/validate/create/update/delete/duplicate/import/export and protects builtin templates from direct mutation."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/server/services/workflowTypes.ts",
+      "claim": "Workflow template/session types include template snapshots, phase definitions, and lifecycle/source-template statuses."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/server/services/workflowRuntimeService.ts",
+      "claim": "Workflow sessions use template snapshots, supporting the non-goal of in-place session mutation."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "src/server/services/workflowToolPolicy.ts",
+      "claim": "Existing phase tool policy denies implementation tools in non-implementation phases; new global tool exposure must respect this policy."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "desktop/src/api/sessions.ts",
+      "claim": "Desktop API client already wraps workflow template API operations."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "current",
+      "source": "desktop/src/components/workflow/WorkflowTemplateManager.tsx and WorkflowTemplateEditor.tsx",
+      "claim": "Manual Settings UI supports workflow template management and maps editor fields into the template draft contract."
+    },
+    {
+      "source_type": "live-test",
+      "evidence_status": "current",
+      "source": "src/server/__tests__/workflowTemplates.test.ts",
+      "claim": "Existing tests cover API validation, builtin readonly behavior, create/update/delete/duplicate/import/export, conflict handling, and no-write validation."
+    }
+  ],
+  "blocking_unknowns": {
+    "hard": [],
+    "soft": [
+      {
+        "unknown": "Whether desktop-launched sessions require a desktop-server-backed tool path in addition to direct registry-service writes.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "plan",
+        "stop_and_reopen_condition": "Reopen if one runtime path cannot safely access the registry service or preserve desktop API behavior."
+      },
+      {
+        "unknown": "Whether the field guide is generated from shared schema metadata, validator annotations, or a static tested guide colocated with validation.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "plan",
+        "stop_and_reopen_condition": "Reopen if the proposed guide can drift from validation or cannot be tested deterministically."
+      }
+    ]
+  },
+  "downstream_instructions": {
+    "settled_decisions": [
+      "Implement a globally available internal agent workflow authoring tool using Option A from technical-options.md.",
+      "Include read-only operations for listing/inspecting templates and retrieving a field authoring guide/schema help.",
+      "Include validating and mutating operations for user templates: create, update, duplicate/copy, and delete.",
+      "Mutating valid user-template create/update operations persist directly. There is no mandatory preview step.",
+      "Delete is first-scope, destructive, and only valid for uniquely identified user templates.",
+      "Builtin templates such as agent-development remain read-only. Edit requests copy the builtin to a user template and then modify that copy.",
+      "Builtin copy defaults: id <builtin-id>-custom, then -2, -3, etc. on conflicts; display name <Builtin Name> Custom unless user intent gives a clearer name.",
+      "Update/delete must re-read the current template and reject stale writes when the current version differs from the agent's original basis.",
+      "Active/running/historical workflow sessions keep their template snapshots; template edits affect future sessions only.",
+      "Global availability must respect active workflow phase action policy and permission/destructive metadata.",
+      "Validation diagnostics and tool results must be actionable and auditable in the transcript."
+    ],
+    "assumptions_to_preserve": [
+      "Settings Workflows already provides manual template management and should remain compatible.",
+      "The tool should reuse or share registry/API validation semantics rather than inventing a separate schema.",
+      "Project cognition is stale/blocked and must not be used as source authority for implementation facts."
+    ],
+    "conflicts_requiring_return_to_sp_discussion": [
+      "Mandatory preview-only persistence for normal valid user-template create/update.",
+      "Direct builtin mutation or builtin ID shadowing.",
+      "Deleting builtin templates or deleting ambiguous targets.",
+      "Mutating active/historical workflow session snapshots as a side effect of template edits.",
+      "Writing outside the workflow template config or touching protected user state.",
+      "A global authoring tool that bypasses phase action policy.",
+      "A field guide that is not discoverable by the agent or can drift from validation.",
+      "Unsupported workflow shapes without an explicit new product decision."
+    ],
+    "capability_map": [
+      {
+        "capability": "authoring_guide/describe_schema",
+        "required_behavior": "Read-only field guide covering template/phase fields, required relationships, allowed values, examples, unsupported shapes, and quality heuristics."
+      },
+      {
+        "capability": "list",
+        "required_behavior": "Return builtin and user templates plus invalid-template diagnostics without writing."
+      },
+      {
+        "capability": "inspect",
+        "required_behavior": "Return one template's field contract, phase structure, source, editability, and validation state."
+      },
+      {
+        "capability": "validate",
+        "required_behavior": "Validate candidate payloads using the same registry/API semantics and return issue paths/codes/messages without writing."
+      },
+      {
+        "capability": "create",
+        "required_behavior": "Create a new user template after validation and current ID conflict check."
+      },
+      {
+        "capability": "update",
+        "required_behavior": "Update an existing user template after validation, source/id checks, and stale-write comparison."
+      },
+      {
+        "capability": "duplicate/copy builtin",
+        "required_behavior": "Create a non-conflicting user copy, especially for builtin edit requests."
+      },
+      {
+        "capability": "delete",
+        "required_behavior": "Delete only uniquely identified user templates; mark destructive; reject builtin or ambiguous targets."
+      }
+    ],
+    "recommended_sequence": [
+      "Specify tool contract, operation schema, permission/read-only/destructive metadata, and transcript result shape.",
+      "Specify shared validation/write semantics with WorkflowTemplateRegistryService and /api/workflows/templates.",
+      "Specify read-only field guide/schema help and how it stays aligned with validation.",
+      "Specify create/update/duplicate/delete behavior, including builtin copy-then-edit, stale-write rejection, ID conflicts, and delete ambiguity.",
+      "Specify global registration and active workflow phase-policy gating.",
+      "Specify tests: tool unit tests, registry/API parity tests, field-guide output tests, stale-write/delete safety tests, builtin copy tests, phase-policy gating tests, and desktop API/client tests only if desktop behavior changes."
+    ],
+    "dependencies": [
+      "Existing registry validation and write semantics.",
+      "Existing workflow template API behavior and tests.",
+      "Tool registration and permission metadata.",
+      "Workflow runtime snapshot semantics.",
+      "Workflow phase action policy.",
+      "Settings Workflows compatibility."
+    ],
+    "deferred_scope": [
+      "Supporting parallel, nested, branching, or looping workflows.",
+      "Direct builtin template mutation or deletion.",
+      "In-place migration of active workflow sessions after a template edit.",
+      "Source-code edits as part of a workflow-template authoring operation.",
+      "New Settings UI redesign beyond compatibility/refetch behavior."
+    ],
+    "reopen_conditions": [
+      "Mandatory preview-only persistence for normal valid user-template create/update.",
+      "Direct builtin mutation or builtin ID shadowing.",
+      "Deleting builtin templates or deleting ambiguous targets.",
+      "Mutating active/historical workflow session snapshots as a side effect of template edits.",
+      "Writing outside the workflow template config or touching protected user state.",
+      "A global authoring tool that bypasses phase action policy.",
+      "A field guide that is not discoverable by the agent or can drift from validation.",
+      "Unsupported workflow shapes without an explicit new product decision."
+    ]
+  },
+  "ui_discussion": {
+    "ui_discussion_status": "not_applicable",
+    "confirmed_ui_decisions": [
+      "Existing Settings Workflows should show agent-created or agent-updated templates after reload/refetch.",
+      "No new first-class UI design is required for this handoff."
+    ],
+    "deferred_ui_decisions": [
+      "If downstream implementation changes Settings UI feedback, handle it as compatibility behavior in specification/plan."
+    ],
+    "interaction_expectations": [
+      "Tool results should be readable in chat and include operation outcome, affected template IDs/source, validation issues, before/after summary, and suggested next action."
+    ],
+    "state_requirements": [
+      "No preview UI is required before valid user-template writes.",
+      "Invalid/rejected/stale/permission-denied operations must leave persisted config unchanged."
+    ],
+    "accessibility_expectations": "not_applicable for the internal tool; preserve existing Settings UI expectations if touched.",
+    "ui_sketches_present": false,
+    "ui_sketch_summary": "none",
+    "ui_sketch_reference": "none"
+  },
+  "must_preserve_ledger": [
+    {
+      "id": "MP-001",
+      "type": "goal",
+      "claim": "Provide an internal agent tool capability for conversational workflow template authoring and optimization.",
+      "source": "User request; requirements.md",
+      "downstream_requirement": "Preserve as the primary feature goal.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if the feature becomes manual UI-only or draft-only.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-002",
+      "type": "scenario",
+      "claim": "User can describe a new workflow and phases; the agent fills required fields, validates, persists, and Settings Workflows can show it after refetch.",
+      "source": "User request; Q-001",
+      "downstream_requirement": "Specify end-to-end create behavior.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if create cannot persist valid user templates.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-003",
+      "type": "scenario",
+      "claim": "User can critique an existing workflow and the agent can analyze and apply a validated update or safe copy.",
+      "source": "User request; Q-003/Q-005",
+      "downstream_requirement": "Specify update and builtin copy-then-edit behavior.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if builtin edits are direct mutations or user-template updates are not supported.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-004",
+      "type": "scope",
+      "claim": "First scope includes list, inspect, field guide, validate, create, update, duplicate/copy, and delete.",
+      "source": "requirements.md; technical-options.md",
+      "downstream_requirement": "Preserve the operation surface.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if delete or field guide is dropped without explicit user decision.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-005",
+      "type": "decision",
+      "claim": "Valid user-template create/update writes directly without a mandatory preview step.",
+      "source": "Q-001",
+      "downstream_requirement": "Specify direct validated writes and no-write failures.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if mandatory preview-only flow is reintroduced.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-006",
+      "type": "decision",
+      "claim": "Tool is globally available in ordinary chat but must respect active workflow phase action policy.",
+      "source": "Q-002; workflowToolPolicy.ts",
+      "downstream_requirement": "Specify registration plus phase-policy gating.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "plan",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if global availability bypasses workflow phase restrictions.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-007",
+      "type": "decision",
+      "claim": "Builtin templates are read-only mutation targets; builtin edit requests create and modify a user-owned copy.",
+      "source": "Q-005",
+      "downstream_requirement": "Specify copy-then-edit and readonly builtin enforcement.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if direct builtin mutation or builtin ID shadowing is proposed.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-008",
+      "type": "decision",
+      "claim": "Update/delete must re-read current template and reject stale writes when it differs from the agent's basis.",
+      "source": "User confirmation; CA-007",
+      "downstream_requirement": "Specify stale-write conflict contract.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "plan",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if update/delete writes from stale list state.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-009",
+      "type": "decision",
+      "claim": "Delete is destructive, first-scope, and only valid for uniquely identified user templates.",
+      "source": "Q-004; CA-009",
+      "downstream_requirement": "Specify delete permission/ambiguity behavior.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if builtin or ambiguous deletes are allowed.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-010",
+      "type": "decision",
+      "claim": "Builtin copy IDs default to <builtin-id>-custom with numeric suffixes; names default to <Builtin Name> Custom unless user intent supplies clearer naming.",
+      "source": "User confirmation; CA-010",
+      "downstream_requirement": "Specify copy naming algorithm.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "plan",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if copied builtin templates receive confusing IDs/names or collide.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-011",
+      "type": "decision",
+      "claim": "Agent must have a discoverable schema-aligned field guide before authoring or repairing templates.",
+      "source": "Q-006; CA-011",
+      "downstream_requirement": "Specify read-only guide operation and validation alignment.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "plan",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if downstream relies on undocumented model knowledge or stale field docs.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-012",
+      "type": "non_goal",
+      "claim": "Do not mutate protected non-workflow user state such as shared settings, transcripts, providers, MCP config, OAuth tokens, skills, plugin state, adapters, or team/session records.",
+      "source": "requirements.md; project rules",
+      "downstream_requirement": "Preserve storage boundary.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if implementation writes outside cc-jiangxia workflow template config.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-013",
+      "type": "non_goal",
+      "claim": "Do not support parallel, nested, branching, or loop workflows in first scope.",
+      "source": "requirements.md; workflowTemplateRegistryService.ts",
+      "downstream_requirement": "Preserve linear-only validation.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if unsupported workflow shapes are added without explicit scope expansion.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-014",
+      "type": "non_goal",
+      "claim": "Do not mutate active or historical workflow session snapshots when templates change.",
+      "source": "requirements.md; workflowRuntimeService.ts",
+      "downstream_requirement": "Specify future-session-only effect.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "plan",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if template edit migrates active session state.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-015",
+      "type": "reference",
+      "claim": "Reuse or share existing registry/API validation and persistence semantics.",
+      "source": "workflowTemplateRegistryService.ts; workflowTemplates.ts",
+      "downstream_requirement": "Specify validation parity and unknown-field preservation.",
+      "blocking_level": "hard",
+      "owner": "evidence",
+      "latest_resolve_phase": "plan",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if a separate validator drifts from API behavior.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-016",
+      "type": "reference",
+      "claim": "Live source evidence, not stale/blocked project cognition, proves current project facts.",
+      "source": "project-context.md",
+      "downstream_requirement": "Preserve evidence provenance.",
+      "blocking_level": "soft",
+      "owner": "evidence",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if downstream relies on cognition as authority without live reads.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-017",
+      "type": "tradeoff",
+      "claim": "Option A is selected over preview/commit or manual-only approaches.",
+      "source": "technical-options.md",
+      "downstream_requirement": "Preserve direct tool implementation path.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if Option B/C replaces Option A without user confirmation.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-018",
+      "type": "scenario",
+      "claim": "Invalid, risky, stale, ambiguous, or permission-denied operations must not write and must return actionable diagnostics.",
+      "source": "requirements.md; CA-001/003/007/009",
+      "downstream_requirement": "Specify recovery and no-write guarantees.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if failures can partially write or return generic errors only.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-019",
+      "type": "scope",
+      "claim": "Settings Workflows remains compatible and can display agent-authored templates after reload/refetch.",
+      "source": "User request; desktop evidence",
+      "downstream_requirement": "Specify compatibility with manual management surface.",
+      "blocking_level": "hard",
+      "owner": "user",
+      "latest_resolve_phase": "specify",
+      "status": "resolved",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if agent writes use a separate store invisible to Settings.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-020",
+      "type": "decision",
+      "claim": "Tool results must make persistence state auditable in the transcript.",
+      "source": "CA-006",
+      "downstream_requirement": "Specify result shape with operation, affected IDs, validation issues, before/after summary, and next action.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if tool returns opaque success/failure.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-021",
+      "type": "blocking_question",
+      "claim": "Decide whether desktop-launched sessions need a desktop-server-backed path in addition to direct registry writes.",
+      "source": "technical-options.md",
+      "downstream_requirement": "Resolve during plan; not a specification blocker.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "plan",
+      "status": "deferred",
+      "deferred_to": "plan",
+      "stop_and_reopen_condition": "Reopen if runtime access path cannot preserve registry/API semantics.",
+      "superseded_by": null,
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-022",
+      "type": "blocking_question",
+      "claim": "Decide how the field guide stays aligned with validation: shared schema metadata, validator annotations, or a static tested guide.",
+      "source": "technical-options.md",
+      "downstream_requirement": "Resolve during plan; not a specification blocker.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "plan",
+      "status": "deferred",
+      "deferred_to": "plan",
+      "stop_and_reopen_condition": "Reopen if the selected guide design can drift from validation.",
+      "superseded_by": null,
+      "mapped_to": ""
+    }
+  ],
+  "senior_consequence_analysis": {
+    "triggered": true,
+    "trigger_reason": "Agent-authored workflow changes can mutate user workflow templates, alter future workflow execution semantics, affect active or resumed workflow sessions, interact with manual Settings edits, and change which tools/actions are allowed inside phases.",
+    "stand_down_reason": "none",
+    "affected_object_map": [
+      "User workflow config: ~/.claude/cc-jiangxia/workflows.json or active CLAUDE_CONFIG_DIR equivalent.",
+      "Builtin workflow template: agent-development.",
+      "User workflow templates and their phase contracts.",
+      "Workflow template registry cache and write path.",
+      "Server workflow template API.",
+      "Desktop Settings Workflows UI and API client.",
+      "Built-in agent tool pool, permissions, destructive metadata, and transcript rendering.",
+      "Workflow session template snapshots and source-template status recovery.",
+      "Workflow phase tool policy.",
+      "Workflow template field guide/schema help.",
+      "Tests and quality gates."
+    ],
+    "state_behavior_matrix": [
+      {
+        "state": "Missing workflow config",
+        "required_behavior": "Listing remains valid with builtin templates; validated user-template mutation may create workflow config."
+      },
+      {
+        "state": "Malformed/invalid existing config",
+        "required_behavior": "Agent writes are blocked; diagnostics returned; invalid config not overwritten."
+      },
+      {
+        "state": "Field-guide request",
+        "required_behavior": "Read-only response; no workflow config mutation."
+      },
+      {
+        "state": "Draft candidate",
+        "required_behavior": "May exist transiently; valid create/update writes when tool is called."
+      },
+      {
+        "state": "Validation failed",
+        "required_behavior": "No write; return issue codes, paths, messages, and repair guidance."
+      },
+      {
+        "state": "Create valid user template",
+        "required_behavior": "Persist after validation and current ID conflict check."
+      },
+      {
+        "state": "Update existing user template",
+        "required_behavior": "Source/id must match; re-read basis; preserve unknown fields where registry does."
+      },
+      {
+        "state": "Delete user template",
+        "required_behavior": "Only uniquely identified source:user; destructive; no builtin or ambiguous delete."
+      },
+      {
+        "state": "Builtin edit request",
+        "required_behavior": "Copy builtin to non-conflicting user template then edit copy."
+      },
+      {
+        "state": "ID conflict",
+        "required_behavior": "Reject or propose non-conflicting rename; never silently overwrite."
+      },
+      {
+        "state": "Active/running session",
+        "required_behavior": "Keep template snapshot stable; edits affect future sessions only."
+      },
+      {
+        "state": "Resumed stale/missing template session",
+        "required_behavior": "Preserve existing recovery semantics."
+      },
+      {
+        "state": "Concurrent manual/agent edit",
+        "required_behavior": "Update/delete reject stale writes; create checks current ID conflicts."
+      }
+    ],
+    "dependency_impact_table": [
+      {
+        "dependency": "WorkflowTemplateRegistryService",
+        "required_handling": "Reuse/share validation and write semantics; preserve unknown fields."
+      },
+      {
+        "dependency": "/api/workflows/templates",
+        "required_handling": "Keep manual API and internal tool behavior aligned."
+      },
+      {
+        "dependency": "src/tools.ts / src/Tool.ts",
+        "required_handling": "Register the tool globally with deliberate read-only/write/destructive permission behavior."
+      },
+      {
+        "dependency": "Workflow sessions",
+        "required_handling": "Preserve snapshot behavior and future-session-only template effect."
+      },
+      {
+        "dependency": "Desktop Settings UI",
+        "required_handling": "Ensure agent-authored templates remain visible after list refetch."
+      },
+      {
+        "dependency": "Workflow tool policy",
+        "required_handling": "Gate authoring writes when active phase policy forbids them."
+      },
+      {
+        "dependency": "Field guide",
+        "required_handling": "Co-locate/generate/test guide so it does not drift from validation."
+      },
+      {
+        "dependency": "Tests/quality gates",
+        "required_handling": "Add same-area server/tool coverage and desktop/API tests if changed."
+      }
+    ],
+    "recovery_and_validation_contract": [
+      "Invalid candidate, permission denial, stale conflict, ambiguous delete, builtin delete, or validation failure must leave persisted config unchanged.",
+      "Successful writes must invalidate registry cache.",
+      "Failed writes should report operation, template id/source, issue paths/codes/messages, and whether persistence happened.",
+      "Update/delete stale conflicts should instruct the agent to re-read/re-analyze before retry.",
+      "Field guide must be deterministic and testable.",
+      "Verification should include tool unit tests, registry/API parity tests, field-guide tests, destructive delete tests, stale-write tests, builtin copy tests, phase-policy gating tests, and desktop tests if the desktop path changes."
+    ],
+    "coverage_gaps": [
+      {
+        "gap": "Stale-write behavior",
+        "status": "resolved",
+        "owner": "user",
+        "latest_resolve_phase": "discussion",
+        "stop_and_reopen_condition": "Reopen if update/delete writes without comparing current template to original basis."
+      },
+      {
+        "gap": "Builtin copy naming",
+        "status": "resolved",
+        "owner": "user",
+        "latest_resolve_phase": "discussion",
+        "stop_and_reopen_condition": "Reopen if copied builtin IDs/names collide or are confusing."
+      },
+      {
+        "gap": "Desktop-server-backed path",
+        "status": "soft downstream design",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "plan",
+        "stop_and_reopen_condition": "Reopen if the chosen runtime path cannot preserve registry/API semantics."
+      },
+      {
+        "gap": "Field-guide implementation source",
+        "status": "soft downstream design",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "plan",
+        "stop_and_reopen_condition": "Reopen if field guide can drift from validation."
+      }
+    ],
+    "consequence_obligations": [
+      {
+        "id": "CA-001",
+        "claim": "Agent-authored valid user-template create/update mutations should persist directly without a mandatory preview step, while validation failure or tool rejection leaves config unchanged.",
+        "blocking_level": "hard",
+        "owner_workflow": "sp-discussion",
+        "latest_resolve_phase": "discussion",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Downstream design reintroduces mandatory preview-only persistence."
+      },
+      {
+        "id": "CA-002",
+        "claim": "Agent writes must preserve user-owned workflow config fields and must not mutate protected non-workflow config surfaces.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream specification",
+        "latest_resolve_phase": "specify",
+        "status": "mapped",
+        "stop_and_reopen_condition": "Proposed implementation writes outside the cc-jiangxia workflow template config."
+      },
+      {
+        "id": "CA-003",
+        "claim": "The tool must share validation semantics with the existing template registry/API and block invalid writes.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream specification/plan",
+        "latest_resolve_phase": "plan",
+        "status": "mapped",
+        "stop_and_reopen_condition": "A separate validator diverges from existing API behavior."
+      },
+      {
+        "id": "CA-004",
+        "claim": "Builtin templates remain read-only mutation targets; modifying a builtin requires creating a non-conflicting user-owned copy and applying changes to that copy.",
+        "blocking_level": "hard",
+        "owner_workflow": "sp-discussion",
+        "latest_resolve_phase": "discussion",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Downstream design attempts direct builtin mutation or builtin ID shadowing."
+      },
+      {
+        "id": "CA-005",
+        "claim": "Template edits must not mutate active or historical workflow session snapshots.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream plan",
+        "latest_resolve_phase": "plan",
+        "status": "mapped",
+        "stop_and_reopen_condition": "Design updates active session state as a side effect of template update."
+      },
+      {
+        "id": "CA-006",
+        "claim": "Tool results must make persistence state auditable in the transcript.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream specification",
+        "latest_resolve_phase": "specify",
+        "status": "mapped",
+        "stop_and_reopen_condition": "Tool returns only generic success/failure without operation and affected-template metadata."
+      },
+      {
+        "id": "CA-007",
+        "claim": "Concurrent manual and agent edits require write-before-read conflict protection: update/delete re-read the current template and reject stale writes when it differs from the agent's original basis; create checks current ID conflicts.",
+        "blocking_level": "hard",
+        "owner_workflow": "sp-discussion",
+        "latest_resolve_phase": "discussion",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Update/delete path writes based on stale list state without detection."
+      },
+      {
+        "id": "CA-008",
+        "claim": "The workflow authoring tool should be globally available in ordinary chat, but must align with active workflow phase action policy.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream specification/plan",
+        "latest_resolve_phase": "plan",
+        "status": "mapped",
+        "stop_and_reopen_condition": "Tool is globally available with no phase/permission gating decision."
+      },
+      {
+        "id": "CA-009",
+        "claim": "Delete is in first scope only for uniquely identified user templates and must be marked destructive; builtin or ambiguous deletes must be rejected or clarified before any write.",
+        "blocking_level": "hard",
+        "owner_workflow": "sp-discussion",
+        "latest_resolve_phase": "discussion",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Downstream design allows builtin deletion, ambiguous target deletion, or non-destructive delete execution."
+      },
+      {
+        "id": "CA-010",
+        "claim": "Builtin copy-then-edit default naming must use <builtin-id>-custom with conflict suffixes and <Builtin Name> Custom unless the user's requested purpose/name produces a clearer non-conflicting copy.",
+        "blocking_level": "hard",
+        "owner_workflow": "sp-discussion",
+        "latest_resolve_phase": "discussion",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Copied builtin templates receive confusing IDs/names or collide with existing user templates."
+      },
+      {
+        "id": "CA-011",
+        "claim": "The agent must have a discoverable workflow template field guide before authoring or repairing templates, and it must stay aligned with registry/API validation.",
+        "blocking_level": "hard",
+        "owner_workflow": "downstream specification/plan",
+        "latest_resolve_phase": "plan",
+        "status": "mapped",
+        "stop_and_reopen_condition": "Downstream design relies on undocumented model knowledge or stale field docs."
+      }
+    ]
+  },
+  "quality_gate": {
+    "status": "user-confirmed",
+    "self_reviewed_at": "2026-05-27T12:53:44.0184349+08:00",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-05-27T14:38:41.6559401+08:00",
+    "blocked_reasons": [],
+    "self_review_summary": [
+      "Context boundary is locked to F:\\github\\cc-jiangxia.",
+      "Handoff goal is concrete and unified.",
+      "Hard unknown count is 0.",
+      "Open conflict count is 0.",
+      "Must-Preserve Ledger includes goal, scope, non-goals, scenarios, decisions, references, selected tradeoff, and soft downstream questions.",
+      "Senior consequence obligations CA-001 through CA-011 are preserved.",
+      "Markdown and JSON companion must remain synchronized before user confirmation."
+    ]
+  }
+}

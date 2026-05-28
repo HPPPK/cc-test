@@ -1,0 +1,62 @@
+{
+  "id": "T018",
+  "title": "Extract shared workflow session creation helper",
+  "agent": "executor",
+  "depends_on": [
+    "T005: linked session contract tests added",
+    "T007: registry validation/write behavior implemented",
+    "T008: workflow template API implemented"
+  ],
+  "parallel_safe": true,
+  "story": "US4",
+  "objective": "Extract shared workflow session creation and template snapshot logic so POST /api/sessions and linked workflow start use one path.",
+  "context_navigation": {
+    "design_decision": "plan.md#Boundary Ownership",
+    "data_model": "data-model.md#Snapshot Compatibility",
+    "api_contract": "contracts/linked-workflow-session.md#State Rules",
+    "reference_implementation": "src/server/api/sessions.ts"
+  },
+  "write_scope": [
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/api/sessions.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowRuntimeService.ts"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json"
+  ],
+  "expected_outputs": [
+    "src/server/services/workflowSessionCreateService.ts （新建）",
+    "src/server/api/sessions.ts （修改）",
+    "src/server/__tests__/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not alter existing workflow snapshot meaning.",
+    "Do not scan or rewrite workflow-sessions directories.",
+    "Do not duplicate snapshot logic."
+  ],
+  "acceptance_criteria": [
+    "Existing POST /api/sessions workflow creation remains compatible.",
+    "Template snapshot creation lives in a reusable service.",
+    "Existing workflow session tests pass."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

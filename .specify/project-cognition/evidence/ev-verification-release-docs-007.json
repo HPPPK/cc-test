@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-007",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/Cargo.lock",
+  "summary": "Cargo lockfile records resolved native desktop dependency versions for the Tauri release surface.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "claude-code-desktop",
+    "tauri-plugin-updater",
+    "tauri-runtime-wry"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

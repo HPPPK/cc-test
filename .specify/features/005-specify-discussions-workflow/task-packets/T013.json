@@ -1,0 +1,62 @@
+{
+  "id": "T013",
+  "title": "Wire Settings save/delete/duplicate/validate flows",
+  "agent": "executor",
+  "depends_on": [
+    "T011: Workflows manager list implemented",
+    "T012: schema-aware editor implemented"
+  ],
+  "parallel_safe": false,
+  "story": "US1",
+  "objective": "Connect Settings Workflows manager/editor actions to server APIs for create, update, delete, duplicate, and validate.",
+  "context_navigation": {
+    "design_decision": "plan.md#Boundary Ownership",
+    "data_model": "data-model.md#Template Draft Lifecycle",
+    "api_contract": "contracts/workflow-template-api.md#Create",
+    "reference_implementation": "desktop/src/api/sessions.ts"
+  },
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx （修改）",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx （修改）",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx （修改）"
+  ],
+  "anti_goals": [
+    "Do not bypass server validation.",
+    "Do not allow built-in delete/edit.",
+    "Do not silently discard validation issues."
+  ],
+  "acceptance_criteria": [
+    "Create/update/delete/duplicate/validate calls use desktop API client.",
+    "Validation errors remain in draft UI and block save.",
+    "Successful writes refresh template list.",
+    "Built-in copy produces a user template target id."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

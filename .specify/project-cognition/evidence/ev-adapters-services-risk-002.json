@@ -1,0 +1,12 @@
+{
+  "id": "ev-adapters-services-risk-002",
+  "type": "source_analysis",
+  "source_path": "adapters/bun.lock",
+  "summary": "bun.lock provides repository/runtime metadata",
+  "detail": "",
+  "quotes_or_symbols": [],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

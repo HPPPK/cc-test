@@ -1,0 +1,20 @@
+{
+  "id": "ev-root-config-runtime-setup-02",
+  "type": "source_analysis",
+  "source_path": "src/setup.ts",
+  "summary": "Setup also owns worktree/tmux session creation, background runtime initialization, analytics sink attachment, startup event emission, API key prefetch, and release-notes prefetch for interactive sessions.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "createWorktreeForSession(",
+    "createTmuxSessionForWorktree(",
+    "initSessionMemory()",
+    "initSinks()",
+    "logEvent('tengu_started', {})",
+    "void prefetchApiKeyFromApiKeyHelperIfSafe(getIsNonInteractiveSession())",
+    "const { hasReleaseNotes } = await checkForReleaseNotes("
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "root-config-runtime",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

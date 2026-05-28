@@ -528,7 +528,9 @@ fn get_app_mode(app: AppHandle) -> serde_json::Value {
         .clone()
         .or_else(|| app.path().app_config_dir().ok());
     let config_dir_source = if env_config_dir.is_some() {
-        if std::env::var_os("CC_HAHA_APP_PORTABLE_DIR").is_some() {
+        if std::env::var_os("CC_JIANGXIA_APP_PORTABLE_DIR").is_some()
+            || std::env::var_os("CC_HAHA_APP_PORTABLE_DIR").is_some()
+        {
             "portable"
         } else {
             "environment"
@@ -708,7 +710,7 @@ fn is_window_state_visible_on_any_monitor(
 fn window_state_path(app: &AppHandle) -> Option<PathBuf> {
     // honour CLAUDE_CONFIG_DIR so portable installs keep window-state.json
     // and terminal-config.json alongside the config dir instead of
-    // %APPDATA%\com.claude-code-haha.desktop\.
+    // %APPDATA%\com.claude-code-jiangxia.desktop\.
     resolve_portable_state_path().or_else(|| match app.path().app_config_dir() {
         Ok(dir) => Some(dir.join(WINDOW_STATE_FILE)),
         Err(err) => {
@@ -859,13 +861,13 @@ fn show_main_window(app: &AppHandle) {
 
 fn setup_system_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
-        .text(TRAY_SHOW_ID, "Show Claude Code Haha")
+        .text(TRAY_SHOW_ID, "Show Claude Code Jiangxia")
         .separator()
-        .text(TRAY_QUIT_ID, "Quit Claude Code Haha")
+        .text(TRAY_QUIT_ID, "Quit Claude Code Jiangxia")
         .build()?;
 
     let mut tray = TrayIconBuilder::with_id("main-tray")
-        .tooltip("Claude Code Haha")
+        .tooltip("Claude Code Jiangxia")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -2137,12 +2139,12 @@ pub fn run() {
     let builder = builder
         .menu(|app| {
             let about_item =
-                MenuItemBuilder::with_id("nav_about", "关于 Claude Code Haha").build(app)?;
+                MenuItemBuilder::with_id("nav_about", "关于 Claude Code Jiangxia").build(app)?;
             let settings_item = MenuItemBuilder::with_id("nav_settings", "设置...")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
 
-            let app_submenu = SubmenuBuilder::new(app, "Claude Code Haha")
+            let app_submenu = SubmenuBuilder::new(app, "Claude Code Jiangxia")
                 .item(&about_item)
                 .separator()
                 .item(&settings_item)

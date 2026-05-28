@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-021",
+  "type": "source_analysis",
+  "source_path": "adapters/common/config.ts",
+  "summary": "config.ts defines PairedUser, PairingState, TelegramConfig, FeishuConfig, WechatConfig, DingtalkConfig and imports node:fs, node:os, node:path",
+  "detail": "",
+  "quotes_or_symbols": [
+    "PairedUser",
+    "PairingState",
+    "TelegramConfig",
+    "FeishuConfig",
+    "WechatConfig",
+    "DingtalkConfig"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

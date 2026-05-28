@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-036",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/index.ts",
+  "summary": "index.ts defines getRuntimeState, getAiCardBuffer, getOrCreateAiCard, clearTransientChatState, clearPendingPermissions, formatProjectList and imports node:path, dingtalk-stream, ../common/ws-bridge.js, ../common/message-dedup.js, ../common/message-buffer.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getRuntimeState",
+    "getAiCardBuffer",
+    "getOrCreateAiCard",
+    "clearTransientChatState",
+    "clearPendingPermissions",
+    "formatProjectList"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

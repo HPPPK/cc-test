@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-113",
+  "type": "source_analysis",
+  "source_path": "docs/en/agent/03-agent-framework.md",
+  "summary": "English agent docs mirror the multi-agent usage, implementation, and framework material.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AsyncGenerator",
+    "ToolSearch",
+    "TeamCreate"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

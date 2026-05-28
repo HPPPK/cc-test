@@ -2,43 +2,39 @@
 
 ## Objective
 
-Turn arbitrary incoming work into a planning-ready specification package by
-first locking a deterministic brainstorming truth layer that is grounded in
-repository reality and explicit enough to hand off into implementation
-planning.
+Turn a new or changed feature request into a reviewed, planning-ready specification package through a concise collaborative flow: understand context, clarify one high-impact question at a time, compare approaches, confirm the spec shape, write artifacts, self-review, and ask the user to review before planning.
 
 ## Context
 
-- Primary inputs: the user's request, the current repository state, passive learning files, and the task-local project cognition query bundle with readiness and returned `minimal_live_reads`.
-- Brainstorming truth lives under the active `FEATURE_DIR/brainstorming/`, especially `facts.json`, `route.json`, `intent.json`, `complexity.json`, and `handoff-to-specify.json`.
-- Compiled working state lives under the active `FEATURE_DIR`, especially `spec.md`, `alignment.md`, `context.md`, `references.md`, and `workflow-state.md`.
+- Primary inputs: the user's request, current repository context, passive memory, project cognition only as advisory navigation, and discussion source files when a discussion handoff is supplied.
+- Authoritative outputs: `spec.md`, `alignment.md`, `context.md`, `references.md` when useful, `workflow-state.md`, `checklists/requirements.md`, and a minimal `brainstorming/handoff-to-specify.json` compatibility handoff.
 - This command is specification-only. It is not permission to implement code.
 
 ## Process
 
-- Establish or resume the active feature workspace, workflow-state file, and brainstorming truth files.
-- Load just enough repository context to understand ownership, constraints, and adjacent surfaces.
-- Progress through `facts-lock`, `route-lock`, `intent-lock`, and `complexity-lock`, asking deterministic questions only for unresolved fields or rule predicates.
-- Clarify planning-critical ambiguity and decompose the request into capabilities before compiling the locked truth layer into the specification artifact set.
-- Compile the locked truth into the specification artifact set.
-- Decide whether the package is ready for `/sp-plan` or still needs another clarification/enhancement pass.
+- Create or resume the feature workspace and `workflow-state.md`.
+- Explore project context only enough to understand ownership, constraints, adjacent surfaces, and source evidence.
+- If invoked from `sp-discussion`, read `handoff-to-specify.md` and `.json` when present, then read the handoff-declared source files. At minimum inspect `discussion-log.md`, `requirements.md`, and `open-questions.md` when they exist; inspect `technical-options.md` and `project-context.md` when present or named.
+- Extract every upstream capability-like signal from those sources and assign exactly one disposition: `preserved`, `in_scope`, `deferred`, `dropped`, or `clarification_blocker`.
+- Ask one high-impact question at a time when the answer can change scope, acceptance, architecture, compatibility, security, data shape, external integration, or downstream planning.
+- Decompose ambiguous terms such as capability, real, usable, works, end-to-end, fetch, probe, health, model, endpoint, integration, auth, `能力`, `真实`, and `可用` before compiling the spec.
+- Present two or three approaches with trade-offs and a recommendation before committing to the spec shape.
+- Present the spec sections for user approval before final artifact release.
+- Write the artifact package, then self-review for placeholders, contradictions, ambiguous requirements, silent scope narrowing, dropped upstream signals, out-of-scope conflicts, missing acceptance proof, and unconfirmed product minimization.
+- Ask the user to review the written artifacts before recommending exactly one next command: `/sp.plan`, `/sp.clarify`, or `/sp.deep-research`.
 
 ## Output Contract
 
-- Write or update the mandatory brainstorming truth artifacts:
-  `brainstorming/facts.json`, `brainstorming/route.json`,
-  `brainstorming/intent.json`, `brainstorming/complexity.json`, and
-  `brainstorming/handoff-to-specify.json`.
-- Write or update `spec.md`, `alignment.md`, `context.md`, and `references.md`
-  when needed.
-- Treat structured handoff truth as authoritative when it exists; do not rely on
-  chat-only conclusions.
-- Report what was locked, what remains open, and the recommended next command.
-- Do not imply planning readiness when planning-critical ambiguity still remains.
+- Write or update `spec.md`, `alignment.md`, `context.md`, `workflow-state.md`, `checklists/requirements.md`, and `references.md` when useful.
+- Write or update a minimal `brainstorming/handoff-to-specify.json` compatibility handoff with `version`, `status`, `entry_source`, `source_handoff`, `source_handoff_json`, `source_files_read`, `source_signal_disposition`, `must_preserve`, `coverage_status`, `planning_gate_status`, `hard_unknown_count`, `open_conflict_count`, and `quality_gate`.
+- `alignment.md` must record `Semantic Term Decisions`, `Upstream Intent Disposition`, and `Out-Of-Scope Conflicts` when relevant.
+- Do not recommend `/sp.plan` while a capability-like upstream signal lacks disposition, an ambiguous high-impact term lacks confirmation, or an out-of-scope conflict lacks user confirmation.
+- Report what was confirmed, what remains open, what was deferred or dropped, and the single valid next command.
 
 ## Guardrails
 
 - Do not edit source code, tests, or implementation files from `sp-specify`.
-- Do not skip planning-critical clarification just because the request sounds simple.
-- Do not treat conversation memory as a valid handoff surface; persisted truth files are the handoff source.
+- Do not treat the discussion handoff summary as complete when discussion source files exist.
+- Do not silently narrow user scope, redefine broad capability terms, or convert the request into a smaller delivery without user confirmation.
+- Do not require legacy brainstorming journals, stage manifests, lock JSON files, or replay artifacts for normal `sp-specify` completion.
 - Do not treat this summary block as the workflow itself; the detailed contract below remains authoritative.

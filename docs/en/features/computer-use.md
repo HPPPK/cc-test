@@ -134,7 +134,7 @@ Add your terminal app as well. You may need to **restart your terminal** after g
 ### 4. Start
 
 ```bash
-./bin/claude-haha
+./bin/claude-jiangxia
 ```
 
 ### 5. Use
@@ -152,11 +152,11 @@ Just ask in natural language:
 If you only want the regular Coding Agent and do not want to expose `computer-use` MCP tools, disable it with either command:
 
 ```bash
-claude-haha --no-computer-use
-CLAUDE_COMPUTER_USE_ENABLED=0 claude-haha
+claude-jiangxia --no-computer-use
+CLAUDE_COMPUTER_USE_ENABLED=0 claude-jiangxia
 ```
 
-You can also write the global config file at `~/.claude/cc-haha/computer-use-config.json`:
+You can also write the global config file at `~/.claude/cc-jiangxia/computer-use-config.json`:
 
 ```json
 {

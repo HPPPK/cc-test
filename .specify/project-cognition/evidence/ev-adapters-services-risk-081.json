@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-081",
+  "type": "source_analysis",
+  "source_path": "src/services/PromptSuggestion/promptSuggestion.ts",
+  "summary": "promptSuggestion.ts defines PromptVariant, getPromptVariant, shouldEnablePromptSuggestion, abortPromptSuggestion, getSuggestionSuppressReason, tryGenerateSuggestion and imports ../../bootstrap/state.js, ../../state/AppState.js, ../../types/message.js, ../../utils/agentSwarmsEnabled.js, ../../utils/array.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "PromptVariant",
+    "getPromptVariant",
+    "shouldEnablePromptSuggestion",
+    "abortPromptSuggestion",
+    "getSuggestionSuppressReason",
+    "tryGenerateSuggestion"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

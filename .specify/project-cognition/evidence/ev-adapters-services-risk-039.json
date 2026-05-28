@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-039",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/stream-state.ts",
+  "summary": "stream-state.ts defines DingTalkStreamingState, resetDingTalkStreamingState, finishAndResetDingTalkStreamingState and imports ../common/message-buffer.js, ./ai-card.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "DingTalkStreamingState",
+    "resetDingTalkStreamingState",
+    "finishAndResetDingTalkStreamingState"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

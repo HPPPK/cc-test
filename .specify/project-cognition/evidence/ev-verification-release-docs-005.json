@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-005",
+  "type": "source_analysis",
+  "source_path": ".github/workflows/release-desktop.yml",
+  "summary": "Desktop release workflow validates version/release-notes alignment and builds tagged Tauri releases via GitHub Actions.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "workflow_dispatch",
+    "release-notes/v${version}.md",
+    "release-quality-gate",
+    "tauri-action"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

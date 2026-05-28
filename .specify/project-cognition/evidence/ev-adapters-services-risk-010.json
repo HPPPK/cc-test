@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-010",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/permission.test.ts",
+  "summary": "Test coverage for permission.test.ts exercises parses text permission commands; parses short replies when one permission is pending; does not parse short replies when multiple permissions are pending; parses callback permission actions",
+  "detail": "",
+  "quotes_or_symbols": [
+    "parses text permission commands",
+    "parses short replies when one permission is pending",
+    "does not parse short replies when multiple permissions are pending",
+    "parses callback permission actions"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

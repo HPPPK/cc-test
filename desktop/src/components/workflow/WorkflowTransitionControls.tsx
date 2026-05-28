@@ -54,6 +54,39 @@ export function WorkflowTransitionControls({
     stateVersion,
   }
 
+  if (pending) {
+    return (
+      <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
+        <div className="mb-2 text-[12px] font-medium text-[var(--color-text-primary)]">
+          Waiting for confirmation
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onConfirm({ ...commandBase, action: 'confirm' })}
+            className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            onClick={() => onReject({ ...commandBase, action: 'reject' })}
+            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            Reject
+          </button>
+          <button
+            type="button"
+            onClick={() => onRetry({ ...commandBase, action: 'retry' })}
+            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    )
+  }
+
   if (canRequestConfirmation) {
     const phaseLabel = phaseId.replace(/[-_]+/g, ' ')
     const trimmedSummary = manualSummary.trim()
@@ -127,39 +160,6 @@ export function WorkflowTransitionControls({
             </div>
           </div>
         ) : null}
-      </section>
-    )
-  }
-
-  if (pending) {
-    return (
-      <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
-        <div className="mb-2 text-[12px] font-medium text-[var(--color-text-primary)]">
-          Waiting for confirmation
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onConfirm({ ...commandBase, action: 'confirm' })}
-            className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onClick={() => onReject({ ...commandBase, action: 'reject' })}
-            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Reject
-          </button>
-          <button
-            type="button"
-            onClick={() => onRetry({ ...commandBase, action: 'retry' })}
-            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Retry
-          </button>
-        </div>
       </section>
     )
   }

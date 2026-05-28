@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "feature": {
+    "id": "005-specify-discussions-workflow",
+    "name": "Workflows Template Management And Chat Entry",
+    "featureDir": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow",
+    "targetRoot": "F:/github/cc-jiangxia"
+  },
+  "route": {
+    "currentCommand": "sp-tasks",
+    "nextCommand": "/sp.implement",
+    "phaseMode": "task-generation-only",
+    "implementationAllowed": false,
+    "taskPackageReady": true
+  },
+  "adaptiveDispatch": {
+    "execution_model": "adaptive",
+    "execution_mode": "standard",
+    "workflow_status": "ready",
+    "dispatch_shape": "parallel-subagents",
+    "execution_surface": "native-subagents",
+    "capability_degraded": false,
+    "blocked_reason": "none",
+    "delegated_task_generation_lanes": [
+      "story-phase-decomposition",
+      "dependency-graph-analysis",
+      "write-set-parallel-safety"
+    ]
+  },
+  "artifacts": {
+    "tasks": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow/tasks.md",
+    "taskIndex": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow/task-index.json",
+    "taskPackets": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow/task-packets/*.json",
+    "workflowState": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow/workflow-state.md",
+    "taskGenerationEvidence": "F:/github/cc-jiangxia/.specify/features/005-specify-discussions-workflow/task-generation/evidence-index.json"
+  },
+  "mustPreserve": [
+    "MP-001",
+    "MP-002",
+    "MP-003",
+    "MP-004",
+    "MP-005",
+    "MP-006",
+    "MP-007",
+    "MP-008",
+    "MP-009",
+    "MP-010",
+    "MP-011",
+    "MP-012",
+    "MP-013",
+    "MP-014",
+    "MP-015"
+  ],
+  "consequenceObligations": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-005",
+    "CA-006"
+  ],
+  "guardrails": [
+    "Target root is F:/github/cc-jiangxia.",
+    "Desktop must never write workflows.json directly.",
+    "Only cc-jiangxia-owned workflow config may store user templates.",
+    "Built-ins are protected and cannot be edited/deleted in place or shadowed.",
+    "Import conflicts default to rename, never overwrite.",
+    "Template edits affect future sessions only.",
+    "Non-empty chat workflow start creates a linked new workflow session and preserves source chat.",
+    "Summarize must be compact-style but non-mutating.",
+    "Same-area tests are mandatory for production changes under src/server and desktop/src.",
+    "Do not touch protected files, credentials, transcripts, provider/OAuth config, generated quality artifacts, or dependency folders."
+  ],
+  "forbiddenGlobal": [
+    ".env",
+    ".env.*",
+    "**/*credential*",
+    "**/*credentials*",
+    "**/*secret*",
+    "**/*secrets*",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/settings.json",
+    ".claude/settings.json",
+    "~/.claude/cc-jiangxia/providers.json",
+    "~/.claude/cc-jiangxia/settings.json",
+    "~/.claude/cc-jiangxia/*oauth*.json",
+    "~/.claude/adapters.json",
+    "~/.claude/adapter-sessions.json",
+    "~/.claude/skills/**",
+    ".claude/skills/**",
+    ".mcp.json",
+    "managed MCP config",
+    "~/.claude/plugins/**",
+    "~/.claude/teams/**",
+    "node_modules/**",
+    "desktop/node_modules/**",
+    "adapters/node_modules/**",
+    "artifacts/quality-runs/**",
+    "artifacts/coverage/**",
+    ".omx/**"
+  ],
+  "dependencyEdges": [
+    { "from": "T003", "to": "T007", "reason": "Registry tests define expected validation/write behavior before implementation." },
+    { "from": "T004", "to": "T008", "reason": "API tests define route contract before mutation route implementation." },
+    { "from": "T007", "to": "T008", "reason": "Routes depend on registry validation and write semantics." },
+    { "from": "T006", "to": "T009", "reason": "Desktop API tests define client/type behavior before implementation." },
+    { "from": "T008", "to": "T009", "reason": "Desktop client consumes server route shape." },
+    { "from": "T009", "to": "T010", "reason": "Settings UI uses typed client methods." },
+    { "from": "T010", "to": "T011", "reason": "Manager mounts through Settings tab." },
+    { "from": "T011", "to": "T012", "reason": "Editor plugs into manager detail/edit state." },
+    { "from": "T011", "to": "T013", "reason": "Save/delete/duplicate flows need manager state." },
+    { "from": "T012", "to": "T013", "reason": "Save/validate flows consume editor draft shape." },
+    { "from": "T007", "to": "T014", "reason": "Import/export persistence depends on registry write preservation." },
+    { "from": "T008", "to": "T014", "reason": "Import/export routes extend API module." },
+    { "from": "T013", "to": "T015", "reason": "Import/export dialogs integrate into Settings manager." },
+    { "from": "T014", "to": "T015", "reason": "Desktop dialogs consume server preview/commit/export semantics." },
+    { "from": "T009", "to": "T016", "reason": "Workflow start dialog uses shared template types." },
+    { "from": "T016", "to": "T017", "reason": "Empty launch wiring consumes reusable dialog." },
+    { "from": "T005", "to": "T018", "reason": "Linked-session tests define snapshot expectations." },
+    { "from": "T007", "to": "T018", "reason": "Shared create helper uses registry lookup/snapshot semantics." },
+    { "from": "T008", "to": "T018", "reason": "Route/service integration shares workflow template lookup semantics." },
+    { "from": "T005", "to": "T019", "reason": "Linked-session tests define non-mutating summary expectation." },
+    { "from": "T018", "to": "T020", "reason": "Link service creates target through shared helper." },
+    { "from": "T019", "to": "T020", "reason": "Link service summarize strategy calls non-mutating helper." },
+    { "from": "T020", "to": "T021", "reason": "Route delegates to service." },
+    { "from": "T009", "to": "T022", "reason": "Linked API client extends shared desktop session types." },
+    { "from": "T021", "to": "T022", "reason": "Desktop client consumes linked route response/errors." },
+    { "from": "T017", "to": "T023", "reason": "Non-empty workflow UI extends composer dialog flow." },
+    { "from": "T022", "to": "T023", "reason": "UI calls linked-start API client." },
+    { "from": "T013", "to": "T024", "reason": "Final verification requires Settings CRUD complete." },
+    { "from": "T015", "to": "T024", "reason": "Final verification requires import/export complete." },
+    { "from": "T017", "to": "T024", "reason": "Final verification requires empty chat start complete." },
+    { "from": "T023", "to": "T024", "reason": "Final verification requires linked non-empty start complete." }
+  ],
+  "parallelBatches": [
+    {
+      "id": "batch-1-tests",
+      "tasks": ["T003", "T004", "T005", "T006"],
+      "joinPoint": "JP1"
+    },
+    {
+      "id": "batch-2-independent-implementation",
+      "tasks": ["T010", "T014", "T016", "T018", "T019"],
+      "joinPoint": "JP5",
+      "note": "Run only tasks whose dependencies are complete; i18n/shared workflow component edits require coordination."
+    }
+  ],
+  "joinPoints": [
+    { "id": "JP1", "after": ["T007"], "validation": "bun run check:server" },
+    { "id": "JP2", "after": ["T011"], "validation": "bun run check:desktop" },
+    { "id": "JP3", "after": ["T015"], "validation": "bun run check:server && bun run check:desktop" },
+    { "id": "JP4", "after": ["T017"], "validation": "bun run check:desktop" },
+    { "id": "JP5", "after": ["T023"], "validation": "bun run check:server && bun run check:desktop" },
+    { "id": "JP6", "after": ["T024"], "validation": "bun run check:coverage && bun run verify" }
+  ],
+  "verification": {
+    "narrow": [
+      "bun run check:server",
+      "bun run check:desktop"
+    ],
+    "conditional": [
+      "bun run check:persistence-upgrade if persistence shape changes beyond additive workflows.json fields",
+      "bun run quality:providers and live baseline when provider credentials are available for summarize evidence"
+    ],
+    "completion": [
+      "bun run check:coverage",
+      "bun run verify"
+    ]
+  }
+}

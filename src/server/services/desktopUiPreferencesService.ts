@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ApiError } from '../middleware/errorHandler.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import { readRecoverableJsonFile } from './recoverableJsonFile.js'
 import { ensurePersistentStorageUpgraded } from './persistentStorageMigrations.js'
 
@@ -108,7 +109,7 @@ export class DesktopUiPreferencesService {
   }
 
   private getPreferencesPath(): string {
-    return path.join(this.getConfigDir(), 'cc-haha', 'desktop-ui.json')
+    return getAppStoragePath(this.getConfigDir(), 'desktop-ui.json')
   }
 
   private async fileExists(filePath: string): Promise<boolean> {
@@ -163,7 +164,7 @@ export class DesktopUiPreferencesService {
     const existedBeforeRead = await this.fileExists(filePath)
     const preferences = await readRecoverableJsonFile({
       filePath,
-      label: 'cc-haha desktop UI preferences',
+      label: 'cc-jiangxia desktop UI preferences',
       defaultValue: defaultPreferences(),
       normalize: normalizeDesktopUiPreferences,
     })

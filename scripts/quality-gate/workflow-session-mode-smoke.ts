@@ -211,7 +211,7 @@ async function runWithIsolatedConfig<T>(
 ): Promise<T> {
   const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   const originalAnthropicKey = process.env.ANTHROPIC_API_KEY
-  const configDir = await mkdtemp(join(tmpdir(), 'cc-haha-workflow-session-smoke-'))
+  const configDir = await mkdtemp(join(tmpdir(), 'cc-jiangxia-workflow-session-smoke-'))
 
   try {
     process.env.CLAUDE_CONFIG_DIR = configDir
@@ -236,7 +236,7 @@ async function runWithIsolatedConfig<T>(
 
 export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promise<WorkflowSessionModeSmokeResult> {
   return runWithIsolatedConfig(Boolean(options.keepProfile), async (configDir) => {
-    const workDir = await mkdtemp(join(tmpdir(), 'cc-haha-workflow-session-workdir-'))
+    const workDir = await mkdtemp(join(tmpdir(), 'cc-jiangxia-workflow-session-workdir-'))
     let started: StartedServer | null = null
 
     try {
@@ -400,7 +400,7 @@ if (import.meta.main) {
   const artifactArgIndex = process.argv.indexOf('--artifact-dir')
   const artifactDir = artifactArgIndex >= 0 && process.argv[artifactArgIndex + 1]
     ? process.argv[artifactArgIndex + 1]!
-    : await mkdtemp(join(tmpdir(), 'cc-haha-workflow-session-artifacts-'))
+    : await mkdtemp(join(tmpdir(), 'cc-jiangxia-workflow-session-artifacts-'))
   const result = await executeWorkflowSessionModeSmoke(
     process.cwd(),
     artifactDir,

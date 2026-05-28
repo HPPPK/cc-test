@@ -1,0 +1,63 @@
+{
+  "id": "T014",
+  "title": "Add server import/export preview and commit behavior",
+  "agent": "executor",
+  "depends_on": [
+    "T007: registry validation/write behavior implemented",
+    "T008: workflow template mutation API implemented"
+  ],
+  "parallel_safe": true,
+  "story": "US2",
+  "objective": "Complete server import preview, import commit, and export behavior with rename-by-default conflicts and lossless persistence.",
+  "context_navigation": {
+    "design_decision": "plan.md#Operational Consequence Design",
+    "data_model": "data-model.md#Import Preview",
+    "api_contract": "contracts/workflow-template-api.md#Import Preview",
+    "reference_implementation": "src/server/services/workflowTemplateRegistryService.ts"
+  },
+  "write_scope": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts"
+  ],
+  "read_scope": [
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/data-model.md"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "src/server/services/workflowTemplateRegistryService.ts （修改）",
+    "src/server/api/workflowTemplates.ts （修改）",
+    "src/server/__tests__/workflowTemplates.test.ts （修改）",
+    "src/server/services/workflowTemplateRegistryService.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not overwrite by default.",
+    "Do not trust stale preview objects.",
+    "Do not export secrets or unrelated protected state."
+  ],
+  "acceptance_criteria": [
+    "Preview computes candidates, issues, conflicts, and rename proposals without writing.",
+    "Commit validates payload and selections again.",
+    "Built-in id conflicts require safe rename.",
+    "Export returns reusable template payload."
+  ],
+  "verify_commands": [
+    "bun run check:server"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

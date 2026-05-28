@@ -7,7 +7,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { logForDebugging } from './debug.js'
 
 const TERMINAL_SHELL_ENV_TIMEOUT_MS = 5000
-const TERMINAL_ENV_MARKER = '__CC_HAHA_TERMINAL_ENV_START__'
+const TERMINAL_ENV_MARKER = '__CC_JIANGXIA_TERMINAL_ENV_START__'
 
 let cachedTerminalShellEnv:
   | Promise<Record<string, string> | null>
@@ -200,7 +200,10 @@ async function readShellRcEnvironment(
 async function captureTerminalShellEnvironment(
   baseEnv: Record<string, string>,
 ): Promise<Record<string, string> | null> {
-  if (isEnvTruthy(baseEnv.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV)) {
+  if (
+    isEnvTruthy(baseEnv.CC_JIANGXIA_DISABLE_TERMINAL_SHELL_ENV) ||
+    isEnvTruthy(baseEnv.CC_HAHA_DISABLE_TERMINAL_SHELL_ENV)
+  ) {
     return null
   }
 

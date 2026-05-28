@@ -1,0 +1,24 @@
+{
+  "id": "ev-server-workflow-api-sessions-workflow-routes",
+  "type": "source_analysis",
+  "source_path": "src/server/api/sessions.ts",
+  "summary": "Session API owns workflow session lifecycle routes under /api/sessions/:id/workflow, initializes workflow services, persists transitions, and exposes workflow state/report reads.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "handleSessionsApi",
+    "handleWorkflowSessionRoute",
+    "WorkflowSessionCreateService",
+    "WorkflowSessionLinkService",
+    "WorkflowReportStore",
+    "WorkflowRuntimeService",
+    "case 'transition'",
+    "case 'start'",
+    "case 'report'",
+    "persistWorkflowFinalReportIfReady",
+    "projectWorkflowStateForApi"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-114",
+  "type": "source_analysis",
+  "source_path": "src/services/api/sessionIngress.ts",
+  "summary": "sessionIngress.ts defines getOrCreateSequentialAppend, appendSessionLog, getSessionLogs, getSessionLogsViaOAuth, getTeleportEvents, findLastUuid and imports axios, crypto, ../../constants/oauth.js, ../../types/logs.js, ../../utils/debug.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getOrCreateSequentialAppend",
+    "appendSessionLog",
+    "getSessionLogs",
+    "getSessionLogsViaOAuth",
+    "getTeleportEvents",
+    "findLastUuid"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

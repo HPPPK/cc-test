@@ -52,10 +52,10 @@ describe('provider settings JSON helpers', () => {
         ANTHROPIC_BASE_URL: 'https://old.example.com',
         ANTHROPIC_MODEL: 'old-model',
         CLAUDE_CODE_MODEL_CONTEXT_WINDOWS: '{"old":100000}',
-        CC_HAHA_SEND_DISABLED_THINKING: '1',
+        CC_JIANGXIA_SEND_DISABLED_THINKING: '1',
         USER_DEFINED: 'keep-me',
       },
-      ['CC_HAHA_SEND_DISABLED_THINKING'],
+      ['CC_JIANGXIA_SEND_DISABLED_THINKING'],
     )
 
     expect(cleaned).toEqual({ USER_DEFINED: 'keep-me' })

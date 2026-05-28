@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-029",
+  "type": "source_analysis",
+  "source_path": "adapters/common/ws-bridge.ts",
+  "summary": "ws-bridge.ts defines AttachmentRef, ServerMessage, MessageHandler, WsBridge and imports ws",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AttachmentRef",
+    "ServerMessage",
+    "MessageHandler",
+    "WsBridge"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

@@ -1,0 +1,170 @@
+{
+  "lane_id": "dependency-graph-analysis",
+  "status": "success",
+  "source_artifacts_inspected": [
+    ".specify/features/005-specify-discussions-workflow/plan.md",
+    ".specify/features/005-specify-discussions-workflow/spec.md",
+    ".specify/features/005-specify-discussions-workflow/context.md",
+    ".specify/features/005-specify-discussions-workflow/data-model.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/workflow-template-api.md",
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md",
+    ".specify/features/005-specify-discussions-workflow/quickstart.md",
+    ".specify/features/005-specify-discussions-workflow/plan-contract.json",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md"
+  ],
+  "dependency_edges": [
+    {
+      "from": "registry-validation-and-types",
+      "to": "workflow-template-mutation-api",
+      "reason": "Mutation routes must reuse registry-owned validation, built-in id protection, source normalization, and diagnostics."
+    },
+    {
+      "from": "workflow-template-mutation-api",
+      "to": "desktop-workflows-settings-api-client",
+      "reason": "Desktop Settings must call server-owned mutation APIs rather than writing workflow config directly."
+    },
+    {
+      "from": "desktop-workflows-settings-api-client",
+      "to": "desktop-workflows-settings-ui",
+      "reason": "Settings CRUD/import/export UI depends on typed client methods and validation issue handling."
+    },
+    {
+      "from": "shared-workflow-session-create-service",
+      "to": "linked-workflow-session-service",
+      "reason": "Linked workflow starts must snapshot templates through the same path used by POST /api/sessions."
+    },
+    {
+      "from": "non-mutating-compact-summary-helper",
+      "to": "linked-workflow-session-service",
+      "reason": "Summarize context strategy must not invoke the mutating /compact command path against the source chat."
+    },
+    {
+      "from": "linked-workflow-session-api",
+      "to": "desktop-chat-workflows-entry",
+      "reason": "Non-empty Chat Workflows entry depends on linked-start route errors and returned target session summary."
+    }
+  ],
+  "critical_path": [
+    "Registry validation and lossless write preservation",
+    "Workflow template mutation API",
+    "Desktop API/types",
+    "Settings Workflows CRUD/import/export",
+    "Shared workflow session creation service",
+    "Non-mutating compact-style summary helper",
+    "Linked workflow session service/API",
+    "Chat Workflows entry and context strategy UI",
+    "Coverage and verify gates"
+  ],
+  "parallel_ready_batches": [
+    {
+      "batch": "Batch 1",
+      "tasks": [
+        "T003",
+        "T004",
+        "T005"
+      ],
+      "join_condition": "Server and desktop contract expectations are explicit before production route/service work."
+    },
+    {
+      "batch": "Batch 2",
+      "tasks": [
+        "T006"
+      ],
+      "join_condition": "Registry validation/write behavior is stable before route mutation work."
+    },
+    {
+      "batch": "Batch 3",
+      "tasks": [
+        "T008",
+        "T018",
+        "T019"
+      ],
+      "join_condition": "Desktop API/types and linked-session tests are ready before UI/service consumers."
+    },
+    {
+      "batch": "Batch 4",
+      "tasks": [
+        "T010",
+        "T012",
+        "T016",
+        "T020"
+      ],
+      "join_condition": "Independent UI and service slices land with no overlapping write scopes."
+    }
+  ],
+  "review_gates": [
+    "registry-truth-ownership-review",
+    "server-mutation-api-review",
+    "persistence-safety-review",
+    "snapshot-compatibility-review",
+    "linked-session-source-preservation-review",
+    "summarize-non-mutating-review",
+    "desktop-ux-accessibility-i18n-review"
+  ],
+  "validation_gates": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run check:persistence-upgrade when persistence shape changes beyond additive workflows.json fields",
+    "bun run check:coverage",
+    "bun run verify",
+    "quickstart.md manual smoke or explicit blocker for provider-backed summarize evidence"
+  ],
+  "ca_mapping": {
+    "CA-001": [
+      "T003",
+      "T006",
+      "T007",
+      "T010",
+      "T017",
+      "T024"
+    ],
+    "CA-002": [
+      "T003",
+      "T006",
+      "T008",
+      "T012",
+      "T015",
+      "T024"
+    ],
+    "CA-003": [
+      "T003",
+      "T006",
+      "T007",
+      "T010",
+      "T011",
+      "T012",
+      "T015",
+      "T024"
+    ],
+    "CA-004": [
+      "T018",
+      "T020",
+      "T022",
+      "T024"
+    ],
+    "CA-005": [
+      "T018",
+      "T019",
+      "T020",
+      "T021",
+      "T022",
+      "T023",
+      "T024"
+    ],
+    "CA-006": [
+      "T003",
+      "T006",
+      "T010",
+      "T012",
+      "T014",
+      "T024"
+    ]
+  },
+  "blockers": [],
+  "integration_notes": [
+    "Sequence server registry/API first because Settings and Chat selection depend on consistent template diagnostics.",
+    "The linked-session service is the highest-risk integration point because it joins session creation, transcript reads, compaction semantics, idempotency, and desktop navigation.",
+    "Manual smoke should use isolated CLAUDE_CONFIG_DIR where possible."
+  ]
+}

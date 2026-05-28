@@ -1,0 +1,16 @@
+{
+  "id": "ev-desktop-workflow-ui-26",
+  "type": "source_analysis",
+  "source_path": "desktop/src/pages/AdapterSettings.tsx",
+  "summary": "Adapter settings is an adjacent IM integration page with pairing and per-platform forms.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AdapterSettings",
+    "generatePairingCode",
+    "activeIm"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

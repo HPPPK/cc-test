@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-033",
+  "type": "source_analysis",
+  "source_path": "adapters/dingtalk/__tests__/stream-state.test.ts",
+  "summary": "Test coverage for stream-state.test.ts exercises drops the active AI card stream when permission interrupts output ordering; completes the existing stream before dropping it for a permission request; finalizes an already-flushed card even when the message buffer is empty",
+  "detail": "",
+  "quotes_or_symbols": [
+    "drops the active AI card stream when permission interrupts output ordering",
+    "completes the existing stream before dropping it for a permission request",
+    "finalizes an already-flushed card even when the message buffer is empty"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

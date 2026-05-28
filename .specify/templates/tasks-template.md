@@ -8,7 +8,7 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/.specify/features/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), alignment.md and context.md when present or required for scenario profile inputs, research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. If `.specify/testing/TESTING_CONTRACT.md` exists, tests are expected by default for affected behavior changes and bug fixes. Only omit them when the contract or plan explicitly justifies the omission.
+**Tests**: The examples below include test tasks. Tests are expected by default for affected behavior changes and bug fixes. Only omit them when the plan explicitly justifies the omission.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -32,15 +32,38 @@ description: "Task list template for feature implementation"
 - Include `MP-*` IDs for any task that carries a discussion-derived goal, non-goal, decision, reference, trade-off, acceptance signal, or stop-and-reopen condition.
 - For each `[P]` task or explicit parallel batch, include enough detail that the leader can compile a bounded subagent execution packet: objective, write set, required references, forbidden drift, validation command, and done condition
 
+## Implementation Target Boundary
+
+- **Target root**: [copy from plan-contract.json / plan.md]
+- **Target-relative paths**: [verified paths or explicit path discovery tasks]
+- **Evidence status**: [target cognition | minimal live reads | user confirmation | explicit assumption | blocked]
+- **Boundary constraints**: [current project role, target role, reference-only sources, forbidden drift]
+- **MP obligations**: [MP-* IDs that shape implementation location, scope, validation, or stop conditions]
+- **Reference-only paths**: [paths used only as transfer evidence, not as implementation write targets]
+
+## Task-Generation Evidence Index
+
+- `task-generation/evidence-index.json`: accepted task-generation lane handoffs and the task, dependency, write-set, batch, join-point, guardrail, or escalation decisions each handoff shaped.
+- `task-generation/checkpoints.ndjson`: `task_generation_checkpoint` records written before delegated decomposition lanes, major synthesis points, and compaction-risk stops.
+- `task-generation/handoffs/`: one structured handoff per accepted task-generation lane, named by stable lane id.
+- Every task, dependency edge, write-set decision, parallel batch, join point, guardrail, or escalation below should be traceable to upstream artifacts and, when delegated lanes were used, to at least one accepted task-generation handoff.
+- Every accepted task-generation handoff must have a consumer recorded in `task-generation/evidence-index.json`: a task ID, packet field, dependency edge, write-set decision, join point, guardrail, deferral, escalation, or blocker reason.
+
 ## Reference Fidelity Mapping
 
 - Map each preserved or redesigned reference behavior inventory item to the task IDs, checkpoints, or join points that carry it forward.
 - If a reference behavior is intentionally deferred, record that explicitly instead of silently omitting it.
 - If a reference behavior is intentionally redesigned, point to the task or review checkpoint that must acknowledge the divergence.
 
+## Consequence Obligation Mapping
+
+| Obligation ID | Task IDs | Affected State / Dependency | Required References | Validation | Stop And Reopen |
+| --- | --- | --- | --- | --- | --- |
+| CA-### | T### | [state or dependency] | [files or artifacts] | [command or manual check] | [condition] |
+
 ## Analyze Remediation Mapping
 
-Use this section only when regenerating tasks after a blocked `sp-analyze` gate. Leave it as `No prior analyze blockers for this task package.` for first-pass task generation.
+Use this section only when regenerating tasks after a blocked or explicitly recorded legacy `sp-analyze` gate. Leave it as `No prior analyze blockers for this task package.` for first-pass task generation.
 
 | Finding ID | Disposition | Task/Section Evidence | Notes |
 |------------|-------------|-----------------------|-------|
@@ -61,9 +84,9 @@ If any finding is `escalated`, stop task generation and set `next_command` direc
 - If the active profile has a reference fidelity contract, add an explicit Fidelity Checkpoint before any implementation batch that can change fidelity-sensitive behavior, layout, workflow order, naming, or outputs.
 - Any task that intentionally departs from the reference object MUST name the allowed deviation, required evidence, reviewer or acceptance condition, and the downstream artifact where the decision is recorded.
 
-## Analyze-Compatible Task Self-Audit
+## Implementation-Readiness Task Self-Audit
 
-Before final handoff to `sp-analyze`, confirm:
+Before final handoff to `sp-implement`, confirm:
 
 - Buildable `FR-*` and buildable success criteria have task, checkpoint, or deferred-note coverage.
 - Locked planning decisions that affect implementation, compatibility, rollout, validation, sequencing, architecture shape, or guardrails are preserved in this task package.
@@ -77,12 +100,12 @@ Before final handoff to `sp-analyze`, confirm:
 
 Audit status keywords should explicitly cover buildable `FR-*`, locked planning decisions, task guardrails, DP readiness, reference fidelity, unmapped tasks, and write-set conflicts.
 
-## Format: `[ID] [P?] [Story] [Agent?] Description`
+## Format: `[ID] [P?] [Story?] Description`
 
 - **[P]**: Can run in parallel only when the task has an isolated write set, no incomplete dependencies, stable upstream inputs, and its own verification path
-- **[AGENT]**: Marks a task or guardrail action the AI must explicitly execute; it is independent from `[P]`
+- **[AGENT]**: Marks a task or guardrail action the AI must explicitly execute in the contract matrix; it is independent from `[P]` and is not a checklist-row label
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
-- **[Agent]**: Role from the agent-teams pool assigned to this task. Write as `[Agent: <role>]`. Choose from: `security-reviewer`, `test-engineer`, `style-reviewer`, `performance-reviewer`, `quality-reviewer`, `api-reviewer`, `debugger`, `code-simplifier`, `build-fixer`, `git-master`, `executor`. Default to `executor` when no specialist role matches.
+- **Agent role**: Role from the agent-teams pool assigned to this task. Agent roles belong in the task contract matrix and task packet JSON, not in checklist rows. Choose from: `security-reviewer`, `test-engineer`, `style-reviewer`, `performance-reviewer`, `quality-reviewer`, `api-reviewer`, `debugger`, `code-simplifier`, `build-fixer`, `git-master`, `executor`. Default to `executor` when no specialist role matches.
 - **Write set**: Include all files and shared coordination surfaces the task will modify, including routers, registries, export barrels, schema indexes, and dependency injection containers
 - Include exact file paths in descriptions
 
@@ -154,7 +177,7 @@ Examples of foundational tasks (adjust based on your project):
 
 ---
 
-## Phase 3: User Story 1 - [Title] (Priority: P1) First Release Candidate
+## Phase 3: User Story 1 - [Title] (Priority: P1)
 
 **Goal**: [Brief description of what this story delivers]
 
@@ -165,8 +188,8 @@ Examples of foundational tasks (adjust based on your project):
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
 **Parallel Batch 1.1**: Independent failing tests with non-overlapping write sets
-- [ ] T013 [P] [US1] [Agent: test-engineer] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T014 [P] [US1] [Agent: test-engineer] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T013 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
+- [ ] T014 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
 **Join Point 1.1**: Confirm both tests fail for the expected reasons before writing production code
 Join Point Validation:
 - Validation target: failing contract and integration tests for User Story 1
@@ -176,17 +199,17 @@ Join Point Validation:
 ### Implementation for User Story 1
 
 **Parallel Batch 1.2**: Independent models or DTOs with isolated write sets
-- [ ] T015 [P] [US1] [Agent: executor] Create [Entity1] model in src/models/[entity1].py
-- [ ] T016 [P] [US1] [Agent: executor] Create [Entity2] model in src/models/[entity2].py
+- [ ] T015 [P] [US1] Create [Entity1] model in src/models/[entity1].py
+- [ ] T016 [P] [US1] Create [Entity2] model in src/models/[entity2].py
 **Join Point 1.2**: Resolve any shared exports, registrations, or schema indexes before service work
 Join Point Validation:
 - Validation target: shared exports, registrations, or schema indexes updated after the parallel model batch
 - Validation command: [Smallest trustworthy command or review check for the touched shared surface]
 - Pass condition: downstream service work sees one canonical shared surface update with no conflicting registrations or missing exports
-- [ ] T017 [US1] [Agent: executor] Implement [Service] in src/services/[service].py (depends on T015, T016)
-- [ ] T018 [US1] [Agent: security-reviewer] Implement [endpoint/feature] in src/[location]/[file].py while preserving the established boundary/framework pattern named in `plan.md`
-- [ ] T019 [US1] [Agent: executor] Add validation and error handling
-- [ ] T020 [US1] [Agent: executor] Add logging for user story 1 operations
+- [ ] T017 [US1] Implement [Service] in src/services/[service].py (depends on T015, T016)
+- [ ] T018 [US1] Implement [endpoint/feature] in src/[location]/[file].py while preserving the established boundary/framework pattern named in `plan.md`
+- [ ] T019 [US1] Add validation and error handling
+- [ ] T020 [US1] Add logging for user story 1 operations
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -348,20 +371,20 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
   - `low-delegation-confidence`
 - If later batches are parallelizable but the current batch is not, say that explicitly instead of implying the whole feature has no parallelism.
 
-### First Release Candidate
+### Confirmed Delivery Boundary
 
 1. Complete Phase 1: Setup
 2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently
-5. Release/demo if ready
+3. Complete every user story and supporting task included in the confirmed product scope
+4. **STOP and VALIDATE**: Run the representative end-to-end validation scenario from `quickstart.md` and the independent tests for each included story
+5. Treat delivery as ready only when the user-confirmed scope, quality gates, and regression evidence are complete
 
-### Phased Delivery
+### User-Confirmed Delivery Sequence
 
 1. Complete Setup + Foundational → Foundation ready
-2. Add User Story 1 → Test independently → Release/Demo if it forms a coherent first release candidate
-3. Add User Story 2 → Test independently → Release/Demo
-4. Add User Story 3 → Test independently → Release/Demo
+2. Add each confirmed story in priority order or in the user-approved parallel sequence
+3. Test each story independently before dependent work continues
+4. Preserve user-confirmed deferrals and non-goals explicitly; do not infer a smaller release from User Story 1
 5. Each story adds value without breaking previous stories
 
 ### Parallel Team Strategy
@@ -453,7 +476,7 @@ npx tsc --noEmit
 - [P] tasks = isolated write set, stable inputs, no incomplete dependencies, independent verification
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
-- Tests are default deliverables for behavior changes, bug fixes, and refactors whether or not `.specify/testing/TESTING_CONTRACT.md` exists
+- Tests are default deliverables for behavior changes, bug fixes, and refactors
 - If the touched area lacks a reliable automated test surface, add bootstrap tasks before implementation so RED can be proven honestly
 - Verify tests fail before implementing
 - Commit after each task or logical group

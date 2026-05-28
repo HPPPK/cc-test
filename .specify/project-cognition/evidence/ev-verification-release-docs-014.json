@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-014",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/capabilities/default.json",
+  "summary": "Default Tauri capability manifest grants core event, window, webview, app, and resources access for the desktop shell.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "core:event:default",
+    "core:webview:default",
+    "core:window:default"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

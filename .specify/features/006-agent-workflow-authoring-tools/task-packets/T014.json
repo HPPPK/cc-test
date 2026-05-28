@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "task_id": "T014",
+  "objective": "US4: delete, list",
+  "description": "See tasks.md for the authoritative enriched task body.",
+  "target_root": "F:\\github\\cc-jiangxia",
+  "implementation_target": {
+    "feature": "006-agent-workflow-authoring-tools",
+    "project_root": "F:\\github\\cc-jiangxia"
+  },
+  "agent": "executor",
+  "depends_on": [
+    "T013"
+  ],
+  "parallel_safe": false,
+  "authoritative_inputs": [
+    "spec.md",
+    "plan.md",
+    "research.md",
+    "data-model.md",
+    "contracts/workflow-authoring-tool.md",
+    "contracts/workflow-authoring-api.md",
+    "quickstart.md",
+    "plan-contract.json",
+    "tasks.md"
+  ],
+  "target_relative_paths": [
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"
+  ],
+  "write_scope": [
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"
+  ],
+  "read_scope": [
+    "spec.md",
+    "plan.md",
+    "research.md",
+    "data-model.md",
+    "contracts/",
+    "quickstart.md",
+    "src/tools.ts",
+    "src/Tool.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowToolPolicy.ts"
+  ],
+  "forbidden": [
+    ".env",
+    "credentials",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl",
+    "~/.claude/cc-jiangxia/providers.json",
+    ".mcp.json",
+    "desktop/src/** unless desktop optional scope is explicitly activated"
+  ],
+  "anti_goals": [
+    "Do not introduce new dependencies",
+    "Do not lower coverage gates",
+    "Do not create a separate workflow template store",
+    "Do not mutate protected non-workflow state",
+    "Do not remove confirmed operations"
+  ],
+  "does_not_remove": [
+    "guide",
+    "list",
+    "inspect",
+    "validate",
+    "create",
+    "update",
+    "duplicate",
+    "delete"
+  ],
+  "capability_operations": [
+    "delete",
+    "list"
+  ],
+  "acceptance_criteria": [
+    "Complete the task row and matrix entry in tasks.md",
+    "Keep changes inside write_scope",
+    "Run verify_commands",
+    "Report changed files and concerns"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+  ],
+  "required_validation": [
+    "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+  ],
+  "handoff_format": {
+    "status": "success|failed|blocked",
+    "recovery_hints": [],
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": []
+  },
+  "failure_handling": {
+    "retry_max": 2,
+    "escalation": "debugger"
+  },
+  "boundary_constraints": [
+    "Use WorkflowTemplateRegistryService for persistence",
+    "No direct builtin mutation",
+    "No active session snapshot mutation",
+    "No silent desktop-server fallback",
+    "Keep first scope linear-only"
+  ],
+  "stop_and_reopen_conditions": [
+    "mandatory preview-only persistence is required",
+    "direct builtin mutation/deletion/shadowing is proposed",
+    "writes outside workflow template config are required",
+    "active workflow session snapshots must be mutated",
+    "global tool bypasses phase policy",
+    "field guide cannot be tested against validation",
+    "unsupported non-linear workflow shapes are required"
+  ],
+  "consequence_gate": {
+    "triggered": true,
+    "status": "mapped",
+    "trigger_reason": "workflow template persistence, destructive delete, stale writes, desktop/server route, and global tool policy"
+  },
+  "consequence_obligations": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-005",
+    "CA-006",
+    "CA-007",
+    "CA-008",
+    "CA-009",
+    "CA-010",
+    "CA-011"
+  ]
+}

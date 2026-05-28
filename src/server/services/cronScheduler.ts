@@ -22,6 +22,10 @@ import {
   resolveClaudeCliLauncher,
 } from '../../utils/desktopBundledCli.js'
 import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
+import {
+  getAppStorageReadPaths,
+  setJiangxiaEnvAliases,
+} from '../../utils/appIdentity.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -285,7 +289,8 @@ export function resolveCronProjectRoot(
   options: CronCliResolutionOptions = {},
 ): string {
   const env = options.env ?? process.env
-  const explicitRoot = env.CC_HAHA_ROOT?.trim()
+  const explicitRoot =
+    (env.CC_JIANGXIA_ROOT ?? env.CC_HAHA_ROOT)?.trim()
   if (explicitRoot && isSourceProjectRoot(path.resolve(explicitRoot))) {
     return path.resolve(explicitRoot)
   }
@@ -660,13 +665,12 @@ export class CronScheduler {
       explicitProviderEnv.ANTHROPIC_MODEL = task.model.trim()
     }
 
-    return {
+    const childEnv: Record<string, string> = {
       ...cleanEnv,
       CLAUDE_CODE_ENABLE_TASKS: '1',
       CLAUDE_CODE_ENTRYPOINT: 'sdk-cli',
       CALLER_DIR: workDir,
       PWD: workDir,
-      CC_HAHA_SKIP_DOTENV: '1',
       ...(explicitProviderEnv
         ? {
             CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1',
@@ -678,6 +682,8 @@ export class CronScheduler {
         ? await this.buildOfficialOAuthEnv()
         : {}),
     }
+    setJiangxiaEnvAliases(childEnv, 'SKIP_DOTENV', '1')
+    return childEnv
   }
 
   private getConfigDir(): string {
@@ -689,24 +695,27 @@ export class CronScheduler {
       return true
     }
 
-    const ccHahaDir = path.join(this.getConfigDir(), 'cc-haha')
-    if (existsSync(path.join(ccHahaDir, 'providers.json'))) {
+    const configDir = this.getConfigDir()
+    if (getAppStorageReadPaths(configDir, 'providers.json').some((filePath) => existsSync(filePath))) {
       return true
     }
 
-    try {
-      const raw = readFileSync(path.join(ccHahaDir, 'settings.json'), 'utf-8')
-      const parsed = JSON.parse(raw) as { env?: Record<string, string> }
-      const env = parsed.env ?? {}
-      return Object.entries(env).some(
-        ([key, value]) =>
-          isProviderManagedEnvVar(key) &&
-          typeof value === 'string' &&
-          value.trim().length > 0,
-      )
-    } catch {
-      return false
+    for (const settingsPath of getAppStorageReadPaths(configDir, 'settings.json')) {
+      try {
+        const raw = readFileSync(settingsPath, 'utf-8')
+        const parsed = JSON.parse(raw) as { env?: Record<string, string> }
+        const env = parsed.env ?? {}
+        return Object.entries(env).some(
+          ([key, value]) =>
+            isProviderManagedEnvVar(key) &&
+            typeof value === 'string' &&
+            value.trim().length > 0,
+        )
+      } catch {
+        // Try the legacy managed settings file next.
+      }
     }
+    return false
   }
 
   private shouldMarkManagedOAuth(providerId?: string | null): boolean {
@@ -717,25 +726,25 @@ export class CronScheduler {
       return false
     }
 
-    try {
-      const raw = readFileSync(
-        path.join(this.getConfigDir(), 'cc-haha', 'settings.json'),
-        'utf-8',
-      )
-      const parsed = JSON.parse(raw) as { env?: Record<string, string> }
-      const env = parsed.env ?? {}
-      const hasProviderEnv = [
-        'ANTHROPIC_API_KEY',
-        'ANTHROPIC_AUTH_TOKEN',
-        'ANTHROPIC_BASE_URL',
-      ].some(
-        (key) =>
-          typeof env[key] === 'string' && env[key]!.trim().length > 0,
-      )
-      return !hasProviderEnv
-    } catch {
-      return true
+    for (const settingsPath of getAppStorageReadPaths(this.getConfigDir(), 'settings.json')) {
+      try {
+        const raw = readFileSync(settingsPath, 'utf-8')
+        const parsed = JSON.parse(raw) as { env?: Record<string, string> }
+        const env = parsed.env ?? {}
+        const hasProviderEnv = [
+          'ANTHROPIC_API_KEY',
+          'ANTHROPIC_AUTH_TOKEN',
+          'ANTHROPIC_BASE_URL',
+        ].some(
+          (key) =>
+            typeof env[key] === 'string' && env[key]!.trim().length > 0,
+        )
+        return !hasProviderEnv
+      } catch {
+        // Try the legacy managed settings file next.
+      }
     }
+    return true
   }
 
   private async buildOfficialOAuthEnv(): Promise<Record<string, string>> {
@@ -743,8 +752,8 @@ export class CronScheduler {
       CLAUDE_CODE_ENTRYPOINT: 'claude-desktop',
     }
     try {
-      const { hahaOAuthService } = await import('./hahaOAuthService.js')
-      const token = await hahaOAuthService.ensureFreshAccessToken()
+      const { jiangxiaOAuthService } = await import('./jiangxiaOAuthService.js')
+      const token = await jiangxiaOAuthService.ensureFreshAccessToken()
       if (token) {
         env.CLAUDE_CODE_OAUTH_TOKEN = token
       }

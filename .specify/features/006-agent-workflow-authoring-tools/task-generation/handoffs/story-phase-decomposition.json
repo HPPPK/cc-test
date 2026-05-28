@@ -1,0 +1,698 @@
+{
+  "lane_id": "story-phase-decomposition",
+  "status": "accepted_candidate",
+  "summary": "Decomposes feature 006 into shared foundational work plus four independently validatable user-story phases: create from conversation, update/optimize user workflows, copy-then-edit builtins, and destructive user-template delete. Coverage maps every required capability operation, FR-001 through FR-015, MP-001 through MP-022, and CA-001 through CA-011 to proposed task slots.",
+  "story_phases": [
+    {
+      "story": "US1",
+      "goal": "Create a valid user workflow template from conversational intent, with guide-driven authoring, validation, direct persistence, deterministic audit results, and Settings refetch compatibility.",
+      "independent_validation": "Using an isolated CLAUDE_CONFIG_DIR, guide and validate a three-phase candidate, create it through workflow_template_authoring, verify persisted:true/source:user, verify invalid candidates do not write, and verify /api/workflows/templates or Settings refetch can list the created template.",
+      "proposed_tasks": [
+        {
+          "proposed_id": "T011",
+          "title": "Implement guide/list/validate/create service behavior for conversational create",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.ts",
+            "src/server/services/workflowTemplateValidation.ts",
+            "src/server/services/workflowTemplateAuthoringGuide.ts",
+            "src/server/services/workflowTemplateRegistryService.ts"
+          ],
+          "operations": [
+            "guide",
+            "list",
+            "validate",
+            "create"
+          ]
+        },
+        {
+          "proposed_id": "T012",
+          "title": "Expose create-capable workflow_template_authoring tool contract and rendering",
+          "files": [
+            "src/tools.ts",
+            "src/Tool.ts",
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"
+          ],
+          "operations": [
+            "guide",
+            "list",
+            "validate",
+            "create"
+          ]
+        },
+        {
+          "proposed_id": "T013",
+          "title": "Add create-path API parity and same-store visibility tests",
+          "files": [
+            "src/server/api/workflowTemplates.ts",
+            "src/server/__tests__/workflowTemplates.test.ts",
+            "src/server/services/workflowTemplateAuthoringService.test.ts",
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+          ],
+          "operations": [
+            "validate",
+            "create",
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "story": "US2",
+      "goal": "Optimize an existing user workflow by inspecting a fresh basis, validating the edited template, preserving compatible unknown fields, and rejecting stale updates without writing.",
+      "independent_validation": "Inspect a user template to capture basisHash, update it with a matching selector/id and fresh hash, verify success and unknown-field preservation, then simulate a manual edit and verify the old basisHash rejects with persisted:false and WORKFLOW_TEMPLATE_STALE_BASIS.",
+      "proposed_tasks": [
+        {
+          "proposed_id": "T021",
+          "title": "Add inspect and basisHash support for current user-template editing",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.ts",
+            "src/server/services/workflowTemplateValidation.ts",
+            "src/server/services/workflowTemplateRegistryService.ts"
+          ],
+          "operations": [
+            "inspect",
+            "list"
+          ]
+        },
+        {
+          "proposed_id": "T022",
+          "title": "Implement user-template update with validation, id/source checks, stale-write rejection, and unknown-field preservation",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.ts",
+            "src/server/services/workflowTemplateRegistryService.ts"
+          ],
+          "operations": [
+            "inspect",
+            "validate",
+            "update"
+          ]
+        },
+        {
+          "proposed_id": "T023",
+          "title": "Cover update success, stale rejection, builtin-update rejection, and config-unchanged failures",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.test.ts",
+            "src/server/services/workflowTemplateRegistryService.test.ts",
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+          ],
+          "operations": [
+            "inspect",
+            "validate",
+            "update"
+          ]
+        }
+      ]
+    },
+    {
+      "story": "US3",
+      "goal": "Modify builtin workflows safely by rejecting direct builtin mutation, duplicating the builtin to a non-conflicting user-owned template, and applying future edits only to the copy.",
+      "independent_validation": "Request a change to builtin agent-development, verify direct update is rejected with copy-builtin-first guidance, duplicate creates agent-development-custom or suffixed alternatives, verify the builtin is unchanged, and verify subsequent update targets the user copy.",
+      "proposed_tasks": [
+        {
+          "proposed_id": "T031",
+          "title": "Implement duplicate/copy behavior with builtin copy naming and conflict handling",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.ts",
+            "src/server/services/workflowTemplateValidation.ts",
+            "src/server/services/workflowTemplateRegistryService.ts"
+          ],
+          "operations": [
+            "duplicate",
+            "list",
+            "inspect",
+            "validate"
+          ]
+        },
+        {
+          "proposed_id": "T032",
+          "title": "Wire duplicate operation through tool and local authoring API",
+          "files": [
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+            "src/server/api/workflowTemplates.ts"
+          ],
+          "operations": [
+            "duplicate"
+          ]
+        },
+        {
+          "proposed_id": "T033",
+          "title": "Test builtin copy-then-edit behavior, default naming, suffixes, and builtin immutability",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.test.ts",
+            "src/server/__tests__/workflowTemplates.test.ts",
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+          ],
+          "operations": [
+            "duplicate",
+            "update"
+          ]
+        }
+      ]
+    },
+    {
+      "story": "US4",
+      "goal": "Delete only a uniquely identified user workflow template with destructive metadata, basisHash freshness, target-source protection, and refreshed list metadata.",
+      "independent_validation": "Inspect a user template to capture basisHash, delete with source:user/id/hash and verify destructive metadata plus refreshed list output, then verify builtin, missing, ambiguous, and stale delete attempts reject without writing.",
+      "proposed_tasks": [
+        {
+          "proposed_id": "T041",
+          "title": "Implement destructive user-template delete with target and stale checks",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.ts",
+            "src/server/services/workflowTemplateRegistryService.ts"
+          ],
+          "operations": [
+            "inspect",
+            "delete",
+            "list"
+          ]
+        },
+        {
+          "proposed_id": "T042",
+          "title": "Expose delete metadata, permission classification, and transcript audit rendering",
+          "files": [
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+            "src/Tool.ts"
+          ],
+          "operations": [
+            "delete"
+          ]
+        },
+        {
+          "proposed_id": "T043",
+          "title": "Test delete success and no-write rejections for builtin, ambiguous, stale, missing, and invalid config targets",
+          "files": [
+            "src/server/services/workflowTemplateAuthoringService.test.ts",
+            "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+            "src/server/__tests__/workflowTemplates.test.ts"
+          ],
+          "operations": [
+            "delete",
+            "list"
+          ]
+        }
+      ]
+    }
+  ],
+  "foundational_tasks": [
+    {
+      "proposed_id": "T001",
+      "title": "Extract or centralize workflow template validation shared by registry, API, and authoring service",
+      "files": [
+        "src/server/services/workflowTemplateValidation.ts",
+        "src/server/services/workflowTemplateRegistryService.ts",
+        "src/server/api/workflowTemplates.ts",
+        "src/server/services/workflowTemplateRegistryService.test.ts",
+        "src/server/__tests__/workflowTemplates.test.ts"
+      ],
+      "operations": [
+        "validate",
+        "create",
+        "update",
+        "duplicate"
+      ]
+    },
+    {
+      "proposed_id": "T002",
+      "title": "Create deterministic field guide and alignment tests for required fields, allowed values, unsupported shapes, and repair hints",
+      "files": [
+        "src/server/services/workflowTemplateAuthoringGuide.ts",
+        "src/server/services/workflowTemplateValidation.ts",
+        "src/server/services/workflowTemplateAuthoringService.test.ts"
+      ],
+      "operations": [
+        "guide",
+        "validate"
+      ]
+    },
+    {
+      "proposed_id": "T003",
+      "title": "Create WorkflowTemplateAuthoringService result envelope, operation dispatch, no-write failure model, and registry-only persistence boundary",
+      "files": [
+        "src/server/services/workflowTemplateAuthoringService.ts",
+        "src/server/services/workflowTemplateAuthoringService.test.ts",
+        "src/server/services/workflowTemplateRegistryService.ts"
+      ],
+      "operations": [
+        "guide",
+        "list",
+        "inspect",
+        "validate",
+        "create",
+        "update",
+        "duplicate",
+        "delete"
+      ]
+    },
+    {
+      "proposed_id": "T004",
+      "title": "Add local desktop/server authoring endpoint for cache-owning process writes and tool fallback failure handling",
+      "files": [
+        "src/server/api/workflowTemplates.ts",
+        "src/server/__tests__/workflowTemplates.test.ts",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "operations": [
+        "guide",
+        "list",
+        "inspect",
+        "validate",
+        "create",
+        "update",
+        "duplicate",
+        "delete"
+      ]
+    },
+    {
+      "proposed_id": "T005",
+      "title": "Add global tool registration and operation-level metadata for read-only, mutating, destructive, and non-concurrency-safe behavior",
+      "files": [
+        "src/tools.ts",
+        "src/Tool.ts",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "operations": [
+        "guide",
+        "list",
+        "inspect",
+        "validate",
+        "create",
+        "update",
+        "duplicate",
+        "delete"
+      ]
+    },
+    {
+      "proposed_id": "T006",
+      "title": "Integrate active workflow phase-policy gating for mutating authoring operations while preserving read-only access",
+      "files": [
+        "src/server/services/workflowToolPolicy.ts",
+        "src/server/services/workflowToolPolicy.test.ts",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+      ],
+      "operations": [
+        "guide",
+        "list",
+        "inspect",
+        "validate",
+        "create",
+        "update",
+        "duplicate",
+        "delete"
+      ]
+    },
+    {
+      "proposed_id": "T007",
+      "title": "Finalize verification lanes and evidence collection for server/tool/API/policy coverage and optional desktop checks",
+      "files": [
+        "src/server/services/workflowTemplateAuthoringService.test.ts",
+        "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+        "src/server/__tests__/workflowTemplates.test.ts",
+        "src/server/services/workflowToolPolicy.test.ts",
+        "src/server/services/workflowTemplateRegistryService.test.ts"
+      ],
+      "operations": [
+        "guide",
+        "list",
+        "inspect",
+        "validate",
+        "create",
+        "update",
+        "duplicate",
+        "delete"
+      ]
+    }
+  ],
+  "capability_coverage": {
+    "guide": [
+      "T002",
+      "T003",
+      "T005",
+      "T006",
+      "T011",
+      "T012",
+      "T007"
+    ],
+    "list": [
+      "T003",
+      "T005",
+      "T006",
+      "T011",
+      "T013",
+      "T021",
+      "T031",
+      "T041",
+      "T043",
+      "T007"
+    ],
+    "inspect": [
+      "T003",
+      "T005",
+      "T006",
+      "T021",
+      "T022",
+      "T023",
+      "T031",
+      "T041",
+      "T007"
+    ],
+    "validate": [
+      "T001",
+      "T002",
+      "T003",
+      "T005",
+      "T006",
+      "T011",
+      "T013",
+      "T022",
+      "T023",
+      "T031",
+      "T007"
+    ],
+    "create": [
+      "T001",
+      "T003",
+      "T004",
+      "T005",
+      "T006",
+      "T011",
+      "T012",
+      "T013",
+      "T007"
+    ],
+    "update": [
+      "T001",
+      "T003",
+      "T004",
+      "T005",
+      "T006",
+      "T022",
+      "T023",
+      "T033",
+      "T007"
+    ],
+    "duplicate": [
+      "T001",
+      "T003",
+      "T004",
+      "T005",
+      "T006",
+      "T031",
+      "T032",
+      "T033",
+      "T007"
+    ],
+    "delete": [
+      "T003",
+      "T004",
+      "T005",
+      "T006",
+      "T041",
+      "T042",
+      "T043",
+      "T007"
+    ]
+  },
+  "fr_coverage": {
+    "FR-001": [
+      "T005",
+      "T012"
+    ],
+    "FR-002": [
+      "T002",
+      "T011",
+      "T012"
+    ],
+    "FR-003": [
+      "T003",
+      "T011",
+      "T013"
+    ],
+    "FR-004": [
+      "T003",
+      "T021",
+      "T023"
+    ],
+    "FR-005": [
+      "T001",
+      "T011",
+      "T013",
+      "T023"
+    ],
+    "FR-006": [
+      "T011",
+      "T012",
+      "T013"
+    ],
+    "FR-007": [
+      "T021",
+      "T022",
+      "T023"
+    ],
+    "FR-008": [
+      "T031",
+      "T032",
+      "T033"
+    ],
+    "FR-009": [
+      "T041",
+      "T042",
+      "T043"
+    ],
+    "FR-010": [
+      "T001",
+      "T003",
+      "T022",
+      "T023"
+    ],
+    "FR-011": [
+      "T003",
+      "T004",
+      "T013"
+    ],
+    "FR-012": [
+      "T003",
+      "T005",
+      "T012",
+      "T042"
+    ],
+    "FR-013": [
+      "T003",
+      "T007",
+      "T013",
+      "T023"
+    ],
+    "FR-014": [
+      "T005",
+      "T006",
+      "T042"
+    ],
+    "FR-015": [
+      "T001",
+      "T002",
+      "T011",
+      "T013"
+    ]
+  },
+  "mp_coverage": {
+    "MP-001": [
+      "T005",
+      "T012"
+    ],
+    "MP-002": [
+      "T011",
+      "T012",
+      "T013"
+    ],
+    "MP-003": [
+      "T021",
+      "T022",
+      "T023",
+      "T031",
+      "T033"
+    ],
+    "MP-004": [
+      "T003",
+      "T005",
+      "T007"
+    ],
+    "MP-005": [
+      "T011",
+      "T013",
+      "T022",
+      "T023"
+    ],
+    "MP-006": [
+      "T005",
+      "T006"
+    ],
+    "MP-007": [
+      "T031",
+      "T032",
+      "T033"
+    ],
+    "MP-008": [
+      "T021",
+      "T022",
+      "T023",
+      "T041",
+      "T043"
+    ],
+    "MP-009": [
+      "T041",
+      "T042",
+      "T043"
+    ],
+    "MP-010": [
+      "T031",
+      "T033"
+    ],
+    "MP-011": [
+      "T002",
+      "T011",
+      "T012"
+    ],
+    "MP-012": [
+      "T003",
+      "T004",
+      "T007"
+    ],
+    "MP-013": [
+      "T001",
+      "T002",
+      "T013"
+    ],
+    "MP-014": [
+      "T003",
+      "T007",
+      "T013",
+      "T023"
+    ],
+    "MP-015": [
+      "T001",
+      "T013",
+      "T023"
+    ],
+    "MP-016": [
+      "T007"
+    ],
+    "MP-017": [
+      "T003",
+      "T005",
+      "T011",
+      "T022"
+    ],
+    "MP-018": [
+      "T003",
+      "T013",
+      "T023",
+      "T033",
+      "T043"
+    ],
+    "MP-019": [
+      "T004",
+      "T013"
+    ],
+    "MP-020": [
+      "T003",
+      "T005",
+      "T012",
+      "T042"
+    ],
+    "MP-021": [
+      "T004",
+      "T013"
+    ],
+    "MP-022": [
+      "T002",
+      "T013"
+    ]
+  },
+  "ca_coverage": {
+    "CA-001": [
+      "T011",
+      "T013",
+      "T022",
+      "T023"
+    ],
+    "CA-002": [
+      "T003",
+      "T022",
+      "T023"
+    ],
+    "CA-003": [
+      "T001",
+      "T013",
+      "T023"
+    ],
+    "CA-004": [
+      "T031",
+      "T032",
+      "T033"
+    ],
+    "CA-005": [
+      "T003",
+      "T007",
+      "T013",
+      "T023"
+    ],
+    "CA-006": [
+      "T003",
+      "T005",
+      "T012",
+      "T042"
+    ],
+    "CA-007": [
+      "T021",
+      "T022",
+      "T023",
+      "T041",
+      "T043"
+    ],
+    "CA-008": [
+      "T006",
+      "T012",
+      "T042"
+    ],
+    "CA-009": [
+      "T041",
+      "T042",
+      "T043"
+    ],
+    "CA-010": [
+      "T031",
+      "T033"
+    ],
+    "CA-011": [
+      "T002",
+      "T011",
+      "T013"
+    ]
+  },
+  "stop_and_reopen_conditions": [
+    "Implementation cannot keep direct validated create/update persistence and instead requires mandatory preview-only flow.",
+    "Any task proposes direct builtin mutation, builtin deletion, or user-template shadowing of builtin ids.",
+    "Workflow authoring writes would need to mutate protected non-workflow state or bypass WorkflowTemplateRegistryService.",
+    "Desktop-launched authoring cannot preserve registry/API semantics through either the planned local server endpoint or an explicitly documented equivalent.",
+    "Field guide content cannot be deterministically tested against validation-required fields, allowed values, unsupported shapes, and repair concepts.",
+    "Active or historical workflow session snapshots would need in-place mutation for this feature to work.",
+    "Unsupported parallel, nested, branching, or loop workflow shapes become required for acceptance."
+  ],
+  "risks": [
+    "Validation extraction can accidentally change existing manual API behavior; T001 and T013 should require parity tests before story work is accepted.",
+    "Desktop server path can fail open if the tool silently falls back to direct file writes; T004 must assert visible no-write failure when CC_JIANGXIA_DESKTOP_SERVER_URL is configured and unavailable.",
+    "Operation-level policy can over-block read-only guide/list/inspect/validate if implemented as whole-tool denial; T006 should test read-only allowed and mutations denied.",
+    "Unknown-field preservation depends on using the registry writer and mapping updates carefully; T022/T023 should include old-fixture style cases.",
+    "Delete target resolution and stale checks are safety-sensitive; T041/T043 should be ordered after inspect/basisHash support is stable."
+  ],
+  "notes_for_leader": [
+    "Recommended task ordering: T001-T006 foundation first, then US1 create, US2 update, US3 duplicate, US4 delete, with T007 final verification/evidence consolidation.",
+    "T004 is foundational because desktop cache ownership affects every mutating operation, but desktop frontend files should remain optional unless implementation proves UI/client changes are required.",
+    "The proposed IDs are stable for lane discussion; the leader may renumber when integrating task packets.",
+    "Do not place all tests at the end. Each story should include same-area tests with no-write assertions before moving to the next mutating capability.",
+    "A single operation-discriminated tool preserves the capability map while minimizing tool surface; task generation should avoid splitting guide/list/inspect/validate/create/update/duplicate/delete into unrelated tool names."
+  ]
+}

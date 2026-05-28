@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-019",
+  "type": "source_analysis",
+  "source_path": "adapters/common/attachment/image-block-watcher.ts",
+  "summary": "image-block-watcher.ts defines fingerprint, classify, ImageBlockWatcher and imports ./attachment-types.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "fingerprint",
+    "classify",
+    "ImageBlockWatcher"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

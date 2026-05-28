@@ -1,0 +1,17 @@
+{
+  "id": "ev-verification-release-docs-004",
+  "type": "source_analysis",
+  "source_path": ".github/workflows/pr-triage.yml",
+  "summary": "PR triage workflow classifies changed paths into area labels and test expectations, including desktop native and docs surfaces.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "desktop/src-tauri/tauri.conf.json",
+    "desktop/src-tauri/Cargo.toml",
+    "area:docs",
+    "desktop/src-tauri/"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

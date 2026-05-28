@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { isThemeMode, THEME_MODES, type ThemeMode } from '../types/settings'
 
-const THEME_STORAGE_KEY = 'cc-haha-theme'
+const THEME_STORAGE_KEY = 'cc-jiangxia-theme'
 
 function getStoredTheme(): ThemeMode {
   try {
@@ -34,6 +34,7 @@ export type SettingsTab =
   | 'activity'
   | 'general'
   | 'h5Access'
+  | 'workflows'
   | 'adapters'
   | 'terminal'
   | 'mcp'

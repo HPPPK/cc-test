@@ -12,6 +12,7 @@ import {
   isBinaryContentType,
   persistBinaryContent,
 } from '../../utils/mcpOutputStorage.js'
+import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { isPreapprovedHost } from './preapproved.js'
@@ -87,7 +88,7 @@ export function shouldSkipWebFetchPreflight(
   // Desktop sessions often route through third-party providers or constrained
   // corporate networks where Anthropic's domain preflight fails despite the
   // actual target URL being reachable through the configured provider path.
-  return Boolean(process.env.CC_HAHA_DESKTOP_SERVER_URL)
+  return Boolean(getJiangxiaEnvValue('DESKTOP_SERVER_URL'))
 }
 
 export function clearWebFetchCache(): void {

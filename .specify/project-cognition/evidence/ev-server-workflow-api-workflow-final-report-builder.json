@@ -1,0 +1,19 @@
+{
+  "id": "ev-server-workflow-api-workflow-final-report-builder",
+  "type": "source_analysis",
+  "source_path": "src/server/services/workflowFinalReport.ts",
+  "summary": "Final report construction derives completed phase summaries, verification status, artifact refs, model fallback history, and template identity from completed workflow state.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "buildWorkflowFinalReport",
+    "phaseSummaries",
+    "completionForPhase",
+    "verificationResult",
+    "modelResolutions",
+    "status: 'completed'"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

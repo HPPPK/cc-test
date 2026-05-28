@@ -1,12 +1,12 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The root package is the Bun-based CLI and local server. Main code lives in `src/`: `entrypoints/` for startup paths, `screens/` and `components/` for the Ink TUI, `commands/` for slash commands, `services/` for API/MCP/OAuth logic, and `tools/` for agent tool implementations. `bin/claude-haha` is the executable entrypoint. The desktop app is isolated in `desktop/` with React UI code in `desktop/src/` and Tauri glue in `desktop/src-tauri/`. Documentation is in `docs/` and builds with VitePress. Treat root screenshots and `docs/images/` as reference assets, not source code.
+The root package is the Bun-based CLI and local server. Main code lives in `src/`: `entrypoints/` for startup paths, `screens/` and `components/` for the Ink TUI, `commands/` for slash commands, `services/` for API/MCP/OAuth logic, and `tools/` for agent tool implementations. `bin/claude-jiangxia` is the executable entrypoint. The desktop app is isolated in `desktop/` with React UI code in `desktop/src/` and Tauri glue in `desktop/src-tauri/`. Documentation is in `docs/` and builds with VitePress. Treat root screenshots and `docs/images/` as reference assets, not source code.
 
 ## Build, Test, and Development Commands
 Install root dependencies with `bun install`, then install desktop dependencies in `desktop/` if you are touching the app UI.
 
-- `./bin/claude-haha` or `bun run start`: run the CLI locally.
+- `./bin/claude-jiangxia` or `bun run start`: run the CLI locally.
 - `SERVER_PORT=3456 bun run src/server/index.ts`: start the local API/WebSocket server used by `desktop/`.
 - `bun run docs:dev` / `bun run docs:build`: preview or build the VitePress docs.
 - `cd desktop && bun run dev`: run the desktop frontend in Vite.
@@ -23,8 +23,8 @@ Install root dependencies with `bun install`, then install desktop dependencies 
 - `bun run quality:gate --mode release --allow-live --provider-model <provider:model[:label]>`: run the release gate with live baseline, provider smoke, desktop smoke, and coverage.
 
 ## Project Startup & Process Safety
-- Before starting or restarting the project, consult `docs/starup/haha-startup.md`; follow the documented root -> `desktop/` -> `adapters/` dependency install order and build the desktop frontend before `cd desktop && bun run tauri dev`.
-- Use `bun run ./bin/claude-haha` or `bun run start` for the CLI, and `SERVER_PORT=3456 bun run src/server/index.ts` for the desktop API/WebSocket server unless the startup guide or local port ownership requires a different port.
+- Before starting or restarting the project, consult `docs/starup/jiangxia-startup.md`; follow the documented root -> `desktop/` -> `adapters/` dependency install order and build the desktop frontend before `cd desktop && bun run tauri dev`.
+- Use `bun run ./bin/claude-jiangxia` or `bun run start` for the CLI, and `SERVER_PORT=3456 bun run src/server/index.ts` for the desktop API/WebSocket server unless the startup guide or local port ownership requires a different port.
 - Before stopping a process that owns a port, identify the exact PID and command line. On Windows, use `netstat -ano | findstr :<PORT>` and then inspect the PID with `tasklist` or a process command-line query.
 - Only terminate the exact PID when its command/path clearly belongs to this repository. If the port is owned by another project or user process, use a different port instead.
 - Never run broad process kills such as `taskkill /IM node.exe /F`, `taskkill /IM bun.exe /F`, or equivalent name-wide termination commands.
@@ -51,8 +51,8 @@ Desktop tests use Vitest with Testing Library in a `jsdom` environment. Name tes
 ## Persistent Storage Compatibility
 - Any change to local JSON, `localStorage`, or app config persistence formats must ship with a forward migration, an old-fixture regression test, and a persistence upgrade gate.
 - `~/.claude/settings.json` is user-owned shared state: preserve unknown fields on read/write, merge additively, and never write a repo-owned global `schemaVersion` into it.
-- Desktop Doctor and any automatic repair path must be deny-by-default. One-click repair may only mutate allowlisted, regenerable desktop UI state such as `cc-haha-*` `localStorage` keys or native window state. It must never mutate chat transcripts, model/provider config, Skills, MCP config, plugin state, IM bindings, adapter sessions, OAuth tokens, or team/session records.
-- Protected files include `~/.claude/projects/**/*.jsonl`, `~/.claude/settings.json`, project `.claude/settings.json`, `~/.claude/cc-haha/providers.json`, `~/.claude/cc-haha/settings.json`, `~/.claude/adapters.json`, `~/.claude/adapter-sessions.json`, `~/.claude/skills`, project `.claude/skills`, `.mcp.json`, managed MCP config, `~/.claude/plugins/**`, `~/.claude/teams/**`, and `~/.claude/cc-haha/*oauth*.json`. Doctor may diagnose these paths only with redaction unless a future task explicitly adds a reviewed, backup-first manual repair flow.
+- Desktop Doctor and any automatic repair path must be deny-by-default. One-click repair may only mutate allowlisted, regenerable desktop UI state such as `cc-jiangxia-*` `localStorage` keys or native window state. It must never mutate chat transcripts, model/provider config, Skills, MCP config, plugin state, IM bindings, adapter sessions, OAuth tokens, or team/session records.
+- Protected files include `~/.claude/projects/**/*.jsonl`, `~/.claude/settings.json`, project `.claude/settings.json`, `~/.claude/cc-jiangxia/providers.json`, `~/.claude/cc-jiangxia/settings.json`, `~/.claude/adapters.json`, `~/.claude/adapter-sessions.json`, `~/.claude/skills`, project `.claude/skills`, `.mcp.json`, managed MCP config, `~/.claude/plugins/**`, `~/.claude/teams/**`, and `~/.claude/cc-jiangxia/*oauth*.json`. Doctor may diagnose these paths only with redaction unless a future task explicitly adds a reviewed, backup-first manual repair flow.
 - If a persistence shape cannot be upgraded in place, the change is blocked until the upgrade path is explicit and tested.
 
 ## Feature Quality Contract

@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-swarm-04",
+  "type": "source_analysis",
+  "source_path": "src/utils/swarm/inProcessRunner.ts",
+  "summary": "The in-process runner wraps runAgent with teammate context, permission mediation, idle/wait loops, mailbox handling, and pre-turn compaction for long-running teammate transcripts.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "runInProcessTeammate",
+    "createInProcessCanUseTool",
+    "compactConversation",
+    "waitForNextPromptOrShutdown",
+    "sendIdleNotification"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

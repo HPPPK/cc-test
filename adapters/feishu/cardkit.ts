@@ -64,7 +64,9 @@ type LarkClient = Lark.Client
 const DEFAULT_IM_CARD_REQUEST_TIMEOUT_MS = 15_000
 
 function getImCardRequestTimeoutMs(): number {
-  const raw = process.env.CC_HAHA_IM_CARD_REQUEST_TIMEOUT_MS
+  const raw =
+    process.env.CC_JIANGXIA_IM_CARD_REQUEST_TIMEOUT_MS ??
+    process.env.CC_HAHA_IM_CARD_REQUEST_TIMEOUT_MS
   const parsed = raw ? Number(raw) : DEFAULT_IM_CARD_REQUEST_TIMEOUT_MS
   return Number.isFinite(parsed) && parsed > 0
     ? parsed

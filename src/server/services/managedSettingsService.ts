@@ -3,6 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ApiError } from '../middleware/errorHandler.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import { normalizeJsonObject, readRecoverableJsonFile } from './recoverableJsonFile.js'
 import { ensurePersistentStorageUpgraded } from './persistentStorageMigrations.js'
 
@@ -23,7 +24,7 @@ export class ManagedSettingsService {
   }
 
   private getSettingsPath(): string {
-    return path.join(this.getConfigDir(), 'cc-haha', 'settings.json')
+    return getAppStoragePath(this.getConfigDir(), 'settings.json')
   }
 
   private async withWriteLock<T>(
@@ -76,7 +77,7 @@ export class ManagedSettingsService {
     await ensurePersistentStorageUpgraded()
     return readRecoverableJsonFile({
       filePath: this.getSettingsPath(),
-      label: 'cc-haha managed settings',
+      label: 'cc-jiangxia managed settings',
       defaultValue: {},
       normalize: normalizeJsonObject,
     })

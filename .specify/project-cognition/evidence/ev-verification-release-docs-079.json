@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-079",
+  "type": "source_analysis",
+  "source_path": "docs/agent/01-usage-guide.md",
+  "summary": "Agent docs describe multi-agent usage, implementation internals, and framework architecture, including teams and spawn flows.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "TeamCreate",
+    "TeamDelete",
+    "Agent Teams"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

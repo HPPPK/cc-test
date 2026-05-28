@@ -56,19 +56,19 @@ async function readFixture(fileName: string): Promise<WorkflowTemplateFixture> {
 }
 
 async function installFixture(fileName: string) {
-  const ccHahaDir = path.join(tempConfigDir, 'cc-haha')
-  await fs.mkdir(ccHahaDir, { recursive: true })
+  const ccJiangxiaDir = path.join(tempConfigDir, 'cc-jiangxia')
+  await fs.mkdir(ccJiangxiaDir, { recursive: true })
   await fs.copyFile(
     path.join(fixtureDir, fileName),
-    path.join(ccHahaDir, 'workflows.json'),
+    path.join(ccJiangxiaDir, 'workflows.json'),
   )
 }
 
 async function writeWorkflowConfig(configDir: string, config: unknown) {
-  const ccHahaDir = path.join(configDir, 'cc-haha')
-  await fs.mkdir(ccHahaDir, { recursive: true })
+  const ccJiangxiaDir = path.join(configDir, 'cc-jiangxia')
+  await fs.mkdir(ccJiangxiaDir, { recursive: true })
   await fs.writeFile(
-    path.join(ccHahaDir, 'workflows.json'),
+    path.join(ccJiangxiaDir, 'workflows.json'),
     `${JSON.stringify(config, null, 2)}\n`,
     'utf-8',
   )
@@ -94,10 +94,63 @@ function issueCodes(result: { invalidTemplates: Array<{ code: string }> }) {
   return result.invalidTemplates.map((issue) => issue.code)
 }
 
+function validPhase(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'draft',
+    name: 'Draft',
+    instructions: 'Draft the phase output and handoff.',
+    objective: 'Produce a structured draft.',
+    requiredIntake: ['Use the previous phase output.'],
+    handoffRules: ['Summarize output, evidence, and next-phase readiness.'],
+    executionRules: ['Keep the phase inside the approved workflow contract.'],
+    outputArtifact: {
+      id: 'draft-output',
+      name: 'Draft Output',
+      kind: 'markdown',
+      description: 'A structured phase output.',
+      required: true,
+    },
+    completionCriteria: {
+      type: 'manual-checklist',
+      description: 'The output and handoff are complete.',
+    },
+    transition: { authority: 'auto' },
+    ...overrides,
+  }
+}
+
+function validTemplate(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    id: 'draft-workflow',
+    version: '1',
+    name: 'Draft Workflow',
+    phases: [validPhase()],
+    ...overrides,
+  }
+}
+
+function validWorkflowConfigTemplate(
+  overrides: Record<string, unknown> = {},
+  phaseOverrides: Record<string, unknown> = {},
+) {
+  const template = validTemplate(overrides)
+  const phases = Array.isArray(template.phases) ? template.phases : []
+
+  return {
+    ...template,
+    phases: phases.map((phase) => ({
+      ...validPhase({ id: undefined }),
+      ...phase,
+      ...phaseOverrides,
+    })),
+  }
+}
+
 describe('workflow template registry service', () => {
   beforeEach(async () => {
     tempConfigDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'cc-haha-workflow-templates-'),
+      path.join(os.tmpdir(), 'cc-jiangxia-workflow-templates-'),
     )
     originalConfigDir = process.env.CLAUDE_CONFIG_DIR
     process.env.CLAUDE_CONFIG_DIR = tempConfigDir
@@ -155,7 +208,11 @@ describe('workflow template registry service', () => {
   })
 
   test('keeps a valid linear user template with more than five phases startable', async () => {
-    await installFixture('more-than-five-linear-workflow.json')
+    const fixture = await readFixture('more-than-five-linear-workflow.json')
+    await writeWorkflowConfig(tempConfigDir, {
+      ...fixture,
+      templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+    })
 
     const result = await new WorkflowTemplateRegistryService().listTemplates()
 
@@ -174,8 +231,12 @@ describe('workflow template registry service', () => {
   })
 
   test('preserves unknown workflow config, template, phase, skill, and transition fields when writing templates', async () => {
-    await installFixture('user-template-with-unknown-fields.json')
-    const expectedTemplate = (await readFixture('user-template-with-unknown-fields.json')).templates[0]
+    const fixture = await readFixture('user-template-with-unknown-fields.json')
+    const expectedTemplate = fixture.templates[0]
+    await writeWorkflowConfig(tempConfigDir, {
+      ...fixture,
+      templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+    })
 
     const service = new WorkflowTemplateRegistryService()
     await service.writeTemplates([
@@ -189,6 +250,16 @@ describe('workflow template registry service', () => {
             id: expectedTemplate.phases[0].id,
             name: expectedTemplate.phases[0].name,
             instructions: 'Updated instructions while preserving unknown fields.',
+            objective: 'Preserve unknown fields.',
+            requiredIntake: ['Existing phase metadata.'],
+            handoffRules: ['Keep matching unknown fields during persistence.'],
+            outputArtifact: {
+              id: 'preserved-output',
+              name: 'Preserved Output',
+              kind: 'markdown',
+              description: 'Updated output with preserved unknown fields.',
+              required: true,
+            },
             completionCriteria: {
               type: 'manual-checklist',
               description: 'Unknown fields survive the write.',
@@ -200,7 +271,7 @@ describe('workflow template registry service', () => {
     ])
 
     expect(
-      await readJsonIfExists(path.join(tempConfigDir, 'cc-haha', 'workflows.json')),
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
     ).toMatchObject({
       schemaVersion: 1,
       ownerDefinedTopLevel: {
@@ -232,8 +303,12 @@ describe('workflow template registry service', () => {
     })
   })
 
-  test('reads workflow config only from cc-haha-owned storage and does not write protected Claude files', async () => {
-    await installFixture('user-template-with-unknown-fields.json')
+  test('reads workflow config only from cc-jiangxia-owned storage and does not write protected Claude files', async () => {
+    const fixture = await readFixture('user-template-with-unknown-fields.json')
+    await writeWorkflowConfig(tempConfigDir, {
+      ...fixture,
+      templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+    })
 
     const result = await new WorkflowTemplateRegistryService().listTemplates()
 
@@ -247,16 +322,16 @@ describe('workflow template registry service', () => {
       await readJsonIfExists(path.join(tempConfigDir, 'projects', 'session.jsonl')),
     ).toBeUndefined()
     expect(
-      await readJsonIfExists(path.join(tempConfigDir, 'cc-haha', 'settings.json')),
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'settings.json')),
     ).toBeUndefined()
     expect(
-      await readJsonIfExists(path.join(tempConfigDir, 'cc-haha', 'providers.json')),
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'providers.json')),
     ).toBeUndefined()
     expect(
       await readJsonIfExists(path.join(tempConfigDir, 'adapter-sessions.json')),
     ).toBeUndefined()
     expect(
-      await readJsonIfExists(path.join(tempConfigDir, 'cc-haha', 'workflows.json')),
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
     ).toMatchObject({
       schemaVersion: 1,
       ownerDefinedTopLevel: {
@@ -267,19 +342,18 @@ describe('workflow template registry service', () => {
 
   test('uses only the isolated workflow config profile for user templates', async () => {
     const otherProfile = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'cc-haha-workflow-templates-other-'),
+      path.join(os.tmpdir(), 'cc-jiangxia-workflow-templates-other-'),
     )
     try {
       await writeWorkflowConfig(otherProfile, {
         schemaVersion: 1,
         templates: [
-          {
-            schemaVersion: 1,
+          validWorkflowConfigTemplate({
             id: 'template-from-other-profile',
             version: '1',
             name: 'Template From Other Profile',
             phases: [
-              {
+              validPhase({
                 id: 'other',
                 name: 'Other',
                 instructions: 'This template belongs to a different profile.',
@@ -288,12 +362,16 @@ describe('workflow template registry service', () => {
                   description: 'Should not be visible.',
                 },
                 transition: { authority: 'auto' },
-              },
+              }),
             ],
-          },
+          }),
         ],
       })
-      await installFixture('more-than-five-linear-workflow.json')
+      const fixture = await readFixture('more-than-five-linear-workflow.json')
+      await writeWorkflowConfig(tempConfigDir, {
+        ...fixture,
+        templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+      })
 
       const result = await new WorkflowTemplateRegistryService().listTemplates()
 
@@ -325,6 +403,18 @@ describe('workflow template registry service', () => {
     })
   })
 
+  test('does not overwrite malformed workflow config when saving templates', async () => {
+    await installFixture('malformed-workflows.json')
+    const configPath = path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')
+    const originalMalformedContent = await fs.readFile(configPath, 'utf-8')
+
+    await expect(
+      new WorkflowTemplateRegistryService().writeTemplates([validTemplate()]),
+    ).rejects.toThrow()
+
+    expect(await fs.readFile(configPath, 'utf-8')).toBe(originalMalformedContent)
+  })
+
   test('excludes missing config fields, empty phase arrays, and duplicate phase ids', async () => {
     await installFixture('invalid-user-workflows.json')
 
@@ -350,7 +440,11 @@ describe('workflow template registry service', () => {
   })
 
   test('rejects duplicate user template ids so no duplicate user template is startable', async () => {
-    await installFixture('duplicate-template-ids.json')
+    const fixture = await readFixture('duplicate-template-ids.json')
+    await writeWorkflowConfig(tempConfigDir, {
+      ...fixture,
+      templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+    })
 
     const result = await new WorkflowTemplateRegistryService().listTemplates()
 
@@ -410,5 +504,270 @@ describe('workflow template registry service', () => {
         severity: 'error',
       }),
     )
+  })
+
+  test('does not persist templates that use a builtin template id', async () => {
+    const service = new WorkflowTemplateRegistryService()
+
+    await expect(
+      service.writeTemplates([
+        validTemplate({
+          id: 'agent-development',
+          name: 'User Shadow Of Builtin',
+        }),
+      ]),
+    ).rejects.toThrow()
+
+    const result = await service.listTemplates()
+    expect(result.templates.map((template) => `${template.source}:${template.id}`)).toEqual([
+      'builtin:agent-development',
+    ])
+    expect(
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
+    ).toBeUndefined()
+  })
+
+  test('rejects prompt-only phases that omit required output artifact semantics', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        validTemplate({
+          id: 'prompt-only-template',
+          name: 'Prompt Only Template',
+          phases: [
+            validPhase({
+              id: 'prompt',
+              name: 'Prompt',
+              instructions: 'This phase has prose but no first-class output contract.',
+              outputArtifact: undefined,
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.templates.map((template) => template.id)).toEqual([
+      'agent-development',
+    ])
+    expect(issueCodes(result)).toContain('WORKFLOW_PHASE_OUTPUT_ARTIFACT_REQUIRED')
+    expect(result.invalidTemplates).toContainEqual(
+      expect.objectContaining({
+        templateId: 'prompt-only-template',
+        path: '$.templates[0].phases[0].outputArtifact',
+        severity: 'error',
+      }),
+    )
+  })
+
+  test('does not write payloads that omit required output artifact semantics', async () => {
+    const service = new WorkflowTemplateRegistryService()
+
+    await expect(
+      service.writeTemplates([
+        validTemplate({
+          id: 'missing-output-on-write',
+          phases: [
+            validPhase({
+              outputArtifact: undefined,
+            }),
+          ],
+        }),
+      ]),
+    ).rejects.toThrow('WORKFLOW_PHASE_OUTPUT_ARTIFACT_REQUIRED')
+
+    expect(
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
+    ).toBeUndefined()
+  })
+
+  test('rejects user phases with only legacy prompt metadata and no output artifact', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        {
+          schemaVersion: 1,
+          id: 'legacy-prompt-template',
+          version: '1',
+          name: 'Legacy Prompt Template',
+          phases: [
+            {
+              id: 'prompt',
+              name: 'Prompt',
+              instructions: 'This phase is only instructions plus legacy prompt metadata.',
+              phasePrompt: {
+                objective: 'Draft output.',
+                handoffInput: ['Previous context.'],
+                executionRules: ['Write clearly.'],
+                outputArtifact: {
+                  name: 'Legacy Prompt Output',
+                  sections: ['Summary'],
+                },
+                completionRules: ['Stop after output.'],
+              },
+              completionCriteria: {
+                type: 'manual-checklist',
+                description: 'Prompt output is complete.',
+              },
+              transition: { authority: 'auto' },
+            },
+          ],
+        },
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.templates.map((template) => template.id)).toEqual([
+      'agent-development',
+    ])
+    expect(issueCodes(result)).toEqual(
+      expect.arrayContaining([
+        'WORKFLOW_PHASE_OUTPUT_ARTIFACT_REQUIRED',
+        'WORKFLOW_PHASE_HANDOFF_REQUIRED',
+      ]),
+    )
+  })
+
+  test('rejects phases that omit first-class handoff contract semantics', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        validTemplate({
+          id: 'missing-handoff-template',
+          name: 'Missing Handoff Template',
+          phases: [
+            validPhase({
+              id: 'handoff',
+              name: 'Handoff',
+              instructions: 'This phase has prose but no first-class handoff contract.',
+              requiredIntake: undefined,
+              handoffRules: undefined,
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.templates.map((template) => template.id)).toEqual([
+      'agent-development',
+    ])
+    expect(issueCodes(result)).toContain('WORKFLOW_PHASE_HANDOFF_REQUIRED')
+    expect(result.invalidTemplates).toContainEqual(
+      expect.objectContaining({
+        templateId: 'missing-handoff-template',
+        path: '$.templates[0].phases[0]',
+        severity: 'error',
+      }),
+    )
+  })
+
+  test('does not write payloads that omit first-class handoff contract semantics', async () => {
+    const service = new WorkflowTemplateRegistryService()
+
+    await expect(
+      service.writeTemplates([
+        validTemplate({
+          id: 'missing-handoff-on-write',
+          phases: [
+            validPhase({
+              requiredIntake: undefined,
+              handoffRules: undefined,
+            }),
+          ],
+        }),
+      ]),
+    ).rejects.toThrow('WORKFLOW_PHASE_HANDOFF_REQUIRED')
+
+    expect(
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
+    ).toBeUndefined()
+  })
+
+  test('preserves unknown required artifact and completion fields when writing templates', async () => {
+    const fixture = await readFixture('user-template-with-unknown-fields.json')
+    const expectedTemplate = fixture.templates[0]
+    await writeWorkflowConfig(tempConfigDir, {
+      ...fixture,
+      templates: fixture.templates.map((template) => validWorkflowConfigTemplate(template)),
+    })
+
+    await new WorkflowTemplateRegistryService().writeTemplates([
+      {
+        schemaVersion: 1,
+        id: expectedTemplate.id,
+        version: '2',
+        name: expectedTemplate.name,
+        phases: [
+          {
+            id: expectedTemplate.phases[0].id,
+            name: expectedTemplate.phases[0].name,
+            instructions: expectedTemplate.phases[0].instructions,
+            objective: 'Preserve nested unknown fields.',
+            requiredIntake: ['Existing phase metadata.'],
+            handoffRules: ['Keep matching artifact and completion metadata.'],
+            outputArtifact: {
+              id: 'future-output',
+              name: 'Future Output',
+              kind: 'markdown',
+              description: 'Updated output with preserved nested fields.',
+              required: true,
+            },
+            requiredArtifacts: [
+              {
+                id: 'future-artifact',
+                name: 'Future Artifact Updated',
+                required: true,
+              },
+            ],
+            completionCriteria: {
+              type: 'manual-checklist',
+              description: 'Updated criteria.',
+            },
+            transition: { authority: 'auto' },
+          },
+        ],
+      },
+    ])
+
+    expect(
+      await readJsonIfExists(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')),
+    ).toMatchObject({
+      templates: [
+        {
+          id: expectedTemplate.id,
+          phases: [
+            {
+              requiredArtifacts: [
+                {
+                  id: 'future-artifact',
+                  ownerDefinedArtifactField: 'keep-artifact-field',
+                },
+              ],
+              completionCriteria: {
+                ownerDefinedCriteriaField: 'keep-criteria-field',
+              },
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  test('resets the registry cache after creating a workflow config from missing storage', async () => {
+    const service = new WorkflowTemplateRegistryService()
+    expect((await service.listTemplates()).templates.map((template) => template.id)).toEqual([
+      'agent-development',
+    ])
+
+    await service.writeTemplates([validTemplate()])
+
+    expect((await service.listTemplates()).templates.map((template) => template.id)).toEqual([
+      'agent-development',
+      'draft-workflow',
+    ])
   })
 })

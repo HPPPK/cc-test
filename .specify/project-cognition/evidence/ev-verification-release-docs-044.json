@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-044",
+  "type": "source_analysis",
+  "source_path": "desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png",
+  "summary": "Binary packaging icon asset accounted for by file metadata (undefined bytes).",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:9738",
+    "mtime:2026-05-15T06:52:03.848Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

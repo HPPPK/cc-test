@@ -18,9 +18,9 @@ import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import { getShellConfigPaths } from '../../utils/shellConfig.js'
 import { getUserBinDir } from '../../utils/xdg.js'
 
-const DESKTOP_CLI_NAME = 'claude-haha'
-const PATH_BLOCK_START = '# >>> Claude Code Haha PATH >>>'
-const PATH_BLOCK_END = '# <<< Claude Code Haha PATH <<<'
+const DESKTOP_CLI_NAME = 'claude-jiangxia'
+const PATH_BLOCK_START = '# >>> Claude Code Jiangxia PATH >>>'
+const PATH_BLOCK_END = '# <<< Claude Code Jiangxia PATH <<<'
 const WINDOWS_PATH_TARGET = 'Windows User PATH'
 const WINDOWS_USER_BIN_EXPR = '%USERPROFILE%\\.local\\bin'
 

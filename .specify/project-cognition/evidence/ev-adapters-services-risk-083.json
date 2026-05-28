@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-083",
+  "type": "source_analysis",
+  "source_path": "src/services/SessionMemory/prompts.ts",
+  "summary": "prompts.ts defines DEFAULT_SESSION_MEMORY_TEMPLATE, getDefaultUpdatePrompt, loadSessionMemoryTemplate, loadSessionMemoryPrompt, analyzeSectionSizes, generateSectionReminders and imports fs/promises, path, ../../services/tokenEstimation.js, ../../utils/envUtils.js, ../../utils/errors.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "DEFAULT_SESSION_MEMORY_TEMPLATE",
+    "getDefaultUpdatePrompt",
+    "loadSessionMemoryTemplate",
+    "loadSessionMemoryPrompt",
+    "analyzeSectionSizes",
+    "generateSectionReminders"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

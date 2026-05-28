@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-063",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/__tests__/protocol.test.ts",
+  "summary": "Test coverage for protocol.test.ts exercises encodes iLink client versions like the OpenClaw Weixin plugin; extracts plain text from WeChat message items; extracts voice transcription when text items are absent; preserves quoted text context",
+  "detail": "",
+  "quotes_or_symbols": [
+    "encodes iLink client versions like the OpenClaw Weixin plugin",
+    "extracts plain text from WeChat message items",
+    "extracts voice transcription when text items are absent",
+    "preserves quoted text context"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

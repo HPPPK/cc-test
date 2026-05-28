@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-003",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/chat-queue.test.ts",
+  "summary": "Test coverage for chat-queue.test.ts exercises executes tasks for the same chatId serially; executes tasks for different chatIds in parallel; continues processing after a task fails",
+  "detail": "",
+  "quotes_or_symbols": [
+    "executes tasks for the same chatId serially",
+    "executes tasks for different chatIds in parallel",
+    "continues processing after a task fails"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

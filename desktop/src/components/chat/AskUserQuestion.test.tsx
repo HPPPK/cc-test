@@ -315,6 +315,29 @@ describe('AskUserQuestion', () => {
     expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
   })
 
+  it('restores answered state from persisted tool result text after session resume', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-answered"
+        input={{
+          questions: [
+            {
+              question: 'What platform should the game use?',
+              options: [{ label: 'Terminal' }, { label: 'Browser' }],
+            },
+          ],
+        }}
+        result="User has answered your questions: &quot;What platform should the game use?&quot;=&quot;Browser&quot;. You can now continue with the user's answers in mind."
+      />,
+    )
+
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    expect(screen.getByText('Browser')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Terminal$/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
   it('keeps custom responses scoped to each question tab', () => {
     const input = {
       questions: [

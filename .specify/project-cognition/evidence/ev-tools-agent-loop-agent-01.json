@@ -1,0 +1,18 @@
+{
+  "id": "ev-tools-agent-loop-agent-01",
+  "type": "source_analysis",
+  "source_path": "src/tools/AgentTool/AgentTool.tsx",
+  "summary": "AgentTool is the public entrypoint for subagent launch, background execution, teammate spawn, remote launch, worktree isolation, and built-in agent selection.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "AgentTool",
+    "inputSchema",
+    "spawnTeammate",
+    "runAgent",
+    "registerRemoteAgentTask"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "tools-agent-loop",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

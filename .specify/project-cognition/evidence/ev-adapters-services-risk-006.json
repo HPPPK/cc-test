@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-006",
+  "type": "source_analysis",
+  "source_path": "adapters/common/__tests__/http-client.test.ts",
+  "summary": "Test coverage for http-client.test.ts exercises derives HTTP URL from WS URL; createSession calls POST /api/sessions; listRecentProjects calls GET /api/sessions/recent-projects; matchProject accepts an absolute local project path inside an allowed root without recent history",
+  "detail": "",
+  "quotes_or_symbols": [
+    "derives HTTP URL from WS URL",
+    "createSession calls POST /api/sessions",
+    "listRecentProjects calls GET /api/sessions/recent-projects",
+    "matchProject accepts an absolute local project path inside an allowed root without recent history"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

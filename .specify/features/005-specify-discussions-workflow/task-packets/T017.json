@@ -1,0 +1,63 @@
+{
+  "id": "T017",
+  "title": "Wire empty/new composer Workflows launch",
+  "agent": "executor",
+  "depends_on": [
+    "T016: reusable Workflow start dialog added"
+  ],
+  "parallel_safe": false,
+  "story": "US3",
+  "objective": "Wire composer + > Workflows in empty/new sessions to the existing workflow session creation/replacement flow.",
+  "context_navigation": {
+    "design_decision": "plan.md#Research Adoption Check",
+    "data_model": "data-model.md#Linked Workflow Session Lifecycle",
+    "api_contract": "contracts/linked-workflow-session.md#Desktop Flow Contract",
+    "reference_implementation": "desktop/src/pages/EmptySession.tsx"
+  },
+  "write_scope": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/pages/EmptySession.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/components/chat/ChatInput.tsx （修改）",
+    "desktop/src/pages/EmptySession.tsx （修改）",
+    "desktop/src/components/chat/ChatInput.test.tsx （修改）",
+    "desktop/src/pages/EmptySession.test.tsx （修改）"
+  ],
+  "anti_goals": [
+    "Do not implement non-empty linked behavior in this task.",
+    "Do not convert existing normal chats in place.",
+    "Do not regress attachment/slash plus menu behavior."
+  ],
+  "acceptance_criteria": [
+    "Composer plus menu exposes Workflows.",
+    "Empty/new sessions use existing create/replacement flow with workflow metadata.",
+    "Invalid templates cannot be started.",
+    "ActiveSession workflow status still renders after start."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

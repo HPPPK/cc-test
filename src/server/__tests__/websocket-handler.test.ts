@@ -549,7 +549,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
-    const tempConfigDir = path.join(os.tmpdir(), `cc-haha-websocket-no-model-${crypto.randomUUID()}`)
+    const tempConfigDir = path.join(os.tmpdir(), `cc-jiangxia-websocket-no-model-${crypto.randomUUID()}`)
     process.env.CLAUDE_CONFIG_DIR = tempConfigDir
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
@@ -1053,7 +1053,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
-    const tempConfigDir = path.join(os.tmpdir(), `cc-haha-websocket-final-report-${crypto.randomUUID()}`)
+    const tempConfigDir = path.join(os.tmpdir(), `cc-jiangxia-websocket-final-report-${crypto.randomUUID()}`)
     process.env.CLAUDE_CONFIG_DIR = tempConfigDir
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
     spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
@@ -1086,7 +1086,7 @@ describe('WebSocket handler workflow runtime gating', () => {
         }),
       }))
 
-      const reportPath = path.join(tempConfigDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+      const reportPath = path.join(tempConfigDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'reports', 'final.json')
       const report = JSON.parse(await fs.readFile(reportPath, 'utf-8')) as Record<string, unknown>
       expect(report).toMatchObject({
         sessionId,

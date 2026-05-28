@@ -1,0 +1,17 @@
+{
+  "id": "ev-desktop-workflow-ui-15",
+  "type": "source_analysis",
+  "source_path": "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+  "summary": "Status panel renders workflow lifecycle, phase progress, model fallback info, state pointers, and read-only artifact history.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "WorkflowStatusPanelSummary",
+    "STATUS_LABELS",
+    "ArtifactCard",
+    "progressPercent"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "desktop-workflow-ui",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

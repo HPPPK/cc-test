@@ -2,6 +2,6 @@
   "surface": "sp-teams",
   "integration": "codex",
   "tmux_required": true,
-  "state_root": "F:/github/cc-haha/.specify/teams/state",
+  "state_root": "F:/github/cc-jiangxia/.specify/teams/state",
   "teams_mcp_supported": false
 }

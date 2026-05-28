@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "status": "pending",
+  "stage": "evidence-intake",
+  "evidence": [],
+  "accepted_use": [],
+  "compiled_from": {
+    "journal": "brainstorming/journal.ndjson",
+    "event_range": [],
+    "key_events": [],
+    "evidence_ids": [],
+    "compiled_at": null
+  }
+}

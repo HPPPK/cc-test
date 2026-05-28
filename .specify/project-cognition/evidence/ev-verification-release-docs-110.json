@@ -1,0 +1,16 @@
+{
+  "id": "ev-verification-release-docs-110",
+  "type": "source_analysis",
+  "source_path": "docs/desktop/index.md",
+  "summary": "Desktop docs cover quick start, architecture, features, installation/build, FAQ, and H5 access.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "desktop/src/",
+    "desktop/src-tauri/",
+    "IM 适配器"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

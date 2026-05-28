@@ -55,7 +55,7 @@ Claude's "dreaming" mechanism -- a deep dive into background silent memory conso
 
 ## Illustrations
 
-All illustrations use a dark background (#1a1a2e) + Claude Code Haha orange-blue accent (#FF7A00) style, consistent with the official Claude Code documentation.
+All illustrations use a dark background (#1a1a2e) + Claude Code Jiangxia orange-blue accent (#FF7A00) style, consistent with the official Claude Code documentation.
 
 | Image | Description | Size |
 |-------|-------------|------|
@@ -113,9 +113,9 @@ All illustrations use a dark background (#1a1a2e) + Claude Code Haha orange-blue
 
 ## Related Resources
 
-- [Claude Code Haha Home](/en/)
-- [Memory system source code](https://github.com/NanmiCoder/cc-haha/tree/main/src/memdir/)
-- [Auto-extraction service](https://github.com/NanmiCoder/cc-haha/tree/main/src/services/extractMemories/)
-- [AutoDream service](https://github.com/NanmiCoder/cc-haha/tree/main/src/services/autoDream/)
-- [DreamTask](https://github.com/NanmiCoder/cc-haha/tree/main/src/tasks/DreamTask/)
-- [GitHub Issues](https://github.com/NanmiCoder/cc-haha/issues)
+- [Claude Code Jiangxia Home](/en/)
+- [Memory system source code](https://github.com/NanmiCoder/cc-jiangxia/tree/main/src/memdir/)
+- [Auto-extraction service](https://github.com/NanmiCoder/cc-jiangxia/tree/main/src/services/extractMemories/)
+- [AutoDream service](https://github.com/NanmiCoder/cc-jiangxia/tree/main/src/services/autoDream/)
+- [DreamTask](https://github.com/NanmiCoder/cc-jiangxia/tree/main/src/tasks/DreamTask/)
+- [GitHub Issues](https://github.com/NanmiCoder/cc-jiangxia/issues)

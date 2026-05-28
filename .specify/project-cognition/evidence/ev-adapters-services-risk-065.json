@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-065",
+  "type": "source_analysis",
+  "source_path": "adapters/wechat/index.ts",
+  "summary": "index.ts defines getRuntimeState, getBlockBuffer, clearTransientChatState, enqueueWechat, sleep, redactChatId and imports node:path, ../common/ws-bridge.js, ../common/message-dedup.js, ../common/message-buffer.js, ../common/chat-queue.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "getRuntimeState",
+    "getBlockBuffer",
+    "clearTransientChatState",
+    "enqueueWechat",
+    "sleep",
+    "redactChatId"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

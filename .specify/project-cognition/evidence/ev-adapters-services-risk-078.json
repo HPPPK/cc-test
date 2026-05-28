@@ -1,0 +1,15 @@
+{
+  "id": "ev-adapters-services-risk-078",
+  "type": "source_analysis",
+  "source_path": "src/services/AgentSummary/agentSummary.ts",
+  "summary": "agentSummary.ts defines buildSummaryPrompt, startAgentSummarization and imports ../../Task.js, ../../tasks/LocalAgentTask/LocalAgentTask.js, ../../tools/AgentTool/runAgent.js, ../../types/ids.js, ../../utils/debug.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "buildSummaryPrompt",
+    "startAgentSummarization"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

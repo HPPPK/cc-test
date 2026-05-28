@@ -30,6 +30,7 @@ import { TerminalSettings } from './TerminalSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
 import { MemorySettings } from './MemorySettings'
+import { WorkflowTemplateManager } from '../components/workflow/WorkflowTemplateManager'
 import { useUIStore, type SettingsTab } from '../stores/uiStore'
 import { ClaudeOfficialLogin } from '../components/settings/ClaudeOfficialLogin'
 import { useUpdateStore } from '../stores/updateStore'
@@ -88,6 +89,7 @@ export function Settings() {
             <TabButton icon="shield" label={t('settings.tab.permissions')} active={activeTab === 'permissions'} onClick={() => setActiveTab('permissions')} />
             <TabButton icon="tune" label={t('settings.tab.general')} active={activeTab === 'general'} onClick={() => setActiveTab('general')} />
             <TabButton icon="qr_code_2" label={t('settings.tab.h5Access')} active={activeTab === 'h5Access'} onClick={() => setActiveTab('h5Access')} />
+            <TabButton icon="account_tree" label={t('settings.tab.workflows')} active={activeTab === 'workflows'} onClick={() => setActiveTab('workflows')} />
             <TabButton icon="chat" label={t('settings.tab.adapters')} active={activeTab === 'adapters'} onClick={() => setActiveTab('adapters')} />
             <TabButton icon="terminal" label={t('settings.tab.terminal')} active={activeTab === 'terminal'} onClick={() => setActiveTab('terminal')} />
             <TabButton icon="dns" label={t('settings.tab.mcp')} active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} />
@@ -111,6 +113,7 @@ export function Settings() {
           {activeTab === 'activity' && <ActivitySettings />}
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'h5Access' && <H5AccessSettings />}
+          {activeTab === 'workflows' && <WorkflowsSettings />}
           {activeTab === 'adapters' && <AdapterSettings />}
           {activeTab === 'terminal' && <TerminalSettings showPreferences />}
           {activeTab === 'mcp' && <McpSettings />}
@@ -123,6 +126,22 @@ export function Settings() {
           {activeTab === 'about' && <AboutSettings />}
         </div>
       </div>
+    </div>
+  )
+}
+
+function WorkflowsSettings() {
+  const t = useTranslation()
+
+  return (
+    <div className="w-full min-w-0">
+      <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
+        {t('settings.workflows.title')}
+      </h2>
+      <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
+        {t('settings.workflows.description')}
+      </p>
+      <WorkflowTemplateManager />
     </div>
   )
 }
@@ -874,7 +893,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
     const parsedModelContextWindows = buildModelContextWindows(models, modelContextInputs)
     setIsSubmitting(true)
     try {
-      // Write the edited cc-haha settings.json first so provider-specific model
+      // Write the edited cc-jiangxia settings.json first so provider-specific model
       // settings never conflict with the user's global ~/.claude/settings.json.
       if (settingsJson.trim()) {
         try {
@@ -3062,7 +3081,7 @@ function PluginSettings() {
 
 // ─── About Settings ──────────────────────────────────────
 
-const GITHUB_REPO = 'https://github.com/NanmiCoder/cc-haha'
+const GITHUB_REPO = 'https://github.com/NanmiCoder/cc-jiangxia'
 const GITHUB_ISSUES = `${GITHUB_REPO}/issues`
 const GITHUB_RELEASES = `${GITHUB_REPO}/releases`
 const AUTHOR_GITHUB = 'https://github.com/NanmiCoder'
@@ -3206,8 +3225,8 @@ function AboutSettings() {
   return (
     <div className="w-full min-w-0 max-w-lg mx-auto flex flex-col items-center py-6">
       {/* Logo + App Name + Version */}
-      <img src="/app-icon.png" alt="Claude Code Haha" className="w-20 h-20 mb-4" />
-      <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Claude Code Haha</h1>
+      <img src="/app-icon.png" alt="Claude Code Jiangxia" className="w-20 h-20 mb-4" />
+      <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Claude Code Jiangxia</h1>
       {version && (
         <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
           <span>{t('settings.about.version')} {version}</span>
@@ -3229,7 +3248,7 @@ function AboutSettings() {
         >
           <img src="/icons/github.svg" alt="GitHub" className="w-5 h-5 opacity-70" />
           <div className="flex-1 text-left">
-            <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/cc-haha</div>
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/cc-jiangxia</div>
             <div className="text-xs text-[var(--color-text-tertiary)]">{t('settings.about.starHint')}</div>
           </div>
         </button>

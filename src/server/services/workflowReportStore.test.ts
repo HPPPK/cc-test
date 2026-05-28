@@ -13,7 +13,7 @@ let tmpDir: string
 let originalConfigDir: string | undefined
 
 beforeEach(async () => {
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-haha-workflow-report-'))
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-workflow-report-'))
   originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   process.env.CLAUDE_CONFIG_DIR = tmpDir
 })
@@ -28,11 +28,11 @@ afterEach(async () => {
 })
 
 function reportPath(sessionId = SESSION_ID): string {
-  return path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'reports', 'final.json')
+  return path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'reports', 'final.json')
 }
 
 function statePath(sessionId = SESSION_ID): string {
-  return path.join(tmpDir, 'cc-haha', 'workflow-sessions', sessionId, 'state.json')
+  return path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'state.json')
 }
 
 async function readJson(filePath: string): Promise<Record<string, unknown>> {
@@ -115,7 +115,7 @@ describe('WorkflowReportStore', () => {
     expect(result.pointer).not.toHaveProperty('path')
     expect(persisted).toEqual(report)
     expect(reportDirFiles.filter((name) => name.includes('.tmp.'))).toEqual([])
-    expect(reportPath()).toContain(path.join('cc-haha', 'workflow-sessions', SESSION_ID, 'reports', 'final.json'))
+    expect(reportPath()).toContain(path.join('cc-jiangxia', 'workflow-sessions', SESSION_ID, 'reports', 'final.json'))
   })
 
   test('keeps report creation idempotent and preserves the existing final report on retry', async () => {
@@ -260,7 +260,7 @@ describe('WorkflowReportStore', () => {
     const store = new WorkflowReportStore()
     const protectedFiles = [
       path.join(tmpDir, 'settings.json'),
-      path.join(tmpDir, 'cc-haha', 'providers.json'),
+      path.join(tmpDir, 'cc-jiangxia', 'providers.json'),
       path.join(tmpDir, 'adapter-sessions.json'),
       path.join(tmpDir, 'projects', 'session.jsonl'),
     ]

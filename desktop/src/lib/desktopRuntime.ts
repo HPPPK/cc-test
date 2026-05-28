@@ -6,8 +6,10 @@ import {
   setBaseUrl,
 } from '../api/client'
 
-export const H5_SERVER_URL_STORAGE_KEY = 'cc-haha-h5-server-url'
-export const H5_TOKEN_STORAGE_KEY = 'cc-haha-h5-token'
+export const H5_SERVER_URL_STORAGE_KEY = 'cc-jiangxia-h5-server-url'
+export const H5_TOKEN_STORAGE_KEY = 'cc-jiangxia-h5-token'
+const LEGACY_H5_SERVER_URL_STORAGE_KEY = 'cc-haha-h5-server-url'
+const LEGACY_H5_TOKEN_STORAGE_KEY = 'cc-haha-h5-token'
 
 type H5ConnectionFailureReason =
   | 'missing-token'
@@ -48,8 +50,14 @@ export function readStoredH5Connection(): StoredH5Connection {
 
   try {
     return {
-      serverUrl: normalizeServerUrl(window.localStorage.getItem(H5_SERVER_URL_STORAGE_KEY)),
-      token: normalizeToken(window.localStorage.getItem(H5_TOKEN_STORAGE_KEY)),
+      serverUrl: normalizeServerUrl(
+        window.localStorage.getItem(H5_SERVER_URL_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_H5_SERVER_URL_STORAGE_KEY),
+      ),
+      token: normalizeToken(
+        window.localStorage.getItem(H5_TOKEN_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_H5_TOKEN_STORAGE_KEY),
+      ),
     }
   } catch {
     return { serverUrl: null, token: null }
@@ -61,6 +69,8 @@ export function clearStoredH5Connection() {
     try {
       window.localStorage.removeItem(H5_SERVER_URL_STORAGE_KEY)
       window.localStorage.removeItem(H5_TOKEN_STORAGE_KEY)
+      window.localStorage.removeItem(LEGACY_H5_SERVER_URL_STORAGE_KEY)
+      window.localStorage.removeItem(LEGACY_H5_TOKEN_STORAGE_KEY)
     } catch {
       // Ignore storage failures
     }
@@ -342,6 +352,7 @@ function clearStoredH5Token() {
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.removeItem(H5_TOKEN_STORAGE_KEY)
+      window.localStorage.removeItem(LEGACY_H5_TOKEN_STORAGE_KEY)
     } catch {
       // Ignore storage failures.
     }

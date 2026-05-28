@@ -1,0 +1,60 @@
+{
+  "id": "T022",
+  "title": "Add desktop linked workflow start API/types",
+  "agent": "executor",
+  "depends_on": [
+    "T009: desktop workflow template API/types implemented",
+    "T021: linked workflow start API route implemented"
+  ],
+  "parallel_safe": false,
+  "story": "US4",
+  "objective": "Add desktop client method and types for POST /api/sessions/:id/workflow/start, link metadata, context strategy, and contract errors.",
+  "context_navigation": {
+    "design_decision": "plan.md#Dispatch Compilation Hints",
+    "data_model": "data-model.md#Linked Workflow Session Provenance",
+    "api_contract": "contracts/linked-workflow-session.md#Response",
+    "reference_implementation": "desktop/src/api/sessions.ts"
+  },
+  "write_scope": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/sessions.test.ts"
+  ],
+  "read_scope": [
+    ".specify/features/005-specify-discussions-workflow/contracts/linked-workflow-session.md",
+    "desktop/src/stores/sessionStore.ts"
+  ],
+  "forbidden": [
+    ".env",
+    "**/*secret*",
+    "~/.claude/settings.json",
+    "~/.claude/projects/**/*.jsonl"
+  ],
+  "expected_outputs": [
+    "desktop/src/api/sessions.ts （修改）",
+    "desktop/src/types/session.ts （修改）",
+    "desktop/src/api/sessions.test.ts （修改）"
+  ],
+  "anti_goals": [
+    "Do not implement UI strategy dialog here.",
+    "Do not hide server error codes.",
+    "Do not silently retry duplicate starts without clientRequestId semantics."
+  ],
+  "acceptance_criteria": [
+    "Client method sends workflow, contextStrategy, summaryInstructions, and clientRequestId.",
+    "Types model link response and source/target metadata.",
+    "API tests cover route path and payload."
+  ],
+  "verify_commands": [
+    "bun run check:desktop"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

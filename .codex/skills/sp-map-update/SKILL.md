@@ -58,12 +58,31 @@ Use `execution_surface: native-subagents`.
 - For every changed path, look up current owner, consumers, lifecycle/state surfaces, shared mutable state, destructive-operation edges, generated-surface propagation, verification routes, conflicts, stale claims, and known unknowns.
 - Expand the update closure through owners, downstream consumers, state surfaces, workflow artifacts, generated surfaces, and verification routes that project cognition already knows.
 
+Every changed path must be accounted for as one of: updated, provisionally adopted, ignored with reason, partial with `minimal_live_reads`, blocked with recovery condition, or requiring full rebuild for a reserved rebuild reason.
+
+Ignored `.cognitionignore` paths are reported in ignored-path accounting only. `sp-map-update` must not write `.cognitionignore`-excluded paths into update records, known unknowns, `minimal_live_reads`, graph evidence, or route indexes.
+
 ## Update-By-Default Rule
 
 - Ordinary uncertainty is not an update failure.
 - If the affected closure cannot be fully proven, still update the records that can be proven and record the rest as `partial_refresh`, low-confidence claims, conflicts, stale claims, `known_unknowns`, and `minimal_live_reads`.
 - `sp-map-update` must not route to `sp-map-scan -> sp-map-build` merely because the closure is wider than expected, some consumers are ambiguous, or extra live reads are needed.
 - Rebuild is reserved for missing baseline, unusable DB/status/schema, explicit rebuild request, or repository architecture replacement so broad that the baseline identity is invalid.
+
+## Existing-Baseline Gap Policy
+
+When a usable active generation exists, existing-baseline ordinary gaps are `sp-map-update`
+work and must not route to `$sp-map-scan`, then `$sp-map-build` for ordinary path gaps,
+path count, unrelated top-level count, core-surface status, weak ownership,
+missing `path_index` coverage, or unadoptable-ratio heuristics.
+
+Use `review`, `partial_refresh`, low-confidence claims, conflicts, stale claims,
+known unknowns, and `minimal_live_reads` to preserve imperfect but useful
+maintenance state.
+
+`$sp-map-scan -> $sp-map-build` is allowed after an existing baseline
+only for missing or unusable runtime, zero active-generation `path_index` rows,
+schema failure, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 
 ## Incremental Rule
 
@@ -72,14 +91,16 @@ Use `execution_surface: native-subagents`.
 - It must update the query-backed cognition runtime incrementally.
 - It must treat `.specify/project-cognition/status.json` plus `.specify/project-cognition/project-cognition.db` as the runtime truth source for post-update readiness.
 - It must not silently escalate to a full rebuild without recording why.
+- When changed paths are missing from `path_index`, classify them before escalating: adoptable paths get provisional `path_index` coverage, uncertain paths return `review` with `minimal_live_reads`, and existing-baseline ordinary gaps stay in `sp-map-update`.
+- Provisional adoption must write valid graph records: an adoption `evidence` row plus a `path_index` row with `relation="provisional_path"` and graph confidence `weak` or `partial`.
 - It must prefer metadata-only or single-slice updates when those are sufficient.
 - After recording updates, re-evaluate runtime readiness through the shared freshness contract.
-- After applying update records, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition validate-build --format json`.
-- If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete missing, unusable, schema-incompatible, explicitly-rebuild-required, or baseline-identity-invalid condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- After applying update records, run `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`.
+- If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid` condition and route to `$sp-map-scan`, then `$sp-map-build`.
 - If `validate-build` is blocked after update recording, report `partial_refresh` and preserve the validation errors instead of claiming the runtime is fresh.
-- If the re-evaluated runtime is `fresh` with `readiness=ready`, finalize the successful refresh through `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` so cognition freshness metadata cannot remain stale.
+- If the re-evaluated runtime is `fresh` with `readiness=ready`, finalize the successful refresh through `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` so cognition freshness metadata cannot remain stale.
 - If the update helper returns `ready` and `validate-build` passes, but the shared freshness check still sees the same refreshed source paths only because those source changes are not committed yet, report the incremental update as recorded and baseline-finalization pending. Do not tell the user to run `$sp-map-scan` or `$sp-map-build` merely because refreshed source changes are not committed yet.
-- After those source changes are committed, update the git-baseline freshness metadata with `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition record-refresh --reason \"map-update\" --format json` or `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json` without rerunning `$sp-map-scan` or `$sp-map-build`, unless validation reports `needs_rebuild`, the baseline is unusable, or the affected closure cannot be bounded safely.
+- After those source changes are committed, update the git-baseline freshness metadata with `C:\Users\11034\.specify\bin\project-cognition.exe record-refresh --reason \"map-update\" --format json` or `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` without rerunning `$sp-map-scan` or `$sp-map-build`, unless validation reports `needs_rebuild`, the baseline is unusable, or the affected closure cannot be bounded safely.
 - Do not report refresh completion when the runtime remains blocked.
 - A recorded refresh is not automatically a ready refresh: `partial_refresh` means update metadata was written but readiness still failed.
 
@@ -103,7 +124,7 @@ The canonical outputs for this command are:
 - updated `.specify/project-cognition/project-cognition.db`
 - query/update helper readiness metadata
 - the post-recording freshness result, including `freshness`, `readiness`, and `recommended_next_action`
-- when the post-recording freshness result is ready, a completed cognition refresh finalizer via `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@ca37b1226d0387964eec02a93c8f9b1f8584482a specify project-cognition complete-refresh --format json`
+- when the post-recording freshness result is ready, a completed cognition refresh finalizer via `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json`
 
 ## Guardrails
 
@@ -117,7 +138,7 @@ The canonical outputs for this command are:
 
 ## Escalation Boundary
 
-- Escalate to `sp-map-scan`, then `sp-map-build` only when no query-backed baseline exists, the current baseline is unusable, DB/status/schema validation fails, the user explicitly requested a rebuild, or the repository architecture changed so broadly that the baseline identity is invalid.
+- Escalate to `sp-map-scan`, then `sp-map-build` only when no query-backed baseline exists, the current baseline is unusable, DB/status/schema validation fails, zero active-generation `path_index` rows exist, the user explicitly requested a rebuild (`explicit_rebuild_requested`), or the repository architecture changed so broadly that the baseline identity is invalid (`baseline_identity_invalid`).
 - Do not escalate merely because the affected closure is uncertain; record the uncertainty as partial/low-confidence update data with `known_unknowns` and `minimal_live_reads`.
 - Record the exact reason for escalation, including the failed baseline, DB, schema, explicit-request, or architecture-replacement fact.
 
@@ -143,6 +164,17 @@ The canonical outputs for this command are:
 - produce an incremental update record
 - verify the shared freshness contract after the update record is written
 - run the successful-refresh finalizer when that verification proves the runtime ready
+
+## Codex Map Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Keep map packet/result schemas from this workflow authoritative; do not substitute implementation `WorkerTaskResult` fields for map scan/build/update packet contracts.
 
 ## Codex Subagents-First Dispatch
 

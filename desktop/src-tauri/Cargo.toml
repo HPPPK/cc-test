@@ -1,10 +1,10 @@
 [package]
-name = "claude-code-desktop"
+name = "cc-jiangxia-desktop"
 version = "0.2.8"
 edition = "2021"
 
 [lib]
-name = "claude_code_desktop_lib"
+name = "cc_jiangxia_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

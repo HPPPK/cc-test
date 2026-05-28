@@ -1,0 +1,15 @@
+{
+  "id": "ev-verification-release-docs-091",
+  "type": "source_analysis",
+  "source_path": "docs/agent/images/10-fork-cache.png",
+  "summary": "Documentation image asset accounted for by file metadata (undefined bytes).",
+  "detail": "",
+  "quotes_or_symbols": [
+    "size:94661",
+    "mtime:2026-05-15T06:52:03.938Z"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "verification-release-docs",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

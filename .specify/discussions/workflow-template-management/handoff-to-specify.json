@@ -1,0 +1,677 @@
+{
+  "discussion_slug": "workflow-template-management",
+  "handoff_goal": "Specify a unified Workflows feature that adds Settings workflow template management and Chat composer workflow entry in the current project.",
+  "draft_created_at": "2026-05-26T15:22:09.0778846+08:00",
+  "status": "handoff-ready",
+  "context_boundary": {
+    "current_project_root": "F:\\github\\cc-jiangxia",
+    "target_project_root": "F:\\github\\cc-jiangxia",
+    "reference_projects": [],
+    "external_systems": [],
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": [],
+    "current_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Desktop Settings UI, server workflow template registry/API, desktop session creation flow, chat composer workflow entry",
+        "evidence_source": "user request plus live repository reads",
+        "notes": "Requested feature belongs in the active repository."
+      }
+    ],
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Add or adjust desktop UI/API behavior for workflow template management and workflow session creation",
+        "evidence_source": "user request plus live repository reads",
+        "notes": "No cross-project transfer requested."
+      }
+    ]
+  },
+  "implementation_target": {
+    "project_root": "F:\\github\\cc-jiangxia",
+    "target_project_cognition_status": "fresh-query-ready",
+    "target_paths_or_modules": [
+      "desktop/src/pages/Settings.tsx",
+      "desktop/src/stores/uiStore.ts",
+      "desktop/src/i18n/locales/en.ts",
+      "desktop/src/i18n/locales/zh.ts",
+      "desktop/src/components/chat/ChatInput.tsx",
+      "desktop/src/pages/EmptySession.tsx",
+      "desktop/src/pages/ActiveSession.tsx",
+      "desktop/src/components/workflow/*",
+      "desktop/src/api/sessions.ts",
+      "desktop/src/types/session.ts",
+      "src/server/api/sessions.ts",
+      "src/server/router.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/commands/compact/index.ts",
+      "src/commands/compact/compact.ts"
+    ],
+    "target_paths_still_to_verify": [
+      "Tests and fixtures adjacent to changed server and desktop files",
+      "Exact API/client surfaces chosen during planning for linked workflow session creation"
+    ],
+    "current_project_cognition_cannot_prove_other_projects": true
+  },
+  "source_evidence": [
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "src/server/services/workflowTemplateRegistryService.ts",
+      "claim": "Registry owns workflow template loading/writing, built-in agent-development, user workflows.json, validation, unknown-field preservation, and builtin shadow rejection."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "src/server/api/sessions.ts",
+      "claim": "Current workflow template API is list-only and workflow metadata is created during session creation when workflow is present."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "src/server/services/workflowTypes.ts",
+      "claim": "Workflow phase fields include instructions, requested model, skill declarations, required artifacts, completion criteria, transition authority, action policy, and phase prompt."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "src/server/services/workflowRuntimeService.ts",
+      "claim": "Runtime assembles active phase context from phase instructions, structured prompt, action policy, artifacts, completion criteria, skills, and model info."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "desktop/src/components/chat/ChatInput.tsx",
+      "claim": "Current launch controls load workflow templates and send selected workflow template metadata only during new session creation."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "desktop/src/pages/ActiveSession.tsx",
+      "claim": "Workflow status and controls appear when session workflow metadata exists."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "read",
+      "source": "src/commands/compact/index.ts",
+      "claim": "/compact clears conversation history but keeps a summary in context, with optional summarization instructions."
+    },
+    {
+      "source_type": "discussion_artifact",
+      "evidence_status": "current",
+      "source": ".specify/discussions/workflow-template-management/requirements.md",
+      "claim": "Product requirements, standard workflow model, UI sketches, and acceptance signals are recorded."
+    },
+    {
+      "source_type": "discussion_artifact",
+      "evidence_status": "current",
+      "source": ".specify/discussions/workflow-template-management/technical-options.md",
+      "claim": "Selected technical direction and consequence obligations are recorded."
+    }
+  ],
+  "product_scope": {
+    "settings_workflows_management": [
+      "Settings tab or item labeled Workflows",
+      "List built-in and user workflow templates",
+      "Show source, phase count, validity/startability, and invalid diagnostics",
+      "CRUD for global user-level workflow templates",
+      "Built-ins read-only/protected and copyable into user templates",
+      "JSON import/export with preview and selected import",
+      "Import conflicts auto-rename by default instead of overwriting",
+      "Import validates before write and cannot shadow built-in ids"
+    ],
+    "standard_workflow_contract": [
+      "Workflows are staged execution contracts, not prompt collections",
+      "Each phase defines identity, role/type, instructions, objective, intake, output artifact, handoff, execution rules, completion criteria, transition authority, and recovery notes where relevant",
+      "Every phase requires explicit output artifact and handoff contract",
+      "Advanced phase fields may include handoff intake, required output sections, completion/stop rules, required artifacts, action policy, requested model, and skill guidance"
+    ],
+    "chat_workflows_entry": [
+      "Composer plus menu includes Workflows",
+      "Selecting Workflows opens a workflow-template dialog",
+      "Empty/new sessions reuse current launch flow",
+      "Non-empty chats ask context strategy: inherit, summarize with compact-style semantics, or clear",
+      "Summarize uses /compact-style semantics",
+      "Inherit/summarize create linked new workflow session carrying chosen context",
+      "Original normal chat is not mutated in place"
+    ]
+  },
+  "non_goals": [
+    "Do not rename or change the existing built-in workflow identity",
+    "Do not edit built-in templates in place",
+    "Do not add project-level workflow template storage or merge precedence in the first version",
+    "Do not mutate existing workflow session snapshots when source templates are edited",
+    "Do not model this as a clone of an unconfirmed Claude Code /workflow feature"
+  ],
+  "blocking_unknowns": [],
+  "soft_unknowns": [
+    {
+      "id": "Q-002",
+      "claim": "Exact detailed template schema editor versus optional raw JSON editing depth.",
+      "owner": "downstream specification/planning",
+      "latest_resolve_phase": "planning",
+      "stop_and_reopen_condition": "Reopen if implementation scope cannot fit the selected UX."
+    },
+    {
+      "id": "Q-004",
+      "claim": "Whether Settings exposes a shortcut from invalid template warnings in session creation.",
+      "owner": "downstream specification",
+      "latest_resolve_phase": "specification",
+      "stop_and_reopen_condition": "Reopen if discoverability of invalid templates is a core acceptance criterion."
+    },
+    {
+      "id": "Q-API-001",
+      "claim": "Internal API shape for linked workflow session creation and compact-style summary carry-over.",
+      "owner": "downstream specification/planning",
+      "latest_resolve_phase": "planning",
+      "stop_and_reopen_condition": "Reopen if proposed API cannot preserve CA-005."
+    }
+  ],
+  "downstream_instructions": {
+    "settled_decisions": [
+      "Use Workflows as the user-facing label",
+      "Global user-level custom templates only for first version",
+      "Built-ins are read-only and copyable",
+      "CRUD schema-aware Settings management",
+      "JSON import/export with selected import and auto-rename conflicts",
+      "Workflow phases require output artifact and handoff contract",
+      "Chat entry uses composer plus menu",
+      "Non-empty chats require explicit context handling",
+      "Inherited/summarized context starts a linked new workflow session"
+    ],
+    "recommended_sequence": [
+      "Specify server-side template mutation and import/export contract",
+      "Specify desktop Settings Workflows UI and validation states",
+      "Specify chat composer Workflows dialog and linked-session behavior",
+      "Specify tests and verification gates"
+    ],
+    "dependencies": [
+      "Registry write behavior must preserve unknown fields",
+      "Linked workflow session behavior must not mutate original normal chat",
+      "Summary path must map to /compact-style semantics or equivalent compaction service behavior"
+    ],
+    "deferred_scope": [
+      "Project-level workflow templates",
+      "Retroactive workflow session migration after template edits",
+      "Standalone clone of an unverified Claude Code /workflow feature"
+    ],
+    "reopen_conditions": [
+      "Direct built-in edits enter the design",
+      "Lossy workflows.json write behavior enters the design",
+      "Prompt-only phase authoring enters the design",
+      "Normal chats are converted in place without explicit linked-session behavior",
+      "Existing workflow session snapshots are retroactively mutated"
+    ]
+  },
+  "ui_discussion": {
+    "ui_discussion_status": "accepted",
+    "confirmed_ui_decisions": [
+      "Settings label is Workflows",
+      "Chat plus menu label is Workflows",
+      "Phase editor uses default/common section plus advanced collapsed section",
+      "Chat context dialog offers inherit, summarize, and clear choices"
+    ],
+    "deferred_ui_decisions": [
+      "Exact raw JSON editing depth",
+      "Whether invalid template warnings link directly to Settings"
+    ],
+    "interaction_expectations": [
+      "Template list/editor layout",
+      "Import preview with selectable workflow entries",
+      "Invalid-template diagnostics visible before writes",
+      "Non-empty chat context handling before linked workflow session creation"
+    ],
+    "state_requirements": [
+      "Missing user config keeps built-in startable",
+      "Invalid user config surfaces diagnostics",
+      "Built-ins are read-only",
+      "Existing normal chats remain unchanged after linked workflow start"
+    ],
+    "accessibility_expectations": [
+      "Use standard buttons, dialogs, forms, validation messages, and keyboard-accessible controls"
+    ],
+    "ui_sketches_present": true,
+    "ui_sketch_summary": "Settings Workflows split list/editor sketch and Chat plus-menu workflow selection sketch.",
+    "ui_sketch_reference": ".specify/discussions/workflow-template-management/requirements.md#ascii-sketch"
+  },
+  "senior_consequence_analysis": {
+    "gate_status": "triggered",
+    "affected_object_map": [
+      "~/.claude/cc-jiangxia/workflows.json",
+      "WorkflowTemplateRegistryService",
+      "/api/workflows/templates and future mutation endpoints",
+      "Settings navigation and content routing",
+      "Desktop workflow template list/editor UI",
+      "Desktop chat composer plus menu",
+      "Workflow template picker",
+      "Workflow session creation payloads",
+      "Workflow session state snapshots",
+      "Existing dialogue sessions/transcripts",
+      "/compact or equivalent compaction service path",
+      "Invalid-template diagnostics",
+      "Workflow status and transition controls"
+    ],
+    "state_behavior_matrix": [
+      {
+        "state": "missing_user_config",
+        "behavior": "Built-in workflow remains visible and startable."
+      },
+      {
+        "state": "malformed_user_config",
+        "behavior": "Built-in remains startable; invalid issue is visible; writes must not silently destroy user content."
+      },
+      {
+        "state": "valid_user_template",
+        "behavior": "Visible and startable for future sessions."
+      },
+      {
+        "state": "invalid_user_template",
+        "behavior": "Not startable; issue visible in Settings and creation surfaces."
+      },
+      {
+        "state": "built_in_template",
+        "behavior": "Read-only unless duplicated into a user template."
+      },
+      {
+        "state": "running_or_completed_workflow_session",
+        "behavior": "Continues from snapshot; source template edits do not mutate it."
+      },
+      {
+        "state": "new_empty_chat",
+        "behavior": "Can start Workflow in current launch flow."
+      },
+      {
+        "state": "existing_normal_chat",
+        "behavior": "Asks context strategy, then creates linked workflow session; original chat remains unchanged."
+      },
+      {
+        "state": "existing_workflow_chat",
+        "behavior": "Remains workflow and shows workflow status/controls."
+      },
+      {
+        "state": "active_streaming_chat",
+        "behavior": "Must not allow unsafe workflow start/conversion unless explicitly designed and tested."
+      }
+    ],
+    "dependency_impact_table": [
+      {
+        "surface": "direct_dependencies",
+        "impact": "Desktop Settings UI, chat composer UI, sessions API client, server router, workflow template registry service."
+      },
+      {
+        "surface": "indirect_consumers",
+        "impact": "Workflow runtime, workflow session state service, session list/detail metadata, tests/fixtures."
+      },
+      {
+        "surface": "shared_state",
+        "impact": "cc-jiangxia config directory, registry cache, workflow session snapshots."
+      },
+      {
+        "surface": "compatibility_surfaces",
+        "impact": "Unknown fields in user config, built-in id rules, linear-only workflow constraints, API response shape, transcript persistence, workflow metadata."
+      }
+    ],
+    "recovery_and_validation_contract": [
+      "Preserve unknown fields on write",
+      "Do not mutate protected Claude files outside cc-jiangxia-owned workflow config",
+      "Keep built-ins startable when user config is missing or invalid",
+      "Reset registry cache after successful writes",
+      "Reject built-in shadowing, duplicate ids, missing required phase contracts, and unsupported branching/loop/parallel/nested workflow definitions",
+      "Validate before saving imports",
+      "Existing workflow sessions must continue from snapshots",
+      "Linked workflow session creation must be explicit, recoverable, and tested",
+      "Summarize path must reuse /compact semantics or an equivalent internal compaction path"
+    ],
+    "coverage_gaps": [
+      {
+        "id": "CG-001",
+        "claim": "Import conflict policy resolved by user confirmation.",
+        "owner": "none",
+        "latest_resolve_phase": "resolved",
+        "status": "resolved",
+        "stop_and_reopen_condition": "Reopen if import overwrites by default."
+      },
+      {
+        "id": "CG-002",
+        "claim": "Exact UI depth for schema editing versus optional raw JSON affordances remains soft.",
+        "owner": "downstream specification/planning",
+        "latest_resolve_phase": "planning",
+        "status": "deferred",
+        "stop_and_reopen_condition": "Reopen if implementation scope cannot fit the selected UX."
+      },
+      {
+        "id": "CG-003",
+        "claim": "Exact internal API mechanism for linked workflow session creation and compact-style summary carry-over remains downstream design detail.",
+        "owner": "downstream specification/planning",
+        "latest_resolve_phase": "planning",
+        "status": "deferred",
+        "stop_and_reopen_condition": "Reopen if proposed API cannot preserve CA-005."
+      }
+    ],
+    "obligations": [
+      {
+        "id": "CA-001",
+        "claim": "Future implementation must keep built-in templates startable even when user workflow config is missing, malformed, or contains invalid templates.",
+        "affected_objects": [
+          "WorkflowTemplateRegistryService",
+          "workflows.json",
+          "template list API",
+          "workflow launch UI"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "plan",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if a proposed design makes invalid user config block the built-in template."
+      },
+      {
+        "id": "CA-002",
+        "claim": "Future implementation must preserve unknown fields in cc-jiangxia-owned workflows.json for any write path.",
+        "affected_objects": [
+          "workflows.json",
+          "registry write path",
+          "import/export",
+          "Settings editor"
+        ],
+        "owner_workflow": "sp-specify/sp-plan/sp-implement",
+        "latest_resolve_phase": "implement",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if write behavior rewrites the file from a lossy normalized model."
+      },
+      {
+        "id": "CA-003",
+        "claim": "Future implementation must treat built-in templates as protected from direct mutation and prevent user templates from shadowing built-in ids.",
+        "affected_objects": [
+          "built-in templates",
+          "user templates",
+          "Settings editor",
+          "server validation"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "plan",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if UI/API permits editing built-in templates in place or saving a user template with agent-development."
+      },
+      {
+        "id": "CA-004",
+        "claim": "Future implementation must not mutate existing workflow session snapshots when source templates are edited; changes apply to future sessions unless an explicit migration workflow is separately specified.",
+        "affected_objects": [
+          "workflow session snapshots",
+          "template editor",
+          "session resume",
+          "workflow runtime"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specify",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if requirements imply retroactive mutation of running or completed sessions."
+      },
+      {
+        "id": "CA-005",
+        "claim": "Chat-page workflow selection must not silently convert existing normal chats into workflow sessions or silently discard context. Non-empty chats must require explicit user confirmation and one of: inherit context, summarize context with compact-style semantics, or clear context. Inherit/summarize create a linked new workflow session carrying the chosen context instead of mutating the original chat in place.",
+        "affected_objects": [
+          "ChatInput",
+          "session creation API",
+          "transcripts",
+          "workflow session metadata",
+          "compact path"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specify",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if a design enters Workflows from a non-empty chat without explicit user confirmation, context handling selection, and linked-session behavior for inherited/summarized context."
+      },
+      {
+        "id": "CA-006",
+        "claim": "Custom workflow authoring must preserve required phase output artifacts and required phase handoff contracts as first-class schema, not as unstructured prompt text only.",
+        "affected_objects": [
+          "workflow template schema",
+          "phase editor",
+          "server validation",
+          "workflow runtime"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specify",
+        "status": "pending",
+        "stop_and_reopen_condition": "Stop and reopen if a design cannot validate or display each phase's intake, output, handoff, completion, and transition contract."
+      }
+    ]
+  },
+  "must_preserve_ledger": [
+    {
+      "id": "MP-001",
+      "type": "goal",
+      "claim": "Add a user-facing Workflows surface for managing workflow templates and starting workflow sessions from chat.",
+      "source": "requirements.md",
+      "downstream_requirement": "sp-specify must express Settings management and Chat entry as one unified feature.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if scope drops either Settings management or Chat entry without user confirmation.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-002",
+      "type": "decision",
+      "claim": "User-facing names should use Workflows.",
+      "source": "user confirmation and requirements.md",
+      "downstream_requirement": "Settings and Chat labels should say Workflows.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if downstream naming switches to another product label.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-003",
+      "type": "decision",
+      "claim": "First-version custom workflow templates are global user-level templates only.",
+      "source": "open-questions.md Q-007",
+      "downstream_requirement": "Do not add project-level template storage or precedence rules in this feature.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if project-level templates enter scope.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-004",
+      "type": "decision",
+      "claim": "Built-in templates are read-only/protected and user customization happens by copying built-ins into user templates.",
+      "source": "requirements.md and open-questions.md Q-006/Q-003",
+      "downstream_requirement": "UI/API must prevent direct built-in mutation and support copy-to-user-template behavior.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if built-ins become editable in place.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-005",
+      "type": "decision",
+      "claim": "Settings management uses CRUD for user templates with a schema-aware form.",
+      "source": "technical-options.md Option B",
+      "downstream_requirement": "Specify create, duplicate/copy, edit, delete, validate, and save behavior.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if management becomes view-only or raw JSON-only.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-006",
+      "type": "decision",
+      "claim": "JSON import/export is in scope, import preview lets users choose workflows, and conflicts default to automatic rename rather than overwrite.",
+      "source": "requirements.md and open-questions.md Q-008/Q-009",
+      "downstream_requirement": "Specify export, import preview, validation, selection, auto-rename, and no-overwrite behavior.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if import silently overwrites or does not let users choose imported workflows.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-007",
+      "type": "decision",
+      "claim": "Workflows are staged execution contracts, not prompt collections.",
+      "source": "requirements.md Standard Workflow Model",
+      "downstream_requirement": "Specify workflow/phase schema around responsibility, intake, work, output, handoff, transition, and recovery.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if custom workflow authoring becomes prompt-only.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-008",
+      "type": "decision",
+      "claim": "Every phase must require an explicit output artifact and handoff contract.",
+      "source": "open-questions.md Q-011",
+      "downstream_requirement": "Validation and UI must require these fields.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if phases can save without output/handoff definitions.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-009",
+      "type": "decision",
+      "claim": "Phase editor shows common fields first and advanced schema fields collapsed.",
+      "source": "requirements.md UI Discussion Status",
+      "downstream_requirement": "Specify default and advanced phase editor sections.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "planning",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if UI exposes all fields flat without a usability decision.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-010",
+      "type": "decision",
+      "claim": "Chat page exposes Workflows from the composer plus menu and opens a workflow selection dialog.",
+      "source": "technical-options.md Option F",
+      "downstream_requirement": "Specify plus-menu item, dialog, template selection, invalid warnings, and start action.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if entry point moves away from composer plus menu without user confirmation.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-011",
+      "type": "decision",
+      "claim": "Non-empty chats require explicit context handling: inherit, summarize with compact-style semantics, or clear.",
+      "source": "open-questions.md Q-012",
+      "downstream_requirement": "Specify confirmation dialog and three context strategy behaviors.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if non-empty chats enter Workflows without explicit context choice.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-012",
+      "type": "decision",
+      "claim": "Inherit/summarize from a non-empty normal chat creates a linked new workflow session and does not mutate the original chat in place.",
+      "source": "open-questions.md Q-013",
+      "downstream_requirement": "Specify linked session creation, provenance, navigation, and original-chat preservation.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if design converts original normal chats in place.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-013",
+      "type": "non_goal",
+      "claim": "Existing workflow session snapshots must not be mutated when source templates are edited.",
+      "source": "requirements.md and CA-004",
+      "downstream_requirement": "Specify template edits as future-session behavior.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if requirements imply retroactive mutation of running/completed workflow sessions.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-014",
+      "type": "reference",
+      "claim": "Official Claude Code docs did not provide a stable standalone /workflow feature contract; use Skills/Commands as inspiration only.",
+      "source": "project-context.md",
+      "downstream_requirement": "Do not anchor requirements to an unverified external /workflow feature.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specify",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if a new external feature is used as a hard requirement without fresh evidence.",
+      "mapped_to": []
+    },
+    {
+      "id": "MP-015",
+      "type": "blocking_question",
+      "claim": "No hard unknowns remain for handoff; soft UI/API details can be resolved downstream.",
+      "source": "handoff-assessment.md",
+      "downstream_requirement": "Carry soft unknowns but do not block specification on them.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "planning",
+      "status": "pending",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Reopen if a soft unknown becomes a product contradiction.",
+      "mapped_to": []
+    }
+  ],
+  "coverage_status": {
+    "planning_gate_status": "draft-ready-for-user-review",
+    "hard_unknown_count": 0,
+    "open_conflict_count": 0,
+    "soft_unknown_count": 3
+  },
+  "quality_gate": {
+    "status": "user-confirmed",
+    "self_reviewed_at": "2026-05-26T15:26:25.0529811+08:00",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-05-26T15:38:04.5270349+08:00",
+    "blocked_reasons": [],
+    "self_review_result": [
+      "Markdown and JSON handoff pair both exist",
+      "Handoff goal is concrete and unified",
+      "Context boundary is locked to F:\\github\\cc-jiangxia",
+      "No hard unknowns remain",
+      "Must-Preserve Ledger contains MP-001 through MP-015",
+      "Senior consequence obligations contain CA-001 through CA-006",
+      "UI discussion status and sketch reference are preserved",
+      "Quality gate remains draft until user review confirms the handoff"
+    ]
+  }
+}

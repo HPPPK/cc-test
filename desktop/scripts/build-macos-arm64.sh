@@ -9,12 +9,12 @@ REPO_ROOT="$(cd "${DESKTOP_DIR}/.." && pwd)"
 TARGET_TRIPLE="aarch64-apple-darwin"
 TAURI_TARGET_DIR="${DESKTOP_DIR}/src-tauri/target"
 CANONICAL_OUTPUT_DIR="${DESKTOP_DIR}/build-artifacts/macos-arm64"
-APP_BUNDLE_NAME="Claude Code Haha.app"
-APP_BUNDLE_ID="com.claude-code-haha.desktop"
+APP_BUNDLE_NAME="Claude Code Jiangxia.app"
+APP_BUNDLE_ID="com.claude-code-jiangxia.desktop"
 
 usage() {
   cat <<'EOF'
-Build Claude Code Haha desktop for macOS Apple Silicon and output a DMG.
+Build Claude Code Jiangxia desktop for macOS Apple Silicon and output a DMG.
 
 Usage:
   ./desktop/scripts/build-macos-arm64.sh [extra tauri build args...]
@@ -68,7 +68,7 @@ fi
 # ── 清理 + 显式预热前端 / sidecar ────────────────────────────
 # 之前遇到过两类"改了源码,build 出来的 .app 还是旧行为"的诡异 case:
 #   1) Bun.build / Tauri bundler 某一层缓存把旧 sidecar binary 复用进新 .app
-#   2) Tauri/Rust target 缓存复用旧 claude-code-desktop,导致新 dist 没被嵌进去
+#   2) Tauri/Rust target 缓存复用旧 cc-jiangxia-desktop,导致新 dist 没被嵌进去
 # 第二类尤其隐蔽: dist 是新的,sidecar 也是新的,但 WebView 运行的还是旧前端。
 #
 # 默认做四件事强制 fresh build:
@@ -87,25 +87,25 @@ if [[ "${PRESERVE_TAURI_TARGET:-0}" == "1" ]]; then
   echo "[build-macos-arm64] PRESERVE_TAURI_TARGET=1: keeping Rust dependency cache, clearing app-specific artifacts only..."
   rm -rf "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/bundle"
   rm -rf "${DESKTOP_DIR}/src-tauri/target/release/bundle"
-  rm -f "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/claude-code-desktop"
-  rm -f "${DESKTOP_DIR}/src-tauri/target/release/claude-code-desktop"
+  rm -f "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/cc-jiangxia-desktop"
+  rm -f "${DESKTOP_DIR}/src-tauri/target/release/cc-jiangxia-desktop"
   find "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/build" \
-    -maxdepth 1 -name 'claude-code-desktop-*' -exec rm -rf {} + 2>/dev/null || true
+    -maxdepth 1 -name 'cc-jiangxia-desktop-*' -exec rm -rf {} + 2>/dev/null || true
   find "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/.fingerprint" \
-    -maxdepth 1 -name 'claude-code-desktop-*' -exec rm -rf {} + 2>/dev/null || true
+    -maxdepth 1 -name 'cc-jiangxia-desktop-*' -exec rm -rf {} + 2>/dev/null || true
   find "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/deps" \
-    -maxdepth 1 \( -name 'claude_code_desktop-*' -o -name 'libclaude_code_desktop-*' \) -exec rm -f {} + 2>/dev/null || true
+    -maxdepth 1 \( -name 'cc_jiangxia_desktop-*' -o -name 'libcc_jiangxia_desktop-*' \) -exec rm -f {} + 2>/dev/null || true
 else
   echo "[build-macos-arm64] Removing Tauri target cache for ${TARGET_TRIPLE} to force fresh embedded frontend assets..."
   rm -rf "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}"
   rm -rf "${DESKTOP_DIR}/src-tauri/target/release/bundle"
-  rm -f "${DESKTOP_DIR}/src-tauri/target/release/claude-code-desktop"
+  rm -f "${DESKTOP_DIR}/src-tauri/target/release/cc-jiangxia-desktop"
   find "${DESKTOP_DIR}/src-tauri/target/release/build" \
-    -maxdepth 1 -name 'claude-code-desktop-*' -exec rm -rf {} + 2>/dev/null || true
+    -maxdepth 1 -name 'cc-jiangxia-desktop-*' -exec rm -rf {} + 2>/dev/null || true
   find "${DESKTOP_DIR}/src-tauri/target/release/.fingerprint" \
-    -maxdepth 1 -name 'claude-code-desktop-*' -exec rm -rf {} + 2>/dev/null || true
+    -maxdepth 1 -name 'cc-jiangxia-desktop-*' -exec rm -rf {} + 2>/dev/null || true
   find "${DESKTOP_DIR}/src-tauri/target/release/deps" \
-    -maxdepth 1 \( -name 'claude_code_desktop-*' -o -name 'libclaude_code_desktop-*' \) -exec rm -f {} + 2>/dev/null || true
+    -maxdepth 1 \( -name 'cc_jiangxia_desktop-*' -o -name 'libcc_jiangxia_desktop-*' \) -exec rm -f {} + 2>/dev/null || true
 fi
 
 echo "[build-macos-arm64] Rebuilding frontend (tsc + vite)..."
@@ -183,15 +183,15 @@ build_canonical_dmg() {
   local staging_dir
   local rw_dmg
 
-  staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/cc-haha-dmg.XXXXXX")"
-  rw_dmg="$(mktemp "${TMPDIR:-/tmp}/cc-haha-rw.XXXXXX").dmg"
+  staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/cc-jiangxia-dmg.XXXXXX")"
+  rw_dmg="$(mktemp "${TMPDIR:-/tmp}/cc-jiangxia-rw.XXXXXX").dmg"
 
   cp -R "${app_bundle}" "${staging_dir}/"
   ln -s /Applications "${staging_dir}/Applications"
 
   # Create a read-write DMG first so we can customize the Finder layout
   hdiutil create \
-    -volname "Claude Code Haha" \
+    -volname "Claude Code Jiangxia" \
     -srcfolder "${staging_dir}" \
     -ov \
     -format UDRW \
@@ -212,7 +212,7 @@ build_canonical_dmg() {
   # 所以这里允许 osascript 非零退出,只 warn,不让 set -e 炸掉整个脚本。
   if ! osascript <<APPLESCRIPT
 tell application "Finder"
-  tell disk "Claude Code Haha"
+  tell disk "Claude Code Jiangxia"
     open
     set current view of container window to icon view
     set toolbar visible of container window to false
@@ -283,7 +283,7 @@ sign_canonical_app_bundle() {
 
 if [[ -n "${LATEST_APP}" ]]; then
   # Normalize the Tauri-produced app in place before copying it anywhere.
-  # Without this, opening target/.../bundle/macos/Claude Code Haha.app directly
+  # Without this, opening target/.../bundle/macos/Claude Code Jiangxia.app directly
   # uses the executable's ad-hoc signing identifier instead of the app bundle id,
   # which makes macOS notification authorization behave like a different app.
   sign_canonical_app_bundle "${LATEST_APP}"
@@ -298,7 +298,7 @@ if [[ -n "${LATEST_APP}" ]]; then
   cp -R "${LATEST_APP}" "${CANONICAL_OUTPUT_DIR}/"
   sign_canonical_app_bundle "${CANONICAL_OUTPUT_DIR}/${APP_BUNDLE_NAME}"
   rm -f "${CANONICAL_OUTPUT_DIR}/"*.dmg
-  CANONICAL_DMG="${CANONICAL_OUTPUT_DIR}/$(basename "${LATEST_DMG:-Claude Code Haha_0.1.0_aarch64.dmg}")"
+  CANONICAL_DMG="${CANONICAL_OUTPUT_DIR}/$(basename "${LATEST_DMG:-Claude Code Jiangxia_0.1.0_aarch64.dmg}")"
   build_canonical_dmg \
     "${CANONICAL_OUTPUT_DIR}/${APP_BUNDLE_NAME}" \
     "${CANONICAL_DMG}"

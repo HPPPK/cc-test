@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-059",
+  "type": "source_analysis",
+  "source_path": "adapters/telegram/__tests__/telegram.test.ts",
+  "summary": "Test coverage for telegram.test.ts exercises splits messages at Telegram 4096 char limit; keeps short messages as single chunk; splits at paragraph boundary when possible; formats Bash command request",
+  "detail": "",
+  "quotes_or_symbols": [
+    "splits messages at Telegram 4096 char limit",
+    "keeps short messages as single chunk",
+    "splits at paragraph boundary when possible",
+    "formats Bash command request"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

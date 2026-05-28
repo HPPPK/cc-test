@@ -62,7 +62,7 @@ Its job is to read current repository state, identify the recommended next Spec 
 - `sp-auto` does not replace `sp-specify`, `sp-plan`, `sp-tasks`, `sp-analyze`, `sp-implement`, `sp-debug`, `sp-quick`, or `sp-fast`.
 - `sp-auto` must never invent a new phase progression from chat memory when repository state already records the next step.
 - Always obey the recorded upstream gate.
-- Do not rewrite the underlying workflow state to `/sp.auto`; preserve the canonical downstream `next_command` such as `/sp.plan`, `/sp.tasks`, `/sp.analyze`, `/sp.implement`, `/sp.debug`, `/sp.quick`, `/sp.fast`, `/sp.clarify`, or `/sp.deep-research`.
+- Do not rewrite the underlying workflow state to `/sp.auto`; preserve the canonical downstream `next_command` such as `/sp.plan`, `/sp.tasks`, `/sp.implement`, `/sp.debug`, `/sp.quick`, `/sp.fast`, `/sp.clarify`, or `/sp.deep-research`. Preserve `/sp.analyze` only when an existing state file explicitly records that legacy or diagnostic route.
 - If state is missing, stale, conflicting, or cannot identify one safe next step, stop in read-only diagnosis and report the exact blocker instead of improvising a route.
 - Do not guess when multiple resumable lanes exist.
 - Never auto-resume an `uncertain` lane.
@@ -74,7 +74,8 @@ Its job is to read current repository state, identify the recommended next Spec 
 Inspect the available state surfaces in this order and prefer the most specific active truth source that does not violate an upstream gate:
 
 1. Active feature `workflow-state.md`
-   - Treat `FEATURE_DIR/workflow-state.md` as the primary phase-lock and `next_command` source for feature workflows. Canonical state tokens include `/sp.plan`, `/sp.tasks`, `/sp.analyze`, `/sp.implement`, `/sp.clarify`, and `/sp.deep-research`.
+   - Treat `FEATURE_DIR/workflow-state.md` as the primary phase-lock and `next_command` source for feature workflows. Canonical state tokens include `/sp.plan`, `/sp.tasks`, `/sp.implement`, `/sp.clarify`, and `/sp.deep-research`; `/sp.analyze` is a legacy or explicitly requested diagnostic route only.
+   - Clean completed task-generation state with `active_command: sp-tasks`, `status: completed`, `phase_mode: task-generation-only`, and `next_command: /sp.implement` should route directly to `/sp.implement`; preserve `/sp.analyze` only when a feature-level state file explicitly records that legacy or diagnostic route.
    - If a feature-level `workflow-state.md` explicitly points upstream, obey it even when later-stage artifacts also exist.
 
 2. Active implementation execution state
@@ -100,7 +101,7 @@ Choose exactly one routed command.
 - If multiple candidates remain after reconcile, stop and present a minimal choice instead of guessing.
 - Prefer the route that is already recorded in the highest-authority active state file.
 - If multiple state surfaces are active, prefer the more execution-proximate surface only when it does not conflict with an explicit upstream `next_command`.
-- Never bypass canonical upstream gates such as `/sp.clarify`, `/sp.deep-research`, `/sp.plan`, `/sp.tasks`, or `/sp.analyze` just because downstream artifacts already exist.
+- Never bypass canonical upstream gates such as `/sp.clarify`, `/sp.deep-research`, `/sp.plan`, or `/sp.tasks` just because downstream artifacts already exist. Treat `/sp.analyze` as an upstream gate only when persisted workflow state explicitly records that legacy or diagnostic route.
 - Never treat `sp-auto` itself as the next recorded workflow step. It is only the entrypoint the user uses instead of typing the canonical command manually.
 
 ## Execution Contract
@@ -138,3 +139,14 @@ Typical canonical targets include:
 
 Use canonical `/sp.specify` only when repository state or the absence of any usable downstream state makes a new or re-opened requirement-alignment pass the safest truthful next step.
 When no safe route can be selected and the user must invoke that fallback manually, tell them to run `$sp-specify`.
+
+## Codex Subagent Capability Discovery
+
+- Execution model: preserve the workflow's existing `subagent-mandatory`, `subagents-first`, `adaptive`, or `subagent-assisted` policy.
+- Dispatch shape: preserve the workflow's existing dispatch shape; use `subagent-blocked` only after the discovery step below fails or is unsafe.
+- Execution surface: prefer `native-subagents` when the current runtime supports it; use `none` only after recording the unavailable or unsafe surface.
+- Native subagent capability discovery: Before recording `subagent-blocked`, confirm the current runtime exposes `spawn_agent`, `wait_agent`, and `close_agent`; if they are not visible, use the active tool discovery mechanism for multi-agent or subagent tools first.
+- Do not record `subagent-blocked` until this capability discovery step is complete and the exact unavailable or unsafe surface is recorded.
+- Native subagent dispatch: Dispatch bounded subagents through `spawn_agent`.
+- Join behavior: Rejoin with `wait_agent`, integrate, then `close_agent`.
+- Preserve this workflow's existing packet, handoff, artifact, and result schema; this section only governs capability discovery before dispatch or blocked-state recording.

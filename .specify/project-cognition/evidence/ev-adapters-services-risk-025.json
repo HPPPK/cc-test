@@ -1,0 +1,14 @@
+{
+  "id": "ev-adapters-services-risk-025",
+  "type": "source_analysis",
+  "source_path": "adapters/common/message-dedup.ts",
+  "summary": "message-dedup.ts defines MessageDedup",
+  "detail": "",
+  "quotes_or_symbols": [
+    "MessageDedup"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

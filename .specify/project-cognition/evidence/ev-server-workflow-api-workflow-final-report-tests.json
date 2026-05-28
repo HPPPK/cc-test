@@ -1,0 +1,19 @@
+{
+  "id": "ev-server-workflow-api-workflow-final-report-tests",
+  "type": "source_analysis",
+  "source_path": "src/server/services/workflowFinalReport.test.ts",
+  "summary": "Final report tests confirm completed workflow state becomes a persisted report with completion summaries, accepted artifact refs, and recorded model fallback metadata.",
+  "detail": "",
+  "quotes_or_symbols": [
+    "buildWorkflowFinalReport",
+    "completedState",
+    "phaseSummaries",
+    "verificationResult",
+    "artifactRefs",
+    "fallbackApplied"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "server-workflow-api",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

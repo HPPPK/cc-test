@@ -1,0 +1,16 @@
+{
+  "id": "ev-adapters-services-risk-072",
+  "type": "source_analysis",
+  "source_path": "src/memdir/memoryScan.ts",
+  "summary": "memoryScan.ts defines MemoryHeader, scanMemoryFiles, formatMemoryManifest and imports fs/promises, path, ../utils/frontmatterParser.js, ../utils/readFileInRange.js, ./memoryTypes.js",
+  "detail": "",
+  "quotes_or_symbols": [
+    "MemoryHeader",
+    "scanMemoryFiles",
+    "formatMemoryManifest"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

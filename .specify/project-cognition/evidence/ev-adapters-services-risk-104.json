@@ -1,0 +1,19 @@
+{
+  "id": "ev-adapters-services-risk-104",
+  "type": "source_analysis",
+  "source_path": "src/services/api/errorUtils.ts",
+  "summary": "errorUtils.ts defines ConnectionErrorDetails, extractConnectionErrorDetails, getSSLErrorHint, sanitizeMessageHTML, sanitizeAPIError, hasNestedError and imports @anthropic-ai/sdk",
+  "detail": "",
+  "quotes_or_symbols": [
+    "ConnectionErrorDetails",
+    "extractConnectionErrorDetails",
+    "getSSLErrorHint",
+    "sanitizeMessageHTML",
+    "sanitizeAPIError",
+    "hasNestedError"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}

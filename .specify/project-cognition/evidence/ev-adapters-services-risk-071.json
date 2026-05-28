@@ -1,0 +1,17 @@
+{
+  "id": "ev-adapters-services-risk-071",
+  "type": "source_analysis",
+  "source_path": "src/memdir/memoryAge.ts",
+  "summary": "memoryAge.ts defines memoryAgeDays, memoryAge, memoryFreshnessText, memoryFreshnessNote",
+  "detail": "",
+  "quotes_or_symbols": [
+    "memoryAgeDays",
+    "memoryAge",
+    "memoryFreshnessText",
+    "memoryFreshnessNote"
+  ],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "adapters-services-risk",
+  "collected_at": "2026-05-28T03:28:41.238Z"
+}
