@@ -12,13 +12,19 @@ import {
   isNonEmptyString,
   isRecord,
   validateAndNormalizeUserConfigTemplate,
+  workflowTemplateValidationWarning,
   type WorkflowTemplateRegistryPhase,
   type WorkflowTemplateRegistryTemplate,
   type WorkflowTemplateValidationIssue,
 } from './workflowTemplateValidation.js'
+import {
+  resolveWorkflowPhaseSkills,
+  type WorkflowPhaseSkillCatalogEntry,
+} from './workflowPhaseSkillResolver.js'
 import type {
   WorkflowPhaseActionPolicy,
   WorkflowPhasePrompt,
+  WorkflowPhaseSkillSource,
 } from './workflowTypes.js'
 
 export type {
@@ -45,6 +51,14 @@ type WorkflowConfigFile = {
 
 const BUILTIN_TEMPLATE_ID = WORKFLOW_TEMPLATE_BUILTIN_ID
 const USER_CONFIG_SCHEMA_VERSION = WORKFLOW_TEMPLATE_SCHEMA_VERSION
+const TEMPLATE_VALIDATION_SUPPORTED_SKILL_SOURCES: WorkflowPhaseSkillSource[] = [
+  'user',
+  'project',
+  'plugin',
+  'managed',
+  'bundled',
+  'unknown',
+]
 
 const BUILTIN_WORKFLOW_PHASE_PROMPTS: Record<string, WorkflowPhasePrompt> = {
   discussion: {
@@ -579,13 +593,14 @@ export class WorkflowTemplateRegistryService {
       validateAndNormalizeUserConfigTemplate(template, index),
     ) ?? []
 
-    validationResults.forEach(({ template, issues: templateIssues }) => {
+    for (const [index, { template, issues: templateIssues }] of validationResults.entries()) {
       invalidTemplates.push(...templateIssues)
-      if (!template || templateIssues.length > 0) return
+      if (!template || templateIssues.length > 0) continue
+      invalidTemplates.push(...await resolveTemplatePhaseSkillIssues(template, index))
       const existing = byId.get(template.id) ?? []
       existing.push(template)
       byId.set(template.id, existing)
-    })
+    }
 
     for (const [id, matchingTemplates] of byId) {
       if (matchingTemplates.length <= 1) continue
@@ -607,4 +622,82 @@ export class WorkflowTemplateRegistryService {
 
     return { templates, invalidTemplates }
   }
+}
+
+async function resolveTemplatePhaseSkillIssues(
+  template: WorkflowTemplateRegistryTemplate,
+  templateIndex: number,
+): Promise<WorkflowTemplateValidationIssue[]> {
+  const issues: WorkflowTemplateValidationIssue[] = []
+  const catalog = await collectTemplateSkillCatalog()
+
+  for (const [phaseIndex, phase] of template.phases.entries()) {
+    if (phase.skills.length === 0) continue
+
+    const result = await resolveWorkflowPhaseSkills({
+      templateId: template.id,
+      phaseId: phase.id,
+      references: phase.skills,
+      catalog,
+      supportedSources: TEMPLATE_VALIDATION_SUPPORTED_SKILL_SOURCES,
+    })
+
+    result.resolutions.forEach((resolution, skillIndex) => {
+      const diagnostic = resolution.diagnostic
+      if (!diagnostic || diagnostic.severity === 'info') return
+      issues.push(workflowTemplateValidationWarning(
+        'user-config',
+        `$.templates[${templateIndex}].phases[${phaseIndex}].skills[${skillIndex}]`,
+        diagnostic.code,
+        diagnostic.message,
+        template.id,
+      ))
+    })
+  }
+
+  return issues
+}
+
+export async function collectTemplateSkillCatalog(): Promise<WorkflowPhaseSkillCatalogEntry[]> {
+  const catalog: WorkflowPhaseSkillCatalogEntry[] = []
+  const seen = new Set<string>()
+  const roots: Array<{ path: string; source: WorkflowPhaseSkillSource }> = [
+    { path: path.join(process.cwd(), '.codex', 'skills'), source: 'managed' },
+    { path: path.join(process.cwd(), '.agents', 'skills'), source: 'managed' },
+    { path: path.join(process.cwd(), 'src', 'skills', 'bundled'), source: 'bundled' },
+    { path: path.join(getConfigDir(), 'skills'), source: 'user' },
+  ]
+
+  for (const root of roots) {
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = await fs.readdir(root.path, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith('.')) {
+        continue
+      }
+      const skillFile = path.join(root.path, entry.name, 'SKILL.md')
+      try {
+        const stat = await fs.stat(skillFile)
+        if (!stat.isFile()) continue
+      } catch {
+        continue
+      }
+
+      const key = `${root.source}:${entry.name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      catalog.push({
+        name: entry.name,
+        source: root.source,
+        sourcePath: skillFile,
+      })
+    }
+  }
+
+  return catalog
 }

@@ -44,7 +44,7 @@ Required context inputs:
 
   ```text
   C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent research --query=\"$ARGUMENTS\" --format json
-  # Agent: generate <query_plan_json> from raw user intent plus returned map terms.
+  # Agent: select from returned graph-backed project concept candidates; include selected_concepts, rejected_concepts, concept_decisions, lexicon_generation_id, expanded_queries, and justified paths in <query_plan_json>.
   C:\Users\11034\.specify\bin\project-cognition.exe query --intent research --query-plan \"<query_plan_json>\" --format json
   ```
 

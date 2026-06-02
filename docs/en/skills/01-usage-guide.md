@@ -233,6 +233,34 @@ When Skills with the same name exist in multiple sources, they are resolved in t
 7. Built-in Commands            ← Lowest priority
 ```
 
+### Workflow Phase Recommended Skills
+
+Workflow templates can store recommended Skill references on each phase's `skills` field:
+
+```json
+{
+  "id": "implement",
+  "name": "Implementation",
+  "skills": [
+    { "name": "tdd-workflow", "mode": "recommended", "source": "project" },
+    { "name": "superpowers:verification-before-completion", "mode": "recommended", "source": "plugin", "pluginName": "superpowers" }
+  ]
+}
+```
+
+These entries reference **Skills**, not plugins as primary objects. `pluginName` is provenance or disambiguation metadata only; the phase binding remains a Skill-name reference.
+
+Recommended Skills are advisory:
+
+- They do not automatically call SkillTool.
+- They are not default gates for phase start, phase completion, or import.
+- They do not bypass SkillTool permissions, model, effort, fork, shell, hook, or tool allowlist behavior.
+- Runtime prompts distinguish available and unavailable active-phase recommendations and say to invoke only when the task matches.
+
+When an import or runtime environment is missing a recommended Skill, the system shows warning/degraded diagnostics and preserves the original reference. Missing recommended Skills do not block import by default unless the reference shape itself is invalid.
+
+Workflow exports include a Skill dependency manifest that lists every phase recommendation, resolution status, and diagnostic. Exports **do not bundle Skill package contents by default** (`SKILL.md`, scripts, assets, or plugin files). The receiving environment resolves references locally during import preview and surfaces missing, disabled, or unsupported dependencies as visible diagnostics.
+
 ---
 
 ## 5. Execution Context

@@ -7,6 +7,9 @@ import type {
   WorkflowArtifactLifecycleStatus,
   WorkflowPendingConfirmation,
   WorkflowPhaseDefinition,
+  WorkflowPhaseSkillResolution,
+  WorkflowPhaseSkillResolutionStatus,
+  WorkflowPhaseSkillSnapshot,
   WorkflowPhaseState,
   WorkflowSessionState,
   WorkflowSkillProvenance,
@@ -14,6 +17,10 @@ import type {
   WorkflowTransitionRequest,
 } from './workflowTypes.js'
 import { ApiError } from '../middleware/errorHandler.js'
+import {
+  collectTemplateSkillCatalog,
+} from './workflowTemplateRegistryService.js'
+import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 import { getWorkflowPhaseActionPolicy } from './workflowToolPolicy.js'
 
 type WorkflowNotification = {
@@ -44,6 +51,12 @@ type AssemblePromptInput = {
   state: WorkflowSessionState
   userMessage: string
   priorArtifactSummaries?: string[]
+}
+
+type AssemblePromptResult = {
+  content: string
+  skillProvenance: WorkflowSkillProvenance[]
+  scheduledToolCalls?: []
 }
 
 type TransitionInput = {
@@ -86,6 +99,18 @@ type WorkflowCompletionArtifactPointer = WorkflowArtifactPointer & {
   submission?: CompletionSubmission
 }
 
+const WORKFLOW_PHASE_SKILL_RESOLVER_VERSION = 'workflow-phase-skill-resolver-v1'
+const UNAVAILABLE_RECOMMENDATION_STATUSES = new Set<WorkflowPhaseSkillResolutionStatus>([
+  'missing',
+  'unsupported-source',
+  'plugin-disabled',
+  'invalid-reference',
+])
+const DEGRADED_RECOMMENDATION_STATUSES = new Set<WorkflowPhaseSkillResolutionStatus>([
+  'ambiguous',
+  'installable',
+])
+
 function isWorkflowState(state: WorkflowSessionState): boolean {
   return state?.mode === 'workflow' && Array.isArray(state.phases)
 }
@@ -115,6 +140,17 @@ function activePhase(state: WorkflowSessionState): WorkflowPhaseState | null {
 
 function phaseDefinition(state: WorkflowSessionState, phaseId: string): WorkflowPhaseDefinition | null {
   return state.templateSnapshot?.phases?.find((phase) => phase.id === phaseId) ?? null
+}
+
+function phaseSkillSnapshots(state: WorkflowSessionState): WorkflowPhaseSkillSnapshot[] {
+  return Array.isArray(state.phaseSkillSnapshots)
+    ? state.phaseSkillSnapshots as WorkflowPhaseSkillSnapshot[]
+    : []
+}
+
+function activePhaseSkillSnapshot(state: WorkflowSessionState): WorkflowPhaseSkillSnapshot | null {
+  if (!state.activePhaseId) return null
+  return phaseSkillSnapshots(state).find((snapshot) => snapshot.phaseId === state.activePhaseId) ?? null
 }
 
 function phaseIndex(state: WorkflowSessionState, phaseId: string): number {
@@ -317,6 +353,83 @@ function formatPhasePrompt(definition: WorkflowPhaseDefinition | null | undefine
   ].filter(Boolean)
 
   return sections.join('\n')
+}
+
+function recommendationLabel(resolution: WorkflowPhaseSkillResolution): string {
+  return resolution.resolvedSkill?.displayName
+    ?? resolution.resolvedSkill?.name
+    ?? resolution.reference.name
+}
+
+function formatResolutionDetails(resolution: WorkflowPhaseSkillResolution): string {
+  const provenance = resolution.resolvedSkill?.source ?? resolution.reference.source
+  const plugin = resolution.resolvedSkill?.pluginName ?? resolution.reference.pluginName
+  const details = [
+    `status: ${resolution.status}`,
+    provenance ? `source: ${provenance}` : '',
+    plugin ? `plugin: ${plugin}` : '',
+  ].filter(Boolean)
+  const diagnostic = resolution.diagnostic?.message
+  return diagnostic ? `${details.join(', ')}; ${diagnostic}` : details.join(', ')
+}
+
+function formatRecommendedSkillsPromptBlock(snapshot: WorkflowPhaseSkillSnapshot | null): string {
+  if (!snapshot || snapshot.resolutions.length === 0) return ''
+
+  const available = snapshot.resolutions.filter((resolution) => resolution.status === 'available')
+  const degraded = snapshot.resolutions.filter((resolution) => DEGRADED_RECOMMENDATION_STATUSES.has(resolution.status))
+  const unavailable = snapshot.resolutions.filter((resolution) => UNAVAILABLE_RECOMMENDATION_STATUSES.has(resolution.status))
+
+  const sections = [
+    'Active phase recommended skills',
+    'These are advisory recommendations for the current phase. They do not grant tool permissions, change model/effort settings, open shells, fork work, install hooks, or schedule SkillTool calls.',
+    'Invoke recommended skills only when the current task matches the skill and normal SkillTool permission checks allow it.',
+    available.length
+      ? `Available recommendations:\n${available.map((resolution) =>
+        `- ${recommendationLabel(resolution)} (${formatResolutionDetails(resolution)})`
+      ).join('\n')}`
+      : '',
+    degraded.length
+      ? `Degraded recommendations:\n${degraded.map((resolution) =>
+        `- ${recommendationLabel(resolution)} (${formatResolutionDetails(resolution)})`
+      ).join('\n')}`
+      : '',
+    unavailable.length
+      ? `Unavailable recommendations:\n${unavailable.map((resolution) =>
+        `- ${recommendationLabel(resolution)} (${formatResolutionDetails(resolution)})`
+      ).join('\n')}`
+      : '',
+  ].filter(Boolean)
+
+  return sections.join('\n')
+}
+
+function resolveProjectRecommendationsFromTemplate(
+  references: WorkflowPhaseDefinition['skills'],
+  resolutions: WorkflowPhaseSkillResolution[],
+  checkedAt: string,
+): WorkflowPhaseSkillResolution[] {
+  return resolutions.map((resolution, index) => {
+    const reference = references?.[index]
+    if (
+      resolution.status !== 'missing'
+      || reference?.source !== 'project'
+      || typeof reference.name !== 'string'
+      || reference.name.length === 0
+    ) {
+      return resolution
+    }
+
+    return {
+      reference: resolution.reference,
+      status: 'available',
+      checkedAt,
+      resolvedSkill: {
+        name: resolution.reference.name,
+        source: 'project',
+      },
+    }
+  })
 }
 
 function completionFromInput(
@@ -544,6 +657,7 @@ export class WorkflowRuntimeService {
     phase.requestedModel = requestedModel || undefined
     phase.startedAt ||= input.requestedAt
     phase.skillProvenance = definition?.skillDeclarations ?? phase.skillProvenance ?? []
+    await this.ensurePhaseSkillSnapshot(state, definition, input.requestedAt)
 
     let actualModel: string | null = null
     let providerId: string | null = null
@@ -605,7 +719,7 @@ export class WorkflowRuntimeService {
     }
   }
 
-  async assemblePrompt(input: AssemblePromptInput): Promise<{ content: string; skillProvenance: WorkflowSkillProvenance[] }> {
+  async assemblePrompt(input: AssemblePromptInput): Promise<AssemblePromptResult> {
     if (!isWorkflowState(input.state)) {
       return { content: input.userMessage, skillProvenance: [] }
     }
@@ -628,6 +742,7 @@ export class WorkflowRuntimeService {
     const skillProvenance = phase.skillProvenance ?? definition?.skillDeclarations ?? []
     const actionPolicy = formatPhaseActionPolicy(input.state)
     const phasePrompt = formatPhasePrompt(definition)
+    const recommendedSkills = formatRecommendedSkillsPromptBlock(activePhaseSkillSnapshot(input.state))
 
     const lines = [
       'Workflow mode',
@@ -635,6 +750,7 @@ export class WorkflowRuntimeService {
       definition?.instructions ? `Phase instructions: ${definition.instructions}` : '',
       phasePrompt,
       actionPolicy,
+      recommendedSkills,
       requiredArtifacts.length
         ? `Required artifacts:\n${requiredArtifacts.map((artifact) => `- ${artifact.id}: ${artifact.description}`).join('\n')}`
         : 'Required artifacts: none',
@@ -655,6 +771,7 @@ export class WorkflowRuntimeService {
     return {
       content: lines.join('\n\n'),
       skillProvenance,
+      scheduledToolCalls: [],
     }
   }
 
@@ -708,6 +825,38 @@ export class WorkflowRuntimeService {
       readyAction: 'confirmed',
       requestAction: 'manual_complete',
     })
+  }
+
+  private async ensurePhaseSkillSnapshot(
+    state: WorkflowSessionState,
+    definition: WorkflowPhaseDefinition | null,
+    snapshottedAt: string,
+  ): Promise<void> {
+    if (!definition?.skills?.length) return
+
+    const snapshots = phaseSkillSnapshots(state)
+    if (snapshots.some((snapshot) => snapshot.phaseId === definition.id)) return
+
+    const catalog = await collectTemplateSkillCatalog()
+    const result = await resolveWorkflowPhaseSkills({
+      templateId: state.templateIdentity?.id ?? state.templateSnapshot?.id,
+      phaseId: definition.id,
+      references: definition.skills,
+      catalog,
+      checkedAt: snapshottedAt,
+    })
+    const resolutions = resolveProjectRecommendationsFromTemplate(definition.skills, result.resolutions, snapshottedAt)
+    state.phaseSkillSnapshots = [
+      ...snapshots,
+      {
+        phaseId: definition.id,
+        references: resolutions.map((resolution) => resolution.reference),
+        resolutions,
+        snapshottedAt,
+        ...(state.templateIdentity?.contentHash ? { templateContentHash: state.templateIdentity.contentHash } : {}),
+        resolverVersion: WORKFLOW_PHASE_SKILL_RESOLVER_VERSION,
+      },
+    ]
   }
 
   private recordCompletionSubmission(

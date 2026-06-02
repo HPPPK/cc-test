@@ -16,6 +16,7 @@ import { loadAllPlugins, loadAllPluginsCacheOnly } from '../../utils/plugins/plu
 import { getSkillDirCommands } from '../../skills/loadSkillsDir.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
+import type { WorkflowPhaseSkillSource } from '../services/workflowTypes.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,15 +24,19 @@ type SkillMeta = {
   name: string
   displayName?: string
   description: string
-  source: 'user' | 'project' | 'plugin'
+  source: SkillCatalogSource
+  catalogStatus: 'available'
   userInvocable: boolean
   version?: string
   contentLength: number
   hasDirectory: boolean
+  createdAt: string
+  updatedAt: string
   pluginName?: string
 }
 
-type SkillSource = SkillMeta['source']
+type SkillCatalogSource = Extract<WorkflowPhaseSkillSource, 'user' | 'project' | 'plugin'>
+type SkillSource = SkillCatalogSource
 
 type FileTreeNode = {
   name: string
@@ -101,6 +106,7 @@ async function loadSkillMeta(
 ): Promise<SkillMeta | null> {
   const skillFile = path.join(skillDir, 'SKILL.md')
   try {
+    const stat = await fs.stat(skillFile)
     const raw = await fs.readFile(skillFile, 'utf-8')
     const { frontmatter, body } = normalizeFrontmatter(raw, skillFile)
 
@@ -117,10 +123,13 @@ async function loadSkillMeta(
       displayName: (frontmatter.name as string) || undefined,
       description,
       source,
+      catalogStatus: 'available',
       userInvocable: frontmatter['user-invocable'] !== false,
       version: frontmatter.version != null ? String(frontmatter.version) : undefined,
       contentLength: raw.length,
       hasDirectory: true,
+      createdAt: stat.birthtime.toISOString(),
+      updatedAt: stat.mtime.toISOString(),
       pluginName,
     }
   } catch {

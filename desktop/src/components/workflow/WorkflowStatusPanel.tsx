@@ -33,6 +33,50 @@ type WorkflowPhaseArtifact = {
   provenance?: string
 }
 
+type WorkflowPhaseSkillResolutionStatus =
+  | 'available'
+  | 'missing'
+  | 'ambiguous'
+  | 'unsupported-source'
+  | 'plugin-disabled'
+  | 'invalid-reference'
+  | 'installable'
+
+type WorkflowPhaseSkillSource =
+  | 'user'
+  | 'project'
+  | 'plugin'
+  | 'managed'
+  | 'bundled'
+  | 'mcp'
+  | 'unknown'
+
+type WorkflowRecommendedSkillStatusSummary = {
+  total: number
+  available: number
+  unavailable: number
+  degraded: number
+  evidenceCount: number
+  activePhaseItems?: Array<{
+    name: string
+    status: WorkflowPhaseSkillResolutionStatus | (string & {})
+    source?: WorkflowPhaseSkillSource | (string & {})
+    pluginName?: string
+  }>
+}
+
+type WorkflowPhaseSkillEvidence = {
+  phaseId: string
+  name: string
+  outcome: 'used' | 'relevant-skipped' | 'relevant-unavailable'
+  rationale: string
+  recordedAt: string
+  source?: WorkflowPhaseSkillSource
+  resolutionStatus?: WorkflowPhaseSkillResolutionStatus
+  toolUseId?: string
+  artifactRef?: string
+}
+
 export type WorkflowStatusPanelSummary = {
   templateId: string
   templateVersion: string
@@ -63,6 +107,8 @@ export type WorkflowStatusPanelSummary = {
   stateVersion?: number
   pendingArtifact?: WorkflowPhaseArtifact | null
   artifactHistory?: WorkflowPhaseArtifact[]
+  recommendedSkillStatus?: WorkflowRecommendedSkillStatusSummary
+  recommendedSkillEvidence?: WorkflowPhaseSkillEvidence[]
 }
 
 type WorkflowStatusPanelProps = {
@@ -121,7 +167,7 @@ export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
             </span>
           </div>
         </div>
-        <StatusBadge status={workflow.status} />
+        <StatusBadge status={displayStatus(workflow)} />
       </div>
 
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--color-border)]">
@@ -130,6 +176,8 @@ export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
           style={{ width: `${progressPercent(workflow)}%` }}
         />
       </div>
+
+      <RecommendedSkillStatusStrip workflow={workflow} />
 
       <div className="mt-2">
         <button
@@ -195,6 +243,51 @@ export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
             ))}
           </div>
         </section>
+      ) : null}
+    </section>
+  )
+}
+
+function RecommendedSkillStatusStrip({ workflow }: { workflow: WorkflowStatusPanelSummary }) {
+  const status = workflow.recommendedSkillStatus
+  if (!status || status.total <= 0) return null
+
+  const evidenceNames = new Set(
+    (workflow.recommendedSkillEvidence ?? [])
+      .filter((item) => isRelevantEvidenceOutcome(item.outcome))
+      .map((item) => item.name),
+  )
+  const activePhaseItems = status.activePhaseItems ?? []
+  const activeItems = workflow.recommendedSkillEvidence
+    ? activePhaseItems
+      .filter((item) => item.status !== 'available' || evidenceNames.has(item.name))
+      .slice(0, 3)
+    : activePhaseItems.slice(0, 3)
+
+  return (
+    <section
+      data-testid="workflow-recommended-skill-status"
+      className="mt-2 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 py-2 text-[11px] leading-5 text-[var(--color-text-secondary)]"
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold text-[var(--color-text-primary)]">Recommended skills</span>
+        <span>{status.available} available</span>
+        <span>{status.unavailable} unavailable</span>
+        <span>{status.degraded} degraded</span>
+        <span>{status.evidenceCount} evidence</span>
+      </div>
+      {activeItems.length ? (
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {activeItems.map((item) => (
+            <span
+              key={`${item.name}-${item.status}-${item.pluginName ?? item.source ?? ''}`}
+              className="rounded-[6px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)]"
+              title={[item.status, item.source, item.pluginName].filter(Boolean).join(' / ')}
+            >
+              {item.name}
+            </span>
+          ))}
+        </div>
       ) : null}
     </section>
   )
@@ -271,6 +364,17 @@ function StatusBadge({ status }: { status: WorkflowStatusPanelSummary['status'] 
       {STATUS_LABELS[status]}
     </span>
   )
+}
+
+function displayStatus(workflow: WorkflowStatusPanelSummary): WorkflowStatusPanelSummary['status'] {
+  if (workflow.pendingConfirmation) return 'pending-confirmation'
+  return workflow.status
+}
+
+function isRelevantEvidenceOutcome(outcome: string): outcome is WorkflowPhaseSkillEvidence['outcome'] {
+  return outcome === 'used' ||
+    outcome === 'relevant-skipped' ||
+    outcome === 'relevant-unavailable'
 }
 
 function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

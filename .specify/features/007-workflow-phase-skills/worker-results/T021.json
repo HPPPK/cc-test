@@ -1,0 +1,28 @@
+{
+  "task_id": "T021",
+  "status": "success",
+  "changed_files": [
+    "docs/skills/01-usage-guide.md",
+    "docs/skills/02-implementation.md",
+    "docs/en/skills/01-usage-guide.md",
+    "docs/en/skills/02-implementation.md",
+    ".specify/features/007-workflow-phase-skills/worker-results/T021.json"
+  ],
+  "validation_output": {
+    "bun run check:docs": {
+      "status": "passed",
+      "summary": "npm ci added/audited 627 packages, reported 20 audit findings (16 moderate, 4 high), then VitePress v1.6.4 built client/server bundles and rendered pages successfully."
+    },
+    "scope_check": {
+      "status": "passed",
+      "summary": "Edits stayed within the delegated T021 write scope."
+    }
+  },
+  "concerns": [
+    "npm audit output from check:docs reported 20 dependency vulnerabilities (16 moderate, 4 high); docs build still completed successfully and this task did not change dependency manifests."
+  ],
+  "recovery_hints": [
+    "For dependency audit remediation, inspect `npm audit` output in a separate dependency-maintenance task; do not combine that with T021 documentation scope.",
+    "If future docs wording changes fail the gate, rerun `bun run check:docs` sequentially because it executes npm install behavior before VitePress build."
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "command": "sp-plan",
+  "feature": {
+    "branch": "007-workflow-phase-skills",
+    "featureDir": ".specify/features/007-workflow-phase-skills",
+    "spec": ".specify/features/007-workflow-phase-skills/spec.md",
+    "intent": "Implement recommended workflow phase skill bindings over existing skills with shared resolution, dependency manifests, runtime prompt emphasis, and bounded evidence."
+  },
+  "routing": {
+    "currentCommand": "sp-plan",
+    "nextCommand": "/sp.tasks",
+    "designOnly": true,
+    "implementationAllowed": false
+  },
+  "adaptiveExecution": {
+    "executionModel": "adaptive",
+    "executionMode": "standard",
+    "workflowStatus": "ready",
+    "dispatchShape": "leader-inline",
+    "executionSurface": "leader-inline",
+    "delegatedPlanningLanes": [],
+    "capabilityDegraded": true,
+    "degradationReason": "Native multi-agent tools were visible, but current policy permits spawning only when the user explicitly asks for delegation. The user invoked $sp-plan only, so lanes were compiled inline."
+  },
+  "projectCognition": {
+    "status": "stale",
+    "readiness": "blocked",
+    "recommendedNextAction": "review_project_cognition_update",
+    "usedAs": "advisory navigation only",
+    "liveEvidenceRequired": true,
+    "selectedConcepts": [
+      "workflow",
+      "phase",
+      "skills",
+      "skill",
+      "bindings",
+      "recommended",
+      "catalog",
+      "resolver"
+    ],
+    "rejectedConcepts": [
+      "term:-plan"
+    ]
+  },
+  "mustPreserve": [
+    {
+      "id": "MP-001",
+      "status": "planned",
+      "obligation": "Real recommended bindings, not prompt-only guidance."
+    },
+    {
+      "id": "MP-002",
+      "status": "planned",
+      "obligation": "Recommended skills, shared catalog, import/export, prompt emphasis, and evidence remain in scope."
+    },
+    {
+      "id": "MP-003",
+      "status": "planned",
+      "obligation": "No auto-execution or default completion block."
+    },
+    {
+      "id": "MP-004",
+      "status": "planned",
+      "obligation": "Workflow phases bind to skills, not plugins."
+    },
+    {
+      "id": "MP-005",
+      "status": "planned",
+      "obligation": "Use shared Settings-aligned skill catalog."
+    },
+    {
+      "id": "MP-006",
+      "status": "planned",
+      "obligation": "Names-first references with qualified metadata only when needed."
+    },
+    {
+      "id": "MP-007",
+      "status": "planned",
+      "obligation": "Do not duplicate skill-owned metadata."
+    },
+    {
+      "id": "MP-008",
+      "status": "planned",
+      "obligation": "Active prompt emphasis without mandatory invocation."
+    },
+    {
+      "id": "MP-009",
+      "status": "planned",
+      "obligation": "Bounded soft audit for used or relevant skipped/unavailable skills only."
+    },
+    {
+      "id": "MP-010",
+      "status": "planned",
+      "obligation": "Dependency manifest on export; no default bundle."
+    },
+    {
+      "id": "MP-011",
+      "status": "planned",
+      "obligation": "Missing recommended skills import with warnings and preserved references."
+    },
+    {
+      "id": "MP-012",
+      "status": "planned",
+      "obligation": "Phase-local selector in WorkflowTemplateEditor."
+    },
+    {
+      "id": "MP-013",
+      "status": "planned",
+      "obligation": "Import/export diagnostics."
+    },
+    {
+      "id": "MP-014",
+      "status": "planned",
+      "obligation": "Lightweight runtime status/evidence."
+    },
+    {
+      "id": "MP-015",
+      "status": "planned",
+      "obligation": "SkillTool safety and permission boundaries remain authoritative."
+    },
+    {
+      "id": "MP-016",
+      "status": "deferred",
+      "obligation": "Explicit bundle mode remains future scope."
+    },
+    {
+      "id": "MP-017",
+      "status": "planned",
+      "obligation": "Schema, resolver boundary, and evidence storage resolved without changing product semantics."
+    }
+  ],
+  "consequenceObligations": [
+    {
+      "id": "CA-001",
+      "status": "planned",
+      "decision": "Use WorkflowPhaseSkillReference, WorkflowPhaseSkillResolution, and dependency manifest entries for stable identity."
+    },
+    {
+      "id": "CA-002",
+      "status": "planned",
+      "decision": "Render a distinct recommended skills prompt block from session snapshot."
+    },
+    {
+      "id": "CA-003",
+      "status": "planned",
+      "decision": "Use shared resolver status vocabulary across validation, import/export, runtime, and UI."
+    },
+    {
+      "id": "CA-004",
+      "status": "planned",
+      "decision": "Keep skill-derived capability effects behind SkillTool."
+    },
+    {
+      "id": "CA-005",
+      "status": "planned",
+      "decision": "Snapshot phase skill resolutions/provenance for running and resumed sessions."
+    },
+    {
+      "id": "CA-006",
+      "status": "planned",
+      "decision": "Persist only signal-bearing evidence."
+    },
+    {
+      "id": "CA-007",
+      "status": "planned",
+      "decision": "Validate reference shape and resolver diagnostics without blocking missing recommendations."
+    },
+    {
+      "id": "CA-008",
+      "status": "planned",
+      "decision": "Desktop surfaces show source, availability, and plugin provenance concisely."
+    },
+    {
+      "id": "CA-009",
+      "status": "planned",
+      "decision": "Carry snapshot/evidence through resume, compaction, and final reports."
+    },
+    {
+      "id": "CA-010",
+      "status": "planned",
+      "decision": "No automatic nested skill orchestration."
+    }
+  ],
+  "artifacts": {
+    "plan": ".specify/features/007-workflow-phase-skills/plan.md",
+    "research": ".specify/features/007-workflow-phase-skills/research.md",
+    "dataModel": ".specify/features/007-workflow-phase-skills/data-model.md",
+    "contracts": [
+      ".specify/features/007-workflow-phase-skills/contracts/workflow-phase-skills-api.md"
+    ],
+    "quickstart": ".specify/features/007-workflow-phase-skills/quickstart.md",
+    "handoffs": [
+      ".specify/features/007-workflow-phase-skills/planning/handoffs/research.json",
+      ".specify/features/007-workflow-phase-skills/planning/handoffs/data-model.json",
+      ".specify/features/007-workflow-phase-skills/planning/handoffs/contracts.json",
+      ".specify/features/007-workflow-phase-skills/planning/handoffs/quickstart-validation.json"
+    ],
+    "evidenceIndex": ".specify/features/007-workflow-phase-skills/planning/evidence-index.json"
+  },
+  "stopConditions": [
+    "Implementation requires automatic skill execution.",
+    "Implementation makes recommended skills default completion gates.",
+    "Implementation binds workflow phases to plugins as primary objects.",
+    "Implementation bundles skill package contents by default.",
+    "Implementation grants tools, shell, hooks, model, effort, or fork behavior outside SkillTool."
+  ],
+  "verification": {
+    "planArtifactValidation": [
+      "JSON parse for plan-contract and handoffs",
+      "placeholder scan for plan artifacts"
+    ],
+    "implementationGates": [
+      "bun run check:server",
+      "bun run check:desktop",
+      "bun run check:coverage",
+      "bun run verify"
+    ]
+  }
+}

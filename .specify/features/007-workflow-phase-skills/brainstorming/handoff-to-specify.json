@@ -1,0 +1,185 @@
+{
+  "version": 2,
+  "status": "aligned-ready-for-plan-user-review-requested",
+  "entry_source": "sp-discussion",
+  "source_handoff": ".specify/discussions/workflows/handoff-to-specify.md",
+  "source_handoff_json": ".specify/discussions/workflows/handoff-to-specify.json",
+  "source_files_read": [
+    ".specify/discussions/workflows/handoff-to-specify.md",
+    ".specify/discussions/workflows/handoff-to-specify.json",
+    ".specify/discussions/workflows/discussion-log.md",
+    ".specify/discussions/workflows/requirements.md",
+    ".specify/discussions/workflows/open-questions.md",
+    ".specify/discussions/workflows/technical-options.md",
+    ".specify/discussions/workflows/project-context.md",
+    ".specify/discussions/workflows/discussion-state.md"
+  ],
+  "source_signal_disposition": [
+    {
+      "signal": "Workflow phase skills should not remain prompt text only.",
+      "source": "MP-001; requirements.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#Overview; spec.md#Requirements FR-001",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if phase skills are represented only as prose guidance."
+    },
+    {
+      "signal": "Phase skills are recommended defaults, not automatic execution or default gates.",
+      "source": "OQ-006; MP-003",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#Confirmed Scope; spec.md FR-003",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if recommended skills auto-execute or block completion by default."
+    },
+    {
+      "signal": "Soft audit records used or clearly relevant skipped/unavailable skills only.",
+      "source": "OQ-007; OQ-008; MP-009",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-016",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if audit becomes an exhaustive checklist."
+    },
+    {
+      "signal": "Active phase prompt tells the agent to pay special attention and invoke only when relevant.",
+      "source": "OQ-011; MP-008",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-014",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if prompt semantics become weaker than ordinary prose or stronger than mandatory invocation."
+    },
+    {
+      "signal": "Phase binding must not duplicate skill-owned reason/appliesWhen metadata.",
+      "source": "OQ-012; MP-007",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-007; spec.md FR-008",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if workflow templates become the source of skill applicability."
+    },
+    {
+      "signal": "Skill references are names-first with qualified metadata only when needed.",
+      "source": "OQ-013; MP-006",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-004",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if all bindings require verbose fully qualified references without need."
+    },
+    {
+      "signal": "Phase skills come from the shared Settings-backed skill catalog.",
+      "source": "OQ-014; MP-005",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-005; context.md#Integration Boundaries",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if workflow authoring uses a separate skill inventory."
+    },
+    {
+      "signal": "Workflow phases bind to skills, not plugins; plugins are provenance/dependency.",
+      "source": "discussion-log.md; MP-004",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-002; spec.md FR-010",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if workflow schema stores plugin as the primary binding target."
+    },
+    {
+      "signal": "Workflow export includes template plus skill dependency manifest.",
+      "source": "OQ-015; MP-010",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-011",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if export emits only names without dependency metadata."
+    },
+    {
+      "signal": "Workflow export does not bundle skill contents by default.",
+      "source": "OQ-015; MP-010; MP-016",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-012; spec.md#Deferred Or Future Scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if first scope copies arbitrary skill files."
+    },
+    {
+      "signal": "Missing recommended skills allow import with warnings and preserved unavailable references.",
+      "source": "OQ-015; MP-011",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-013; spec.md FR-015",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if missing recommended skills block import or are silently dropped."
+    },
+    {
+      "signal": "UI mainline is phase-local selector, import/export diagnostics, and lightweight runtime evidence.",
+      "source": "MP-012; MP-013; MP-014",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-017 through FR-019",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if authoring is only workflow-level or runtime UI becomes noisy."
+    },
+    {
+      "signal": "Skill-derived permissions, shell behavior, hooks, forked agents, model, and effort must not bypass safety boundaries.",
+      "source": "MP-015; CA-004",
+      "disposition": "preserved",
+      "artifact_location": "spec.md FR-021; context.md CA-004",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen if workflow runtime grants capabilities outside normal SkillTool permissions."
+    },
+    {
+      "signal": "Required/contract phase skills remain future scope.",
+      "source": "OQ-015; MP-017",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#Deferred Or Future Scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen when product explicitly requests mandatory phase skill evidence."
+    },
+    {
+      "signal": "Explicit bundle mode is future scope for reviewed project-owned skills.",
+      "source": "MP-016",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#Deferred Or Future Scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Reopen when product explicitly requests reviewed skill bundle mode."
+    }
+  ],
+  "must_preserve": [
+    { "id": "MP-001", "disposition": "preserved", "artifact_location": "spec.md FR-001" },
+    { "id": "MP-002", "disposition": "preserved", "artifact_location": "spec.md#Confirmed Scope" },
+    { "id": "MP-003", "disposition": "preserved", "artifact_location": "spec.md FR-003" },
+    { "id": "MP-004", "disposition": "preserved", "artifact_location": "spec.md FR-002" },
+    { "id": "MP-005", "disposition": "preserved", "artifact_location": "spec.md FR-005" },
+    { "id": "MP-006", "disposition": "preserved", "artifact_location": "spec.md FR-004" },
+    { "id": "MP-007", "disposition": "preserved", "artifact_location": "spec.md FR-007" },
+    { "id": "MP-008", "disposition": "preserved", "artifact_location": "spec.md FR-014" },
+    { "id": "MP-009", "disposition": "preserved", "artifact_location": "spec.md FR-016" },
+    { "id": "MP-010", "disposition": "preserved", "artifact_location": "spec.md FR-011 and FR-012" },
+    { "id": "MP-011", "disposition": "preserved", "artifact_location": "spec.md FR-013 and FR-015" },
+    { "id": "MP-012", "disposition": "preserved", "artifact_location": "spec.md FR-017" },
+    { "id": "MP-013", "disposition": "preserved", "artifact_location": "spec.md FR-018" },
+    { "id": "MP-014", "disposition": "preserved", "artifact_location": "spec.md FR-019" },
+    { "id": "MP-015", "disposition": "preserved", "artifact_location": "spec.md FR-021" },
+    { "id": "MP-016", "disposition": "deferred", "artifact_location": "spec.md#Deferred Or Future Scope" },
+    { "id": "MP-017", "disposition": "in_scope", "artifact_location": "spec.md#Risks and Gaps; context.md#Outstanding Questions" }
+  ],
+  "coverage_status": "complete-source-sweep-live-evidence-backed",
+  "planning_gate_status": "ready_for_plan_after_user_review",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "quality_gate": {
+    "status": "self-review-passed",
+    "user_review_required": true,
+    "user_confirmed_at": null,
+    "blocked_reasons": []
+  },
+  "consequence_gate": {
+    "triggered": true,
+    "trigger_reason": "Phase skill bindings affect workflow lifecycle, import/export compatibility, runtime prompts, skill permissions, session resume, final reports, and user trust boundaries.",
+    "status": "mapped"
+  },
+  "consequence_obligations": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-005",
+    "CA-006",
+    "CA-007",
+    "CA-008",
+    "CA-009",
+    "CA-010"
+  ]
+}

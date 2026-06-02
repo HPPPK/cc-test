@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   browse: vi.fn(),
   wsSend: vi.fn(),
   dialogOpen: vi.fn(),
+  permissionModeSelectorRender: vi.fn(),
   webviewDragHandlers: [] as Array<(event: { payload: unknown }) => void>,
   webviewUnlisten: vi.fn(),
 }))
@@ -76,7 +77,10 @@ vi.mock('../../hooks/useMobileViewport', () => ({
 }))
 
 vi.mock('../controls/PermissionModeSelector', () => ({
-  PermissionModeSelector: () => <button type="button">Permissions</button>,
+  PermissionModeSelector: () => {
+    mocks.permissionModeSelectorRender()
+    return <button type="button">Permissions</button>
+  },
 }))
 
 vi.mock('../controls/ModelSelector', () => ({
@@ -524,6 +528,78 @@ describe('ChatInput file mentions', () => {
     expect(screen.queryByText('Current worktree')).not.toBeInTheDocument()
   })
 
+  it('does not rerender the composer controls for unrelated chat session updates', async () => {
+    render(<ChatInput compact />)
+
+    await waitFor(() => {
+      expect(mocks.getGitInfo).toHaveBeenCalledWith(sessionId)
+    })
+    mocks.permissionModeSelectorRender.mockClear()
+
+    act(() => {
+      const current = useChatStore.getState().sessions
+      useChatStore.setState({
+        sessions: {
+          ...current,
+          'background-session': {
+            messages: [{ id: 'bg-message', type: 'assistant_text', content: 'background update', timestamp: 1 }],
+            chatState: 'streaming',
+            connectionState: 'connected',
+            streamingText: 'background token',
+            streamingToolInput: '',
+            activeToolUseId: null,
+            activeToolName: null,
+            activeThinkingId: null,
+            pendingPermission: null,
+            pendingComputerUsePermission: null,
+            tokenUsage: { input_tokens: 0, output_tokens: 0 },
+            elapsedSeconds: 0,
+            statusVerb: '',
+            slashCommands: [],
+            agentTaskNotifications: {},
+            elapsedTimer: null,
+          },
+        },
+      })
+    })
+
+    expect(mocks.permissionModeSelectorRender).not.toHaveBeenCalled()
+  })
+
+  it('does not rerender the composer controls for active streaming text updates', async () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'streaming',
+          streamingText: 'first token',
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+
+    await waitFor(() => {
+      expect(mocks.getGitInfo).toHaveBeenCalledWith(sessionId)
+    })
+    mocks.permissionModeSelectorRender.mockClear()
+
+    act(() => {
+      const current = useChatStore.getState().sessions
+      useChatStore.setState({
+        sessions: {
+          ...current,
+          [sessionId]: {
+            ...current[sessionId]!,
+            streamingText: 'first token second token',
+          },
+        },
+      })
+    })
+
+    expect(mocks.permissionModeSelectorRender).not.toHaveBeenCalled()
+  })
+
   it('starts an empty active session on the selected branch without an isolated worktree', async () => {
     mocks.create.mockResolvedValueOnce({ sessionId: 'created-direct', workDir: '/repo' })
     useSessionStore.setState({
@@ -783,6 +859,32 @@ describe('ChatInput file mentions', () => {
     expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
     expect(useTabStore.getState().activeTabId).toBe(sessionId)
     expect(useSessionStore.getState().sessions[0]?.id).toBe(sessionId)
+  })
+
+  it('restores the submitted prompt to the composer when the active turn is immediately stopped', async () => {
+    render(<ChatInput compact />)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: {
+        value: '我想做个飞机大战于系',
+        selectionStart: '我想做个飞机大战于系'.length,
+      },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+
+    await waitFor(() => {
+      expect(input).toHaveValue('我想做个飞机大战于系')
+    })
+    expect(useChatStore.getState().sessions[sessionId]?.chatState).toBe('idle')
+    expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, { type: 'stop_generation' })
   })
 
   it('keeps the source chat unchanged and shows an actionable error when linked workflow start fails', async () => {

@@ -233,6 +233,34 @@ Claude：[通过 SkillTool 调用 superpowers:code-reviewer]
 7. Built-in Commands（内建命令）  ← 最低优先级
 ```
 
+### Workflow 阶段推荐 Skills
+
+Workflow 模板可以在每个 phase 的 `skills` 字段中保存推荐 Skill 引用：
+
+```json
+{
+  "id": "implement",
+  "name": "Implementation",
+  "skills": [
+    { "name": "tdd-workflow", "mode": "recommended", "source": "project" },
+    { "name": "superpowers:verification-before-completion", "mode": "recommended", "source": "plugin", "pluginName": "superpowers" }
+  ]
+}
+```
+
+这些条目引用的是 **Skills**，不是插件本身。`pluginName` 只表示来源或消歧信息；Workflow phase 的主绑定对象仍然是 Skill 名称。
+
+推荐 Skills 的语义是建议性的：
+
+- 不会自动调用 SkillTool。
+- 不会默认成为 phase 启动、完成或导入的阻塞条件。
+- 不会绕过 SkillTool 的权限确认、模型、effort、fork、shell、hook 或工具白名单逻辑。
+- Runtime prompt 会把当前 phase 的可用和不可用推荐 Skill 区分呈现，并要求只在任务匹配时才调用。
+
+导入或运行环境缺少推荐 Skill 时，系统会显示 warning/degraded 状态并保留原始引用。除非引用形状本身无效，否则缺失的推荐 Skill 默认不会阻止导入。
+
+Workflow 导出会包含 Skill dependency manifest，用于列出每个 phase 引用的推荐 Skills、解析状态和诊断信息。导出默认 **不会打包 Skill 包内容**（例如 `SKILL.md`、脚本、资产或插件文件）；接收方导入后会在本地环境重新解析这些引用，并在预览中显示缺失、禁用或不支持来源等诊断。
+
 ---
 
 ## 五、执行上下文

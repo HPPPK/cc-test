@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "featureDir": "F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills",
+  "command": "sp-tasks",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "workflow_status": "ready",
+  "dispatch_shape": "leader-inline",
+  "execution_surface": "leader-inline",
+  "capability_degraded": true,
+  "blocked_reason": null,
+  "delegated_task_generation_lanes": [],
+  "leader_inline_reason": "Native subagent tools are visible, but current runtime policy permits spawning only when the user explicitly asks for subagents/delegation. The $sp-tasks invocation alone was not treated as authorization.",
+  "upstream_evidence_consumed": [
+    "plan.md",
+    "spec.md",
+    "alignment.md",
+    "context.md",
+    "research.md",
+    "data-model.md",
+    "contracts/workflow-phase-skills-api.md",
+    "quickstart.md",
+    "plan-contract.json",
+    "planning/evidence-index.json",
+    "planning/handoffs/research.json",
+    "planning/handoffs/data-model.json",
+    "planning/handoffs/contracts.json",
+    "planning/handoffs/quickstart-validation.json"
+  ],
+  "generated_artifacts": [
+    "tasks.md",
+    "handoff-to-tasks.json",
+    "task-index.json",
+    "task-packets/T001.json",
+    "task-packets/T002.json",
+    "task-packets/T003.json",
+    "task-packets/T004.json",
+    "task-packets/T005.json",
+    "task-packets/T006.json",
+    "task-packets/T007.json",
+    "task-packets/T008.json",
+    "task-packets/T009.json",
+    "task-packets/T010.json",
+    "task-packets/T011.json",
+    "task-packets/T012.json",
+    "task-packets/T013.json",
+    "task-packets/T014.json",
+    "task-packets/T015.json",
+    "task-packets/T016.json",
+    "task-packets/T017.json",
+    "task-packets/T018.json",
+    "task-packets/T019.json",
+    "task-packets/T020.json",
+    "task-packets/T021.json",
+    "task-packets/T022.json",
+    "task-packets/T023.json",
+    "task-packets/T024.json"
+  ],
+  "consumption": [
+    {
+      "source": "planning/handoffs/research.json",
+      "consumed_by": [
+        "T001",
+        "T003",
+        "T004",
+        "T016",
+        "T017",
+        "T021"
+      ],
+      "how": "resolver, prompt, evidence, permission, and UI decisions shaped task boundaries and anti-goals"
+    },
+    {
+      "source": "planning/handoffs/data-model.json",
+      "consumed_by": [
+        "T002",
+        "T003",
+        "T010",
+        "T011",
+        "T015",
+        "T017",
+        "T019"
+      ],
+      "how": "entities mapped to schema, manifest, snapshot, evidence, status, and desktop type tasks"
+    },
+    {
+      "source": "planning/handoffs/contracts.json",
+      "consumed_by": [
+        "T004",
+        "T011",
+        "T013",
+        "T017",
+        "T019"
+      ],
+      "how": "API contracts mapped to server API, desktop API, summary, status, and final report tasks"
+    },
+    {
+      "source": "planning/handoffs/quickstart-validation.json",
+      "consumed_by": [
+        "T005",
+        "T009",
+        "T014",
+        "T020",
+        "T022",
+        "T023",
+        "T024"
+      ],
+      "how": "validation scenarios became checkpoint and gate tasks"
+    }
+  ],
+  "all_handoffs_consumed": true
+}

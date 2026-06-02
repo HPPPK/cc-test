@@ -12,6 +12,7 @@ import { toolToAPISchema } from '../../utils/api.js'
 const TOOL_NAME = 'workflow_template_authoring'
 const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
 const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 
 let tempConfigDir: string
 
@@ -20,6 +21,7 @@ beforeEach(async () => {
     path.join(os.tmpdir(), 'cc-jiangxia-workflow-authoring-tool-'),
   )
   process.env.CLAUDE_CONFIG_DIR = tempConfigDir
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test-workflow-authoring-tool-pool'
   resetWorkflowTemplateRegistryForTests()
 })
 
@@ -31,6 +33,9 @@ afterEach(async () => {
 
   if (originalDesktopServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
   else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = originalDesktopServerUrl
+
+  if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+  else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
 
   await fs.rm(tempConfigDir, { recursive: true, force: true })
 })
@@ -221,7 +226,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
       type: 'object',
       properties: {
         operation: expect.objectContaining({
-          enum: ['guide', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'],
+          enum: ['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'],
         }),
       },
       required: ['operation'],
@@ -240,17 +245,66 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(assembledTool).toBe(exportedTool)
   })
 
-  test.each(['guide', 'list', 'inspect', 'validate'] as const)('marks %s as read-only and non-destructive', async (operation) => {
+  test.each(['guide', 'skill_catalog', 'list', 'inspect', 'validate'] as const)('marks %s as read-only and non-destructive', async (operation) => {
     const tool = await loadTool()
     const input = operation === 'inspect'
       ? { operation, selector: { source: 'user', id: 'conversation-workflow' } }
       : operation === 'validate'
         ? { operation, template: validTemplate() }
+        : operation === 'skill_catalog'
+          ? { operation, query: 'release', source: 'user', limit: 25 }
         : { operation }
 
     expect(tool.inputSchema.safeParse(input).success).toBe(true)
     expect(tool.isReadOnly(input)).toBe(true)
     expect(tool.isDestructive?.(input)).toBe(false)
+  })
+
+  test('calls the direct authoring service path for the read-only skill catalog', async () => {
+    delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    const skillDir = path.join(tempConfigDir, 'skills', 'release-checklist')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: Release Checklist',
+        'description: Release readiness checks',
+        '---',
+        'Use this skill for release readiness.',
+        '',
+      ].join('\n'),
+      'utf-8',
+    )
+
+    const tool = await loadTool()
+    const result = await tool.call(
+      { operation: 'skill_catalog', query: 'release', source: 'user' },
+      contextFor(),
+      async () => ({ behavior: 'allow', updatedInput: {} }),
+      {} as never,
+    )
+    const block = tool.mapToolResultToToolResultBlockParam(result.data, 'tool-use-skill-catalog')
+
+    expect(result.data).toMatchObject({
+      operation: 'skill_catalog',
+      status: 'succeeded',
+      persisted: false,
+      skillCatalog: [
+        expect.objectContaining({
+          name: 'release-checklist',
+          source: 'user',
+          recommendedReference: {
+            name: 'release-checklist',
+            mode: 'recommended',
+            source: 'user',
+          },
+        }),
+      ],
+    })
+    expect(block.content).toContain('operation=skill_catalog')
+    expect(block.content).toContain('persisted=false')
+    expect(await readWorkflowConfig()).toBeUndefined()
   })
 
   test.each(['create', 'update', 'duplicate'] as const)('marks %s as mutating and non-destructive', async (operation) => {

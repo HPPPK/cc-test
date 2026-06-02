@@ -1,0 +1,19 @@
+{
+  "task_id": "T004",
+  "status": "success",
+  "retry": 2,
+  "changed_files": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/api/workflowTemplates.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T004.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/__tests__/skills.test.ts",
+    "exit_code": 0,
+    "summary": "73 pass, 0 fail. Import preview now includes dependencyDiagnostics for missing recommended phase skills while keeping candidates selectable and canCommit true."
+  },
+  "remaining_failures": [],
+  "scope_conflicts": [],
+  "concerns": [],
+  "recovery_hints": []
+}

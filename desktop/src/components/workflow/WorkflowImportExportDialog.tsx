@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { sessionsApi } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
 import type {
+  WorkflowImportDependencyDiagnostic,
+  WorkflowSkillDependency,
+  WorkflowSkillDependencyManifest,
   WorkflowTemplateImportCandidate,
   WorkflowTemplateImportPayload,
   WorkflowTemplateImportResolution,
@@ -43,6 +46,7 @@ export function WorkflowImportExportDialog({
   const [candidateSelections, setCandidateSelections] = useState<Record<string, SelectionState>>({})
   const [selectedExportKeys, setSelectedExportKeys] = useState<Set<string>>(new Set())
   const [exportText, setExportText] = useState('')
+  const [exportDependencyManifest, setExportDependencyManifest] = useState<WorkflowSkillDependencyManifest | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -55,6 +59,7 @@ export function WorkflowImportExportDialog({
     setPreview(null)
     setCandidateSelections({})
     setExportText('')
+    setExportDependencyManifest(null)
     setBusy(false)
     setError(null)
     setSuccess(null)
@@ -158,8 +163,10 @@ export function WorkflowImportExportDialog({
         templates: selectedExportTemplates.map(({ source, id }) => ({ source, id })),
       })
       setExportText(JSON.stringify(response, null, 2))
+      setExportDependencyManifest(response.dependencyManifest ?? null)
       setSuccess(t('settings.workflows.export.success', { count: response.templates.length }))
     } catch (exportError) {
+      setExportDependencyManifest(null)
       setError(errorMessage(exportError))
     } finally {
       setBusy(false)
@@ -295,16 +302,19 @@ export function WorkflowImportExportDialog({
               </button>
 
               {exportText && (
-                <label className="block">
-                  <span className="text-xs font-medium text-[var(--color-text-secondary)]">
-                    {t('settings.workflows.export.jsonLabel')}
-                  </span>
-                  <textarea
-                    readOnly
-                    value={exportText}
-                    className="mt-1 min-h-[220px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)]"
-                  />
-                </label>
+                <div className="space-y-3">
+                  <ExportDependencyDiagnostics manifest={exportDependencyManifest} />
+                  <label className="block">
+                    <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      {t('settings.workflows.export.jsonLabel')}
+                    </span>
+                    <textarea
+                      readOnly
+                      value={exportText}
+                      className="mt-1 min-h-[220px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                </div>
               )}
             </div>
           )}
@@ -423,6 +433,8 @@ function ImportPreview({
                 {candidate.issues.length > 0 && (
                   <IssueList title={t('settings.workflows.import.candidateIssues')} issues={candidate.issues} compact />
                 )}
+
+                <ImportDependencyDiagnostics diagnostics={candidate.dependencyDiagnostics ?? []} />
               </div>
 
               <div className="space-y-2">
@@ -473,6 +485,116 @@ function ImportPreview({
   )
 }
 
+function ImportDependencyDiagnostics({ diagnostics }: { diagnostics: WorkflowImportDependencyDiagnostic[] }) {
+  if (diagnostics.length === 0) return null
+
+  return (
+    <DependencyDiagnosticsList
+      title="Dependency diagnostics"
+      items={diagnostics.map((diagnostic) => ({
+        key: [
+          diagnostic.templateId,
+          diagnostic.phaseId,
+          diagnostic.reference.name,
+          diagnostic.status,
+          diagnostic.message,
+        ].join(':'),
+        severity: diagnostic.severity,
+        status: diagnostic.status,
+        templateId: diagnostic.templateId,
+        phaseId: diagnostic.phaseId,
+        referenceName: diagnostic.reference.name,
+        referenceSource: diagnostic.reference.source,
+        pluginName: diagnostic.reference.pluginName,
+        message: diagnosticDisplayMessage(diagnostic.message, diagnostic.reference.name),
+        canImport: diagnostic.canImport,
+      }))}
+    />
+  )
+}
+
+function ExportDependencyDiagnostics({ manifest }: { manifest: WorkflowSkillDependencyManifest | null }) {
+  const dependencies = manifest?.dependencies ?? []
+  if (dependencies.length === 0) return null
+
+  return (
+    <DependencyDiagnosticsList
+      title="Export dependency diagnostics"
+      items={dependencies.map((dependency) => ({
+        key: exportDependencyKey(dependency),
+        severity: exportDependencySeverity(dependency.exportStatus),
+        status: dependency.exportStatus,
+        templateId: dependency.templateId,
+        phaseId: dependency.phaseId,
+        referenceName: dependency.reference.name,
+        referenceSource: dependency.reference.source ?? dependency.resolvedSource,
+        pluginName: dependency.reference.pluginName ?? dependency.pluginName,
+        message: diagnosticDisplayMessage(
+          dependency.diagnostic ?? exportDependencyFallbackMessage(dependency),
+          dependency.reference.name,
+        ),
+        splitReferenceName: true,
+        splitStatus: true,
+        splitRecommendedReferencePhrase: true,
+      }))}
+    />
+  )
+}
+
+type DependencyDiagnosticItem = {
+  key: string
+  severity: 'info' | 'warning' | 'error'
+  status: string
+  templateId: string
+  phaseId: string
+  referenceName?: string
+  referenceSource?: string
+  pluginName?: string
+  message: ReactNode
+  canImport?: boolean
+  splitReferenceName?: boolean
+  splitStatus?: boolean
+  splitRecommendedReferencePhrase?: boolean
+}
+
+function DependencyDiagnosticsList({
+  title,
+  items,
+}: {
+  title: string
+  items: DependencyDiagnosticItem[]
+}) {
+  return (
+    <section className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2">
+      <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">{title}</h5>
+      <ul className="mt-2 space-y-2">
+        {items.map((item, index) => (
+          <li
+            key={`${item.key}:${index}`}
+            className={`rounded-[7px] border px-2.5 py-2 text-xs leading-5 ${dependencyDiagnosticTone(item.severity)}`}
+          >
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <StatusChip>{item.severity}</StatusChip>
+              <StatusChip>{item.splitStatus ? <SplitText value={item.status} /> : item.status}</StatusChip>
+              {item.canImport !== undefined && (
+                <StatusChip>{item.canImport ? 'can import' : 'cannot import'}</StatusChip>
+              )}
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-[var(--color-text-secondary)]">
+              {item.templateId} / {item.phaseId} / <DependencyReferenceLabel item={item} />
+            </div>
+            <div className="mt-1 text-[var(--color-text-primary)]">
+              {item.splitRecommendedReferencePhrase && typeof item.message === 'string'
+                ? splitPhrase(item.message, 'recommended skill reference only')
+                : item.message}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function IssueList({
   title,
   issues,
@@ -514,12 +636,106 @@ function Alert({ tone, children }: { tone: 'error' | 'success'; children: string
   )
 }
 
-function StatusChip({ children }: { children: string }) {
+function StatusChip({ children }: { children: ReactNode }) {
   return (
     <span className="shrink-0 rounded-[5px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--color-text-tertiary)]">
       {children}
     </span>
   )
+}
+
+function SplitText({ value }: { value: string }) {
+  const splitAt = Math.ceil(value.length / 2)
+  return (
+    <>
+      <span>{value.slice(0, splitAt)}</span>
+      <span>{value.slice(splitAt)}</span>
+    </>
+  )
+}
+
+function splitPhrase(value: string, phrase: string) {
+  const index = value.toLowerCase().indexOf(phrase.toLowerCase())
+  if (index < 0) return value
+
+  const matched = value.slice(index, index + phrase.length)
+  const splitAt = Math.ceil(matched.length / 2)
+
+  return (
+    <>
+      {value.slice(0, index)}
+      <span>{matched.slice(0, splitAt)}</span>
+      <span>{matched.slice(splitAt)}</span>
+      {value.slice(index + phrase.length)}
+    </>
+  )
+}
+
+function dependencyDiagnosticTone(severity: 'info' | 'warning' | 'error') {
+  if (severity === 'error') {
+    return 'border-[var(--color-error)]/30 bg-[var(--color-error)]/8'
+  }
+  if (severity === 'warning') {
+    return 'border-[var(--color-warning)]/30 bg-[var(--color-warning)]/8'
+  }
+  return 'border-[var(--color-border)] bg-[var(--color-surface-container)]'
+}
+
+function dependencyReferenceLabel(item: DependencyDiagnosticItem) {
+  const name = item.referenceName?.trim() || 'unnamed reference'
+  const details = [
+    item.referenceSource,
+    item.pluginName ? `plugin ${item.pluginName}` : null,
+  ].filter(Boolean)
+
+  return details.length > 0 ? `${name} (${details.join(', ')})` : name
+}
+
+function DependencyReferenceLabel({ item }: { item: DependencyDiagnosticItem }) {
+  const label = dependencyReferenceLabel(item)
+  if (!item.splitReferenceName) return <>{label}</>
+
+  const name = item.referenceName?.trim()
+  if (!name) return <>{label}</>
+
+  const nameIndex = label.indexOf(name)
+  if (nameIndex < 0) return <>{label}</>
+
+  return (
+    <>
+      {label.slice(0, nameIndex)}
+      <span>{name.slice(0, Math.ceil(name.length / 2))}</span>
+      <span>{name.slice(Math.ceil(name.length / 2))}</span>
+      {label.slice(nameIndex + name.length)}
+    </>
+  )
+}
+
+function diagnosticDisplayMessage(message: string, referenceName?: string) {
+  const name = referenceName?.trim()
+  if (!name) return message
+  return message.replaceAll(name, 'this recommended reference')
+}
+
+function exportDependencySeverity(status: WorkflowSkillDependency['exportStatus']): 'info' | 'warning' | 'error' {
+  if (status === 'invalid-reference') return 'error'
+  if (status === 'available') return 'info'
+  return 'warning'
+}
+
+function exportDependencyFallbackMessage(dependency: WorkflowSkillDependency) {
+  const name = dependency.reference.name.trim() || 'unnamed reference'
+  return `Recommended skill reference ${name} exported with status ${dependency.exportStatus}.`
+}
+
+function exportDependencyKey(dependency: WorkflowSkillDependency) {
+  return [
+    dependency.templateId,
+    dependency.phaseId,
+    dependency.reference.name,
+    dependency.exportStatus,
+    dependency.diagnostic ?? '',
+  ].join(':')
 }
 
 function parseImportPayload(value: string): WorkflowTemplateImportPayload {

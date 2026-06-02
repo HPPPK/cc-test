@@ -401,6 +401,126 @@ describe('ActiveSession task polling', () => {
     expect(chatColumn.children[0]).toContainElement(statusPanel)
   })
 
+  it('renders bounded recommended skill evidence without listing unused recommendations', () => {
+    const sessionId = 'workflow-skill-evidence-session'
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      recommendedSkillStatus: {
+        total: 5,
+        available: 2,
+        unavailable: 1,
+        degraded: 1,
+        evidenceCount: 3,
+        activePhaseItems: [
+          { name: 'sp-specify', status: 'available', source: 'project' },
+          { name: 'security-review', status: 'missing', source: 'user' },
+          { name: 'plugin-helper', status: 'plugin-disabled', source: 'plugin', pluginName: 'disabled-plugin' },
+          { name: 'style-pass-unused', status: 'available', source: 'bundled' },
+          { name: 'bundle-default-unused', status: 'available', source: 'bundled' },
+        ],
+      },
+      recommendedSkillEvidence: [
+        {
+          phaseId: 'specify',
+          name: 'sp-specify',
+          outcome: 'used',
+          rationale: 'Used to align the specification.',
+          recordedAt: '2026-05-20T00:01:00.000Z',
+          source: 'project',
+          resolutionStatus: 'available',
+        },
+        {
+          phaseId: 'specify',
+          name: 'security-review',
+          outcome: 'relevant-skipped',
+          rationale: 'Relevant but deferred until implementation.',
+          recordedAt: '2026-05-20T00:02:00.000Z',
+          source: 'user',
+          resolutionStatus: 'missing',
+        },
+        {
+          phaseId: 'specify',
+          name: 'plugin-helper',
+          outcome: 'relevant-unavailable',
+          rationale: 'Plugin was disabled.',
+          recordedAt: '2026-05-20T00:03:00.000Z',
+          source: 'plugin',
+          resolutionStatus: 'plugin-disabled',
+        },
+        {
+          phaseId: 'specify',
+          name: 'style-pass-unused',
+          outcome: 'unused',
+          rationale: 'Not relevant to this phase.',
+          recordedAt: '2026-05-20T00:04:00.000Z',
+          source: 'bundled',
+          resolutionStatus: 'available',
+        },
+      ],
+    } as WorkflowSessionSummary & {
+      recommendedSkillEvidence: Array<Record<string, unknown>>
+    }
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Workflow Skill Evidence Session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:06:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        workflow,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Workflow Skill Evidence Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'workflow started', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    const skillStatus = within(panel).getByTestId('workflow-recommended-skill-status')
+    expect(skillStatus).toHaveTextContent(/recommended skills/i)
+    expect(skillStatus).toHaveTextContent(/2 available/i)
+    expect(skillStatus).toHaveTextContent(/1 unavailable/i)
+    expect(skillStatus).toHaveTextContent(/1 degraded/i)
+    expect(skillStatus).toHaveTextContent(/3 evidence/i)
+    expect(skillStatus).toHaveTextContent(/sp-specify/i)
+    expect(skillStatus).toHaveTextContent(/security-review/i)
+    expect(skillStatus).toHaveTextContent(/plugin-helper/i)
+    expect(skillStatus).not.toHaveTextContent(/style-pass-unused|bundle-default-unused/i)
+    expect(skillStatus).not.toHaveTextContent(/auto.?exec|auto.?run|default gate|plugin-primary|default bundle|permission bypass/i)
+    expect(within(panel).queryByRole('button', { name: /run|execute|install|enable/i })).not.toBeInTheDocument()
+  })
+
   it('renders resumed workflow metadata from the server summary without localStorage reconstruction', () => {
     const sessionId = 'workflow-resumed-session'
     const workflow: WorkflowSessionSummary = {

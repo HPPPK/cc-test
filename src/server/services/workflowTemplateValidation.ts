@@ -1,6 +1,7 @@
 import type {
   WorkflowPhaseActionPolicy,
   WorkflowPhasePrompt,
+  WorkflowPhaseSkillSource,
   WorkflowTemplateSource,
 } from './workflowTypes.js'
 
@@ -25,7 +26,13 @@ export type WorkflowTemplateValidationIssue = {
 
 export type WorkflowTemplateRegistrySkillDeclaration = {
   name: string
-  source?: 'user' | 'project' | 'builtin' | 'unknown'
+  mode?: 'recommended'
+  source?: WorkflowPhaseSkillSource
+  pluginName?: string
+  namespace?: string
+  version?: string
+  contentHash?: string
+  referenceId?: string
   reason?: string
   [key: string]: unknown
 }
@@ -132,6 +139,23 @@ export function workflowTemplateValidationIssue(
   }
 }
 
+export function workflowTemplateValidationWarning(
+  source: WorkflowTemplateValidationIssueSource,
+  pathValue: string,
+  code: string,
+  message: string,
+  templateId?: string,
+): WorkflowTemplateValidationIssue {
+  return {
+    source,
+    templateId,
+    path: pathValue,
+    code,
+    message,
+    severity: 'warning',
+  }
+}
+
 export function normalizeRequiredArtifacts(value: unknown): WorkflowTemplateRegistryRequiredArtifact[] {
   if (!Array.isArray(value)) return []
 
@@ -171,23 +195,46 @@ export function normalizeOutputArtifact(value: unknown): WorkflowTemplateRegistr
 }
 
 export function normalizeSkills(value: unknown): WorkflowTemplateRegistrySkillDeclaration[] {
-  if (!Array.isArray(value)) return []
+  return normalizePhaseSkillReferences(value).references
+}
 
-  return value
-    .filter(isRecord)
-    .filter((skill) => isNonEmptyString(skill.name))
-    .map((skill) => ({
+export function normalizePhaseSkillReferences(value: unknown): {
+  references: WorkflowTemplateRegistrySkillDeclaration[]
+  invalidIndexes: number[]
+} {
+  if (!Array.isArray(value)) return { references: [], invalidIndexes: [] }
+
+  const references: WorkflowTemplateRegistrySkillDeclaration[] = []
+  const invalidIndexes: number[] = []
+
+  value.forEach((skill, index) => {
+    if (!isRecord(skill)) {
+      invalidIndexes.push(index)
+      return
+    }
+
+    const name = typeof skill.name === 'string' ? skill.name.trim() : skill.name
+    const mode = skill.mode ?? 'recommended'
+    if (!isNonEmptyString(name) || mode !== 'recommended') {
+      invalidIndexes.push(index)
+      return
+    }
+
+    references.push({
       ...skill,
-      name: skill.name as string,
-      source:
-        skill.source === 'user' ||
-        skill.source === 'project' ||
-        skill.source === 'builtin' ||
-        skill.source === 'unknown'
-          ? skill.source
-          : undefined,
+      name,
+      mode: 'recommended',
+      source: isWorkflowPhaseSkillSource(skill.source) ? skill.source : undefined,
+      pluginName: isNonEmptyString(skill.pluginName) ? skill.pluginName : undefined,
+      namespace: isNonEmptyString(skill.namespace) ? skill.namespace : undefined,
+      version: isNonEmptyString(skill.version) ? skill.version : undefined,
+      contentHash: isNonEmptyString(skill.contentHash) ? skill.contentHash : undefined,
+      referenceId: isNonEmptyString(skill.referenceId) ? skill.referenceId : undefined,
       reason: isNonEmptyString(skill.reason) ? skill.reason : undefined,
-    }))
+    })
+  })
+
+  return { references, invalidIndexes }
 }
 
 export function normalizeCompletionCriteria(value: unknown): WorkflowTemplateRegistryCompletionCriteria | null {
@@ -497,6 +544,17 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
+      const normalizedSkills = normalizePhaseSkillReferences(phase.skills)
+      normalizedSkills.invalidIndexes.forEach((skillIndex) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.skills[${skillIndex}]`,
+          'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
+          'Workflow phase skill reference requires a non-empty name and recommended mode.',
+          templateId,
+        ))
+      })
+
       if (
         isNonEmptyString(phase.id) &&
         isNonEmptyString(phase.name) &&
@@ -518,7 +576,7 @@ export function validateAndNormalizeWorkflowTemplate(
           handoffRules,
           executionRules: normalizeStringList(phase.executionRules),
           outputArtifact,
-          skills: normalizeSkills(phase.skills),
+          skills: normalizedSkills.references,
           requiredArtifacts: normalizeRequiredArtifacts(phase.requiredArtifacts),
           completionCriteria,
           transition,
@@ -556,4 +614,14 @@ export function validateAndNormalizeUserConfigTemplate(
     basePath: `$.templates[${index}]`,
     source: 'user-config',
   })
+}
+
+function isWorkflowPhaseSkillSource(value: unknown): value is WorkflowPhaseSkillSource {
+  return value === 'user' ||
+    value === 'project' ||
+    value === 'plugin' ||
+    value === 'managed' ||
+    value === 'bundled' ||
+    value === 'mcp' ||
+    value === 'unknown'
 }

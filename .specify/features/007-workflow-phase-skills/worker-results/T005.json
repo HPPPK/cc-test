@@ -1,0 +1,24 @@
+{
+  "task_id": "T005",
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowToolPolicy.test.ts",
+    "exit_code": 0,
+    "summary": "Passed. Bun reported 89 passing tests, 0 failures across 5 files for resolver, workflow types, registry service, template API, and workflow tool policy."
+  },
+  "guardrail_check": {
+    "auto_exec": "pass",
+    "default_gates": "pass",
+    "plugin_primary": "pass",
+    "default_bundle": "pass",
+    "skilltool_boundary": "pass",
+    "missing_skill_warnings": "pass"
+  },
+  "concerns": [
+    "Project cognition readiness was blocked/stale for this lane, so the checkpoint relied on the required minimal live reads and direct test evidence."
+  ],
+  "recovery_hints": [
+    "If a later lane needs project-cognition-backed routing confidence, resolve the current project cognition update blocker before relying on map guidance."
+  ]
+}

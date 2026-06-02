@@ -1,0 +1,34 @@
+{
+  "task_id": "T010",
+  "status": "success",
+  "red_state": {
+    "achieved": true,
+    "expected": "Focused server workflow template tests compile and run, then fail for missing US2 import/export dependency-manifest implementation.",
+    "unexpected_pass": false,
+    "failing_tests": [
+      "Workflow template API contract > POST /api/workflows/templates/import/preview keeps invalid references unselectable with dependency errors",
+      "Workflow template API contract > POST /api/workflows/templates/export includes a dependency manifest for every phase skill reference",
+      "Workflow template API contract > POST /api/workflows/templates/export does not include skill package contents by default"
+    ]
+  },
+  "changed_files": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T010.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/__tests__/workflowTemplates.test.ts",
+    "exit_code": 1,
+    "summary": "42 pass, 3 fail, 190 expect() calls, 45 tests across 1 file. Failures are expected RED assertions: import preview does not yet surface invalid-reference dependencyDiagnostics; export still returns schemaVersion 1 without dependencyManifest; export non-bundling test fails because dependencyManifest is absent."
+  },
+  "concerns": [
+    "The import commit preservation test already passes under current behavior; the RED signal is provided by the missing dependency diagnostics and export manifest tests.",
+    "The existing foundation import-preview warning test from T004 also passes, confirming missing recommended skills remain selectable with warning diagnostics."
+  ],
+  "recovery_hints": [
+    "Implement /api/workflows/templates/export schemaVersion 2 output with dependencyManifest.schemaVersion 1 and one dependency entry per phases[].skills reference.",
+    "Populate dependency manifest entries with templateId, phaseId, normalized reference, exportStatus, resolver provenance such as resolvedSource/pluginName/contentHash when available, and diagnostics for degraded dependencies.",
+    "Keep default exports limited to template data plus manifest metadata; do not include skill package/file contents.",
+    "During import preview, convert invalid-reference manifest/template dependency status into dependencyDiagnostics with severity error and canImport false while preserving existing template validation errors.",
+    "During import commit, continue preserving unresolved recommended skill references and unknown skill fields."
+  ]
+}

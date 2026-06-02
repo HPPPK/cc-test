@@ -1,0 +1,38 @@
+{
+  "task_id": "T022",
+  "status": "blocked",
+  "changed_files": [],
+  "validation_output": {
+    "focused_server_tests": {
+      "command": "bun test --isolate src/server/__tests__/sessions.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSummary.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowTypes.test.ts",
+      "exit_code": 0,
+      "summary": "Passed. Ran 273 tests across 8 files: 273 pass, 0 fail, 1394 expect() calls."
+    },
+    "check_server": {
+      "command": "bun run check:server",
+      "exit_code": 1,
+      "summary": "Failed in the broader server suite after 764 tests across 40 files. The failing surface is outside the allowed T022 write scope.",
+      "failing_files": [
+        "src/server/__tests__/tasks.test.ts",
+        "src/server/__tests__/e2e/business-flow.test.ts",
+        "src/server/__tests__/e2e/full-flow.test.ts"
+      ],
+      "notable_failures": [
+        "TaskService/tests around task JSON discovery and 404 behavior",
+        "Business Flow e2e tests around model defaults, session creation, CLI-compatible JSONL persistence, and WebSocket content flow",
+        "Full Flow e2e tests around diagnostics platform expectations and available model counts",
+        "Several CronScheduler tests timed out at 20000ms"
+      ]
+    }
+  },
+  "concerns": [
+    "The workflow/server files changed for this feature are not the failing surface under the allowed T022 write scope.",
+    "The failing check:server cases involve unrelated server test files and broader server behavior that cannot be repaired under the current task restrictions.",
+    "No source files were modified in this T022 run."
+  ],
+  "recovery_hints": [
+    "Run a separate server-fix task with permission to edit the failing non-workflow server tests and/or the underlying task/model/session implementations.",
+    "If the goal is only to validate the workflow-phase-skills slice, rely on the focused server suite that passed and keep T022 blocked until the broader server suite is brought back into scope.",
+    "Review the failing test files in this order: src/server/__tests__/tasks.test.ts, src/server/__tests__/e2e/business-flow.test.ts, src/server/__tests__/e2e/full-flow.test.ts."
+  ]
+}

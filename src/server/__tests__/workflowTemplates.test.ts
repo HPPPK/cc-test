@@ -83,6 +83,23 @@ async function writeWorkflowConfig(config: Record<string, unknown>): Promise<voi
   resetWorkflowTemplateRegistryForTests()
 }
 
+async function writeUserSkill(name: string): Promise<void> {
+  const skillDir = path.join(tmpDir, 'skills', name)
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(
+    path.join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${name}`,
+      'description: Workflow authoring skill fixture',
+      '---',
+      'Use this skill when the current phase matches.',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+}
+
 async function readWorkflowConfig(): Promise<Record<string, unknown> | null> {
   try {
     return JSON.parse(await fs.readFile(workflowConfigPath(), 'utf-8')) as Record<string, unknown>
@@ -264,6 +281,187 @@ describe('Workflow template API contract', () => {
     }))
   })
 
+  it('POST /api/workflows/templates/validate accepts legacy phase skills and preserves reason plus unknown fields', async () => {
+    const template = validTemplate('legacy-phase-skills')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [
+      {
+        name: 'tdd-workflow',
+        reason: 'Legacy advisory text only.',
+        ownerDefinedSkillField: 'keep-skill-field',
+      },
+    ]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/validate', {
+      method: 'POST',
+      body: JSON.stringify({ template }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.valid).toBe(true)
+    expect(body.issues).toEqual([])
+    expect(body.template).toMatchObject({
+      phases: [
+        {
+          skills: [
+            {
+              name: 'tdd-workflow',
+              mode: 'recommended',
+              reason: 'Legacy advisory text only.',
+              ownerDefinedSkillField: 'keep-skill-field',
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('POST /api/workflows/templates/validate returns errors for malformed phase skill references', async () => {
+    const template = validTemplate('invalid-phase-skill-reference')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{ name: '' }]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/validate', {
+      method: 'POST',
+      body: JSON.stringify({ template }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.valid).toBe(false)
+    expect(body.template).toBe(null)
+    expect(body.issues).toContainEqual(expect.objectContaining({
+      source: 'request',
+      templateId: 'invalid-phase-skill-reference',
+      path: '$.template.phases[0].skills[0]',
+      code: 'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
+      severity: 'error',
+    }))
+  })
+
+  it('POST /api/workflows/templates/import/preview keeps missing recommended skills selectable with dependency warnings', async () => {
+    const template = validTemplate('missing-phase-skill-import')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{ name: 'missing-skill' }]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        payload: {
+          schemaVersion: 2,
+          templates: [template],
+          dependencyManifest: {
+            schemaVersion: 1,
+            generatedAt: '2026-05-29T00:00:00.000Z',
+            dependencies: [
+              {
+                templateId: 'missing-phase-skill-import',
+                phaseId: 'draft',
+                reference: { name: 'missing-skill' },
+                exportStatus: 'missing',
+              },
+            ],
+          },
+        },
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.canCommit).toBe(true)
+    expect(body.candidates).toContainEqual(expect.objectContaining({
+      originalId: 'missing-phase-skill-import',
+      selectable: true,
+      dependencyDiagnostics: [
+        expect.objectContaining({
+          status: 'missing',
+          severity: 'warning',
+          canImport: true,
+          reference: {
+            name: 'missing-skill',
+            mode: 'recommended',
+          },
+        }),
+      ],
+    }))
+  })
+
+  it('POST /api/workflows/templates/import/preview keeps invalid references unselectable with dependency errors', async () => {
+    const template = validTemplate('invalid-phase-skill-preview')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{ name: '   ' }]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        payload: {
+          schemaVersion: 2,
+          templates: [template],
+          dependencyManifest: {
+            schemaVersion: 1,
+            generatedAt: '2026-05-29T00:00:00.000Z',
+            dependencies: [
+              {
+                templateId: 'invalid-phase-skill-preview',
+                phaseId: 'draft',
+                reference: { name: '   ' },
+                exportStatus: 'invalid-reference',
+                diagnostic: 'Skill reference name is required.',
+              },
+            ],
+          },
+        },
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.canCommit).toBe(false)
+    expect(body.candidates).toContainEqual(expect.objectContaining({
+      originalId: 'invalid-phase-skill-preview',
+      selectable: false,
+      dependencyDiagnostics: [
+        expect.objectContaining({
+          status: 'invalid-reference',
+          severity: 'error',
+          canImport: false,
+          reference: expect.objectContaining({
+            name: '   ',
+          }),
+        }),
+      ],
+    }))
+  })
+
+  it('POST /api/workflows/templates/import rejects malformed phase skill references without writing', async () => {
+    const template = validTemplate('malformed-phase-skill-import')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{ name: '   ' }]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import', {
+      method: 'POST',
+      body: JSON.stringify({
+        payload: {
+          schemaVersion: 1,
+          templates: [template],
+        },
+        selections: [
+          {
+            importId: 'candidate-1',
+            resolution: 'add',
+          },
+        ],
+      }),
+    }))
+
+    expect(res.status).toBe(400)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_INVALID')
+    expect(body.issues).toContainEqual(expect.objectContaining({
+      source: 'import',
+      templateId: 'malformed-phase-skill-import',
+      path: '$.payload.templates.phases[0].skills[0]',
+      code: 'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
+      severity: 'error',
+    }))
+  })
+
   it('POST /api/workflows/templates/validate rejects builtin id shadowing without writing', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/validate', {
       method: 'POST',
@@ -345,6 +543,43 @@ describe('Workflow template API contract', () => {
       source: 'user',
       editable: true,
     }))
+  })
+
+  it('POST /api/workflows/templates/authoring lists selectable phase skill references for agents', async () => {
+    await writeUserSkill('release-checklist')
+
+    const { res, body } = await requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'skill_catalog',
+        query: 'release',
+        source: 'user',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      operation: 'skill_catalog',
+      status: 'succeeded',
+      persisted: false,
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      skillCatalog: [
+        expect.objectContaining({
+          name: 'release-checklist',
+          source: 'user',
+          recommendedReference: {
+            name: 'release-checklist',
+            mode: 'recommended',
+            source: 'user',
+          },
+        }),
+      ],
+      nextAction: 'none',
+    })
+    expect(await readWorkflowConfig()).toBeNull()
   })
 
   it('POST /api/workflows/templates/authoring updates a user template and makes the refreshed list reflect the change', async () => {
@@ -1140,6 +1375,86 @@ describe('Workflow template API contract', () => {
     expectWorkflowError(body, 'WORKFLOW_TEMPLATE_CONFLICT')
   })
 
+  it('POST /api/workflows/templates/import preserves unresolved recommended skill references when committed', async () => {
+    const template = validTemplate('preserve-missing-phase-skill-import')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{
+      name: 'missing-skill',
+      mode: 'recommended',
+      source: 'plugin',
+      pluginName: 'offline-plugin',
+      referenceId: 'ref-missing-skill',
+      ownerDefinedSkillField: 'keep-skill-field',
+    }]
+
+    const { res, body } = await requestJson('/api/workflows/templates/import', {
+      method: 'POST',
+      body: JSON.stringify({
+        payload: {
+          schemaVersion: 2,
+          templates: [template],
+          dependencyManifest: {
+            schemaVersion: 1,
+            generatedAt: '2026-05-29T00:00:00.000Z',
+            dependencies: [
+              {
+                templateId: 'preserve-missing-phase-skill-import',
+                phaseId: 'draft',
+                reference: {
+                  name: 'missing-skill',
+                  mode: 'recommended',
+                  source: 'plugin',
+                  pluginName: 'offline-plugin',
+                  referenceId: 'ref-missing-skill',
+                  ownerDefinedSkillField: 'keep-skill-field',
+                },
+                exportStatus: 'missing',
+                resolvedSource: 'plugin',
+                pluginName: 'offline-plugin',
+                diagnostic: 'Skill is not installed in this environment.',
+              },
+            ],
+          },
+        },
+        selections: [
+          {
+            importId: 'candidate-1',
+            resolution: 'add',
+          },
+        ],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const persisted = await readWorkflowConfig()
+    expect(persisted).toMatchObject({
+      templates: [
+        {
+          id: 'preserve-missing-phase-skill-import',
+          phases: [
+            {
+              id: 'draft',
+              skills: [
+                {
+                  name: 'missing-skill',
+                  mode: 'recommended',
+                  source: 'plugin',
+                  pluginName: 'offline-plugin',
+                  referenceId: 'ref-missing-skill',
+                  ownerDefinedSkillField: 'keep-skill-field',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    expect(body.templates).toContainEqual(expect.objectContaining({
+      id: 'preserve-missing-phase-skill-import',
+      source: 'user',
+    }))
+  })
+
   it('POST /api/workflows/templates/export returns selected template JSON without writing', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
@@ -1159,7 +1474,7 @@ describe('Workflow template API contract', () => {
     }))
 
     expect(res.status).toBe(200)
-    expect(body.schemaVersion).toBe(1)
+    expect(body.schemaVersion).toBe(2)
     expect(body.exportedAt).toEqual(expect.any(String))
     expect(body.templates).toEqual([
       expect.objectContaining({ id: 'custom-workflow' }),
@@ -1175,6 +1490,126 @@ describe('Workflow template API contract', () => {
     ])
     expect(JSON.stringify(body)).not.toContain('unrelatedUserState')
     expect(JSON.stringify(body)).not.toContain(tmpDir)
+  })
+
+  it('POST /api/workflows/templates/export includes a dependency manifest for every phase skill reference', async () => {
+    const template = validTemplate('dependency-manifest-workflow')
+    const [draftPhase] = template.phases as Array<Record<string, unknown>>
+    draftPhase.skills = [{
+      name: 'tdd-workflow',
+      mode: 'recommended',
+      source: 'project',
+      contentHash: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    }]
+    ;(template.phases as Array<Record<string, unknown>>).push({
+      id: 'review',
+      name: 'Review',
+      instructions: 'Review the requested artifact.',
+      requiredIntake: ['Use the draft artifact.'],
+      handoffRules: ['Summarize review findings.'],
+      outputArtifact: {
+        id: 'review-output',
+        name: 'Review output',
+        kind: 'markdown',
+        description: 'The review artifact.',
+        required: true,
+      },
+      completionCriteria: {
+        type: 'artifact-required',
+        description: 'The review artifact is complete.',
+      },
+      transition: { authority: 'user-confirmation' },
+      skills: [
+        {
+          name: 'missing-review-skill',
+          mode: 'recommended',
+          source: 'plugin',
+          pluginName: 'disabled-review-plugin',
+          referenceId: 'review-skill-ref',
+        },
+      ],
+    })
+
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [template],
+    })
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        templates: [{ source: 'user', id: 'dependency-manifest-workflow' }],
+        mode: 'selected',
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.schemaVersion).toBe(2)
+    const dependencies = (body.dependencyManifest as { dependencies: unknown[] }).dependencies
+    expect(dependencies).toHaveLength(2)
+    expect(body.dependencyManifest).toMatchObject({
+      schemaVersion: 1,
+      generatedAt: expect.any(String),
+      dependencies: expect.arrayContaining([
+        expect.objectContaining({
+          templateId: 'dependency-manifest-workflow',
+          phaseId: 'draft',
+          reference: expect.objectContaining({
+            name: 'tdd-workflow',
+            mode: 'recommended',
+            source: 'project',
+          }),
+          exportStatus: expect.any(String),
+          resolvedSource: expect.any(String),
+          contentHash: expect.any(String),
+        }),
+        expect.objectContaining({
+          templateId: 'dependency-manifest-workflow',
+          phaseId: 'review',
+          reference: expect.objectContaining({
+            name: 'missing-review-skill',
+            mode: 'recommended',
+            source: 'plugin',
+            pluginName: 'disabled-review-plugin',
+            referenceId: 'review-skill-ref',
+          }),
+          exportStatus: expect.any(String),
+          pluginName: 'disabled-review-plugin',
+          diagnostic: expect.any(String),
+        }),
+      ]),
+    })
+  })
+
+  it('POST /api/workflows/templates/export does not include skill package contents by default', async () => {
+    const template = validTemplate('no-skill-bundle-export')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [{ name: 'tdd-workflow', mode: 'recommended' }]
+
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [template],
+    })
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        templates: [{ source: 'user', id: 'no-skill-bundle-export' }],
+        mode: 'selected',
+      }),
+    }))
+
+    const serialized = JSON.stringify(body)
+    expect(res.status).toBe(200)
+    expect(body.dependencyManifest).toBeDefined()
+    expect(body).not.toEqual(expect.objectContaining({
+      skills: expect.anything(),
+      skillPackages: expect.anything(),
+      bundledSkills: expect.anything(),
+    }))
+    expect(serialized).not.toContain('Core Principles')
+    expect(serialized).not.toContain('Test-Driven Development Workflow')
+    expect(serialized).not.toContain('agents/openai.yaml')
   })
 
   it('POST /api/workflows/templates/export returns builtin templates as reusable import payloads', async () => {

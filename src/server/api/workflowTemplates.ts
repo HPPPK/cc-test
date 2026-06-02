@@ -8,7 +8,9 @@ import {
   type WorkflowTemplateRegistryListResult,
   type WorkflowTemplateRegistryTemplate,
   type WorkflowTemplateValidationIssue,
+  collectTemplateSkillCatalog,
 } from '../services/workflowTemplateRegistryService.js'
+import { resolveWorkflowPhaseSkills } from '../services/workflowPhaseSkillResolver.js'
 import {
   WORKFLOW_TEMPLATE_BUILTIN_ID,
   isNonEmptyString,
@@ -16,6 +18,13 @@ import {
   normalizeStringList,
   validateAndNormalizeWorkflowTemplate,
 } from '../services/workflowTemplateValidation.js'
+import type {
+  WorkflowImportDependencyDiagnostic,
+  WorkflowPhaseSkillReference,
+  WorkflowPhaseSkillResolution,
+  WorkflowPhaseSkillResolutionStatus,
+  WorkflowPhaseSkillSource,
+} from '../services/workflowTypes.js'
 
 type WorkflowTemplateSource = 'builtin' | 'user'
 type ErrorStatus = 400 | 404 | 405 | 409
@@ -34,7 +43,19 @@ type ImportCandidate = {
   defaultResolution: 'add' | 'rename'
   selectable: boolean
   issues: ApiValidationIssue[]
+  dependencyDiagnostics: WorkflowImportDependencyDiagnostic[]
   template: Record<string, unknown> | null
+}
+
+type WorkflowSkillDependency = {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  exportStatus: WorkflowPhaseSkillResolutionStatus
+  resolvedSource?: WorkflowPhaseSkillSource
+  pluginName?: string
+  contentHash?: string
+  diagnostic?: string
 }
 
 const registryService = new WorkflowTemplateRegistryService()
@@ -242,7 +263,7 @@ async function previewImport(req: Request): Promise<Response> {
   const body = await parseJsonBody(req)
   const payload = isRecord(body) ? body.payload : undefined
   const registry = await registryService.listTemplates()
-  const candidates = buildImportCandidates(payload, registry)
+  const candidates = await buildImportCandidates(payload, registry)
 
   return Response.json({
     schemaVersion: 1,
@@ -262,7 +283,7 @@ async function commitImport(req: Request): Promise<Response> {
   }
 
   const registry = await registryService.listTemplates()
-  const candidates = buildImportCandidates(body.payload, registry)
+  const candidates = await buildImportCandidates(body.payload, registry)
   const byImportId = new Map(candidates.map((candidate) => [candidate.importId, candidate]))
   const selectedTemplates: WorkflowTemplateRegistryTemplate[] = []
 
@@ -313,6 +334,7 @@ async function exportTemplates(req: Request): Promise<Response> {
 
   const registry = await registryService.listTemplates()
   const templates: Array<Record<string, unknown>> = []
+  const dependencyTemplates: WorkflowTemplateRegistryTemplate[] = []
   for (const selector of body.templates) {
     if (!isRecord(selector) || !isWorkflowSource(selector.source) || !isNonEmptyString(selector.id)) {
       return workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Each export selector requires source and id')
@@ -322,18 +344,25 @@ async function exportTemplates(req: Request): Promise<Response> {
       return workflowError(404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
     }
     templates.push(exportTemplateDraft(template))
+    dependencyTemplates.push(template)
   }
 
+  const exportedAt = new Date().toISOString()
   return Response.json({
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
+    schemaVersion: 2,
+    exportedAt,
     templates,
+    dependencyManifest: await buildExportDependencyManifest(dependencyTemplates, exportedAt),
   })
 }
 
-function buildImportCandidates(payload: unknown, registry: WorkflowTemplateRegistryListResult): ImportCandidate[] {
+async function buildImportCandidates(payload: unknown, registry: WorkflowTemplateRegistryListResult): Promise<ImportCandidate[]> {
   const importedTemplates = extractImportTemplates(payload)
-  return importedTemplates.map((template, index) => {
+  const dependencyManifest = extractDependencyManifest(payload)
+  const catalog = await collectTemplateSkillCatalog()
+  const candidates: ImportCandidate[] = []
+
+  for (const [index, template] of importedTemplates.entries()) {
     const importId = `candidate-${index + 1}`
     const originalId = isRecord(template) && isNonEmptyString(template.id) ? template.id : importId
     const conflict = originalId === BUILTIN_TEMPLATE_ID
@@ -346,8 +375,17 @@ function buildImportCandidates(payload: unknown, registry: WorkflowTemplateRegis
     const validation = validateUserTemplate(validationDraft, `$.payload.templates[${index}]`, 'import', registry, {
       allowExistingId: conflict === 'user-template' ? proposedId : undefined,
     })
+    const manifestDependencyDiagnostics = buildManifestDependencyDiagnostics(originalId, dependencyManifest)
+    const resolvedDependencyDiagnostics = validation.template
+      ? await buildImportDependencyDiagnostics(validation.template, dependencyManifest, catalog)
+      : []
+    const dependencyDiagnostics = uniqueDependencyDiagnostics([
+      ...manifestDependencyDiagnostics,
+      ...resolvedDependencyDiagnostics,
+    ])
+    const dependencyImportable = dependencyDiagnostics.every((diagnostic) => diagnostic.canImport)
 
-    return {
+    candidates.push({
       importId,
       originalId,
       proposedId,
@@ -356,11 +394,72 @@ function buildImportCandidates(payload: unknown, registry: WorkflowTemplateRegis
       phaseCount: isRecord(template) && Array.isArray(template.phases) ? template.phases.length : 0,
       conflict,
       defaultResolution: conflict === 'none' ? 'add' : 'rename',
-      selectable: validation.issues.length === 0 && validation.template !== null,
+      selectable: validation.issues.length === 0 && validation.template !== null && dependencyImportable,
       issues: validation.issues,
+      dependencyDiagnostics,
       template: isRecord(template) ? template : null,
+    })
+  }
+
+  return candidates
+}
+
+async function buildExportDependencyManifest(
+  templates: WorkflowTemplateRegistryTemplate[],
+  generatedAt: string,
+): Promise<{
+  schemaVersion: 1
+  generatedAt: string
+  dependencies: WorkflowSkillDependency[]
+}> {
+  const catalog = await collectTemplateSkillCatalog()
+  const dependencies: WorkflowSkillDependency[] = []
+
+  for (const template of templates) {
+    for (const phase of template.phases) {
+      if (phase.skills.length === 0) continue
+
+      const result = await resolveWorkflowPhaseSkills({
+        templateId: template.id,
+        phaseId: phase.id,
+        references: phase.skills,
+        catalog,
+      })
+
+      dependencies.push(...result.resolutions.map((resolution) =>
+        exportDependencyFromResolution(template.id, phase.id, resolution)
+      ))
     }
-  })
+  }
+
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    dependencies,
+  }
+}
+
+function exportDependencyFromResolution(
+  templateId: string,
+  phaseId: string,
+  resolution: WorkflowPhaseSkillResolution,
+): WorkflowSkillDependency {
+  const dependency: WorkflowSkillDependency = {
+    templateId,
+    phaseId,
+    reference: resolution.reference,
+    exportStatus: resolution.status,
+  }
+  const resolvedSource = resolution.resolvedSkill?.source ?? resolution.reference.source
+  const pluginName = resolution.resolvedSkill?.pluginName ?? resolution.reference.pluginName
+  const contentHash = resolution.provenance?.contentHash ?? resolution.reference.contentHash
+
+  if (resolvedSource) dependency.resolvedSource = resolvedSource
+  if (pluginName) dependency.pluginName = pluginName
+  if (contentHash) dependency.contentHash = contentHash
+  if (resolution.diagnostic?.message) dependency.diagnostic = resolution.diagnostic.message
+
+  return dependency
 }
 
 function extractImportTemplates(payload: unknown): unknown[] {
@@ -371,6 +470,158 @@ function extractImportTemplates(payload: unknown): unknown[] {
     return [payload]
   }
   return []
+}
+
+function extractDependencyManifest(payload: unknown): unknown[] {
+  if (!isRecord(payload) || !isRecord(payload.dependencyManifest)) return []
+  return Array.isArray(payload.dependencyManifest.dependencies)
+    ? payload.dependencyManifest.dependencies
+    : []
+}
+
+function buildManifestDependencyDiagnostics(
+  templateId: string,
+  dependencyManifest: unknown[],
+): WorkflowImportDependencyDiagnostic[] {
+  return dependencyManifest
+    .filter(isRecord)
+    .filter((dependency) => dependency.templateId === templateId)
+    .map((dependency): WorkflowImportDependencyDiagnostic | null => {
+      if (!isRecord(dependency.reference) || !isResolutionStatus(dependency.exportStatus)) {
+        return null
+      }
+      const severity = dependency.exportStatus === 'invalid-reference'
+        ? 'error'
+        : dependency.exportStatus === 'available' || dependency.exportStatus === 'installable'
+          ? 'info'
+          : 'warning'
+      const message = isNonEmptyString(dependency.diagnostic)
+        ? dependency.diagnostic
+        : importDependencyDiagnosticMessage(dependency.exportStatus)
+
+      return {
+        templateId,
+        phaseId: isNonEmptyString(dependency.phaseId) ? dependency.phaseId : '',
+        reference: normalizeImportedSkillReference(dependency.reference),
+        status: dependency.exportStatus,
+        severity,
+        message,
+        canImport: severity !== 'error',
+      }
+    })
+    .filter((diagnostic): diagnostic is WorkflowImportDependencyDiagnostic => diagnostic !== null)
+}
+
+async function buildImportDependencyDiagnostics(
+  template: WorkflowTemplateRegistryTemplate,
+  dependencyManifest: unknown[],
+  catalog: Awaited<ReturnType<typeof collectTemplateSkillCatalog>>,
+): Promise<WorkflowImportDependencyDiagnostic[]> {
+  const diagnostics: WorkflowImportDependencyDiagnostic[] = []
+  const manifestReferences = dependencyManifest
+    .filter(isRecord)
+    .filter((dependency) => dependency.templateId === template.id)
+
+  for (const phase of template.phases) {
+    const manifestPhaseReferences = manifestReferences
+      .filter((dependency) => dependency.phaseId === phase.id && isRecord(dependency.reference))
+      .map((dependency) => dependency.reference as WorkflowTemplateRegistryTemplate['phases'][number]['skills'][number])
+    const references = uniqueSkillReferences([...phase.skills, ...manifestPhaseReferences])
+    if (references.length === 0) continue
+
+    const result = await resolveWorkflowPhaseSkills({
+      templateId: template.id,
+      phaseId: phase.id,
+      references,
+      catalog,
+    })
+
+    result.resolutions.forEach((resolution) => {
+      const severity = resolution.diagnostic?.severity ?? 'info'
+      diagnostics.push({
+        templateId: template.id,
+        phaseId: phase.id,
+        reference: resolution.reference,
+        status: resolution.status,
+        severity,
+        message: resolution.diagnostic?.message ?? 'Recommended skill is available in this environment.',
+        canImport: severity !== 'error',
+      })
+    })
+  }
+
+  return diagnostics
+}
+
+function uniqueSkillReferences(
+  references: WorkflowTemplateRegistryTemplate['phases'][number]['skills'],
+): WorkflowTemplateRegistryTemplate['phases'][number]['skills'] {
+  const seen = new Set<string>()
+  const uniqueReferences: WorkflowTemplateRegistryTemplate['phases'][number]['skills'] = []
+
+  for (const reference of references) {
+    const key = JSON.stringify({
+      name: reference.name,
+      mode: reference.mode ?? 'recommended',
+      source: reference.source,
+      pluginName: reference.pluginName,
+      namespace: reference.namespace,
+      version: reference.version,
+      contentHash: reference.contentHash,
+      referenceId: reference.referenceId,
+    })
+    if (seen.has(key)) continue
+    seen.add(key)
+    uniqueReferences.push(reference)
+  }
+
+  return uniqueReferences
+}
+
+function uniqueDependencyDiagnostics(
+  diagnostics: WorkflowImportDependencyDiagnostic[],
+): WorkflowImportDependencyDiagnostic[] {
+  const seen = new Set<string>()
+  const uniqueDiagnostics: WorkflowImportDependencyDiagnostic[] = []
+
+  for (const diagnostic of diagnostics) {
+    const key = JSON.stringify({
+      templateId: diagnostic.templateId,
+      phaseId: diagnostic.phaseId,
+      reference: diagnostic.reference,
+      status: diagnostic.status,
+    })
+    if (seen.has(key)) continue
+    seen.add(key)
+    uniqueDiagnostics.push(diagnostic)
+  }
+
+  return uniqueDiagnostics
+}
+
+function normalizeImportedSkillReference(reference: Record<string, unknown>): WorkflowPhaseSkillReference {
+  const normalized = {
+    ...reference,
+    mode: reference.mode ?? 'recommended',
+  }
+  return normalized as WorkflowPhaseSkillReference
+}
+
+function importDependencyDiagnosticMessage(status: WorkflowPhaseSkillResolutionStatus): string {
+  if (status === 'invalid-reference') return 'Workflow phase skill reference is invalid.'
+  if (status === 'available') return 'Recommended skill is available in the source environment.'
+  if (status === 'installable') return 'Recommended skill can be installed from a known source.'
+  return 'Recommended skill may be unavailable or degraded in this environment.'
+}
+
+function isResolutionStatus(value: unknown): value is WorkflowPhaseSkillResolutionStatus {
+  return value === 'available' ||
+    value === 'missing' ||
+    value === 'ambiguous' ||
+    value === 'unsupported-source' ||
+    value === 'plugin-disabled' ||
+    value === 'invalid-reference' ||
+    value === 'installable'
 }
 
 function validateUserTemplate(
@@ -458,6 +709,7 @@ function publicImportCandidate(candidate: ImportCandidate) {
     defaultResolution: candidate.defaultResolution,
     selectable: candidate.selectable,
     issues: candidate.issues,
+    dependencyDiagnostics: candidate.dependencyDiagnostics,
   }
 }
 
@@ -526,6 +778,7 @@ function isAuthoringOperationInput(value: unknown): value is WorkflowTemplateAut
   return isRecord(value) &&
     (
       value.operation === 'guide' ||
+      value.operation === 'skill_catalog' ||
       value.operation === 'list' ||
       value.operation === 'inspect' ||
       value.operation === 'validate' ||

@@ -225,6 +225,57 @@ async function fetchCommandsForClient(client) {
 
 **特性门控：** `feature('MCP_SKILLS')` 控制 MCP Skills 是否可用。
 
+### Workflow 阶段 Skill 解析
+
+Workflow 模板中的 `phases[].skills` 是推荐 Skill 引用列表，而不是插件绑定或 Skill 内容副本。兼容形状包括旧的 `{ name }` 和 `{ name, reason }`；`reason` 只保留为旧数据的说明文本，不作为适用性判断来源。
+
+解析结果使用统一状态词汇：
+
+| 状态 | 含义 | 导入/运行语义 |
+|------|------|---------------|
+| `available` | 引用解析到一个可用 Skill | 可在 prompt 中作为可用推荐呈现 |
+| `missing` | 本地目录/插件/MCP 中没有匹配 Skill | warning/degraded，保留引用 |
+| `ambiguous` | 名称匹配多个候选 | 需要来源、namespace 或 plugin metadata 消歧后才算可用 |
+| `unsupported-source` | 引用来源当前环境不能解析 | warning/degraded，保留引用 |
+| `plugin-disabled` | Skill 来自插件但插件不可用或禁用 | warning/degraded，保留 Skill 引用和插件 provenance |
+| `invalid-reference` | 引用形状无效 | error，可阻止保存或导入该候选 |
+| `installable` | 预留给未来可安装来源 | 当前仅作为诊断状态 |
+
+关键边界：
+
+- Workflow phase 绑定 Skill，不绑定插件；`pluginName` 只用于 provenance 和消歧。
+- 推荐 Skill 不会自动调用 SkillTool，也不会默认成为 phase 完成 gate。
+- Workflow 运行时不会从推荐引用直接应用 `allowed-tools`、model、effort、fork、shell 或 hook 行为；这些能力仍只在实际 SkillTool 调用时生效。
+- 缺失的推荐 Skill 默认是 warning，不阻塞导入；导入 commit 必须保留 unresolved references。
+
+### Workflow 导入/导出依赖清单
+
+Workflow 导出包会在模板之外附带 Skill dependency manifest：
+
+```typescript
+interface WorkflowSkillDependencyManifest {
+  schemaVersion: 1
+  generatedAt: string
+  resolverVersion?: string
+  dependencies: WorkflowSkillDependency[]
+}
+
+interface WorkflowSkillDependency {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  exportStatus: WorkflowPhaseSkillResolutionStatus
+  resolvedSource?: WorkflowPhaseSkillSource
+  pluginName?: string
+  contentHash?: string
+  diagnostic?: string
+}
+```
+
+Manifest 必须列出每个 phase 推荐 Skill 依赖，并让缺失、禁用、不支持来源等诊断在导出和导入预览中可见。旧导出包没有 manifest 仍然可导入，导入预览会用本地 resolver 重新生成诊断。
+
+导出默认不打包 Skill 包内容：不会复制 `SKILL.md`、脚本、资产、插件目录或 MCP prompt 内容。Manifest 只保存引用、来源/provenance、可选 hash 和诊断，避免把 Skill 自有内容或潜在敏感元数据写入 workflow package。
+
 ---
 
 ## 三、Frontmatter 解析

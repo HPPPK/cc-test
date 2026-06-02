@@ -1,0 +1,722 @@
+{
+  "discussion_slug": "workflows",
+  "drafted_at": "2026-05-29T15:35:05.2241333+08:00",
+  "handoff_goal": "Specify workflow phase skills as recommended bindings to existing skills, including shared-catalog authoring, dependency-aware import/export, active-phase prompt behavior, and lightweight runtime evidence.",
+  "context_boundary": {
+    "current_project_root": "F:\\github\\cc-jiangxia",
+    "current_project_roles": [
+      {
+        "role": "discussion-host",
+        "scope": "Stores this sp-discussion session and durable artifacts.",
+        "evidence_source": "current working directory and .specify/discussions/workflows/",
+        "notes": "The active repository is the discussion host."
+      },
+      {
+        "role": "product-context",
+        "scope": "Overall cc-jiangxia workflows product and agent capability direction.",
+        "evidence_source": "user selected a fresh overall workflow direction",
+        "notes": "Discussion is not resuming prior handoff-ready workflow discussions."
+      }
+    ],
+    "target_project_root": "F:\\github\\cc-jiangxia",
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "cc-jiangxia workflow template, runtime, import/export, skill catalog, and desktop workflow authoring surfaces.",
+        "evidence_source": "user direction plus live reads in project-context.md",
+        "notes": "Current project cognition was stale/blocked; live repository evidence is authoritative."
+      }
+    ],
+    "reference_projects": [],
+    "external_systems": [],
+    "path_status": "user-confirmed",
+    "boundary_confidence": "medium",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "project": "cc-jiangxia",
+    "target_root": "F:\\github\\cc-jiangxia",
+    "target_paths_or_modules": [
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workflowTemplateValidation.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/api/workflowTemplates.ts",
+      "src/server/api/skills.ts",
+      "src/skills/loadSkillsDir.ts",
+      "src/tools/SkillTool/SkillTool.ts",
+      "src/tools/SkillTool/prompt.ts",
+      "desktop/src/types/skill.ts",
+      "desktop/src/types/session.ts",
+      "desktop/src/api/skills.ts",
+      "desktop/src/stores/skillStore.ts",
+      "desktop/src/components/skills/SkillList.tsx",
+      "desktop/src/components/plugins/PluginDetail.tsx",
+      "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+      "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+      "desktop/src/components/workflow/WorkflowStatusPanel.tsx"
+    ],
+    "target_paths_still_to_verify": [
+      "Whether a new shared skill catalog service should be extracted from src/server/api/skills.ts and src/skills/loadSkillsDir.ts.",
+      "Whether active workflow runtime evidence belongs in session state, phase run records, final report records, or all three."
+    ],
+    "target_project_cognition_status": "blocked-stale",
+    "cross_project_cognition_rule": "Current project cognition cannot prove another project's implementation facts; this handoff targets the current project only."
+  },
+  "source_evidence": [
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/tools/SkillTool/prompt.ts",
+      "claim": "Matching skills are a blocking requirement for the agent to consider before responding."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/tools/SkillTool/SkillTool.ts",
+      "claim": "Existing skills can be invoked by name and may affect allowed tools, model, effort, inline context, or forked execution."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/skills/loadSkillsDir.ts",
+      "claim": "Runtime skill sources include broader origins than current workflow template skill validation, including plugin, managed, bundled, and MCP."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/services/workflowTypes.ts",
+      "claim": "Current WorkflowSkillDeclaration is prompt guidance from templates, not an executable skill binding."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/services/workflowRuntimeService.ts",
+      "claim": "Runtime prompt assembly currently renders workflow skill guidance as guidance."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/services/workflowToolPolicy.ts",
+      "claim": "Current policy explicitly says workflow skill declarations do not enable SkillTool globally."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/services/workflowTemplateValidation.ts",
+      "claim": "Current phase skills normalization allows objects with name, limited source values, optional reason, and unknown fields."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/api/workflowTemplates.ts",
+      "claim": "Current workflow export exports template JSON and does not bundle skill package contents."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "src/server/api/skills.ts; desktop/src/api/skills.ts; desktop/src/stores/skillStore.ts",
+      "claim": "Settings > Skills is backed by a skills API and desktop skill store, but current server collection primarily covers user/project/plugin skills."
+    },
+    {
+      "source_type": "live-code",
+      "evidence_status": "proved",
+      "source": "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "claim": "Phase skills are currently edited through an advanced freeform textarea and converted line-by-line into skill declarations."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "discussion log",
+      "claim": "User confirmed phase skills should bind to skills, not plugins; plugin identity is provenance/dependency only."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "discussion log",
+      "claim": "User confirmed import-with-warnings for missing recommended phase skills."
+    },
+    {
+      "source_type": "user-confirmation",
+      "evidence_status": "confirmed",
+      "source": "discussion log",
+      "claim": "User confirmed UI mainline: phase-local selector, import/export diagnostics, lightweight runtime status."
+    }
+  ],
+  "blocking_unknowns": {
+    "hard_unknowns": [],
+    "soft_unknowns": [
+      {
+        "claim": "Exact phase skill binding schema fields remain to be specified.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "specification",
+        "stop_and_reopen_condition": "Reopen if schema details require changing confirmed recommended-first semantics."
+      },
+      {
+        "claim": "Exact shared catalog service/resolver boundary remains to be specified.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "planning",
+        "stop_and_reopen_condition": "Reopen if workflow authoring would use a separate inventory from Settings/runtime."
+      },
+      {
+        "claim": "Exact runtime evidence storage and report shape remain to be specified.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "planning",
+        "stop_and_reopen_condition": "Reopen if evidence cannot survive resume/compaction."
+      },
+      {
+        "claim": "Future required/contract phase skill behavior is intentionally out of first scope.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "specification",
+        "stop_and_reopen_condition": "Reopen if required skills are pulled into first scope."
+      }
+    ]
+  },
+  "downstream_instructions": {
+    "settled_decisions": [
+      "Workflow phase skills are recommended bindings to existing skills by default.",
+      "Workflow phases bind to skills, not plugins.",
+      "Plugin identity is provenance/dependency for plugin-provided skills.",
+      "Phase skills are selected from a shared Settings-backed skill catalog.",
+      "Recommended phase skills are not auto-executed and do not block completion.",
+      "Importing workflows with missing recommended phase skills is allowed with warnings and degraded state.",
+      "Workflow export includes dependency manifest and does not bundle skill package contents by default.",
+      "Primary UI is phase-local skill selection in WorkflowTemplateEditor."
+    ],
+    "assumptions_to_preserve": [
+      "Current project cognition is advisory only because it was stale/blocked.",
+      "Existing unknown-field preservation should be maintained.",
+      "Existing reason fields may exist but must not become the new source of skill applicability."
+    ],
+    "conflicts_requiring_return_to_discussion": [
+      "Any design that auto-executes recommended skills by default.",
+      "Any design that makes recommended skills block import or phase completion by default.",
+      "Any design that binds workflows to plugins instead of skills.",
+      "Any design that silently drops missing skill references.",
+      "Any design that bypasses SkillTool permission/safety boundaries."
+    ],
+    "capability_map": [
+      "Phase skill schema and validation",
+      "Shared skill catalog/resolver",
+      "Runtime prompt emphasis",
+      "Soft audit and status evidence",
+      "Workflow package export/import dependency diagnostics",
+      "Desktop phase skill selector",
+      "Runtime lightweight status display"
+    ],
+    "recommended_sequence": [
+      "Specify schema and source resolution semantics.",
+      "Specify shared catalog and import/export dependency diagnostics.",
+      "Specify runtime prompt/evidence behavior.",
+      "Specify desktop authoring and status surfaces.",
+      "Plan implementation and verification by surface."
+    ],
+    "dependencies": [
+      "Existing SkillTool semantics",
+      "Existing skill loader/source metadata",
+      "Workflow template validation and registry",
+      "Workflow runtime prompt assembly",
+      "Workflow import/export APIs",
+      "Settings skill catalog UI/API",
+      "Workflow template editor UI"
+    ],
+    "deferred_scope": [
+      "Required/contract phase skills",
+      "Automatic phase skill execution",
+      "Capability-graph scheduling",
+      "Default skill package bundling",
+      "Recursive/nested skill orchestration"
+    ],
+    "reopen_conditions": [
+      "Confirmed semantics cannot be implemented without weakening safety boundaries.",
+      "Shared catalog cannot represent the sources needed for workflow authoring.",
+      "Import/export cannot preserve missing skill references.",
+      "Runtime evidence cannot survive resume/compaction."
+    ]
+  },
+  "ui_discussion": {
+    "ui_discussion_status": "completed",
+    "confirmed_ui_decisions": [
+      "Phase skill selection belongs in the selected phase area of WorkflowTemplateEditor.",
+      "The selector should use the shared skill catalog, grouped by source.",
+      "Selected skills should show name, source, availability, and plugin provenance when relevant.",
+      "Import/export should show workflow-level skill dependency diagnostics.",
+      "Runtime workflow status should show recommended skill status only as a concise strip or expandable evidence section.",
+      "UI should avoid full checklist behavior for every recommended skill."
+    ],
+    "deferred_ui_decisions": [
+      "Exact copy and visual layout.",
+      "Exact missing/ambiguous/installable labels.",
+      "Whether runtime status is always visible or expandable by default."
+    ],
+    "interaction_expectations": [
+      "Add skill opens searchable shared catalog.",
+      "Phase-local selected skills are editable without touching other phases.",
+      "Dependency diagnostics are visible before import commit and before export sharing."
+    ],
+    "state_requirements": [
+      "available",
+      "missing",
+      "ambiguous",
+      "unsupported-source",
+      "plugin-disabled",
+      "used",
+      "relevant-skipped",
+      "relevant-unavailable"
+    ],
+    "accessibility_expectations": [
+      "Selector and chips must be keyboard accessible.",
+      "Warnings must be screen-reader visible text, not color-only.",
+      "Search/filter controls must have labels."
+    ],
+    "ui_sketches_present": false,
+    "ui_sketch_summary": "none",
+    "ui_sketch_reference": "none"
+  },
+  "ui_sketches_present": false,
+  "ui_sketch_summary": "none",
+  "ui_sketch_reference": "none",
+  "must_preserve_ledger": [
+    {
+      "id": "MP-001",
+      "type": "goal",
+      "claim": "Workflow phase skills should become real recommended bindings to existing skills, not prompt-only workflow guidance.",
+      "source": "user confirmations; requirements.md",
+      "downstream_requirement": "Spec must define phase skill as a first-class binding concept over existing skills.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if phase skills are represented only as prose guidance.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-002",
+      "type": "scope",
+      "claim": "First scope targets recommended phase skills, shared-catalog authoring, dependency-aware import/export, active-phase prompt emphasis, and lightweight runtime evidence.",
+      "source": "requirements.md",
+      "downstream_requirement": "Keep scope unified and do not expand into full workflow engine scheduling.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if scope expands to auto-execution or workflow engine orchestration by default.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-003",
+      "type": "non_goal",
+      "claim": "Recommended phase skills must not auto-execute or block phase completion by default.",
+      "source": "user confirmations",
+      "downstream_requirement": "Spec must reserve blocking behavior for future required/contract mode.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if recommended skills become mandatory completion gates.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-004",
+      "type": "decision",
+      "claim": "Workflow phase bindings target skills, not plugins; plugin identity is provenance/dependency for plugin-provided skills.",
+      "source": "user confirmation",
+      "downstream_requirement": "Schema and UI must store skill identity first and plugin metadata second.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if workflow templates bind to plugins as the primary object.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-005",
+      "type": "decision",
+      "claim": "Phase skill selection comes from the shared capability catalog behind Settings > Skills and plugin capability navigation.",
+      "source": "user confirmation; live code",
+      "downstream_requirement": "Spec must define or align a shared catalog/resolver consumed by settings, workflow authoring, import/export, and runtime.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if workflow authoring uses a separate skill inventory.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-006",
+      "type": "decision",
+      "claim": "Skill references are names-first; source/qualified metadata is added only when ambiguity or portability requires it.",
+      "source": "user confirmation",
+      "downstream_requirement": "Schema should keep authoring simple while preserving disambiguation fields.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if schema requires verbose fully-qualified references for all skills without need.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-007",
+      "type": "decision",
+      "claim": "The phase binding must not duplicate skill-owned description, reason, or appliesWhen semantics.",
+      "source": "user confirmation",
+      "downstream_requirement": "New UI/schema should not copy skill instructions into workflow templates; existing reason must not become the canonical trigger source.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if templates duplicate skill descriptions/triggers as source of truth.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-008",
+      "type": "decision",
+      "claim": "Active phase prompt semantics: selected skills are for this phase; pay special attention; invoke when current task matches; do not invoke when irrelevant.",
+      "source": "user confirmation",
+      "downstream_requirement": "Runtime prompt assembly must include this behavior without overriding user/system/developer/safety rules.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if prompt semantics are weaker than normal guidance or stronger than mandatory invocation.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-009",
+      "type": "decision",
+      "claim": "Soft audit records used recommended skills and clearly relevant skipped/unavailable skills only.",
+      "source": "user confirmation",
+      "downstream_requirement": "Completion/report design must avoid exhaustive noisy checklists.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if every recommended skill is mechanically listed as not relevant.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-010",
+      "type": "decision",
+      "claim": "Workflow sharing exports template plus skill dependency manifest and does not bundle skill package contents by default.",
+      "source": "user confirmation",
+      "downstream_requirement": "Export/import spec must include dependency metadata and avoid copying arbitrary skill files.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if export silently implies skills are bundled.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-011",
+      "type": "decision",
+      "claim": "Missing recommended phase skills allow import with warnings; references are preserved and marked unavailable.",
+      "source": "user confirmation",
+      "downstream_requirement": "Import preview and runtime must show degraded state without blocking import by default.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if missing recommended skills are silently dropped or block import.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-012",
+      "type": "decision",
+      "claim": "UI first scope is a phase-local skill selector in WorkflowTemplateEditor.",
+      "source": "user confirmation; live code",
+      "downstream_requirement": "Desktop spec should replace or augment the advanced skills textarea with a shared-catalog selector.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if authoring moves to only a workflow-level dependency page.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-013",
+      "type": "decision",
+      "claim": "Import/export surfaces show dependency diagnostics as supporting UI.",
+      "source": "user confirmation",
+      "downstream_requirement": "WorkflowImportExportDialog spec should expose available/missing/ambiguous/unsupported/installable statuses.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if imported workflows hide dependency problems.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-014",
+      "type": "decision",
+      "claim": "Runtime UI should show lightweight recommended skill status/evidence only when useful.",
+      "source": "user confirmation",
+      "downstream_requirement": "Active workflow status should avoid full checklist UX.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if runtime UI becomes noisy or hides unavailable relevant skills.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-015",
+      "type": "non_goal",
+      "claim": "Skill-derived permissions, shell behavior, hooks, forked agents, model changes, and effort changes must not bypass existing permission/safety boundaries.",
+      "source": "Senior Consequence Analysis",
+      "downstream_requirement": "Spec and plan must keep SkillTool permission semantics explicit.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "planning",
+      "status": "mapped",
+      "deferred_to": "",
+      "stop_and_reopen_condition": "Reopen if workflows can indirectly grant tools or run skill effects without normal checks.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-016",
+      "type": "tradeoff",
+      "claim": "Future explicit bundle mode may exist only for reviewed project-owned skills with visible file list/security review.",
+      "source": "discussion decision",
+      "downstream_requirement": "Keep bundling out of default first scope.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "deferred",
+      "deferred_to": "future-extension",
+      "stop_and_reopen_condition": "Reopen if first scope tries to bundle user/plugin/MCP skill package contents.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-017",
+      "type": "blocking_question",
+      "claim": "Exact schema fields, catalog coverage, and runtime evidence storage are unresolved implementation details, not product blockers.",
+      "source": "assessment",
+      "downstream_requirement": "Resolve during specification/planning without changing confirmed behavior.",
+      "blocking_level": "soft",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "planning",
+      "status": "deferred",
+      "deferred_to": "specification/planning",
+      "stop_and_reopen_condition": "Reopen if these details require changing confirmed product semantics.",
+      "mapped_to": ""
+    }
+  ],
+  "senior_consequence_analysis": {
+    "triggered": true,
+    "trigger_reason": "Workflow-declared executable or higher-priority skills can affect agent instruction priority, tool permissions, skill invocation, workflow phase lifecycle, running and resumed sessions, template validation, compaction/resume, and user trust boundaries.",
+    "affected_object_map": [
+      "Skill catalog entries from user, project, plugin, managed, bundled, and MCP sources.",
+      "Skill metadata including allowed tools, model, effort, context=fork, agent, hooks, shell expansion, user invocability, and disable-model-invocation.",
+      "SkillTool invocation records and context modifiers.",
+      "Workflow templates and phase skill declarations.",
+      "Workflow template validation, registry writes, unknown-field preservation, import/export wrappers, and desktop authoring APIs.",
+      "Workflow session state, phase runs, template snapshots, active prompts, final reports, and resume/stale/missing-template states.",
+      "Desktop Settings > Skills, Plugin Detail capability navigation, Workflow Template Editor, Workflow Import/Export Dialog, Workflow Manager, and Workflow Status Panel."
+    ],
+    "state_behavior_matrix": {
+      "created": "Resolve selected phase skill references and record diagnostics before phase work starts.",
+      "running": "Surface recommended skills in active phase prompt; mark unavailable skills explicitly.",
+      "pending-confirmation": "Preserve used/skipped/unavailable evidence before transition approval.",
+      "failed": "Distinguish workflow failure from skill resolution/execution failure.",
+      "cancelled": "Do not retry skill resolution/execution automatically.",
+      "completed": "Final report preserves relevant phase skill evidence.",
+      "resumed": "Use session snapshot/provenance and re-resolve carefully; do not silently change behavior from edited skill definitions.",
+      "stale-template": "Avoid replacing session skill bindings with newer template bindings without a defined policy.",
+      "missing-template": "Preserve snapshot skill bindings if available and report missing source template separately."
+    },
+    "dependency_impact_table": [
+      {
+        "surface": "src/tools/SkillTool/SkillTool.ts",
+        "impact": "Invocation, permissions, forked behavior, model/effort context modifiers, audit."
+      },
+      {
+        "surface": "src/skills/loadSkillsDir.ts",
+        "impact": "Actual runtime skill sources and metadata."
+      },
+      {
+        "surface": "src/server/api/skills.ts",
+        "impact": "Current Settings skill catalog API; likely needs shared resolver extraction or alignment."
+      },
+      {
+        "surface": "src/server/services/workflowTypes.ts",
+        "impact": "Workflow schema/session/final report contracts."
+      },
+      {
+        "surface": "src/server/services/workflowTemplateValidation.ts",
+        "impact": "Template skill reference validation and normalization."
+      },
+      {
+        "surface": "src/server/services/workflowRuntimeService.ts",
+        "impact": "Active phase prompt assembly and runtime evidence."
+      },
+      {
+        "surface": "src/server/api/workflowTemplates.ts",
+        "impact": "Export/import package and dependency diagnostics."
+      },
+      {
+        "surface": "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+        "impact": "Primary authoring UI."
+      },
+      {
+        "surface": "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+        "impact": "Dependency diagnostics UI."
+      },
+      {
+        "surface": "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+        "impact": "Active runtime status/evidence UI."
+      }
+    ],
+    "recovery_and_validation_contract": [
+      "Add stable schema and migration/compatibility handling before changing authoring UI.",
+      "Validate skill references without requiring missing recommended skills to block import.",
+      "Preserve unresolved references in templates and session snapshots.",
+      "Record resolution status and soft audit evidence in durable state/report paths.",
+      "Keep permission prompts explicit for skill-derived tools, shell behavior, hooks, forked agents, model changes, and effort changes.",
+      "Provide rollback by preserving old template fields and unknown fields.",
+      "Verify with unit tests, server request-shape tests, desktop component tests, and targeted workflow runtime tests."
+    ],
+    "coverage_gaps": [
+      {
+        "gap": "Project cognition was stale/blocked.",
+        "owner": "downstream",
+        "latest_safe_resolve_phase": "planning",
+        "stop_and_reopen_condition": "Live code evidence conflicts with handoff assumptions.",
+        "routing_decision": "current workflow may continue with live evidence"
+      },
+      {
+        "gap": "Current Settings skill API and runtime skill loader may not expose identical source universes.",
+        "owner": "downstream",
+        "latest_safe_resolve_phase": "specification",
+        "stop_and_reopen_condition": "Shared catalog cannot support confirmed authoring/import behavior.",
+        "routing_decision": "resolve in specification"
+      },
+      {
+        "gap": "Exact storage location for skill resolution/evidence is not selected.",
+        "owner": "downstream",
+        "latest_safe_resolve_phase": "planning",
+        "stop_and_reopen_condition": "Evidence cannot survive resume/compaction.",
+        "routing_decision": "resolve in planning"
+      }
+    ],
+    "consequence_obligations": [
+      {
+        "id": "CA-001",
+        "claim": "Define stable workflow skill binding identity across local, bundled, plugin, managed, and MCP sources.",
+        "affected_objects": ["workflow template schema", "skill catalog", "import/export"],
+        "owner_workflow": "sp-specify",
+        "latest_resolve_phase": "specification",
+        "status": "pending",
+        "stop_and_reopen_condition": "If a spec lacks source/version semantics."
+      },
+      {
+        "id": "CA-002",
+        "claim": "Define priority precedence without overriding system, developer, security, or explicit user safety boundaries.",
+        "affected_objects": ["runtime prompt", "SkillTool", "agent behavior"],
+        "owner_workflow": "sp-specify",
+        "latest_resolve_phase": "specification",
+        "status": "pending",
+        "stop_and_reopen_condition": "If higher priority implies unsafe override."
+      },
+      {
+        "id": "CA-003",
+        "claim": "Define behavior for missing, stale, disabled, invalid, or unavailable workflow skills.",
+        "affected_objects": ["validation", "import/export", "runtime state"],
+        "owner_workflow": "sp-specify",
+        "latest_resolve_phase": "specification",
+        "status": "pending",
+        "stop_and_reopen_condition": "If missing skills silently degrade to plain prompt text."
+      },
+      {
+        "id": "CA-004",
+        "claim": "Preserve explicit permission handling for skill-derived tools, shell expansion, hooks, forked agents, model changes, and effort changes.",
+        "affected_objects": ["SkillTool", "permissions", "workflow runtime"],
+        "owner_workflow": "sp-plan",
+        "latest_resolve_phase": "planning",
+        "status": "pending",
+        "stop_and_reopen_condition": "If workflow skill execution bypasses existing SkillTool permission semantics."
+      },
+      {
+        "id": "CA-005",
+        "claim": "Snapshot or preserve workflow skill provenance for running, pending, completed, resumed, stale-template, and missing-template sessions.",
+        "affected_objects": ["session state", "phase runs", "final reports"],
+        "owner_workflow": "sp-plan",
+        "latest_resolve_phase": "planning",
+        "status": "pending",
+        "stop_and_reopen_condition": "If source skill edits can silently change an active session."
+      },
+      {
+        "id": "CA-006",
+        "claim": "Make workflow skill execution or non-use observable to the user and downstream artifacts.",
+        "affected_objects": ["desktop runtime UI", "final report", "phase completion"],
+        "owner_workflow": "sp-specify",
+        "latest_resolve_phase": "specification",
+        "status": "pending",
+        "stop_and_reopen_condition": "If relevant skill use/skip/unavailability is invisible."
+      },
+      {
+        "id": "CA-007",
+        "claim": "Validate workflow skill bindings in workflow template authoring and import/export paths.",
+        "affected_objects": ["template editor", "validation", "import/export"],
+        "owner_workflow": "sp-plan",
+        "latest_resolve_phase": "planning",
+        "status": "pending",
+        "stop_and_reopen_condition": "If invalid references persist without diagnostics."
+      },
+      {
+        "id": "CA-008",
+        "claim": "Define UI requirements for authoring and inspecting workflow skill bindings.",
+        "affected_objects": ["WorkflowTemplateEditor", "WorkflowImportExportDialog", "WorkflowStatusPanel"],
+        "owner_workflow": "sp-specify",
+        "latest_resolve_phase": "specification",
+        "status": "mapped",
+        "stop_and_reopen_condition": "If UI state labels for missing/unavailable/used/skipped are absent."
+      },
+      {
+        "id": "CA-009",
+        "claim": "Preserve workflow skill evidence through compaction and resume.",
+        "affected_objects": ["session state", "compaction", "resume"],
+        "owner_workflow": "sp-plan",
+        "latest_resolve_phase": "planning",
+        "status": "pending",
+        "stop_and_reopen_condition": "If compaction drops evidence required for later phase decisions."
+      },
+      {
+        "id": "CA-010",
+        "claim": "Prevent recursive or unbounded nested skill invocation.",
+        "affected_objects": ["SkillTool", "agent runtime", "workflow runtime"],
+        "owner_workflow": "sp-plan",
+        "latest_resolve_phase": "planning",
+        "status": "pending",
+        "stop_and_reopen_condition": "If auto-invocation or required invocation is introduced without depth, loop, or retry limits."
+      }
+    ]
+  },
+  "quality_gate": {
+    "status": "user-confirmed",
+    "self_reviewed_at": "2026-05-29T15:35:05.2241333+08:00",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-05-29T15:54:40.6502152+08:00",
+    "coverage_status": "source-grounded-discussion; project-cognition-stale-blocked",
+    "planning_gate_status": "ready-for-specify-user-confirmed",
+    "hard_unknown_count": 0,
+    "open_conflict_count": 0,
+    "blocked_reasons": []
+  }
+}

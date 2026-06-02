@@ -1,0 +1,84 @@
+{
+  "task_id": "T022",
+  "status": "success",
+  "classification": "unrelated_preexisting_or_external",
+  "changed_files": [
+    ".specify/features/007-workflow-phase-skills/worker-results/T022.json",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/api/skills.ts",
+    "src/server/services/taskService.ts",
+    "src/server/api/models.ts",
+    "src/server/services/repositoryLaunchService.ts",
+    "src/server/__tests__/tasks.test.ts",
+    "src/server/__tests__/e2e/business-flow.test.ts",
+    "src/server/__tests__/e2e/full-flow.test.ts"
+  ],
+  "validation_output": {
+    "focused_server_tests": {
+      "command": "bun test --isolate src/server/__tests__/sessions.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSummary.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowTypes.test.ts",
+      "exit_code": 0,
+      "summary": "Passed. Ran 273 tests across 8 files: 273 pass, 0 fail, 1394 expect() calls."
+    },
+    "check_server": {
+      "command": "bun run check:server",
+      "exit_code": 1,
+      "summary": "Failed in the broader server suite after 764 tests across 40 files."
+    },
+    "isolated_repro": {
+      "tasks_test": {
+        "command": "bun test --isolate src/server/__tests__/tasks.test.ts",
+        "exit_code": 1,
+        "summary": "5 pass, 5 fail. Failures were in TaskService and Tasks API assertions that expected flat task files and 404 behavior."
+      },
+      "business_flow_test": {
+        "command": "bun test --isolate src/server/__tests__/e2e/business-flow.test.ts",
+        "exit_code": 1,
+        "summary": "10 failures. Most were model/session/WebSocket expectations outside the workflow-phase-skills surface; the failing session-create assertion used a hardcoded macOS path on Windows."
+      },
+      "full_flow_test": {
+        "command": "bun test --isolate src/server/__tests__/e2e/full-flow.test.ts",
+        "exit_code": 1,
+        "summary": "2 failures. One was a platform expectation mismatch ('darwin' vs 'win32'); the other expected 4 models when src/server/api/models.ts currently exposes 3 fallback models."
+      }
+    }
+  },
+  "classification_evidence": [
+    {
+      "surface": "workflow-phase-skills scope",
+      "evidence": "The T022 changes are in src/server/services/workflowSessionCreateService.ts, workflowRuntimeService.ts, workflowSummary.ts, workflowFinalReport.ts, workflowTemplateRegistryService.ts, workflowTemplateValidation.ts, workflowTypes.ts, src/server/api/workflowTemplates.ts, and src/server/api/skills.ts. None of the failing test files are in that change surface."
+    },
+    {
+      "surface": "tasks",
+      "evidence": "src/server/__tests__/tasks.test.ts failed because TaskService only scans nested task-list directories (src/server/services/taskService.ts:40-117), while the tests write JSON files directly under tmpDir/tasks/*.json and then expect listTasks()/getTask() to find them."
+    },
+    {
+      "surface": "models",
+      "evidence": "src/server/api/models.ts:19-42 defines 3 fallback models and DEFAULT_MODEL = 'claude-opus-4-7'. The failing tests in src/server/__tests__/e2e/business-flow.test.ts and src/server/__tests__/e2e/full-flow.test.ts expected 4 models and a Sonnet default, which is a preexisting expectation mismatch unrelated to workflow-phase-skills."
+    },
+    {
+      "surface": "session creation",
+      "evidence": "src/server/services/repositoryLaunchService.ts:169-175 resolves the workDir with fs.realpath and returns 'missing_workdir' when the directory does not exist. The failing business-flow test posts workDir '/Users/dev/my-project' on Windows, so the 400 is environmental/platform-specific rather than caused by the workflow-phase-skills feature."
+    },
+    {
+      "surface": "websocket/content flow",
+      "evidence": "The isolated business-flow run reached a websocket state with messages [connected, status, session_title_updated] instead of content_start/content_delta, but the workflow-phase-skills changes do not touch the regular conversation websocket path. This remains outside the T022 write scope."
+    }
+  ],
+  "concerns": [
+    "The broader server suite is already carrying unrelated failures in task discovery, model defaults, platform expectations, and session path assumptions.",
+    "CronScheduler timeouts were reported by the wider check:server run, but they were not reproduced in the isolated reruns above and are not connected to the workflow-phase-skills code paths.",
+    "No implementation files were edited during this escalation because the evidence points outside the allowed T022 write scope."
+  ],
+  "recovery_hints": [
+    "If you need `check:server` green, open a separate task for the unrelated server areas first: task discovery, model defaults, session path handling, and any CronScheduler timeout investigation.",
+    "For validating T022 specifically, rely on the focused 273-test workflow/server subset that already passed.",
+    "If you want to keep chasing the broader failure, start with src/server/__tests__/tasks.test.ts, src/server/api/models.ts, and src/server/services/repositoryLaunchService.ts; those are the concrete repro points from the isolated runs."
+  ]
+}

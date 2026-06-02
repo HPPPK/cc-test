@@ -33,6 +33,7 @@ const requiredRepairableIssueCodes = [
   'WORKFLOW_TEMPLATE_MISSING_REQUIRED_FIELD',
   'WORKFLOW_TEMPLATE_INVALID_PHASES',
   'WORKFLOW_PHASE_DUPLICATE_ID',
+  'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
   'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
   'WORKFLOW_PHASE_OUTPUT_ARTIFACT_REQUIRED',
   'WORKFLOW_PHASE_HANDOFF_REQUIRED',
@@ -116,6 +117,18 @@ describe('workflow template authoring guide', () => {
     }
   })
 
+  test('guides agents to select recommended phase skills from the catalog without duplicating skill metadata', () => {
+    const modelSkills = workflowTemplateAuthoringGuide.fieldGroups.find((group) => group.id === 'model-skills')
+    const guidance = modelSkills?.guidance.join('\n') ?? ''
+
+    expect(modelSkills?.optionalFields).toContain('phases[].skills')
+    expect(guidance).toContain('workflow_template_authoring skill_catalog')
+    expect(guidance).toContain('{ name, mode: "recommended" }')
+    expect(guidance).toContain('Do not duplicate skill-owned descriptions')
+    expect(guidance).toContain('Legacy reason fields are preserved')
+    expect(guidance).not.toContain('Skills should include a name and reason')
+  })
+
   test('lists unsupported shape names that map to shared linear-only validation codes', () => {
     expect(workflowTemplateAuthoringGuide.unsupportedShapes).toEqual(requiredUnsupportedShapes)
 
@@ -152,6 +165,9 @@ describe('workflow template authoring guide', () => {
         ],
       })),
       ...issueCodesFor(validTemplate({ id: WORKFLOW_TEMPLATE_BUILTIN_ID })),
+      ...issueCodesFor(validTemplate({
+        phases: [validPhase({ skills: [{ name: 'bad-mode', mode: 'required' }] })],
+      })),
       ...issueCodesFor(validTemplate({ phases: [validPhase({ outputArtifact: undefined })] })),
       ...issueCodesFor(validTemplate({
         phases: [

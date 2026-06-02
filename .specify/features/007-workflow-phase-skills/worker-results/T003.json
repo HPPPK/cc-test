@@ -1,0 +1,20 @@
+{
+  "task_id": "T003",
+  "status": "success",
+  "changed_files": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T003.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowTypes.test.ts",
+    "exit_code": 0,
+    "summary": "14 pass, 0 fail across workflowPhaseSkillResolver.test.ts and workflowTypes.test.ts."
+  },
+  "remaining_expected_failures": [
+    "Broader T002 foundation command still has expected T004 failures in workflowTemplateRegistryService.test.ts for legacy skill normalization, invalid skill validation, and missing/unsupported skill warnings.",
+    "Broader T002 foundation command still has expected T004 failures in workflowTemplates.test.ts for validate/import preview/import commit resolver-backed diagnostics and invalid-reference write protection."
+  ],
+  "concerns": [],
+  "recovery_hints": []
+}

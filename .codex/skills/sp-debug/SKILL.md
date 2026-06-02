@@ -44,12 +44,17 @@ Drive a resumable debugging workflow that finds the real failure mechanism befor
 
 ## Codex Project Cognition Advisory Gate
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
-- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
-- Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, retrieve graph-backed project concept candidates with the lexicon command, select relevant existing concepts, record rejected concepts, write `concept_decisions`, carry `lexicon_generation_id`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for brownfield first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows outside a `greenfield_empty` baseline, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements instead of treating absent graph paths as `needs_rebuild`. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
+- Use `map-update` for ordinary existing-baseline gaps. If `baseline_kind=greenfield_empty`, do not recommend map-scan -> map-build solely because the graph has no paths; continue with workflow artifacts and live requirements. Use `map-scan -> map-build` only for brownfield first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows outside `greenfield_empty`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 - Treat the project cognition query bundle as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should guide the route.
 - Treat this as advisory navigation, not a hard gate; continue with live repository evidence when the bundle is weak, stale, or missing, and use map maintenance only when it is actually useful.
-- Mutation closeout is separate from entry routing: entry stale may continue, but if the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other map-level coverage facts, final state must record a refresh or dirty outcome: either an actual `{{invoke:map-update}}` refresh using the changed paths, or `project-cognition mark-dirty` when the required refresh cannot be completed now.
+- Mutation closeout is separate from entry routing: entry stale may continue, but workflow-owned mutation closeout is not an external map-maintenance handoff. If the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other project-related behavior surfaces, final state must run inline project cognition update from changed paths, affected surfaces, and verification evidence.
+- Inline project cognition update uses `project-cognition delta append` followed by `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists, or `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json` when no delta session exists.
+- The payload-file path must include changed_paths, behavior_surfaces, generated_surfaces, state_contracts, verification_evidence, known_unknowns, and confidence_notes so the update is equivalent to `sp-map-update`, not just a path stamp.
+- clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone. Treat `ready` and `no_op` as clean, `partial_refresh` as recorded but not fully clean, `needs_rebuild` as a map-scan/map-build route, `blocked` as blocked, and `recorded` as legacy recorded-only output that is never clean completion.
+- Use `project-cognition mark-dirty --reason "<reason>" --format json` only when inline update cannot complete. Dirty only when inline update cannot complete.
+- `sp-map-update` is for manual/external maintenance and follow-up repair after user edits, interrupted workflows, or explicit operator map-maintenance requests. It is not routine cleanup for changes this workflow just made.
 - A project-cognition query is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, and relevant facts are carried into the next workflow artifact or execution state.
 - Carry forward the selected capability or symptom, evidence routes, minimal reads, competing truths, and unresolved coverage gaps into debug session state before root-cause claims.
 
@@ -80,7 +85,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer the required refresh or dirty outcome after changing map-level truth.
+Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows outside `greenfield_empty`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance.
 
 Required output when the gate triggers:
 
@@ -167,7 +172,7 @@ When a defect touches lifecycle, running-state, shared-state, destructive behavi
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command debug --format json` when available so passive learning files exist and the current debug run sees relevant shared project memory.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning start --command debug --format json` when available so passive learning files exist and the current debug run sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader command-local context.
 - Open only learning detail docs linked from debug-relevant index entries, especially repeated pitfalls, recovery paths, or project constraints for the failing area.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
@@ -196,7 +201,7 @@ When a defect touches lifecycle, running-state, shared-state, destructive behavi
 
 When running `sp-debug` in Codex, you are the **leader**, not a freeform debugger.
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, translate the raw user intent into a query_plan using returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
+**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, retrieve graph-backed project concept candidates with the lexicon command, select relevant existing concepts, record rejected concepts, write `concept_decisions`, carry `lexicon_generation_id`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before any investigation or fixes. Use the returned readiness, task-local bundle, and `minimal_live_reads`.
 
 Before applying fixes or running investigation actions:
 - Read the current debug session state and choose `execution_model: leader-inline | subagent-assisted | blocked` from the investigation shape.
@@ -286,12 +291,17 @@ scripts, configuration, or authoritative docs.
 
 Use the launcher-backed project cognition query planning flow required by this
 command's workflow contract to retrieve the task-local project cognition bundle:
-run `project-cognition lexicon`, inspect the returned `concept_candidates`,
-select the task-relevant `selected_concepts`, record non-selected or unsafe
-`rejected_concepts`, and write a `selection_reason` for both inclusion and
-exclusion choices. Then construct a `query_plan` containing
-`selected_concepts`, `rejected_concepts`, `expanded_queries`, and `paths`, and
-run `project-cognition query --query-plan`. Treat raw graph JSON artifacts as obsolete runtime surfaces.
+When project cognition is available, run `project-cognition lexicon` to retrieve
+graph-backed project concept candidates. Inspect `concept_candidates`, select
+task-relevant existing project concepts in `selected_concepts`, record
+non-selected or unsafe candidates in `rejected_concepts`, and write per-concept
+rationale in `concept_decisions`.
+
+Carry `lexicon_generation_id` into the `query_plan` so `project-cognition query`
+can detect generation drift. The `query_plan` should include
+`selected_concepts`, `rejected_concepts`, `concept_decisions`,
+`expanded_queries`, and justified `paths`, then be sent to
+`project-cognition query --query-plan`. Treat raw graph JSON artifacts as obsolete runtime surfaces.
 
 ### Concept Selection
 
@@ -300,8 +310,8 @@ project concept candidates with ownership, route, alias, `matched_terms`,
 `colloquial_matches`, domain, disambiguation, and confidence signals.
 Select concepts that match the user's intent and the workflow objective, reject
 concepts that are unrelated or unsafe to assume, and preserve the
-`selection_reason` so downstream artifacts can understand why the query was
-bounded that way.
+`selection_reason` and `concept_decisions` so downstream artifacts can
+understand why the query was bounded that way.
 
 When candidate concepts conflict, are too broad, or remain unknown, follow the
 returned readiness state instead of guessing. Do not bypass `route_pack` or
@@ -321,9 +331,10 @@ only when readiness drives routing, minimal_live_reads constrains inspection,
 and relevant facts are carried into the next workflow artifact or execution state.
 
 Extract and carry forward the selected concepts, rejected concepts,
-`selection_reason`, matched capability or symptom, affected nodes and subgraph,
-`route_pack`, `minimal_live_reads`, missing coverage, evidence traces,
-verification routes, ambiguity, conflicts, and weak coverage.
+`selection_reason`, `concept_decisions`, `lexicon_generation_id`, matched
+capability or symptom, affected nodes and subgraph, `route_pack`,
+`minimal_live_reads`, missing coverage, evidence traces, verification routes,
+ambiguity, conflicts, and weak coverage.
 
 ### Command Tier Depth
 
@@ -339,10 +350,10 @@ and minimal live reads after the minimum gate, not whether it may skip cognition
 Treat runtime freshness as map-quality diagnostics:
 
 - `fresh` -> use the returned task-local bundle as an advisory first pass navigation aid
-- `missing` -> if cognition freshness is `missing`, continue with live repository evidence and recommend `$sp-map-scan`, then `$sp-map-build` as follow-up map maintenance
-- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` as follow-up map maintenance
+- `missing` -> if cognition freshness is `missing`, continue with live repository evidence and recommend `$sp-map-scan`, then `$sp-map-build` only as brownfield external baseline maintenance
+- `stale` -> if cognition freshness is `stale`, treat map output as advisory and continue with live repository evidence; recommend `$sp-map-update` only as external/manual maintenance when the user asks for map maintenance or before a separate map-maintenance pass
 - `stale` with changed paths missing from `path_index` -> warn and continue with live repository evidence; recommend `$sp-map-update` first for ordinary existing-baseline gaps.
-  Use `$sp-map-scan -> $sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`
+  Use `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows outside baseline-kind exceptions described below, `explicit_rebuild_requested`, or `baseline_identity_invalid`
 - `support_drift` -> warn and continue with live repository evidence; recommend resolving or intentionally ignoring support-surface drift
 - `partial_refresh` -> warn that refresh data was recorded but readiness did not pass; continue with live repository evidence
 - `possibly_stale` -> inspect the returned affected scope when useful, then continue with live repository evidence
@@ -351,15 +362,46 @@ Preserve the distinction between the machine freshness field and public state
 guidance: `freshness` records map quality, while `recommended_next_action` is a
 map-maintenance recommendation.
 
+### Greenfield Empty Baseline
+
+If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements. Do not recommend map-scan -> map-build solely because the graph has no paths.
+
 ### Mutation Closeout Rule
 
-Entry stale may continue for live-evidence navigation, but it is not a
-completion waiver. If the active workflow changes source/runtime truth-owning
-surfaces, shared surfaces, command/route/contract boundaries, verification entry
-points, runtime assumptions, or other map-level coverage facts, closeout must
-record a refresh or dirty outcome: either an actual `$sp-map-update`
-refresh using the changed paths, or `project-cognition mark-dirty` when the
-required refresh cannot be completed now.
+Entry-time stale or weak cognition is still an advisory navigation concern unless the user explicitly requested map maintenance. A workflow may continue from live evidence when entry guidance allows it. That entry routing rule does not waive closeout ownership.
+
+### Inline Project Cognition Update
+
+Workflow-owned mutation closeout is not an external map-maintenance handoff and is not external map maintenance. It is the workflow-local form of `$sp-map-update`. If this workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, shared surfaces, or behavior-bearing docs, closeout MUST run inline project cognition update for the workflow-owned changed paths and affected surfaces before claiming clean completion.
+
+Use the current delta session when one exists:
+
+```text
+project-cognition delta append --session "$DELTA_SESSION_ID" --event-type workflow_closeout --changed-path "<path>" --behavior-surface "<surface>" --verification "<evidence>" --known-unknown "<unknown>" --format json
+project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json
+```
+
+Include `--commit-range "<base>..<head>"` only with `--delta-session` when a safe task commit boundary exists.
+
+When no delta session exists, write a payload file under `.specify/project-cognition/updates/` and call:
+
+```text
+project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json
+```
+
+The payload must include `workflow`, `reason`, `changed_paths`, `scope_paths`, `behavior_surfaces`, `generated_surfaces`, `state_contracts`, `verification`, `known_unknowns`, `confidence_notes`, `user_decisions`, and `boundary` when those facts exist.
+
+Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone:
+
+- `ready` or `no_op`: project cognition closeout may be clean when ordinary verification also passed.
+- `partial_refresh`: useful update data was written, but the final workflow state must report partial cognition closeout and the returned `minimal_live_reads`.
+- `needs_rebuild`: report the exact rebuild condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- `blocked`: report the runtime or validation blocker and the exact recovery command.
+- `recorded`: legacy recorded-only output; treat it as partial or blocked, never as clean completion.
+
+Use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` only when inline update cannot complete: when inline update is unavailable, cannot record useful update data, cannot identify workflow-owned scope, or cannot be trusted because verification/workflow completion is not trustworthy. Dirty only when inline update cannot complete.
+
+sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-update` remains the external/manual workflow for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. It is not routine cleanup for changes this workflow just made.
 
 ### Primary Read Restriction
 
@@ -367,9 +409,9 @@ Do not treat handbook-first or layered project-map files as evidence. If
 query-returned coverage is insufficient, inspect live repository surfaces
 directly and recommend `sp-map-update` for ordinary existing-baseline gaps,
 localized stale cognition refresh, weak localized coverage after a usable
-baseline, or ordinary changed-path maintenance. Use `sp-map-scan -> sp-map-build`
-only for first/missing/unusable baseline, schema failure, zero active-generation
-`path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+baseline, or external/manual changed-path map maintenance. Use `sp-map-scan -> sp-map-build`
+only for brownfield first/missing/unusable baseline, schema failure, zero active-generation
+`path_index` rows outside `greenfield_empty`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 
 The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion.
 
@@ -387,7 +429,7 @@ Run or emulate:
 
 ```text
 C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json
-# Agent: generate <query_plan_json> from raw user intent plus returned map terms.
+# Agent: select from returned graph-backed project concept candidates; include selected_concepts, rejected_concepts, concept_decisions, lexicon_generation_id, expanded_queries, and justified paths in <query_plan_json>.
 C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json
 ```
 
@@ -407,7 +449,7 @@ Use the returned readiness:
 
 ### Intake Inputs
 - Read `.planning/debug/[slug].md` before each resumed action; treat it as the investigation source of truth.
-- Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, then generate a query_plan from returned map terms, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before trusting existing brownfield routing assumptions.
+- Query project cognition with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent debug --query=\"$ARGUMENTS\" --format json`, then select from returned graph-backed project concept candidates, write `concept_decisions`, carry `lexicon_generation_id`, then generate a `query_plan`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent debug --query-plan \"<query_plan_json>\" --format json` before trusting existing brownfield routing assumptions.
 - If truth ownership, competing truths, stale assumptions, or contradiction signals remain ambiguous, perform only the returned `minimal_live_reads` before continuing.
 - [AGENT] If cognition freshness is `missing`, stop and tell the user to run `$sp-map-scan`, then `$sp-map-build`; wait for that rebuild before root-cause analysis continues.
 - [AGENT] If cognition freshness is `stale`, stop and tell the user to use `$sp-map-update`; wait for that refresh before root-cause analysis continues.
@@ -686,7 +728,7 @@ Repeated failure does not reopen observer-shape choices. It upgrades downstream 
 - Use `.specify/templates/worker-prompts/debug-investigator.md` as the default evidence-collector contract whenever the current integration can dispatch a debug subagent.
 - If the current runtime supports structured subagent results, prefer a stable evidence payload over freeform summaries so the leader can merge findings without reinterpretation.
 - If the current integration exposes a runtime-managed result channel, use that channel. Otherwise write the normalized evidence/result envelope to `.planning/debug/results/<session-slug>/<lane-id>.json`
-- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify result submit` to normalize and write the evidence/result envelope.
+- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify result submit` to normalize and write the evidence/result envelope.
 - Preserve `reported_status` when normalizing subagent language such as `DONE_WITH_CONCERNS` or `NEEDS_CONTEXT` into canonical orchestration state.
 - Idle subagent is not an accepted result.
 - [AGENT] The leader must wait for and consume the structured handoff before closing the join point, declaring completion, requesting shutdown, or interrupting subagent execution.
@@ -746,15 +788,47 @@ The session file must always make it clear:
 - If automated verification or human verification fails repeatedly without producing a stronger causal explanation, stop the local fix loop and create or refresh `.planning/debug/[slug].research.md` before another code change.
 - Use that debug-local research checkpoint to record the missing contract facts, environment assumptions, external references, or repository evidence needed to break the loop.
 - Treat the returned `project-cognition query` bundle and readiness as the truth source for brownfield debug runtime coverage; use only returned `minimal_live_reads` when needed.
-- Before moving to `awaiting_human_verify` or `resolved`, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` with the actual `$sp-map-update` refresh or `project-cognition mark-dirty` outcome whenever project cognition might be affected.
-- If the fix changed truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other cognition coverage facts, and verification is truthfully green and no explicit blocker prevents completion, refresh the project cognition runtime through `$sp-map-update` using the changed paths before moving to `awaiting_human_verify` or `resolved`. Do not rebuild for ordinary uncertain closure; `sp-map-update` records partial/low-confidence facts, known unknowns, and `minimal_live_reads`. After a successful existing-baseline map-update, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization. Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build only for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
-- If that refresh cannot be completed now, use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` as the manual override/fallback and tell the user to run `$sp-map-update` with the changed paths before later brownfield work proceeds. The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs. Project cognition can support route selection but cannot be the sole evidence for completion. Escalate to `$sp-map-scan`, then `$sp-map-build` only for the explicit rebuild conditions above.
+- Before moving to `awaiting_human_verify` or `resolved`, record `changed_code_paths` with modified, added, deleted, and renamed paths; `changed_behavior_surfaces` for affected commands, APIs, templates, generated assets, state files, tests, docs, validators, packets, or runtime assumptions; `verification_evidence`; and `project_cognition_refresh` when project cognition might be affected.
+### Inline Project Cognition Update
+
+Workflow-owned mutation closeout is not an external map-maintenance handoff and is not external map maintenance. It is the workflow-local form of `$sp-map-update`. If this workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, shared surfaces, or behavior-bearing docs, closeout MUST run inline project cognition update for the workflow-owned changed paths and affected surfaces before claiming clean completion.
+
+Use the current delta session when one exists:
+
+```text
+project-cognition delta append --session "$DELTA_SESSION_ID" --event-type workflow_closeout --changed-path "<path>" --behavior-surface "<surface>" --verification "<evidence>" --known-unknown "<unknown>" --format json
+project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json
+```
+
+Include `--commit-range "<base>..<head>"` only with `--delta-session` when a safe task commit boundary exists.
+
+When no delta session exists, write a payload file under `.specify/project-cognition/updates/` and call:
+
+```text
+project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json
+```
+
+The payload must include `workflow`, `reason`, `changed_paths`, `scope_paths`, `behavior_surfaces`, `generated_surfaces`, `state_contracts`, `verification`, `known_unknowns`, `confidence_notes`, `user_decisions`, and `boundary` when those facts exist.
+
+Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone:
+
+- `ready` or `no_op`: project cognition closeout may be clean when ordinary verification also passed.
+- `partial_refresh`: useful update data was written, but the final workflow state must report partial cognition closeout and the returned `minimal_live_reads`.
+- `needs_rebuild`: report the exact rebuild condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- `blocked`: report the runtime or validation blocker and the exact recovery command.
+- `recorded`: legacy recorded-only output; treat it as partial or blocked, never as clean completion.
+
+Use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` only when inline update cannot complete: when inline update is unavailable, cannot record useful update data, cannot identify workflow-owned scope, or cannot be trusted because verification/workflow completion is not trustworthy. Dirty only when inline update cannot complete.
+
+sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-update` remains the external/manual workflow for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. It is not routine cleanup for changes this workflow just made.
+- Manual map maintenance may record ordinary uncertain closure, partial/low-confidence facts, known unknowns, and `minimal_live_reads` for external repair cases. After a successful existing-baseline maintenance refresh, use `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` only for incremental freshness finalization; `sp-map-build` owns `build-from-scan` and `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`, so do not run `complete-refresh` as a rebuild finalizer.
+- The completion claim must be backed by live code, tests, scripts, configuration, or authoritative docs; project cognition can support route selection but cannot be the sole evidence for completion. Continue only when verification is truthfully green and no explicit blocker prevents completion.
 - [AGENT] Resolved debug sessions should auto-capture reusable lessons from the persisted debug session state into index/detail entries.
-- [AGENT] If you are finalizing outside the normal debug CLI closeout path, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning capture-auto --command debug --session-file .planning/debug/[slug].md --format json`.
+- [AGENT] If you are finalizing outside the normal debug CLI closeout path, run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning capture-auto --command debug --session-file .planning/debug/[slug].md --format json`.
 - [AGENT] If the auto-capture pass produced no captured lesson but you still discovered a reusable `pitfall`, `recovery_path`, or `project_constraint`, use the manual `learning capture` helper surface to create or merge an index/detail entry.
   Required options: `--command`, `--type`, `--summary`, `--evidence`
 - [AGENT] Before leaving the debug session in a terminal state, apply the Learning Reflex and record any reusable `pitfall`, `recovery_path`, `tooling_trap`, `false_lead_pattern`, or `project_constraint` in `.specify/memory/learnings/INDEX.md` plus a linked detail document when durable state did not already preserve it.
-- Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
+- Treat one-off findings as no reusable lesson; store reusable lessons as index/detail entries, and use `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning promote --target learning ...` only after explicit confirmation or proven recurrence.
 - Only ask for confirmation when a new learning is highest-signal, such as an explicit user default, clear cross-stage reuse, or repeated recurrence that should become shared project memory.
 
 ## Checkpoint Protocol

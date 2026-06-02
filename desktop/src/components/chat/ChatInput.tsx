@@ -73,6 +73,13 @@ type EmptySessionReplacementOptions = {
   workflow?: WorkflowSessionCreateOptions
 }
 
+type SlashCommand = {
+  name: string
+  description: string
+  argumentHint?: string
+}
+
+const EMPTY_SLASH_COMMANDS: SlashCommand[] = []
 const EMPTY_WORKSPACE_REFERENCES: WorkspaceChatReference[] = []
 
 function workspaceReferenceToAttachment(reference: WorkspaceChatReference): Attachment {
@@ -138,12 +145,14 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       return next
     })
   }, [])
-  const { sendMessage, stopGeneration } = useChatStore()
+  const sendMessage = useChatStore((s) => s.sendMessage)
+  const stopGeneration = useChatStore((s) => s.stopGeneration)
   const activeTabId = useTabStore((s) => s.activeTabId)
-  const sessionState = useChatStore((s) => activeTabId ? s.sessions[activeTabId] : undefined)
-  const chatState = sessionState?.chatState ?? 'idle'
-  const slashCommands = sessionState?.slashCommands ?? []
-  const composerPrefill = sessionState?.composerPrefill ?? null
+  const chatState = useChatStore((s) => activeTabId ? s.sessions[activeTabId]?.chatState ?? 'idle' : 'idle')
+  const slashCommands = useChatStore((s) => activeTabId ? s.sessions[activeTabId]?.slashCommands ?? EMPTY_SLASH_COMMANDS : EMPTY_SLASH_COMMANDS)
+  const composerPrefill = useChatStore((s) => activeTabId ? s.sessions[activeTabId]?.composerPrefill ?? null : null)
+  const connectionState = useChatStore((s) => activeTabId ? s.sessions[activeTabId]?.connectionState : undefined)
+  const loadedMessageCount = useChatStore((s) => activeTabId ? s.sessions[activeTabId]?.messages.length ?? 0 : 0)
   const runtimeSelection = useSessionRuntimeStore((state) =>
     activeTabId ? state.selections[activeTabId] : undefined,
   )
@@ -153,7 +162,6 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     : undefined
   const runtimeModelLabel = runtimeSelection?.modelId ?? currentModel?.name ?? currentModel?.id
   const activeSession = useSessionStore((state) => activeTabId ? state.sessions.find((session) => session.id === activeTabId) ?? null : null)
-  const loadedMessageCount = sessionState?.messages?.length ?? 0
   const messageCount = Math.max(loadedMessageCount, activeSession?.messageCount ?? 0)
   const memberInfo = useTeamStore((s) => activeTabId ? s.getMemberBySessionId(activeTabId) : null)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
@@ -178,7 +186,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
 
   const isMemberSession = !!memberInfo
   const isDisconnectedMemberSession =
-    isMemberSession && sessionState?.connectionState === 'disconnected'
+    isMemberSession && connectionState === 'disconnected'
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
   const canOpenWorkflowDialog = !isMemberSession && !!activeTabId && !activeSession?.workflow

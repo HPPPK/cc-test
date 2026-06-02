@@ -1,0 +1,31 @@
+{
+  "task_id": "T002",
+  "status": "success",
+  "red_state": "expected-failing",
+  "changed_files": [
+    "src/server/services/workflowPhaseSkillResolver.test.ts",
+    "src/server/services/workflowTypes.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T002.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts",
+    "exit_code": 1,
+    "summary": "Focused Bun test run failed in the expected RED state: 56 pass, 9 fail, 2 module/export errors. Failures point to missing workflowPhaseSkillResolver service, missing workflow phase skill type vocabularies, absent mode defaulting, missing invalid-reference validation, and missing dependency diagnostics.",
+    "expected_failure_signals": [
+      "Cannot find module './workflowPhaseSkillResolver.js' from workflowPhaseSkillResolver.test.ts",
+      "Export named 'WORKFLOW_PHASE_SKILL_SOURCES' not found in workflowTypes.ts",
+      "Legacy phase skills preserve reason and unknown fields but do not yet default mode to recommended",
+      "Malformed phase skill references are currently normalized away or accepted instead of producing WORKFLOW_PHASE_SKILL_INVALID_REFERENCE errors",
+      "Missing and unsupported recommended phase skills do not yet produce warning diagnostics while preserving startability",
+      "Import preview does not yet expose dependencyDiagnostics for missing recommended skills",
+      "Import commit currently writes a template with malformed skill references instead of rejecting atomically"
+    ]
+  },
+  "concerns": [],
+  "recovery_hints": [
+    "T003 should add workflow phase skill shared types/vocabularies and the resolver service with the tested status vocabulary.",
+    "T004 should wire resolver-backed validation and import diagnostics so invalid references are errors while missing/unsupported recommended skills are warnings."
+  ]
+}

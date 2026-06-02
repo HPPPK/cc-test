@@ -1,0 +1,59 @@
+{
+  "lane_id": "contracts",
+  "status": "accepted",
+  "source_artifacts_inspected": [
+    "spec.md",
+    "context.md",
+    "references.md"
+  ],
+  "live_files_inspected": [
+    "src/server/api/skills.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/api/sessions.ts",
+    "desktop/src/api/skills.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/types/session.ts"
+  ],
+  "contracts": [
+    {
+      "name": "Skill catalog/resolver contract",
+      "shape": "GET/POST server resolver surface that returns shared WorkflowPhaseSkillResolution objects for template authoring, import/export, and runtime.",
+      "consumer": "WorkflowTemplateEditor, workflow import preview, workflow export, runtime prompt assembly, status panel."
+    },
+    {
+      "name": "Workflow export contract",
+      "shape": "Existing { schemaVersion, exportedAt, templates } payload plus dependencyManifest; skill package contents are not bundled.",
+      "consumer": "WorkflowImportExportDialog and imported environments."
+    },
+    {
+      "name": "Workflow import preview contract",
+      "shape": "Candidates gain dependencyDiagnostics and non-blocking warning issues for missing recommended skills.",
+      "consumer": "WorkflowImportExportDialog and commit import validation."
+    },
+    {
+      "name": "Workflow session summary/status contract",
+      "shape": "Workflow summary gains compact recommendedSkillStatus/evidence summary, while detailed state/report carries full snapshot/evidence.",
+      "consumer": "WorkflowStatusPanel, ActiveSession, final report UI."
+    }
+  ],
+  "validation_rules": [
+    "invalid-reference is an error only for malformed skill reference shape.",
+    "missing/plugin-disabled/unsupported-source recommended skills are warnings and must not block import or completion by default.",
+    "ambiguous references require disambiguation before treating the skill as available.",
+    "resolved plugin-provided skills remain skill references with plugin provenance."
+  ],
+  "ca_obligations_covered": [
+    "CA-001",
+    "CA-003",
+    "CA-007",
+    "CA-008"
+  ],
+  "plan_sections_affected": [
+    "Contracts",
+    "Technical Context",
+    "Capability Preservation Plan",
+    "Quickstart"
+  ],
+  "integration_status": "integrated"
+}

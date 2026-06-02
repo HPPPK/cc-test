@@ -1,0 +1,145 @@
+{
+  "lane_id": "research",
+  "status": "accepted",
+  "source_artifacts_inspected": [
+    "spec.md",
+    "alignment.md",
+    "context.md",
+    "references.md",
+    "workflow-state.md",
+    ".specify/memory/constitution.md",
+    ".specify/memory/learnings/INDEX.md"
+  ],
+  "live_files_inspected": [
+    "src/tools/SkillTool/prompt.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/server/api/skills.ts",
+    "src/server/api/sessions.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowReportStore.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/skills.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx"
+  ],
+  "decisions": [
+    {
+      "id": "RD-001",
+      "title": "Shared server resolver is authoritative",
+      "recommendation": "Create or extract a server-side workflow phase skill resolver consumed by authoring, validation, import/export, runtime prompt assembly, summary/report state, and desktop APIs.",
+      "rationale": "Settings, desktop types, runtime loader, and SkillTool currently expose different skill source vocabularies. A shared resolver prevents drift.",
+      "alternatives_considered": [
+        "Desktop-only resolution through skillStore: rejected because import/export and runtime need server diagnostics.",
+        "Fully qualified references everywhere: rejected because the selected product model is names-first with metadata only when needed.",
+        "Treat unsupported runtime sources as missing: rejected because unsupported-source is more truthful and preserves portability."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-002",
+      "title": "Names-first binding with optional provenance",
+      "recommendation": "Extend existing phases[].skills entries into WorkflowPhaseSkillReference while preserving old { name, reason } entries and unknown fields.",
+      "rationale": "The registry and validation code already preserve unknown fields. Reusing phases[].skills avoids a parallel schema and keeps old templates valid.",
+      "alternatives_considered": [
+        "New separate phaseSkillBindings array: rejected because it adds migration and duplicate semantics.",
+        "Copy skill applicability metadata into templates: rejected by FR-007 and MP-007."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-003",
+      "title": "Dependency manifest on export, no default bundle",
+      "recommendation": "Add a dependency manifest with resolver snapshots to workflow export packages while keeping old exports importable and excluding skill package contents.",
+      "rationale": "The existing export package has a natural additive extension point, while default bundling is explicitly deferred for security and provenance reasons.",
+      "alternatives_considered": [
+        "Names-only export: rejected because recipients need dependency diagnostics.",
+        "Bundle skill files by default: rejected by MP-010 and MP-016."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-004",
+      "title": "Runtime prompt uses recommendation snapshot",
+      "recommendation": "Resolve phase references into a persisted snapshot and render a distinct active-phase Recommended phase skills block from that snapshot.",
+      "rationale": "Current runtime only renders Skill guidance. The new semantics require stronger active-phase attention while preserving non-mandatory SkillTool behavior.",
+      "alternatives_considered": [
+        "Auto-invoke recommended skills: rejected by MP-003, FR-003, and CA-010.",
+        "Keep existing Skill guidance wording: rejected because FR-014 requires stronger active-phase emphasis."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-005",
+      "title": "Evidence is bounded and signal-bearing",
+      "recommendation": "Persist evidence only for recommended skills that were used, clearly relevant but skipped, or clearly relevant but unavailable.",
+      "rationale": "FR-016 and MP-009 require lightweight evidence. Exhaustive unused-skill checklists would create noise and weaken reports.",
+      "alternatives_considered": [
+        "Store every recommendation as unused evidence: rejected as noisy.",
+        "Use analytics-only SkillTool usage: rejected because workflow reports and resume need durable state."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-006",
+      "title": "SkillTool remains the safety boundary",
+      "recommendation": "Workflow runtime must never apply skill-derived tools, shell behavior, hooks, forked agents, model, or effort changes directly.",
+      "rationale": "SkillTool validates names, checks permissions, applies context modifiers, handles forked execution, and records usage.",
+      "alternatives_considered": [
+        "Pre-grant allowed tools for recommended skills: rejected as a safety-boundary violation.",
+        "Copy skill metadata into workflow runtime: rejected by FR-007 and CA-004."
+      ],
+      "source_confidence": "verified"
+    },
+    {
+      "id": "RD-007",
+      "title": "UI uses existing workflow surfaces",
+      "recommendation": "Implement authoring, import/export diagnostics, and runtime status inside WorkflowTemplateEditor, WorkflowImportExportDialog, and WorkflowStatusPanel.",
+      "rationale": "These are the existing surfaces for template authoring, sharing, and runtime inspection. A new workflow skill page would duplicate ownership.",
+      "alternatives_considered": [
+        "Separate workflow skill management page: rejected as duplicate inventory.",
+        "Raw textarea only: rejected because FR-017 requires a phase-local selector."
+      ],
+      "source_confidence": "verified"
+    }
+  ],
+  "assumptions": [
+    "Content hash or version markers can be derived from available skill metadata or file contents without logging skill contents.",
+    "The first implementation can expose unsupported-source diagnostics for sources that cannot safely share runtime loader parity in one slice.",
+    "Existing reason fields can be preserved as legacy advisory data without becoming authoritative applicability metadata."
+  ],
+  "risks": [
+    "Skill source vocabulary differs between server API, desktop types, and runtime loader; tasks must close this with shared types and tests.",
+    "Existing skillProvenance fields currently mean template guidance; implementation must avoid mixing legacy guidance with resolved skill evidence.",
+    "Prompt emphasis must be strong enough to matter without creating hidden mandatory behavior."
+  ],
+  "ca_obligations_covered": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-006",
+    "CA-007",
+    "CA-008",
+    "CA-010"
+  ],
+  "plan_sections_affected": [
+    "Implementation Constitution",
+    "Research Inputs",
+    "Operational Consequence Design",
+    "Decision Preservation Check"
+  ],
+  "integration_status": "integrated"
+}

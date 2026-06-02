@@ -1,0 +1,42 @@
+{
+  "task_id": "T001",
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "command": "git diff --check -- .specify/features/007-workflow-phase-skills/plan.md",
+    "exit_code": 0,
+    "summary": "Passed with no diff-check output; plan.md has no whitespace/conflict-marker issues."
+  },
+  "guardrail_evidence": [
+    {
+      "guardrail": "Recommended skills must not auto-execute.",
+      "evidence": "Locked planning decisions state recommended skills never auto-execute and never block phase transitions by default (.specify/features/007-workflow-phase-skills/plan.md:16). The spec repeats that recommended bindings do not auto-execute (FR-003, FR-014, FR-021 in .specify/features/007-workflow-phase-skills/spec.md). Live workflow prompt policy keeps skill declarations as prompt-level guidance only and says they do not enable SkillTool globally (src/server/services/workflowToolPolicy.ts:306-333)."
+    },
+    {
+      "guardrail": "Recommended skills must not become default phase-completion gates.",
+      "evidence": "The plan says recommended skills never block import, phase start, or phase completion by default (.specify/features/007-workflow-phase-skills/plan.md:16). The spec keeps hard gating out of scope and requires recommended skills not block completion by default (FR-003 and acceptance proof in .specify/features/007-workflow-phase-skills/spec.md). Current workflow policy exposes only submit_phase_completion as the workflow-scoped tool and keeps completion semantics separate from skill guidance (src/server/services/workflowToolPolicy.ts:299-333)."
+    },
+    {
+      "guardrail": "Workflow phases must bind to skills, not plugins as primary objects.",
+      "evidence": "Locked planning decisions and MP-004 require skill-primary binding with plugin identity only as provenance/dependency metadata (.specify/features/007-workflow-phase-skills/plan.md:15, .specify/features/007-workflow-phase-skills/spec.md FR-002 and FR-010). The data model defines pluginName as optional provenance on WorkflowPhaseSkillReference, not the primary binding (.specify/features/007-workflow-phase-skills/data-model.md:5-17)."
+    },
+    {
+      "guardrail": "Exports must not bundle skill package contents by default.",
+      "evidence": "The plan explicitly requires dependency manifests without bundling skill package contents by default (.specify/features/007-workflow-phase-skills/plan.md:18). The export contract says to include every phase skill reference but not skill package contents (.specify/features/007-workflow-phase-skills/contracts/workflow-phase-skills-api.md#Export Contract). The quickstart export scenario also expects no bundled skill package contents (.specify/features/007-workflow-phase-skills/quickstart.md:18-25)."
+    },
+    {
+      "guardrail": "Skill-derived permission/model/effort/tool/fork/shell/hook effects must stay behind SkillTool.",
+      "evidence": "The implementation constitution says SkillTool remains the only boundary that validates and invokes skills and applies skill-derived tool/model/effort/fork behavior (.specify/features/007-workflow-phase-skills/plan.md:101-104). The task guardrail index and CA-004 map this explicitly to T001/T015/T016/T022 (.specify/features/007-workflow-phase-skills/tasks.md:45, 58). Live SkillTool code owns validateInput, checkPermissions, forked execution, allowedTools propagation, model override, and effort override (src/tools/SkillTool/SkillTool.ts:354-578, 623-832), while workflow policy only provides prompt guidance and tool gating and explicitly says skill declarations do not enable SkillTool globally (src/server/services/workflowToolPolicy.ts:179-193, 306-333)."
+    },
+    {
+      "guardrail": "Existing template unknown-field preservation, legacy skills[].reason, old export/import compatibility, and protected user-owned state must be preserved.",
+      "evidence": "The task packet anti-goals and does_not_remove list preserve unknown fields, old exports/imports, legacy skills compatibility, and SkillTool safeguards (.specify/features/007-workflow-phase-skills/task-packets/T001.json). The spec requires existing skills entries, including legacy reason fields and unknown fields, to remain readable and writable without data loss and old exports to remain accepted (FR-008, FR-024 in .specify/features/007-workflow-phase-skills/spec.md). The data model and contract both require unknown-field preservation and keep reason as legacy advisory data only (.specify/features/007-workflow-phase-skills/data-model.md:5-18, .specify/features/007-workflow-phase-skills/contracts/workflow-phase-skills-api.md:3-19, 47-54). The plan also preserves existing user-owned state rules and forbids weakening those boundaries (.specify/features/007-workflow-phase-skills/plan.md:93, 107-116, 367-374)."
+    },
+    {
+      "guardrail": "Future implementation must follow TDD and same-area tests.",
+      "evidence": "The task list marks G-TEST-FIRST for the relevant implementation tasks and says to add failing tests before implementation (.specify/features/007-workflow-phase-skills/tasks.md:66, 83-84). The plan's Recovery And Validation Contract requires old-fixture coverage, resolver tests, negative runtime tests, desktop tests, focused checks, and final gates (.specify/features/007-workflow-phase-skills/plan.md:367-374). The project contract in tasks.md and spec.md also requires same-area tests and bun run verify for this feature surface (.specify/features/007-workflow-phase-skills/tasks.md:11-14, .specify/features/007-workflow-phase-skills/spec.md:331)."
+    }
+  ],
+  "concerns": [],
+  "recovery_hints": []
+}

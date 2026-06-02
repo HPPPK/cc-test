@@ -2224,6 +2224,107 @@ describe('chatStore history mapping', () => {
     expect(updateTabStatusMock).toHaveBeenCalledWith(TEST_SESSION_ID, 'idle')
   })
 
+  it('restores a just-submitted prompt and ignores stale thinking status after immediate stop', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [
+            { id: 'existing-message', type: 'assistant_text', content: 'ready', timestamp: 1 },
+          ],
+          chatState: 'idle',
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, '我想做个飞机大战于系')
+    useChatStore.getState().stopGeneration(TEST_SESSION_ID)
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'status',
+      state: 'thinking',
+      verb: 'Thinking',
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages).toMatchObject([
+      { id: 'existing-message', type: 'assistant_text', content: 'ready' },
+    ])
+    expect(session?.composerPrefill).toMatchObject({
+      text: '我想做个飞机大战于系',
+    })
+    expect(session?.chatState).toBe('idle')
+    expect(session?.activeThinkingId).toBeNull()
+    expect(session?.statusVerb).toBe('')
+    expect(updateTabStatusMock).toHaveBeenLastCalledWith(TEST_SESSION_ID, 'idle')
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, { type: 'stop_generation' })
+  })
+
+  it('does not restore an older user message when stopping without an undoable submitted prompt', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [
+            { id: 'old-user', type: 'user_text', content: 'older prompt', timestamp: 1 },
+          ],
+          chatState: 'thinking',
+        }),
+      },
+    })
+
+    useChatStore.getState().stopGeneration(TEST_SESSION_ID)
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages).toMatchObject([
+      { id: 'old-user', type: 'user_text', content: 'older prompt' },
+    ])
+    expect(session?.composerPrefill).toBeNull()
+    expect(session?.chatState).toBe('idle')
+  })
+
+  it('keeps the immediate stop restore window open across initial thinking status', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({ chatState: 'idle' }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'restore after status')
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'status',
+      state: 'thinking',
+      verb: 'Thinking',
+    })
+    useChatStore.getState().stopGeneration(TEST_SESSION_ID)
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages).toEqual([])
+    expect(session?.composerPrefill).toMatchObject({
+      text: 'restore after status',
+    })
+    expect(session?.chatState).toBe('idle')
+  })
+
+  it('does not restore a submitted prompt after assistant content starts streaming', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({ chatState: 'idle' }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'keep submitted prompt')
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'content_start',
+      blockType: 'text',
+    })
+    useChatStore.getState().stopGeneration(TEST_SESSION_ID)
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages).toMatchObject([
+      { type: 'user_text', content: 'keep submitted prompt' },
+    ])
+    expect(session?.composerPrefill).toBeNull()
+    expect(session?.chatState).toBe('idle')
+  })
+
   it('flushes pending text before appending a thinking block', () => {
     vi.useFakeTimers()
 

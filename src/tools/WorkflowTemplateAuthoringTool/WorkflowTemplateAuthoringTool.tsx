@@ -31,7 +31,7 @@ const targetSchema = z.strictObject({
 
 const templateSchema = z.unknown()
 const basisHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
-const operationNames = ['guide', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'] as const
+const operationNames = ['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'] as const
 
 const selectorJSONSchema = {
   type: 'object',
@@ -67,8 +67,19 @@ const workflowTemplateAuthoringInputJSONSchema: ToolInputJSONSchema = {
     },
     source: {
       type: 'string',
-      enum: ['all', 'builtin', 'user'],
-      description: 'Optional list filter when operation is list.',
+      enum: ['all', 'builtin', 'user', 'project', 'plugin', 'managed', 'bundled', 'mcp', 'unknown'],
+      description: 'Optional list filter when operation is list, or skill source filter when operation is skill_catalog.',
+    },
+    query: {
+      type: 'string',
+      minLength: 1,
+      description: 'Optional skill name, display name, source, plugin, namespace, version, or referenceId search when operation is skill_catalog.',
+    },
+    limit: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 200,
+      description: 'Optional maximum number of skill_catalog entries to return.',
     },
     selector: {
       ...selectorJSONSchema,
@@ -103,6 +114,12 @@ const inputSchema = lazySchema(() =>
     z.strictObject({
       operation: z.literal('guide'),
       topic: z.string().min(1).optional(),
+    }),
+    z.strictObject({
+      operation: z.literal('skill_catalog'),
+      query: z.string().min(1).optional(),
+      source: z.enum(['all', 'user', 'project', 'plugin', 'managed', 'bundled', 'mcp', 'unknown']).optional(),
+      limit: z.number().int().min(1).max(200).nullable().optional(),
     }),
     z.strictObject({
       operation: z.literal('list'),
@@ -142,7 +159,7 @@ const inputSchema = lazySchema(() =>
 
 const outputSchema = lazySchema(() =>
   z.object({
-    operation: z.enum(['guide', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete']),
+    operation: z.enum(['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete']),
     status: z.enum(['succeeded', 'validated', 'rejected', 'failed']),
     persisted: z.boolean(),
     affectedTemplate: z.record(z.string(), z.unknown()).optional(),
@@ -153,6 +170,7 @@ const outputSchema = lazySchema(() =>
       issues: z.array(z.record(z.string(), z.unknown())),
     }).optional(),
     templates: z.array(z.record(z.string(), z.unknown())).optional(),
+    skillCatalog: z.array(z.record(z.string(), z.unknown())).optional(),
     invalidTemplates: z.array(z.record(z.string(), z.unknown())).optional(),
     guide: z.record(z.string(), z.unknown()).optional(),
     template: z.record(z.string(), z.unknown()).optional(),
@@ -305,7 +323,7 @@ export const WorkflowTemplateAuthoringTool = buildTool({
     return 'Guide, list, inspect, validate, create, update, duplicate, and delete workflow templates'
   },
   async prompt() {
-    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
+    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Use skill_catalog before assigning phases[].skills so recommended phase skills reference existing skills instead of guessed names or copied skill instructions. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
   },
   get inputSchema(): InputSchema {
     return inputSchema()

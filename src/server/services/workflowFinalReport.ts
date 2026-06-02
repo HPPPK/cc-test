@@ -2,10 +2,19 @@ import type {
   WorkflowCompletionResult,
   WorkflowFinalReport,
   WorkflowModelResolution,
+  WorkflowPhaseSkillEvidence,
+  WorkflowPhaseSkillReference,
+  WorkflowPhaseSkillResolution,
+  WorkflowPhaseSkillSnapshot,
   WorkflowPhaseReportSummary,
   WorkflowSessionState,
   WorkflowVerificationResult,
 } from './workflowTypes.js'
+
+type WorkflowRecommendedSkillReport = {
+  snapshots: WorkflowPhaseSkillSnapshot[]
+  evidence: WorkflowPhaseSkillEvidence[]
+}
 
 function completionForPhase(state: WorkflowSessionState, phaseId: string): WorkflowCompletionResult {
   const phase = state.phases.find((candidate) => candidate.id === phaseId)
@@ -87,9 +96,64 @@ function templateSnapshotId(state: WorkflowSessionState): string {
   return `${state.templateIdentity.id}-v${state.templateIdentity.version}`
 }
 
+function recommendedSkillReport(state: WorkflowSessionState): WorkflowRecommendedSkillReport | undefined {
+  const evidence = workflowPhaseSkillEvidence(state)
+  if (evidence.length === 0) return undefined
+
+  const evidenceKeys = new Set(evidence.map((item) => `${item.phaseId}\u0000${item.name}`))
+  const snapshots = workflowPhaseSkillSnapshots(state)
+    .map((snapshot) => boundedSnapshot(snapshot, evidenceKeys))
+    .filter((snapshot) => snapshot.references.length > 0 || snapshot.resolutions.length > 0)
+
+  if (snapshots.length === 0) return { snapshots: [], evidence }
+  return { snapshots, evidence }
+}
+
+function workflowPhaseSkillSnapshots(state: WorkflowSessionState): WorkflowPhaseSkillSnapshot[] {
+  return Array.isArray(state.phaseSkillSnapshots)
+    ? state.phaseSkillSnapshots as WorkflowPhaseSkillSnapshot[]
+    : []
+}
+
+function workflowPhaseSkillEvidence(state: WorkflowSessionState): WorkflowPhaseSkillEvidence[] {
+  return Array.isArray(state.phaseSkillEvidence)
+    ? state.phaseSkillEvidence as WorkflowPhaseSkillEvidence[]
+    : []
+}
+
+function boundedSnapshot(
+  snapshot: WorkflowPhaseSkillSnapshot,
+  evidenceKeys: Set<string>,
+): WorkflowPhaseSkillSnapshot {
+  const references = snapshot.references.filter((reference) =>
+    evidenceKeys.has(`${snapshot.phaseId}\u0000${reference.name}`)
+  )
+  const referenceKeys = new Set(references.map(skillReferenceKey))
+  const resolutions = snapshot.resolutions.filter((resolution) =>
+    referenceKeys.has(skillReferenceKey(resolution.reference))
+  )
+
+  return {
+    ...snapshot,
+    references,
+    resolutions,
+  }
+}
+
+function skillReferenceKey(reference: WorkflowPhaseSkillReference | WorkflowPhaseSkillResolution['reference']): string {
+  return [
+    reference.name,
+    reference.source ?? '',
+    reference.pluginName ?? '',
+    reference.namespace ?? '',
+    reference.referenceId ?? '',
+  ].join('\u0000')
+}
+
 export function buildWorkflowFinalReport(state: WorkflowSessionState): WorkflowFinalReport {
   const summaries = phaseSummaries(state)
   const verification = verificationResult(state)
+  const recommendedSkills = recommendedSkillReport(state)
 
   return {
     schemaVersion: state.schemaVersion,
@@ -106,6 +170,7 @@ export function buildWorkflowFinalReport(state: WorkflowSessionState): WorkflowF
       : Object.values(state.artifactIndex ?? {}),
     modelResolutions: modelResolutions(state),
     skillProvenance: state.phases.flatMap((phase) => phase.skillProvenance ?? []),
+    ...(recommendedSkills ? { recommendedSkills } : {}),
     template: {
       id: state.templateIdentity.id,
       version: String(state.templateIdentity.version),

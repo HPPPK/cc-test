@@ -231,6 +231,59 @@ describe('sessionStore', () => {
     })
   })
 
+  it('preserves additive recommended skill status fields from workflow create responses', async () => {
+    const workflowWithSkillStatus = {
+      ...workflowSummary,
+      recommendedSkillStatus: {
+        total: 3,
+        available: 1,
+        unavailable: 1,
+        degraded: 1,
+        evidenceCount: 2,
+        activePhaseItems: [
+          { name: 'sp-specify', status: 'available', source: 'project' },
+          { name: 'security-review', status: 'missing', source: 'user' },
+          { name: 'plugin-helper', status: 'plugin-disabled', source: 'plugin', pluginName: 'disabled-plugin' },
+        ],
+      },
+      recommendedSkillEvidence: [
+        {
+          phaseId: 'requirements-clarification',
+          name: 'sp-specify',
+          outcome: 'used',
+          rationale: 'Used to align the specification.',
+          recordedAt: '2026-05-20T00:01:00.000Z',
+          source: 'project',
+          resolutionStatus: 'available',
+        },
+        {
+          phaseId: 'requirements-clarification',
+          name: 'security-review',
+          outcome: 'relevant-unavailable',
+          rationale: 'Security review was relevant but unavailable.',
+          recordedAt: '2026-05-20T00:02:00.000Z',
+          source: 'user',
+          resolutionStatus: 'missing',
+        },
+      ],
+    }
+    createMock.mockResolvedValue({
+      sessionId: 'session-workflow-skills',
+      workDir: '/workspace/repo',
+      workflow: workflowWithSkillStatus,
+    })
+    listMock.mockImplementation(() => new Promise(() => {}))
+
+    await (useSessionStore.getState().createSession as any)('/workspace/repo', {
+      workflow: { templateId: 'requirements-to-implementation' },
+    })
+
+    expect(useSessionStore.getState().sessions[0]?.workflow).toMatchObject({
+      recommendedSkillStatus: workflowWithSkillStatus.recommendedSkillStatus,
+      recommendedSkillEvidence: workflowWithSkillStatus.recommendedSkillEvidence,
+    })
+  })
+
   it('does not invent workflow metadata for normal dialogue create responses', async () => {
     createMock.mockResolvedValue({
       sessionId: 'session-dialogue-1',
@@ -272,6 +325,75 @@ describe('sessionStore', () => {
     })
     expect(useSessionStore.getState().sessions[0]?.workflow?.activePhaseId)
       .toBe('requirements-clarification')
+  })
+
+  it('preserves additive recommended skill status fields from fetched workflow sessions', async () => {
+    const fetchedWorkflowWithSkillStatus = {
+      ...workflowSummary,
+      recommendedSkillStatus: {
+        total: 4,
+        available: 2,
+        unavailable: 1,
+        degraded: 1,
+        evidenceCount: 3,
+        activePhaseItems: [
+          { name: 'sp-specify', status: 'available', source: 'project' },
+          { name: 'test-driven-development', status: 'available', source: 'managed' },
+          { name: 'security-review', status: 'missing', source: 'user' },
+          { name: 'plugin-helper', status: 'plugin-disabled', source: 'plugin', pluginName: 'disabled-plugin' },
+        ],
+      },
+      recommendedSkillEvidence: [
+        {
+          phaseId: 'requirements-clarification',
+          name: 'sp-specify',
+          outcome: 'used',
+          rationale: 'Used to align the specification.',
+          recordedAt: '2026-05-20T00:01:00.000Z',
+          source: 'project',
+          resolutionStatus: 'available',
+        },
+        {
+          phaseId: 'requirements-clarification',
+          name: 'test-driven-development',
+          outcome: 'relevant-skipped',
+          rationale: 'Relevant but skipped for this RED-only pass.',
+          recordedAt: '2026-05-20T00:02:00.000Z',
+          source: 'managed',
+          resolutionStatus: 'available',
+        },
+        {
+          phaseId: 'requirements-clarification',
+          name: 'security-review',
+          outcome: 'relevant-unavailable',
+          rationale: 'Security review was relevant but unavailable.',
+          recordedAt: '2026-05-20T00:03:00.000Z',
+          source: 'user',
+          resolutionStatus: 'missing',
+        },
+      ],
+    }
+    listMock.mockResolvedValue({
+      sessions: [{
+        id: 'session-workflow-skills',
+        title: 'Workflow session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:01.000Z',
+        messageCount: 0,
+        projectPath: '',
+        workDir: '/workspace/repo',
+        workDirExists: true,
+        workflow: fetchedWorkflowWithSkillStatus,
+      }],
+      total: 1,
+    })
+
+    await useSessionStore.getState().fetchSessions()
+
+    expect(useSessionStore.getState().sessions[0]?.workflow).toMatchObject({
+      recommendedSkillStatus: fetchedWorkflowWithSkillStatus.recommendedSkillStatus,
+      recommendedSkillEvidence: fetchedWorkflowWithSkillStatus.recommendedSkillEvidence,
+    })
   })
 
   it('keeps a newer live workflow summary when a background refresh returns stale metadata', async () => {

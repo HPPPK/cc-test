@@ -1,0 +1,41 @@
+{
+  "task_id": "T006",
+  "status": "success",
+  "red_state": {
+    "is_red": true,
+    "expected": true,
+    "summary": "Focused desktop authoring tests compile and execute, then fail for missing phase-local recommended skill selector and missing recommended skill reference round-trip preservation.",
+    "failed_tests": [
+      {
+        "file": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+        "test": "WorkflowTemplateEditor > lets authors select recommended skills per phase from the shared skill catalog",
+        "reason": "Unable to find an accessible group named /recommended skills for plan phase/i; current editor still exposes no shared-catalog phase-local recommended skill selector."
+      },
+      {
+        "file": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+        "test": "WorkflowTemplateEditor > round-trips legacy reason and unknown skill reference fields when saving recommended skills",
+        "reason": "Saved phase skills preserve legacy name/reason only; mode, source, pluginName, referenceId, contentHash, and unknown fields are dropped."
+      }
+    ]
+  },
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    ".specify/features/007-workflow-phase-skills/worker-results/T006.json"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/__tests__/skillsSettings.test.tsx",
+    "exit_code": 1,
+    "result": "RED as expected",
+    "summary": "WorkflowComponents.test.tsx: 38 tests, 2 failed. skillsSettings.test.tsx: all added/existing tests passed in the focused run. Failures are behavior gaps, not syntax or harness errors."
+  },
+  "concerns": [
+    "The new workflow selector test assumes the implementation will expose a semantic group labelled by active phase, e.g. 'Recommended skills for Plan phase', with add buttons for catalog skills.",
+    "The skills settings catalog test currently verifies source/provenance visibility and absence of bundled contents through existing SkillList behavior; deeper workflow-specific reuse will be covered by the editor selector implementation."
+  ],
+  "recovery_hints": [
+    "Implement WorkflowTemplateEditor phase-local recommended skill selection from useSkillStore or the shared catalog/API surface, without fetching or rendering skill file contents when selecting.",
+    "Serialize selected phase skills as references with mode: 'recommended' and preserve legacy reason plus unknown fields from existing template skill entries.",
+    "Keep pluginName as provenance metadata on plugin-provided skills; do not convert phase bindings into plugin-primary objects or mandatory gates."
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "task_id": "T011",
+  "status": "failed",
+  "changed_files": [
+    "src/server/api/workflowTemplates.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T011.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/__tests__/workflowTemplates.test.ts",
+    "exit_code": 1,
+    "summary": "43 pass, 2 fail, 190 expect() calls, 45 tests across 1 file.",
+    "passing_task_cases": [
+      "POST /api/workflows/templates/import/preview keeps missing recommended skills selectable with dependency warnings",
+      "POST /api/workflows/templates/import/preview keeps invalid references unselectable with dependency errors",
+      "POST /api/workflows/templates/import preserves unresolved recommended skill references when committed",
+      "POST /api/workflows/templates/export does not include skill package contents by default"
+    ],
+    "remaining_failures": [
+      {
+        "test": "POST /api/workflows/templates/export returns selected template JSON without writing",
+        "reason": "The test still asserts body.schemaVersion === 1, but T011 and the API contract require export schemaVersion 2 with dependencyManifest."
+      },
+      {
+        "test": "POST /api/workflows/templates/export includes a dependency manifest for every phase skill reference",
+        "reason": "The manifest response contains a real dependencies array of length 2, but Bun 1.3.13 mutates the received nested dependencies property to ExpectArrayContaining after toMatchObject({ dependencies: expect.arrayContaining(...) }), so the following toHaveLength assertion observes the matcher object."
+      }
+    ]
+  },
+  "remaining_failures": [
+    "Focused workflowTemplates test command exits 1 due to one stale schemaVersion 1 assertion and one Bun matcher mutation issue in the test file, which is outside this worker's write scope."
+  ],
+  "concerns": [
+    "Could not edit src/server/__tests__/workflowTemplates.test.ts per task scope, so validation cannot be made fully green in this worker packet.",
+    "A direct API response inspection showed dependencyManifest.dependencies is serialized as an array with two entries before the Bun matcher mutates the received test object."
+  ],
+  "recovery_hints": [
+    "Update the export compatibility test to expect schemaVersion 2, or split legacy import compatibility assertions away from export v2 assertions.",
+    "Avoid reusing the same received object after Bun's toMatchObject with expect.arrayContaining on a nested property; assert length before that matcher, store the dependencies array first, or use separate response copies.",
+    "Rerun bun test src/server/__tests__/workflowTemplates.test.ts after test expectations are updated."
+  ]
+}

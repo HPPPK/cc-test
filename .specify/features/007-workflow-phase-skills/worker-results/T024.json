@@ -1,0 +1,68 @@
+{
+  "task_id": "T024",
+  "status": "blocked",
+  "changed_files": [],
+  "validation_output": {
+    "verify": {
+      "command": "bun run verify",
+      "exit_code": 1,
+      "report_path": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\report.md",
+      "report_json_path": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\report.json",
+      "junit_path": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\junit.xml",
+      "coverage_report_path": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-05-29T19-38-35-165Z\\coverage-report.md",
+      "coverage_report_json_path": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-05-29T19-38-35-165Z\\coverage-report.json",
+      "summary": "All executed verify lanes passed after native recovery, but the overall verify command still exited non-zero because the impact policy marked the PR blocked.",
+      "report_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 1
+      },
+      "policy_blocker": {
+        "source_log": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\logs\\impact-report.log",
+        "summary": "Impact report marked Blocked: yes. Blocking reason: CLI core changes require the allow-cli-core-change label and maintainer approval."
+      },
+      "native_recovery_confirmation": {
+        "log_path": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\logs\\native-checks.log",
+        "summary": "Native desktop checks passed in 6.4s; cargo check finished successfully after the earlier file-lock recovery."
+      },
+      "coverage_confirmation": {
+        "report_path": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\T024-server-recovery-narrow\\coverage-report.md",
+        "latest_verify_report_path": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-05-29T19-38-35-165Z\\coverage-report.md",
+        "summary": "Coverage remains passing, including 97.5% changed-line coverage (1168/1198) against the 90% minimum."
+      }
+    },
+    "quality_providers": {
+      "command": "bun run quality:providers",
+      "exit_code": 0,
+      "provider_config": "C:\\Users\\11034\\.claude\\cc-jiangxia\\providers.json",
+      "selectors": [
+        "current:current:current-runtime",
+        "glm:main:glm-main",
+        "deepseek:main:deepseek-main"
+      ],
+      "summary": "Provider selectors are available locally."
+    },
+    "live_baseline": {
+      "rerun_performed": false,
+      "reason": "Per task rules, live baseline was not rerun because verify did not pass and a prior live attempt already exceeded the allowed runtime budget.",
+      "previous_timeout_blocker": {
+        "command": "bun run quality:gate --mode baseline --allow-live --provider-model glm:main:glm-main",
+        "exit_code": 124,
+        "duration_ms": 1804054,
+        "attempt_quality_run_root": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T18-54-10-518Z",
+        "attempt_coverage_root": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-05-29T18-54-11-806Z",
+        "summary": "The prior glm:main:glm-main live baseline attempt timed out after 1,804,054 ms and did not leave a completed report.md, report.json, junit.xml, or coverage-report.md artifact."
+      }
+    }
+  },
+  "concerns": [
+    "Implementation verification is green after native recovery, but the final PR gate is still blocked by change policy rather than a failing test lane.",
+    "The outstanding blocker is maintainer/process scoped: CLI core changes require the allow-cli-core-change label and approval before verify can return success.",
+    "Live baseline evidence was not refreshed in this pass because the previous glm live attempt timed out and the current run did not satisfy the precondition to rerun it."
+  ],
+  "recovery_hints": [
+    "For T024 technical validation, use F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-05-29T19-34-08-729Z\\report.md and F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-05-29T19-38-35-165Z\\coverage-report.md.",
+    "To clear the remaining verify blocker, obtain the allow-cli-core-change label and maintainer approval required by the impact policy.",
+    "If live baseline evidence becomes required after policy unblock, rerun bun run quality:gate --mode baseline --allow-live --provider-model <selector> with a supervised timeout longer than 20 minutes and confirm final report artifacts are written."
+  ]
+}

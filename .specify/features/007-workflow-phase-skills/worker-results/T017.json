@@ -1,0 +1,59 @@
+{
+  "task_id": "T017",
+  "status": "success",
+  "changed_files": [
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowSummary.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T017.json"
+  ],
+  "validation_output": {
+    "commands": [
+      {
+        "command": "bun test src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/sessions.test.ts src/services/compact/workflowSummaryCarryover.test.ts",
+        "exit_code": 0,
+        "summary": "Initial required validation passed: 155 pass, 0 fail, 814 expect() calls across 4 files."
+      },
+      {
+        "command": "bun run check:server",
+        "exit_code": 124,
+        "summary": "Timed out after 124s before returning a lane summary; no failure output was produced before timeout."
+      },
+      {
+        "command": "bunx tsc --noEmit --pretty false",
+        "exit_code": 1,
+        "summary": "Blocked by existing project TypeScript setup: missing bun-types type definition and TS5101 baseUrl deprecation under TypeScript 7.0."
+      },
+      {
+        "command": "git diff --check -- src/server/services/workflowFinalReport.ts src/server/services/workflowSummary.ts src/server/api/sessions.ts src/services/compact/workflowSummaryCarryover.ts",
+        "exit_code": 0,
+        "summary": "No whitespace errors in scoped files; Git emitted expected LF-to-CRLF warnings for touched files."
+      },
+      {
+        "command": "bun test src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/sessions.test.ts src/services/compact/workflowSummaryCarryover.test.ts",
+        "exit_code": 1,
+        "summary": "Rerun hit Windows/temp-git harness instability in src/server/__tests__/sessions.test.ts: one repository metadata test timed out after EBUSY cleanup and REPOSITORY_BRANCH_NOT_FOUND between tests. Workflow recommended-skill report, summary, API contract, and compact carryover tests passed before the unrelated failure."
+      }
+    ]
+  },
+  "remaining_failures": [
+    {
+      "owner": "test harness / environment",
+      "file": "src/server/__tests__/sessions.test.ts",
+      "summary": "Required command passed once, then reruns failed in repository worktree fixture setup/cleanup with EBUSY temp directory lock, Branch not found: feature/rail between tests, and one timeout. No failing assertion targeted T017 behavior."
+    },
+    {
+      "owner": "project toolchain",
+      "file": "tsconfig.json / dependency setup",
+      "summary": "Standalone tsc via bunx cannot complete because bun-types is missing from the transient type resolution and TypeScript 7 reports the existing baseUrl deprecation."
+    }
+  ],
+  "concerns": [
+    "src/server/services/workflowTypes.ts is outside T017 write scope, so recommendedSkillStatus and recommendedSkills are projected additively through existing index signatures rather than by extending shared exported types.",
+    "src/server/api/sessions.ts and src/services/compact/workflowSummaryCarryover.ts did not require production edits: session create/state responses already flow through workflowSummaryFromState, and compact carryover already preserves bounded evidence via summary instructions from T015."
+  ],
+  "recovery_hints": [
+    "If the sessions suite continues to flake on Windows, rerun with isolated session test files or inspect lingering git processes/temp directory cleanup around the repository metadata tests.",
+    "A follow-up type-surface task can extend WorkflowSessionSummary and WorkflowFinalReport in src/server/services/workflowTypes.ts when that file is in scope.",
+    "Resolve TypeScript verification separately by restoring bun-types availability and addressing the TS 7 baseUrl deprecation policy."
+  ]
+}

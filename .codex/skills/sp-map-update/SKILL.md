@@ -95,6 +95,47 @@ schema failure, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 - Provisional adoption must write valid graph records: an adoption `evidence` row plus a `path_index` row with `relation="provisional_path"` and graph confidence `weak` or `partial`.
 - It must prefer metadata-only or single-slice updates when those are sufficient.
 - After recording updates, re-evaluate runtime readiness through the shared freshness contract.
+- Before `validate-build` or `complete-refresh`, build a payload or delta session and call:
+
+```text
+project-cognition update --payload-file ".specify/project-cognition/updates/<map-update-id>.json" --reason map-update --format json
+```
+
+Use the returned `result_state` to decide whether to finalize, report `partial_refresh`, route to rebuild, or report blocked state.
+
+### Inline Project Cognition Update
+
+Workflow-owned mutation closeout is not an external map-maintenance handoff and is not external map maintenance. It is the workflow-local form of `$sp-map-update`. If this workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, shared surfaces, or behavior-bearing docs, closeout MUST run inline project cognition update for the workflow-owned changed paths and affected surfaces before claiming clean completion.
+
+Use the current delta session when one exists:
+
+```text
+project-cognition delta append --session "$DELTA_SESSION_ID" --event-type workflow_closeout --changed-path "<path>" --behavior-surface "<surface>" --verification "<evidence>" --known-unknown "<unknown>" --format json
+project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json
+```
+
+Include `--commit-range "<base>..<head>"` only with `--delta-session` when a safe task commit boundary exists.
+
+When no delta session exists, write a payload file under `.specify/project-cognition/updates/` and call:
+
+```text
+project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json
+```
+
+The payload must include `workflow`, `reason`, `changed_paths`, `scope_paths`, `behavior_surfaces`, `generated_surfaces`, `state_contracts`, `verification`, `known_unknowns`, `confidence_notes`, `user_decisions`, and `boundary` when those facts exist.
+
+Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone:
+
+- `ready` or `no_op`: project cognition closeout may be clean when ordinary verification also passed.
+- `partial_refresh`: useful update data was written, but the final workflow state must report partial cognition closeout and the returned `minimal_live_reads`.
+- `needs_rebuild`: report the exact rebuild condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- `blocked`: report the runtime or validation blocker and the exact recovery command.
+- `recorded`: legacy recorded-only output; treat it as partial or blocked, never as clean completion.
+
+Use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<reason>\" --format json` only when inline update cannot complete: when inline update is unavailable, cannot record useful update data, cannot identify workflow-owned scope, or cannot be trusted because verification/workflow completion is not trustworthy. Dirty only when inline update cannot complete.
+
+sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-update` remains the external/manual workflow for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. It is not routine cleanup for changes this workflow just made.
+
 - After applying update records, run `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`.
 - If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid` condition and route to `$sp-map-scan`, then `$sp-map-build`.
 - If `validate-build` is blocked after update recording, report `partial_refresh` and preserve the validation errors instead of claiming the runtime is fresh.

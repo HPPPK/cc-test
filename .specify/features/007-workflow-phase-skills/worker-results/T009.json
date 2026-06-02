@@ -1,0 +1,70 @@
+{
+  "task_id": "T009",
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "checkpoint_command": "cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/__tests__/skillsSettings.test.tsx",
+    "checkpoint_exit_code": 0,
+    "checkpoint_result": "passed",
+    "checkpoint_summary": "2 test files passed; 43 tests passed.",
+    "checkpoint_duration": "2.74s",
+    "project_cognition": {
+      "readiness": "blocked",
+      "advisory_only": true,
+      "summary": "Project cognition baseline is stale/blocked, but it returned the task-local minimal live reads used for this checkpoint review."
+    }
+  },
+  "guardrail_check": {
+    "phase_skill_references_persist_with_recommended_mode": {
+      "status": "confirmed",
+      "evidence": [
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx:797",
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx:822",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx:835",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx:914"
+      ],
+      "summary": "Authoring saves selected phase skills as references with `mode: 'recommended'`."
+    },
+    "legacy_reason_and_unknown_fields_preserved": {
+      "status": "confirmed",
+      "evidence": [
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx:788",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx:1045",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx:1057",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx:1092"
+      ],
+      "summary": "Save/round-trip behavior preserves legacy `reason` and existing unknown/reference fields."
+    },
+    "selector_uses_shared_catalog_store_and_does_not_fetch_skill_contents": {
+      "status": "confirmed",
+      "evidence": [
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx:697",
+        "desktop/src/stores/skillStore.ts:42",
+        "desktop/src/stores/skillStore.ts:55",
+        "desktop/src/api/skills.ts:23",
+        "desktop/src/__tests__/skillsSettings.test.tsx:147",
+        "desktop/src/__tests__/skillsSettings.test.tsx:192"
+      ],
+      "summary": "The selector reads from the shared catalog/store path and the tests continue to assert no bundled content rendering or skill-detail fetch during catalog/list usage."
+    },
+    "ui_does_not_imply_auto_exec_required_gates_plugin_primary_binding_or_bundled_contents": {
+      "status": "confirmed",
+      "evidence": [
+        "desktop/src/components/workflow/WorkflowTemplateEditor.tsx:704",
+        "desktop/src/__tests__/skillsSettings.test.tsx:189",
+        "desktop/src/__tests__/skillsSettings.test.tsx:190",
+        "desktop/src/__tests__/skillsSettings.test.tsx:191",
+        "desktop/src/__tests__/skillsSettings.test.tsx:192"
+      ],
+      "summary": "Current UI copy and tests keep recommended skills advisory-only and reject auto-exec, required-gate, plugin-primary, and bundled-content implications."
+    }
+  },
+  "concerns": [
+    "Project cognition remains blocked/stale, so this checkpoint relied on live repository evidence plus the returned minimal live reads.",
+    "WorkflowTemplateEditor still does not auto-fetch catalog data on mount; it depends on the shared store being populated by the owning surface, which matches T008's documented constraint."
+  ],
+  "recovery_hints": [
+    "If this checkpoint regresses, rerun `cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/__tests__/skillsSettings.test.tsx` first and compare against the T006/T008 expectations.",
+    "If future authoring changes need guaranteed catalog availability, load `useSkillStore().fetchCatalog()` from the owning settings/manager surface rather than fetching skill file contents in the workflow editor."
+  ]
+}

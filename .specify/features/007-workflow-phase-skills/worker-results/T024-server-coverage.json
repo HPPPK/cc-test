@@ -1,0 +1,55 @@
+{
+  "status": "passed",
+  "changed_files": [
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T024-server-coverage.json"
+  ],
+  "validation_output": [
+    {
+      "command": "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts -t \"is included in base and ordinary assembled tool pools\"",
+      "status": "passed",
+      "summary": "1 passed, 17 filtered out, 0 failed. Reproduced the original auth failure first, then passed after deterministic dummy ANTHROPIC_API_KEY setup."
+    },
+    {
+      "command": "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "status": "passed",
+      "summary": "18 passed, 0 failed, 106 expect() calls."
+    },
+    {
+      "command": "bun run scripts/quality-gate/coverage.ts --run-id T024-server-recovery-narrow",
+      "status": "passed",
+      "summary": "Coverage report: artifacts/coverage/T024-server-recovery-narrow/coverage-report.md. Summary: passed=5 failed=0. Changed-line coverage 97.5% (1168/1198), minimum 90%."
+    }
+  ],
+  "coverage": {
+    "report": "artifacts/coverage/T024-server-recovery-narrow/coverage-report.md",
+    "server_api": {
+      "status": "passed",
+      "lines": "78.79%",
+      "functions": "85.76%",
+      "branches": "100%",
+      "statements": "78.79%"
+    },
+    "changed_server_files": [
+      "src/server/api/skills.ts: 100% (1/1)",
+      "src/server/api/workflowTemplates.ts: 100% (199/199)",
+      "src/server/services/workflowFinalReport.ts: 97.67% (42/43)",
+      "src/server/services/workflowRuntimeService.ts: 99.15% (116/117)",
+      "src/server/services/workflowSessionCreateService.ts: 88.73% (63/71)",
+      "src/server/services/workflowSummary.ts: 100% (83/83)",
+      "src/server/services/workflowTemplateRegistryService.ts: 100% (77/77)",
+      "src/server/services/workflowTemplateValidation.ts: 96.83% (61/63)",
+      "src/server/services/workflowToolPolicy.ts: 100% (1/1)",
+      "src/server/services/workflowTypes.ts: 100% (19/19)"
+    ]
+  },
+  "concerns": [
+    "No additional server production changes were made.",
+    "Coverage target gaps remain for broad agent-tools, agent-utils, and desktop function targets, but the coverage gate reports no failures and changed-line coverage is above the 90% ratchet.",
+    "The worktree contains many unrelated pre-existing modifications outside this worker scope; they were not reverted or edited."
+  ],
+  "recovery_hints": [
+    "The concrete coverage-command failure was caused by getTools() evaluating WebSearchTool.isEnabled(), which resolves the default model and requires auth. The tool-pool test now sets a dummy ANTHROPIC_API_KEY and restores the original environment after each test.",
+    "If this fails again, inspect artifacts/coverage/<run>/root-server/coverage.log first and search for the first failing test before adding broader coverage."
+  ]
+}

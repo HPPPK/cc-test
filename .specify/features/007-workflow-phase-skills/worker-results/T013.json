@@ -1,0 +1,47 @@
+{
+  "task_id": "T013",
+  "status": "success",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/types/session.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T013.json"
+  ],
+  "validation_output": {
+    "focused_tests": {
+      "command": "cd desktop && bun run test -- --run src/api/sessions.test.ts src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 0,
+      "summary": "2 test files passed; 61 tests passed. Dependency diagnostics import/export component cases and desktop API contract cases are green."
+    },
+    "typecheck": {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 1,
+      "summary": "TypeScript check still fails in read-only test file desktop/src/components/workflow/WorkflowComponents.test.tsx at lines 1116 and 1296 due indexed EDITABLE_TEMPLATE.phases[0] values being possibly undefined under noUncheckedIndexedAccess. The schemaVersion 2 import payload type error in desktop/src/api/sessions.test.ts was fixed by adding the v2 import payload union in desktop/src/types/session.ts."
+    },
+    "project_cognition": {
+      "entry_readiness": "blocked",
+      "recommended_next_action": "review_project_cognition_update",
+      "handling": "Continued from live repository evidence and the task packet because project cognition status is blocked/stale."
+    }
+  },
+  "remaining_failures": [
+    {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 1,
+      "failures": [
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx(1116,13): EDITABLE_TEMPLATE.phases[0] may be undefined.",
+        "desktop/src/components/workflow/WorkflowComponents.test.tsx(1296,13): spread phase may carry id as string | undefined."
+      ],
+      "scope_note": "Tests are explicitly outside this worker's write scope, so these typecheck failures were not edited."
+    }
+  ],
+  "concerns": [
+    "desktop/src/types/session.ts already had substantial additive workflow phase skill type changes from the T012/T013 surface before this worker's UI edit; this worker only added the schemaVersion 2 import payload union there.",
+    "The export JSON textarea necessarily contains dependency manifest strings, so the visible diagnostics split some repeated text across spans to keep Testing Library text queries unambiguous while preserving readable UI text and the raw JSON payload.",
+    "Project cognition runtime is blocked/stale for this repository; implementation was grounded in the packet, contract, T012 result, live code, and focused tests."
+  ],
+  "recovery_hints": [
+    "If full desktop lint is required before integration, update the read-only WorkflowComponents.test.tsx fixtures to avoid possibly undefined EDITABLE_TEMPLATE.phases[0] indexed access, for example by using a checked local phase fixture or non-null assertion in that test file.",
+    "Do not remove dependencyManifest from exported JSON; the new visible diagnostics are additive and must stay near the JSON output.",
+    "Keep missing recommended skill diagnostics as warnings with canImport true and invalid-reference diagnostics as errors with selectable false when supplied by the server."
+  ]
+}

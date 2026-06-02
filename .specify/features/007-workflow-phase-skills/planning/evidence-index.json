@@ -1,0 +1,153 @@
+{
+  "feature_dir": "F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills",
+  "command": "sp-plan",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "workflow_status": "ready",
+  "dispatch_shape": "leader-inline",
+  "execution_surface": "leader-inline",
+  "delegated_lanes": [],
+  "capability_degraded": true,
+  "blocked_reason": null,
+  "degradation_reason": "Native spawn_agent/wait_agent/close_agent tools are visible, but spawn_agent policy allows use only when the user explicitly asks for delegation; planning lanes were compiled leader-inline with durable handoff files.",
+  "project_cognition": {
+    "freshness": "stale",
+    "readiness": "blocked",
+    "used_as": "advisory navigation only",
+    "recommended_follow_up": "review_project_cognition_update"
+  },
+  "leader_inline_handoffs": [
+    {
+      "lane_id": "research",
+      "handoff_path": "planning/handoffs/research.json",
+      "source_artifacts_inspected": [
+        "spec.md",
+        "alignment.md",
+        "context.md",
+        "references.md",
+        "workflow-state.md"
+      ],
+      "decisions_or_constraints_contributed": [
+        "RD-001",
+        "RD-002",
+        "RD-003",
+        "RD-004",
+        "RD-005",
+        "RD-006",
+        "RD-007"
+      ],
+      "affected_plan_sections": [
+        "Implementation Constitution",
+        "Research Inputs",
+        "Operational Consequence Design",
+        "Decision Preservation Check"
+      ],
+      "blocker_status": "none",
+      "integration_status": "integrated"
+    },
+    {
+      "lane_id": "data-model",
+      "handoff_path": "planning/handoffs/data-model.json",
+      "source_artifacts_inspected": [
+        "spec.md",
+        "alignment.md",
+        "context.md"
+      ],
+      "decisions_or_constraints_contributed": [
+        "WorkflowPhaseSkillReference",
+        "WorkflowSkillDependencyManifest",
+        "WorkflowPhaseSkillResolution",
+        "WorkflowPhaseSkillSnapshot",
+        "WorkflowPhaseSkillEvidence",
+        "WorkflowImportDependencyDiagnostic"
+      ],
+      "affected_plan_sections": [
+        "Data Model",
+        "Operational Consequence Design",
+        "Decision Preservation Check"
+      ],
+      "blocker_status": "none",
+      "integration_status": "integrated"
+    },
+    {
+      "lane_id": "contracts",
+      "handoff_path": "planning/handoffs/contracts.json",
+      "source_artifacts_inspected": [
+        "spec.md",
+        "context.md",
+        "references.md"
+      ],
+      "decisions_or_constraints_contributed": [
+        "Skill catalog/resolver contract",
+        "Workflow export contract",
+        "Workflow import preview contract",
+        "Workflow session summary/status contract",
+        "Final report contract"
+      ],
+      "affected_plan_sections": [
+        "Contracts",
+        "Technical Context",
+        "Capability Preservation Plan"
+      ],
+      "blocker_status": "none",
+      "integration_status": "integrated"
+    },
+    {
+      "lane_id": "quickstart-validation",
+      "handoff_path": "planning/handoffs/quickstart-validation.json",
+      "source_artifacts_inspected": [
+        "spec.md",
+        "alignment.md",
+        "context.md",
+        "references.md",
+        "AGENTS.md"
+      ],
+      "decisions_or_constraints_contributed": [
+        "Validation scenarios",
+        "same-area test targets",
+        "quality commands"
+      ],
+      "affected_plan_sections": [
+        "Quickstart",
+        "Verification Strategy",
+        "Recovery And Validation Contract"
+      ],
+      "blocker_status": "none",
+      "integration_status": "integrated"
+    }
+  ],
+  "generated_artifacts": [
+    "plan.md",
+    "research.md",
+    "data-model.md",
+    "contracts/workflow-phase-skills-api.md",
+    "quickstart.md",
+    "plan-contract.json"
+  ],
+  "live_evidence_files": [
+    "src/tools/SkillTool/prompt.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/server/api/skills.ts",
+    "src/server/api/sessions.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowReportStore.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/skills.ts",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx"
+  ],
+  "all_handoffs_consumed": true
+}

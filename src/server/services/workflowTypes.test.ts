@@ -4,6 +4,8 @@ import {
   WORKFLOW_ARTIFACT_POINTER_KINDS,
   WORKFLOW_COMPLETION_SUBMISSION_STATUSES,
   WORKFLOW_LIFECYCLE_STATUSES,
+  WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES,
+  WORKFLOW_PHASE_SKILL_SOURCES,
   WORKFLOW_PHASE_STATUSES,
   WORKFLOW_TEMPLATE_SOURCE_STATUSES,
 } from './workflowTypes'
@@ -24,6 +26,8 @@ import type {
   WorkflowTemplateRegistryDocument,
   WorkflowTransitionRecord,
   WorkflowPendingConfirmation,
+  WorkflowPhaseSkillReference,
+  WorkflowPhaseSkillResolution,
 } from './workflowTypes'
 
 describe('workflow domain types', () => {
@@ -52,6 +56,70 @@ describe('workflow domain types', () => {
     expect(WORKFLOW_ARTIFACT_POINTER_KINDS).toEqual(['workflow-state', 'phase-artifact', 'final-report'])
     expect(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).toEqual(['ready', 'blocked', 'unable'])
     expect(WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES).toEqual(['pending', 'accepted', 'rejected', 'superseded'])
+  })
+
+  test('exports canonical workflow phase skill source and resolver vocabularies', () => {
+    expect(WORKFLOW_PHASE_SKILL_SOURCES).toEqual([
+      'user',
+      'project',
+      'plugin',
+      'managed',
+      'bundled',
+      'mcp',
+      'unknown',
+    ])
+    expect(WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES).toEqual([
+      'available',
+      'missing',
+      'ambiguous',
+      'unsupported-source',
+      'plugin-disabled',
+      'invalid-reference',
+      'installable',
+    ])
+  })
+
+  test('phase skill references keep names-first identity, legacy reason, and unknown fields', () => {
+    const reference: WorkflowPhaseSkillReference = {
+      name: 'tdd-workflow',
+      reason: 'Legacy advisory text only.',
+      source: 'plugin',
+      pluginName: 'quality-pack',
+      ownerDefinedSkillField: { keep: true },
+    }
+
+    expect(reference).toEqual({
+      name: 'tdd-workflow',
+      reason: 'Legacy advisory text only.',
+      source: 'plugin',
+      pluginName: 'quality-pack',
+      ownerDefinedSkillField: { keep: true },
+    })
+  })
+
+  test('phase skill resolutions carry normalized references and structured diagnostics', () => {
+    const resolution: WorkflowPhaseSkillResolution = {
+      reference: {
+        name: 'missing-skill',
+        mode: 'recommended',
+        ownerDefinedSkillField: 'keep',
+      },
+      status: 'missing',
+      checkedAt: '2026-05-29T00:00:00.000Z',
+      diagnostic: {
+        code: 'WORKFLOW_PHASE_SKILL_MISSING',
+        severity: 'warning',
+        message: 'Recommended skill is not available in this environment.',
+      },
+    }
+
+    expect(resolution.reference).toMatchObject({
+      name: 'missing-skill',
+      mode: 'recommended',
+      ownerDefinedSkillField: 'keep',
+    })
+    expect(resolution.status).toBe('missing')
+    expect(resolution.diagnostic?.severity).toBe('warning')
   })
 
   test('completion submissions and pending confirmations model the refreshed runtime contract', () => {

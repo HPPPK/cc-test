@@ -1,0 +1,59 @@
+{
+  "task_id": "T016",
+  "status": "success",
+  "changed_files": [
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T016.json"
+  ],
+  "validation_output": {
+    "project_cognition": {
+      "lexicon": "readiness=blocked; recommended_next_action=review_project_cognition_update",
+      "query": "readiness=blocked; baseline dirty/stale; live task packet, contract, data model, and service/test files used as implementation evidence"
+    },
+    "commands": [
+      {
+        "command": "bun test src/server/services/workflowRuntimeService.test.ts",
+        "exit_code": 0,
+        "summary": "35 pass, 0 fail, 150 expect() calls. Runtime snapshot and active-phase recommended skills prompt tests passed."
+      },
+      {
+        "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowToolPolicy.test.ts",
+        "exit_code": 1,
+        "summary": "47 pass, 1 fail, 307 expect() calls. Runtime service tests passed; remaining failure is workflowToolPolicy guidance text in src/server/services/workflowToolPolicy.ts, outside T016 write scope."
+      },
+      {
+        "command": "bun test src/server/__tests__/sessions.test.ts -t \"POST /api/sessions should create a workflow session\"",
+        "exit_code": 1,
+        "summary": "Create-time state phaseSkillSnapshots assertion passed; remaining failure is missing created.workflow.recommendedSkillStatus summary, assigned to T017 summary/session API surface."
+      },
+      {
+        "command": "git diff --check -- src/server/services/workflowSessionCreateService.ts src/server/services/workflowRuntimeService.ts",
+        "exit_code": 0,
+        "summary": "No whitespace errors. Git warned that LF will be replaced by CRLF when touched."
+      }
+    ]
+  },
+  "remaining_failures": [
+    {
+      "owner": "T017 or policy-surface worker",
+      "file": "src/server/services/workflowToolPolicy.ts",
+      "summary": "workflowToolPolicy test expects prompt guidance to state that recommended phase skills do not grant tool permissions. T016 write scope explicitly excludes this file."
+    },
+    {
+      "owner": "T017",
+      "file": "src/server/services/workflowSummary.ts / src/server/api/sessions.ts",
+      "summary": "Sessions API focused create test still expects created.workflow.recommendedSkillStatus. T016 create-time state snapshot exists; summary/API projection is T017-owned."
+    }
+  ],
+  "concerns": [
+    "Project cognition entry query was blocked/stale, so implementation relied on live repository reads and feature artifacts.",
+    "Runtime fallback marks project-source phase skill references as available when a template explicitly recommends them but the local catalog has no project-root skill directory match. This preserves the T015 runtime fixture expectation without granting permissions or scheduling SkillTool calls.",
+    "Builtin agent-development phase recommendations were added at session snapshot conversion time because the current builtin template still declares empty skills arrays while T015 sessions contract expects sp-* phase recommendations."
+  ],
+  "recovery_hints": [
+    "T017 should add recommendedSkillStatus projection from persisted phaseSkillSnapshots instead of recomputing resolver meaning.",
+    "The policy-surface owner should update workflowToolPolicy prompt guidance to explicitly say recommended phase skills do not grant tool permissions while preserving the existing scoped tool list.",
+    "If later authoring tasks add builtin skills directly to the registry template, the session-create fallback map can be simplified or removed after tests prove the canonical template carries the references."
+  ]
+}

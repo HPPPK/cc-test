@@ -2446,6 +2446,33 @@ describe('Sessions API', () => {
         }),
       ])
 
+      expect(statePayload.state?.phaseSkillSnapshots).toContainEqual(expect.objectContaining({
+        phaseId: 'discussion',
+        references: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'sp-discussion',
+            mode: 'recommended',
+          }),
+        ]),
+        resolutions: expect.arrayContaining([
+          expect.objectContaining({
+            reference: expect.objectContaining({ name: 'sp-discussion' }),
+            status: 'available',
+          }),
+        ]),
+      }))
+      expect(created.workflow).toMatchObject({
+        recommendedSkillStatus: expect.objectContaining({
+          total: expect.any(Number),
+          activePhaseItems: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'sp-discussion',
+              status: 'available',
+            }),
+          ]),
+        }),
+      })
+
       const sharedCreateService = new WorkflowSessionCreateService()
       const resolvedTemplate = await sharedCreateService.resolveTemplate({
         templateId: 'agent-development',

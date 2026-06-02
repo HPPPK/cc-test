@@ -1,0 +1,38 @@
+{
+  "task_id": "T018",
+  "status": "success",
+  "red_state": {
+    "result": "expected_failure",
+    "summary": "Focused desktop test command compiled and executed. The suite fails only on missing desktop recommended skill status rendering and status-panel pending-confirmation priority; session store additive preservation tests already pass.",
+    "passed": 82,
+    "failed": 3,
+    "failed_tests": [
+      "WorkflowStatusPanel > renders concise recommended skill status without implying automatic execution",
+      "WorkflowStatusPanel > keeps pending confirmation status higher priority when recommended skill status is present",
+      "ActiveSession task polling > renders bounded recommended skill evidence without listing unused recommendations"
+    ]
+  },
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/pages/ActiveSession.test.tsx",
+    "desktop/src/stores/sessionStore.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T018.json"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/pages/ActiveSession.test.tsx src/stores/sessionStore.test.ts",
+    "exit_code": 1,
+    "stdout_summary": "Ran 85 tests across 3 files: 82 pass, 3 fail. sessionStore.test.ts passed 13/13. Failures are TestingLibrary assertions for missing data-testid=\"workflow-recommended-skill-status\" in WorkflowStatusPanel and ActiveSession, plus missing Waiting for confirmation status when workflow.status is running but pendingConfirmation is true."
+  },
+  "concerns": [
+    "The session store already preserves additive recommendedSkillStatus and recommendedSkillEvidence fields from create and list API responses, so those new RED assertions pass instead of failing.",
+    "The desktop shared WorkflowSessionSummary type already includes recommendedSkillStatus, but WorkflowStatusPanelSummary does not yet expose it; tests use scoped future-shape casts and no production type edits were made.",
+    "No production files were edited."
+  ],
+  "recovery_hints": [
+    "Extend WorkflowStatusPanelSummary and WorkflowStatusPanel to render a compact recommended skill status strip from workflow.recommendedSkillStatus.",
+    "Render bounded active/relevant skill details only: used, relevant-skipped, relevant-unavailable, or otherwise non-available/degraded active phase items; avoid displaying every unused available recommendation.",
+    "Ensure the status badge treats pendingConfirmation true as Waiting for confirmation even when lifecycle status is still running.",
+    "Keep the recommended skill UI advisory-only: do not add run, execute, install, enable, default gate, plugin-primary, default bundle, auto-exec, or permission-bypass affordances/copy.",
+    "Keep session store behavior additive; do not strip unknown recommended skill evidence fields while merging API responses."
+  ]
+}

@@ -6,8 +6,10 @@ import type {
   WorkflowTemplateCreateRequest,
   WorkflowTemplateDuplicateRequest,
   WorkflowTemplateExportRequest,
+  WorkflowTemplateExportResponse,
   WorkflowTemplateImportCommitRequest,
   WorkflowTemplateImportPreviewRequest,
+  WorkflowTemplateImportPreviewResponse,
   WorkflowTemplateUpdateRequest,
   WorkflowTemplateValidateRequest,
   WorkflowTransitionRequest,
@@ -84,6 +86,27 @@ const workflowSummary = {
     schemaVersion: 1,
     createdAt: '2026-05-20T00:00:00.000Z',
   },
+}
+
+const EDITABLE_TEMPLATE_FOR_EXPORT: WorkflowTemplateExportResponse['templates'][number] = {
+  schemaVersion: 1,
+  id: 'release-readiness',
+  source: 'user',
+  version: '1',
+  name: 'Release Readiness',
+  description: 'Coordinate release readiness.',
+  editable: true,
+  copyable: true,
+  phases: [{
+    id: 'plan',
+    name: 'Plan',
+    instructions: 'Prepare the release plan.',
+    skills: [{
+      name: 'release-checklist',
+      mode: 'recommended',
+      source: 'user',
+    }],
+  }],
 }
 
 describe('sessionsApi workflow contract', () => {
@@ -362,6 +385,67 @@ describe('sessionsApi workflow contract', () => {
     expect(result).toBe(response)
   })
 
+  it('exposes import preview dependency diagnostics from the desktop client response type', async () => {
+    const request: WorkflowTemplateImportPreviewRequest = {
+      payload: {
+        schemaVersion: 2,
+        templates: [{
+          schemaVersion: 1,
+          id: 'dependency-aware-import',
+          version: '1',
+          name: 'Dependency Aware Import',
+          phases: [],
+        }],
+        dependencyManifest: {
+          schemaVersion: 1,
+          generatedAt: '2026-05-26T00:00:00.000Z',
+          dependencies: [],
+        },
+      },
+    }
+    const response: WorkflowTemplateImportPreviewResponse = {
+      schemaVersion: 1,
+      candidates: [{
+        importId: 'candidate-dependency-aware-import',
+        originalId: 'dependency-aware-import',
+        proposedId: 'dependency-aware-import',
+        name: 'Dependency Aware Import',
+        version: '1',
+        phaseCount: 1,
+        conflict: 'none',
+        defaultResolution: 'add',
+        selectable: true,
+        issues: [],
+        dependencyDiagnostics: [{
+          templateId: 'dependency-aware-import',
+          phaseId: 'plan',
+          reference: {
+            name: 'release-checklist',
+            mode: 'recommended',
+            source: 'user',
+          },
+          status: 'missing',
+          severity: 'warning',
+          message: 'Recommended skill release-checklist is unavailable and will remain a reference.',
+          canImport: true,
+        }],
+      }],
+      invalidTemplates: [],
+      canCommit: true,
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.previewWorkflowTemplateImport(request)
+
+    expect(postMock).toHaveBeenCalledWith('/api/workflows/templates/import/preview', request)
+    expect(result.candidates[0]?.dependencyDiagnostics?.[0]).toMatchObject({
+      phaseId: 'plan',
+      status: 'missing',
+      severity: 'warning',
+      canImport: true,
+    })
+  })
+
   it('commits selected workflow template imports with explicit rename resolutions', async () => {
     const request: WorkflowTemplateImportCommitRequest = {
       payload: {
@@ -418,6 +502,47 @@ describe('sessionsApi workflow contract', () => {
 
     expect(postMock).toHaveBeenCalledWith('/api/workflows/templates/export', request)
     expect(result).toBe(response)
+  })
+
+  it('exposes export dependency manifests from the desktop client response type without skill contents', async () => {
+    const request: WorkflowTemplateExportRequest = {
+      templates: [{ source: 'user', id: 'release-readiness' }],
+      mode: 'selected',
+    }
+    const response: WorkflowTemplateExportResponse = {
+      schemaVersion: 2,
+      exportedAt: '2026-05-26T00:00:00.000Z',
+      templates: [EDITABLE_TEMPLATE_FOR_EXPORT],
+      dependencyManifest: {
+        schemaVersion: 1,
+        generatedAt: '2026-05-26T00:00:00.000Z',
+        resolverVersion: 'workflow-phase-skills-v1',
+        dependencies: [{
+          templateId: 'release-readiness',
+          phaseId: 'plan',
+          reference: {
+            name: 'release-checklist',
+            mode: 'recommended',
+            source: 'user',
+          },
+          exportStatus: 'missing',
+          diagnostic: 'Recommended skill release-checklist is unavailable in this workspace.',
+        }],
+      },
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.exportWorkflowTemplates(request)
+
+    expect(postMock).toHaveBeenCalledWith('/api/workflows/templates/export', request)
+    expect(result.schemaVersion).toBe(2)
+    expect(result.dependencyManifest?.dependencies[0]).toMatchObject({
+      templateId: 'release-readiness',
+      phaseId: 'plan',
+      exportStatus: 'missing',
+      diagnostic: expect.stringContaining('release-checklist'),
+    })
+    expect(JSON.stringify(result)).not.toContain('skillContents')
   })
 
   it('retrieves durable workflow state for a workflow session', async () => {

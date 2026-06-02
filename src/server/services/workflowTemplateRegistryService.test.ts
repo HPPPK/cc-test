@@ -303,6 +303,129 @@ describe('workflow template registry service', () => {
     })
   })
 
+  test('keeps legacy phase skills with name and reason compatible when listing templates', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        validWorkflowConfigTemplate({
+          id: 'legacy-skills-template',
+          version: '1',
+          name: 'Legacy Skills Template',
+          phases: [
+            validPhase({
+              id: 'draft',
+              name: 'Draft',
+              skills: [
+                {
+                  name: 'tdd-workflow',
+                  reason: 'Use this when changing behavior.',
+                  ownerDefinedSkillField: 'keep-skill-field',
+                },
+              ],
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.invalidTemplates).toEqual([])
+    expect(result.templates.find((template) => template.id === 'legacy-skills-template'))
+      .toMatchObject({
+        phases: [
+          {
+            skills: [
+              {
+                name: 'tdd-workflow',
+                mode: 'recommended',
+                reason: 'Use this when changing behavior.',
+                ownerDefinedSkillField: 'keep-skill-field',
+              },
+            ],
+          },
+        ],
+      })
+  })
+
+  test('reports malformed phase skill references as validation errors', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        validWorkflowConfigTemplate({
+          id: 'invalid-skill-reference-template',
+          version: '1',
+          name: 'Invalid Skill Reference Template',
+          phases: [
+            validPhase({
+              id: 'draft',
+              name: 'Draft',
+              skills: [
+                {
+                  name: '   ',
+                },
+              ],
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.templates.map((template) => template.id)).not.toContain(
+      'invalid-skill-reference-template',
+    )
+    expect(result.invalidTemplates).toContainEqual(expect.objectContaining({
+      source: 'user-config',
+      templateId: 'invalid-skill-reference-template',
+      path: '$.templates[0].phases[0].skills[0]',
+      code: 'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
+      severity: 'error',
+    }))
+  })
+
+  test('keeps templates startable when recommended phase skills are missing or unsupported warnings', async () => {
+    await writeWorkflowConfig(tempConfigDir, {
+      schemaVersion: 1,
+      templates: [
+        validWorkflowConfigTemplate({
+          id: 'missing-recommended-skills-template',
+          version: '1',
+          name: 'Missing Recommended Skills Template',
+          phases: [
+            validPhase({
+              id: 'draft',
+              name: 'Draft',
+              skills: [
+                { name: 'missing-skill' },
+                { name: 'remote-skill', source: 'mcp' },
+              ],
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+
+    expect(result.templates.map((template) => template.id)).toContain(
+      'missing-recommended-skills-template',
+    )
+    expect(result.invalidTemplates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        templateId: 'missing-recommended-skills-template',
+        code: 'WORKFLOW_PHASE_SKILL_MISSING',
+        severity: 'warning',
+      }),
+      expect.objectContaining({
+        templateId: 'missing-recommended-skills-template',
+        code: 'WORKFLOW_PHASE_SKILL_UNSUPPORTED_SOURCE',
+        severity: 'warning',
+      }),
+    ]))
+  })
+
   test('reads workflow config only from cc-jiangxia-owned storage and does not write protected Claude files', async () => {
     const fixture = await readFixture('user-template-with-unknown-fields.json')
     await writeWorkflowConfig(tempConfigDir, {

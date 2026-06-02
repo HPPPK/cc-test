@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { sessionsApi } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
+import { Modal } from '../shared/Modal'
+import { useSessionStore } from '../../stores/sessionStore'
+import { useSkillStore } from '../../stores/skillStore'
 import type {
   WorkflowTemplateCompletionCriteria,
   WorkflowTemplateDetail,
@@ -12,6 +15,7 @@ import type {
   WorkflowTemplateTransitionPolicy,
   WorkflowTemplateValidationIssue,
 } from '../../types/session'
+import type { SkillCatalogItem } from '../../types/skill'
 
 type WorkflowTemplateEditorProps = {
   template?: WorkflowTemplateDetail | WorkflowTemplateDraft | null
@@ -39,7 +43,7 @@ type PhaseDraft = {
   completionCriteriaDescription: string
   transitionAuthority: 'auto' | 'user-confirmation'
   requestedModel: string
-  skills: string
+  skillReferences: WorkflowTemplateSkillDeclaration[]
 }
 
 type TemplateEditorDraft = {
@@ -74,7 +78,7 @@ const DEFAULT_PHASE: PhaseDraft = {
   completionCriteriaDescription: '',
   transitionAuthority: 'user-confirmation',
   requestedModel: '',
-  skills: '',
+  skillReferences: [],
 }
 
 export function WorkflowTemplateEditor({
@@ -91,7 +95,20 @@ export function WorkflowTemplateEditor({
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<TemplateEditorDraft>(() => toEditorDraft(template))
+  const {
+    catalog,
+    skills: skillList,
+    isCatalogLoading,
+    isLoading: isSkillListLoading,
+    error: skillCatalogError,
+    fetchCatalog,
+  } = useSkillStore()
+  const sessions = useSessionStore((state) => state.sessions)
+  const activeSessionId = useSessionStore((state) => state.activeSessionId)
+  const activeSession = sessions.find((session) => session.id === activeSessionId)
+  const currentWorkDir = activeSession?.workDir || undefined
   const selectedPhase = draft.phases[selectedPhaseIndex] ?? draft.phases[0] ?? DEFAULT_PHASE
+  const skillCatalog = catalog.length > 0 ? catalog : skillList
   const editorMode = mode ?? (template?.source === 'user' ? 'edit' : 'create')
   const originalSource = source ?? template?.source
   const canEditTemplate = originalSource !== 'builtin'
@@ -101,6 +118,10 @@ export function WorkflowTemplateEditor({
     setErrors([])
     setSelectedPhaseIndex(0)
   }, [template])
+
+  useEffect(() => {
+    void fetchCatalog(currentWorkDir)
+  }, [fetchCatalog, currentWorkDir])
 
   const updateTemplate = (field: keyof TemplateEditorDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -115,6 +136,26 @@ export function WorkflowTemplateEditor({
     }))
   }
 
+  const updatePhaseSkillReferences = (
+    updater: (references: WorkflowTemplateSkillDeclaration[]) => WorkflowTemplateSkillDeclaration[],
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      phases: current.phases.map((phase, index) => {
+        if (index !== selectedPhaseIndex) return phase
+        const skillReferences = updater(phase.skillReferences)
+        return {
+          ...phase,
+          skillReferences,
+        }
+      }),
+    }))
+  }
+
+  const replaceRecommendedSkills = (references: WorkflowTemplateSkillDeclaration[]) => {
+    updatePhaseSkillReferences(() => references)
+  }
+
   const addPhase = () => {
     setDraft((current) => {
       const nextIndex = current.phases.length + 1
@@ -126,6 +167,7 @@ export function WorkflowTemplateEditor({
             ...DEFAULT_PHASE,
             id: `phase-${nextIndex}`,
             name: t('settings.workflows.editor.newPhaseName', { count: nextIndex }),
+            skillReferences: [],
           },
         ],
       }
@@ -319,6 +361,15 @@ export function WorkflowTemplateEditor({
             <TextArea id="workflow-phase-intake" label={t('settings.workflows.editor.intake')} value={selectedPhase.intake} onChange={(value) => updatePhase('intake', value)} rows={2} />
           </div>
 
+          <RecommendedSkillsSelector
+            phaseName={selectedPhase.name || selectedPhase.id || t('settings.workflows.editor.untitledPhase')}
+            catalog={skillCatalog}
+            selectedReferences={selectedPhase.skillReferences}
+            loading={isCatalogLoading || isSkillListLoading}
+            error={skillCatalogError}
+            onChange={replaceRecommendedSkills}
+          />
+
           <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
             <TextField id="workflow-output-artifact-name" label={t('settings.workflows.editor.outputArtifactName')} value={selectedPhase.outputArtifactName} onChange={(value) => updatePhase('outputArtifactName', value)} />
             <TextField id="workflow-output-artifact-kind" label={t('settings.workflows.editor.outputArtifactKind')} value={selectedPhase.outputArtifactKind} onChange={(value) => updatePhase('outputArtifactKind', value)} />
@@ -354,7 +405,6 @@ export function WorkflowTemplateEditor({
               <div className="mt-3 grid min-w-0 gap-3">
                 <TextArea id="workflow-template-description" label={t('settings.workflows.editor.templateDescription')} value={draft.description} onChange={(value) => updateTemplate('description', value)} rows={2} />
                 <TextField id="workflow-phase-requested-model" label={t('settings.workflows.editor.requestedModel')} value={selectedPhase.requestedModel} onChange={(value) => updatePhase('requestedModel', value)} />
-                <TextArea id="workflow-phase-skills" label={t('settings.workflows.editor.skills')} value={selectedPhase.skills} onChange={(value) => updatePhase('skills', value)} rows={3} />
               </div>
             )}
           </div>
@@ -389,6 +439,7 @@ function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
   const firstRequiredArtifact = phase.requiredArtifacts?.find((artifact) => artifact.required) ?? phase.requiredArtifacts?.[0]
   const artifactId = outputArtifact?.id ?? firstRequiredArtifact?.id ?? ''
   const artifactName = outputArtifact?.name ?? firstRequiredArtifact?.name ?? artifactId
+  const skillReferences = Array.isArray(phase.skills) ? phase.skills : []
 
   return {
     id: phase.id,
@@ -407,7 +458,7 @@ function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
     completionCriteriaDescription: phase.completionCriteria?.description ?? '',
     transitionAuthority: phase.transition?.authority ?? 'user-confirmation',
     requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : '',
-    skills: toSkillsText(phase.skills),
+    skillReferences,
   }
 }
 
@@ -466,7 +517,7 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     completionCriteria,
     transition,
     requestedModel: draft.requestedModel.trim() || undefined,
-    skills: toSkills(draft.skills),
+    skills: draft.skillReferences.length > 0 ? draft.skillReferences : undefined,
   }
 }
 
@@ -595,6 +646,335 @@ function SelectField({
   )
 }
 
+function RecommendedSkillsSelector({
+  phaseName,
+  catalog,
+  selectedReferences,
+  loading,
+  error,
+  onChange,
+}: {
+  phaseName: string
+  catalog: SkillCatalogItem[]
+  selectedReferences: WorkflowTemplateSkillDeclaration[]
+  loading: boolean
+  error: string | null
+  onChange: (references: WorkflowTemplateSkillDeclaration[]) => void
+}) {
+  const t = useTranslation()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const recommendedReferences = selectedReferences.filter(isRecommendedSkillReference)
+  const selectedCatalogItems = recommendedReferences.map((reference) => {
+    const catalogItem = catalog.find((skill) => skillMatchesReference(skill, reference))
+    return {
+      reference,
+      displayName: catalogItem?.displayName ?? displayNameFromSkillName(reference.name),
+      source: reference.source ?? catalogItem?.source ?? 'unknown',
+    }
+  })
+
+  return (
+    <section
+      role="group"
+      aria-label={t('settings.workflows.editor.recommendedSkillsLabel', { phase: phaseName })}
+      className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+            {t('settings.workflows.editor.recommendedSkills')}
+          </h5>
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-text-tertiary)]">
+            {t('settings.workflows.editor.recommendedSkillsHint')}
+          </p>
+        </div>
+        {loading && (
+          <span className="text-[11px] text-[var(--color-text-tertiary)]">
+            {t('settings.workflows.editor.skillCatalogLoading')}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <p className="mt-2 text-[11px] leading-4 text-[var(--color-error)]">{error}</p>
+      )}
+
+      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase text-[var(--color-text-tertiary)]">
+            {t('settings.workflows.editor.selected')}
+          </div>
+          {selectedCatalogItems.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {selectedCatalogItems.map(({ reference, displayName, source }) => (
+                <span
+                  key={skillReferenceIdentity(reference)}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)]"
+                >
+                  <span className="min-w-0 truncate font-medium text-[var(--color-text-primary)]">{displayName}</span>
+                  <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">{source}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
+              {t('settings.workflows.editor.noRecommendedSkills')}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label={t('settings.workflows.editor.chooseRecommendedSkillsLabel', { phase: phaseName })}
+          onClick={() => setPickerOpen(true)}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+        >
+          <span className="material-symbols-outlined text-[15px]" aria-hidden="true">playlist_add</span>
+          {t('settings.workflows.editor.chooseSkills')}
+        </button>
+      </div>
+
+      <SkillPickerModal
+        open={pickerOpen}
+        phaseName={phaseName}
+        catalog={catalog}
+        selectedReferences={recommendedReferences}
+        onClose={() => setPickerOpen(false)}
+        onApply={(references) => {
+          onChange(references)
+          setPickerOpen(false)
+        }}
+      />
+    </section>
+  )
+}
+
+function SkillPickerModal({
+  open,
+  phaseName,
+  catalog,
+  selectedReferences,
+  onClose,
+  onApply,
+}: {
+  open: boolean
+  phaseName: string
+  catalog: SkillCatalogItem[]
+  selectedReferences: WorkflowTemplateSkillDeclaration[]
+  onClose: () => void
+  onApply: (references: WorkflowTemplateSkillDeclaration[]) => void
+}) {
+  const t = useTranslation()
+  const [query, setQuery] = useState('')
+  const [draftKeys, setDraftKeys] = useState<Set<string>>(() => (
+    new Set(selectedReferences.map((reference) => skillReferenceSelectionKey(reference, catalog)))
+  ))
+
+  useEffect(() => {
+    if (!open) return
+    setQuery('')
+    setDraftKeys(new Set(selectedReferences.map((reference) => skillReferenceSelectionKey(reference, catalog))))
+  }, [catalog, open, selectedReferences])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const visibleSkills = normalizedQuery
+    ? catalog.filter((skill) => {
+      const displayName = skill.displayName ?? displayNameFromSkillName(skill.name)
+      return [
+        skill.name,
+        displayName,
+        skill.description,
+        skill.source,
+        skill.pluginName ?? '',
+      ].some((value) => value.toLowerCase().includes(normalizedQuery))
+    })
+    : catalog
+
+  const selectedSkillSummaries = Array.from(draftKeys)
+    .map((key) => {
+      const catalogItem = catalog.find((skill) => skillCatalogIdentity(skill) === key)
+      const existingReference = selectedReferences.find((reference) => skillReferenceSelectionKey(reference, catalog) === key)
+      const name = catalogItem?.name ?? existingReference?.name ?? key
+      return {
+        key,
+        name,
+        displayName: catalogItem?.displayName ?? displayNameFromSkillName(name),
+        source: catalogItem?.source ?? existingReference?.source ?? 'unknown',
+        pluginName: catalogItem?.pluginName ?? existingReference?.pluginName,
+        unavailable: !catalogItem,
+      }
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName))
+
+  const toggleSkill = (key: string) => {
+    setDraftKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const selectedReferencesForApply = () => {
+    const existingByKey = new Map(selectedReferences.map((reference) => [skillReferenceSelectionKey(reference, catalog), reference]))
+    const selectedCatalog = catalog.filter((skill) => draftKeys.has(skillCatalogIdentity(skill)))
+    const selectedCatalogKeys = new Set(selectedCatalog.map(skillCatalogIdentity))
+    const catalogReferences = selectedCatalog.map((skill) => ({
+      ...(existingByKey.get(skillCatalogIdentity(skill)) ?? {}),
+      ...skillToRecommendedReference(skill),
+    }))
+    const unresolvedReferences = selectedReferences.filter((reference) => (
+      draftKeys.has(skillReferenceSelectionKey(reference, catalog)) &&
+      !selectedCatalogKeys.has(skillReferenceSelectionKey(reference, catalog))
+    ))
+    return [
+      ...catalogReferences,
+      ...unresolvedReferences,
+    ]
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('settings.workflows.editor.chooseRecommendedSkillsLabel', { phase: phaseName })}
+      width={760}
+      footer={(
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 items-center justify-center rounded-[7px] border border-[var(--color-border)] px-3 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onApply(selectedReferencesForApply())}
+            className="inline-flex h-8 items-center justify-center rounded-[7px] bg-[var(--color-brand)] px-3 text-xs font-medium text-white transition-colors hover:bg-[var(--color-brand-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            {t('settings.workflows.editor.applySelectedSkills')}
+          </button>
+        </>
+      )}
+    >
+      <div className="min-w-0">
+        <label className="block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor="workflow-skill-picker-search">
+          {t('settings.workflows.editor.searchSkills')}
+          <div className="mt-1 flex h-9 min-w-0 items-center gap-2 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2.5 focus-within:border-[var(--color-brand)] focus-within:ring-2 focus-within:ring-[var(--color-brand)]/20">
+            <span className="material-symbols-outlined text-[16px] text-[var(--color-text-tertiary)]" aria-hidden="true">search</span>
+            <input
+              id="workflow-skill-picker-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="h-full min-w-0 flex-1 bg-transparent text-sm text-[var(--color-text-primary)] outline-none"
+            />
+          </div>
+        </label>
+
+        <div
+          role="group"
+          aria-label={t('settings.workflows.editor.selectedSkills')}
+          className="mt-3 min-w-0 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+        >
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <div className="text-[11px] font-medium uppercase text-[var(--color-text-tertiary)]">
+              {t('settings.workflows.editor.selectedSkills')}
+            </div>
+            <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">
+              {t('settings.workflows.editor.selectedSkillCount', { count: selectedSkillSummaries.length })}
+            </span>
+          </div>
+          {selectedSkillSummaries.length > 0 ? (
+            <div className="mt-2 flex max-h-24 min-w-0 flex-wrap gap-2 overflow-y-auto pr-1">
+              {selectedSkillSummaries.map((skill) => (
+                <span
+                  key={skill.key}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)]"
+                >
+                  <span className="min-w-0 truncate font-medium text-[var(--color-text-primary)]">{skill.displayName}</span>
+                  <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">{skill.source}</span>
+                  {skill.pluginName && (
+                    <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">{skill.pluginName}</span>
+                  )}
+                  {skill.unavailable && (
+                    <span className="shrink-0 text-[11px] text-[var(--color-warning)]">
+                      {t('settings.workflows.editor.unresolvedSkill')}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={t('settings.workflows.editor.removeSkillLabel', { skill: skill.displayName })}
+                    onClick={() => toggleSkill(skill.key)}
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+                  >
+                    <span className="material-symbols-outlined text-[14px]" aria-hidden="true">close</span>
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
+              {t('settings.workflows.editor.noRecommendedSkills')}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 text-[11px] text-[var(--color-text-tertiary)]">
+          {t('settings.workflows.editor.skillsShown', { count: visibleSkills.length })}
+        </div>
+
+        <div className="mt-3 grid max-h-[48vh] min-w-0 gap-2 overflow-y-auto pr-1">
+          {visibleSkills.map((skill) => {
+            const displayName = skill.displayName ?? displayNameFromSkillName(skill.name)
+            const skillKey = skillCatalogIdentity(skill)
+            const selected = draftKeys.has(skillKey)
+            return (
+              <label
+                key={skillKey}
+                className={`grid min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-[8px] border px-3 py-2 transition-colors ${
+                  selected
+                    ? 'border-[var(--color-brand)]/45 bg-[var(--color-brand)]/8'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => toggleSkill(skillKey)}
+                  aria-label={t('settings.workflows.editor.selectSkillLabel', {
+                    skill: displayName,
+                    source: skill.source,
+                  })}
+                  className="mt-1 h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-brand)]"
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-[var(--color-text-primary)]">{displayName}</span>
+                  <span className="mt-1 block text-xs leading-5 text-[var(--color-text-secondary)]">{skill.description}</span>
+                  <span className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[var(--color-text-tertiary)]">
+                    <span>{skill.source}</span>
+                    {skill.pluginName && <span>{skill.pluginName}</span>}
+                    {skill.version && <span>v{skill.version}</span>}
+                  </span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+
+        {visibleSkills.length === 0 && (
+          <div className="mt-3 rounded-[8px] border border-dashed border-[var(--color-border)] px-3 py-6 text-center text-sm text-[var(--color-text-tertiary)]">
+            {t('settings.workflows.editor.noSkillMatches')}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function toLines(value: string) {
   return value
     .split(/\r?\n/)
@@ -606,22 +986,60 @@ function toLinesText(value?: string[]) {
   return Array.isArray(value) ? value.join('\n') : ''
 }
 
-function toSkills(value: string): WorkflowTemplateSkillDeclaration[] | undefined {
-  const skills = toLines(value).flatMap((line) => {
-    const [name, reason] = line.split('|').map((part) => part.trim())
-    if (!name) return []
-    return reason ? [{ name, reason }] : [{ name }]
-  })
-
-  return skills.length > 0 ? skills : undefined
+function skillToRecommendedReference(skill: SkillCatalogItem): WorkflowTemplateSkillDeclaration {
+  return {
+    name: skill.name,
+    mode: 'recommended',
+    source: skill.source,
+    ...(skill.pluginName ? { pluginName: skill.pluginName } : {}),
+    ...(skill.namespace ? { namespace: skill.namespace } : {}),
+    ...(skill.version ? { version: skill.version } : {}),
+    ...(skill.contentHash ? { contentHash: skill.contentHash } : {}),
+    ...(skill.referenceId ? { referenceId: skill.referenceId } : {}),
+  }
 }
 
-function toSkillsText(value?: WorkflowTemplateSkillDeclaration[]) {
-  if (!Array.isArray(value)) return ''
+function skillCatalogIdentity(skill: SkillCatalogItem) {
+  return skillReferenceIdentity(skillToRecommendedReference(skill))
+}
 
-  return value
-    .map((skill) => skill.reason ? `${skill.name} | ${skill.reason}` : skill.name)
-    .join('\n')
+function skillReferenceSelectionKey(reference: WorkflowTemplateSkillDeclaration, catalog: SkillCatalogItem[]) {
+  const catalogItem = catalog.find((skill) => skillMatchesReference(skill, reference))
+  return catalogItem ? skillCatalogIdentity(catalogItem) : skillReferenceIdentity(reference)
+}
+
+function skillReferenceIdentity(reference: WorkflowTemplateSkillDeclaration) {
+  return JSON.stringify({
+    name: reference.name,
+    source: reference.source,
+    pluginName: reference.pluginName,
+    namespace: reference.namespace,
+    version: reference.version,
+    contentHash: reference.contentHash,
+    referenceId: reference.referenceId,
+  })
+}
+
+function skillMatchesReference(skill: SkillCatalogItem, reference: WorkflowTemplateSkillDeclaration) {
+  return skill.name === reference.name &&
+    (!reference.source || skill.source === reference.source) &&
+    (!reference.pluginName || skill.pluginName === reference.pluginName) &&
+    (!reference.namespace || skill.namespace === reference.namespace) &&
+    (!reference.version || skill.version === reference.version) &&
+    (!reference.contentHash || skill.contentHash === reference.contentHash) &&
+    (!reference.referenceId || skill.referenceId === reference.referenceId)
+}
+
+function isRecommendedSkillReference(reference: WorkflowTemplateSkillDeclaration) {
+  return reference.mode === undefined || reference.mode === 'recommended'
+}
+
+function displayNameFromSkillName(name: string) {
+  return name
+    .split(/[-_:.\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ') || name
 }
 
 function slugFromText(value: string) {

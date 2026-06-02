@@ -111,6 +111,36 @@ describe('generateWorkflowSummaryCarryover', () => {
       }),
     ).rejects.toBeInstanceOf(WorkflowSummaryCarryoverError)
   })
+
+  test('carries bounded recommended skill evidence through compact summary instructions', async () => {
+    const messages: Message[] = [
+      createUserMessage({
+        content: 'Workflow recommended skill evidence: requirements-review used; missing-audit relevant-unavailable; irrelevant-style had no evidence.',
+      }),
+    ]
+    let requestedPrompt = ''
+
+    const result = await generateWorkflowSummaryCarryover({
+      messages,
+      context: createContext(),
+      summaryInstructions: [
+        'Preserve workflow recommended skill evidence only for used, relevant-skipped, and relevant-unavailable outcomes.',
+        'Do not create a checklist of irrelevant or unused recommended skills.',
+      ].join('\n'),
+      summaryRunner: async input => {
+        requestedPrompt = input.summaryRequest.message.content
+        return createAssistantMessage({
+          content: '<summary>Recommended skills: requirements-review used; missing-audit relevant-unavailable.</summary>',
+        })
+      },
+    })
+
+    expect(requestedPrompt).toContain('used, relevant-skipped, and relevant-unavailable')
+    expect(requestedPrompt).toContain('Do not create a checklist')
+    expect(result.content).toContain('requirements-review used')
+    expect(result.content).toContain('missing-audit relevant-unavailable')
+    expect(result.content).not.toContain('irrelevant-style')
+  })
 })
 
 function createContext(): ToolUseContext {

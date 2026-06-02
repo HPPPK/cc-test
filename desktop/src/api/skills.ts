@@ -1,10 +1,26 @@
 import { api } from './client'
-import type { SkillMeta, SkillDetail } from '../types/skill'
+import type {
+  SkillCatalogItem,
+  SkillDetail,
+  SkillsCatalogResponse,
+  SkillsListResponse,
+} from '../types/skill'
+
+function buildSkillsQuery(cwd?: string, catalogOnly?: boolean) {
+  const query = new URLSearchParams()
+  if (cwd) query.set('cwd', cwd)
+  if (catalogOnly) query.set('catalogOnly', 'true')
+  const serialized = query.toString()
+  return serialized ? `?${serialized}` : ''
+}
 
 export const skillsApi = {
   list: (cwd?: string) => {
-    const query = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''
-    return api.get<{ skills: SkillMeta[] }>(`/api/skills${query}`, { timeout: 120_000 })
+    return api.get<SkillsListResponse>(`/api/skills${buildSkillsQuery(cwd)}`, { timeout: 120_000 })
+  },
+
+  catalog: (cwd?: string) => {
+    return api.get<SkillsCatalogResponse>(`/api/skills${buildSkillsQuery(cwd, true)}`, { timeout: 120_000 })
   },
 
   detail: (source: string, name: string, cwd?: string) => {
@@ -20,3 +36,5 @@ export const skillsApi = {
     )
   },
 }
+
+export type { SkillCatalogItem, SkillsCatalogResponse, SkillsListResponse }

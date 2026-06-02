@@ -145,4 +145,87 @@ describe('workflowSummaryFromState', () => {
       pendingConfirmation: false,
     })
   })
+
+  test('summarizes active phase recommended skill availability and bounded evidence', () => {
+    const summary = workflowSummaryFromState(makeState({
+      phaseSkillSnapshots: [
+        {
+          phaseId: 'requirements-clarification',
+          references: [
+            { name: 'requirements-review', mode: 'recommended', source: 'project' },
+            { name: 'missing-audit', mode: 'recommended', source: 'user' },
+            { name: 'ambiguous-helper', mode: 'recommended', source: 'plugin' },
+          ],
+          resolutions: [
+            {
+              reference: { name: 'requirements-review', mode: 'recommended', source: 'project' },
+              status: 'available',
+              checkedAt: '2026-05-20T00:00:00.000Z',
+              resolvedSkill: {
+                name: 'requirements-review',
+                source: 'project',
+              },
+            },
+            {
+              reference: { name: 'missing-audit', mode: 'recommended', source: 'user' },
+              status: 'missing',
+              checkedAt: '2026-05-20T00:00:00.000Z',
+            },
+            {
+              reference: { name: 'ambiguous-helper', mode: 'recommended', source: 'plugin' },
+              status: 'ambiguous',
+              checkedAt: '2026-05-20T00:00:00.000Z',
+            },
+          ],
+          snapshottedAt: '2026-05-20T00:00:00.000Z',
+        },
+      ],
+      phaseSkillEvidence: [
+        {
+          phaseId: 'requirements-clarification',
+          name: 'requirements-review',
+          outcome: 'used',
+          rationale: 'Applied the ambiguity checklist.',
+          recordedAt: '2026-05-20T00:01:00.000Z',
+          source: 'project',
+          resolutionStatus: 'available',
+        },
+        {
+          phaseId: 'requirements-clarification',
+          name: 'missing-audit',
+          outcome: 'relevant-unavailable',
+          rationale: 'Audit help was relevant but missing.',
+          recordedAt: '2026-05-20T00:01:30.000Z',
+          source: 'user',
+          resolutionStatus: 'missing',
+        },
+      ],
+    } as Partial<WorkflowSessionState>))
+
+    expect(summary.recommendedSkillStatus).toMatchObject({
+      total: 3,
+      available: 1,
+      unavailable: 1,
+      degraded: 1,
+      evidenceCount: 2,
+      activePhaseItems: [
+        expect.objectContaining({
+          name: 'requirements-review',
+          status: 'available',
+          source: 'project',
+        }),
+        expect.objectContaining({
+          name: 'missing-audit',
+          status: 'missing',
+          source: 'user',
+        }),
+        expect.objectContaining({
+          name: 'ambiguous-helper',
+          status: 'ambiguous',
+          source: 'plugin',
+        }),
+      ],
+    })
+    expect(summary).not.toHaveProperty('recommendedSkillChecklist')
+  })
 })

@@ -144,6 +144,200 @@ describe('Settings > Skills tab', () => {
     expect(screen.getByText('Telegram Access')).toBeInTheDocument()
   })
 
+  it('shows workflow-safe catalog reference metadata without bundling skill contents', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'release-checklist',
+          displayName: 'Release Checklist',
+          description: 'Verify release readiness before rollout.',
+          source: 'project',
+          userInvocable: true,
+          version: '1.0.0',
+          contentLength: 400,
+          hasDirectory: true,
+        },
+        {
+          name: 'telegram:access',
+          displayName: 'Telegram Access',
+          description: 'Plugin-provided release notification workflow.',
+          source: 'plugin',
+          pluginName: 'telegram',
+          userInvocable: true,
+          version: '2.1.0',
+          contentLength: 280,
+          hasDirectory: true,
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    expect(screen.getByText('Release Checklist')).toBeInTheDocument()
+    expect(screen.getAllByText('Project').length).toBeGreaterThan(0)
+    expect(screen.getByText('Telegram Access')).toBeInTheDocument()
+    expect(screen.getAllByText('Plugin').length).toBeGreaterThan(0)
+    expect(screen.getByText('v2.1.0')).toBeInTheDocument()
+    expect(useSkillStore.getState().skills).toContainEqual(
+      expect.objectContaining({
+        name: 'telegram:access',
+        pluginName: 'telegram',
+        source: 'plugin',
+      }),
+    )
+    expect(screen.queryByText(/recommended skills auto-execute/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/required phase gate/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/plugin-primary binding/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/# release checklist/i)).not.toBeInTheDocument()
+    expect(MOCK_FETCH_SKILL_DETAIL).not.toHaveBeenCalled()
+  })
+
+  it('filters skills by search text and sorts matches by updated time', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'release-checklist',
+          displayName: 'Release Checklist',
+          description: 'Verify release readiness before rollout.',
+          source: 'project',
+          userInvocable: true,
+          version: '1.0.0',
+          contentLength: 400,
+          hasDirectory: true,
+          createdAt: '2026-05-01T00:00:00.000Z',
+          updatedAt: '2026-05-02T00:00:00.000Z',
+        },
+        {
+          name: 'security-audit',
+          displayName: 'Security Audit',
+          description: 'Audit release risks and permissions.',
+          source: 'user',
+          userInvocable: true,
+          contentLength: 320,
+          hasDirectory: true,
+          createdAt: '2026-05-03T00:00:00.000Z',
+          updatedAt: '2026-05-05T00:00:00.000Z',
+        },
+        {
+          name: 'telegram-access',
+          displayName: 'Telegram Access',
+          description: 'Open messaging access.',
+          source: 'plugin',
+          pluginName: 'telegram',
+          userInvocable: true,
+          contentLength: 280,
+          hasDirectory: true,
+          createdAt: '2026-05-04T00:00:00.000Z',
+          updatedAt: '2026-05-04T00:00:00.000Z',
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      target: { value: 'release' },
+    })
+
+    expect(screen.getByText('Release Checklist')).toBeInTheDocument()
+    expect(screen.getByText('Security Audit')).toBeInTheDocument()
+    expect(screen.queryByText('Telegram Access')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Sort skills'), {
+      target: { value: 'updatedAt' },
+    })
+
+    const security = screen.getByText('Security Audit')
+    const release = screen.getByText('Release Checklist')
+    expect(
+      (security.compareDocumentPosition(release) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true)
+    expect(screen.getByText('2 matching skills')).toBeInTheDocument()
+  })
+
+  it('sorts matching skills globally across sources', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'z-user-skill',
+          displayName: 'Zulu User Skill',
+          description: 'Searchable release helper.',
+          source: 'user',
+          userInvocable: true,
+          contentLength: 320,
+          hasDirectory: true,
+          createdAt: '2026-05-01T00:00:00.000Z',
+          updatedAt: '2026-05-01T00:00:00.000Z',
+        },
+        {
+          name: 'a-project-skill',
+          displayName: 'Alpha Project Skill',
+          description: 'Searchable release helper.',
+          source: 'project',
+          userInvocable: true,
+          contentLength: 300,
+          hasDirectory: true,
+          createdAt: '2026-05-02T00:00:00.000Z',
+          updatedAt: '2026-05-02T00:00:00.000Z',
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      target: { value: 'searchable' },
+    })
+
+    const alpha = screen.getByText('Alpha Project Skill')
+    const zulu = screen.getByText('Zulu User Skill')
+    expect(
+      (alpha.compareDocumentPosition(zulu) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true)
+  })
+
+  it('matches skill names when users omit separators', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'sp-debug',
+          displayName: 'Debug Workflow',
+          description: 'Diagnose workflow issues.',
+          source: 'user',
+          userInvocable: true,
+          contentLength: 320,
+          hasDirectory: true,
+          createdAt: '2026-05-01T00:00:00.000Z',
+          updatedAt: '2026-05-01T00:00:00.000Z',
+        },
+        {
+          name: 'sp-plan',
+          displayName: 'Plan Workflow',
+          description: 'Plan implementation work.',
+          source: 'user',
+          userInvocable: true,
+          contentLength: 280,
+          hasDirectory: true,
+          createdAt: '2026-05-02T00:00:00.000Z',
+          updatedAt: '2026-05-02T00:00:00.000Z',
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      target: { value: 'spdebug' },
+    })
+
+    expect(screen.getByText('Debug Workflow')).toBeInTheDocument()
+    expect(screen.queryByText('Plan Workflow')).not.toBeInTheDocument()
+  })
+
   it('uses the active session workDir even when settings tab is focused', () => {
     const fetchSkills = vi.fn()
     useSkillStore.setState({

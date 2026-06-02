@@ -1,0 +1,43 @@
+{
+  "task_id": "T015",
+  "status": "success",
+  "red_state": {
+    "result": "expected_failure",
+    "summary": "Focused test command compiled and executed. The suite failed only on missing US3 recommended phase skill implementation surfaces.",
+    "passed": 197,
+    "failed": 6,
+    "failed_tests": [
+      "buildWorkflowFinalReport > preserves bounded recommended skill snapshots and evidence without checklist noise",
+      "WorkflowRuntimeService > startPhase snapshots active phase recommended skill resolutions for resume-stable prompts",
+      "WorkflowRuntimeService > assembles distinct active-phase recommended skills prompt block from persisted snapshot without scheduling SkillTool calls",
+      "workflowSummaryFromState > summarizes active phase recommended skill availability and bounded evidence",
+      "workflowToolPolicy > recommended phase skills do not bypass workflow tool permissions or enable SkillTool globally",
+      "Sessions API > Workflow Session API contract > POST /api/sessions should create a workflow session with additive summary and state pointer metadata"
+    ]
+  },
+  "changed_files": [
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    "src/server/services/workflowSummary.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/services/compact/workflowSummaryCarryover.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T015.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/sessions.test.ts src/services/compact/workflowSummaryCarryover.test.ts src/server/services/workflowToolPolicy.test.ts",
+    "exit_code": 1,
+    "stdout_summary": "Ran 203 tests across 6 files: 197 pass, 6 fail, 1107 expect() calls. Failures assert missing phaseSkillSnapshots/recommendedSkillStatus/recommendedSkills prompt and policy surfaces. Existing compact carryover bounded evidence test passed."
+  },
+  "concerns": [
+    "Project cognition query returned readiness=blocked with stale dirty baseline, so live task packet, contract, quickstart, and test/service reads were used as authoritative evidence.",
+    "Session API test assumes the builtin agent-development discussion phase will expose sp-discussion as an active-phase recommended skill once US3 implementation lands; adjust only if the canonical builtin skill name differs."
+  ],
+  "recovery_hints": [
+    "Persist phaseSkillSnapshots when starting workflow sessions/phases, using phase skills from the template and resolver results rather than recomputing prompt meaning on resume.",
+    "Render a distinct Active phase recommended skills prompt block from the persisted snapshot, including available and unavailable/degraded groups, and keep scheduled SkillTool calls empty.",
+    "Add recommendedSkillStatus to workflow metadata/summary with total, available, unavailable, degraded, evidenceCount, and bounded activePhaseItems.",
+    "Include final report recommendedSkills snapshots and evidence, filtering to used, relevant-skipped, and relevant-unavailable outcomes and excluding irrelevant unused checklist noise or skill file contents.",
+    "Update workflow tool policy guidance so recommended phase skills are explicitly advisory and do not enable SkillTool, model, effort, fork, shell, hook, or unrelated tool permissions."
+  ]
+}

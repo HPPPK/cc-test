@@ -73,7 +73,7 @@ standalone branch-creation command.
   delegation, or validation commands continue.
 - Use `sp-auto` when repository state already records the recommended next step
   and the user wants to continue without naming the exact workflow manually.
-- Use `sp-discussion` before `sp-specify` when the request is a rough idea, not-yet-ready requirement, unsettled product direction, or depends on unclear project boundaries.
+- Use `sp-discussion` before `sp-specify` when the request is a rough idea, not-yet-ready requirement, unsettled product direction, or depends on unclear project boundaries. `sp-discussion` is the senior product-engineering advisor route: it performs a Truth Pass before project-specific technical advice, gives decision-ready judgment with evidence and risk, maintains a Discussion Compass for long conversations, and applies proactive implication mapping so adjacent implications are surfaced without one-point-at-a-time follow-up loops.
 - `sp-discussion` must run the Context Boundary Gate before project-specific technical options, affected-file claims, or handoff generation.
 - For cross-project or transfer requests, lock the target project root before technicalizing.
 - Do not route to `sp-split`; broad directions either become one unified handoff with capability map, sequence, dependencies, deferred scope, and reopen conditions, or stay in `sp-discussion`.
@@ -108,9 +108,14 @@ standalone branch-creation command.
 - Use `sp-map-update` before other workflow steps when project cognition runtime
   coverage is stale or too weak for a localized touched area and the user wants
   map maintenance first, including ordinary existing-baseline gaps.
+- If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements. Do not recommend map-scan -> map-build solely because the graph has no paths.
 - Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build
-  only for first/missing/unusable baseline, schema failure, zero active-generation
-  path_index rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+  only for brownfield first/missing/unusable baseline, schema failure, zero active-generation
+  path_index rows outside `greenfield_empty`, `explicit_rebuild_requested`, or
+  `baseline_identity_invalid`.
+- `sp-map-update` is for manual/external maintenance as the external/manual maintenance entrypoint for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. A source-changing `sp-*` workflow does not hand off its own verified changes to `sp-map-update`; it runs inline project cognition update during closeout from its workflow-owned changed paths, affected surfaces, and verification evidence. In shared routing summaries, sp-map-update is for manual/external maintenance.
+- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`. Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output.
+- Workflow-owned mutation closeout is not external map maintenance. Dirty state is fallback-only after inline update cannot complete.
 - Use `sp-analyze` only for optional diagnostics, explicit user requests, or persisted legacy `/sp.analyze` state.
 - Use `sp-explain` when the user needs a plain-language explanation of current
   artifacts or runtime state.
@@ -120,7 +125,9 @@ standalone branch-creation command.
 - Use the direct `project-cognition` query planning flow required by the
   selected workflow contract to retrieve the task-local project cognition
   bundle. The agent must translate the raw user request into a `query_plan`
-  using returned map terms before running `project-cognition query --query-plan`.
+  using returned graph-backed project concept candidates, `concept_decisions`,
+  and `lexicon_generation_id` before running
+  `project-cognition query --query-plan`.
   Treat raw graph JSON artifacts as obsolete runtime surfaces.
 
 ## Consequence-Aware Routing

@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "feature": "workflow-phase-skills",
+  "featureDir": ".specify/features/007-workflow-phase-skills",
+  "branch": "007-workflow-phase-skills",
+  "command": "sp-tasks",
+  "status": "ready-for-implementation",
+  "nextCommand": "/sp.implement",
+  "targetRoot": "F:\\github\\cc-jiangxia",
+  "activeProfile": "Standard Delivery",
+  "execution": {
+    "execution_model": "adaptive",
+    "execution_mode": "standard",
+    "workflow_status": "ready",
+    "dispatch_shape": "leader-inline",
+    "execution_surface": "leader-inline",
+    "capability_degraded": true,
+    "blocked_reason": null,
+    "delegated_task_generation_lanes": []
+  },
+  "cognition": {
+    "freshness": "stale",
+    "readiness": "blocked",
+    "used_as": "advisory navigation only",
+    "recommended_next_action": "review_project_cognition_update",
+    "selected_concepts": [
+      "term:workflow",
+      "term:phase",
+      "term:skills",
+      "term:recommended",
+      "term:binding",
+      "term:shared",
+      "term:resolver",
+      "term:import",
+      "term:export"
+    ],
+    "rejected_concepts": [
+      "term:sp-tasks"
+    ],
+    "minimal_live_reads": [
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workflowTemplateValidation.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/services/workflowSessionCreateService.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/server/services/workflowSummary.ts",
+      "src/server/services/workflowFinalReport.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "src/server/api/skills.ts",
+      "src/server/api/sessions.ts",
+      "src/server/api/workflowTemplates.ts",
+      "src/skills/loadSkillsDir.ts",
+      "src/tools/SkillTool/SkillTool.ts",
+      "src/tools/SkillTool/prompt.ts",
+      "desktop/src/types/session.ts",
+      "desktop/src/types/skill.ts",
+      "desktop/src/api/sessions.ts",
+      "desktop/src/api/skills.ts",
+      "desktop/src/stores/skillStore.ts",
+      "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+      "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+      "desktop/src/components/workflow/WorkflowStatusPanel.tsx"
+    ]
+  },
+  "artifacts": {
+    "tasks": ".specify/features/007-workflow-phase-skills/tasks.md",
+    "taskIndex": ".specify/features/007-workflow-phase-skills/task-index.json",
+    "taskPacketsDir": ".specify/features/007-workflow-phase-skills/task-packets",
+    "taskGenerationEvidence": ".specify/features/007-workflow-phase-skills/task-generation/evidence-index.json",
+    "taskGenerationCheckpoints": ".specify/features/007-workflow-phase-skills/task-generation/checkpoints.ndjson"
+  },
+  "deliveryShape": "serial foundation with intra-phase parallel batches",
+  "tasks": [
+    "T001",
+    "T002",
+    "T003",
+    "T004",
+    "T005",
+    "T006",
+    "T007",
+    "T008",
+    "T009",
+    "T010",
+    "T011",
+    "T012",
+    "T013",
+    "T014",
+    "T015",
+    "T016",
+    "T017",
+    "T018",
+    "T019",
+    "T020",
+    "T021",
+    "T022",
+    "T023",
+    "T024"
+  ],
+  "parallelBatches": [
+    {
+      "id": "batch-red-tests",
+      "after": [
+        "T005"
+      ],
+      "tasks": [
+        "T006",
+        "T010",
+        "T015"
+      ],
+      "joinPoint": "after all RED tests fail for expected missing behavior"
+    },
+    {
+      "id": "batch-initial-implementation",
+      "after": [
+        "T006",
+        "T010",
+        "T015"
+      ],
+      "tasks": [
+        "T007",
+        "T011",
+        "T016"
+      ],
+      "joinPoint": "before shared desktop workflow tests and report/status integration"
+    }
+  ],
+  "guardrails": [
+    "G-SKILLTOOL-BOUNDARY",
+    "G-COMPAT",
+    "G-SHARED-RESOLVER",
+    "G-BOUNDED-EVIDENCE",
+    "G-DESKTOP-STATE-PRIORITY",
+    "G-NO-BUNDLE",
+    "G-TEST-FIRST"
+  ],
+  "consequenceObligations": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-005",
+    "CA-006",
+    "CA-007",
+    "CA-008",
+    "CA-009",
+    "CA-010"
+  ],
+  "stopConditions": [
+    "Implementation requires automatic skill execution.",
+    "Implementation makes recommended skills default completion gates.",
+    "Implementation binds workflow phases to plugins as primary objects.",
+    "Implementation bundles skill package contents by default.",
+    "Implementation grants tools, shell, hooks, model, effort, or fork behavior outside SkillTool."
+  ],
+  "implementationReadinessAudit": {
+    "frCoverage": "mapped",
+    "lockedDecisions": "preserved",
+    "guardrails": "mapped",
+    "packetReadiness": "DP1/DP2/DP3 covered",
+    "referenceFidelity": "not_applicable",
+    "unmappedTasks": "none",
+    "writeSetConflicts": "none in declared parallel batches"
+  }
+}

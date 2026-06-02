@@ -1,0 +1,82 @@
+{
+  "task_id": "T014",
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "server": {
+      "command": "bun test src/server/__tests__/workflowTemplates.test.ts",
+      "exit_code": 0,
+      "summary": "45 tests passed, 0 failed, 196 expect() calls. US2 sharing server checks are green, including export dependency manifest coverage, non-bundling behavior, import preview warning/error diagnostics, and unresolved recommended reference preservation on import commit."
+    },
+    "desktop": {
+      "command": "cd desktop && bun run test -- --run src/api/sessions.test.ts src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 0,
+      "summary": "2 test files passed, 61 tests passed. Desktop sharing checks are green for sessions API types and workflow import/export dialog diagnostics and selectability behavior."
+    }
+  },
+  "guardrail_check": {
+    "status": "passed",
+    "project_cognition": {
+      "entry_readiness": "blocked",
+      "recommended_next_action": "review_project_cognition_update",
+      "handling": "Continued from live repository evidence and focused test coverage because this packet is verification-only and the advisory map is stale/blocked."
+    },
+    "checks": [
+      {
+        "name": "export_includes_dependency_manifest_without_default_skill_bundle",
+        "status": "passed",
+        "evidence": [
+          "src/server/__tests__/workflowTemplates.test.ts: POST /api/workflows/templates/export includes a dependency manifest for every phase skill reference",
+          "src/server/__tests__/workflowTemplates.test.ts: POST /api/workflows/templates/export does not include skill package contents by default",
+          "src/server/api/workflowTemplates.ts: exportTemplates/buildExportDependencyManifest only emits template JSON plus dependency manifest metadata and per-reference resolution metadata"
+        ]
+      },
+      {
+        "name": "import_preview_and_commit_preserve_unresolved_recommended_references_with_diagnostics",
+        "status": "passed",
+        "evidence": [
+          "src/server/__tests__/workflowTemplates.test.ts: POST /api/workflows/templates/import/preview keeps missing recommended skills selectable with dependency warnings",
+          "src/server/__tests__/workflowTemplates.test.ts: POST /api/workflows/templates/import/preview keeps invalid references unselectable with dependency errors",
+          "src/server/__tests__/workflowTemplates.test.ts: POST /api/workflows/templates/import preserves unresolved recommended skill references when committed",
+          "src/server/api/workflowTemplates.ts: previewImport/commitImport/buildImportCandidates preserve template references while dependencyDiagnostics drive canCommit/selectable behavior"
+        ]
+      },
+      {
+        "name": "missing_recommended_skills_do_not_block_import_by_default",
+        "status": "passed",
+        "evidence": [
+          "src/server/__tests__/workflowTemplates.test.ts: missing recommended skills remain selectable with dependency warnings",
+          "desktop/src/components/workflow/WorkflowComponents.test.tsx: renders missing recommended skill diagnostics as import warnings without blocking selection",
+          "src/server/api/workflowTemplates.ts: selectable stays true when dependency diagnostics are warnings and every diagnostic canImport is true"
+        ]
+      },
+      {
+        "name": "invalid_dependency_diagnostics_are_visible_and_block_selection_when_appropriate",
+        "status": "passed",
+        "evidence": [
+          "desktop/src/components/workflow/WorkflowComponents.test.tsx: renders invalid dependency diagnostics as import errors and keeps the candidate unselectable",
+          "desktop/src/components/workflow/WorkflowComponents.test.tsx: renders export dependency manifest diagnostics before users reuse the exported JSON",
+          "desktop/src/components/workflow/WorkflowImportExportDialog.tsx: ImportDependencyDiagnostics and ExportDependencyDiagnostics render visible severity/status messaging while disabled checkboxes preserve non-selectability"
+        ]
+      },
+      {
+        "name": "no_auto_exec_default_gates_plugin_primary_binding_or_skilltool_permission_bypass",
+        "status": "passed",
+        "evidence": [
+          "desktop/src/components/workflow/WorkflowComponents.test.tsx: negative assertions exclude auto-exec, plugin-primary, required/gate, and bundled-contents wording from sharing UI",
+          "src/server/services/workflowToolPolicy.ts: recommended phase skills do not grant tool permissions and do not enable SkillTool globally",
+          "src/tools/SkillTool/SkillTool.ts: permission checks remain explicit via deny/allow/ask logic and no workflow-sharing path bypasses SkillTool permission handling"
+        ]
+      }
+    ]
+  },
+  "concerns": [
+    "Project cognition advisory state is currently blocked/stale, so this checkpoint relies on live repository evidence and focused tests rather than a fresh route pack.",
+    "This worker ran only the exact US2 checkpoint commands. It did not rerun broader desktop lint or full repository quality gates."
+  ],
+  "recovery_hints": [
+    "If US2 sharing regresses, start with src/server/__tests__/workflowTemplates.test.ts for import/export manifest and dependency-diagnostic behavior, then rerun the exact server checkpoint command.",
+    "For desktop regressions, inspect desktop/src/components/workflow/WorkflowImportExportDialog.tsx and desktop/src/components/workflow/WorkflowComponents.test.tsx, then rerun the exact desktop checkpoint command.",
+    "If permission or auto-exec concerns reappear, inspect src/server/services/workflowToolPolicy.ts and src/tools/SkillTool/SkillTool.ts before changing any workflow-sharing surface."
+  ]
+}

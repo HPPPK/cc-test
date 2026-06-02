@@ -146,7 +146,10 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
       optionalFields: ['phases[].requestedModel', 'phases[].skills'],
       guidance: [
         'requestedModel is optional and should only be set when the phase has a concrete model need.',
-        'Skills should include a name and reason when a skill materially improves phase work.',
+        'Use workflow_template_authoring skill_catalog before create or update when assigning recommended phase skills.',
+        'phases[].skills should contain references to existing skills such as { name, mode: "recommended" }; add source, pluginName, namespace, version, contentHash, or referenceId only when needed for provenance or ambiguity.',
+        'Do not duplicate skill-owned descriptions, applicability, reason, appliesWhen, assets, scripts, tools, model, or effort settings into workflow templates.',
+        'Legacy reason fields are preserved if already present, but new workflow templates should rely on the skill catalog and the skill package itself for applicability.',
       ],
     },
     {
@@ -221,6 +224,10 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
     ],
     WORKFLOW_TEMPLATE_NESTED_UNSUPPORTED: [
       'Remove workflows, nestedWorkflows, or childWorkflows fields; use a separate linear template for nested work.',
+    ],
+    WORKFLOW_PHASE_SKILL_INVALID_REFERENCE: [
+      'Set phases[].skills to an array of recommended skill references from workflow_template_authoring skill_catalog.',
+      'Each phase skill reference needs a non-empty name and mode "recommended"; omit duplicated reason or appliesWhen text in new templates.',
     ],
   },
 }

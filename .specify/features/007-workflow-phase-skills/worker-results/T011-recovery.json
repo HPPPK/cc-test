@@ -1,0 +1,18 @@
+{
+  "task_id": "T011-recovery",
+  "status": "passed",
+  "changed_files": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T011-recovery.json"
+  ],
+  "validation_output": "bun test src/server/__tests__/workflowTemplates.test.ts -> 45 pass, 0 fail, 196 expect() calls. Ran 45 tests across 1 file.",
+  "concerns": [
+    "Focused recovery only; did not run the full quality gate.",
+    "The test file already contained broader uncommitted T011 edits before this recovery patch."
+  ],
+  "recovery_hints": [
+    "Selected export payload assertions now expect schemaVersion 2.",
+    "Dependency manifest test captures dependencies and asserts length before the nested toMatchObject matcher to avoid Bun matcher mutation affecting later assertions.",
+    "Import preview compatibility assertions remain schemaVersion 1."
+  ]
+}

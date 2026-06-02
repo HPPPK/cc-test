@@ -109,6 +109,35 @@ describe('Skills API', () => {
     expect(body.skills).toContainEqual(expect.objectContaining({ name: 'project-skill', source: 'project' }))
   })
 
+  it('includes created and updated timestamps for skill sorting', async () => {
+    const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')
+    await writeSkill(
+      userSkillsRoot,
+      'timed-skill',
+      ['---', 'description: Timestamped skill', '---', '', '# Timed skill'].join('\n'),
+    )
+
+    const skillFile = path.join(userSkillsRoot, 'timed-skill', 'SKILL.md')
+    const createdAt = new Date('2026-05-01T00:00:00.000Z')
+    const updatedAt = new Date('2026-05-03T00:00:00.000Z')
+    await fs.utimes(skillFile, createdAt, updatedAt)
+
+    const { req, url, segments } = makeRequest('/api/skills')
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      skills: Array<{ name: string; createdAt?: string; updatedAt?: string }>
+    }
+    expect(body.skills).toContainEqual(
+      expect.objectContaining({
+        name: 'timed-skill',
+        createdAt: expect.any(String),
+        updatedAt: updatedAt.toISOString(),
+      }),
+    )
+  })
+
   it('lists user skills installed through a directory symlink or junction', async () => {
     const linkedSkillsRoot = path.join(tmpHome, '.agents', 'skills')
     const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')

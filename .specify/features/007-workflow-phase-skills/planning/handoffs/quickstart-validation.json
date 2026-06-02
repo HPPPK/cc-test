@@ -1,0 +1,68 @@
+{
+  "lane_id": "quickstart-validation",
+  "status": "accepted",
+  "source_artifacts_inspected": [
+    "spec.md",
+    "alignment.md",
+    "context.md",
+    "references.md",
+    "AGENTS.md"
+  ],
+  "live_files_inspected": [
+    "package.json",
+    "desktop/package.json",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/skills.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    "src/server/services/workflowReportStore.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    "desktop/src/__tests__/pluginsSettings.test.tsx"
+  ],
+  "validation_scenarios": [
+    "Author selects phase recommended skills from shared catalog and saves without duplicating skill instructions.",
+    "Export includes dependency manifest and import preview warns but permits missing recommended skills.",
+    "Runtime prompt shows available and unavailable recommended skills in a distinct non-mandatory block.",
+    "Completion/final report/status surfaces show only used or relevant skipped/unavailable skill evidence.",
+    "Old templates and old exports without dependency manifests remain valid."
+  ],
+  "commands": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run check:coverage",
+    "bun run verify"
+  ],
+  "test_targets": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/skills.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    "src/server/services/workflowReportStore.test.ts",
+    "src/server/services/workflowSummary.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    "desktop/src/__tests__/pluginsSettings.test.tsx",
+    "desktop/src/api/sessions.test.ts",
+    "desktop/src/stores/sessionStore.test.ts"
+  ],
+  "ca_obligations_covered": [
+    "CA-002",
+    "CA-004",
+    "CA-005",
+    "CA-006",
+    "CA-008",
+    "CA-009",
+    "CA-010"
+  ],
+  "plan_sections_affected": [
+    "Quickstart",
+    "Verification Strategy",
+    "Recovery And Validation Contract"
+  ],
+  "integration_status": "integrated"
+}

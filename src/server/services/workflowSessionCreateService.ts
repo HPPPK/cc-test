@@ -5,11 +5,15 @@ import * as path from 'node:path'
 import { ApiError } from '../middleware/errorHandler.js'
 import { sanitizePath as sanitizePortablePath } from '../../utils/sessionStoragePortable.js'
 import {
+  collectTemplateSkillCatalog,
   WorkflowTemplateRegistryService,
   type WorkflowTemplateRegistryTemplate,
 } from './workflowTemplateRegistryService.js'
+import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
 import type {
+  WorkflowPhaseSkillReference,
+  WorkflowPhaseSkillSnapshot,
   WorkflowSessionCreateOptions,
   WorkflowSessionMetadata,
   WorkflowSessionState,
@@ -22,6 +26,14 @@ import {
 } from './workflowSummary.js'
 
 const WORKFLOW_CREATE_KEYS = new Set(['templateId', 'templateSource', 'initialPhaseId'])
+const WORKFLOW_PHASE_SKILL_RESOLVER_VERSION = 'workflow-phase-skill-resolver-v1'
+const BUILTIN_AGENT_DEVELOPMENT_PHASE_SKILLS: Record<string, WorkflowPhaseSkillReference[]> = {
+  discussion: [{ name: 'sp-discussion', mode: 'recommended', source: 'managed' }],
+  specify: [{ name: 'sp-specify', mode: 'recommended', source: 'managed' }],
+  plan: [{ name: 'sp-plan', mode: 'recommended', source: 'managed' }],
+  tasks: [{ name: 'sp-tasks', mode: 'recommended', source: 'managed' }],
+  implement: [{ name: 'sp-implement', mode: 'recommended', source: 'managed' }],
+}
 
 class WorkflowSessionCreateError extends ApiError {
   constructor(statusCode: number, code: string, message: string) {
@@ -116,6 +128,7 @@ export class WorkflowSessionCreateService {
     const now = new Date().toISOString()
     const templateSnapshot = this.toWorkflowTemplate(registryTemplate)
     const templateSnapshotId = `${registryTemplate.id}-v${registryTemplate.version}`
+    const phaseSkillSnapshots = await this.createPhaseSkillSnapshots(templateSnapshot, now)
     const phases = registryTemplate.phases.map((phase, index) => ({
       id: phase.id,
       index,
@@ -172,6 +185,7 @@ export class WorkflowSessionCreateService {
       createdAt: now,
       updatedAt: now,
       pendingConfirmation: null,
+      ...(phaseSkillSnapshots.length ? { phaseSkillSnapshots } : {}),
     } satisfies WorkflowSessionState
 
     const { pointer } = await this.stateService.writeState(sessionId, state)
@@ -188,28 +202,73 @@ export class WorkflowSessionCreateService {
       version: template.version,
       displayName: template.name,
       description: template.description,
-      phases: template.phases.map((phase) => ({
-        id: phase.id,
-        label: phase.name,
-        instructions: phase.instructions,
-        requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : null,
-        skillDeclarations: phase.skills.map((skill) => ({
-          ...skill,
-          source: 'template',
-          guidance: skill.reason || '',
-        })),
-        requiredArtifacts: phase.requiredArtifacts.map((artifact) => ({
-          ...artifact,
-          kind: 'json',
-          description: artifact.description || artifact.name || artifact.id,
-        })),
-        completionCriteria: phase.completionCriteria,
-        transitionAuthority: phase.transition.authority,
-        ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
-        ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
-      })),
+      phases: template.phases.map((phase) => {
+        const skills = this.phaseSkillReferences(template, phase.id, phase.skills)
+        return {
+          id: phase.id,
+          label: phase.name,
+          instructions: phase.instructions,
+          requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : null,
+          skills,
+          skillDeclarations: phase.skills.map((skill) => ({
+            ...skill,
+            source: 'template',
+            guidance: skill.reason || '',
+          })),
+          requiredArtifacts: phase.requiredArtifacts.map((artifact) => ({
+            ...artifact,
+            kind: 'json',
+            description: artifact.description || artifact.name || artifact.id,
+          })),
+          completionCriteria: phase.completionCriteria,
+          transitionAuthority: phase.transition.authority,
+          ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
+          ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
+        }
+      }),
       registryKey: `${template.source}:${template.id}`,
+      ...(template.contentHash ? { contentHash: template.contentHash } : {}),
     }
+  }
+
+  private phaseSkillReferences(
+    template: WorkflowTemplateRegistryTemplate,
+    phaseId: string,
+    skills: WorkflowPhaseSkillReference[],
+  ): WorkflowPhaseSkillReference[] {
+    if (skills.length > 0) return skills
+    if (template.id !== 'agent-development' || template.source !== 'builtin') return []
+    return BUILTIN_AGENT_DEVELOPMENT_PHASE_SKILLS[phaseId] ?? []
+  }
+
+  private async createPhaseSkillSnapshots(
+    template: WorkflowTemplate,
+    snapshottedAt: string,
+  ): Promise<WorkflowPhaseSkillSnapshot[]> {
+    const phasesWithSkills = template.phases.filter((phase) => phase.skills?.length)
+    if (phasesWithSkills.length === 0) return []
+
+    const catalog = await collectTemplateSkillCatalog()
+    const snapshots: WorkflowPhaseSkillSnapshot[] = []
+    for (const phase of phasesWithSkills) {
+      const references = phase.skills ?? []
+      const result = await resolveWorkflowPhaseSkills({
+        templateId: template.id,
+        phaseId: phase.id,
+        references,
+        catalog,
+        checkedAt: snapshottedAt,
+      })
+      snapshots.push({
+        phaseId: phase.id,
+        references: result.resolutions.map((resolution) => resolution.reference),
+        resolutions: result.resolutions,
+        snapshottedAt,
+        ...(template.contentHash ? { templateContentHash: template.contentHash } : {}),
+        resolverVersion: WORKFLOW_PHASE_SKILL_RESOLVER_VERSION,
+      })
+    }
+    return snapshots
   }
 
   async appendWorkflowMetadata(

@@ -1,0 +1,24 @@
+{
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "command": "bun run check:native",
+    "exit_code": 0,
+    "summary": [
+      "[build-sidecars] scanning for missing imports...",
+      "[scan] scanned 2291 source files",
+      "[scan] missing 0 stub targets",
+      "[scan] created 0 stubs, skipped 0",
+      "[build-sidecars] Built desktop sidecar for x86_64-pc-windows-msvc (bun-windows-x64)",
+      "Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.19s"
+    ]
+  },
+  "concerns": [
+    "The failure was caused by repo-owned native processes holding files under desktop/src-tauri/target/debug, including cc-jiangxia-desktop.exe and claude-sidecar.exe.",
+    "This is a local process/lock issue rather than a source-level build bug, so it may recur if a Tauri dev session is left running during native checks."
+  ],
+  "recovery_hints": [
+    "If native checks fail again with Os code 5 / PermissionDenied, stop any live repo-owned cargo, cc-jiangxia-desktop.exe, and claude-sidecar.exe processes before rerunning.",
+    "Keep cleanup bounded to desktop/src-tauri/target only; do not broaden deletion outside repo build outputs."
+  ]
+}

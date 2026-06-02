@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "changed_files": [
+    "desktop/src/api/skills.test.ts",
+    "desktop/src/stores/skillStore.test.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T024-desktop-coverage.json"
+  ],
+  "validation_output": [
+    {
+      "command": "cd desktop && bun run test src/api/skills.test.ts src/stores/skillStore.test.ts",
+      "status": "passed",
+      "summary": "2 test files passed, 9 tests passed"
+    },
+    {
+      "command": "bun run check:desktop",
+      "status": "passed",
+      "summary": "96 test files passed, 823 tests passed; TypeScript no-emit and Vite production build passed"
+    },
+    {
+      "command": "cd desktop && bun run test -- --run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=lcov --coverage.reporter=json-summary --coverage.reportsDirectory=../artifacts/coverage/T024-desktop-only/desktop",
+      "status": "passed",
+      "summary": "96 test files passed, 823 tests passed; desktop coverage summary reported desktop/src/api/skills.ts at 100% lines and desktop/src/stores/skillStore.ts at 81.13% lines. Temporary generated coverage directory was removed after inspection."
+    }
+  ],
+  "concerns": [
+    "Full repository changed-line ratchet was not rerun because the known T024 report includes unrelated failing server/API, agent-tools, and agent-utils coverage lanes outside this desktop recovery scope.",
+    "Existing unrelated React act() warnings remain in desktop/src/__tests__/generalSettings.test.tsx during broader desktop runs; they did not fail the desktop gate."
+  ],
+  "recovery_hints": [
+    "If changed-line coverage still fails for desktop/src/stores/skillStore.ts, add a narrow assertion for fetchSkillDetail rejection to cover lines 74-78 or fetchSkills rejection to cover lines 44-48.",
+    "Remaining non-desktop ratchet failures should be recovered in the server/API and agent coverage tasks listed in artifacts/coverage/2026-05-29T17-51-09-258Z/coverage-report.md."
+  ]
+}

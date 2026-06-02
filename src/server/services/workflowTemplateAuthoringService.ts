@@ -4,6 +4,7 @@ import {
   WorkflowTemplateRegistryService,
   type WorkflowTemplateRegistryListResult,
   type WorkflowTemplateRegistryTemplate,
+  collectTemplateSkillCatalog,
 } from './workflowTemplateRegistryService.js'
 import { workflowTemplateAuthoringGuide, type WorkflowTemplateAuthoringGuide } from './workflowTemplateAuthoringGuide.js'
 import {
@@ -13,9 +14,13 @@ import {
   type WorkflowTemplateValidationIssue,
 } from './workflowTemplateValidation.js'
 import type { WorkflowTemplateSource } from './workflowTypes.js'
+import type {
+  WorkflowPhaseSkillSource,
+} from './workflowTypes.js'
 
 export type WorkflowTemplateAuthoringOperationName =
   | 'guide'
+  | 'skill_catalog'
   | 'list'
   | 'inspect'
   | 'validate'
@@ -32,6 +37,13 @@ export type WorkflowTemplateAuthoringSelector = {
 export type WorkflowTemplateAuthoringGuideInput = {
   operation: 'guide'
   topic?: string
+}
+
+export type WorkflowTemplateAuthoringSkillCatalogInput = {
+  operation: 'skill_catalog'
+  query?: string
+  source?: 'all' | WorkflowPhaseSkillSource
+  limit?: number | null
 }
 
 export type WorkflowTemplateAuthoringListInput = {
@@ -84,6 +96,7 @@ export type WorkflowTemplateAuthoringDeleteInput = {
 
 export type WorkflowTemplateAuthoringOperationInput =
   | WorkflowTemplateAuthoringGuideInput
+  | WorkflowTemplateAuthoringSkillCatalogInput
   | WorkflowTemplateAuthoringListInput
   | WorkflowTemplateAuthoringInspectInput
   | WorkflowTemplateAuthoringValidateInput
@@ -128,6 +141,28 @@ export type WorkflowTemplateBasis = {
   basisHash: string
 }
 
+export type WorkflowTemplateAuthoringSkillCatalogEntry = {
+  name: string
+  displayName?: string
+  source: WorkflowPhaseSkillSource
+  pluginName?: string
+  namespace?: string
+  version?: string
+  contentHash?: string
+  referenceId?: string
+  installable?: boolean
+  recommendedReference: {
+    name: string
+    mode: 'recommended'
+    source: WorkflowPhaseSkillSource
+    pluginName?: string
+    namespace?: string
+    version?: string
+    contentHash?: string
+    referenceId?: string
+  }
+}
+
 export type WorkflowTemplateAuthoringAffectedTemplate = {
   source: WorkflowTemplateSource
   id: string
@@ -148,6 +183,7 @@ export type WorkflowTemplateAuthoringResult = {
     issues: WorkflowTemplateAuthoringIssue[]
   }
   templates?: WorkflowTemplateSummary[]
+  skillCatalog?: WorkflowTemplateAuthoringSkillCatalogEntry[]
   invalidTemplates?: WorkflowTemplateAuthoringIssue[]
   guide?: WorkflowTemplateAuthoringGuide
   template?: WorkflowTemplateRegistryTemplate
@@ -251,6 +287,33 @@ function matchesSource(
   source: WorkflowTemplateAuthoringListInput['source'],
 ): boolean {
   return source === undefined || source === 'all' || template.source === source
+}
+
+function matchesSkillCatalogSource(
+  entry: WorkflowTemplateAuthoringSkillCatalogEntry,
+  source: WorkflowTemplateAuthoringSkillCatalogInput['source'],
+): boolean {
+  return source === undefined || source === 'all' || entry.source === source
+}
+
+function matchesSkillCatalogQuery(
+  entry: WorkflowTemplateAuthoringSkillCatalogEntry,
+  query: string | undefined,
+): boolean {
+  const normalizedQuery = query?.trim().toLowerCase()
+  if (!normalizedQuery) return true
+
+  return [
+    entry.name,
+    entry.displayName,
+    entry.source,
+    entry.pluginName,
+    entry.namespace,
+    entry.version,
+    entry.referenceId,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .some((value) => value.toLowerCase().includes(normalizedQuery))
 }
 
 function authoringIssue(
@@ -386,6 +449,62 @@ async function executeGuide(
     message: knownTopic
       ? 'Workflow template authoring guide returned.'
       : 'Workflow template authoring guide returned for all topics because the requested topic was not recognized.',
+  }
+}
+
+async function executeSkillCatalog(
+  input: WorkflowTemplateAuthoringSkillCatalogInput,
+): Promise<WorkflowTemplateAuthoringResult> {
+  const maxLimit = 200
+  const requestedLimit = typeof input.limit === 'number' && Number.isFinite(input.limit)
+    ? Math.trunc(input.limit)
+    : maxLimit
+  const limit = Math.min(Math.max(requestedLimit, 1), maxLimit)
+  const catalog = (await collectTemplateSkillCatalog())
+    .map((entry): WorkflowTemplateAuthoringSkillCatalogEntry => {
+      const recommendedReference = {
+        name: entry.name,
+        mode: 'recommended' as const,
+        source: entry.source,
+        ...(entry.pluginName ? { pluginName: entry.pluginName } : {}),
+        ...(entry.namespace ? { namespace: entry.namespace } : {}),
+        ...(entry.version ? { version: entry.version } : {}),
+        ...(entry.contentHash ? { contentHash: entry.contentHash } : {}),
+        ...(entry.referenceId ? { referenceId: entry.referenceId } : {}),
+      }
+
+      return {
+        name: entry.name,
+        ...(entry.displayName ? { displayName: entry.displayName } : {}),
+        source: entry.source,
+        ...(entry.pluginName ? { pluginName: entry.pluginName } : {}),
+        ...(entry.namespace ? { namespace: entry.namespace } : {}),
+        ...(entry.version ? { version: entry.version } : {}),
+        ...(entry.contentHash ? { contentHash: entry.contentHash } : {}),
+        ...(entry.referenceId ? { referenceId: entry.referenceId } : {}),
+        ...(entry.installable ? { installable: entry.installable } : {}),
+        recommendedReference,
+      }
+    })
+    .filter((entry) => matchesSkillCatalogSource(entry, input.source))
+    .filter((entry) => matchesSkillCatalogQuery(entry, input.query))
+    .sort((left, right) =>
+      `${left.source}:${left.name}`.localeCompare(`${right.source}:${right.name}`)
+    )
+
+  return {
+    operation: 'skill_catalog',
+    status: 'succeeded',
+    persisted: false,
+    validation: {
+      valid: true,
+      issues: [],
+    },
+    skillCatalog: catalog.slice(0, limit),
+    nextAction: 'none',
+    message: catalog.length > limit
+      ? `Workflow phase skill catalog returned ${limit} of ${catalog.length} matching skill references.`
+      : 'Workflow phase skill catalog returned.',
   }
 }
 
@@ -1123,6 +1242,8 @@ export async function executeWorkflowTemplateAuthoringOperation(
     switch (input.operation) {
       case 'guide':
         return await executeGuide(input)
+      case 'skill_catalog':
+        return await executeSkillCatalog(input as WorkflowTemplateAuthoringSkillCatalogInput)
       case 'list':
         return await executeList(input, registryService)
       case 'inspect':

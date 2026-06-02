@@ -1,0 +1,40 @@
+{
+  "task_id": "T012",
+  "status": "success",
+  "red_state": {
+    "achieved": true,
+    "expected": "Focused desktop sessions API and workflow component tests compile and run. API type/client dependency contract tests pass because desktop types already expose the fields, while import/export dialog diagnostics tests fail for missing visible dependency diagnostics UI.",
+    "unexpected_pass": false,
+    "failing_tests": [
+      "WorkflowTemplateManager > renders missing recommended skill diagnostics as import warnings without blocking selection",
+      "WorkflowTemplateManager > renders invalid dependency diagnostics as import errors and keeps the candidate unselectable",
+      "WorkflowTemplateManager > renders export dependency manifest diagnostics before users reuse the exported JSON"
+    ],
+    "passing_task_cases": [
+      "sessionsApi workflow contract > exposes import preview dependency diagnostics from the desktop client response type",
+      "sessionsApi workflow contract > exposes export dependency manifests from the desktop client response type without skill contents"
+    ]
+  },
+  "changed_files": [
+    "desktop/src/api/sessions.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".specify/features/007-workflow-phase-skills/worker-results/T012.json"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- --run src/api/sessions.test.ts src/components/workflow/WorkflowComponents.test.tsx",
+    "exit_code": 1,
+    "summary": "src/api/sessions.test.ts: 20 tests passed. src/components/workflow/WorkflowComponents.test.tsx: 38 passed, 3 failed, 41 tests total. Failures are expected RED assertions: import candidates do not render dependencyDiagnostics as visible warning/error diagnostics, and export dialog does not render dependencyManifest diagnostics before reuse; the export JSON textarea contains the manifest but no visible diagnostics section."
+  },
+  "concerns": [
+    "Desktop API types already include WorkflowImportDependencyDiagnostic and WorkflowSkillDependencyManifest fields, so the API contract tests are green rather than RED.",
+    "The component test file had pre-existing unrelated edits in the same allowed file; they were left in place and not reverted.",
+    "The current export dialog displays dependencyManifest only inside the JSON textarea, which is not sufficient for the requested pre-export/reuse diagnostics visibility."
+  ],
+  "recovery_hints": [
+    "In WorkflowImportExportDialog ImportPreview, render candidate.dependencyDiagnostics in a dedicated visible diagnostics section with severity, status, phaseId, reference name/source/plugin, message, and canImport state.",
+    "Keep missing recommended skill diagnostics selectable by default when canImport is true; keep invalid-reference diagnostics visually error-toned and ensure canImport false candidates remain unselectable.",
+    "After exportWorkflowTemplates returns, render response.dependencyManifest.dependencies as a visible export dependency diagnostics section before or adjacent to the export JSON textarea.",
+    "Use wording that frames plugin-disabled, missing, and unsupported-source entries as recommended references only. Do not imply bundled skill contents, auto-execution, default gates, or plugin-primary binding.",
+    "Rerun the focused desktop command after implementing the dialog UI."
+  ]
+}

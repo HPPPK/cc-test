@@ -1,0 +1,59 @@
+{
+  "task_id": "T007",
+  "status": "success",
+  "changed_files": [
+    "desktop/src/types/session.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/api/skills.ts",
+    "desktop/src/stores/skillStore.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T007.json"
+  ],
+  "validation_output": {
+    "focused_test": {
+      "command": "cd desktop && bun run test -- --run src/__tests__/skillsSettings.test.tsx",
+      "exit_code": 1,
+      "result": "failed with pre-existing/T006 RED UI expectation outside T007 write scope",
+      "summary": "4 passed, 1 failed. Failure: Settings > Skills tab > shows workflow-safe catalog reference metadata without bundling skill contents cannot find visible text 'telegram'. Rendering pluginName in SkillList is a UI/component change outside T007 write scope."
+    },
+    "scoped_typecheck": {
+      "command": "cd desktop && bunx tsc --noEmit --moduleResolution bundler --module esnext --target es2022 --jsx react-jsx --strict --skipLibCheck --types vite/client src/types/session.ts src/types/skill.ts src/api/skills.ts src/stores/skillStore.ts",
+      "exit_code": 0,
+      "result": "passed"
+    },
+    "diff_check": {
+      "command": "git diff --check -- desktop/src/types/session.ts desktop/src/types/skill.ts desktop/src/api/skills.ts desktop/src/stores/skillStore.ts",
+      "exit_code": 0,
+      "result": "passed"
+    },
+    "full_desktop_lint": {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 1,
+      "result": "failed outside T007 source scope",
+      "summary": "TypeScript errors are in desktop/src/components/workflow/WorkflowComponents.test.tsx RED tests added by T006: EDITABLE_TEMPLATE.phases[0] may be undefined, and a spread phase object may have id: string | undefined."
+    }
+  },
+  "remaining_failures": [
+    {
+      "surface": "desktop/src/__tests__/skillsSettings.test.tsx",
+      "owner": "T008 or a UI follow-up",
+      "summary": "SkillList does not visibly render pluginName 'telegram'; T007 exposes pluginName/provenance in types/store/API but cannot edit UI components."
+    },
+    {
+      "surface": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+      "owner": "T006/T008",
+      "summary": "Full desktop lint is blocked by RED test type issues in a file outside T007 write scope."
+    }
+  ],
+  "concerns": [
+    "The desktop skills API now exposes a catalog() helper using the existing /api/skills endpoint with catalogOnly=true; the current server ignores that query and still returns metadata-only skill records, so this remains backward-compatible and does not fetch detail contents.",
+    "fetchSkills mirrors the list response into catalog so existing settings behavior can seed workflow selectors without a second request; fetchCatalog exists for later workflow UI code that wants an explicit catalog-only path.",
+    "Workflow phase skill source/provenance metadata is names-first; pluginName remains provenance metadata and is not made the primary workflow binding.",
+    "No SkillTool invocation, auto-exec behavior, default gates, bundled skill contents, or permission bypass paths were added."
+  ],
+  "recovery_hints": [
+    "T008 should consume useSkillStore().catalog or fetchCatalog() in WorkflowTemplateEditor and render phase-local recommended skill controls without calling fetchSkillDetail.",
+    "T008 should preserve existing WorkflowPhaseSkillReference objects when saving, including reason, pluginName, referenceId, contentHash, and unknown fields.",
+    "If the skills settings RED assertion remains required, render pluginName/provenance in SkillList or adjust the test owner to the component task because T007 intentionally did not edit UI components.",
+    "Fix the RED WorkflowComponents.test.tsx type narrowing in the owning test/component task before relying on full desktop lint."
+  ]
+}

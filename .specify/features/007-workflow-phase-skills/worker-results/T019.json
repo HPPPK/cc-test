@@ -1,0 +1,47 @@
+{
+  "task_id": "T019",
+  "status": "success",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/types/session.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T019.json"
+  ],
+  "validation_output": {
+    "focused_tests": {
+      "command": "cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/pages/ActiveSession.test.tsx src/stores/sessionStore.test.ts",
+      "exit_code": 0,
+      "summary": "3 test files passed; 85 tests passed."
+    },
+    "typecheck": {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 1,
+      "summary": "tsc --noEmit failed in pre-existing test fixture type issues outside this worker's no-test-edit scope: WorkflowComponents.test.tsx:1116 and WorkflowComponents.test.tsx:1296."
+    },
+    "diff_check": {
+      "command": "git diff --check -- desktop/src/components/workflow/WorkflowStatusPanel.tsx desktop/src/pages/ActiveSession.tsx desktop/src/stores/sessionStore.ts desktop/src/types/session.ts",
+      "exit_code": 0,
+      "summary": "No whitespace errors; Git reported line-ending normalization warnings only."
+    }
+  },
+  "remaining_failures": [
+    {
+      "command": "cd desktop && bun run lint",
+      "summary": "src/components/workflow/WorkflowComponents.test.tsx(1116,13): WorkflowTemplatePhase | undefined is not assignable to WorkflowTemplatePhase.",
+      "scope": "test file outside T019 write scope"
+    },
+    {
+      "command": "cd desktop && bun run lint",
+      "summary": "src/components/workflow/WorkflowComponents.test.tsx(1296,13): spread phase fixture has id typed as string | undefined.",
+      "scope": "test file outside T019 write scope"
+    }
+  ],
+  "concerns": [
+    "ActiveSession already passes the workflow summary object through to WorkflowStatusPanel, so no ActiveSession edit was required for recommendedSkillStatus or recommendedSkillEvidence.",
+    "sessionStore already preserves additive workflow fields from create and list responses, so no store edit was required.",
+    "desktop/src/types/session.ts had pre-existing uncommitted edits; this task only added recommendedSkillEvidence to WorkflowSessionSummary in that file."
+  ],
+  "recovery_hints": [
+    "For a fully clean desktop lint run, fix the existing WorkflowComponents.test.tsx fixture optional-index type errors in a separate test-editing task.",
+    "Keep recommended skill UI advisory-only; do not add run, execute, install, enable, auto-exec, default gate, plugin-primary, default bundle, or permission-bypass affordances."
+  ]
+}

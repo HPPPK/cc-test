@@ -1,0 +1,84 @@
+{
+  "lane_id": "data-model",
+  "status": "accepted",
+  "source_artifacts_inspected": [
+    "spec.md",
+    "alignment.md",
+    "context.md"
+  ],
+  "live_files_inspected": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "desktop/src/types/session.ts"
+  ],
+  "entities": [
+    {
+      "name": "WorkflowPhaseSkillReference",
+      "purpose": "Names-first phase-local reference to an existing skill.",
+      "required_fields": ["name", "mode"],
+      "optional_fields": ["source", "pluginName", "namespace", "version", "contentHash", "referenceId", "legacyReason", "metadata"],
+      "notes": "mode is recommended for this release. reason remains legacy-compatible data, not the applicability source."
+    },
+    {
+      "name": "WorkflowSkillDependencyManifest",
+      "purpose": "Export-time manifest listing phase skill references and provenance without bundling skill contents.",
+      "required_fields": ["schemaVersion", "dependencies"],
+      "optional_fields": ["generatedAt", "templateIds"],
+      "notes": "Each dependency records templateId, phaseId, name, optional source/provenance, and export-time resolver status."
+    },
+    {
+      "name": "WorkflowPhaseSkillResolution",
+      "purpose": "Resolver output shared by authoring, import/export diagnostics, runtime prompt assembly, and desktop status.",
+      "required_fields": ["reference", "status", "checkedAt"],
+      "optional_fields": ["resolvedSkill", "diagnostic", "candidates", "pluginName"],
+      "notes": "Status vocabulary must include available, missing, ambiguous, unsupported-source, plugin-disabled, invalid-reference, and optionally installable."
+    },
+    {
+      "name": "WorkflowPhaseSkillSnapshot",
+      "purpose": "Session-start snapshot that freezes active phase skill interpretation for running/resumed/completed workflows.",
+      "required_fields": ["phaseId", "references", "resolutions", "snapshottedAt"],
+      "optional_fields": ["templateContentHash", "resolverVersion"],
+      "notes": "Use snapshot data for runtime prompt/status even if source skill files later change."
+    },
+    {
+      "name": "WorkflowPhaseSkillEvidence",
+      "purpose": "Durable, bounded evidence for used or clearly relevant skipped/unavailable recommended skills.",
+      "required_fields": ["phaseId", "name", "outcome", "rationale", "recordedAt"],
+      "optional_fields": ["source", "toolUseId", "resolutionStatus", "artifactRef"],
+      "notes": "outcome should be used, relevant-skipped, or relevant-unavailable. Irrelevant recommendations are omitted."
+    }
+  ],
+  "state_transitions": [
+    "created: store template references and optional import diagnostics; no runtime evidence yet.",
+    "running: resolve and snapshot active phase skills on start; prompt uses snapshot; late catalog changes are stale diagnostics, not silent semantic changes.",
+    "pending-confirmation: preserve phase skill snapshot and completion evidence; do not require recommended skill evidence.",
+    "failed/cancelled/completed: final report keeps signal-bearing skill evidence and resolution summary.",
+    "resumed: use persisted snapshot/evidence; project recovered state may project resumed status without recomputing skill meaning.",
+    "stale-template/missing-template: preserve snapshot and mark source-template status separately from skill resolution failure."
+  ],
+  "compatibility": [
+    "Existing phase.skills arrays with { name, reason } remain valid and round-trip through unknown-field preservation.",
+    "Old exports without dependencyManifest remain importable.",
+    "Unknown fields on templates, phases, skills, artifacts, and final reports remain preserved."
+  ],
+  "ca_obligations_covered": [
+    "CA-001",
+    "CA-003",
+    "CA-005",
+    "CA-006",
+    "CA-007",
+    "CA-009"
+  ],
+  "plan_sections_affected": [
+    "Data Model",
+    "Operational Consequence Design",
+    "Project Structure",
+    "Decision Preservation Check"
+  ],
+  "integration_status": "integrated"
+}

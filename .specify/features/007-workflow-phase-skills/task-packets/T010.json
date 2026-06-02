@@ -1,0 +1,106 @@
+{
+  "id": "T010",
+  "title": "Add RED server import/export dependency manifest tests",
+  "story": "US2",
+  "agent": "test-engineer",
+  "depends_on": [
+    {
+      "id": "T005",
+      "description": "Complete dependency before starting this task"
+    }
+  ],
+  "parallel_safe": true,
+  "target_root": "F:\\github\\cc-jiangxia",
+  "context_navigation": [
+    {
+      "need": "Locked planning decisions",
+      "location": ".specify/features/007-workflow-phase-skills/plan.md#Locked Planning Decisions"
+    },
+    {
+      "need": "Implementation constitution",
+      "location": ".specify/features/007-workflow-phase-skills/plan.md#Implementation Constitution"
+    },
+    {
+      "need": "Relevant data model",
+      "location": ".specify/features/007-workflow-phase-skills/data-model.md"
+    },
+    {
+      "need": "API contract",
+      "location": ".specify/features/007-workflow-phase-skills/contracts/workflow-phase-skills-api.md"
+    },
+    {
+      "need": "Validation scenario",
+      "location": ".specify/features/007-workflow-phase-skills/quickstart.md"
+    },
+    {
+      "need": "Task dependencies and guardrails",
+      "location": ".specify/features/007-workflow-phase-skills/tasks.md#Task Guardrail Index"
+    }
+  ],
+  "scope_boundaries": {
+    "write_scope": [
+      "src/server/__tests__/workflowTemplates.test.ts"
+    ],
+    "read_scope": [
+      ".specify/features/007-workflow-phase-skills/plan.md",
+      ".specify/features/007-workflow-phase-skills/spec.md",
+      ".specify/features/007-workflow-phase-skills/data-model.md",
+      ".specify/features/007-workflow-phase-skills/contracts/workflow-phase-skills-api.md",
+      ".specify/features/007-workflow-phase-skills/quickstart.md",
+      ".specify/features/007-workflow-phase-skills/tasks.md",
+      "src/server/__tests__/workflowTemplates.test.ts"
+    ],
+    "forbidden": [
+      ".env",
+      ".env.*",
+      "**/*secret*",
+      "**/*token*",
+      ".git/",
+      "node_modules/",
+      "desktop/node_modules/",
+      "artifacts/quality-runs/",
+      "artifacts/coverage/",
+      "~/.claude/**"
+    ]
+  },
+  "expected_outputs": [
+    "src/server/__tests__/workflowTemplates.test.ts（新建或修改测试）"
+  ],
+  "anti_goals": [
+    "Do not introduce new dependencies without updating the governing plan first.",
+    "Do not auto-execute recommended skills or create default phase-completion gates.",
+    "Do not bind workflow phases to plugins as primary objects.",
+    "Do not bundle skill package contents by default.",
+    "Do not bypass SkillTool permission, model, effort, fork, shell, hook, or tool handling."
+  ],
+  "does_not_remove": [
+    "Existing workflow template unknown-field preservation",
+    "Existing skills array compatibility",
+    "Old workflow export import compatibility",
+    "Settings-backed skill catalog behavior",
+    "SkillTool permission and invocation safeguards"
+  ],
+  "capability_operations": [
+    "See tasks.md#Capability Operation Coverage for this task mapping"
+  ],
+  "acceptance_criteria": [
+    "All task-specific criteria in tasks.md for this task are satisfied.",
+    "Changed files stay within write_scope.",
+    "Verify commands complete or failures are documented with recovery hints.",
+    "Relevant MP-* and CA-* guardrails from tasks.md are preserved."
+  ],
+  "verify_commands": [
+    "bun test src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "handoff_format": {
+    "status": "success | failed | blocked",
+    "changed_files": [
+      "src/server/__tests__/workflowTemplates.test.ts"
+    ],
+    "validation_output": {},
+    "concerns": [],
+    "recovery_hints": []
+  },
+  "retry_max": 2,
+  "escalation": "debugger"
+}

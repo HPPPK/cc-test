@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "feature": "workflow-phase-skills",
+  "activeProfile": "Standard Delivery",
+  "deliveryShape": "serial foundation with intra-phase parallel batches",
+  "taskCount": 24,
+  "storyCounts": {
+    "guardrails": 1,
+    "foundation": 4,
+    "US1": 4,
+    "US2": 5,
+    "US3": 6,
+    "polishAndGates": 4
+  },
+  "tasks": [
+    {"id":"T001","story":null,"agent":"quality-reviewer","parallel_safe":false,"depends_on":[],"packet":"task-packets/T001.json","write_scope":[]},
+    {"id":"T002","story":null,"agent":"test-engineer","parallel_safe":true,"depends_on":["T001"],"packet":"task-packets/T002.json","write_scope":["src/server/services/workflowPhaseSkillResolver.test.ts","src/server/services/workflowTypes.test.ts","src/server/services/workflowTemplateRegistryService.test.ts","src/server/__tests__/workflowTemplates.test.ts"]},
+    {"id":"T003","story":null,"agent":"executor","parallel_safe":false,"depends_on":["T002"],"packet":"task-packets/T003.json","write_scope":["src/server/services/workflowTypes.ts","src/server/services/workflowPhaseSkillResolver.ts"]},
+    {"id":"T004","story":null,"agent":"api-reviewer","parallel_safe":false,"depends_on":["T003"],"packet":"task-packets/T004.json","write_scope":["src/server/services/workflowTemplateValidation.ts","src/server/services/workflowTemplateRegistryService.ts","src/server/api/skills.ts"]},
+    {"id":"T005","story":null,"agent":"quality-reviewer","parallel_safe":false,"depends_on":["T004"],"packet":"task-packets/T005.json","write_scope":[]},
+    {"id":"T006","story":"US1","agent":"test-engineer","parallel_safe":true,"depends_on":["T005"],"packet":"task-packets/T006.json","write_scope":["desktop/src/components/workflow/WorkflowComponents.test.tsx","desktop/src/__tests__/skillsSettings.test.tsx"]},
+    {"id":"T007","story":"US1","agent":"executor","parallel_safe":true,"depends_on":["T005","T006"],"packet":"task-packets/T007.json","write_scope":["desktop/src/types/session.ts","desktop/src/types/skill.ts","desktop/src/api/skills.ts","desktop/src/stores/skillStore.ts"]},
+    {"id":"T008","story":"US1","agent":"executor","parallel_safe":false,"depends_on":["T007"],"packet":"task-packets/T008.json","write_scope":["desktop/src/components/workflow/WorkflowTemplateEditor.tsx"]},
+    {"id":"T009","story":"US1","agent":"quality-reviewer","parallel_safe":false,"depends_on":["T008"],"packet":"task-packets/T009.json","write_scope":[]},
+    {"id":"T010","story":"US2","agent":"test-engineer","parallel_safe":true,"depends_on":["T005"],"packet":"task-packets/T010.json","write_scope":["src/server/__tests__/workflowTemplates.test.ts"]},
+    {"id":"T011","story":"US2","agent":"api-reviewer","parallel_safe":true,"depends_on":["T010","T004"],"packet":"task-packets/T011.json","write_scope":["src/server/api/workflowTemplates.ts"]},
+    {"id":"T012","story":"US2","agent":"test-engineer","parallel_safe":false,"depends_on":["T011"],"packet":"task-packets/T012.json","write_scope":["desktop/src/api/sessions.test.ts","desktop/src/components/workflow/WorkflowComponents.test.tsx"]},
+    {"id":"T013","story":"US2","agent":"executor","parallel_safe":false,"depends_on":["T012"],"packet":"task-packets/T013.json","write_scope":["desktop/src/api/sessions.ts","desktop/src/types/session.ts","desktop/src/components/workflow/WorkflowImportExportDialog.tsx"]},
+    {"id":"T014","story":"US2","agent":"quality-reviewer","parallel_safe":false,"depends_on":["T013"],"packet":"task-packets/T014.json","write_scope":[]},
+    {"id":"T015","story":"US3","agent":"test-engineer","parallel_safe":true,"depends_on":["T005"],"packet":"task-packets/T015.json","write_scope":["src/server/services/workflowRuntimeService.test.ts","src/server/services/workflowFinalReport.test.ts","src/server/services/workflowSummary.test.ts","src/server/__tests__/sessions.test.ts","src/services/compact/workflowSummaryCarryover.test.ts","src/server/services/workflowToolPolicy.test.ts"]},
+    {"id":"T016","story":"US3","agent":"executor","parallel_safe":true,"depends_on":["T015","T003"],"packet":"task-packets/T016.json","write_scope":["src/server/services/workflowSessionCreateService.ts","src/server/services/workflowRuntimeService.ts"]},
+    {"id":"T017","story":"US3","agent":"executor","parallel_safe":false,"depends_on":["T016"],"packet":"task-packets/T017.json","write_scope":["src/server/services/workflowFinalReport.ts","src/server/services/workflowSummary.ts","src/server/api/sessions.ts","src/services/compact/workflowSummaryCarryover.ts"]},
+    {"id":"T018","story":"US3","agent":"test-engineer","parallel_safe":false,"depends_on":["T017","T012"],"packet":"task-packets/T018.json","write_scope":["desktop/src/components/workflow/WorkflowComponents.test.tsx","desktop/src/pages/ActiveSession.test.tsx","desktop/src/stores/sessionStore.test.ts"]},
+    {"id":"T019","story":"US3","agent":"executor","parallel_safe":false,"depends_on":["T018"],"packet":"task-packets/T019.json","write_scope":["desktop/src/components/workflow/WorkflowStatusPanel.tsx","desktop/src/pages/ActiveSession.tsx","desktop/src/stores/sessionStore.ts","desktop/src/types/session.ts"]},
+    {"id":"T020","story":"US3","agent":"quality-reviewer","parallel_safe":false,"depends_on":["T019"],"packet":"task-packets/T020.json","write_scope":[]},
+    {"id":"T021","story":null,"agent":"executor","parallel_safe":false,"depends_on":["T014","T020"],"packet":"task-packets/T021.json","write_scope":["docs/skills/01-usage-guide.md","docs/skills/02-implementation.md","docs/en/skills/01-usage-guide.md","docs/en/skills/02-implementation.md"]},
+    {"id":"T022","story":null,"agent":"build-fixer","parallel_safe":false,"depends_on":["T005","T014","T020"],"packet":"task-packets/T022.json","write_scope":["changed server files and tests only"]},
+    {"id":"T023","story":null,"agent":"build-fixer","parallel_safe":false,"depends_on":["T009","T014","T020"],"packet":"task-packets/T023.json","write_scope":["changed desktop files and tests only"]},
+    {"id":"T024","story":null,"agent":"quality-reviewer","parallel_safe":false,"depends_on":["T021","T022","T023"],"packet":"task-packets/T024.json","write_scope":[]}
+  ],
+  "parallelBatches": [
+    {
+      "id": "batch-red-tests",
+      "tasks": ["T006", "T010", "T015"],
+      "joinPoint": "RED tests fail for expected missing behavior before implementation"
+    },
+    {
+      "id": "batch-initial-implementation",
+      "tasks": ["T007", "T011", "T016"],
+      "joinPoint": "shared type/API/runtime surfaces stable before UI/report/status integration"
+    }
+  ],
+  "requiredFinalCommands": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run check:coverage",
+    "bun run verify",
+    "bun run quality:providers"
+  ]
+}

@@ -28,6 +28,28 @@ export const WORKFLOW_COMPLETION_SUBMISSION_STATUSES = ['ready', 'blocked', 'una
 
 export const WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES = ['pending', 'accepted', 'rejected', 'superseded'] as const
 
+export const WORKFLOW_PHASE_SKILL_MODES = ['recommended'] as const
+
+export const WORKFLOW_PHASE_SKILL_SOURCES = [
+  'user',
+  'project',
+  'plugin',
+  'managed',
+  'bundled',
+  'mcp',
+  'unknown',
+] as const
+
+export const WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES = [
+  'available',
+  'missing',
+  'ambiguous',
+  'unsupported-source',
+  'plugin-disabled',
+  'invalid-reference',
+  'installable',
+] as const
+
 export type WorkflowTemplateSource = 'builtin' | 'user'
 export type WorkflowMode = 'workflow'
 export type DialogueMode = 'dialogue'
@@ -37,6 +59,9 @@ export type WorkflowTemplateSourceStatus = (typeof WORKFLOW_TEMPLATE_SOURCE_STAT
 export type WorkflowArtifactPointerKind = (typeof WORKFLOW_ARTIFACT_POINTER_KINDS)[number]
 export type WorkflowCompletionSubmissionStatus = (typeof WORKFLOW_COMPLETION_SUBMISSION_STATUSES)[number]
 export type WorkflowArtifactLifecycleStatus = (typeof WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES)[number]
+export type WorkflowPhaseSkillMode = (typeof WORKFLOW_PHASE_SKILL_MODES)[number]
+export type WorkflowPhaseSkillSource = (typeof WORKFLOW_PHASE_SKILL_SOURCES)[number]
+export type WorkflowPhaseSkillResolutionStatus = (typeof WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES)[number]
 export type WorkflowTemplateVersion = string | number
 export type WorkflowModelSelector = string
 
@@ -99,6 +124,90 @@ export type WorkflowSkillDeclaration = {
 
 export type WorkflowSkillProvenance = WorkflowSkillDeclaration
 
+export type WorkflowPhaseSkillReference = {
+  name: string
+  mode?: WorkflowPhaseSkillMode
+  source?: WorkflowPhaseSkillSource
+  pluginName?: string
+  namespace?: string
+  version?: string
+  contentHash?: string
+  referenceId?: string
+  reason?: string
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseSkillResolvedSkill = {
+  name: string
+  displayName?: string
+  source: WorkflowPhaseSkillSource
+  pluginName?: string
+}
+
+export type WorkflowPhaseSkillCandidate = {
+  name: string
+  displayName?: string
+  source: WorkflowPhaseSkillSource
+  pluginName?: string
+  namespace?: string
+  referenceId?: string
+}
+
+export type WorkflowPhaseSkillDiagnostic = {
+  code: string
+  severity: 'info' | 'warning' | 'error'
+  message: string
+}
+
+export type WorkflowPhaseSkillProvenance = {
+  sourcePath?: string
+  version?: string
+  contentHash?: string
+  namespace?: string
+  referenceId?: string
+}
+
+export type WorkflowPhaseSkillResolution = {
+  reference: WorkflowPhaseSkillReference
+  status: WorkflowPhaseSkillResolutionStatus
+  checkedAt: string
+  resolvedSkill?: WorkflowPhaseSkillResolvedSkill
+  candidates?: WorkflowPhaseSkillCandidate[]
+  diagnostic?: WorkflowPhaseSkillDiagnostic
+  provenance?: WorkflowPhaseSkillProvenance
+}
+
+export type WorkflowPhaseSkillSnapshot = {
+  phaseId: string
+  references: WorkflowPhaseSkillReference[]
+  resolutions: WorkflowPhaseSkillResolution[]
+  snapshottedAt: string
+  templateContentHash?: string
+  resolverVersion?: string
+}
+
+export type WorkflowPhaseSkillEvidence = {
+  phaseId: string
+  name: string
+  outcome: 'used' | 'relevant-skipped' | 'relevant-unavailable'
+  rationale: string
+  recordedAt: string
+  source?: WorkflowPhaseSkillSource
+  resolutionStatus?: WorkflowPhaseSkillResolutionStatus
+  toolUseId?: string
+  artifactRef?: string
+}
+
+export type WorkflowImportDependencyDiagnostic = {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  status: WorkflowPhaseSkillResolutionStatus
+  severity: 'info' | 'warning' | 'error'
+  message: string
+  canImport: boolean
+}
+
 export type WorkflowRequiredArtifact = {
   id: string
   kind: 'markdown' | 'json' | 'file-ref' | (string & {})
@@ -128,6 +237,7 @@ export type WorkflowPhaseDefinition = {
   label: string
   instructions: string
   requestedModel?: WorkflowModelSelector | null
+  skills?: WorkflowPhaseSkillReference[]
   skillDeclarations: WorkflowSkillDeclaration[]
   requiredArtifacts: WorkflowRequiredArtifact[]
   completionCriteria: string[] | JsonObject

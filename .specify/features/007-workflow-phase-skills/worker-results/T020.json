@@ -1,0 +1,78 @@
+{
+  "task_id": "T020",
+  "status": "success",
+  "changed_files": [],
+  "validation_output": {
+    "server_checkpoint": {
+      "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/sessions.test.ts src/services/compact/workflowSummaryCarryover.test.ts src/server/services/workflowToolPolicy.test.ts",
+      "exit_code": 0,
+      "summary": "Passed. Ran 203 tests across 6 files: 203 pass, 0 fail, 1126 expect() calls. Workflow runtime, final report, summary, sessions API, compact carryover, and tool-policy checkpoint coverage all passed.",
+      "notes": [
+        "Expected noisy test logs were present from session/worktree fixtures, including git branch/worktree setup and a simulated unlink failure path inside sessions.test.ts, but the suite completed successfully."
+      ]
+    },
+    "desktop_checkpoint": {
+      "command": "cd desktop && bun run test -- --run src/components/workflow/WorkflowComponents.test.tsx src/pages/ActiveSession.test.tsx src/stores/sessionStore.test.ts",
+      "exit_code": 0,
+      "summary": "Passed. Ran 85 tests across 3 files: 85 pass, 0 fail.",
+      "notes": [
+        "Workflow status panel, active session rendering, and session store merge/preservation checks all passed in the focused US3 lane."
+      ]
+    }
+  },
+  "guardrail_check": {
+    "result": "pass",
+    "checks": [
+      {
+        "name": "prompt_emphasis_is_advisory_only",
+        "passed": true,
+        "evidence": [
+          "src/server/services/workflowRuntimeService.ts formats an explicit 'Active phase recommended skills' block that says recommendations are advisory only.",
+          "The same prompt block states recommendations do not grant tool permissions, change model/effort settings, open shells, fork work, install hooks, or schedule SkillTool calls.",
+          "workflowRuntimeService.test.ts passed the explicit prompt-assembly checkpoint for persisted recommended-skill snapshots without scheduling SkillTool calls."
+        ]
+      },
+      {
+        "name": "unavailable_or_degraded_skills_are_marked_not_auto_invoked",
+        "passed": true,
+        "evidence": [
+          "src/server/services/workflowRuntimeService.ts separates available recommendations from degraded statuses in the persisted phase snapshot prompt block.",
+          "src/server/services/workflowSummary.ts projects recommendedSkillStatus from persisted snapshots rather than recomputing or invoking anything.",
+          "Focused server and desktop test lanes passed unavailable/degraded rendering and no-auto-invocation expectations."
+        ]
+      },
+      {
+        "name": "bounded_evidence_in_report_summary_status_and_resume_paths",
+        "passed": true,
+        "evidence": [
+          "src/server/services/workflowFinalReport.ts builds recommendedSkills from bounded snapshots/evidence only.",
+          "src/server/services/workflowSummary.ts exposes concise recommendedSkillStatus including activePhaseItems.",
+          "src/services/compact/workflowSummaryCarryover.test.ts passed the bounded carryover evidence checkpoint.",
+          "desktop/src/components/workflow/WorkflowStatusPanel.tsx filters active recommended-skill items to relevant evidence-bearing or unavailable/degraded entries and limits visible items."
+        ]
+      },
+      {
+        "name": "pending_confirmation_priority_beats_stale_running_status",
+        "passed": true,
+        "evidence": [
+          "desktop/src/components/workflow/WorkflowStatusPanel.tsx displayStatus() returns pending-confirmation whenever workflow.pendingConfirmation is true before considering workflow.status.",
+          "WorkflowComponents.test.tsx and ActiveSession.test.tsx both passed the pending-confirmation priority assertions in the exact checkpoint run."
+        ]
+      },
+      {
+        "name": "forbidden_drift_absent",
+        "passed": true,
+        "evidence": [
+          "No auto-exec or default completion gate behavior was observed; workflow completion still routes through submit_phase_completion and pending confirmation semantics.",
+          "src/server/services/workflowToolPolicy.ts explicitly states recommended phase skills do not grant tool permissions and do not enable SkillTool globally.",
+          "No plugin-primary binding, default bundle contents, or SkillTool permission/model/effort/fork/shell/hook bypass surfaced in the runtime prompt, policy guidance, summary/report shaping, or desktop status lane."
+        ]
+      }
+    ]
+  },
+  "concerns": [],
+  "recovery_hints": [
+    "If this checkpoint regresses later, rerun the same two focused commands before widening to broader quality gates.",
+    "If the server lane flakes on Windows in future runs, inspect sessions.test.ts worktree/temp-directory fixture behavior first; this run passed cleanly despite expected noisy fixture logs."
+  ]
+}

@@ -15,6 +15,23 @@ export type WorkflowLifecycleStatus =
   | 'missing-template'
 export type WorkflowArtifactPointerKind = 'workflow-state' | 'phase-artifact' | 'final-report' | 'state' | 'report' | 'artifact'
 export type WorkflowModelSelector = string
+export type WorkflowPhaseSkillMode = 'recommended'
+export type WorkflowPhaseSkillSource =
+  | 'user'
+  | 'project'
+  | 'plugin'
+  | 'managed'
+  | 'bundled'
+  | 'mcp'
+  | 'unknown'
+export type WorkflowPhaseSkillResolutionStatus =
+  | 'available'
+  | 'missing'
+  | 'ambiguous'
+  | 'unsupported-source'
+  | 'plugin-disabled'
+  | 'invalid-reference'
+  | 'installable'
 
 export type WorkflowArtifactPointer = {
   id?: string
@@ -85,6 +102,8 @@ export type WorkflowSessionSummary = {
   transitionAuthority?: 'auto' | 'user-confirmation'
   pendingArtifact?: WorkflowPhaseArtifact | null
   artifactHistory?: WorkflowPhaseArtifact[]
+  recommendedSkillStatus?: WorkflowRecommendedSkillStatusSummary
+  recommendedSkillEvidence?: WorkflowPhaseSkillEvidence[]
 }
 
 export type WorkflowSessionCreateOptions = {
@@ -102,11 +121,105 @@ export type WorkflowTemplateValidationIssue = {
   severity: 'error' | 'warning'
 }
 
-export type WorkflowTemplateSkillDeclaration = {
+export type WorkflowPhaseSkillReference = {
   name: string
-  source?: 'user' | 'project' | 'builtin' | 'unknown'
+  mode?: WorkflowPhaseSkillMode
+  source?: WorkflowPhaseSkillSource
+  pluginName?: string
+  namespace?: string
+  version?: string
+  contentHash?: string
+  referenceId?: string
   reason?: string
   [key: string]: unknown
+}
+
+export type WorkflowTemplateSkillDeclaration = WorkflowPhaseSkillReference
+
+export type WorkflowPhaseSkillResolvedSkill = {
+  name: string
+  displayName?: string
+  source: WorkflowPhaseSkillSource
+  pluginName?: string
+}
+
+export type WorkflowPhaseSkillCandidate = WorkflowPhaseSkillResolvedSkill & {
+  namespace?: string
+  referenceId?: string
+}
+
+export type WorkflowPhaseSkillDiagnostic = {
+  code: string
+  severity: 'info' | 'warning' | 'error'
+  message: string
+}
+
+export type WorkflowPhaseSkillProvenance = {
+  sourcePath?: string
+  version?: string
+  contentHash?: string
+  namespace?: string
+  referenceId?: string
+}
+
+export type WorkflowPhaseSkillResolution = {
+  reference: WorkflowPhaseSkillReference
+  status: WorkflowPhaseSkillResolutionStatus
+  checkedAt: string
+  resolvedSkill?: WorkflowPhaseSkillResolvedSkill
+  candidates?: WorkflowPhaseSkillCandidate[]
+  diagnostic?: WorkflowPhaseSkillDiagnostic
+  provenance?: WorkflowPhaseSkillProvenance
+}
+
+export type WorkflowPhaseSkillSnapshot = {
+  phaseId: string
+  references: WorkflowPhaseSkillReference[]
+  resolutions: WorkflowPhaseSkillResolution[]
+  snapshottedAt: string
+  templateContentHash?: string
+  resolverVersion?: string
+}
+
+export type WorkflowPhaseSkillEvidence = {
+  phaseId: string
+  name: string
+  outcome: 'used' | 'relevant-skipped' | 'relevant-unavailable'
+  rationale: string
+  recordedAt: string
+  source?: WorkflowPhaseSkillSource
+  resolutionStatus?: WorkflowPhaseSkillResolutionStatus
+  toolUseId?: string
+  artifactRef?: string
+}
+
+export type WorkflowRecommendedSkillStatusSummary = {
+  total: number
+  available: number
+  unavailable: number
+  degraded: number
+  evidenceCount: number
+  activePhaseItems?: Array<{
+    name: string
+    status: WorkflowPhaseSkillResolutionStatus
+    source?: WorkflowPhaseSkillSource
+    pluginName?: string
+  }>
+}
+
+export type WorkflowImportDependencyDiagnostic = {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  status: WorkflowPhaseSkillResolutionStatus
+  severity: 'info' | 'warning' | 'error'
+  message: string
+  canImport: boolean
+}
+
+export type WorkflowRecommendedSkillReport = {
+  snapshots: WorkflowPhaseSkillSnapshot[]
+  evidence: WorkflowPhaseSkillEvidence[]
 }
 
 export type WorkflowTemplateRequiredArtifact = {
@@ -235,6 +348,12 @@ export type WorkflowTemplateImportPayload = {
   schemaVersion: 1
   templates: WorkflowTemplateDraft[]
   [key: string]: unknown
+} | {
+  schemaVersion: 2
+  exportedAt?: string
+  templates: WorkflowTemplateDraft[]
+  dependencyManifest?: WorkflowSkillDependencyManifest
+  [key: string]: unknown
 } | WorkflowTemplateDraft
 
 export type WorkflowTemplateImportPreviewRequest = {
@@ -255,6 +374,7 @@ export type WorkflowTemplateImportCandidate = {
   defaultResolution: 'add' | 'rename'
   selectable: boolean
   issues: WorkflowTemplateValidationIssue[]
+  dependencyDiagnostics?: WorkflowImportDependencyDiagnostic[]
 }
 
 export type WorkflowTemplateImportPreviewResponse = {
@@ -296,9 +416,28 @@ export type WorkflowTemplateExportRequest = {
 }
 
 export type WorkflowTemplateExportResponse = {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   exportedAt: string
   templates: WorkflowTemplateDetail[]
+  dependencyManifest?: WorkflowSkillDependencyManifest
+}
+
+export type WorkflowSkillDependencyManifest = {
+  schemaVersion: 1
+  generatedAt: string
+  resolverVersion?: string
+  dependencies: WorkflowSkillDependency[]
+}
+
+export type WorkflowSkillDependency = {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  exportStatus: WorkflowPhaseSkillResolutionStatus
+  resolvedSource?: WorkflowPhaseSkillSource
+  pluginName?: string
+  contentHash?: string
+  diagnostic?: string
 }
 
 export type LinkedWorkflowContextStrategy = 'inherit' | 'summarize' | 'clear'
@@ -372,7 +511,9 @@ export type WorkflowTransitionResponse = {
 }
 
 export type WorkflowReportResponse = {
-  report: Record<string, unknown>
+  report: Record<string, unknown> & {
+    recommendedSkills?: WorkflowRecommendedSkillReport
+  }
   pointer: WorkflowArtifactPointer
 }
 

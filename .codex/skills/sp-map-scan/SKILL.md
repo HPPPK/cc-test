@@ -90,7 +90,7 @@ activation. `low_risk_open_gap` may pass only with owner, reason,
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@0baeb7525b0230a18b462954ab5ee96f4920712c specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader scan context.
 - Passive learning files are workflow guidance, not scan evidence.
 - `.specify/**` must never enter the project cognition graph.

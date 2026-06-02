@@ -1,0 +1,56 @@
+{
+  "identity": {
+    "command_name": "implement",
+    "scope_key": "implement-007-workflow-phase-skills",
+    "trigger": "before_stop"
+  },
+  "truth_sources": [
+    {
+      "path": "F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills",
+      "exists": true,
+      "mtime_ms": 1780054537892.9233
+    },
+    {
+      "path": "F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills\\implement-tracker.md",
+      "exists": true,
+      "mtime_ms": 1780083972521.8743
+    }
+  ],
+  "phase_state": {
+    "state_kind": "implement-tracker",
+    "status": "executing",
+    "active_command": "",
+    "phase_mode": "",
+    "next_command": "",
+    "next_action": "Blocked pending maintainer/process approval and live-baseline rerun decision.",
+    "resume_decision": "resume-here",
+    "blocked_reason": ""
+  },
+  "artifact_digest": {
+    "current_batch": "Final verification"
+  },
+  "execution_signal": {
+    "retry_attempts": ""
+  },
+  "resume_cue": [
+    "You are resuming `implement`.",
+    "Next action: Blocked pending maintainer/process approval and live-baseline rerun decision..",
+    "Re-read F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills\\implement-tracker.md before changing course."
+  ],
+  "recovery_summary": {
+    "command_name": "implement",
+    "phase_mode": "",
+    "status": "executing",
+    "summary": "",
+    "allowed_actions": [],
+    "forbidden_actions": [],
+    "authoritative_sources": [
+      "F:\\github\\cc-jiangxia\\.specify\\features\\007-workflow-phase-skills\\implement-tracker.md"
+    ],
+    "next_action": "Blocked pending maintainer/process approval and live-baseline rerun decision.",
+    "next_command": "",
+    "route_reason": "",
+    "blocked_reason": "",
+    "resume_decision": "resume-here"
+  }
+}

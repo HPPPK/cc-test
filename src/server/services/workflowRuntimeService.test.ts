@@ -26,6 +26,7 @@ type WorkflowRuntimeServiceContract = {
   }): Promise<{
     content: string
     skillProvenance: unknown[]
+    scheduledToolCalls?: unknown[]
   }>
   applyTransition(input: {
     state: WorkflowSessionState
@@ -190,6 +191,103 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
   }
 }
 
+function recommendedSkillRuntimeState(): WorkflowSessionState {
+  const template = makeTemplate({
+    phases: [
+      {
+        id: 'requirements',
+        label: 'Requirements',
+        instructions: 'Clarify the user-visible requirements and write acceptance criteria.',
+        requestedModel: null,
+        skills: [
+          {
+            name: 'requirements-review',
+            mode: 'recommended',
+            source: 'project',
+            reason: 'Use for requirements ambiguity checks.',
+          },
+          {
+            name: 'missing-audit',
+            mode: 'recommended',
+            source: 'user',
+            reason: 'Use if the phase needs unavailable audit help.',
+          },
+        ],
+        skillDeclarations: [],
+        requiredArtifacts: [],
+        completionCriteria: ['requirements artifact exists'],
+        transitionAuthority: 'user-confirmation',
+      },
+      {
+        id: 'implementation',
+        label: 'Implementation',
+        instructions: 'Implement the accepted requirements.',
+        requestedModel: null,
+        skillDeclarations: [],
+        requiredArtifacts: [],
+        completionCriteria: ['implementation evidence exists'],
+        transitionAuthority: 'user-confirmation',
+      },
+    ],
+  })
+
+  return makeState({
+    workflowStatus: 'running',
+    templateSnapshot: template,
+    phases: [
+      {
+        id: 'requirements',
+        index: 0,
+        status: 'running',
+        artifactPointers: [],
+      },
+      {
+        id: 'implementation',
+        index: 1,
+        status: 'created',
+        artifactPointers: [],
+      },
+    ],
+    phaseSkillSnapshots: [
+      {
+        phaseId: 'requirements',
+        references: template.phases[0].skills,
+        resolutions: [
+          {
+            reference: template.phases[0].skills?.[0],
+            status: 'available',
+            checkedAt: NOW,
+            resolvedSkill: {
+              name: 'requirements-review',
+              displayName: 'Requirements Review',
+              source: 'project',
+            },
+          },
+          {
+            reference: template.phases[0].skills?.[1],
+            status: 'missing',
+            checkedAt: NOW,
+            diagnostic: {
+              code: 'skill-not-found',
+              severity: 'warning',
+              message: 'missing-audit is not installed.',
+            },
+          },
+        ],
+        snapshottedAt: NOW,
+        templateContentHash: 'fixture-hash',
+        resolverVersion: 'test-resolver-v1',
+      },
+    ],
+  } as Partial<WorkflowSessionState>)
+}
+
+function recommendedSkillTemplateState(): WorkflowSessionState {
+  const state = recommendedSkillRuntimeState()
+  delete (state as Record<string, unknown>).phaseSkillSnapshots
+  return state
+}
+
 describe('WorkflowRuntimeService', () => {
   test('falls back visibly from an unavailable requested phase model to the main session default', async () => {
     const service = await makeService()
@@ -294,6 +392,55 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('claude-sonnet-4')
     expect(prompt.content).toContain('Requested model unavailable')
     expect(prompt.content).toContain('Please continue.')
+  })
+
+  test('startPhase snapshots active phase recommended skill resolutions for resume-stable prompts', async () => {
+    const service = await makeService()
+
+    const result = await service.startPhase({
+      state: recommendedSkillTemplateState(),
+      requestedAt: '2026-05-20T00:01:00.000Z',
+      isRequestedModelAvailable: async () => true,
+      resolveDefaultModel: async () => ({ providerId: 'anthropic', modelId: 'claude-sonnet-4' }),
+    })
+
+    expect(result.state.phaseSkillSnapshots).toContainEqual(expect.objectContaining({
+      phaseId: 'requirements',
+      references: expect.arrayContaining([
+        expect.objectContaining({ name: 'requirements-review', mode: 'recommended' }),
+        expect.objectContaining({ name: 'missing-audit', mode: 'recommended' }),
+      ]),
+      resolutions: expect.arrayContaining([
+        expect.objectContaining({
+          reference: expect.objectContaining({ name: 'requirements-review' }),
+          status: 'available',
+        }),
+        expect.objectContaining({
+          reference: expect.objectContaining({ name: 'missing-audit' }),
+          status: 'missing',
+        }),
+      ]),
+      snapshottedAt: '2026-05-20T00:01:00.000Z',
+      templateContentHash: 'fixture-hash',
+    }))
+  })
+
+  test('assembles distinct active-phase recommended skills prompt block from persisted snapshot without scheduling SkillTool calls', async () => {
+    const service = await makeService()
+
+    const prompt = await service.assemblePrompt({
+      state: recommendedSkillRuntimeState(),
+      userMessage: 'Continue the requirements phase.',
+    })
+
+    expect(prompt.content).toContain('Active phase recommended skills')
+    expect(prompt.content).toContain('Available recommendations')
+    expect(prompt.content).toContain('Requirements Review')
+    expect(prompt.content).toContain('Unavailable recommendations')
+    expect(prompt.content).toContain('missing-audit')
+    expect(prompt.content).toContain('Invoke recommended skills only when the current task matches')
+    expect(prompt.content).not.toContain('unused recommended skill checklist')
+    expect(prompt.scheduledToolCalls ?? []).toEqual([])
   })
 
   test('injects phase action guardrails into the active workflow prompt', async () => {

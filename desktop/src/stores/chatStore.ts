@@ -72,6 +72,11 @@ export type PerSessionState = {
     nonce: number
   } | null
   composerDraft?: ComposerDraftState | null
+  localStopNonce?: number | null
+  undoableSubmittedMessage?: {
+    id: string
+    submittedAt: number
+  } | null
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {
@@ -95,6 +100,8 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   elapsedTimer: null,
   composerPrefill: null,
   composerDraft: null,
+  localStopNonce: null,
+  undoableSubmittedMessage: null,
 }
 
 function createDefaultSessionState(): PerSessionState {
@@ -201,6 +208,30 @@ function clearPendingToolParentUseIds(sessionId: string): void {
   pendingToolParentUseIdsBySession.delete(sessionId)
 }
 const AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS = 160
+
+function isLocallyStopped(session: PerSessionState | undefined): boolean {
+  return session?.localStopNonce != null
+}
+
+function hasPendingDelta(sessionId: string): boolean {
+  return Boolean(pendingDeltaBySession.get(sessionId)?.length)
+}
+
+function getImmediateStopRestoreCandidate(
+  sessionId: string,
+  session: PerSessionState,
+): Extract<UIMessage, { type: 'user_text' }> | null {
+  const undoable = session.undoableSubmittedMessage
+  if (!undoable || Date.now() - undoable.submittedAt > 5000) return null
+  if (session.chatState !== 'thinking') return null
+  if (hasPendingDelta(sessionId)) return null
+  if (session.streamingText.trim() || session.streamingToolInput.trim()) return null
+  if (session.activeToolUseId || session.activeToolName || session.activeThinkingId) return null
+  if (session.pendingPermission || session.pendingComputerUsePermission) return null
+
+  const last = session.messages[session.messages.length - 1]
+  return last?.type === 'user_text' && last.id === undoable.id && !last.pending ? last : null
+}
 
 function isWorkflowSummary(value: unknown): value is WorkflowSessionSummary {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -584,7 +615,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           timestamp: Date.now(),
         })
       }
-      newMessages.push({
+      const submittedMessage: Extract<UIMessage, { type: 'user_text' }> = {
         id: nextId(),
         type: 'user_text',
         content: userFacingContent,
@@ -592,7 +623,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         attachments: isMemberSession ? undefined : uiAttachments,
         timestamp: Date.now(),
         ...(isMemberSession ? { pending: true } : {}),
-      })
+      }
+      newMessages.push(submittedMessage)
 
       if (!isMemberSession && session.elapsedTimer) clearInterval(session.elapsedTimer)
 
@@ -609,6 +641,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...session,
             messages: newMessages,
             chatState: 'thinking',
+            localStopNonce: null,
+            undoableSubmittedMessage: isMemberSession
+              ? null
+              : { id: submittedMessage.id, submittedAt: submittedMessage.timestamp },
             elapsedSeconds: 0,
             streamingText: '',
             statusVerb: isMemberSession ? '' : randomSpinnerVerb(),
@@ -698,19 +734,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const session = s.sessions[sessionId]
       if (!session) return s
       if (session.elapsedTimer) clearInterval(session.elapsedTimer)
+      const restoreCandidate = getImmediateStopRestoreCandidate(sessionId, session)
       return {
         sessions: {
           ...s.sessions,
           [sessionId]: {
             ...session,
+            messages: restoreCandidate
+              ? session.messages.slice(0, -1)
+              : session.messages,
             chatState: 'idle',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            streamingText: restoreCandidate ? '' : session.streamingText,
+            streamingToolInput: '',
+            activeToolUseId: null,
+            activeToolName: null,
+            activeThinkingId: null,
+            statusVerb: '',
             elapsedTimer: null,
+            localStopNonce: Date.now(),
+            undoableSubmittedMessage: null,
+            composerPrefill: restoreCandidate
+              ? {
+                  text: restoreCandidate.content,
+                  attachments: restoreCandidate.attachments,
+                  nonce: Date.now(),
+                }
+              : null,
           },
         },
       }
     })
+    useTabStore.getState().updateTabStatus(sessionId, 'idle')
   },
 
   loadHistory: async (sessionId) => {
@@ -850,7 +906,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   clearMessages: (sessionId) => {
     clearPendingTaskToolUseIds(sessionId)
     clearPendingToolParentUseIds(sessionId)
-    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle' })) }))
+    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle', localStopNonce: null, undoableSubmittedMessage: null })) }))
   },
 
   handleServerMessage: (sessionId, msg) => {
@@ -863,6 +919,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
 
       case 'status':
+        if (isLocallyStopped(get().sessions[sessionId]) && msg.state !== 'idle') {
+          useTabStore.getState().updateTabStatus(sessionId, 'idle')
+          break
+        }
         update((session) => {
           const pendingText = `${session.streamingText}${consumePendingDelta(sessionId)}`
           const hasPendingStreamText =
@@ -892,7 +952,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const session = get().sessions[sessionId]
           if (session?.elapsedTimer) {
             clearInterval(session.elapsedTimer)
-            update(() => ({ elapsedTimer: null }))
+            update(() => ({ elapsedTimer: null, localStopNonce: null, undoableSubmittedMessage: null }))
+          } else {
+            update(() => ({ localStopNonce: null, undoableSubmittedMessage: null }))
           }
         }
         // Sync tab status
@@ -900,6 +962,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
 
       case 'content_start': {
+        if (isLocallyStopped(get().sessions[sessionId])) break
         const session = get().sessions[sessionId]
         if (!session) break
         const pendingText = `${session.streamingText}${consumePendingDelta(sessionId)}`
@@ -914,6 +977,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...(pendingText !== s.streamingText ? { streamingText: pendingText } : {}),
             chatState: 'streaming',
             activeThinkingId: null,
+            undoableSubmittedMessage: null,
           }))
         } else if (msg.blockType === 'tool_use') {
           rememberPendingToolParentUseId(sessionId, msg.toolUseId, msg.parentToolUseId)
@@ -923,14 +987,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingToolInput: '',
             chatState: 'tool_executing',
             activeThinkingId: null,
+            undoableSubmittedMessage: null,
           }))
         }
         break
       }
 
       case 'content_delta':
+        if (isLocallyStopped(get().sessions[sessionId])) break
         if (msg.text !== undefined) {
           if (!get().sessions[sessionId]) break
+          update(() => ({ undoableSubmittedMessage: null }))
           appendPendingDelta(sessionId, msg.text)
           if (!flushTimerBySession.has(sessionId)) {
             const timer = setTimeout(() => {
@@ -946,6 +1013,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
 
       case 'thinking':
+        if (isLocallyStopped(get().sessions[sessionId])) break
         update((s) => {
           const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
           const base = pendingText.trim()
@@ -963,11 +1031,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             chatState: 'thinking',
             activeThinkingId: id,
             streamingText: '',
+            undoableSubmittedMessage: null,
           }
         })
         break
 
       case 'tool_use_complete': {
+        if (isLocallyStopped(get().sessions[sessionId])) break
         const session = get().sessions[sessionId]
         const toolName = msg.toolName || session?.activeToolName || 'unknown'
         const toolUseId = msg.toolUseId || session?.activeToolUseId || ''
@@ -980,6 +1050,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             input: msg.input, timestamp: Date.now(), parentToolUseId,
           }],
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
+          undoableSubmittedMessage: null,
         }))
         if (toolName === 'TodoWrite' && Array.isArray((msg.input as any)?.todos)) {
           useCLITaskStore.getState().setTasksFromTodos((msg.input as any).todos, sessionId)
@@ -991,6 +1062,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       case 'tool_result': {
+        if (isLocallyStopped(get().sessions[sessionId])) break
         const pendingParentToolUseId = consumePendingToolParentUseId(sessionId, msg.toolUseId)
         const parentToolUseId = msg.parentToolUseId ?? pendingParentToolUseId
         update((s) => ({
@@ -998,7 +1070,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             id: nextId(), type: 'tool_result', toolUseId: msg.toolUseId,
             content: msg.content, isError: msg.isError, timestamp: Date.now(), parentToolUseId,
           }],
-          chatState: 'thinking', activeThinkingId: null,
+          chatState: 'thinking', activeThinkingId: null, undoableSubmittedMessage: null,
         }))
         if (consumePendingTaskToolUseId(sessionId, msg.toolUseId)) {
           useCLITaskStore.getState().refreshTasks(sessionId)
@@ -1007,6 +1079,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       case 'permission_request':
+        if (isLocallyStopped(get().sessions[sessionId])) break
         notifyDesktop({
           dedupeKey: `permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
@@ -1028,6 +1101,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           pendingComputerUsePermission: null,
           chatState: 'permission_pending',
           activeThinkingId: null,
+          undoableSubmittedMessage: null,
           messages:
             msg.toolName === 'AskUserQuestion'
               ? s.messages
@@ -1045,6 +1119,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
 
       case 'computer_use_permission_request':
+        if (isLocallyStopped(get().sessions[sessionId])) break
         notifyDesktop({
           dedupeKey: `computer-use-permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
@@ -1061,6 +1136,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           pendingPermission: null,
           chatState: 'permission_pending',
           activeThinkingId: null,
+          undoableSubmittedMessage: null,
         }))
         break
 
@@ -1087,6 +1163,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           pendingPermission: null,
           pendingComputerUsePermission: null,
           elapsedTimer: null,
+          localStopNonce: null,
+          undoableSubmittedMessage: null,
         }))
         useTabStore.getState().updateTabStatus(sessionId, 'idle')
         const notification = wasAgentRunning
@@ -1119,6 +1197,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingText: '',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            localStopNonce: null,
+            undoableSubmittedMessage: null,
           }
         })
         useTabStore.getState().updateTabStatus(sessionId, 'error')

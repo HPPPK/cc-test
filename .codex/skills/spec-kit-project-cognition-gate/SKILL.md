@@ -27,11 +27,12 @@ judgment in an established Spec Kit Plus repository:
 
 - Use the direct `project-cognition` query planning flow required by the active
   workflow contract to retrieve the task-local project cognition bundle. Run
-  `project-cognition lexicon` first, inspect the returned `concept_candidates`,
-  choose task-relevant `selected_concepts`, record non-selected or unsafe
-  `rejected_concepts`, and include a `selection_reason`. Translate that bounded
-  selection into a `query_plan` containing `selected_concepts`,
-  `rejected_concepts`, `expanded_queries`, and `paths`, then run
+  `project-cognition lexicon` first to get graph-backed project concept candidates
+  from the active project cognition graph. The user request ranks and filters
+  existing project concepts; it does not create project concepts. Choose
+  task-relevant `selected_concepts`, record considered but unsafe or irrelevant
+  `rejected_concepts`, write per-concept `concept_decisions`, carry
+  `lexicon_generation_id` in the `query_plan`, and then run
   `project-cognition query --query-plan`.
   Treat raw graph JSON artifacts as obsolete runtime surfaces.
 - Treat `concept_candidates` as structured project concept candidates, not a
@@ -39,11 +40,14 @@ judgment in an established Spec Kit Plus repository:
   the returned readiness state; do not widen live repository reads beyond the
   returned `route_pack` and `minimal_live_reads`.
 - For `sp-discussion`, product framing may begin before the cognition gate. Before
-  technical options, affected-surface claims, source-code reads, or
-  source-grounded recommendations, use the active workflow's launcher-backed project cognition query planning flow to retrieve the task-local project
-  cognition bundle. Use `project-cognition lexicon --intent discussion` and
-  `project-cognition query --intent discussion` for discussion grounding. Do not
-  use `--intent plan` from `sp-discussion`.
+  technical options, affected-surface claims, testing strategy claims tied to
+  existing code, implementation-path recommendations, or source-grounded
+  recommendations, complete the workflow's Truth Pass with the active
+  launcher-backed project cognition query planning flow and bounded live evidence.
+  Use `project-cognition lexicon --intent discussion` and
+  `project-cognition query --intent discussion` for discussion grounding. Record
+  `verified_project_facts`, `open_assumptions`, `evidence_checked`, and
+  `advice_confidence`. Do not use `--intent plan` from `sp-discussion`.
 - Project cognition is project-scoped. Current project cognition proves only
   current project facts.
 - In `sp-discussion`, if the implementation target is another repository or
@@ -66,9 +70,10 @@ judgment in an established Spec Kit Plus repository:
   constrains inspection, live evidence proves technical claims, and relevant
   facts are carried into the next workflow artifact or execution state.
 - Extract and carry forward `selected_concepts`, `rejected_concepts`,
-  `selection_reason`, the matched capability or symptom, affected nodes and
-  subgraph, `route_pack`, `minimal_live_reads`, missing coverage, evidence
-  traces, verification routes, ambiguity, conflicts, and weak coverage.
+  `selection_reason`, `concept_decisions`, `lexicon_generation_id`, the matched
+  capability or symptom, affected nodes and subgraph, `route_pack`,
+  `minimal_live_reads`, missing coverage, evidence traces, verification routes,
+  ambiguity, conflicts, and weak coverage.
 - Treat project cognition under `.specify/project-cognition/` as an advisory navigation surface. Legacy project-map exports are not evidence for current project behavior and `.specify/templates/project-map/**` is historical compatibility/export only.
 - Read `.specify/memory/project-rules.md` and `.specify/memory/project-learnings.md`
   when they exist.
@@ -94,13 +99,13 @@ judgment in an established Spec Kit Plus repository:
 - For blocked, stale, or incomplete references, do not treat legacy
   `.specify/project-map/**` outputs as current truth. Fall back to minimal live
   reads and recommend `$sp-map-update` for localized stale coverage, weak
-  reference coverage, ordinary changed-path maintenance, or ordinary
+  reference coverage, external/manual changed-path map maintenance, or ordinary
   existing-baseline gaps after a usable reference baseline.
-- For missing or unusable reference baselines, recommend
+- For brownfield missing or unusable reference baselines, recommend
   `$sp-map-scan -> $sp-map-build`. Recommend scan/build for a
-  reference project only for first/missing/unusable baseline, schema failure,
-  zero active-generation `path_index` rows, `explicit_rebuild_requested`, or
-  `baseline_identity_invalid`.
+  reference project only for brownfield first/missing/unusable baseline, schema
+  failure, zero active-generation `path_index` rows outside `greenfield_empty`,
+  `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 
 ## Command Surface Discipline
 
@@ -111,10 +116,11 @@ judgment in an established Spec Kit Plus repository:
 
 ## Freshness State Guidance
 
-- If the project cognition runtime is missing, continue with live repository
-  evidence and recommend the canonical `sp-map-scan -> sp-map-build` workflow as
-  follow-up map maintenance. When giving the user an explicit command to type, write
+- If the project cognition runtime is missing for a brownfield project, continue with live repository
+  evidence and recommend the canonical `sp-map-scan -> sp-map-build` workflow only as
+  external baseline maintenance. When giving the user an explicit command to type, write
   `$sp-map-scan -> $sp-map-build`.
+- If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements. Do not recommend map-scan -> map-build solely because the graph has no paths.
 - If the project cognition runtime is stale for a localized touched area, continue
   with live repository evidence and recommend `sp-map-update` first when map
   maintenance is useful. When giving the user an explicit
@@ -139,23 +145,15 @@ judgment in an established Spec Kit Plus repository:
   guidance: `freshness` records factual state, while `recommended_next_action`
   tells the operator what to do next.
 - Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build`
-  only for first/missing/unusable baseline, schema failure, zero active-generation
-  path_index rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+  only for brownfield first/missing/unusable baseline, schema failure, zero active-generation
+  path_index rows outside `greenfield_empty`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
   Uncertain closure can be recorded by `sp-map-update` as partial/low-confidence
   facts, known unknowns, and `minimal_live_reads`.
-- Mutation closeout requires a refresh or dirty outcome. Entry stale may continue
-  with live repository evidence, but mutation workflows are not artifact-only map handoffs:
-  if they change source/runtime truth-owning surfaces, shared surfaces,
-  command/route/contract boundaries, verification entry points, runtime
-  assumptions, or other map-level coverage facts, they must finish with either
-  an actual `$sp-map-update` refresh using the changed paths, or
-  `project-cognition mark-dirty` when the required refresh cannot be completed
-  now.
-- Treat map maintenance as a user-invoked workflow handoff unless the user
-  explicitly asked to refresh cognition runtime state. Do not silently switch into `sp-map-update`,
-  `sp-map-scan`, or `sp-map-build` yourself from another workflow; continue with
-  live evidence and tell the user which map workflow would refresh the advisory
-  navigation layer.
+- Entry-time stale or weak cognition is still an advisory navigation concern unless the user explicitly requested map maintenance. A workflow may continue from live evidence when entry guidance allows it. That entry routing rule does not waive closeout ownership.
+- Workflow-owned mutation closeout is not an external map-maintenance handoff. If the active workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, or behavior-bearing docs, closeout must run inline project cognition update from the workflow-owned ledger.
+- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`.
+- Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output. Use `project-cognition mark-dirty --reason "<reason>" --format json` only when inline update is unavailable, fails before recording useful update data, cannot safely identify workflow-owned scope, is blocked by runtime state, or verification/workflow completion is not trustworthy. Dirty only when inline update cannot complete.
+- `sp-map-update` is for manual/external maintenance and follow-up repair after user edits, interrupted workflows, or explicit operator map-maintenance requests. It is external map maintenance, not routine cleanup for changes this workflow just made. In shared routing summaries, sp-map-update is for manual/external maintenance.
 - Do not rely on generic framework instinct, chat memory, or prior sessions when the
   project cognition runtime should be the source of truth.
 

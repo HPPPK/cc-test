@@ -225,6 +225,57 @@ async function fetchCommandsForClient(client) {
 
 **Feature gate:** `feature('MCP_SKILLS')` controls whether MCP Skills are available.
 
+### Workflow Phase Skill Resolution
+
+`phases[].skills` in workflow templates is a list of recommended Skill references, not plugin bindings and not copied Skill contents. Compatible shapes include legacy `{ name }` and `{ name, reason }`; `reason` is preserved as legacy explanatory text and is not the source of applicability.
+
+Resolution uses one shared status vocabulary:
+
+| Status | Meaning | Import/runtime semantics |
+|--------|---------|--------------------------|
+| `available` | The reference resolves to one available Skill | Render as an available recommendation in prompts |
+| `missing` | No matching Skill is present in local dirs/plugins/MCP | warning/degraded, preserve the reference |
+| `ambiguous` | More than one candidate matches the name | Requires source, namespace, or plugin metadata before counting as available |
+| `unsupported-source` | The referenced source cannot be resolved in this environment | warning/degraded, preserve the reference |
+| `plugin-disabled` | The Skill comes from a plugin that is unavailable or disabled | warning/degraded, preserve the Skill reference and plugin provenance |
+| `invalid-reference` | The reference shape is malformed | error, may block save or candidate import |
+| `installable` | Reserved for future installable sources | Diagnostic state only in the current scope |
+
+Key boundaries:
+
+- Workflow phases bind to Skills, not plugins; `pluginName` is provenance and disambiguation metadata only.
+- Recommended Skills do not automatically invoke SkillTool and are not default phase-completion gates.
+- Workflow runtime does not apply `allowed-tools`, model, effort, fork, shell, or hook behavior from recommendations directly; those capabilities still take effect only through an actual SkillTool invocation.
+- Missing recommended Skills are warnings by default and do not block import; import commit must preserve unresolved references.
+
+### Workflow Import/Export Dependency Manifests
+
+Workflow export packages include a Skill dependency manifest alongside templates:
+
+```typescript
+interface WorkflowSkillDependencyManifest {
+  schemaVersion: 1
+  generatedAt: string
+  resolverVersion?: string
+  dependencies: WorkflowSkillDependency[]
+}
+
+interface WorkflowSkillDependency {
+  templateId: string
+  phaseId: string
+  reference: WorkflowPhaseSkillReference
+  exportStatus: WorkflowPhaseSkillResolutionStatus
+  resolvedSource?: WorkflowPhaseSkillSource
+  pluginName?: string
+  contentHash?: string
+  diagnostic?: string
+}
+```
+
+The manifest must list every phase recommendation and make missing, disabled, unsupported-source, and similar diagnostics visible in export and import preview UI. Older export packages without a manifest remain importable; import preview regenerates local diagnostics through the resolver.
+
+Exports do not bundle Skill package contents by default: they do not copy `SKILL.md`, scripts, assets, plugin directories, or MCP prompt contents. The manifest stores references, source/provenance, optional hashes, and diagnostics only, avoiding Skill-owned content or sensitive metadata in workflow packages.
+
 ---
 
 ## 3. Frontmatter Parsing

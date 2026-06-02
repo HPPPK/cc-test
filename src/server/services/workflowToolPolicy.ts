@@ -25,6 +25,7 @@ const VERIFICATION_PHASE_ID = 'verification'
 
 export const WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS = [
   'guide',
+  'skill_catalog',
   'list',
   'inspect',
   'validate',
@@ -327,6 +328,7 @@ export function getWorkflowPromptToolGuidance(
     'Do not ask the user to type continue before calling the completion tool; the tool creates the user-confirmation step.',
     'A ready status creates a pending user confirmation and does not advance the workflow by itself.',
     'Blocked or unable statuses record the response and keep the workflow on the current phase.',
+    'recommended phase skills do not grant tool permissions and do not enable SkillTool globally.',
     skillGuidance
       ? `Skill declarations are prompt-level guidance only and do not enable SkillTool globally:\n${skillGuidance}`
       : null,

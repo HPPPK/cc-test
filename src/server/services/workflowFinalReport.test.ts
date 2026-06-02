@@ -131,4 +131,91 @@ describe('buildWorkflowFinalReport', () => {
       artifactId: 'discussion-ready-1',
     }))
   })
+
+  test('preserves bounded recommended skill snapshots and evidence without checklist noise', () => {
+    const state = completedState()
+    const report = buildWorkflowFinalReport({
+      ...state,
+      phaseSkillSnapshots: [
+        {
+          phaseId: 'discussion',
+          references: [
+            { name: 'requirements-review', mode: 'recommended', source: 'project' },
+            { name: 'missing-audit', mode: 'recommended', source: 'user' },
+            { name: 'irrelevant-style', mode: 'recommended', source: 'plugin' },
+          ],
+          resolutions: [
+            {
+              reference: { name: 'requirements-review', mode: 'recommended', source: 'project' },
+              status: 'available',
+              checkedAt: '2026-05-20T00:00:30.000Z',
+              resolvedSkill: {
+                name: 'requirements-review',
+                source: 'project',
+              },
+            },
+            {
+              reference: { name: 'missing-audit', mode: 'recommended', source: 'user' },
+              status: 'missing',
+              checkedAt: '2026-05-20T00:00:30.000Z',
+              diagnostic: {
+                code: 'skill-not-found',
+                severity: 'warning',
+                message: 'missing-audit is not installed.',
+              },
+            },
+          ],
+          snapshottedAt: '2026-05-20T00:00:30.000Z',
+          templateContentHash: 'template-hash',
+          resolverVersion: 'test-resolver-v1',
+        },
+      ],
+      phaseSkillEvidence: [
+        {
+          phaseId: 'discussion',
+          name: 'requirements-review',
+          outcome: 'used',
+          rationale: 'Applied ambiguity checklist to the requirements brief.',
+          recordedAt: '2026-05-20T00:01:30.000Z',
+          source: 'project',
+          resolutionStatus: 'available',
+          toolUseId: 'toolu_requirements_review',
+        },
+        {
+          phaseId: 'discussion',
+          name: 'missing-audit',
+          outcome: 'relevant-unavailable',
+          rationale: 'Audit was relevant but the skill was unavailable.',
+          recordedAt: '2026-05-20T00:01:45.000Z',
+          source: 'user',
+          resolutionStatus: 'missing',
+        },
+      ],
+    } as WorkflowSessionState)
+
+    expect(report.recommendedSkills).toMatchObject({
+      snapshots: [
+        expect.objectContaining({
+          phaseId: 'discussion',
+          references: expect.arrayContaining([
+            expect.objectContaining({ name: 'requirements-review' }),
+            expect.objectContaining({ name: 'missing-audit' }),
+          ]),
+        }),
+      ],
+      evidence: [
+        expect.objectContaining({
+          name: 'requirements-review',
+          outcome: 'used',
+        }),
+        expect.objectContaining({
+          name: 'missing-audit',
+          outcome: 'relevant-unavailable',
+        }),
+      ],
+    })
+    expect(JSON.stringify(report.recommendedSkills)).not.toContain('irrelevant-style')
+    expect(JSON.stringify(report.recommendedSkills)).not.toContain('unused')
+    expect(JSON.stringify(report.recommendedSkills)).not.toContain('SKILL.md')
+  })
 })

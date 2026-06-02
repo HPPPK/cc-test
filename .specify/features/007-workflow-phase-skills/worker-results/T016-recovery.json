@@ -1,0 +1,15 @@
+{
+  "task_id": "T016-recovery",
+  "status": "passed",
+  "changed_files": [
+    "src/server/services/workflowToolPolicy.ts",
+    ".specify/features/007-workflow-phase-skills/worker-results/T016-recovery.json"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowToolPolicy.test.ts",
+    "exit_code": 0,
+    "summary": "48 pass, 0 fail, 312 expect() calls; ran 48 tests across 2 files."
+  },
+  "concerns": [],
+  "recovery_hints": []
+}

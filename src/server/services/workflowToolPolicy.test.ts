@@ -84,6 +84,62 @@ function workflowStateWithSkills(): WorkflowSessionState {
   } as WorkflowSessionState
 }
 
+function workflowStateWithRecommendedPhaseSkills(): WorkflowSessionState {
+  return {
+    ...stateFor('requirements-clarification'),
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: 'agent-development',
+      source: 'builtin',
+      version: '1',
+      displayName: 'Agent Development',
+      description: 'Workflow policy fixture',
+      phases: [
+        {
+          id: 'requirements-clarification',
+          label: 'Requirements',
+          instructions: 'Clarify the requested behavior.',
+          requestedModel: null,
+          skills: [
+            { name: 'requirements-review', mode: 'recommended', source: 'project' },
+            { name: 'missing-audit', mode: 'recommended', source: 'user' },
+          ],
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['requirements handoff is ready'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+    phaseSkillSnapshots: [
+      {
+        phaseId: 'requirements-clarification',
+        references: [
+          { name: 'requirements-review', mode: 'recommended', source: 'project' },
+          { name: 'missing-audit', mode: 'recommended', source: 'user' },
+        ],
+        resolutions: [
+          {
+            reference: { name: 'requirements-review', mode: 'recommended', source: 'project' },
+            status: 'available',
+            checkedAt: '2026-05-20T00:00:00.000Z',
+            resolvedSkill: {
+              name: 'requirements-review',
+              source: 'project',
+            },
+          },
+          {
+            reference: { name: 'missing-audit', mode: 'recommended', source: 'user' },
+            status: 'missing',
+            checkedAt: '2026-05-20T00:00:00.000Z',
+          },
+        ],
+        snapshottedAt: '2026-05-20T00:00:00.000Z',
+      },
+    ],
+  } as unknown as WorkflowSessionState
+}
+
 function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): WorkflowSessionState {
   return {
     ...stateFor(activePhaseId),
@@ -178,6 +234,7 @@ describe('workflowToolPolicy', () => {
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
     expect(WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS).toEqual([
       'guide',
+      'skill_catalog',
       'list',
       'inspect',
       'validate',
@@ -351,5 +408,31 @@ describe('workflowToolPolicy', () => {
       mode: 'dialogue',
     } as unknown as WorkflowSessionState
     expect(getPromptGuidance(dialogueState)).toBeNull()
+  })
+
+  test('recommended phase skills do not bypass workflow tool permissions or enable SkillTool globally', () => {
+    const getToolNames = requireWorkflowScopedToolNames()
+    const getPromptGuidance = requireWorkflowPromptToolGuidance()
+    const state = workflowStateWithRecommendedPhaseSkills()
+
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+    expect(getToolNames(state)).not.toContain('SkillTool')
+    expect(getToolNames(state)).not.toContain('skill')
+    expect(getWorkflowPhaseDisallowedTools(state)).toContain('Write')
+    expect(getWorkflowPhaseDisallowedTools(state)).toContain('Bash')
+    expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
+    expect(getWorkflowTemplateAuthoringOperationPolicy('update', state)).toMatchObject({
+      allowed: false,
+      denied: true,
+      reason: 'phase-policy-denies-workflow-template-authoring',
+    })
+
+    const guidance = getPromptGuidance(state)
+    expect(guidance).toContain('recommended phase skills do not grant tool permissions')
+    expect(guidance).not.toContain('set effort')
+    expect(guidance).not.toContain('change model')
+    expect(guidance).not.toContain('fork')
+    expect(guidance).not.toContain('shell')
+    expect(guidance).not.toContain('hook')
   })
 })

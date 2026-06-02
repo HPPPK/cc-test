@@ -156,6 +156,23 @@ async function writeWorkflowConfig(
   resetWorkflowTemplateRegistryForTests()
 }
 
+async function writeUserSkill(name: string, body = 'Use this skill for release readiness checks.'): Promise<void> {
+  const skillDir = path.join(tempConfigDir, 'skills', name)
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(
+    path.join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${name}`,
+      'description: Release readiness checklist',
+      '---',
+      body,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+}
+
 async function readJsonIfExists(filePath: string): Promise<unknown> {
   try {
     return JSON.parse(await fs.readFile(filePath, 'utf-8'))
@@ -340,6 +357,45 @@ describe('workflow template authoring service read-only operations', () => {
     )
     const repeatedUserSummary = repeat.templates?.find((template) => template.source === 'user')
     expect(repeatedUserSummary?.basisHash).toBe(userSummary.basisHash)
+  })
+
+  test('lists selectable phase skill references from the workflow skill catalog without writing', async () => {
+    await writeUserSkill('release-checklist')
+    await writeUserSkill('risk-register')
+
+    const result = await expectConfigUnchanged(() =>
+      executeWorkflowTemplateAuthoringOperation({
+        operation: 'skill_catalog',
+        query: 'release',
+        source: 'user',
+        limit: 10,
+      }),
+    )
+
+    expect(result).toMatchObject({
+      operation: 'skill_catalog',
+      status: 'succeeded',
+      persisted: false,
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      skillCatalog: [
+        expect.objectContaining({
+          name: 'release-checklist',
+          source: 'user',
+          recommendedReference: {
+            name: 'release-checklist',
+            mode: 'recommended',
+            source: 'user',
+          },
+        }),
+      ],
+      nextAction: 'none',
+      message: 'Workflow phase skill catalog returned.',
+    })
+    expect(result.skillCatalog).toHaveLength(1)
+    expect(JSON.stringify(result.skillCatalog)).not.toContain('Use this skill for release readiness checks')
   })
 
   test('lists invalid user template diagnostics without writing', async () => {

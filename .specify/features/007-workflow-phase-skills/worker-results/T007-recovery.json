@@ -1,0 +1,14 @@
+{
+  "task_id": "T007-recovery",
+  "status": "passed",
+  "changed_files": [
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    ".specify/features/007-workflow-phase-skills/worker-results/T007-recovery.json"
+  ],
+  "validation_output": "cd desktop && bun run test -- --run src/__tests__/skillsSettings.test.tsx -> 1 test file passed, 5 tests passed.",
+  "concerns": [],
+  "recovery_hints": [
+    "The skills settings list owns visible source, display name, version, token, and readiness metadata; pluginName remains catalog/store metadata and is not rendered separately by the current UI.",
+    "The recovery keeps the no-content-fetch guarantee by asserting fetchSkillDetail is not called during list rendering."
+  ]
+}
