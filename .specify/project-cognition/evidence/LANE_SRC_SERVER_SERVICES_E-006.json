@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-006",
+  "source_path": "src/server/services/teamWatcher.ts",
+  "evidence_type": "code_read",
+  "summary": "Polls ~/.claude/teams/ directory for changes. Detects team_created/team_update/team_deleted events. Pushes real-time WebSocket updates to connected clients. Uses polling for cross-platform reliability.",
+  "classification": "critical",
+  "criticality": "high"
+}

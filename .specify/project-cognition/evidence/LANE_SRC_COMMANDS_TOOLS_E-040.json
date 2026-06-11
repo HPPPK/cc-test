@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-040",
+  "source_path": "src/tools/utils.ts",
+  "evidence_type": "code_read",
+  "summary": "Tools shared utilities - tagMessagesWithToolUseID for transient message tagging, getToolUseIDFromParentMessage extraction.",
+  "classification": "normal",
+  "criticality": "normal"
+}

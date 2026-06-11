@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-005",
+  "source_path": "src/commands/init.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/init' - project initialization. Generates CLAUDE.md file with codebase analysis. Two phases: ask what to set up, then explore codebase.",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -133,8 +133,41 @@ export type WebSocketData = {
   serverHost: string
 }
 
-// Active WebSocket sessions
-const activeSessions = new Map<string, ServerWebSocket<WebSocketData>>()
+// Active browser clients keyed by session. Multiple windows can observe one session.
+const activeSessions = new Map<string, Set<ServerWebSocket<WebSocketData>>>()
+const clientOutputCallbacks = new Map<ServerWebSocket<WebSocketData>, {
+  sessionId: string
+  callback: (msg: any) => void
+}>()
+
+function addActiveClient(
+  sessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): void {
+  let clients = activeSessions.get(sessionId)
+  if (!clients) {
+    clients = new Set()
+    activeSessions.set(sessionId, clients)
+  }
+  clients.add(ws)
+}
+
+function removeActiveClient(
+  sessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): boolean {
+  const clients = activeSessions.get(sessionId)
+  if (!clients?.has(ws)) return false
+  clients.delete(ws)
+  if (clients.size === 0) {
+    activeSessions.delete(sessionId)
+  }
+  return true
+}
+
+function hasActiveClients(sessionId: string): boolean {
+  return (activeSessions.get(sessionId)?.size ?? 0) > 0
+}
 
 export const handleWebSocket = {
   open(ws: ServerWebSocket<WebSocketData>) {
@@ -161,15 +194,16 @@ export const handleWebSocket = {
       sessionCleanupTimers.delete(sessionId)
     }
 
-    activeSessions.set(sessionId, ws)
-    if (prewarmedSessions.has(sessionId)) {
+    addActiveClient(sessionId, ws)
+    if (prewarmPendingSessions.has(sessionId) || prewarmedSessions.has(sessionId)) {
       bindPrewarmMetadataCapture(sessionId)
     } else {
-      rebindSessionOutput(sessionId, ws)
+      bindClientSessionOutput(sessionId, ws)
     }
 
     const msg: ServerMessage = { type: 'connected', sessionId }
     ws.send(JSON.stringify(msg))
+    replayPendingPermissionRequests(ws, sessionId)
   },
 
   message(ws: ServerWebSocket<WebSocketData>, rawMessage: string | Buffer) {
@@ -248,19 +282,21 @@ export const handleWebSocket = {
     }
 
     console.log(`[WS] Client disconnected from session: ${sessionId} (${code}: ${reason})`)
-    if (activeSessions.get(sessionId) !== ws) {
+    if (!removeActiveClient(sessionId, ws)) {
       console.log(`[WS] Ignoring stale client disconnect for session: ${sessionId}`)
       return
     }
+    removeClientOutputCallback(ws)
+    if (hasActiveClients(sessionId)) {
+      return
+    }
     computerUseApprovalService.cancelSession(sessionId)
-    activeSessions.delete(sessionId)
-    conversationService.clearOutputCallbacks(sessionId)
 
     // Schedule delayed cleanup: if the client doesn't reconnect within 30 seconds,
     // stop the CLI subprocess to avoid leaking resources.
     const cleanupTimer = setTimeout(() => {
       sessionCleanupTimers.delete(sessionId)
-      if (!activeSessions.has(sessionId)) {
+      if (!hasActiveClients(sessionId)) {
         console.log(`[WS] Session ${sessionId} not reconnected after 30s, stopping CLI subprocess`)
         conversationService.stopSession(sessionId)
         cleanupSessionRuntimeState(sessionId)
@@ -370,7 +406,7 @@ async function handleUserMessage(
   const shouldForwardCurrentTurnLocalCommand =
     createCurrentTurnLocalCommandForwarder(desktopSlashCommand)
 
-  rebindSessionOutput(sessionId, ws, {
+  bindAllClientSessionOutputs(sessionId, {
     shouldForward: (cliMsg) => {
       if (userMessageSent || (cliMsg.type === 'result' && cliMsg.is_error)) {
         return true
@@ -790,7 +826,7 @@ async function sendWorkflowAutoContinueTurn(
 
   const phaseId = state.activePhaseId ?? 'active'
   sendMessage(ws, { type: 'status', state: 'thinking', verb: 'Thinking' })
-  rebindSessionOutput(sessionId, ws)
+  bindAllClientSessionOutputs(sessionId)
 
   const defaultModel = await resolveWorkflowDefaultModel(sessionId)
   const started = await workflowRuntimeService.startPhase({
@@ -864,8 +900,10 @@ async function handleSetRuntimeConfig(
   }
   const prevOverride = runtimeOverrides.get(sessionId)
   runtimeOverrides.set(sessionId, nextOverride)
+  const forceRestart = message.force === true
 
   if (
+    !forceRestart &&
     prevOverride &&
     prevOverride.providerId === nextOverride.providerId &&
     prevOverride.modelId === nextOverride.modelId
@@ -1074,7 +1112,7 @@ function triggerTitleGeneration(ws: ServerWebSocket<WebSocketData>, sessionId: s
             state.hasCustomTitle = true
             return
           }
-          sendMessage(ws, { type: 'session_title_updated', sessionId, title: placeholder })
+          sendSessionTitleUpdated(ws, sessionId, placeholder)
         }
       }
 
@@ -1086,7 +1124,7 @@ function triggerTitleGeneration(ws: ServerWebSocket<WebSocketData>, sessionId: s
           state.hasCustomTitle = true
           return
         }
-        sendMessage(ws, { type: 'session_title_updated', sessionId, title: aiTitle })
+        sendSessionTitleUpdated(ws, sessionId, aiTitle)
       }
     } catch (err) {
       console.error(`[Title] Failed to generate title for ${sessionId}:`, err)
@@ -1965,7 +2003,116 @@ function getCompactBoundaryMessage(cliMsg: any): string {
   return 'Context compacted'
 }
 
-function rebindSessionOutput(
+function replayPendingPermissionRequests(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+): void {
+  for (const request of conversationService.getPendingPermissionRequests(sessionId)) {
+    sendMessage(ws, {
+      type: 'permission_request',
+      requestId: request.requestId,
+      toolName: request.toolName,
+      ...(request.toolUseId ? { toolUseId: request.toolUseId } : {}),
+      input: request.input,
+      ...(request.description ? { description: request.description } : {}),
+    })
+  }
+}
+
+function sendSessionTitleUpdated(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  title: string,
+): void {
+  const message: ServerMessage = { type: 'session_title_updated', sessionId, title }
+  if (!sendToSession(sessionId, message)) {
+    sendMessage(ws, message)
+  }
+}
+
+function removeClientOutputCallback(ws: ServerWebSocket<WebSocketData>): void {
+  const entry = clientOutputCallbacks.get(ws)
+  if (!entry) return
+  clientOutputCallbacks.delete(ws)
+  const stillUsed = [...clientOutputCallbacks.values()].some(
+    (candidate) =>
+      candidate.sessionId === entry.sessionId &&
+      candidate.callback === entry.callback,
+  )
+  if (!stillUsed) {
+    conversationService.removeOutputCallback(entry.sessionId, entry.callback)
+  }
+}
+
+function removeSessionOutputCallbacks(sessionId: string): void {
+  const callbacks = new Set<(msg: any) => void>()
+  for (const [ws, entry] of [...clientOutputCallbacks.entries()]) {
+    if (entry.sessionId !== sessionId) continue
+    callbacks.add(entry.callback)
+    clientOutputCallbacks.delete(ws)
+  }
+  for (const callback of callbacks) {
+    conversationService.removeOutputCallback(sessionId, callback)
+  }
+}
+
+function getClientOutputEntry(sessionId: string): {
+  sessionId: string
+  callback: (msg: any) => void
+} | null {
+  for (const entry of clientOutputCallbacks.values()) {
+    if (entry.sessionId === sessionId) return entry
+  }
+  return null
+}
+
+function bindAllClientSessionOutputs(
+  sessionId: string,
+  options?: {
+    shouldForward?: (cliMsg: any) => boolean
+  },
+): void {
+  const clients = activeSessions.get(sessionId)
+  if (!clients || !conversationService.hasSession(sessionId)) return
+  removeSessionOutputCallbacks(sessionId)
+  const callback = createClientBroadcastCallback(sessionId, options)
+  for (const ws of clients) {
+    clientOutputCallbacks.set(ws, { sessionId, callback })
+  }
+  conversationService.onOutput(sessionId, callback)
+}
+
+function createClientBroadcastCallback(
+  sessionId: string,
+  options?: {
+    shouldForward?: (cliMsg: any) => boolean
+  },
+): (cliMsg: any) => void {
+  return (cliMsg: any) => {
+    if (options?.shouldForward && !options.shouldForward(cliMsg)) {
+      return
+    }
+
+    const serverMsgs = translateCliMessage(cliMsg, sessionId)
+    const clients = activeSessions.get(sessionId)
+    if (clients) {
+      for (const ws of clients) {
+        for (const msg of serverMsgs) {
+          sendMessage(ws, msg)
+        }
+      }
+    }
+
+    if (cliMsg.type === 'result') {
+      const firstClient = clients?.values().next().value
+      if (firstClient) {
+        triggerTitleGeneration(firstClient, sessionId)
+      }
+    }
+  }
+}
+
+function bindClientSessionOutput(
   sessionId: string,
   ws: ServerWebSocket<WebSocketData>,
   options?: {
@@ -1974,21 +2121,16 @@ function rebindSessionOutput(
 ) {
   if (!conversationService.hasSession(sessionId)) return
 
-  conversationService.clearOutputCallbacks(sessionId)
-  conversationService.onOutput(sessionId, (cliMsg) => {
-    if (options?.shouldForward && !options.shouldForward(cliMsg)) {
-      return
-    }
+  removeClientOutputCallback(ws)
+  const entry = getClientOutputEntry(sessionId)
+  if (entry && !options?.shouldForward) {
+    clientOutputCallbacks.set(ws, entry)
+    return
+  }
 
-    const serverMsgs = translateCliMessage(cliMsg, sessionId)
-    for (const msg of serverMsgs) {
-      sendMessage(ws, msg)
-    }
-
-    if (cliMsg.type === 'result') {
-      triggerTitleGeneration(ws, sessionId)
-    }
-  })
+  const callback = createClientBroadcastCallback(sessionId, options)
+  clientOutputCallbacks.set(ws, { sessionId, callback })
+  conversationService.onOutput(sessionId, callback)
 }
 
 type RuntimeSettings = {
@@ -2483,9 +2625,12 @@ function isWorkflowSessionState(value: unknown): value is WorkflowSessionState {
  * Send a message to a specific session's WebSocket (for use by services)
  */
 export function sendToSession(sessionId: string, message: ServerMessage): boolean {
-  const ws = activeSessions.get(sessionId)
-  if (!ws) return false
-  ws.send(JSON.stringify(message))
+  const clients = activeSessions.get(sessionId)
+  if (!clients || clients.size === 0) return false
+  const payload = JSON.stringify(message)
+  for (const ws of clients) {
+    ws.send(payload)
+  }
   return true
 }
 
@@ -2548,11 +2693,14 @@ export function closeSessionConnection(sessionId: string, reason = 'session clos
   conversationService.clearOutputCallbacks(sessionId)
   cleanupSessionRuntimeState(sessionId)
 
-  const ws = activeSessions.get(sessionId)
-  if (!ws) return false
+  const clients = activeSessions.get(sessionId)
+  if (!clients || clients.size === 0) return false
 
   activeSessions.delete(sessionId)
-  ws.close(1000, reason)
+  for (const ws of clients) {
+    clientOutputCallbacks.delete(ws)
+    ws.close(1000, reason)
+  }
   return true
 }
 
@@ -2564,6 +2712,7 @@ export function __resetWebSocketHandlerStateForTests(): void {
   for (const timer of sessionCleanupTimers.values()) clearTimeout(timer)
   for (const timer of prewarmIdleTimers.values()) clearTimeout(timer)
   activeSessions.clear()
+  clientOutputCallbacks.clear()
   sessionCleanupTimers.clear()
   prewarmIdleTimers.clear()
   workflowTransitionPromises.clear()

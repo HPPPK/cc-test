@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-015",
+  "source_path": ".codex/skills/sp-constitution/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-constitution 工作流技能定义：创建或更新项目章程作为下游规范、规划和执行工作的权威规则层",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

@@ -1,0 +1,63 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/pages/ActiveSession.test.tsx",
+    "desktop/src/components/chat/MessageList.test.tsx",
+    "desktop/src/components/workflow/WorkflowReportLink.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    ".planning/quick/20260602-workflow-chat-ui-compact/STATUS.md",
+    ".planning/quick/20260602-workflow-chat-ui-compact/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/components/chat",
+    "desktop/src/components/workflow"
+  ],
+  "behavior_surfaces": [
+    "desktop active session chat workflow header",
+    "desktop completed background agent/task presentation",
+    "desktop completed agent result visibility",
+    "desktop workflow report link compact rendering"
+  ],
+  "generated_surfaces": [
+    ".planning/quick/20260602-workflow-chat-ui-compact"
+  ],
+  "state_contracts": [
+    "No workflow lifecycle, persistence, provider/runtime, or server session API contract changed.",
+    "Completed workflow details remain available behind a UI details toggle."
+  ],
+  "verification": [
+    "cd desktop && bun run test ActiveSession.test.tsx: passed 30 tests",
+    "cd desktop && bun run test WorkflowComponents.test.tsx: passed 44 tests",
+    "cd desktop && bun run test MessageList.test.tsx: passed 56 tests",
+    "bun run check:desktop: passed 96 test files, 828 tests, desktop build/typecheck"
+  ],
+  "verification_evidence": [
+    "ActiveSession completed workflow compact strip regression test",
+    "ActiveSession completed background agent panel hidden regression test",
+    "MessageList completed agent result hidden-by-default tests",
+    "Desktop full check passed"
+  ],
+  "known_unknowns": [
+    "No live screenshot/browser smoke run in this pass.",
+    "Existing unrelated dirty files were present and preserved."
+  ],
+  "confidence_notes": [
+    "Live code and same-area tests back the UI behavior change.",
+    "Project cognition entry freshness was partial_refresh/review; live reads were used for completion evidence."
+  ],
+  "user_decisions": [
+    "User confirmed the quick-task understanding checkpoint in Chinese."
+  ],
+  "boundary": {
+    "type": "bounded-desktop-ui",
+    "description": "Desktop UI presentation quick task; no server/task lifecycle semantics changed.",
+    "excludes": [
+      "server workflow API semantics",
+      "task lifecycle persistence",
+      "provider/runtime behavior"
+    ]
+  }
+}

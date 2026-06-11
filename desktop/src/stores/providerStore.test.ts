@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SavedProvider } from '../types/provider'
+import type { ProviderExportRequest, ProviderSecretFreeBundle } from '../types/providerImportExport'
 
 const {
   providersApiMock,
@@ -21,6 +22,7 @@ const {
     activateOfficial: vi.fn(),
     test: vi.fn(),
     testConfig: vi.fn(),
+    exportProviders: vi.fn(),
   },
   chatStoreState: {
     sessions: {} as Record<string, { connectionState: string; chatState: string }>,
@@ -83,6 +85,40 @@ function makeProvider(overrides: Partial<SavedProvider> = {}): SavedProvider {
   }
 }
 
+function makeSecretFreeBundle(): ProviderSecretFreeBundle {
+  return {
+    schemaVersion: 1,
+    kind: 'cc-jiangxia-provider-bundle',
+    exportedAt: '2026-06-10T00:00:00.000Z',
+    containsSecrets: false,
+    providers: [
+      {
+        sourceProviderId: 'provider-a',
+        name: 'Provider A',
+        presetId: 'custom',
+        baseUrl: 'https://example.invalid/api',
+        apiFormat: 'anthropic',
+        models: {
+          main: 'model-main',
+          haiku: 'model-haiku',
+          sonnet: 'model-sonnet',
+          opus: 'model-opus',
+        },
+        credential: {
+          status: 'redacted',
+        },
+      },
+    ],
+  }
+}
+
+async function getProviderStoreWithExportAction() {
+  const { useProviderStore } = await import('./providerStore')
+  return useProviderStore.getState() as ReturnType<typeof useProviderStore.getState> & {
+    exportProviders: (input: ProviderExportRequest) => Promise<ProviderSecretFreeBundle>
+  }
+}
+
 describe('providerStore runtime refresh', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -109,7 +145,7 @@ describe('providerStore runtime refresh', () => {
     expect(setSessionRuntimeMock).toHaveBeenCalledWith('session-a', {
       providerId: provider.id,
       modelId: 'model-main',
-    })
+    }, { force: true })
   })
 
   it('keeps an explicit provider model selection when the model still exists', async () => {
@@ -129,7 +165,7 @@ describe('providerStore runtime refresh', () => {
     expect(setSessionRuntimeMock).toHaveBeenCalledWith('session-a', {
       providerId: provider.id,
       modelId: 'model-opus',
-    })
+    }, { force: true })
   })
 
   it('does not restart busy sessions while a provider update is saved', async () => {
@@ -146,5 +182,60 @@ describe('providerStore runtime refresh', () => {
 
     expect(setSelectionMock).not.toHaveBeenCalled()
     expect(setSessionRuntimeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('providerStore provider export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    chatStoreState.sessions = {}
+    runtimeStoreState.selections = {}
+    providersApiMock.list.mockResolvedValue({ providers: [], activeId: null })
+  })
+
+  it('calls the secret-free export API with selected provider request shape', async () => {
+    providersApiMock.exportProviders.mockResolvedValue({ bundle: makeSecretFreeBundle() })
+
+    const store = await getProviderStoreWithExportAction()
+    await store.exportProviders({ providerIds: ['provider-a'], all: false })
+
+    expect(providersApiMock.exportProviders).toHaveBeenCalledWith({
+      providerIds: ['provider-a'],
+      all: false,
+    })
+    const [request] = providersApiMock.exportProviders.mock.calls[0] ?? []
+    expect(request).toBeDefined()
+    expect(request).not.toHaveProperty('includeSecrets')
+    expect(request).not.toHaveProperty('activeId')
+    expect(request).not.toHaveProperty('defaultProviderId')
+  })
+
+  it('returns the secret-free provider bundle from export', async () => {
+    const bundle = makeSecretFreeBundle()
+    providersApiMock.exportProviders.mockResolvedValue({ bundle })
+
+    const store = await getProviderStoreWithExportAction()
+    const result = await store.exportProviders({ all: true })
+
+    expect(result).toEqual(bundle)
+  })
+
+  it('does not activate providers or mutate activeId while exporting', async () => {
+    const activeProvider = makeProvider()
+    providersApiMock.list.mockResolvedValue({
+      providers: [activeProvider],
+      activeId: activeProvider.id,
+    })
+    providersApiMock.exportProviders.mockResolvedValue({ bundle: makeSecretFreeBundle() })
+
+    const { useProviderStore } = await import('./providerStore')
+    await useProviderStore.getState().fetchProviders()
+
+    const store = await getProviderStoreWithExportAction()
+    await store.exportProviders({ all: true })
+
+    expect(providersApiMock.activate).not.toHaveBeenCalled()
+    expect(providersApiMock.activateOfficial).not.toHaveBeenCalled()
+    expect(useProviderStore.getState().activeId).toBe(activeProvider.id)
   })
 })

@@ -134,6 +134,7 @@ describe('Settings Workflows tab', () => {
     expect(screen.getByRole('button', { name: /Providers/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /General/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Workflows/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Environment/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /About/ })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
@@ -141,6 +142,14 @@ describe('Settings Workflows tab', () => {
     expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument()
     expect(screen.getByText('Manage workflow templates and staged execution contracts.')).toBeInTheDocument()
     expect(screen.getByTestId('workflow-template-manager')).toBeInTheDocument()
+  })
+
+  it('routes to the Environment tab', () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Environment/ }))
+
+    expect(screen.getByRole('heading', { name: 'Environment Variables' })).toBeInTheDocument()
   })
 
   it('uses pendingSettingsTab to open Workflows and clears the pending request', () => {

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-002",
+  "source_path": "src/Task.ts",
+  "evidence_type": "code_read",
+  "summary": "Defines TaskType (local_bash, local_agent, remote_agent, in_process_teammate, local_workflow, monitor_mcp, dream), TaskStatus, TaskHandle, TaskContext, TaskStateBase. Provides generateTaskId() with cryptographic random IDs and createTaskStateBase(). Task interface has name, type, kill() method.",
+  "classification": "important",
+  "criticality": "important"
+}

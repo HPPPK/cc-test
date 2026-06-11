@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-036",
+  "source_path": "src/tools/FileWriteTool/FileWriteTool.ts",
+  "evidence_type": "code_read",
+  "summary": "FileWriteTool - writes files to filesystem. Integrates with LSP diagnostics, file history, skill discovery, team memory secrets guard. Same infrastructure as FileEditTool.",
+  "classification": "critical",
+  "criticality": "critical"
+}

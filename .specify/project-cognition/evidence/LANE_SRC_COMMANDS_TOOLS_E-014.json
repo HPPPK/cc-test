@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-014",
+  "source_path": "src/commands/config/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/config' (alias '/settings') - local-jsx command opening config panel. Lazy-loads config.js.",
+  "classification": "critical",
+  "criticality": "critical"
+}

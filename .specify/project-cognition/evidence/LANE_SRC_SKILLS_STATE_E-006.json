@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-006",
+  "source_path": "src/cli/print.ts",
+  "evidence_type": "code_read",
+  "summary": "Main headless/SDK orchestrator (~5600+ lines). Exports runHeadless() which is the primary non-interactive entry point. Manages: session lifecycle, MCP server setup, tool assembly, message queuing, streaming output, permission handling, plugin installation, skill hot-reload, proactive mode, idle timeout, model switching, file state caching, bridge forwarding, elicitation handlers. Imports from ~100+ modules across the codebase. Key function: runHeadlessStreaming() handles the async iterable message loop with ask().",
+  "classification": "critical",
+  "criticality": "critical"
+}

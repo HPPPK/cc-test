@@ -1,0 +1,73 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    ".planning/quick/20260610-provider-import-export-modals/STATUS.md",
+    ".planning/quick/20260610-provider-import-export-modals/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop Settings > Providers import/export controls",
+    "provider export modal with copyable JSON and save-file action",
+    "provider import modal with paste-JSON and JSON-file input",
+    "provider credential-bearing export warning flow",
+    "desktop provider settings regression tests"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Provider import/export payload semantics remain owned by existing provider store/API methods.",
+    "Secret-free export remains the default; credential-bearing export still requires explicit acknowledgement.",
+    "Import preview and commit continue to use existing provider import preview/commit store methods."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop && bun run test -- --run src/__tests__/generalSettings.test.tsx -t \"Settings > Providers tab\"",
+      "result": "passed",
+      "artifact": "17 passed, 37 skipped after leader save-file refinement"
+    },
+    {
+      "command": "cd desktop && bun run test -- --run src/__tests__/generalSettings.test.tsx",
+      "result": "passed",
+      "artifact": "54 tests passed"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed",
+      "artifact": "98 test files and 853 tests passed, followed by desktop typecheck and Vite build"
+    },
+    {
+      "command": "git diff --check -- desktop/src/pages/Settings.tsx desktop/src/__tests__/generalSettings.test.tsx desktop/src/i18n/locales/en.ts desktop/src/i18n/locales/zh.ts .planning/quick/20260610-provider-import-export-modals/STATUS.md .planning/quick/20260610-provider-import-export-modals/SUMMARY.md",
+      "result": "passed",
+      "artifact": "no whitespace errors; Git reported CRLF conversion warnings only"
+    }
+  ],
+  "known_unknowns": [
+    "Full repository quality gate `bun run verify` was not run after the desktop gate.",
+    "The repository worktree contained many unrelated pre-existing modifications outside this quick-task scope."
+  ],
+  "confidence_notes": [
+    "Project cognition entry routing matched a broad coverage bucket, so live code and desktop tests were used as proof.",
+    "Desktop gate passed after the final save-file refinement."
+  ],
+  "user_decisions": [
+    "User confirmed the Understanding Checkpoint for separate import/export buttons and modal workflows."
+  ],
+  "boundary": {
+    "scope": "Quick task limited to desktop provider settings import/export UX, same-area tests, and i18n labels.",
+    "excluded": [
+      "provider persistence schema changes",
+      "server provider API semantics changes",
+      "unrelated settings tabs",
+      "full repository quality gate"
+    ]
+  }
+}

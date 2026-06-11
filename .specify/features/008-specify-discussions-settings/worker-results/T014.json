@@ -1,0 +1,58 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "task_id": "T014",
+  "changed_files": [
+    "desktop/src/__tests__/generalSettings.test.tsx"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- generalSettings",
+    "exit_code": 1,
+    "summary": "RED as expected: 52 tests ran, 48 passed, 4 failed. The passing new default-export test proves the normal provider export calls exportProviders, renders containsSecrets false, and does not include the fixture secret. The 4 failing RED tests all fail because the Settings UI has no accessible 'Export with credentials' action yet, so warning, second confirmation, cancel/no-export, and non-remembered confirmation behavior are missing."
+  },
+  "must_preserve_evidence": {
+    "G-SECRET-EXPORT": "Tests require a separate credential-bearing export action and assert default export remains secret-free and does not call exportProvidersWithSecrets.",
+    "G-TEST": "Added focused Vitest/Testing Library tests only; ran the requested focused test command and captured nonzero RED output.",
+    "G-SCOPE": "Only edited desktop/src/__tests__/generalSettings.test.tsx; no production, server, env, credential, or user config files were edited.",
+    "MP-003": "Tests preserve both paths by proving default secret-free export and specifying a separate credential-bearing export path.",
+    "MP-005": "Tests require high-friction warning text, an explicit acknowledgment checkbox, cancellation without export, and confirmation reset across reopen.",
+    "CA-007": "Tests assert confirmation payload { acknowledgedCredentialExposure: true }, no export without confirmation/cancel, and no remembered confirmation state."
+  },
+  "concerns": [
+    "The repository already has many unrelated modified/untracked files, including other provider import/export implementation files. I did not revert or overwrite them.",
+    "The assigned test file already contained concurrent provider import/export test edits before this task; I preserved them and added the credential-export RED coverage in the same Providers describe block."
+  ],
+  "recovery_hints": [
+    "Implement a separate Settings Providers action with accessible name matching /Export with credentials/i.",
+    "Add a warning dialog named /Export providers with credentials/i with the tested warning copy and acknowledgment checkbox.",
+    "Wire the confirmed action to providerStore.exportProvidersWithSecrets({ all/providerIds, confirmation: { acknowledgedCredentialExposure: true } }) without calling the normal export action.",
+    "Reset the acknowledgment state whenever the warning dialog is opened."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/types/providerImportExport.ts",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md"
+  ],
+  "leader_validation": {
+    "command": "cd desktop && bun run test -- generalSettings",
+    "exit_code": 1,
+    "summary": "JP6 desktop RED confirmed by leader rerun; log: .specify/features/008-specify-discussions-settings/validation-logs/jp6-red-desktop.log"
+  },
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

@@ -4,6 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import {
   WorkflowTemplateRegistryService,
+  collectTemplateSkillCatalog,
   resetWorkflowTemplateRegistryForTests,
 } from './workflowTemplateRegistryService.js'
 
@@ -304,6 +305,20 @@ describe('workflow template registry service', () => {
   })
 
   test('keeps legacy phase skills with name and reason compatible when listing templates', async () => {
+    const skillDir = path.join(tempConfigDir, 'skills', 'legacy-compatible-skill')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: Legacy Compatible Skill',
+        'description: Legacy phase skill compatibility fixture',
+        '---',
+        'Use this skill for legacy compatibility tests.',
+        '',
+      ].join('\n'),
+      'utf-8',
+    )
     await writeWorkflowConfig(tempConfigDir, {
       schemaVersion: 1,
       templates: [
@@ -317,7 +332,8 @@ describe('workflow template registry service', () => {
               name: 'Draft',
               skills: [
                 {
-                  name: 'tdd-workflow',
+                  name: 'legacy-compatible-skill',
+                  source: 'user',
                   reason: 'Use this when changing behavior.',
                   ownerDefinedSkillField: 'keep-skill-field',
                 },
@@ -337,7 +353,8 @@ describe('workflow template registry service', () => {
           {
             skills: [
               {
-                name: 'tdd-workflow',
+                name: 'legacy-compatible-skill',
+                source: 'user',
                 mode: 'recommended',
                 reason: 'Use this when changing behavior.',
                 ownerDefinedSkillField: 'keep-skill-field',
@@ -424,6 +441,41 @@ describe('workflow template registry service', () => {
         severity: 'warning',
       }),
     ]))
+  })
+
+  test('collects project .claude skills so workflow phase skill validation matches the installed skills page', async () => {
+    const originalCwd = process.cwd()
+    const tempProjectDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'cc-jiangxia-workflow-project-skills-'),
+    )
+    try {
+      const skillDir = path.join(tempProjectDir, '.claude', 'skills', 'project-phase-helper')
+      await fs.mkdir(skillDir, { recursive: true })
+      await fs.writeFile(
+        path.join(skillDir, 'SKILL.md'),
+        [
+          '---',
+          'name: Project Phase Helper',
+          'description: Project-local workflow phase helper',
+          '---',
+          'Use this project skill for workflow phases.',
+          '',
+        ].join('\n'),
+        'utf-8',
+      )
+      process.chdir(tempProjectDir)
+
+      const catalog = await collectTemplateSkillCatalog()
+
+      expect(catalog).toContainEqual(expect.objectContaining({
+        name: 'project-phase-helper',
+        source: 'project',
+        sourcePath: path.join(skillDir, 'SKILL.md'),
+      }))
+    } finally {
+      process.chdir(originalCwd)
+      await fs.rm(tempProjectDir, { recursive: true, force: true })
+    }
   })
 
   test('reads workflow config only from cc-jiangxia-owned storage and does not write protected Claude files', async () => {

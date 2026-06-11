@@ -6,13 +6,13 @@
     ]
   },
   "specify_launcher": {
-    "command": "uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify",
+    "command": "uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify",
     "argv": [
       "uvx",
       "--from",
-      "git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096",
+      "git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf",
       "specify"
     ]
   },
-  "notify": "uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify sp-teams notify-hook"
+  "notify": "uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify sp-teams notify-hook"
 }

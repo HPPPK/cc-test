@@ -1,0 +1,95 @@
+{
+  "workflow": "sp-implement",
+  "reason": "workflow-finalize",
+  "feature_dir": ".specify/features/008-specify-discussions-settings",
+  "changed_paths": [
+    "src/server/types/providerImportExport.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts",
+    "src/server/__tests__/providers.test.ts",
+    "desktop/src/types/providerImportExport.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/api/providers.test.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/stores/providerStore.test.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    "desktop/src/__tests__/generalSettings.test.tsx"
+  ],
+  "scope_paths": [
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts"
+  ],
+  "behavior_surfaces": [
+    "server provider import/export API",
+    "desktop provider import/export API client",
+    "desktop provider store",
+    "desktop Settings provider UI",
+    "provider import/export contract types"
+  ],
+  "generated_surfaces": [
+    "No credential-bearing export artifacts were generated or persisted.",
+    "Quality and coverage reports were generated under artifacts/ and are not source behavior."
+  ],
+  "state_contracts": [
+    "Default provider export is secret-free and server-redacted.",
+    "Credential-bearing export is a separate endpoint/action requiring per-request explicit confirmation.",
+    "Provider import preview is side-effect free.",
+    "Provider import commit revalidates bundle/resolutions and does not activate or transfer active/default provider state.",
+    "Conflicts default to add/rename; overwrite is explicit.",
+    "Provider bundles do not include official OAuth/login state or whole-app settings."
+  ],
+  "verification": [
+    {
+      "command": "bun run check:server",
+      "result": "passed",
+      "artifact": ".specify/features/008-specify-discussions-settings/validation-logs/jp7-check-server.log"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed",
+      "artifact": ".specify/features/008-specify-discussions-settings/validation-logs/jp7-check-desktop.log"
+    },
+    {
+      "command": "bun run check:coverage",
+      "result": "passed",
+      "artifact": "artifacts/coverage/2026-06-10T08-29-24-154Z/coverage-report.md"
+    },
+    {
+      "command": "bun run verify",
+      "result": "policy-blocked",
+      "artifact": "artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.md",
+      "notes": "All local/non-live lanes passed; PR readiness blocked by maintainer-only live-provider-checks."
+    }
+  ],
+  "known_unknowns": [
+    "Project cognition database is missing while status.json exists, so inline cognition update may be unavailable.",
+    "Live-provider checks were not run because the PR quality report marks them maintainer-only."
+  ],
+  "confidence_notes": [
+    "Same-area server and desktop tests cover default redaction, import preview/commit, active-state preservation, conflict resolution, generated IDs, and confirmed secret export.",
+    "Changed-lines coverage passed at 90.15%; no coverage thresholds or baselines were lowered."
+  ],
+  "user_decisions": [
+    "Preserve provider-record-only import/export scope.",
+    "Preserve default secret-free export and separate high-friction credential-bearing export.",
+    "Preserve import preview/commit split and no active/default state transfer."
+  ],
+  "boundary": {
+    "included": [
+      "saved provider records",
+      "provider import/export API routes",
+      "desktop Settings provider import/export UI"
+    ],
+    "excluded": [
+      "official OAuth/login state",
+      "whole-app backup/restore",
+      "chat/session/plugin/skill/MCP state",
+      "user-owned credential files"
+    ]
+  }
+}

@@ -143,7 +143,11 @@ type ChatStore = {
       expectedStateVersion?: number
     },
   ) => void
-  setSessionRuntime: (sessionId: string, selection: RuntimeSelection) => void
+  setSessionRuntime: (
+    sessionId: string,
+    selection: RuntimeSelection,
+    options?: { force?: boolean },
+  ) => void
   setSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void
   stopGeneration: (sessionId: string) => void
   loadHistory: (sessionId: string) => Promise<void>
@@ -712,10 +716,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  setSessionRuntime: (sessionId, selection) => {
+  setSessionRuntime: (sessionId, selection, options) => {
     wsManager.send(sessionId, {
       type: 'set_runtime_config',
       ...selection,
+      ...(options?.force ? { force: true } : {}),
     })
   },
 

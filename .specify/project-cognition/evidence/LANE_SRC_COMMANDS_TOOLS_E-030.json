@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-030",
+  "source_path": "src/tools/TaskCreateTool/TaskCreateTool.ts",
+  "evidence_type": "code_read",
+  "summary": "TaskCreateTool - creates tasks with subject/description/activeForm/metadata. Executes task-created hooks. Uses team name resolution.",
+  "classification": "critical",
+  "criticality": "critical"
+}

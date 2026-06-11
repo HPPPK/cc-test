@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-003",
+  "source_path": "src/server/services/sessionService.ts",
+  "evidence_type": "code_read",
+  "summary": "Session file read/write operations for CLI-persisted JSONL session data under ~/.claude/projects/. Types: SessionListItem, SessionDetail, SessionLaunchInfo. Ensures Desktop App and CLI data interop.",
+  "classification": "critical",
+  "criticality": "critical"
+}

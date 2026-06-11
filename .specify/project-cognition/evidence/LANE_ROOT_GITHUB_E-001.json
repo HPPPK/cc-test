@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-001",
+  "source_path": "package.json",
+  "evidence_type": "config_read",
+  "summary": "Root package config: name=cc-jiangxia, version=999.0.0-local, private=true, type=module. Exposes 3 CLI bins (claude-jiangxia, cc-jiangxia, claude-haha). 40+ npm scripts covering CLI start, PR checks, quality gates (fast/pr/push/baseline/release), provider smoke, desktop/server/adapter/native/docs/coverage checks, quarantine, docs build, git hooks. Key deps: @anthropic-ai/sdk, @anthropic-ai/sandbox-runtime, @modelcontextprotocol/sdk, Commander.js, Ink (React terminal UI), Zod, OpenTelemetry. DevDeps: VitePress, mermaid, vue.",
+  "classification": "critical",
+  "criticality": "critical"
+}

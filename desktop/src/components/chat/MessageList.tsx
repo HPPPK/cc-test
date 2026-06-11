@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, memo, useState, useCallback, useLayoutEffect, type ReactNode } from 'react'
+import { useRef, useEffect, useMemo, memo, useState, useCallback, useDeferredValue, useLayoutEffect, type ReactNode } from 'react'
 import { ArrowDown, BookMarked, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleStop, LoaderCircle, MessageCircle, Settings, Target, XCircle } from 'lucide-react'
 import { ApiError } from '../../api/client'
 import { sessionsApi, type SessionTurnCheckpoint } from '../../api/sessions'
@@ -842,7 +842,11 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     () => buildRenderModel(messages),
     [messages],
   )
-  const completedTurnTargets = useMemo(() => getCompletedTurnTargets(messages), [messages])
+  const deferredMessages = useDeferredValue(messages)
+  const completedTurnTargets = useMemo(
+    () => getCompletedTurnTargets(deferredMessages),
+    [deferredMessages],
+  )
   const latestCompletedTurnId =
     completedTurnTargets.length > 0
       ? completedTurnTargets[completedTurnTargets.length - 1]?.messageId ?? null

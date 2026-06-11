@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-014",
+  "source_path": "src/services/mcp/client.ts",
+  "evidence_type": "code_read",
+  "summary": "MCP (Model Context Protocol) client. Manages connections to stdio, SSE, HTTP, WebSocket, SDK, and claudeai-proxy MCP servers. Handles OAuth auth, session expiry, tool/resource/command fetching, elicitation, cleanup. ~2400 lines. Core MCP infrastructure.",
+  "classification": "critical",
+  "criticality": "critical"
+}

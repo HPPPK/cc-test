@@ -66,6 +66,31 @@ export function ComputerUseSettings() {
   const [pythonPathSaving, setPythonPathSaving] = useState(false)
   const [pythonPathMessage, setPythonPathMessage] = useState<string | null>(null)
   const configMutationSeqRef = useRef(0)
+  const appsSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (appsSavedTimeoutRef.current !== null) {
+        clearTimeout(appsSavedTimeoutRef.current)
+        appsSavedTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  const showAppsSaved = useCallback(() => {
+    if (!mountedRef.current) return
+    setAppsSaved(true)
+    if (appsSavedTimeoutRef.current !== null) {
+      clearTimeout(appsSavedTimeoutRef.current)
+    }
+    appsSavedTimeoutRef.current = setTimeout(() => {
+      appsSavedTimeoutRef.current = null
+      if (mountedRef.current) setAppsSaved(false)
+    }, 1500)
+  }, [])
 
   const fetchStatus = useCallback(async () => {
     setCheckState('loading')
@@ -167,8 +192,7 @@ export function ComputerUseSettings() {
       authorizedApps: newAuthorized,
       grantFlags: { clipboardRead: clipboardAccess, clipboardWrite: clipboardAccess, systemKeyCombos: systemKeys },
     }).then(() => {
-      setAppsSaved(true)
-      setTimeout(() => setAppsSaved(false), 1500)
+      showAppsSaved()
     })
   }
 
@@ -191,8 +215,7 @@ export function ComputerUseSettings() {
     configMutationSeqRef.current += 1
     setComputerUseEnabled(value)
     computerUseApi.setAuthorizedApps({ enabled: value }).then(() => {
-      setAppsSaved(true)
-      setTimeout(() => setAppsSaved(false), 1500)
+      showAppsSaved()
     })
   }
 

@@ -1,0 +1,100 @@
+{
+  "workflow": "sp-map-update",
+  "reason": "workflow-phase-skills branch changes: workflow template authoring, chat UI, and tool improvements",
+  "changed_paths": [
+    "desktop/src/api/activityStats.ts",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/MessageList.test.tsx",
+    "desktop/src/components/chat/ToolCallGroup.tsx",
+    "desktop/src/components/markdown/MarkdownRenderer.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowReportLink.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    "desktop/src/pages/ActiveSession.test.tsx",
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/pages/ActivitySettings.test.tsx",
+    "desktop/src/pages/ActivitySettings.tsx",
+    "desktop/src/stores/chatStore.test.ts",
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/stores/providerStore.test.ts",
+    "desktop/src/stores/providerStore.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/workspace-service.test.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowSessionLinkService.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.test.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringService.test.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workspaceService.ts",
+    "src/server/ws/events.ts",
+    "src/server/ws/handler.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/utils/__tests__/stats.test.ts",
+    "src/utils/stats.ts",
+    "src/utils/statsCache.ts"
+  ],
+  "scope_paths": [
+    "desktop/src/components/workflow",
+    "desktop/src/components/chat",
+    "desktop/src/pages",
+    "desktop/src/stores",
+    "src/server/services/workflowTemplate*",
+    "src/server/services/workspaceService.ts",
+    "src/server/ws",
+    "src/tools/WorkflowTemplateAuthoringTool",
+    "src/utils/stats*"
+  ],
+  "behavior_surfaces": [
+    "workflow-template-authoring",
+    "workflow-template-registry",
+    "workflow-tool-policy",
+    "workflow-session-link",
+    "chat-input",
+    "chat-message-list",
+    "workflow-status-panel",
+    "workflow-transition-controls",
+    "workspace-panel",
+    "activity-settings",
+    "active-session"
+  ],
+  "generated_surfaces": [
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "state_contracts": [
+    "chatStore.ts",
+    "providerStore.ts",
+    "workflowTemplateRegistryService"
+  ],
+  "verification": [
+    "TypeScript compilation check pending",
+    "Existing tests should pass for modified components"
+  ],
+  "known_unknowns": [
+    "Impact on workflow template catalog visibility",
+    "Interaction between workflow-template-authoring and existing workflow runtime"
+  ],
+  "confidence_notes": [
+    "High confidence on file ownership: workflow template authoring owns src/server/services/workflowTemplateAuthoringService.ts",
+    "High confidence on UI surfaces: WorkflowStatusPanel owns workflow status display",
+    "Medium confidence on cross-surface interactions: chat components may reference workflow state"
+  ],
+  "user_decisions": [],
+  "boundary": {
+    "type": "branch-update",
+    "name": "workflow-phase-skills",
+    "description": "Incremental update for workflow-phase-skills branch changes"
+  }
+}

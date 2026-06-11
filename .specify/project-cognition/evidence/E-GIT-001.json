@@ -1,0 +1,8 @@
+{
+  "id": "E-GIT-001",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "Project has 843 total commits across all branches, spanning from 2026-03-31 to 2026-06-02 (approx. 2 months). April 2026 had 408 commits and May 2026 had 430 commits, indicating extremely high development velocity. The project originated from a leaked source code archive (src.zip) and was made locally runnable.",
+  "classification": "important",
+  "criticality": "important"
+}

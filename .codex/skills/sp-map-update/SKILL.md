@@ -41,6 +41,7 @@ Use `execution_surface: native-subagents`.
 ## Process
 
 - Query the current project cognition baseline and determine the affected closure before editing runtime outputs.
+- Use the shared semantic intake contract when classifying changed paths or user supplements: build `semantic_intake` from the alias catalog, normalized query, `intent_facets`, `negative_constraints`, and `alias_interpretations`; preserve facet coverage in `concept_decisions` through `covered_facets`, `missing_facets`, and `match_sources`; write `repository_search_terms` derived from project language before source search. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, `normalized_query`, and `expanded_queries`. Use these project-language search terms before broad repository search. Do not trust top similarity alone when deciding the affected closure.
 - Prefer the smallest update that can truthfully restore readiness.
 - Treat explicit user corrections and user-supplied scope as first-class routing input; user-supplied scope is authoritative for the touched area unless repository evidence disproves it.
 - Dispatch only validated incremental update lanes with bounded affected scope.
@@ -123,6 +124,7 @@ project-cognition update --payload-file ".specify/project-cognition/updates/<upd
 ```
 
 The payload must include `workflow`, `reason`, `changed_paths`, `scope_paths`, `behavior_surfaces`, `generated_surfaces`, `state_contracts`, `verification`, `known_unknowns`, `confidence_notes`, `user_decisions`, and `boundary` when those facts exist.
+For compatibility with worker handoffs and delta packets, the runtime also accepts `verification_evidence` as an alias for `verification` and `generated_surface_notes` as an alias for `generated_surfaces`. Verification evidence may be an array of objects (`command`, `result`, `artifact`) or an array of command-result strings, but clean closeout still requires passing verification evidence; failed verification cannot produce a clean `ready` closeout.
 
 Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone:
 
@@ -137,7 +139,10 @@ Use `C:\Users\11034\.specify\bin\project-cognition.exe mark-dirty --reason \"<re
 sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-update` remains the external/manual workflow for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. It is not routine cleanup for changes this workflow just made.
 
 - After applying update records, run `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`.
-- If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid` condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- If the update helper returns `needs_rebuild`, `sp-map-update` must not call `complete-refresh`; report the concrete first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid` condition and route to `$sp-map-scan`, then `$sp-map-build`.
+- If `validate-build` reports `identity_reconciliation=blocked` but the blocked set is bounded and path-led, `sp-map-update` must run a focused identity-repair pass before offering rebuild. Treat missing or unexpected `coverage_path` identities, renamed paths, deleted paths, ignored paths, stale DB path rows, and path-derived evidence identities as map-update repair work when they can be explained from git delta, file existence, `.cognitionignore`, existing merge records, or explicit row decisions.
+- During the identity-repair pass, classify every blocked identity as one of: adopted with provisional path/evidence, merged to a canonical path, rejected with an explicit row decision, ignored by boundary rules, stale/deleted, or still blocked with a concrete reason. Then rerun `C:\Users\11034\.specify\bin\project-cognition.exe validate-build --format json`.
+- Do not ask the user to choose between focused identity repair and full rebuild when the repair set is bounded and no reserved rebuild reason is present; perform the focused repair first and escalate only if the repair cannot safely explain the identities or validation later reports a reserved rebuild condition.
 - If `validate-build` is blocked after update recording, report `partial_refresh` and preserve the validation errors instead of claiming the runtime is fresh.
 - If the re-evaluated runtime is `fresh` with `readiness=ready`, finalize the successful refresh through `C:\Users\11034\.specify\bin\project-cognition.exe complete-refresh --format json` so cognition freshness metadata cannot remain stale.
 - If the update helper returns `ready` and `validate-build` passes, but the shared freshness check still sees the same refreshed source paths only because those source changes are not committed yet, report the incremental update as recorded and baseline-finalization pending. Do not tell the user to run `$sp-map-scan` or `$sp-map-build` merely because refreshed source changes are not committed yet.
@@ -170,6 +175,7 @@ The canonical outputs for this command are:
 ## Guardrails
 
 - Do not silently escalate to a full rebuild without recording why.
+- Do not present full rebuild as an equal next option for bounded identity reconciliation debt; run the focused repair pass first.
 - Do not refresh unaffected runtime records just because the touched area is ambiguous; record partial or low-confidence closure for the affected records instead.
 - Do not invent closure when changed paths or user supplements do not support the update.
 - Do not re-read or rewrite raw graph JSON artifacts; use the query/update helpers and the smallest affected runtime records that can truthfully restore readiness.
@@ -181,6 +187,7 @@ The canonical outputs for this command are:
 
 - Escalate to `sp-map-scan`, then `sp-map-build` only when no query-backed baseline exists, the current baseline is unusable, DB/status/schema validation fails, zero active-generation `path_index` rows exist, the user explicitly requested a rebuild (`explicit_rebuild_requested`), or the repository architecture changed so broadly that the baseline identity is invalid (`baseline_identity_invalid`).
 - Do not escalate merely because the affected closure is uncertain; record the uncertainty as partial/low-confidence update data with `known_unknowns` and `minimal_live_reads`.
+- Do not escalate merely because `validate-build` reports bounded path identity reconciliation debt; classify and repair those identities inside `sp-map-update` first.
 - Record the exact reason for escalation, including the failed baseline, DB, schema, explicit-request, or architecture-replacement fact.
 
 ## Update Duties
@@ -226,7 +233,7 @@ When running `sp-map-update` in Codex, use the subagents-first dispatch model.
 - Launch all independent lanes in the current `parallel-subagents` wave before waiting, but only after confirming the refresh is not metadata-only or single-slice.
 - Use `leader-inline-fallback` only after recording why Codex native subagents are unavailable or unsafe.
 - Leader-inline-fallback for a one-lane update is preferred over forcing extra subagents.
-- Suggested bounded update lanes include diff impact closure, affected claim refresh, user supplement normalization, and conflict reconciliation.
+- Suggested bounded update lanes include diff impact closure, affected graph and alias refresh, user supplement normalization, and route-pack reconciliation.
 - Do not turn a one-slice or metadata-only refresh into scan-style parallel exploration.
-- Use `wait_agent` only at the documented join points before updating graph claims, conflicts, and slices.
+- Use `wait_agent` only at the documented join points before updating graph, path-index, alias-index, and route-pack outputs.
 - Use `close_agent` after integrating finished subagent results.

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-008",
+  "source_path": "src/cli/update.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-update logic for Claude Code CLI. Handles native installation updates, npm-based updates (local and global), package manager detection (homebrew, winget, apk, pacman, deb, rpm). Doctor diagnostic integration. Config/install method mismatch detection and correction.",
+  "classification": "critical",
+  "criticality": "high"
+}

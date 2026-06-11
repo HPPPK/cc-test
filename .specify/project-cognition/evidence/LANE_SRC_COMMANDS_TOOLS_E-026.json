@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-026",
+  "source_path": "src/tools/PowerShellTool/powershellSecurity.ts",
+  "evidence_type": "code_read",
+  "summary": "PowerShell security analysis - AST-based detection of dangerous patterns (code injection, download cradles, privilege escalation). Returns passthrough/ask/allow behavior.",
+  "classification": "critical",
+  "criticality": "critical"
+}

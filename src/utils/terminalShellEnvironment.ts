@@ -67,6 +67,29 @@ type SplitPathListResult = {
   delimiter: ':' | ';'
 }
 
+function pathEnvKeys(env: Record<string, string>): string[] {
+  return Object.keys(env).filter((key) => key.toLowerCase() === 'path')
+}
+
+function readPathEnv(env: Record<string, string>): string | undefined {
+  return env.PATH ?? env.Path ?? env.path ?? env[pathEnvKeys(env)[0] ?? 'PATH']
+}
+
+function withPathEnv(
+  env: Record<string, string>,
+  value: string,
+): Record<string, string> {
+  const pathKeys = pathEnvKeys(env)
+  const updates = Object.fromEntries(
+    (pathKeys.length > 0 ? pathKeys : ['PATH']).map((key) => [key, value]),
+  )
+  return {
+    ...env,
+    ...updates,
+    PATH: value,
+  }
+}
+
 export function mergePathLists(...values: Array<string | undefined>): string | null {
   const seen = new Set<string>()
   const merged: string[] = []
@@ -147,8 +170,8 @@ function parseNullDelimitedEnv(
 }
 
 function normalizeCapturedPath(env: Record<string, string>): Record<string, string> {
-  const normalizedPath = mergePathLists(env.PATH)
-  return normalizedPath ? { ...env, PATH: normalizedPath } : env
+  const normalizedPath = mergePathLists(readPathEnv(env))
+  return normalizedPath ? withPathEnv(env, normalizedPath) : env
 }
 
 function unquoteShellValue(value: string): string {
@@ -190,7 +213,7 @@ async function readShellRcEnvironment(
     if (!match) continue
     const [, key, rawValue] = match
     env[key] = unquoteShellValue(rawValue)
-      .replace(/\$PATH\b/g, env.PATH ?? '')
+      .replace(/\$PATH\b/g, readPathEnv(env) ?? '')
       .replace(/\$HOME\b/g, env.HOME ?? '')
   }
 
@@ -270,12 +293,12 @@ export function mergeTerminalShellEnvironment(
     return { ...baseEnv }
   }
 
-  const mergedPath = mergePathLists(shellEnv.PATH, baseEnv.PATH)
-  return {
+  const mergedPath = mergePathLists(readPathEnv(shellEnv), readPathEnv(baseEnv))
+  const merged = {
     ...shellEnv,
     ...baseEnv,
-    ...(mergedPath ? { PATH: mergedPath } : {}),
   }
+  return mergedPath ? withPathEnv(merged, mergedPath) : merged
 }
 
 export async function getProcessEnvWithTerminalShellEnvironment(): Promise<

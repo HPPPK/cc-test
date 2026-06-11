@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-022",
+  "source_path": ".github/FUNDING.yml",
+  "evidence_type": "config_read",
+  "summary": "GitHub Sponsors funding: github: NanmiCoder.",
+  "classification": "minor",
+  "criticality": "minor"
+}

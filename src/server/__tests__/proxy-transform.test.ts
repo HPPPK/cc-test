@@ -194,6 +194,61 @@ describe('anthropicToOpenaiChat', () => {
     expect(content[0].type).toBe('image_url')
     expect(content[0].image_url!.url).toBe('data:image/png;base64,abc123')
   })
+
+  test('image content can be downgraded to text-only for chat endpoints without vision support', () => {
+    const req: AnthropicRequest = {
+      model: 'deepseek-chat',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Please inspect this screenshot' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc123' } },
+        ],
+      }],
+    }
+
+    const result = anthropicToOpenaiChat(req, { imageContentMode: 'text_only' })
+    expect(result.messages[0]).toEqual({
+      role: 'user',
+      content: 'Please inspect this screenshot\n[Image omitted: this OpenAI-compatible chat endpoint only supports text content.]',
+    })
+  })
+
+  test('can pass thinking toggle through for compatible chat endpoints', () => {
+    const req: AnthropicRequest = {
+      model: 'deepseek-chat',
+      max_tokens: 100,
+      messages: [{ role: 'user', content: 'Hi' }],
+      thinking: { type: 'disabled' },
+    }
+
+    const result = anthropicToOpenaiChat(req, { passThinkingToggle: true })
+    expect(result.thinking).toEqual({ type: 'disabled' })
+  })
+
+  test('can round-trip assistant thinking as reasoning_content', () => {
+    const req: AnthropicRequest = {
+      model: 'deepseek-chat',
+      max_tokens: 100,
+      messages: [{
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Reasoning step.' },
+          { type: 'text', text: 'Answer.' },
+        ],
+      }],
+    }
+
+    const result = anthropicToOpenaiChat(req, {
+      roundTripReasoningContent: true,
+    })
+    expect(result.messages[0]).toEqual({
+      role: 'assistant',
+      content: 'Answer.',
+      reasoning_content: 'Reasoning step.',
+    })
+  })
 })
 
 // ─── openaiChatToAnthropic ──────────────────────────────────────

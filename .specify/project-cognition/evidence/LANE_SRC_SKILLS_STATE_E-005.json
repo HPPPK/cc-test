@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-005",
+  "source_path": "src/skills/mcpSkills.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for ant-internal feature() gated modules. Proxy-based noop stub with __stubMissing=true. Exports: createCachedMCState, isCachedMicrocompactEnabled, isModelSupportedForCacheEditing, getCachedMCConfig, markToolsSentToAPI, resetCachedMCState, checkProtectedNamespace, getCoordinatorUserContext.",
+  "classification": "critical",
+  "criticality": "high"
+}

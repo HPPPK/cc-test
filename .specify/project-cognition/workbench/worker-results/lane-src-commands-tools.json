@@ -1,0 +1,5247 @@
+{
+  "packet_id": "lane-src-commands-tools",
+  "family_id": "src-critical",
+  "assigned_paths": [
+    "src/commands/add-dir/add-dir.tsx",
+    "src/commands/add-dir/index.ts",
+    "src/commands/add-dir/validation.ts",
+    "src/commands/advisor.ts",
+    "src/commands/agents-platform/index.ts",
+    "src/commands/agents/agents.tsx",
+    "src/commands/agents/index.ts",
+    "src/commands/ant-trace/index.js",
+    "src/commands/assistant/assistant.ts",
+    "src/commands/assistant/index.ts",
+    "src/commands/autofix-pr/index.js",
+    "src/commands/backfill-sessions/index.js",
+    "src/commands/branch/branch.ts",
+    "src/commands/branch/index.ts",
+    "src/commands/break-cache/index.js",
+    "src/commands/bridge-kick.ts",
+    "src/commands/bridge/bridge.tsx",
+    "src/commands/bridge/index.ts",
+    "src/commands/brief.ts",
+    "src/commands/btw/btw.tsx",
+    "src/commands/btw/index.ts",
+    "src/commands/buddy/buddy.tsx",
+    "src/commands/buddy/index.ts",
+    "src/commands/bughunter/index.js",
+    "src/commands/chrome/chrome.tsx",
+    "src/commands/chrome/index.ts",
+    "src/commands/clear/caches.ts",
+    "src/commands/clear/clear.ts",
+    "src/commands/clear/clear/caches.ts",
+    "src/commands/clear/clear/conversation.ts",
+    "src/commands/clear/conversation.ts",
+    "src/commands/clear/index.ts",
+    "src/commands/color/color.ts",
+    "src/commands/color/index.ts",
+    "src/commands/commit-push-pr.ts",
+    "src/commands/commit.ts",
+    "src/commands/compact/compact.ts",
+    "src/commands/compact/index.ts",
+    "src/commands/config/config.tsx",
+    "src/commands/config/index.ts",
+    "src/commands/context/context-noninteractive.ts",
+    "src/commands/context/context.tsx",
+    "src/commands/context/index.ts",
+    "src/commands/copy/copy.tsx",
+    "src/commands/copy/index.ts",
+    "src/commands/cost/cost.ts",
+    "src/commands/cost/index.ts",
+    "src/commands/createMovedToPluginCommand.ts",
+    "src/commands/ctx_viz/index.js",
+    "src/commands/debug-tool-call/index.js",
+    "src/commands/desktop/desktop.tsx",
+    "src/commands/desktop/index.ts",
+    "src/commands/diff/diff.tsx",
+    "src/commands/diff/index.ts",
+    "src/commands/doctor/doctor.tsx",
+    "src/commands/doctor/index.ts",
+    "src/commands/effort/effort.tsx",
+    "src/commands/effort/index.ts",
+    "src/commands/env/index.js",
+    "src/commands/exit/exit.tsx",
+    "src/commands/exit/index.ts",
+    "src/commands/export/export.tsx",
+    "src/commands/export/index.ts",
+    "src/commands/extra-usage/extra-usage-core.ts",
+    "src/commands/extra-usage/extra-usage-noninteractive.ts",
+    "src/commands/extra-usage/extra-usage.tsx",
+    "src/commands/extra-usage/index.ts",
+    "src/commands/fast/fast.tsx",
+    "src/commands/fast/index.ts",
+    "src/commands/feedback/feedback.tsx",
+    "src/commands/feedback/index.ts",
+    "src/commands/files/files.ts",
+    "src/commands/files/index.ts",
+    "src/commands/force-snip.ts",
+    "src/commands/fork/index.ts",
+    "src/commands/goal/goal.test.tsx",
+    "src/commands/goal/goal.tsx",
+    "src/commands/goal/index.ts",
+    "src/commands/good-claude/index.js",
+    "src/commands/headless.test.ts",
+    "src/commands/headless.ts",
+    "src/commands/heapdump/heapdump.ts",
+    "src/commands/heapdump/index.ts",
+    "src/commands/help/help.tsx",
+    "src/commands/help/index.ts",
+    "src/commands/hooks/hooks.tsx",
+    "src/commands/hooks/index.ts",
+    "src/commands/ide/ide.tsx",
+    "src/commands/ide/index.ts",
+    "src/commands/init-verifiers.ts",
+    "src/commands/init.ts",
+    "src/commands/insights.ts",
+    "src/commands/install-github-app/ApiKeyStep.tsx",
+    "src/commands/install-github-app/CheckExistingSecretStep.tsx",
+    "src/commands/install-github-app/CheckGitHubStep.tsx",
+    "src/commands/install-github-app/ChooseRepoStep.tsx",
+    "src/commands/install-github-app/CreatingStep.tsx",
+    "src/commands/install-github-app/ErrorStep.tsx",
+    "src/commands/install-github-app/ExistingWorkflowStep.tsx",
+    "src/commands/install-github-app/InstallAppStep.tsx",
+    "src/commands/install-github-app/OAuthFlowStep.tsx",
+    "src/commands/install-github-app/SuccessStep.tsx",
+    "src/commands/install-github-app/WarningsStep.tsx",
+    "src/commands/install-github-app/index.ts",
+    "src/commands/install-github-app/install-github-app.tsx",
+    "src/commands/install-github-app/setupGitHubActions.ts",
+    "src/commands/install-github-app/types.ts",
+    "src/commands/install-slack-app/index.ts",
+    "src/commands/install-slack-app/install-slack-app.ts",
+    "src/commands/install.tsx",
+    "src/commands/issue/index.js",
+    "src/commands/keybindings/index.ts",
+    "src/commands/keybindings/keybindings.ts",
+    "src/commands/login/index.ts",
+    "src/commands/login/login.tsx",
+    "src/commands/logout/index.ts",
+    "src/commands/logout/logout.tsx",
+    "src/commands/mcp/addCommand.ts",
+    "src/commands/mcp/index.ts",
+    "src/commands/mcp/mcp.tsx",
+    "src/commands/mcp/xaaIdpCommand.ts",
+    "src/commands/memory/index.ts",
+    "src/commands/memory/memory.tsx",
+    "src/commands/mobile/index.ts",
+    "src/commands/mobile/mobile.tsx",
+    "src/commands/mock-limits/index.js",
+    "src/commands/model/index.ts",
+    "src/commands/model/model.tsx",
+    "src/commands/oauth-refresh/index.js",
+    "src/commands/onboarding/index.js",
+    "src/commands/output-style/index.ts",
+    "src/commands/output-style/output-style.tsx",
+    "src/commands/passes/index.ts",
+    "src/commands/passes/passes.tsx",
+    "src/commands/peers/index.ts",
+    "src/commands/perf-issue/index.js",
+    "src/commands/permissions/index.ts",
+    "src/commands/permissions/permissions.tsx",
+    "src/commands/plan/index.ts",
+    "src/commands/plan/plan.tsx",
+    "src/commands/plugin/AddMarketplace.tsx",
+    "src/commands/plugin/BrowseMarketplace.tsx",
+    "src/commands/plugin/DiscoverPlugins.tsx",
+    "src/commands/plugin/ManageMarketplaces.tsx",
+    "src/commands/plugin/ManagePlugins.tsx",
+    "src/commands/plugin/PluginErrors.tsx",
+    "src/commands/plugin/PluginOptionsDialog.tsx",
+    "src/commands/plugin/PluginOptionsFlow.tsx",
+    "src/commands/plugin/PluginSettings.tsx",
+    "src/commands/plugin/PluginTrustWarning.tsx",
+    "src/commands/plugin/UnifiedInstalledCell.tsx",
+    "src/commands/plugin/ValidatePlugin.tsx",
+    "src/commands/plugin/index.tsx",
+    "src/commands/plugin/parseArgs.ts",
+    "src/commands/plugin/plugin.tsx",
+    "src/commands/plugin/pluginDetailsHelpers.tsx",
+    "src/commands/plugin/types.ts",
+    "src/commands/plugin/unifiedTypes.ts",
+    "src/commands/plugin/usePagination.ts",
+    "src/commands/pr_comments/index.ts",
+    "src/commands/privacy-settings/index.ts",
+    "src/commands/privacy-settings/privacy-settings.tsx",
+    "src/commands/proactive.ts",
+    "src/commands/rate-limit-options/index.ts",
+    "src/commands/rate-limit-options/rate-limit-options.tsx",
+    "src/commands/release-notes/index.ts",
+    "src/commands/release-notes/release-notes.ts",
+    "src/commands/reload-plugins/index.ts",
+    "src/commands/reload-plugins/reload-plugins.ts",
+    "src/commands/remote-env/index.ts",
+    "src/commands/remote-env/remote-env.tsx",
+    "src/commands/remote-setup/api.ts",
+    "src/commands/remote-setup/index.ts",
+    "src/commands/remote-setup/remote-setup.tsx",
+    "src/commands/remoteControlServer/index.ts",
+    "src/commands/rename/generateSessionName.ts",
+    "src/commands/rename/index.ts",
+    "src/commands/rename/rename.ts",
+    "src/commands/reset-limits/index.js",
+    "src/commands/resume/index.ts",
+    "src/commands/resume/resume.tsx",
+    "src/commands/review.ts",
+    "src/commands/review/UltrareviewOverageDialog.tsx",
+    "src/commands/review/reviewRemote.ts",
+    "src/commands/review/ultrareviewCommand.tsx",
+    "src/commands/review/ultrareviewEnabled.ts",
+    "src/commands/rewind/index.ts",
+    "src/commands/rewind/rewind.ts",
+    "src/commands/sandbox-toggle/index.ts",
+    "src/commands/sandbox-toggle/sandbox-toggle.tsx",
+    "src/commands/security-review.ts",
+    "src/commands/session/index.ts",
+    "src/commands/session/session.tsx",
+    "src/commands/share/index.js",
+    "src/commands/skills/index.ts",
+    "src/commands/skills/skills.tsx",
+    "src/commands/stats/index.ts",
+    "src/commands/stats/stats.tsx",
+    "src/commands/status/index.ts",
+    "src/commands/status/status.tsx",
+    "src/commands/statusline.tsx",
+    "src/commands/stickers/index.ts",
+    "src/commands/stickers/stickers.ts",
+    "src/commands/subscribe-pr.ts",
+    "src/commands/summary/index.js",
+    "src/commands/tag/index.ts",
+    "src/commands/tag/tag.tsx",
+    "src/commands/tasks/index.ts",
+    "src/commands/tasks/tasks.tsx",
+    "src/commands/teleport/index.js",
+    "src/commands/terminalSetup/index.ts",
+    "src/commands/terminalSetup/terminalSetup.tsx",
+    "src/commands/theme/index.ts",
+    "src/commands/theme/theme.tsx",
+    "src/commands/thinkback-play/index.ts",
+    "src/commands/thinkback-play/thinkback-play.ts",
+    "src/commands/thinkback/index.ts",
+    "src/commands/thinkback/thinkback.tsx",
+    "src/commands/torch.ts",
+    "src/commands/ultraplan.tsx",
+    "src/commands/upgrade/index.ts",
+    "src/commands/upgrade/upgrade.tsx",
+    "src/commands/usage/index.ts",
+    "src/commands/usage/usage.tsx",
+    "src/commands/version.ts",
+    "src/commands/vim/index.ts",
+    "src/commands/vim/vim.ts",
+    "src/commands/voice/index.ts",
+    "src/commands/voice/voice.ts",
+    "src/commands/workflows/index.ts",
+    "src/tools/AgentTool/AgentTool.tsx",
+    "src/tools/AgentTool/UI.tsx",
+    "src/tools/AgentTool/agentColorManager.ts",
+    "src/tools/AgentTool/agentDisplay.ts",
+    "src/tools/AgentTool/agentMemory.ts",
+    "src/tools/AgentTool/agentMemorySnapshot.ts",
+    "src/tools/AgentTool/agentToolUtils.test.ts",
+    "src/tools/AgentTool/agentToolUtils.ts",
+    "src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts",
+    "src/tools/AgentTool/built-in/exploreAgent.ts",
+    "src/tools/AgentTool/built-in/generalPurposeAgent.ts",
+    "src/tools/AgentTool/built-in/planAgent.ts",
+    "src/tools/AgentTool/built-in/statuslineSetup.ts",
+    "src/tools/AgentTool/built-in/verificationAgent.ts",
+    "src/tools/AgentTool/builtInAgents.test.ts",
+    "src/tools/AgentTool/builtInAgents.ts",
+    "src/tools/AgentTool/constants.ts",
+    "src/tools/AgentTool/forkSubagent.ts",
+    "src/tools/AgentTool/loadAgentsDir.cache.test.ts",
+    "src/tools/AgentTool/loadAgentsDir.ts",
+    "src/tools/AgentTool/prompt.test.ts",
+    "src/tools/AgentTool/prompt.ts",
+    "src/tools/AgentTool/resumeAgent.ts",
+    "src/tools/AgentTool/runAgent.ts",
+    "src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx",
+    "src/tools/AskUserQuestionTool/prompt.ts",
+    "src/tools/BashTool/BashTool.tsx",
+    "src/tools/BashTool/BashToolResultMessage.tsx",
+    "src/tools/BashTool/UI.tsx",
+    "src/tools/BashTool/bashCommandHelpers.ts",
+    "src/tools/BashTool/bashPermissions.test.ts",
+    "src/tools/BashTool/bashPermissions.ts",
+    "src/tools/BashTool/bashSecurity.ts",
+    "src/tools/BashTool/commandSemantics.ts",
+    "src/tools/BashTool/commentLabel.ts",
+    "src/tools/BashTool/destructiveCommandWarning.ts",
+    "src/tools/BashTool/modeValidation.ts",
+    "src/tools/BashTool/pathValidation.ts",
+    "src/tools/BashTool/prompt.ts",
+    "src/tools/BashTool/readOnlyValidation.ts",
+    "src/tools/BashTool/sedEditParser.ts",
+    "src/tools/BashTool/sedValidation.ts",
+    "src/tools/BashTool/shouldUseSandbox.ts",
+    "src/tools/BashTool/toolName.ts",
+    "src/tools/BashTool/utils.ts",
+    "src/tools/BriefTool/BriefTool.ts",
+    "src/tools/BriefTool/UI.tsx",
+    "src/tools/BriefTool/attachments.ts",
+    "src/tools/BriefTool/prompt.ts",
+    "src/tools/BriefTool/upload.ts",
+    "src/tools/ConfigTool/ConfigTool.ts",
+    "src/tools/ConfigTool/UI.tsx",
+    "src/tools/ConfigTool/constants.ts",
+    "src/tools/ConfigTool/prompt.ts",
+    "src/tools/ConfigTool/supportedSettings.ts",
+    "src/tools/CtxInspectTool/CtxInspectTool.ts",
+    "src/tools/DiscoverSkillsTool/prompt.ts",
+    "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+    "src/tools/EnterPlanModeTool/UI.tsx",
+    "src/tools/EnterPlanModeTool/constants.ts",
+    "src/tools/EnterPlanModeTool/prompt.ts",
+    "src/tools/EnterWorktreeTool/EnterWorktreeTool.ts",
+    "src/tools/EnterWorktreeTool/UI.tsx",
+    "src/tools/EnterWorktreeTool/constants.ts",
+    "src/tools/EnterWorktreeTool/prompt.ts",
+    "src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts",
+    "src/tools/ExitPlanModeTool/UI.tsx",
+    "src/tools/ExitPlanModeTool/constants.ts",
+    "src/tools/ExitPlanModeTool/prompt.ts",
+    "src/tools/ExitWorktreeTool/ExitWorktreeTool.ts",
+    "src/tools/ExitWorktreeTool/UI.tsx",
+    "src/tools/ExitWorktreeTool/constants.ts",
+    "src/tools/ExitWorktreeTool/prompt.ts",
+    "src/tools/FileEditTool/FileEditTool.ts",
+    "src/tools/FileEditTool/UI.tsx",
+    "src/tools/FileEditTool/constants.ts",
+    "src/tools/FileEditTool/prompt.ts",
+    "src/tools/FileEditTool/types.ts",
+    "src/tools/FileEditTool/utils.ts",
+    "src/tools/FileReadTool/FileReadTool.ts",
+    "src/tools/FileReadTool/UI.tsx",
+    "src/tools/FileReadTool/imageProcessor.ts",
+    "src/tools/FileReadTool/limits.ts",
+    "src/tools/FileReadTool/prompt.ts",
+    "src/tools/FileWriteTool/FileWriteTool.ts",
+    "src/tools/FileWriteTool/UI.tsx",
+    "src/tools/FileWriteTool/prompt.ts",
+    "src/tools/GlobTool/GlobTool.ts",
+    "src/tools/GlobTool/UI.tsx",
+    "src/tools/GlobTool/prompt.ts",
+    "src/tools/GrepTool/GrepTool.ts",
+    "src/tools/GrepTool/UI.tsx",
+    "src/tools/GrepTool/prompt.ts",
+    "src/tools/LSPTool/LSPTool.ts",
+    "src/tools/LSPTool/UI.tsx",
+    "src/tools/LSPTool/formatters.ts",
+    "src/tools/LSPTool/prompt.ts",
+    "src/tools/LSPTool/schemas.ts",
+    "src/tools/LSPTool/symbolContext.ts",
+    "src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts",
+    "src/tools/ListMcpResourcesTool/UI.tsx",
+    "src/tools/ListMcpResourcesTool/prompt.ts",
+    "src/tools/ListPeersTool/ListPeersTool.ts",
+    "src/tools/MCPTool/MCPTool.ts",
+    "src/tools/MCPTool/UI.tsx",
+    "src/tools/MCPTool/classifyForCollapse.ts",
+    "src/tools/MCPTool/prompt.ts",
+    "src/tools/McpAuthTool/McpAuthTool.ts",
+    "src/tools/MonitorTool/MonitorTool.ts",
+    "src/tools/NotebookEditTool/NotebookEditTool.ts",
+    "src/tools/NotebookEditTool/UI.tsx",
+    "src/tools/NotebookEditTool/constants.ts",
+    "src/tools/NotebookEditTool/prompt.ts",
+    "src/tools/OverflowTestTool/OverflowTestTool.ts",
+    "src/tools/PowerShellTool/PowerShellTool.tsx",
+    "src/tools/PowerShellTool/UI.tsx",
+    "src/tools/PowerShellTool/clmTypes.ts",
+    "src/tools/PowerShellTool/commandSemantics.ts",
+    "src/tools/PowerShellTool/commonParameters.ts",
+    "src/tools/PowerShellTool/destructiveCommandWarning.ts",
+    "src/tools/PowerShellTool/gitSafety.ts",
+    "src/tools/PowerShellTool/modeValidation.ts",
+    "src/tools/PowerShellTool/pathValidation.ts",
+    "src/tools/PowerShellTool/powershellPermissions.ts",
+    "src/tools/PowerShellTool/powershellSecurity.ts",
+    "src/tools/PowerShellTool/prompt.ts",
+    "src/tools/PowerShellTool/readOnlyValidation.ts",
+    "src/tools/PowerShellTool/toolName.ts",
+    "src/tools/PushNotificationTool/PushNotificationTool.ts",
+    "src/tools/REPLTool/REPLTool.ts",
+    "src/tools/REPLTool/constants.ts",
+    "src/tools/REPLTool/primitiveTools.ts",
+    "src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts",
+    "src/tools/ReadMcpResourceTool/UI.tsx",
+    "src/tools/ReadMcpResourceTool/prompt.ts",
+    "src/tools/RemoteTriggerTool/RemoteTriggerTool.ts",
+    "src/tools/RemoteTriggerTool/UI.tsx",
+    "src/tools/RemoteTriggerTool/prompt.ts",
+    "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts",
+    "src/tools/ScheduleCronTool/CronCreateTool.ts",
+    "src/tools/ScheduleCronTool/CronDeleteTool.ts",
+    "src/tools/ScheduleCronTool/CronListTool.ts",
+    "src/tools/ScheduleCronTool/CronUpdateTool.ts",
+    "src/tools/ScheduleCronTool/UI.tsx",
+    "src/tools/ScheduleCronTool/prompt.ts",
+    "src/tools/SendMessageTool/SendMessageTool.ts",
+    "src/tools/SendMessageTool/UI.tsx",
+    "src/tools/SendMessageTool/constants.ts",
+    "src/tools/SendMessageTool/prompt.ts",
+    "src/tools/SendUserFileTool/SendUserFileTool.ts",
+    "src/tools/SendUserFileTool/prompt.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/UI.tsx",
+    "src/tools/SkillTool/constants.ts",
+    "src/tools/SkillTool/prompt.ts",
+    "src/tools/SleepTool/SleepTool.ts",
+    "src/tools/SleepTool/prompt.ts",
+    "src/tools/SnipTool/SnipTool.ts",
+    "src/tools/SnipTool/prompt.ts",
+    "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.test.ts",
+    "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+    "src/tools/SubscribePRTool/SubscribePRTool.ts",
+    "src/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.ts",
+    "src/tools/SyntheticOutputTool/SyntheticOutputTool.ts",
+    "src/tools/TaskCreateTool/TaskCreateTool.ts",
+    "src/tools/TaskCreateTool/constants.ts",
+    "src/tools/TaskCreateTool/prompt.ts",
+    "src/tools/TaskGetTool/TaskGetTool.ts",
+    "src/tools/TaskGetTool/constants.ts",
+    "src/tools/TaskGetTool/prompt.ts",
+    "src/tools/TaskListTool/TaskListTool.ts",
+    "src/tools/TaskListTool/constants.ts",
+    "src/tools/TaskListTool/prompt.ts",
+    "src/tools/TaskOutputTool/TaskOutputTool.tsx",
+    "src/tools/TaskOutputTool/constants.ts",
+    "src/tools/TaskStopTool/TaskStopTool.ts",
+    "src/tools/TaskStopTool/UI.tsx",
+    "src/tools/TaskStopTool/prompt.ts",
+    "src/tools/TaskUpdateTool/TaskUpdateTool.ts",
+    "src/tools/TaskUpdateTool/constants.ts",
+    "src/tools/TaskUpdateTool/prompt.ts",
+    "src/tools/TeamCreateTool/TeamCreateTool.ts",
+    "src/tools/TeamCreateTool/UI.tsx",
+    "src/tools/TeamCreateTool/constants.ts",
+    "src/tools/TeamCreateTool/prompt.ts",
+    "src/tools/TeamDeleteTool/TeamDeleteTool.ts",
+    "src/tools/TeamDeleteTool/UI.tsx",
+    "src/tools/TeamDeleteTool/constants.ts",
+    "src/tools/TeamDeleteTool/prompt.ts",
+    "src/tools/TerminalCaptureTool/TerminalCaptureTool.ts",
+    "src/tools/TerminalCaptureTool/prompt.ts",
+    "src/tools/TodoWriteTool/TodoWriteTool.ts",
+    "src/tools/TodoWriteTool/constants.ts",
+    "src/tools/TodoWriteTool/prompt.ts",
+    "src/tools/ToolSearchTool/ToolSearchTool.ts",
+    "src/tools/ToolSearchTool/constants.ts",
+    "src/tools/ToolSearchTool/prompt.ts",
+    "src/tools/TungstenTool/TungstenLiveMonitor.tsx",
+    "src/tools/TungstenTool/TungstenTool.ts",
+    "src/tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.ts",
+    "src/tools/VerifyPlanExecutionTool/constants.ts",
+    "src/tools/WebBrowserTool/WebBrowserPanel.ts",
+    "src/tools/WebBrowserTool/WebBrowserTool.ts",
+    "src/tools/WebFetchTool/UI.tsx",
+    "src/tools/WebFetchTool/WebFetchTool.ts",
+    "src/tools/WebFetchTool/preapproved.ts",
+    "src/tools/WebFetchTool/prompt.ts",
+    "src/tools/WebFetchTool/utils.test.ts",
+    "src/tools/WebFetchTool/utils.ts",
+    "src/tools/WebSearchTool/UI.tsx",
+    "src/tools/WebSearchTool/WebSearchTool.ts",
+    "src/tools/WebSearchTool/backend.test.ts",
+    "src/tools/WebSearchTool/backend.ts",
+    "src/tools/WebSearchTool/prompt.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTool/WorkflowPermissionRequest.ts",
+    "src/tools/WorkflowTool/WorkflowTool.ts",
+    "src/tools/WorkflowTool/bundled/index.ts",
+    "src/tools/WorkflowTool/constants.ts",
+    "src/tools/WorkflowTool/createWorkflowCommand.ts",
+    "src/tools/shared/gitOperationTracking.ts",
+    "src/tools/shared/spawnMultiAgent.test.ts",
+    "src/tools/shared/spawnMultiAgent.ts",
+    "src/tools/testing/TestingPermissionTool.tsx",
+    "src/tools/utils.ts"
+  ],
+  "paths_read": [
+    "src/commands/add-dir/add-dir.tsx",
+    "src/commands/add-dir/index.ts",
+    "src/commands/add-dir/validation.ts",
+    "src/commands/advisor.ts",
+    "src/commands/agents-platform/index.ts",
+    "src/commands/agents/agents.tsx",
+    "src/commands/agents/index.ts",
+    "src/commands/ant-trace/index.js",
+    "src/commands/assistant/assistant.ts",
+    "src/commands/assistant/index.ts",
+    "src/commands/autofix-pr/index.js",
+    "src/commands/backfill-sessions/index.js",
+    "src/commands/branch/branch.ts",
+    "src/commands/branch/index.ts",
+    "src/commands/break-cache/index.js",
+    "src/commands/bridge-kick.ts",
+    "src/commands/bridge/bridge.tsx",
+    "src/commands/bridge/index.ts",
+    "src/commands/brief.ts",
+    "src/commands/btw/btw.tsx",
+    "src/commands/btw/index.ts",
+    "src/commands/buddy/buddy.tsx",
+    "src/commands/buddy/index.ts",
+    "src/commands/bughunter/index.js",
+    "src/commands/chrome/chrome.tsx",
+    "src/commands/chrome/index.ts",
+    "src/commands/clear/caches.ts",
+    "src/commands/clear/clear.ts",
+    "src/commands/clear/clear/caches.ts",
+    "src/commands/clear/clear/conversation.ts",
+    "src/commands/clear/conversation.ts",
+    "src/commands/clear/index.ts",
+    "src/commands/color/color.ts",
+    "src/commands/color/index.ts",
+    "src/commands/commit-push-pr.ts",
+    "src/commands/commit.ts",
+    "src/commands/compact/compact.ts",
+    "src/commands/compact/index.ts",
+    "src/commands/config/config.tsx",
+    "src/commands/config/index.ts",
+    "src/commands/context/context-noninteractive.ts",
+    "src/commands/context/context.tsx",
+    "src/commands/context/index.ts",
+    "src/commands/copy/copy.tsx",
+    "src/commands/copy/index.ts",
+    "src/commands/cost/cost.ts",
+    "src/commands/cost/index.ts",
+    "src/commands/createMovedToPluginCommand.ts",
+    "src/commands/ctx_viz/index.js",
+    "src/commands/debug-tool-call/index.js",
+    "src/commands/desktop/desktop.tsx",
+    "src/commands/desktop/index.ts",
+    "src/commands/diff/diff.tsx",
+    "src/commands/diff/index.ts",
+    "src/commands/doctor/doctor.tsx",
+    "src/commands/doctor/index.ts",
+    "src/commands/effort/effort.tsx",
+    "src/commands/effort/index.ts",
+    "src/commands/env/index.js",
+    "src/commands/exit/exit.tsx",
+    "src/commands/exit/index.ts",
+    "src/commands/export/export.tsx",
+    "src/commands/export/index.ts",
+    "src/commands/extra-usage/extra-usage-core.ts",
+    "src/commands/extra-usage/extra-usage-noninteractive.ts",
+    "src/commands/extra-usage/extra-usage.tsx",
+    "src/commands/extra-usage/index.ts",
+    "src/commands/fast/fast.tsx",
+    "src/commands/fast/index.ts",
+    "src/commands/feedback/feedback.tsx",
+    "src/commands/feedback/index.ts",
+    "src/commands/files/files.ts",
+    "src/commands/files/index.ts",
+    "src/commands/force-snip.ts",
+    "src/commands/fork/index.ts",
+    "src/commands/goal/goal.test.tsx",
+    "src/commands/goal/goal.tsx",
+    "src/commands/goal/index.ts",
+    "src/commands/good-claude/index.js",
+    "src/commands/headless.test.ts",
+    "src/commands/headless.ts",
+    "src/commands/heapdump/heapdump.ts",
+    "src/commands/heapdump/index.ts",
+    "src/commands/help/help.tsx",
+    "src/commands/help/index.ts",
+    "src/commands/hooks/hooks.tsx",
+    "src/commands/hooks/index.ts",
+    "src/commands/ide/ide.tsx",
+    "src/commands/ide/index.ts",
+    "src/commands/init-verifiers.ts",
+    "src/commands/init.ts",
+    "src/commands/insights.ts",
+    "src/commands/install-github-app/ApiKeyStep.tsx",
+    "src/commands/install-github-app/CheckExistingSecretStep.tsx",
+    "src/commands/install-github-app/CheckGitHubStep.tsx",
+    "src/commands/install-github-app/ChooseRepoStep.tsx",
+    "src/commands/install-github-app/CreatingStep.tsx",
+    "src/commands/install-github-app/ErrorStep.tsx",
+    "src/commands/install-github-app/ExistingWorkflowStep.tsx",
+    "src/commands/install-github-app/InstallAppStep.tsx",
+    "src/commands/install-github-app/OAuthFlowStep.tsx",
+    "src/commands/install-github-app/SuccessStep.tsx",
+    "src/commands/install-github-app/WarningsStep.tsx",
+    "src/commands/install-github-app/index.ts",
+    "src/commands/install-github-app/install-github-app.tsx",
+    "src/commands/install-github-app/setupGitHubActions.ts",
+    "src/commands/install-github-app/types.ts",
+    "src/commands/install-slack-app/index.ts",
+    "src/commands/install-slack-app/install-slack-app.ts",
+    "src/commands/install.tsx",
+    "src/commands/issue/index.js",
+    "src/commands/keybindings/index.ts",
+    "src/commands/keybindings/keybindings.ts",
+    "src/commands/login/index.ts",
+    "src/commands/login/login.tsx",
+    "src/commands/logout/index.ts",
+    "src/commands/logout/logout.tsx",
+    "src/commands/mcp/addCommand.ts",
+    "src/commands/mcp/index.ts",
+    "src/commands/mcp/mcp.tsx",
+    "src/commands/mcp/xaaIdpCommand.ts",
+    "src/commands/memory/index.ts",
+    "src/commands/memory/memory.tsx",
+    "src/commands/mobile/index.ts",
+    "src/commands/mobile/mobile.tsx",
+    "src/commands/mock-limits/index.js",
+    "src/commands/model/index.ts",
+    "src/commands/model/model.tsx",
+    "src/commands/oauth-refresh/index.js",
+    "src/commands/onboarding/index.js",
+    "src/commands/output-style/index.ts",
+    "src/commands/output-style/output-style.tsx",
+    "src/commands/passes/index.ts",
+    "src/commands/passes/passes.tsx",
+    "src/commands/peers/index.ts",
+    "src/commands/perf-issue/index.js",
+    "src/commands/permissions/index.ts",
+    "src/commands/permissions/permissions.tsx",
+    "src/commands/plan/index.ts",
+    "src/commands/plan/plan.tsx",
+    "src/commands/plugin/AddMarketplace.tsx",
+    "src/commands/plugin/BrowseMarketplace.tsx",
+    "src/commands/plugin/DiscoverPlugins.tsx",
+    "src/commands/plugin/ManageMarketplaces.tsx",
+    "src/commands/plugin/ManagePlugins.tsx",
+    "src/commands/plugin/PluginErrors.tsx",
+    "src/commands/plugin/PluginOptionsDialog.tsx",
+    "src/commands/plugin/PluginOptionsFlow.tsx",
+    "src/commands/plugin/PluginSettings.tsx",
+    "src/commands/plugin/PluginTrustWarning.tsx",
+    "src/commands/plugin/UnifiedInstalledCell.tsx",
+    "src/commands/plugin/ValidatePlugin.tsx",
+    "src/commands/plugin/index.tsx",
+    "src/commands/plugin/parseArgs.ts",
+    "src/commands/plugin/plugin.tsx",
+    "src/commands/plugin/pluginDetailsHelpers.tsx",
+    "src/commands/plugin/types.ts",
+    "src/commands/plugin/unifiedTypes.ts",
+    "src/commands/plugin/usePagination.ts",
+    "src/commands/pr_comments/index.ts",
+    "src/commands/privacy-settings/index.ts",
+    "src/commands/privacy-settings/privacy-settings.tsx",
+    "src/commands/proactive.ts",
+    "src/commands/rate-limit-options/index.ts",
+    "src/commands/rate-limit-options/rate-limit-options.tsx",
+    "src/commands/release-notes/index.ts",
+    "src/commands/release-notes/release-notes.ts",
+    "src/commands/reload-plugins/index.ts",
+    "src/commands/reload-plugins/reload-plugins.ts",
+    "src/commands/remote-env/index.ts",
+    "src/commands/remote-env/remote-env.tsx",
+    "src/commands/remote-setup/api.ts",
+    "src/commands/remote-setup/index.ts",
+    "src/commands/remote-setup/remote-setup.tsx",
+    "src/commands/remoteControlServer/index.ts",
+    "src/commands/rename/generateSessionName.ts",
+    "src/commands/rename/index.ts",
+    "src/commands/rename/rename.ts",
+    "src/commands/reset-limits/index.js",
+    "src/commands/resume/index.ts",
+    "src/commands/resume/resume.tsx",
+    "src/commands/review.ts",
+    "src/commands/review/UltrareviewOverageDialog.tsx",
+    "src/commands/review/reviewRemote.ts",
+    "src/commands/review/ultrareviewCommand.tsx",
+    "src/commands/review/ultrareviewEnabled.ts",
+    "src/commands/rewind/index.ts",
+    "src/commands/rewind/rewind.ts",
+    "src/commands/sandbox-toggle/index.ts",
+    "src/commands/sandbox-toggle/sandbox-toggle.tsx",
+    "src/commands/security-review.ts",
+    "src/commands/session/index.ts",
+    "src/commands/session/session.tsx",
+    "src/commands/share/index.js",
+    "src/commands/skills/index.ts",
+    "src/commands/skills/skills.tsx",
+    "src/commands/stats/index.ts",
+    "src/commands/stats/stats.tsx",
+    "src/commands/status/index.ts",
+    "src/commands/status/status.tsx",
+    "src/commands/statusline.tsx",
+    "src/commands/stickers/index.ts",
+    "src/commands/stickers/stickers.ts",
+    "src/commands/subscribe-pr.ts",
+    "src/commands/summary/index.js",
+    "src/commands/tag/index.ts",
+    "src/commands/tag/tag.tsx",
+    "src/commands/tasks/index.ts",
+    "src/commands/tasks/tasks.tsx",
+    "src/commands/teleport/index.js",
+    "src/commands/terminalSetup/index.ts",
+    "src/commands/terminalSetup/terminalSetup.tsx",
+    "src/commands/theme/index.ts",
+    "src/commands/theme/theme.tsx",
+    "src/commands/thinkback-play/index.ts",
+    "src/commands/thinkback-play/thinkback-play.ts",
+    "src/commands/thinkback/index.ts",
+    "src/commands/thinkback/thinkback.tsx",
+    "src/commands/torch.ts",
+    "src/commands/ultraplan.tsx",
+    "src/commands/upgrade/index.ts",
+    "src/commands/upgrade/upgrade.tsx",
+    "src/commands/usage/index.ts",
+    "src/commands/usage/usage.tsx",
+    "src/commands/version.ts",
+    "src/commands/vim/index.ts",
+    "src/commands/vim/vim.ts",
+    "src/commands/voice/index.ts",
+    "src/commands/voice/voice.ts",
+    "src/commands/workflows/index.ts",
+    "src/tools/AgentTool/AgentTool.tsx",
+    "src/tools/AgentTool/UI.tsx",
+    "src/tools/AgentTool/agentColorManager.ts",
+    "src/tools/AgentTool/agentDisplay.ts",
+    "src/tools/AgentTool/agentMemory.ts",
+    "src/tools/AgentTool/agentMemorySnapshot.ts",
+    "src/tools/AgentTool/agentToolUtils.test.ts",
+    "src/tools/AgentTool/agentToolUtils.ts",
+    "src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts",
+    "src/tools/AgentTool/built-in/exploreAgent.ts",
+    "src/tools/AgentTool/built-in/generalPurposeAgent.ts",
+    "src/tools/AgentTool/built-in/planAgent.ts",
+    "src/tools/AgentTool/built-in/statuslineSetup.ts",
+    "src/tools/AgentTool/built-in/verificationAgent.ts",
+    "src/tools/AgentTool/builtInAgents.test.ts",
+    "src/tools/AgentTool/builtInAgents.ts",
+    "src/tools/AgentTool/constants.ts",
+    "src/tools/AgentTool/forkSubagent.ts",
+    "src/tools/AgentTool/loadAgentsDir.cache.test.ts",
+    "src/tools/AgentTool/loadAgentsDir.ts",
+    "src/tools/AgentTool/prompt.test.ts",
+    "src/tools/AgentTool/prompt.ts",
+    "src/tools/AgentTool/resumeAgent.ts",
+    "src/tools/AgentTool/runAgent.ts",
+    "src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx",
+    "src/tools/AskUserQuestionTool/prompt.ts",
+    "src/tools/BashTool/BashTool.tsx",
+    "src/tools/BashTool/BashToolResultMessage.tsx",
+    "src/tools/BashTool/UI.tsx",
+    "src/tools/BashTool/bashCommandHelpers.ts",
+    "src/tools/BashTool/bashPermissions.test.ts",
+    "src/tools/BashTool/bashPermissions.ts",
+    "src/tools/BashTool/bashSecurity.ts",
+    "src/tools/BashTool/commandSemantics.ts",
+    "src/tools/BashTool/commentLabel.ts",
+    "src/tools/BashTool/destructiveCommandWarning.ts",
+    "src/tools/BashTool/modeValidation.ts",
+    "src/tools/BashTool/pathValidation.ts",
+    "src/tools/BashTool/prompt.ts",
+    "src/tools/BashTool/readOnlyValidation.ts",
+    "src/tools/BashTool/sedEditParser.ts",
+    "src/tools/BashTool/sedValidation.ts",
+    "src/tools/BashTool/shouldUseSandbox.ts",
+    "src/tools/BashTool/toolName.ts",
+    "src/tools/BashTool/utils.ts",
+    "src/tools/BriefTool/BriefTool.ts",
+    "src/tools/BriefTool/UI.tsx",
+    "src/tools/BriefTool/attachments.ts",
+    "src/tools/BriefTool/prompt.ts",
+    "src/tools/BriefTool/upload.ts",
+    "src/tools/ConfigTool/ConfigTool.ts",
+    "src/tools/ConfigTool/UI.tsx",
+    "src/tools/ConfigTool/constants.ts",
+    "src/tools/ConfigTool/prompt.ts",
+    "src/tools/ConfigTool/supportedSettings.ts",
+    "src/tools/CtxInspectTool/CtxInspectTool.ts",
+    "src/tools/DiscoverSkillsTool/prompt.ts",
+    "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+    "src/tools/EnterPlanModeTool/UI.tsx",
+    "src/tools/EnterPlanModeTool/constants.ts",
+    "src/tools/EnterPlanModeTool/prompt.ts",
+    "src/tools/EnterWorktreeTool/EnterWorktreeTool.ts",
+    "src/tools/EnterWorktreeTool/UI.tsx",
+    "src/tools/EnterWorktreeTool/constants.ts",
+    "src/tools/EnterWorktreeTool/prompt.ts",
+    "src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts",
+    "src/tools/ExitPlanModeTool/UI.tsx",
+    "src/tools/ExitPlanModeTool/constants.ts",
+    "src/tools/ExitPlanModeTool/prompt.ts",
+    "src/tools/ExitWorktreeTool/ExitWorktreeTool.ts",
+    "src/tools/ExitWorktreeTool/UI.tsx",
+    "src/tools/ExitWorktreeTool/constants.ts",
+    "src/tools/ExitWorktreeTool/prompt.ts",
+    "src/tools/FileEditTool/FileEditTool.ts",
+    "src/tools/FileEditTool/UI.tsx",
+    "src/tools/FileEditTool/constants.ts",
+    "src/tools/FileEditTool/prompt.ts",
+    "src/tools/FileEditTool/types.ts",
+    "src/tools/FileEditTool/utils.ts",
+    "src/tools/FileReadTool/FileReadTool.ts",
+    "src/tools/FileReadTool/UI.tsx",
+    "src/tools/FileReadTool/imageProcessor.ts",
+    "src/tools/FileReadTool/limits.ts",
+    "src/tools/FileReadTool/prompt.ts",
+    "src/tools/FileWriteTool/FileWriteTool.ts",
+    "src/tools/FileWriteTool/UI.tsx",
+    "src/tools/FileWriteTool/prompt.ts",
+    "src/tools/GlobTool/GlobTool.ts",
+    "src/tools/GlobTool/UI.tsx",
+    "src/tools/GlobTool/prompt.ts",
+    "src/tools/GrepTool/GrepTool.ts",
+    "src/tools/GrepTool/UI.tsx",
+    "src/tools/GrepTool/prompt.ts",
+    "src/tools/LSPTool/LSPTool.ts",
+    "src/tools/LSPTool/UI.tsx",
+    "src/tools/LSPTool/formatters.ts",
+    "src/tools/LSPTool/prompt.ts",
+    "src/tools/LSPTool/schemas.ts",
+    "src/tools/LSPTool/symbolContext.ts",
+    "src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts",
+    "src/tools/ListMcpResourcesTool/UI.tsx",
+    "src/tools/ListMcpResourcesTool/prompt.ts",
+    "src/tools/ListPeersTool/ListPeersTool.ts",
+    "src/tools/MCPTool/MCPTool.ts",
+    "src/tools/MCPTool/UI.tsx",
+    "src/tools/MCPTool/classifyForCollapse.ts",
+    "src/tools/MCPTool/prompt.ts",
+    "src/tools/McpAuthTool/McpAuthTool.ts",
+    "src/tools/MonitorTool/MonitorTool.ts",
+    "src/tools/NotebookEditTool/NotebookEditTool.ts",
+    "src/tools/NotebookEditTool/UI.tsx",
+    "src/tools/NotebookEditTool/constants.ts",
+    "src/tools/NotebookEditTool/prompt.ts",
+    "src/tools/OverflowTestTool/OverflowTestTool.ts",
+    "src/tools/PowerShellTool/PowerShellTool.tsx",
+    "src/tools/PowerShellTool/UI.tsx",
+    "src/tools/PowerShellTool/clmTypes.ts",
+    "src/tools/PowerShellTool/commandSemantics.ts",
+    "src/tools/PowerShellTool/commonParameters.ts",
+    "src/tools/PowerShellTool/destructiveCommandWarning.ts",
+    "src/tools/PowerShellTool/gitSafety.ts",
+    "src/tools/PowerShellTool/modeValidation.ts",
+    "src/tools/PowerShellTool/pathValidation.ts",
+    "src/tools/PowerShellTool/powershellPermissions.ts",
+    "src/tools/PowerShellTool/powershellSecurity.ts",
+    "src/tools/PowerShellTool/prompt.ts",
+    "src/tools/PowerShellTool/readOnlyValidation.ts",
+    "src/tools/PowerShellTool/toolName.ts",
+    "src/tools/PushNotificationTool/PushNotificationTool.ts",
+    "src/tools/REPLTool/REPLTool.ts",
+    "src/tools/REPLTool/constants.ts",
+    "src/tools/REPLTool/primitiveTools.ts",
+    "src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts",
+    "src/tools/ReadMcpResourceTool/UI.tsx",
+    "src/tools/ReadMcpResourceTool/prompt.ts",
+    "src/tools/RemoteTriggerTool/RemoteTriggerTool.ts",
+    "src/tools/RemoteTriggerTool/UI.tsx",
+    "src/tools/RemoteTriggerTool/prompt.ts",
+    "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts",
+    "src/tools/ScheduleCronTool/CronCreateTool.ts",
+    "src/tools/ScheduleCronTool/CronDeleteTool.ts",
+    "src/tools/ScheduleCronTool/CronListTool.ts",
+    "src/tools/ScheduleCronTool/CronUpdateTool.ts",
+    "src/tools/ScheduleCronTool/UI.tsx",
+    "src/tools/ScheduleCronTool/prompt.ts",
+    "src/tools/SendMessageTool/SendMessageTool.ts",
+    "src/tools/SendMessageTool/UI.tsx",
+    "src/tools/SendMessageTool/constants.ts",
+    "src/tools/SendMessageTool/prompt.ts",
+    "src/tools/SendUserFileTool/SendUserFileTool.ts",
+    "src/tools/SendUserFileTool/prompt.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/UI.tsx",
+    "src/tools/SkillTool/constants.ts",
+    "src/tools/SkillTool/prompt.ts",
+    "src/tools/SleepTool/SleepTool.ts",
+    "src/tools/SleepTool/prompt.ts",
+    "src/tools/SnipTool/SnipTool.ts",
+    "src/tools/SnipTool/prompt.ts",
+    "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.test.ts",
+    "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+    "src/tools/SubscribePRTool/SubscribePRTool.ts",
+    "src/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.ts",
+    "src/tools/SyntheticOutputTool/SyntheticOutputTool.ts",
+    "src/tools/TaskCreateTool/TaskCreateTool.ts",
+    "src/tools/TaskCreateTool/constants.ts",
+    "src/tools/TaskCreateTool/prompt.ts",
+    "src/tools/TaskGetTool/TaskGetTool.ts",
+    "src/tools/TaskGetTool/constants.ts",
+    "src/tools/TaskGetTool/prompt.ts",
+    "src/tools/TaskListTool/TaskListTool.ts",
+    "src/tools/TaskListTool/constants.ts",
+    "src/tools/TaskListTool/prompt.ts",
+    "src/tools/TaskOutputTool/TaskOutputTool.tsx",
+    "src/tools/TaskOutputTool/constants.ts",
+    "src/tools/TaskStopTool/TaskStopTool.ts",
+    "src/tools/TaskStopTool/UI.tsx",
+    "src/tools/TaskStopTool/prompt.ts",
+    "src/tools/TaskUpdateTool/TaskUpdateTool.ts",
+    "src/tools/TaskUpdateTool/constants.ts",
+    "src/tools/TaskUpdateTool/prompt.ts",
+    "src/tools/TeamCreateTool/TeamCreateTool.ts",
+    "src/tools/TeamCreateTool/UI.tsx",
+    "src/tools/TeamCreateTool/constants.ts",
+    "src/tools/TeamCreateTool/prompt.ts",
+    "src/tools/TeamDeleteTool/TeamDeleteTool.ts",
+    "src/tools/TeamDeleteTool/UI.tsx",
+    "src/tools/TeamDeleteTool/constants.ts",
+    "src/tools/TeamDeleteTool/prompt.ts",
+    "src/tools/TerminalCaptureTool/TerminalCaptureTool.ts",
+    "src/tools/TerminalCaptureTool/prompt.ts",
+    "src/tools/TodoWriteTool/TodoWriteTool.ts",
+    "src/tools/TodoWriteTool/constants.ts",
+    "src/tools/TodoWriteTool/prompt.ts",
+    "src/tools/ToolSearchTool/ToolSearchTool.ts",
+    "src/tools/ToolSearchTool/constants.ts",
+    "src/tools/ToolSearchTool/prompt.ts",
+    "src/tools/TungstenTool/TungstenLiveMonitor.tsx",
+    "src/tools/TungstenTool/TungstenTool.ts",
+    "src/tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.ts",
+    "src/tools/VerifyPlanExecutionTool/constants.ts",
+    "src/tools/WebBrowserTool/WebBrowserPanel.ts",
+    "src/tools/WebBrowserTool/WebBrowserTool.ts",
+    "src/tools/WebFetchTool/UI.tsx",
+    "src/tools/WebFetchTool/WebFetchTool.ts",
+    "src/tools/WebFetchTool/preapproved.ts",
+    "src/tools/WebFetchTool/prompt.ts",
+    "src/tools/WebFetchTool/utils.test.ts",
+    "src/tools/WebFetchTool/utils.ts",
+    "src/tools/WebSearchTool/UI.tsx",
+    "src/tools/WebSearchTool/WebSearchTool.ts",
+    "src/tools/WebSearchTool/backend.test.ts",
+    "src/tools/WebSearchTool/backend.ts",
+    "src/tools/WebSearchTool/prompt.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTool/WorkflowPermissionRequest.ts",
+    "src/tools/WorkflowTool/WorkflowTool.ts",
+    "src/tools/WorkflowTool/bundled/index.ts",
+    "src/tools/WorkflowTool/constants.ts",
+    "src/tools/WorkflowTool/createWorkflowCommand.ts",
+    "src/tools/shared/gitOperationTracking.ts",
+    "src/tools/shared/spawnMultiAgent.test.ts",
+    "src/tools/shared/spawnMultiAgent.ts",
+    "src/tools/testing/TestingPermissionTool.tsx",
+    "src/tools/utils.ts"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      "src/commands/add-dir/add-dir.tsx",
+      "src/commands/add-dir/index.ts",
+      "src/commands/add-dir/validation.ts",
+      "src/commands/advisor.ts",
+      "src/commands/agents-platform/index.ts",
+      "src/commands/agents/agents.tsx",
+      "src/commands/agents/index.ts",
+      "src/commands/ant-trace/index.js",
+      "src/commands/assistant/assistant.ts",
+      "src/commands/assistant/index.ts",
+      "src/commands/autofix-pr/index.js",
+      "src/commands/backfill-sessions/index.js",
+      "src/commands/branch/branch.ts",
+      "src/commands/branch/index.ts",
+      "src/commands/break-cache/index.js",
+      "src/commands/bridge-kick.ts",
+      "src/commands/bridge/bridge.tsx",
+      "src/commands/bridge/index.ts",
+      "src/commands/brief.ts",
+      "src/commands/btw/btw.tsx",
+      "src/commands/btw/index.ts",
+      "src/commands/buddy/buddy.tsx",
+      "src/commands/buddy/index.ts",
+      "src/commands/bughunter/index.js",
+      "src/commands/chrome/chrome.tsx",
+      "src/commands/chrome/index.ts",
+      "src/commands/clear/caches.ts",
+      "src/commands/clear/clear.ts",
+      "src/commands/clear/clear/caches.ts",
+      "src/commands/clear/clear/conversation.ts",
+      "src/commands/clear/conversation.ts",
+      "src/commands/clear/index.ts",
+      "src/commands/color/color.ts",
+      "src/commands/color/index.ts",
+      "src/commands/commit-push-pr.ts",
+      "src/commands/commit.ts",
+      "src/commands/compact/compact.ts",
+      "src/commands/compact/index.ts",
+      "src/commands/config/config.tsx",
+      "src/commands/config/index.ts",
+      "src/commands/context/context-noninteractive.ts",
+      "src/commands/context/context.tsx",
+      "src/commands/context/index.ts",
+      "src/commands/copy/copy.tsx",
+      "src/commands/copy/index.ts",
+      "src/commands/cost/cost.ts",
+      "src/commands/cost/index.ts",
+      "src/commands/createMovedToPluginCommand.ts",
+      "src/commands/ctx_viz/index.js",
+      "src/commands/debug-tool-call/index.js",
+      "src/commands/desktop/desktop.tsx",
+      "src/commands/desktop/index.ts",
+      "src/commands/diff/diff.tsx",
+      "src/commands/diff/index.ts",
+      "src/commands/doctor/doctor.tsx",
+      "src/commands/doctor/index.ts",
+      "src/commands/effort/effort.tsx",
+      "src/commands/effort/index.ts",
+      "src/commands/env/index.js",
+      "src/commands/exit/exit.tsx",
+      "src/commands/exit/index.ts",
+      "src/commands/export/export.tsx",
+      "src/commands/export/index.ts",
+      "src/commands/extra-usage/extra-usage-core.ts",
+      "src/commands/extra-usage/extra-usage-noninteractive.ts",
+      "src/commands/extra-usage/extra-usage.tsx",
+      "src/commands/extra-usage/index.ts",
+      "src/commands/fast/fast.tsx",
+      "src/commands/fast/index.ts",
+      "src/commands/feedback/feedback.tsx",
+      "src/commands/feedback/index.ts",
+      "src/commands/files/files.ts",
+      "src/commands/files/index.ts",
+      "src/commands/force-snip.ts",
+      "src/commands/fork/index.ts",
+      "src/commands/goal/goal.test.tsx",
+      "src/commands/goal/goal.tsx",
+      "src/commands/goal/index.ts",
+      "src/commands/good-claude/index.js",
+      "src/commands/headless.test.ts",
+      "src/commands/headless.ts",
+      "src/commands/heapdump/heapdump.ts",
+      "src/commands/heapdump/index.ts",
+      "src/commands/help/help.tsx",
+      "src/commands/help/index.ts",
+      "src/commands/hooks/hooks.tsx",
+      "src/commands/hooks/index.ts",
+      "src/commands/ide/ide.tsx",
+      "src/commands/ide/index.ts",
+      "src/commands/init-verifiers.ts",
+      "src/commands/init.ts",
+      "src/commands/insights.ts",
+      "src/commands/install-github-app/ApiKeyStep.tsx",
+      "src/commands/install-github-app/CheckExistingSecretStep.tsx",
+      "src/commands/install-github-app/CheckGitHubStep.tsx",
+      "src/commands/install-github-app/ChooseRepoStep.tsx",
+      "src/commands/install-github-app/CreatingStep.tsx",
+      "src/commands/install-github-app/ErrorStep.tsx",
+      "src/commands/install-github-app/ExistingWorkflowStep.tsx",
+      "src/commands/install-github-app/InstallAppStep.tsx",
+      "src/commands/install-github-app/OAuthFlowStep.tsx",
+      "src/commands/install-github-app/SuccessStep.tsx",
+      "src/commands/install-github-app/WarningsStep.tsx",
+      "src/commands/install-github-app/index.ts",
+      "src/commands/install-github-app/install-github-app.tsx",
+      "src/commands/install-github-app/setupGitHubActions.ts",
+      "src/commands/install-github-app/types.ts",
+      "src/commands/install-slack-app/index.ts",
+      "src/commands/install-slack-app/install-slack-app.ts",
+      "src/commands/install.tsx",
+      "src/commands/issue/index.js",
+      "src/commands/keybindings/index.ts",
+      "src/commands/keybindings/keybindings.ts",
+      "src/commands/login/index.ts",
+      "src/commands/login/login.tsx",
+      "src/commands/logout/index.ts",
+      "src/commands/logout/logout.tsx",
+      "src/commands/mcp/addCommand.ts",
+      "src/commands/mcp/index.ts",
+      "src/commands/mcp/mcp.tsx",
+      "src/commands/mcp/xaaIdpCommand.ts",
+      "src/commands/memory/index.ts",
+      "src/commands/memory/memory.tsx",
+      "src/commands/mobile/index.ts",
+      "src/commands/mobile/mobile.tsx",
+      "src/commands/mock-limits/index.js",
+      "src/commands/model/index.ts",
+      "src/commands/model/model.tsx",
+      "src/commands/oauth-refresh/index.js",
+      "src/commands/onboarding/index.js",
+      "src/commands/output-style/index.ts",
+      "src/commands/output-style/output-style.tsx",
+      "src/commands/passes/index.ts",
+      "src/commands/passes/passes.tsx",
+      "src/commands/peers/index.ts",
+      "src/commands/perf-issue/index.js",
+      "src/commands/permissions/index.ts",
+      "src/commands/permissions/permissions.tsx",
+      "src/commands/plan/index.ts",
+      "src/commands/plan/plan.tsx",
+      "src/commands/plugin/AddMarketplace.tsx",
+      "src/commands/plugin/BrowseMarketplace.tsx",
+      "src/commands/plugin/DiscoverPlugins.tsx",
+      "src/commands/plugin/ManageMarketplaces.tsx",
+      "src/commands/plugin/ManagePlugins.tsx",
+      "src/commands/plugin/PluginErrors.tsx",
+      "src/commands/plugin/PluginOptionsDialog.tsx",
+      "src/commands/plugin/PluginOptionsFlow.tsx",
+      "src/commands/plugin/PluginSettings.tsx",
+      "src/commands/plugin/PluginTrustWarning.tsx",
+      "src/commands/plugin/UnifiedInstalledCell.tsx",
+      "src/commands/plugin/ValidatePlugin.tsx",
+      "src/commands/plugin/index.tsx",
+      "src/commands/plugin/parseArgs.ts",
+      "src/commands/plugin/plugin.tsx",
+      "src/commands/plugin/pluginDetailsHelpers.tsx",
+      "src/commands/plugin/types.ts",
+      "src/commands/plugin/unifiedTypes.ts",
+      "src/commands/plugin/usePagination.ts",
+      "src/commands/pr_comments/index.ts",
+      "src/commands/privacy-settings/index.ts",
+      "src/commands/privacy-settings/privacy-settings.tsx",
+      "src/commands/proactive.ts",
+      "src/commands/rate-limit-options/index.ts",
+      "src/commands/rate-limit-options/rate-limit-options.tsx",
+      "src/commands/release-notes/index.ts",
+      "src/commands/release-notes/release-notes.ts",
+      "src/commands/reload-plugins/index.ts",
+      "src/commands/reload-plugins/reload-plugins.ts",
+      "src/commands/remote-env/index.ts",
+      "src/commands/remote-env/remote-env.tsx",
+      "src/commands/remote-setup/api.ts",
+      "src/commands/remote-setup/index.ts",
+      "src/commands/remote-setup/remote-setup.tsx",
+      "src/commands/remoteControlServer/index.ts",
+      "src/commands/rename/generateSessionName.ts",
+      "src/commands/rename/index.ts",
+      "src/commands/rename/rename.ts",
+      "src/commands/reset-limits/index.js",
+      "src/commands/resume/index.ts",
+      "src/commands/resume/resume.tsx",
+      "src/commands/review.ts",
+      "src/commands/review/UltrareviewOverageDialog.tsx",
+      "src/commands/review/reviewRemote.ts",
+      "src/commands/review/ultrareviewCommand.tsx",
+      "src/commands/review/ultrareviewEnabled.ts",
+      "src/commands/rewind/index.ts",
+      "src/commands/rewind/rewind.ts",
+      "src/commands/sandbox-toggle/index.ts",
+      "src/commands/sandbox-toggle/sandbox-toggle.tsx",
+      "src/commands/security-review.ts",
+      "src/commands/session/index.ts",
+      "src/commands/session/session.tsx",
+      "src/commands/share/index.js",
+      "src/commands/skills/index.ts",
+      "src/commands/skills/skills.tsx",
+      "src/commands/stats/index.ts",
+      "src/commands/stats/stats.tsx",
+      "src/commands/status/index.ts",
+      "src/commands/status/status.tsx",
+      "src/commands/statusline.tsx",
+      "src/commands/stickers/index.ts",
+      "src/commands/stickers/stickers.ts",
+      "src/commands/subscribe-pr.ts",
+      "src/commands/summary/index.js",
+      "src/commands/tag/index.ts",
+      "src/commands/tag/tag.tsx",
+      "src/commands/tasks/index.ts",
+      "src/commands/tasks/tasks.tsx",
+      "src/commands/teleport/index.js",
+      "src/commands/terminalSetup/index.ts",
+      "src/commands/terminalSetup/terminalSetup.tsx",
+      "src/commands/theme/index.ts",
+      "src/commands/theme/theme.tsx",
+      "src/commands/thinkback-play/index.ts",
+      "src/commands/thinkback-play/thinkback-play.ts",
+      "src/commands/thinkback/index.ts",
+      "src/commands/thinkback/thinkback.tsx",
+      "src/commands/torch.ts",
+      "src/commands/ultraplan.tsx",
+      "src/commands/upgrade/index.ts",
+      "src/commands/upgrade/upgrade.tsx",
+      "src/commands/usage/index.ts",
+      "src/commands/usage/usage.tsx",
+      "src/commands/version.ts",
+      "src/commands/vim/index.ts",
+      "src/commands/vim/vim.ts",
+      "src/commands/voice/index.ts",
+      "src/commands/voice/voice.ts",
+      "src/commands/workflows/index.ts",
+      "src/tools/AgentTool/AgentTool.tsx",
+      "src/tools/AgentTool/UI.tsx",
+      "src/tools/AgentTool/agentColorManager.ts",
+      "src/tools/AgentTool/agentDisplay.ts",
+      "src/tools/AgentTool/agentMemory.ts",
+      "src/tools/AgentTool/agentMemorySnapshot.ts",
+      "src/tools/AgentTool/agentToolUtils.test.ts",
+      "src/tools/AgentTool/agentToolUtils.ts",
+      "src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts",
+      "src/tools/AgentTool/built-in/exploreAgent.ts",
+      "src/tools/AgentTool/built-in/generalPurposeAgent.ts",
+      "src/tools/AgentTool/built-in/planAgent.ts",
+      "src/tools/AgentTool/built-in/statuslineSetup.ts",
+      "src/tools/AgentTool/built-in/verificationAgent.ts",
+      "src/tools/AgentTool/builtInAgents.test.ts",
+      "src/tools/AgentTool/builtInAgents.ts",
+      "src/tools/AgentTool/constants.ts",
+      "src/tools/AgentTool/forkSubagent.ts",
+      "src/tools/AgentTool/loadAgentsDir.cache.test.ts",
+      "src/tools/AgentTool/loadAgentsDir.ts",
+      "src/tools/AgentTool/prompt.test.ts",
+      "src/tools/AgentTool/prompt.ts",
+      "src/tools/AgentTool/resumeAgent.ts",
+      "src/tools/AgentTool/runAgent.ts",
+      "src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx",
+      "src/tools/AskUserQuestionTool/prompt.ts",
+      "src/tools/BashTool/BashTool.tsx",
+      "src/tools/BashTool/BashToolResultMessage.tsx",
+      "src/tools/BashTool/UI.tsx",
+      "src/tools/BashTool/bashCommandHelpers.ts",
+      "src/tools/BashTool/bashPermissions.test.ts",
+      "src/tools/BashTool/bashPermissions.ts",
+      "src/tools/BashTool/bashSecurity.ts",
+      "src/tools/BashTool/commandSemantics.ts",
+      "src/tools/BashTool/commentLabel.ts",
+      "src/tools/BashTool/destructiveCommandWarning.ts",
+      "src/tools/BashTool/modeValidation.ts",
+      "src/tools/BashTool/pathValidation.ts",
+      "src/tools/BashTool/prompt.ts",
+      "src/tools/BashTool/readOnlyValidation.ts",
+      "src/tools/BashTool/sedEditParser.ts",
+      "src/tools/BashTool/sedValidation.ts",
+      "src/tools/BashTool/shouldUseSandbox.ts",
+      "src/tools/BashTool/toolName.ts",
+      "src/tools/BashTool/utils.ts",
+      "src/tools/BriefTool/BriefTool.ts",
+      "src/tools/BriefTool/UI.tsx",
+      "src/tools/BriefTool/attachments.ts",
+      "src/tools/BriefTool/prompt.ts",
+      "src/tools/BriefTool/upload.ts",
+      "src/tools/ConfigTool/ConfigTool.ts",
+      "src/tools/ConfigTool/UI.tsx",
+      "src/tools/ConfigTool/constants.ts",
+      "src/tools/ConfigTool/prompt.ts",
+      "src/tools/ConfigTool/supportedSettings.ts",
+      "src/tools/CtxInspectTool/CtxInspectTool.ts",
+      "src/tools/DiscoverSkillsTool/prompt.ts",
+      "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+      "src/tools/EnterPlanModeTool/UI.tsx",
+      "src/tools/EnterPlanModeTool/constants.ts",
+      "src/tools/EnterPlanModeTool/prompt.ts",
+      "src/tools/EnterWorktreeTool/EnterWorktreeTool.ts",
+      "src/tools/EnterWorktreeTool/UI.tsx",
+      "src/tools/EnterWorktreeTool/constants.ts",
+      "src/tools/EnterWorktreeTool/prompt.ts",
+      "src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts",
+      "src/tools/ExitPlanModeTool/UI.tsx",
+      "src/tools/ExitPlanModeTool/constants.ts",
+      "src/tools/ExitPlanModeTool/prompt.ts",
+      "src/tools/ExitWorktreeTool/ExitWorktreeTool.ts",
+      "src/tools/ExitWorktreeTool/UI.tsx",
+      "src/tools/ExitWorktreeTool/constants.ts",
+      "src/tools/ExitWorktreeTool/prompt.ts",
+      "src/tools/FileEditTool/FileEditTool.ts",
+      "src/tools/FileEditTool/UI.tsx",
+      "src/tools/FileEditTool/constants.ts",
+      "src/tools/FileEditTool/prompt.ts",
+      "src/tools/FileEditTool/types.ts",
+      "src/tools/FileEditTool/utils.ts",
+      "src/tools/FileReadTool/FileReadTool.ts",
+      "src/tools/FileReadTool/UI.tsx",
+      "src/tools/FileReadTool/imageProcessor.ts",
+      "src/tools/FileReadTool/limits.ts",
+      "src/tools/FileReadTool/prompt.ts",
+      "src/tools/FileWriteTool/FileWriteTool.ts",
+      "src/tools/FileWriteTool/UI.tsx",
+      "src/tools/FileWriteTool/prompt.ts",
+      "src/tools/GlobTool/GlobTool.ts",
+      "src/tools/GlobTool/UI.tsx",
+      "src/tools/GlobTool/prompt.ts",
+      "src/tools/GrepTool/GrepTool.ts",
+      "src/tools/GrepTool/UI.tsx",
+      "src/tools/GrepTool/prompt.ts",
+      "src/tools/LSPTool/LSPTool.ts",
+      "src/tools/LSPTool/UI.tsx",
+      "src/tools/LSPTool/formatters.ts",
+      "src/tools/LSPTool/prompt.ts",
+      "src/tools/LSPTool/schemas.ts",
+      "src/tools/LSPTool/symbolContext.ts",
+      "src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts",
+      "src/tools/ListMcpResourcesTool/UI.tsx",
+      "src/tools/ListMcpResourcesTool/prompt.ts",
+      "src/tools/ListPeersTool/ListPeersTool.ts",
+      "src/tools/MCPTool/MCPTool.ts",
+      "src/tools/MCPTool/UI.tsx",
+      "src/tools/MCPTool/classifyForCollapse.ts",
+      "src/tools/MCPTool/prompt.ts",
+      "src/tools/McpAuthTool/McpAuthTool.ts",
+      "src/tools/MonitorTool/MonitorTool.ts",
+      "src/tools/NotebookEditTool/NotebookEditTool.ts",
+      "src/tools/NotebookEditTool/UI.tsx",
+      "src/tools/NotebookEditTool/constants.ts",
+      "src/tools/NotebookEditTool/prompt.ts",
+      "src/tools/OverflowTestTool/OverflowTestTool.ts",
+      "src/tools/PowerShellTool/PowerShellTool.tsx",
+      "src/tools/PowerShellTool/UI.tsx",
+      "src/tools/PowerShellTool/clmTypes.ts",
+      "src/tools/PowerShellTool/commandSemantics.ts",
+      "src/tools/PowerShellTool/commonParameters.ts",
+      "src/tools/PowerShellTool/destructiveCommandWarning.ts",
+      "src/tools/PowerShellTool/gitSafety.ts",
+      "src/tools/PowerShellTool/modeValidation.ts",
+      "src/tools/PowerShellTool/pathValidation.ts",
+      "src/tools/PowerShellTool/powershellPermissions.ts",
+      "src/tools/PowerShellTool/powershellSecurity.ts",
+      "src/tools/PowerShellTool/prompt.ts",
+      "src/tools/PowerShellTool/readOnlyValidation.ts",
+      "src/tools/PowerShellTool/toolName.ts",
+      "src/tools/PushNotificationTool/PushNotificationTool.ts",
+      "src/tools/REPLTool/REPLTool.ts",
+      "src/tools/REPLTool/constants.ts",
+      "src/tools/REPLTool/primitiveTools.ts",
+      "src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts",
+      "src/tools/ReadMcpResourceTool/UI.tsx",
+      "src/tools/ReadMcpResourceTool/prompt.ts",
+      "src/tools/RemoteTriggerTool/RemoteTriggerTool.ts",
+      "src/tools/RemoteTriggerTool/UI.tsx",
+      "src/tools/RemoteTriggerTool/prompt.ts",
+      "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts",
+      "src/tools/ScheduleCronTool/CronCreateTool.ts",
+      "src/tools/ScheduleCronTool/CronDeleteTool.ts",
+      "src/tools/ScheduleCronTool/CronListTool.ts",
+      "src/tools/ScheduleCronTool/CronUpdateTool.ts",
+      "src/tools/ScheduleCronTool/UI.tsx",
+      "src/tools/ScheduleCronTool/prompt.ts",
+      "src/tools/SendMessageTool/SendMessageTool.ts",
+      "src/tools/SendMessageTool/UI.tsx",
+      "src/tools/SendMessageTool/constants.ts",
+      "src/tools/SendMessageTool/prompt.ts",
+      "src/tools/SendUserFileTool/SendUserFileTool.ts",
+      "src/tools/SendUserFileTool/prompt.ts",
+      "src/tools/SkillTool/SkillTool.ts",
+      "src/tools/SkillTool/UI.tsx",
+      "src/tools/SkillTool/constants.ts",
+      "src/tools/SkillTool/prompt.ts",
+      "src/tools/SleepTool/SleepTool.ts",
+      "src/tools/SleepTool/prompt.ts",
+      "src/tools/SnipTool/SnipTool.ts",
+      "src/tools/SnipTool/prompt.ts",
+      "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.test.ts",
+      "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+      "src/tools/SubscribePRTool/SubscribePRTool.ts",
+      "src/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.ts",
+      "src/tools/SyntheticOutputTool/SyntheticOutputTool.ts",
+      "src/tools/TaskCreateTool/TaskCreateTool.ts",
+      "src/tools/TaskCreateTool/constants.ts",
+      "src/tools/TaskCreateTool/prompt.ts",
+      "src/tools/TaskGetTool/TaskGetTool.ts",
+      "src/tools/TaskGetTool/constants.ts",
+      "src/tools/TaskGetTool/prompt.ts",
+      "src/tools/TaskListTool/TaskListTool.ts",
+      "src/tools/TaskListTool/constants.ts",
+      "src/tools/TaskListTool/prompt.ts",
+      "src/tools/TaskOutputTool/TaskOutputTool.tsx",
+      "src/tools/TaskOutputTool/constants.ts",
+      "src/tools/TaskStopTool/TaskStopTool.ts",
+      "src/tools/TaskStopTool/UI.tsx",
+      "src/tools/TaskStopTool/prompt.ts",
+      "src/tools/TaskUpdateTool/TaskUpdateTool.ts",
+      "src/tools/TaskUpdateTool/constants.ts",
+      "src/tools/TaskUpdateTool/prompt.ts",
+      "src/tools/TeamCreateTool/TeamCreateTool.ts",
+      "src/tools/TeamCreateTool/UI.tsx",
+      "src/tools/TeamCreateTool/constants.ts",
+      "src/tools/TeamCreateTool/prompt.ts",
+      "src/tools/TeamDeleteTool/TeamDeleteTool.ts",
+      "src/tools/TeamDeleteTool/UI.tsx",
+      "src/tools/TeamDeleteTool/constants.ts",
+      "src/tools/TeamDeleteTool/prompt.ts",
+      "src/tools/TerminalCaptureTool/TerminalCaptureTool.ts",
+      "src/tools/TerminalCaptureTool/prompt.ts",
+      "src/tools/TodoWriteTool/TodoWriteTool.ts",
+      "src/tools/TodoWriteTool/constants.ts",
+      "src/tools/TodoWriteTool/prompt.ts",
+      "src/tools/ToolSearchTool/ToolSearchTool.ts",
+      "src/tools/ToolSearchTool/constants.ts",
+      "src/tools/ToolSearchTool/prompt.ts",
+      "src/tools/TungstenTool/TungstenLiveMonitor.tsx",
+      "src/tools/TungstenTool/TungstenTool.ts",
+      "src/tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.ts",
+      "src/tools/VerifyPlanExecutionTool/constants.ts",
+      "src/tools/WebBrowserTool/WebBrowserPanel.ts",
+      "src/tools/WebBrowserTool/WebBrowserTool.ts",
+      "src/tools/WebFetchTool/UI.tsx",
+      "src/tools/WebFetchTool/WebFetchTool.ts",
+      "src/tools/WebFetchTool/preapproved.ts",
+      "src/tools/WebFetchTool/prompt.ts",
+      "src/tools/WebFetchTool/utils.test.ts",
+      "src/tools/WebFetchTool/utils.ts",
+      "src/tools/WebSearchTool/UI.tsx",
+      "src/tools/WebSearchTool/WebSearchTool.ts",
+      "src/tools/WebSearchTool/backend.test.ts",
+      "src/tools/WebSearchTool/backend.ts",
+      "src/tools/WebSearchTool/prompt.ts",
+      "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+      "src/tools/WorkflowTool/WorkflowPermissionRequest.ts",
+      "src/tools/WorkflowTool/WorkflowTool.ts",
+      "src/tools/WorkflowTool/bundled/index.ts",
+      "src/tools/WorkflowTool/constants.ts",
+      "src/tools/WorkflowTool/createWorkflowCommand.ts",
+      "src/tools/shared/gitOperationTracking.ts",
+      "src/tools/shared/spawnMultiAgent.test.ts",
+      "src/tools/shared/spawnMultiAgent.ts",
+      "src/tools/testing/TestingPermissionTool.tsx",
+      "src/tools/utils.ts"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-001",
+      "source_path": "src/commands/advisor.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/advisor' - manages advisor model configuration. Supports set/unset/list of advisor models. Uses settings persistence.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-002",
+      "source_path": "src/commands/commit.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/commit' - prompt-type command that generates git commit messages. Uses git status/diff/log context, enforces git safety protocol (no --amend, no hooks skip, no secrets).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-003",
+      "source_path": "src/commands/review.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash commands '/review' and '/ultrareview' - PR code review. /review is local prompt-based, /ultrareview is local-jsx that delegates to remote bughunter. Uses gh CLI for PR access.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-004",
+      "source_path": "src/commands/headless.ts",
+      "evidence_type": "code_read",
+      "summary": "Headless mode support - filters commands for non-interactive execution. SupportsHeadlessSlashCommand checks command type compatibility.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-005",
+      "source_path": "src/commands/init.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/init' - project initialization. Generates CLAUDE.md file with codebase analysis. Two phases: ask what to set up, then explore codebase.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-006",
+      "source_path": "src/commands/brief.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/brief' - local-jsx command toggling brief-only mode. Uses GrowthBook feature flag for config. Entitlement-gated (isBriefEntitled).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-007",
+      "source_path": "src/commands/version.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/version' - local command printing session version. Ant-only (USER_TYPE === 'ant'). Supports non-interactive mode.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-008",
+      "source_path": "src/commands/security-review.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/security-review' - prompt-type command for security review of branch changes. Uses git diff/log/show for analysis. Allows Task tool for subagent delegation.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-009",
+      "source_path": "src/commands/commit-push-pr.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/commit-push-pr' - combined commit, push, and PR creation workflow. Uses gh CLI for PR operations. Supports Slack notification.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-010",
+      "source_path": "src/commands/init-verifiers.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/init-verifiers' - prompt-type command creating verifier skills for automated verification. Multi-phase: auto-detect, create Playwright/CLI/API verifiers.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-011",
+      "source_path": "src/commands/bridge-kick.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/bridge-kick' - ant-only debug command for injecting bridge failure states. Supports ws_closed, poll errors, register failures, heartbeat failures.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-012",
+      "source_path": "src/commands/createMovedToPluginCommand.ts",
+      "evidence_type": "code_read",
+      "summary": "Factory function creating commands that redirect to marketplace plugins. Handles private marketplace transition with fallback prompts.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-013",
+      "source_path": "src/commands/agents/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/agents' - local-jsx command for managing agent configurations. Lazy-loads agents.js.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-014",
+      "source_path": "src/commands/config/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/config' (alias '/settings') - local-jsx command opening config panel. Lazy-loads config.js.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-015",
+      "source_path": "src/commands/mcp/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/mcp' - local-jsx command managing MCP servers. Immediate execution. Supports enable/disable per server.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-016",
+      "source_path": "src/commands/skills/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/skills' - local-jsx command listing available skills. Lazy-loads skills.js.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-017",
+      "source_path": "src/commands/permissions/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/permissions' (alias '/allowed-tools') - local-jsx command managing allow/deny tool permission rules.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-018",
+      "source_path": "src/commands/login/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/login' - local-jsx command for Anthropic account sign-in/switch. Disabled via DISABLE_LOGIN_COMMAND env var.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-019",
+      "source_path": "src/commands/session/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/session' (alias '/remote') - local-jsx command showing remote session URL and QR code. Only enabled in remote mode.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-020",
+      "source_path": "src/commands/plan/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Slash command '/plan' - local-jsx command enabling plan mode or viewing current session plan.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-021",
+      "source_path": "src/tools/AgentTool/builtInAgents.ts",
+      "evidence_type": "code_read",
+      "summary": "Built-in agent definitions: GENERAL_PURPOSE_AGENT, STATUSLINE_SETUP_AGENT, EXPLORE_AGENT, PLAN_AGENT, VERIFICATION_AGENT, CLAUDE_CODE_GUIDE_AGENT. Feature-gated via GrowthBook. Supports coordinator mode.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-022",
+      "source_path": "src/tools/BashTool/prompt.ts",
+      "evidence_type": "code_read",
+      "summary": "BashTool prompt generation - builds system prompt for bash execution. Includes git instructions, sandbox config, attribution, timeout settings. References other tools (FileEdit, FileRead, Glob, Grep).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-023",
+      "source_path": "src/tools/FileEditTool/FileEditTool.ts",
+      "evidence_type": "code_read",
+      "summary": "FileEditTool - precise string replacement in files. Integrates with LSP diagnostics, file history, skill discovery, team memory secrets guard. Uses buildTool pattern.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-024",
+      "source_path": "src/tools/GlobTool/GlobTool.ts",
+      "evidence_type": "code_read",
+      "summary": "GlobTool - fast file pattern matching. Zod schema with pattern+path inputs. Returns filenames array with truncation flag (100 file limit). Permission-checked.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-025",
+      "source_path": "src/tools/GrepTool/GrepTool.ts",
+      "evidence_type": "code_read",
+      "summary": "GrepTool - content search using ripgrep. Zod schema with pattern, path, glob, output_mode inputs. Supports context lines, case insensitive, head_limit. Permission-checked.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-026",
+      "source_path": "src/tools/PowerShellTool/powershellSecurity.ts",
+      "evidence_type": "code_read",
+      "summary": "PowerShell security analysis - AST-based detection of dangerous patterns (code injection, download cradles, privilege escalation). Returns passthrough/ask/allow behavior.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-027",
+      "source_path": "src/tools/SkillTool/SkillTool.ts",
+      "evidence_type": "code_read",
+      "summary": "SkillTool - executes skills within conversations. Integrates with command system, plugin identifiers, marketplace. Tracks invoked skills per session.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-028",
+      "source_path": "src/tools/TodoWriteTool/TodoWriteTool.ts",
+      "evidence_type": "code_read",
+      "summary": "TodoWriteTool - manages session task checklist. Uses TodoListSchema. Outputs old/new todos with optional verification nudge. Feature-gated (TodoV2).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-029",
+      "source_path": "src/tools/WebFetchTool/WebFetchTool.ts",
+      "evidence_type": "code_read",
+      "summary": "WebFetchTool - fetches URLs, converts to markdown, runs prompt. Zod schema with url+prompt inputs. Returns bytes/code/result/durationMs. Pre-approved host support.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-030",
+      "source_path": "src/tools/TaskCreateTool/TaskCreateTool.ts",
+      "evidence_type": "code_read",
+      "summary": "TaskCreateTool - creates tasks with subject/description/activeForm/metadata. Executes task-created hooks. Uses team name resolution.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-031",
+      "source_path": "src/tools/TaskStopTool/TaskStopTool.ts",
+      "evidence_type": "code_read",
+      "summary": "TaskStopTool - stops background tasks by task_id (or deprecated shell_id). Returns message/task_id/task_type/command.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-032",
+      "source_path": "src/tools/WebSearchTool/WebSearchTool.ts",
+      "evidence_type": "code_read",
+      "summary": "WebSearchTool - web search with multiple backends (Anthropic native, external providers). Supports domain filtering. Falls back on native errors.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-033",
+      "source_path": "src/tools/NotebookEditTool/NotebookEditTool.ts",
+      "evidence_type": "code_read",
+      "summary": "NotebookEditTool - edits Jupyter notebook cells (replace/insert/delete). Zod schema with notebook_path, cell_id, new_source, cell_type, edit_mode.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-034",
+      "source_path": "src/tools/MCPTool/MCPTool.ts",
+      "evidence_type": "code_read",
+      "summary": "MCPTool - generic MCP tool execution. Open-world schema (passthrough). Name/args overridden by mcpClient.ts at runtime.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-035",
+      "source_path": "src/tools/FileReadTool/prompt.ts",
+      "evidence_type": "code_read",
+      "summary": "FileReadTool prompt - reads files with cat -n format, 2000 line limit, offset/limit support, image reading, PDF support. Unchanged file stub optimization.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-036",
+      "source_path": "src/tools/FileWriteTool/FileWriteTool.ts",
+      "evidence_type": "code_read",
+      "summary": "FileWriteTool - writes files to filesystem. Integrates with LSP diagnostics, file history, skill discovery, team memory secrets guard. Same infrastructure as FileEditTool.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-037",
+      "source_path": "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+      "evidence_type": "code_read",
+      "summary": "EnterPlanModeTool - switches session to plan mode. Handles permission updates, context preparation. Feature-gated (planModeV2 interview phase).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-038",
+      "source_path": "src/tools/shared/gitOperationTracking.ts",
+      "evidence_type": "code_read",
+      "summary": "Shell-agnostic git operation tracking for usage metrics. Detects git commit/push, gh pr create, glab mr create, curl PR creation. Increments OTLP counters.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-039",
+      "source_path": "src/tools/shared/spawnMultiAgent.ts",
+      "evidence_type": "code_read",
+      "summary": "Shared spawn module for teammate creation. Extracted from TeammateTool for reuse by AgentTool. Handles model override, permission mode, tmux detection.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-040",
+      "source_path": "src/tools/utils.ts",
+      "evidence_type": "code_read",
+      "summary": "Tools shared utilities - tagMessagesWithToolUseID for transient message tagging, getToolUseIDFromParentMessage extraction.",
+      "classification": "normal",
+      "criticality": "normal"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-041",
+      "source_path": "src/commands/insights.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-042",
+      "source_path": "src/commands/proactive.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-043",
+      "source_path": "src/commands/torch.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-044",
+      "source_path": "src/commands/subscribe-pr.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-045",
+      "source_path": "src/commands/force-snip.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    },
+    {
+      "id": "LANE_SRC_COMMANDS_TOOLS_E-046",
+      "source_path": "src/tools/MonitorTool/MonitorTool.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+      "classification": "normal",
+      "criticality": "low"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "command",
+      "title": "Git Workflow Commands",
+      "paths": [
+        "src/commands/commit.ts",
+        "src/commands/commit-push-pr.ts",
+        "src/commands/review.ts",
+        "src/commands/security-review.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-002",
+        "LANE_SRC_COMMANDS_TOOLS_E-003",
+        "LANE_SRC_COMMANDS_TOOLS_E-008",
+        "LANE_SRC_COMMANDS_TOOLS_E-009"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "command",
+      "title": "Project Init & Setup Commands",
+      "paths": [
+        "src/commands/init.ts",
+        "src/commands/init-verifiers.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-005",
+        "LANE_SRC_COMMANDS_TOOLS_E-010"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "command",
+      "title": "Configuration & Settings Commands",
+      "paths": [
+        "src/commands/config/index.ts",
+        "src/commands/advisor.ts",
+        "src/commands/permissions/index.ts",
+        "src/commands/login/index.ts",
+        "src/commands/mcp/index.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-001",
+        "LANE_SRC_COMMANDS_TOOLS_E-014",
+        "LANE_SRC_COMMANDS_TOOLS_E-015",
+        "LANE_SRC_COMMANDS_TOOLS_E-017",
+        "LANE_SRC_COMMANDS_TOOLS_E-018"
+      ],
+      "attrs": {
+        "aliases": [
+          "settings"
+        ],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "command",
+      "title": "Agent & Skill Management Commands",
+      "paths": [
+        "src/commands/agents/index.ts",
+        "src/commands/skills/index.ts",
+        "src/commands/plan/index.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-013",
+        "LANE_SRC_COMMANDS_TOOLS_E-016",
+        "LANE_SRC_COMMANDS_TOOLS_E-020"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "command",
+      "title": "Session & Mode Commands",
+      "paths": [
+        "src/commands/brief.ts",
+        "src/commands/session/index.ts",
+        "src/commands/headless.ts",
+        "src/commands/version.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-004",
+        "LANE_SRC_COMMANDS_TOOLS_E-006",
+        "LANE_SRC_COMMANDS_TOOLS_E-007",
+        "LANE_SRC_COMMANDS_TOOLS_E-019"
+      ],
+      "attrs": {
+        "aliases": [
+          "remote"
+        ],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "command",
+      "title": "Debug & Internal Commands",
+      "paths": [
+        "src/commands/bridge-kick.ts",
+        "src/commands/createMovedToPluginCommand.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-011",
+        "LANE_SRC_COMMANDS_TOOLS_E-012"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "command",
+      "title": "Stub Commands (Ant-Internal DCE)",
+      "paths": [
+        "src/commands/insights.ts",
+        "src/commands/proactive.ts",
+        "src/commands/torch.ts",
+        "src/commands/subscribe-pr.ts",
+        "src/commands/force-snip.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-041",
+        "LANE_SRC_COMMANDS_TOOLS_E-042",
+        "LANE_SRC_COMMANDS_TOOLS_E-043",
+        "LANE_SRC_COMMANDS_TOOLS_E-044",
+        "LANE_SRC_COMMANDS_TOOLS_E-045"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "ant-internal"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "command",
+      "title": "Slash Command Subdirectories (90+ subdirs)",
+      "paths": [
+        "src/commands/add-dir/",
+        "src/commands/agents-platform/",
+        "src/commands/ant-trace/",
+        "src/commands/assistant/",
+        "src/commands/autofix-pr/",
+        "src/commands/backfill-sessions/",
+        "src/commands/branch/",
+        "src/commands/break-cache/",
+        "src/commands/bridge/",
+        "src/commands/btw/",
+        "src/commands/buddy/",
+        "src/commands/bughunter/",
+        "src/commands/chrome/",
+        "src/commands/clear/",
+        "src/commands/color/",
+        "src/commands/compact/",
+        "src/commands/context/",
+        "src/commands/copy/",
+        "src/commands/cost/",
+        "src/commands/ctx_viz/",
+        "src/commands/debug-tool-call/",
+        "src/commands/desktop/",
+        "src/commands/diff/",
+        "src/commands/doctor/",
+        "src/commands/effort/",
+        "src/commands/env/",
+        "src/commands/exit/",
+        "src/commands/export/",
+        "src/commands/extra-usage/",
+        "src/commands/fast/",
+        "src/commands/feedback/",
+        "src/commands/files/",
+        "src/commands/fork/",
+        "src/commands/goal/",
+        "src/commands/good-claude/",
+        "src/commands/heapdump/",
+        "src/commands/help/",
+        "src/commands/hooks/",
+        "src/commands/ide/",
+        "src/commands/install-github-app/",
+        "src/commands/install-slack-app/",
+        "src/commands/issue/",
+        "src/commands/keybindings/",
+        "src/commands/logout/",
+        "src/commands/memory/",
+        "src/commands/mobile/",
+        "src/commands/mock-limits/",
+        "src/commands/model/",
+        "src/commands/oauth-refresh/",
+        "src/commands/onboarding/",
+        "src/commands/output-style/",
+        "src/commands/passes/",
+        "src/commands/peers/",
+        "src/commands/perf-issue/",
+        "src/commands/plugin/",
+        "src/commands/pr_comments/",
+        "src/commands/privacy-settings/",
+        "src/commands/rate-limit-options/",
+        "src/commands/release-notes/",
+        "src/commands/reload-plugins/",
+        "src/commands/remote-env/",
+        "src/commands/remote-setup/",
+        "src/commands/remoteControlServer/",
+        "src/commands/rename/",
+        "src/commands/reset-limits/",
+        "src/commands/resume/",
+        "src/commands/review/",
+        "src/commands/rewind/",
+        "src/commands/sandbox-toggle/",
+        "src/commands/share/",
+        "src/commands/stats/",
+        "src/commands/status/",
+        "src/commands/stickers/",
+        "src/commands/summary/",
+        "src/commands/tag/",
+        "src/commands/tasks/",
+        "src/commands/teleport/",
+        "src/commands/terminalSetup/",
+        "src/commands/theme/",
+        "src/commands/thinkback/",
+        "src/commands/thinkback-play/",
+        "src/commands/upgrade/",
+        "src/commands/usage/",
+        "src/commands/vim/",
+        "src/commands/voice/",
+        "src/commands/workflows/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "commands",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "tool",
+      "title": "AgentTool - Subagent System",
+      "paths": [
+        "src/tools/AgentTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-021"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "tool",
+      "title": "BashTool - Shell Execution",
+      "paths": [
+        "src/tools/BashTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-022"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "tool",
+      "title": "File Tools (Edit/Read/Write)",
+      "paths": [
+        "src/tools/FileEditTool/",
+        "src/tools/FileReadTool/",
+        "src/tools/FileWriteTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-035",
+        "LANE_SRC_COMMANDS_TOOLS_E-036"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "tool",
+      "title": "Search Tools (Glob/Grep)",
+      "paths": [
+        "src/tools/GlobTool/",
+        "src/tools/GrepTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-024",
+        "LANE_SRC_COMMANDS_TOOLS_E-025"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "tool",
+      "title": "PowerShellTool - Windows Shell",
+      "paths": [
+        "src/tools/PowerShellTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-026"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "tool",
+      "title": "Web Tools (Fetch/Search/Browser)",
+      "paths": [
+        "src/tools/WebFetchTool/",
+        "src/tools/WebSearchTool/",
+        "src/tools/WebBrowserTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-029",
+        "LANE_SRC_COMMANDS_TOOLS_E-032"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-015",
+      "type": "tool",
+      "title": "Task Tools (Create/Get/List/Output/Stop/Update)",
+      "paths": [
+        "src/tools/TaskCreateTool/",
+        "src/tools/TaskGetTool/",
+        "src/tools/TaskListTool/",
+        "src/tools/TaskOutputTool/",
+        "src/tools/TaskStopTool/",
+        "src/tools/TaskUpdateTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-030",
+        "LANE_SRC_COMMANDS_TOOLS_E-031"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-016",
+      "type": "tool",
+      "title": "Plan Mode Tools (Enter/Exit)",
+      "paths": [
+        "src/tools/EnterPlanModeTool/",
+        "src/tools/ExitPlanModeTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-037"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-017",
+      "type": "tool",
+      "title": "Worktree Tools (Enter/Exit)",
+      "paths": [
+        "src/tools/EnterWorktreeTool/",
+        "src/tools/ExitWorktreeTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-018",
+      "type": "tool",
+      "title": "MCP Tools (MCP/McpAuth/ListMcpResources/ReadMcpResource)",
+      "paths": [
+        "src/tools/MCPTool/",
+        "src/tools/McpAuthTool/",
+        "src/tools/ListMcpResourcesTool/",
+        "src/tools/ReadMcpResourceTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-034"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-019",
+      "type": "tool",
+      "title": "SkillTool - Skill Invocation",
+      "paths": [
+        "src/tools/SkillTool/",
+        "src/tools/DiscoverSkillsTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-027"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-020",
+      "type": "tool",
+      "title": "TodoWriteTool - Session Checklist",
+      "paths": [
+        "src/tools/TodoWriteTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-028"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-021",
+      "type": "tool",
+      "title": "NotebookEditTool - Jupyter Editing",
+      "paths": [
+        "src/tools/NotebookEditTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-033"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-022",
+      "type": "tool",
+      "title": "Team Tools (Create/Delete)",
+      "paths": [
+        "src/tools/TeamCreateTool/",
+        "src/tools/TeamDeleteTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-023",
+      "type": "tool",
+      "title": "LSPTool - Language Server Integration",
+      "paths": [
+        "src/tools/LSPTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-024",
+      "type": "tool",
+      "title": "Shared Tool Utilities",
+      "paths": [
+        "src/tools/shared/",
+        "src/tools/utils.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-038",
+        "LANE_SRC_COMMANDS_TOOLS_E-039",
+        "LANE_SRC_COMMANDS_TOOLS_E-040"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-025",
+      "type": "tool",
+      "title": "Stub Tools (Ant-Internal DCE)",
+      "paths": [
+        "src/tools/MonitorTool/",
+        "src/tools/OverflowTestTool/",
+        "src/tools/PushNotificationTool/",
+        "src/tools/RemoteTriggerTool/",
+        "src/tools/REPLTool/",
+        "src/tools/ReviewArtifactTool/",
+        "src/tools/ScheduleCronTool/",
+        "src/tools/SendMessageTool/",
+        "src/tools/SendUserFileTool/",
+        "src/tools/SnipTool/",
+        "src/tools/SubmitPhaseCompletionTool/",
+        "src/tools/SubscribePRTool/",
+        "src/tools/SuggestBackgroundPRTool/",
+        "src/tools/SyntheticOutputTool/",
+        "src/tools/TerminalCaptureTool/",
+        "src/tools/TungstenTool/",
+        "src/tools/VerifyPlanExecutionTool/",
+        "src/tools/WorkflowTemplateAuthoringTool/",
+        "src/tools/WorkflowTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-046"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "ant-internal"
+      }
+    },
+    {
+      "id": "N-026",
+      "type": "tool",
+      "title": "Other Tools (Brief/Config/CtxInspect/ListPeers/Sleep/ToolSearch)",
+      "paths": [
+        "src/tools/BriefTool/",
+        "src/tools/ConfigTool/",
+        "src/tools/CtxInspectTool/",
+        "src/tools/ListPeersTool/",
+        "src/tools/SleepTool/",
+        "src/tools/ToolSearchTool/",
+        "src/tools/AskUserQuestionTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "EDGE-001",
+      "source": "N-001",
+      "target": "N-010",
+      "relation": "uses",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-002"
+      ]
+    },
+    {
+      "id": "EDGE-002",
+      "source": "N-009",
+      "target": "N-024",
+      "relation": "uses",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-021",
+        "LANE_SRC_COMMANDS_TOOLS_E-039"
+      ]
+    },
+    {
+      "id": "EDGE-003",
+      "source": "N-010",
+      "target": "N-011",
+      "relation": "references",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-022"
+      ]
+    },
+    {
+      "id": "EDGE-004",
+      "source": "N-010",
+      "target": "N-012",
+      "relation": "references",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-022"
+      ]
+    },
+    {
+      "id": "EDGE-005",
+      "source": "N-011",
+      "target": "N-023",
+      "relation": "integrates",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-036"
+      ]
+    },
+    {
+      "id": "EDGE-006",
+      "source": "N-019",
+      "target": "N-004",
+      "relation": "invokes",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-027"
+      ]
+    },
+    {
+      "id": "EDGE-007",
+      "source": "N-001",
+      "target": "N-024",
+      "relation": "uses",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-038"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "OBS-001",
+      "summary": "Commands follow a consistent pattern: type='local-jsx' with lazy-loaded modules, or type='prompt' with inline prompt generation. All satisfy the Command interface.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-001",
+        "LANE_SRC_COMMANDS_TOOLS_E-013",
+        "LANE_SRC_COMMANDS_TOOLS_E-014",
+        "LANE_SRC_COMMANDS_TOOLS_E-015"
+      ]
+    },
+    {
+      "id": "OBS-002",
+      "summary": "Tools use buildTool() pattern with Zod input/output schemas, permission checking, and UI rendering functions (renderToolUseMessage, renderToolResultMessage).",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-024",
+        "LANE_SRC_COMMANDS_TOOLS_E-025",
+        "LANE_SRC_COMMANDS_TOOLS_E-028"
+      ]
+    },
+    {
+      "id": "OBS-003",
+      "summary": "Multiple files are auto-generated stubs (proxy-based no-ops) for ant-internal feature-gated modules that are DCE'd in external builds. These include: insights.ts, proactive.ts, torch.ts, subscribe-pr.ts, force-snip.ts, and many tool directories.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-041",
+        "LANE_SRC_COMMANDS_TOOLS_E-042",
+        "LANE_SRC_COMMANDS_TOOLS_E-043",
+        "LANE_SRC_COMMANDS_TOOLS_E-044",
+        "LANE_SRC_COMMANDS_TOOLS_E-045",
+        "LANE_SRC_COMMANDS_TOOLS_E-046"
+      ]
+    },
+    {
+      "id": "OBS-004",
+      "summary": "The src/commands/ directory contains 90+ slash command subdirectories plus 18 top-level .ts files. The src/tools/ directory contains 59 tool subdirectories plus 1 utils.ts file and a shared/ directory.",
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-005",
+      "summary": "Security is pervasive: BashTool has sandbox/permission integration, PowerShellTool has AST-based security analysis, file tools check write permissions, web tools check pre-approved hosts.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-022",
+        "LANE_SRC_COMMANDS_TOOLS_E-026",
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-029"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "path": "src/commands/advisor.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-001"
+      ]
+    },
+    {
+      "path": "src/commands/bridge-kick.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-011"
+      ]
+    },
+    {
+      "path": "src/commands/brief.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-006"
+      ]
+    },
+    {
+      "path": "src/commands/commit-push-pr.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-009"
+      ]
+    },
+    {
+      "path": "src/commands/commit.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-002"
+      ]
+    },
+    {
+      "path": "src/commands/createMovedToPluginCommand.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-012"
+      ]
+    },
+    {
+      "path": "src/commands/force-snip.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-045"
+      ]
+    },
+    {
+      "path": "src/commands/headless.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/commands/headless.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-004"
+      ]
+    },
+    {
+      "path": "src/commands/init-verifiers.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-010"
+      ]
+    },
+    {
+      "path": "src/commands/init.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-005"
+      ]
+    },
+    {
+      "path": "src/commands/insights.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-041"
+      ]
+    },
+    {
+      "path": "src/commands/proactive.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-042"
+      ]
+    },
+    {
+      "path": "src/commands/review.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-003"
+      ]
+    },
+    {
+      "path": "src/commands/security-review.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-008"
+      ]
+    },
+    {
+      "path": "src/commands/subscribe-pr.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-044"
+      ]
+    },
+    {
+      "path": "src/commands/torch.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-043"
+      ]
+    },
+    {
+      "path": "src/commands/version.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-007"
+      ]
+    },
+    {
+      "path": "src/tools/utils.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-040"
+      ]
+    },
+    {
+      "path": "src/commands/add-dir/add-dir.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/add-dir/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/add-dir/validation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/agents-platform/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/agents/agents.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/agents/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/ant-trace/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/assistant/assistant.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/assistant/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/autofix-pr/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/backfill-sessions/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/branch/branch.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/branch/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/break-cache/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/bridge/bridge.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/bridge/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/btw/btw.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/btw/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/buddy/buddy.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/buddy/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/bughunter/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/chrome/chrome.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/chrome/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/caches.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/clear.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/clear/caches.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/clear/conversation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/conversation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/clear/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/color/color.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/color/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/compact/compact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/compact/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/config/config.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/config/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/context/context-noninteractive.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/context/context.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/context/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/copy/copy.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/copy/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/cost/cost.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/cost/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/ctx_viz/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/debug-tool-call/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/desktop/desktop.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/desktop/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/diff/diff.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/diff/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/doctor/doctor.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/doctor/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/effort/effort.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/effort/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/env/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/exit/exit.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/exit/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/export/export.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/export/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/extra-usage/extra-usage-core.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/extra-usage/extra-usage-noninteractive.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/extra-usage/extra-usage.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/extra-usage/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/fast/fast.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/fast/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/feedback/feedback.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/feedback/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/files/files.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/files/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/fork/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/goal/goal.test.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/goal/goal.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/goal/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/good-claude/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/heapdump/heapdump.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/heapdump/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/help/help.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/help/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/hooks/hooks.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/hooks/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/ide/ide.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/ide/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/ApiKeyStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/CheckExistingSecretStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/CheckGitHubStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/ChooseRepoStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/CreatingStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/ErrorStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/ExistingWorkflowStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/InstallAppStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/OAuthFlowStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/SuccessStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/WarningsStep.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/install-github-app.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/setupGitHubActions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-github-app/types.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-slack-app/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install-slack-app/install-slack-app.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/install.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/issue/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/keybindings/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/keybindings/keybindings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/login/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/login/login.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/logout/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/logout/logout.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mcp/addCommand.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mcp/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mcp/mcp.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mcp/xaaIdpCommand.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/memory/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/memory/memory.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mobile/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mobile/mobile.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/mock-limits/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/model/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/model/model.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/oauth-refresh/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/onboarding/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/output-style/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/output-style/output-style.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/passes/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/passes/passes.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/peers/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/perf-issue/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/permissions/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/permissions/permissions.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plan/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plan/plan.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/AddMarketplace.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/BrowseMarketplace.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/DiscoverPlugins.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/ManageMarketplaces.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/ManagePlugins.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/PluginErrors.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/PluginOptionsDialog.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/PluginOptionsFlow.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/PluginSettings.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/PluginTrustWarning.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/UnifiedInstalledCell.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/ValidatePlugin.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/index.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/parseArgs.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/plugin.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/pluginDetailsHelpers.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/types.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/unifiedTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/plugin/usePagination.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/pr_comments/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/privacy-settings/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/privacy-settings/privacy-settings.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rate-limit-options/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rate-limit-options/rate-limit-options.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/release-notes/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/release-notes/release-notes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/reload-plugins/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/reload-plugins/reload-plugins.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remote-env/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remote-env/remote-env.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remote-setup/api.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remote-setup/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remote-setup/remote-setup.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/remoteControlServer/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rename/generateSessionName.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rename/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rename/rename.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/reset-limits/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/resume/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/resume/resume.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/review/UltrareviewOverageDialog.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/review/reviewRemote.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/review/ultrareviewCommand.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/review/ultrareviewEnabled.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rewind/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/rewind/rewind.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/sandbox-toggle/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/sandbox-toggle/sandbox-toggle.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/session/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/session/session.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/share/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/skills/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/skills/skills.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/stats/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/stats/stats.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/status/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/status/status.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/statusline.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/stickers/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/stickers/stickers.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/summary/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/tag/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/tag/tag.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/tasks/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/tasks/tasks.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/teleport/index.js",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/terminalSetup/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/terminalSetup/terminalSetup.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/theme/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/theme/theme.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/thinkback-play/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/thinkback-play/thinkback-play.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/thinkback/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/thinkback/thinkback.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/ultraplan.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/upgrade/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/upgrade/upgrade.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/usage/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/usage/usage.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/vim/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/vim/vim.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/voice/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/voice/voice.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/commands/workflows/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/AgentTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentColorManager.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentDisplay.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentMemory.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentMemorySnapshot.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentToolUtils.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/agentToolUtils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/exploreAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/generalPurposeAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/planAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/statuslineSetup.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/built-in/verificationAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/builtInAgents.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/builtInAgents.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/forkSubagent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/loadAgentsDir.cache.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/loadAgentsDir.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/prompt.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/resumeAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AgentTool/runAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/AskUserQuestionTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/BashTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/BashToolResultMessage.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/bashCommandHelpers.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/bashPermissions.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/bashPermissions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/bashSecurity.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/commandSemantics.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/commentLabel.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/destructiveCommandWarning.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/modeValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/pathValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/readOnlyValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/sedEditParser.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/sedValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/shouldUseSandbox.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/toolName.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BashTool/utils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BriefTool/BriefTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BriefTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BriefTool/attachments.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BriefTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/BriefTool/upload.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ConfigTool/ConfigTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ConfigTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ConfigTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ConfigTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ConfigTool/supportedSettings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/CtxInspectTool/CtxInspectTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/DiscoverSkillsTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterPlanModeTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterPlanModeTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterPlanModeTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterWorktreeTool/EnterWorktreeTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterWorktreeTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterWorktreeTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/EnterWorktreeTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitPlanModeTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitPlanModeTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitPlanModeTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitWorktreeTool/ExitWorktreeTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitWorktreeTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitWorktreeTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ExitWorktreeTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/FileEditTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/types.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileEditTool/utils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileReadTool/FileReadTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileReadTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileReadTool/imageProcessor.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileReadTool/limits.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileReadTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileWriteTool/FileWriteTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileWriteTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/FileWriteTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GlobTool/GlobTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GlobTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GlobTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GrepTool/GrepTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GrepTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/GrepTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/LSPTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/formatters.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/schemas.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/LSPTool/symbolContext.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ListMcpResourcesTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ListMcpResourcesTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ListPeersTool/ListPeersTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/MCPTool/MCPTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/MCPTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/MCPTool/classifyForCollapse.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/MCPTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/McpAuthTool/McpAuthTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/MonitorTool/MonitorTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/NotebookEditTool/NotebookEditTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/NotebookEditTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/NotebookEditTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/NotebookEditTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/OverflowTestTool/OverflowTestTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/PowerShellTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/clmTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/commandSemantics.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/commonParameters.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/destructiveCommandWarning.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/gitSafety.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/modeValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/pathValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/powershellPermissions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/powershellSecurity.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/readOnlyValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PowerShellTool/toolName.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/PushNotificationTool/PushNotificationTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/REPLTool/REPLTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/REPLTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/REPLTool/primitiveTools.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ReadMcpResourceTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ReadMcpResourceTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/RemoteTriggerTool/RemoteTriggerTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/RemoteTriggerTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/RemoteTriggerTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/CronCreateTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/CronDeleteTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/CronListTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/CronUpdateTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ScheduleCronTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendMessageTool/SendMessageTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendMessageTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendMessageTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendMessageTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendUserFileTool/SendUserFileTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SendUserFileTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SkillTool/SkillTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SkillTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SkillTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SkillTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SleepTool/SleepTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SleepTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SnipTool/SnipTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SnipTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SubscribePRTool/SubscribePRTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/SyntheticOutputTool/SyntheticOutputTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskCreateTool/TaskCreateTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskCreateTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskCreateTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskGetTool/TaskGetTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskGetTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskGetTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskListTool/TaskListTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskListTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskListTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskOutputTool/TaskOutputTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskOutputTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskStopTool/TaskStopTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskStopTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskStopTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskUpdateTool/TaskUpdateTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskUpdateTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TaskUpdateTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamCreateTool/TeamCreateTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamCreateTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamCreateTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamCreateTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamDeleteTool/TeamDeleteTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamDeleteTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamDeleteTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TeamDeleteTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TerminalCaptureTool/TerminalCaptureTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TerminalCaptureTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TodoWriteTool/TodoWriteTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TodoWriteTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TodoWriteTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ToolSearchTool/ToolSearchTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ToolSearchTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/ToolSearchTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TungstenTool/TungstenLiveMonitor.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/TungstenTool/TungstenTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/VerifyPlanExecutionTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebBrowserTool/WebBrowserPanel.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebBrowserTool/WebBrowserTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/WebFetchTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/preapproved.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/utils.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebFetchTool/utils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebSearchTool/UI.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebSearchTool/WebSearchTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebSearchTool/backend.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebSearchTool/backend.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WebSearchTool/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTool/WorkflowPermissionRequest.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTool/WorkflowTool.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTool/bundled/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTool/constants.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/WorkflowTool/createWorkflowCommand.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/shared/gitOperationTracking.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/shared/spawnMultiAgent.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/shared/spawnMultiAgent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    },
+    {
+      "path": "src/tools/testing/TestingPermissionTool.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": [],
+      "note": "auto-added as inventory_only for unresolved path"
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

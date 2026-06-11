@@ -1,0 +1,1112 @@
+{
+  "packet_id": "lane-root-github",
+  "family_id": "root-config",
+  "assigned_paths": [
+    ".cognitionignore",
+    ".env.example",
+    ".github/FUNDING.yml",
+    ".github/ISSUE_TEMPLATE/bug_report.md",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/question.md",
+    ".github/copilot-instructions.md",
+    ".github/pull_request_template.md",
+    ".github/workflows/build-desktop-dev.yml",
+    ".github/workflows/deploy-docs.yml",
+    ".github/workflows/pr-quality.yml",
+    ".github/workflows/pr-triage.yml",
+    ".github/workflows/release-desktop.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.en.md",
+    "README.md",
+    "bunfig.toml",
+    "complexity.json",
+    "handoff-to-specify.json",
+    "intent.json",
+    "package.json",
+    "preload.ts",
+    "route.json",
+    "tsconfig.json"
+  ],
+  "paths_read": [
+    ".cognitionignore",
+    ".env.example",
+    ".github/FUNDING.yml",
+    ".github/ISSUE_TEMPLATE/bug_report.md",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/question.md",
+    ".github/copilot-instructions.md",
+    ".github/pull_request_template.md",
+    ".github/workflows/build-desktop-dev.yml",
+    ".github/workflows/deploy-docs.yml",
+    ".github/workflows/pr-quality.yml",
+    ".github/workflows/pr-triage.yml",
+    ".github/workflows/release-desktop.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.en.md",
+    "README.md",
+    "bunfig.toml",
+    "complexity.json",
+    "handoff-to-specify.json",
+    "intent.json",
+    "package.json",
+    "preload.ts",
+    "route.json",
+    "tsconfig.json"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      ".cognitionignore",
+      ".env.example",
+      ".github/FUNDING.yml",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/ISSUE_TEMPLATE/question.md",
+      ".github/copilot-instructions.md",
+      ".github/pull_request_template.md",
+      ".github/workflows/build-desktop-dev.yml",
+      ".github/workflows/deploy-docs.yml",
+      ".github/workflows/pr-quality.yml",
+      ".github/workflows/pr-triage.yml",
+      ".github/workflows/release-desktop.yml",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "CONTRIBUTING.md",
+      "LICENSE",
+      "README.en.md",
+      "README.md",
+      "bunfig.toml",
+      "complexity.json",
+      "handoff-to-specify.json",
+      "intent.json",
+      "package.json",
+      "preload.ts",
+      "route.json",
+      "tsconfig.json"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_ROOT_GITHUB_E-001",
+      "source_path": "package.json",
+      "evidence_type": "config_read",
+      "summary": "Root package config: name=cc-jiangxia, version=999.0.0-local, private=true, type=module. Exposes 3 CLI bins (claude-jiangxia, cc-jiangxia, claude-haha). 40+ npm scripts covering CLI start, PR checks, quality gates (fast/pr/push/baseline/release), provider smoke, desktop/server/adapter/native/docs/coverage checks, quarantine, docs build, git hooks. Key deps: @anthropic-ai/sdk, @anthropic-ai/sandbox-runtime, @modelcontextprotocol/sdk, Commander.js, Ink (React terminal UI), Zod, OpenTelemetry. DevDeps: VitePress, mermaid, vue.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-002",
+      "source_path": "tsconfig.json",
+      "evidence_type": "config_read",
+      "summary": "TypeScript config: target=ESNext, module=ESNext, moduleResolution=bundler, allowJs=true, jsx=react-jsx. Path aliases: @ant/claude-for-chrome-mcp -> ./stubs/ant-claude-for-chrome-mcp.ts, color-diff-napi -> ./stubs/color-diff-napi.ts, src/* -> ./src/*. Types: bun-types.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-003",
+      "source_path": "bunfig.toml",
+      "evidence_type": "config_read",
+      "summary": "Bun config: preload = [\"./preload.ts\"]. Single preload hook that injects global MACRO constants (VERSION, PACKAGE_URL, BUILD_TIME, FEEDBACK_CHANNEL) and switches working directory to CALLER_DIR.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-004",
+      "source_path": "preload.ts",
+      "evidence_type": "config_read",
+      "summary": "Bun preload script that injects MACRO global object with VERSION (default 999.0.0-local), PACKAGE_URL, BUILD_TIME, FEEDBACK_CHANNEL=local. Sets CLAUDE_CODE_LOCAL_SKIP_REMOTE_PREFETCH=1. Switches cwd to CALLER_DIR if set.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-005",
+      "source_path": ".env.example",
+      "evidence_type": "config_read",
+      "summary": "Multi-provider env template: MiniMax (Anthropic-compatible direct), OpenAI (via LiteLLM proxy), DeepSeek (via LiteLLM proxy), OpenRouter (direct), Azure OpenAI (Codex). Common settings: DISABLE_TELEMETRY=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1. Uses ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_DEFAULT_OPUS_MODEL pattern for all providers.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-006",
+      "source_path": ".github/workflows/pr-quality.yml",
+      "evidence_type": "config_read",
+      "summary": "PR quality gate workflow: triggers on PR open/sync/reopen/ready_for_review/label/unlabel. Change-policy job evaluates changed files and determines which quality lanes to run (desktop-checks, server-checks, adapter-checks, desktop-native-checks, docs-checks, coverage-checks). Final pr-quality-gate job aggregates results; change-policy must pass, others allow skip-or-success. Coverage uploads report artifacts for 14 days.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-007",
+      "source_path": ".github/workflows/pr-triage.yml",
+      "evidence_type": "config_read",
+      "summary": "PR triage workflow: auto-labels PRs by changed-area (desktop, server, adapters, docs, release, cli-core). Detects missing-test signals (desktop/server/adapter/agent-runtime product files without matching test files). Detects CLI core changes requiring maintainer approval. Detects coverage baseline changes requiring maintainer approval. Posts structured triage comment with area labels, policy blocks, expected checks, test signals, risk notes.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-008",
+      "source_path": ".github/workflows/release-desktop.yml",
+      "evidence_type": "config_read",
+      "summary": "Release workflow: triggers on tag push (v*.*.*) or workflow_dispatch. Builds for macOS-ARM64, macOS-x64, Linux-x64, Linux-ARM64, Windows-x64. Validates tag matches app version. Requires release-notes/vX.Y.Z.md file. Uses tauri-action with signing keys (TAURI_SIGNING_PRIVATE_KEY). Uploads to GitHub Releases.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-009",
+      "source_path": ".github/workflows/build-desktop-dev.yml",
+      "evidence_type": "config_read",
+      "summary": "Dev build workflow: manual trigger (workflow_dispatch). Supports selective platform builds (all, macos-arm64, macos-x64, windows-x64, linux-x64, linux-arm64). Builds Tauri app without signing/updater artifacts. Uploads as GitHub Artifact with 7-day retention. Uses Bun + Node 20 + Rust toolchain.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-010",
+      "source_path": ".github/workflows/deploy-docs.yml",
+      "evidence_type": "config_read",
+      "summary": "Docs deployment: triggers on push to main when docs/**, package.json, package-lock.json, or the workflow itself changes. Uses Node 22 with npm. Builds VitePress docs and deploys to GitHub Pages.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-011",
+      "source_path": "AGENTS.md",
+      "evidence_type": "config_read",
+      "summary": "Comprehensive repository guidelines covering: project structure (src/ for CLI+server, desktop/ for Tauri+React, docs/ for VitePress), build/test commands, startup safety rules (never kill processes broadly, identify PID first), desktop release workflow (GitHub Actions on tag push, release-notes/vX.Y.Z.md required), docs workflow (npm ci not Bun, Node 22), coding style (TypeScript, 2-space indent, ESM, no semicolons), testing (Vitest + Testing Library), persistent storage compatibility rules, feature quality contract (changed surface identification, same-area tests, coverage ratchet, E2E requirements), quality gate automation (bun run verify as unified entrypoint), commit/PR guidelines (conventional commits, no codex/ branches). Also contains Spec Kit Plus managed block.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-012",
+      "source_path": "CLAUDE.md",
+      "evidence_type": "config_read",
+      "summary": "Project-level Claude instructions: active technologies placeholder, project structure (.specify/, features/), commands (specify check, specify --help), command surface rules (treat live specify --help as authoritative), code style (follow existing conventions), workflow recovery rules (lane-first not branch-first, durable lane state), Spec Kit Plus managed rules ([AGENT] markers), always-on context (project cognition and memory available), workflow recommendations (sp-discussion, sp-specify, sp-deep-research, sp-debug), durable state rules.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-013",
+      "source_path": "CONTRIBUTING.md",
+      "evidence_type": "config_read",
+      "summary": "Contributing guide: bun install + bun run verify as PR readiness check. Quality report artifacts at artifacts/quality-runs/<timestamp>/ and artifacts/coverage/<timestamp>/. Coverage baseline requires allow-coverage-baseline-change. Quarantined tests need owner/reviewAfter/exitCriteria. Git hooks install via bun run hooks:install for pre-push quality gate. Adapter deps: cd adapters && bun install. Live provider baseline for chat/agent/provider changes. Docs build uses npm ci.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-014",
+      "source_path": ".github/copilot-instructions.md",
+      "evidence_type": "config_read",
+      "summary": "AI coding contract: follow AGENTS.md. For every feature/bugfix: identify changed surface, add same-area tests, preserve coverage ratchet, use appropriate test types (unit/API/Testing Library/E2E), include mock/fixture tests for agent loop paths, run narrow check + bun run verify before claiming complete. Handoff must include changed files, tests added, coverage report path, E2E/live evidence or blocker, known residual risk.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-015",
+      "source_path": ".github/pull_request_template.md",
+      "evidence_type": "config_read",
+      "summary": "PR template with Feature Quality Contract sections: changed surface, tests added/updated, coverage evidence, E2E/live-model evidence, known risk/rollback. Verification checklist: ran local checks, added same-area tests, ran bun run verify, changed-line coverage threshold met, attached quality report. Risk checklist: CLI core policy, missing tests policy, coverage baseline policy, quarantined tests, provider/runtime coverage.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-016",
+      "source_path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "evidence_type": "config_read",
+      "summary": "Bug report template (Chinese): pre-submission checklist (read FAQ, upgrade, search existing, hide secrets). Sections: problem description, runtime environment (desktop/CLI, OS, version, install source), provider/model config, reproduction steps, error logs, screenshots, supplementary info. Auto-triggers @dosubot.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-017",
+      "source_path": ".github/ISSUE_TEMPLATE/question.md",
+      "evidence_type": "config_read",
+      "summary": "Question template (Chinese): pre-submission checklist (read FAQ, third-party models guide, search existing, hide secrets). Sections: problem description, environment, usage scenario (feature + provider + model), config screenshots, operation steps, error logs, screenshots. Auto-triggers @dosubot.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-018",
+      "source_path": ".github/ISSUE_TEMPLATE/config.yml",
+      "evidence_type": "config_read",
+      "summary": "Issue template config: blank_issues_enabled: false. Forces all issues through structured templates.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-019",
+      "source_path": "README.md",
+      "evidence_type": "config_read",
+      "summary": "Chinese README: project is a desktop Claude Code workspace (macOS/Windows) built on leaked Anthropic source. Tech stack: TypeScript, Tauri 2, React+Vite, Bun, Ink (terminal UI), Commander.js, Anthropic SDK, MCP/LSP. Features: multi-session workspace, branch/Worktree launch, right-side file changes, code diff, permission review, multi-provider, Computer Use, H5 remote access, IM integration (Telegram/Feishu/WeChat/DingTalk), scheduled tasks. GitHub: NanmiCoder/cc-jiangxia. Docs site: claudecode-jiangxia.relakkesyang.org.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-020",
+      "source_path": "README.en.md",
+      "evidence_type": "config_read",
+      "summary": "English README: mirrors Chinese README content. Same tech stack, features, sponsor info, and documentation links with English-language doc paths (docs/en/...).",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-021",
+      "source_path": "LICENSE",
+      "evidence_type": "config_read",
+      "summary": "Custom educational/research license based on Anthropic leaked source. Restrictions: no commercial use, no competing with Anthropic, no redistribution/sublicensing/sale, comply with local laws. No warranty. For AI Agent engineering study: agent architecture, tool use, multi-agent orchestration, TUI, MCP integration.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-022",
+      "source_path": ".github/FUNDING.yml",
+      "evidence_type": "config_read",
+      "summary": "GitHub Sponsors funding: github: NanmiCoder.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-023",
+      "source_path": ".cognitionignore",
+      "evidence_type": "config_read",
+      "summary": "Project cognition exclusion list: build output (node_modules, dist, build, .out, tsbuildinfo), Rust target, artifacts, generated lock files, IDE metadata, Python bytecode, runtime state (.opencode, .planning), git internals, env files, and .specify/ directory.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-024",
+      "source_path": "complexity.json",
+      "evidence_type": "config_read",
+      "summary": "Empty file (0 bytes). Placeholder for complexity metrics.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-025",
+      "source_path": "intent.json",
+      "evidence_type": "config_read",
+      "summary": "Empty file (0 bytes). Placeholder for project intent metadata.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-026",
+      "source_path": "route.json",
+      "evidence_type": "config_read",
+      "summary": "Empty file (0 bytes). Placeholder for routing configuration.",
+      "classification": "minor",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_ROOT_GITHUB_E-027",
+      "source_path": "handoff-to-specify.json",
+      "evidence_type": "config_read",
+      "summary": "Empty file (0 bytes). Placeholder for specify workflow handoff state.",
+      "classification": "minor",
+      "criticality": "minor"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "Root Package Configuration",
+      "paths": [
+        "package.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001"
+      ],
+      "attrs": {
+        "aliases": [
+          "root package",
+          "monorepo root"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "module",
+      "title": "TypeScript Build Configuration",
+      "paths": [
+        "tsconfig.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-002"
+      ],
+      "attrs": {
+        "aliases": [
+          "tsconfig"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "module",
+      "title": "Bun Runtime Configuration",
+      "paths": [
+        "bunfig.toml",
+        "preload.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-003",
+        "LANE_ROOT_GITHUB_E-004"
+      ],
+      "attrs": {
+        "aliases": [
+          "bun config",
+          "preload hook"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "module",
+      "title": "Environment Variable Templates",
+      "paths": [
+        ".env.example"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-005"
+      ],
+      "attrs": {
+        "aliases": [
+          "env config",
+          "provider config"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "module",
+      "title": "PR Quality Gate Workflow",
+      "paths": [
+        ".github/workflows/pr-quality.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-006"
+      ],
+      "attrs": {
+        "aliases": [
+          "CI quality gate",
+          "PR checks"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "module",
+      "title": "PR Triage Automation Workflow",
+      "paths": [
+        ".github/workflows/pr-triage.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-007"
+      ],
+      "attrs": {
+        "aliases": [
+          "PR labeling",
+          "PR triage"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "module",
+      "title": "Desktop Release Workflow",
+      "paths": [
+        ".github/workflows/release-desktop.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-008"
+      ],
+      "attrs": {
+        "aliases": [
+          "release CI",
+          "desktop release"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "module",
+      "title": "Desktop Dev Build Workflow",
+      "paths": [
+        ".github/workflows/build-desktop-dev.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-009"
+      ],
+      "attrs": {
+        "aliases": [
+          "dev build CI",
+          "artifact build"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "module",
+      "title": "Docs Deployment Workflow",
+      "paths": [
+        ".github/workflows/deploy-docs.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-010"
+      ],
+      "attrs": {
+        "aliases": [
+          "docs CI",
+          "VitePress deploy"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "module",
+      "title": "Repository Guidelines (AGENTS.md)",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ],
+      "attrs": {
+        "aliases": [
+          "repo guidelines",
+          "quality contract"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "module",
+      "title": "Claude Project Instructions",
+      "paths": [
+        "CLAUDE.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-012"
+      ],
+      "attrs": {
+        "aliases": [
+          "claude config",
+          "AI instructions"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "module",
+      "title": "Contributing Guide",
+      "paths": [
+        "CONTRIBUTING.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-013"
+      ],
+      "attrs": {
+        "aliases": [
+          "contrib guide"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "module",
+      "title": "GitHub Community Configuration",
+      "paths": [
+        ".github/copilot-instructions.md",
+        ".github/pull_request_template.md",
+        ".github/ISSUE_TEMPLATE/bug_report.md",
+        ".github/ISSUE_TEMPLATE/question.md",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/FUNDING.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-014",
+        "LANE_ROOT_GITHUB_E-015",
+        "LANE_ROOT_GITHUB_E-016",
+        "LANE_ROOT_GITHUB_E-017",
+        "LANE_ROOT_GITHUB_E-018",
+        "LANE_ROOT_GITHUB_E-022"
+      ],
+      "attrs": {
+        "aliases": [
+          "GitHub config",
+          "community templates"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "module",
+      "title": "Project Documentation (README)",
+      "paths": [
+        "README.md",
+        "README.en.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-019",
+        "LANE_ROOT_GITHUB_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "readme",
+          "project docs"
+        ],
+        "domain": "docs",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-015",
+      "type": "module",
+      "title": "Project License",
+      "paths": [
+        "LICENSE"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-021"
+      ],
+      "attrs": {
+        "aliases": [
+          "license"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-016",
+      "type": "module",
+      "title": "Cognition Ignore Rules",
+      "paths": [
+        ".cognitionignore"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-023"
+      ],
+      "attrs": {
+        "aliases": [
+          "cognition config"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-017",
+      "type": "module",
+      "title": "Placeholder Config Files",
+      "paths": [
+        "complexity.json",
+        "intent.json",
+        "route.json",
+        "handoff-to-specify.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-024",
+        "LANE_ROOT_GITHUB_E-025",
+        "LANE_ROOT_GITHUB_E-026",
+        "LANE_ROOT_GITHUB_E-027"
+      ],
+      "attrs": {
+        "aliases": [
+          "empty placeholders"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ED-001",
+      "source_id": "N-001",
+      "target_id": "N-002",
+      "relationship": "configures",
+      "summary": "package.json defines project metadata that tsconfig.json targets (ESNext modules, bun-types, JSX react-jsx)",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001",
+        "LANE_ROOT_GITHUB_E-002"
+      ]
+    },
+    {
+      "id": "ED-002",
+      "source_id": "N-001",
+      "target_id": "N-003",
+      "relationship": "configures",
+      "summary": "package.json scripts depend on Bun runtime; bunfig.toml configures preload.ts that injects MACRO constants used at runtime",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001",
+        "LANE_ROOT_GITHUB_E-003",
+        "LANE_ROOT_GITHUB_E-004"
+      ]
+    },
+    {
+      "id": "ED-003",
+      "source_id": "N-001",
+      "target_id": "N-004",
+      "relationship": "configures",
+      "summary": "package.json scripts reference env vars defined in .env.example (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001",
+        "LANE_ROOT_GITHUB_E-005"
+      ]
+    },
+    {
+      "id": "ED-004",
+      "source_id": "N-005",
+      "target_id": "N-001",
+      "relationship": "invokes",
+      "summary": "pr-quality.yml runs bun run check:policy, check:desktop, check:server, check:adapters, check:native, check:docs, check:coverage - all defined as scripts in package.json",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-006",
+        "LANE_ROOT_GITHUB_E-001"
+      ]
+    },
+    {
+      "id": "ED-005",
+      "source_id": "N-006",
+      "target_id": "N-005",
+      "relationship": "feeds",
+      "summary": "pr-triage.yml auto-labels PRs that determine which quality lanes pr-quality.yml runs",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-007",
+        "LANE_ROOT_GITHUB_E-006"
+      ]
+    },
+    {
+      "id": "ED-006",
+      "source_id": "N-007",
+      "target_id": "N-005",
+      "relationship": "depends_on",
+      "summary": "release-desktop.yml requires pr-quality gate results before publishing; tag validation ensures version consistency",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-008",
+        "LANE_ROOT_GITHUB_E-006"
+      ]
+    },
+    {
+      "id": "ED-007",
+      "source_id": "N-010",
+      "target_id": "N-005",
+      "relationship": "governs",
+      "summary": "AGENTS.md defines the quality contract that pr-quality.yml enforces (same-area tests, coverage ratchet, E2E requirements)",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-006"
+      ]
+    },
+    {
+      "id": "ED-008",
+      "source_id": "N-010",
+      "target_id": "N-006",
+      "relationship": "governs",
+      "summary": "AGENTS.md defines CLI core paths and missing-test policies that pr-triage.yml detects and enforces",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-007"
+      ]
+    },
+    {
+      "id": "ED-009",
+      "source_id": "N-013",
+      "target_id": "N-010",
+      "relationship": "references",
+      "summary": "copilot-instructions.md and PR template both reference AGENTS.md quality contract as the authoritative source",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-014",
+        "LANE_ROOT_GITHUB_E-015",
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "ED-010",
+      "source_id": "N-011",
+      "target_id": "N-010",
+      "relationship": "complements",
+      "summary": "CLAUDE.md adds AI-specific workflow recommendations (sp-* workflows, project cognition) on top of AGENTS.md repository guidelines",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-012",
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "ED-011",
+      "source_id": "N-009",
+      "target_id": "N-014",
+      "relationship": "deploys",
+      "summary": "deploy-docs.yml builds VitePress docs triggered by changes to docs/ or README files and deploys to GitHub Pages",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-010",
+        "LANE_ROOT_GITHUB_E-019"
+      ]
+    },
+    {
+      "id": "ED-012",
+      "source_id": "N-016",
+      "target_id": "N-001",
+      "relationship": "constrains",
+      "summary": ".cognitionignore excludes build output (node_modules, dist), lock files, artifacts, and .specify/ from project cognition scans",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-023",
+        "LANE_ROOT_GITHUB_E-001"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "O-001",
+      "observation_type": "convention",
+      "summary": "Project uses Bun as primary runtime (not Node.js) for CLI, server, and tests. Bun-specific features: bun-types in tsconfig, bunfig.toml preload, bun test for quality scripts. Node.js 22 is only used for VitePress docs build (npm ci).",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001",
+        "LANE_ROOT_GITHUB_E-002",
+        "LANE_ROOT_GITHUB_E-003",
+        "LANE_ROOT_GITHUB_E-004"
+      ]
+    },
+    {
+      "id": "O-002",
+      "observation_type": "convention",
+      "summary": "TypeScript codebase with ESM modules, 2-space indentation, no semicolons, react-jsx transform. Path aliases use src/* -> ./src/* and stubs for native modules (color-diff-napi, claude-for-chrome-mcp).",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-002",
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-003",
+      "observation_type": "convention",
+      "summary": "Multi-provider architecture: supports Anthropic direct, MiniMax, OpenAI (via LiteLLM), DeepSeek (via LiteLLM), OpenRouter, and Azure OpenAI. All use the same ANTHROPIC_* env var pattern with model-specific selectors (SONNET, HAIKU, OPUS).",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-005",
+        "LANE_ROOT_GITHUB_E-019"
+      ]
+    },
+    {
+      "id": "O-004",
+      "observation_type": "convention",
+      "summary": "Rigorous quality gate system: unified entrypoint 'bun run verify' (alias for quality:pr). Change-policy-driven CI that only runs relevant quality lanes per PR. Quality modes: fast, pr, push, baseline, release. Artifacts written to artifacts/quality-runs/ and artifacts/coverage/.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-006",
+        "LANE_ROOT_GITHUB_E-007",
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-013"
+      ]
+    },
+    {
+      "id": "O-005",
+      "observation_type": "convention",
+      "summary": "Feature Quality Contract is mandatory: every change must identify its surface (desktop/server/adapter/native/docs/provider-runtime/agent-loop/release), add same-area tests, preserve coverage ratchet (75-80%+ target), and provide E2E/live evidence for cross-boundary changes.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-014",
+        "LANE_ROOT_GITHUB_E-015",
+        "LANE_ROOT_GITHUB_E-013"
+      ]
+    },
+    {
+      "id": "O-006",
+      "observation_type": "convention",
+      "summary": "Desktop app is a Tauri 2 + React application in desktop/ directory. Release workflow builds for 5 platforms (macOS ARM64/x64, Linux x64/ARM64, Windows x64). Releases are tag-driven (v*.*.*) with mandatory release-notes/vX.Y.Z.md. Dev builds are workflow_dispatch with 7-day artifact retention.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-008",
+        "LANE_ROOT_GITHUB_E-009",
+        "LANE_ROOT_GITHUB_E-019"
+      ]
+    },
+    {
+      "id": "O-007",
+      "observation_type": "convention",
+      "summary": "CLI core paths (bin/, src/entrypoints/, src/screens/, src/components/, src/commands/, src/tools/, src/utils/) require maintainer approval (allow-cli-core-change label) to modify. PR triage auto-detects and blocks these changes.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-007",
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-008",
+      "observation_type": "convention",
+      "summary": "Persistent storage compatibility is strictly enforced: changes to JSON/localStorage/app config must ship forward migrations and regression tests. Protected files include ~/.claude/settings.json, provider configs, MCP config, OAuth tokens, teams/sessions. Doctor/repair paths are deny-by-default.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-009",
+      "observation_type": "convention",
+      "summary": "Git hooks available via 'bun run hooks:install' for pre-push quality gate. Maintainers can configure live provider baselines and CLI core/coverage baseline change allowances via local git config.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-013",
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-010",
+      "observation_type": "convention",
+      "summary": "Project governance: educational/research license (not open source), GitHub Sponsors via NanmiCoder, Chinese+English bilingual docs and issue templates, @dosubot auto-response on issues, VitePress docs site at claudecode-jiangxia.relakkesyang.org.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-021",
+        "LANE_ROOT_GITHUB_E-022",
+        "LANE_ROOT_GITHUB_E-016",
+        "LANE_ROOT_GITHUB_E-017",
+        "LANE_ROOT_GITHUB_E-019",
+        "LANE_ROOT_GITHUB_E-020"
+      ]
+    },
+    {
+      "id": "O-011",
+      "observation_type": "convention",
+      "summary": "Commit convention: Conventional Commits (feat:, fix:, docs:, refactor:, test:, chore:, perf:, ci:). Branch naming: fix/xxx, feat/xxx, docs/xxx - no codex/ prefix allowed.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-012",
+      "observation_type": "convention",
+      "summary": "Dual AI instruction system: AGENTS.md for general repository guidelines + CLAUDE.md for Claude-specific workflow rules including Spec Kit Plus managed blocks, sp-* workflow routing, project cognition always-on context, and durable state management.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-012"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "path": ".cognitionignore",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-023"
+      ]
+    },
+    {
+      "path": ".env.example",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-005"
+      ]
+    },
+    {
+      "path": ".github/FUNDING.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-022"
+      ]
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-016"
+      ]
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-018"
+      ]
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/question.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-017"
+      ]
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-014"
+      ]
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-015"
+      ]
+    },
+    {
+      "path": ".github/workflows/build-desktop-dev.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-009"
+      ]
+    },
+    {
+      "path": ".github/workflows/deploy-docs.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-010"
+      ]
+    },
+    {
+      "path": ".github/workflows/pr-quality.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-006"
+      ]
+    },
+    {
+      "path": ".github/workflows/pr-triage.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-007"
+      ]
+    },
+    {
+      "path": ".github/workflows/release-desktop.yml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-008"
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "path": "CLAUDE.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-012"
+      ]
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-013"
+      ]
+    },
+    {
+      "path": "LICENSE",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-021"
+      ]
+    },
+    {
+      "path": "README.en.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-020"
+      ]
+    },
+    {
+      "path": "README.md",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-019"
+      ]
+    },
+    {
+      "path": "bunfig.toml",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-003"
+      ]
+    },
+    {
+      "path": "complexity.json",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "handoff-to-specify.json",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "intent.json",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "package.json",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-001"
+      ]
+    },
+    {
+      "path": "preload.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-004"
+      ]
+    },
+    {
+      "path": "route.json",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "tsconfig.json",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-002"
+      ]
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

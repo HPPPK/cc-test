@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-014",
+  "source_path": ".github/copilot-instructions.md",
+  "evidence_type": "config_read",
+  "summary": "AI coding contract: follow AGENTS.md. For every feature/bugfix: identify changed surface, add same-area tests, preserve coverage ratchet, use appropriate test types (unit/API/Testing Library/E2E), include mock/fixture tests for agent loop paths, run narrow check + bun run verify before claiming complete. Handoff must include changed files, tests added, coverage report path, E2E/live evidence or blocker, known residual risk.",
+  "classification": "important",
+  "criticality": "important"
+}

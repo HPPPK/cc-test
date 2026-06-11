@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "status": "leader-inline",
+  "delegated_lanes": [],
+  "reason": "No task-generation subagents were spawned because the active spawn_agent tool contract requires an explicit user request for subagents/delegation/parallel agent work.",
+  "consumed_sources": [
+    "spec.md",
+    "alignment.md",
+    "context.md",
+    "plan.md",
+    "research.md",
+    "data-model.md",
+    "contracts/provider-import-export-api.md",
+    "quickstart.md",
+    "plan-contract.json",
+    "brainstorming/handoff-to-specify.json"
+  ],
+  "decisions": [
+    {"id": "D1", "decision": "Use serial foundation with intra-story server/desktop parallel batches", "consumer": "tasks.md#parallel-batches-and-join-points"},
+    {"id": "D2", "decision": "Map every MP and CA obligation into guardrails and task rows", "consumer": "tasks.md#task-guardrail-index"},
+    {"id": "D3", "decision": "Use task packets for all 16 tasks", "consumer": "task-packets/*.json"}
+  ]
+}

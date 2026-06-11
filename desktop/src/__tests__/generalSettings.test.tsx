@@ -8,6 +8,13 @@ import { useUIStore } from '../stores/uiStore'
 import { useUpdateStore } from '../stores/updateStore'
 import type { SavedProvider } from '../types/provider'
 import type { ProviderPreset } from '../types/providerPreset'
+import type {
+  ProviderBundle,
+  ProviderImportCommitResult,
+  ProviderImportPreview,
+  ProviderSecretBundle,
+  ProviderSecretFreeBundle,
+} from '../types/providerImportExport'
 import type { AppMode, ThemeMode, UpdateProxySettings } from '../types/settings'
 
 const MOCK_DELETE_PROVIDER = vi.fn()
@@ -46,7 +53,112 @@ const providerStoreState = {
   testProvider: vi.fn(),
   createProvider: vi.fn(),
   updateProvider: vi.fn(),
+  exportProviders: vi.fn(),
+  exportProvidersWithSecrets: vi.fn(),
+  previewProviderImport: vi.fn(),
+  commitProviderImport: vi.fn(),
   testConfig: vi.fn(),
+}
+
+const providerImportBundle: ProviderBundle = {
+  schemaVersion: 1,
+  kind: 'cc-jiangxia-provider-bundle',
+  exportedAt: '2026-06-10T00:00:00.000Z',
+  containsSecrets: false,
+  providers: [
+    {
+      sourceProviderId: 'source-provider-1',
+      name: 'Imported Provider',
+      presetId: 'custom',
+      baseUrl: 'https://api.imported.example',
+      apiFormat: 'openai_chat',
+      models: {
+        main: 'gpt-imported',
+        haiku: '',
+        sonnet: '',
+        opus: '',
+      },
+      credential: { status: 'redacted' },
+    },
+  ],
+}
+
+const providerImportPreview: ProviderImportPreview = {
+  bundle: {
+    schemaVersion: 1,
+    containsSecrets: false,
+    providerCount: 1,
+  },
+  candidates: [
+    {
+      candidateId: '0',
+      sourceProviderId: 'source-provider-1',
+      name: 'Imported Provider',
+      credentialStatus: 'redacted',
+      valid: true,
+      diagnostics: [],
+      conflict: null,
+      defaultResolution: 'add',
+      suggestedName: 'Imported Provider',
+    },
+  ],
+  errors: [],
+  canCommit: true,
+}
+
+const providerSecretFreeExportBundle: ProviderSecretFreeBundle = {
+  schemaVersion: 1,
+  kind: 'cc-jiangxia-provider-bundle',
+  exportedAt: '2026-06-10T00:00:00.000Z',
+  containsSecrets: false,
+  providers: [
+    {
+      sourceProviderId: 'provider-1',
+      name: 'MiniMax-M2.7-highspeed(openai)',
+      presetId: 'custom',
+      baseUrl: 'https://api.minimaxi.com',
+      apiFormat: 'openai_chat',
+      models: {
+        main: 'MiniMax-M2.7-highspeed',
+        haiku: '',
+        sonnet: '',
+        opus: '',
+      },
+      credential: { status: 'redacted' },
+    },
+  ],
+}
+
+const providerSecretExportBundle: ProviderSecretBundle = {
+  ...providerSecretFreeExportBundle,
+  containsSecrets: true,
+  providers: providerSecretFreeExportBundle.providers.map((provider) => ({
+    ...provider,
+    credential: { status: 'present', apiKey: 'sk-live-secret-123' },
+  })),
+}
+
+const providerImportCommitResult: ProviderImportCommitResult = {
+  created: [
+    {
+      id: 'generated-provider-1',
+      name: 'Imported Provider',
+      presetId: 'custom',
+      baseUrl: 'https://api.imported.example',
+      apiFormat: 'openai_chat',
+      models: {
+        main: 'gpt-imported',
+        haiku: '',
+        sonnet: '',
+        opus: '',
+      },
+      notes: '',
+    },
+  ],
+  updated: [],
+  skipped: [],
+  errors: [],
+  activeId: 'provider-1',
 }
 
 vi.mock('../api/agents', () => ({
@@ -139,6 +251,7 @@ describe('Settings > General tab', () => {
     tauriProcessMock.relaunch.mockReset()
     tauriProcessMock.relaunch.mockResolvedValue(undefined)
     delete (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__
+    delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker
     MOCK_GET_SETTINGS.mockResolvedValue({})
     MOCK_UPDATE_SETTINGS.mockResolvedValue({})
     providerStoreState.providers = []
@@ -154,6 +267,10 @@ describe('Settings > General tab', () => {
     providerStoreState.testProvider = vi.fn()
     providerStoreState.createProvider = vi.fn()
     providerStoreState.updateProvider = vi.fn()
+    providerStoreState.exportProviders = vi.fn()
+    providerStoreState.exportProvidersWithSecrets = vi.fn()
+    providerStoreState.previewProviderImport = vi.fn()
+    providerStoreState.commitProviderImport = vi.fn()
     providerStoreState.testConfig = vi.fn()
 
     useSettingsStore.setState({
@@ -901,7 +1018,41 @@ describe('Settings > Providers tab', () => {
     ]
     providerStoreState.activeId = null
     providerStoreState.hasLoadedProviders = true
+    providerStoreState.fetchProviders = vi.fn()
+    providerStoreState.fetchPresets = vi.fn()
+    providerStoreState.activateProvider = vi.fn()
+    providerStoreState.activateOfficial = vi.fn()
+    providerStoreState.exportProviders = vi.fn()
+    providerStoreState.exportProvidersWithSecrets = vi.fn()
+    providerStoreState.previewProviderImport = vi.fn()
+    providerStoreState.commitProviderImport = vi.fn()
   })
+
+  async function previewProviderImport(preview: ProviderImportPreview = providerImportPreview) {
+    providerStoreState.previewProviderImport = vi.fn().mockResolvedValue(preview)
+
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Import providers/i }))
+    const dialog = screen.getByRole('dialog', { name: /Import providers/i })
+    fireEvent.change(within(dialog).getByLabelText(/Provider import JSON/i), {
+      target: { value: JSON.stringify(providerImportBundle) },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Preview import/i }))
+
+    await waitFor(() => {
+      expect(providerStoreState.previewProviderImport).toHaveBeenCalledWith({
+        bundle: providerImportBundle,
+      })
+    })
+
+    return screen.getByRole('dialog')
+  }
+
+  function openProviderExportDialog() {
+    fireEvent.click(screen.getByRole('button', { name: /Export providers/i }))
+    return screen.getByRole('dialog', { name: /Export providers/i })
+  }
 
   it('does not query official OAuth status before providers finish loading', () => {
     providerStoreState.providers = []
@@ -921,6 +1072,297 @@ describe('Settings > Providers tab', () => {
     render(<Settings />)
 
     expect(screen.getByTestId('claude-official-login')).toBeInTheDocument()
+  })
+
+  it('exports providers without secrets from the default export action', async () => {
+    providerStoreState.exportProviders = vi.fn().mockResolvedValue(providerSecretFreeExportBundle)
+    providerStoreState.exportProvidersWithSecrets = vi.fn().mockResolvedValue(providerSecretExportBundle)
+
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Export providers/i }))
+    const dialog = screen.getByRole('dialog', { name: /Export providers/i })
+
+    expect(within(dialog).queryByRole('radio', { name: /All/i })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio', { name: /Selected/i })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Clear selection/i })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/Select MiniMax-M2.7-highspeed\(openai\) for export/i)).toBeChecked()
+
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /Generate export JSON/i }))
+    })
+
+    await waitFor(() => {
+      expect(providerStoreState.exportProviders).toHaveBeenCalledWith({ all: true })
+    })
+    expect(providerStoreState.exportProvidersWithSecrets).not.toHaveBeenCalled()
+    const exportJson = within(dialog).getByLabelText('Secret-free export JSON') as HTMLTextAreaElement
+    expect(exportJson.value).toContain('"containsSecrets": false')
+    expect(exportJson.value).not.toContain('sk-live-secret-123')
+    expect(within(dialog).getByRole('button', { name: /Save file/i })).toBeInTheDocument()
+  })
+
+  it('lets users restore all provider selections with a single select-all action', () => {
+    render(<Settings />)
+
+    const dialog = openProviderExportDialog()
+    fireEvent.click(within(dialog).getByLabelText(/Select MiniMax-M2.7-highspeed\(openai\) for export/i))
+
+    expect(within(dialog).getByLabelText(/Select MiniMax-M2.7-highspeed\(openai\) for export/i)).not.toBeChecked()
+    expect(within(dialog).getByRole('button', { name: /Select all/i })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Select all/i }))
+
+    expect(within(dialog).getByLabelText(/Select MiniMax-M2.7-highspeed\(openai\) for export/i)).toBeChecked()
+  })
+
+  it('saves provider export JSON through the file picker when available', async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    const close = vi.fn().mockResolvedValue(undefined)
+    const createWritable = vi.fn().mockResolvedValue({ write, close })
+    const showSaveFilePicker = vi.fn().mockResolvedValue({ createWritable })
+    Object.defineProperty(window, 'showSaveFilePicker', {
+      configurable: true,
+      value: showSaveFilePicker,
+    })
+    providerStoreState.exportProviders = vi.fn().mockResolvedValue(providerSecretFreeExportBundle)
+
+    render(<Settings />)
+
+    const dialog = openProviderExportDialog()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /Generate export JSON/i }))
+    })
+    await waitFor(() => {
+      expect(providerStoreState.exportProviders).toHaveBeenCalledWith({ all: true })
+    })
+
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /Save file/i }))
+    })
+
+    await waitFor(() => {
+      expect(showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({
+        suggestedName: 'cc-jiangxia-providers.secret-free.json',
+      }))
+      expect(write).toHaveBeenCalledWith(expect.stringContaining('"containsSecrets": false'))
+      expect(close).toHaveBeenCalled()
+    })
+    expect(within(dialog).getByText('Provider export JSON saved.')).toBeInTheDocument()
+  })
+
+  it('opens import providers in a dialog that accepts pasted JSON and JSON files', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Import providers/i }))
+    const dialog = screen.getByRole('dialog', { name: /Import providers/i })
+    const importJson = within(dialog).getByLabelText(/Provider import JSON/i) as HTMLTextAreaElement
+    const fileInput = within(dialog).getByLabelText(/Select provider JSON file/i)
+
+    expect(importJson).toBeInTheDocument()
+    expect(fileInput).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: {
+          files: [
+            new File([JSON.stringify(providerImportBundle)], 'providers.json', { type: 'application/json' }),
+          ],
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(importJson.value).toContain('"kind":"cc-jiangxia-provider-bundle"')
+    })
+  })
+
+  it('shows an inline credential exposure warning before credential-bearing provider export', async () => {
+    providerStoreState.exportProvidersWithSecrets = vi.fn().mockResolvedValue(providerSecretExportBundle)
+
+    render(<Settings />)
+
+    const exportDialog = openProviderExportDialog()
+    fireEvent.click(within(exportDialog).getByLabelText(/Include credentials in generated JSON/i))
+
+    expect(within(exportDialog).getByText(/This export includes saved API keys and tokens/i)).toBeInTheDocument()
+    expect(within(exportDialog).getByText(/Anyone with this file can use those credentials/i)).toBeInTheDocument()
+    expect(within(exportDialog).getByLabelText(/I understand this export will include provider credentials/i)).not.toBeChecked()
+    expect(within(exportDialog).getByRole('button', { name: /Generate export JSON/i })).toBeDisabled()
+    expect(providerStoreState.exportProvidersWithSecrets).not.toHaveBeenCalled()
+    expect(providerStoreState.exportProviders).not.toHaveBeenCalled()
+  })
+
+  it('generates credential-bearing provider export after inline acknowledgement', async () => {
+    providerStoreState.exportProvidersWithSecrets = vi.fn().mockResolvedValue(providerSecretExportBundle)
+
+    render(<Settings />)
+
+    const exportDialog = openProviderExportDialog()
+    fireEvent.click(within(exportDialog).getByLabelText(/Include credentials in generated JSON/i))
+    fireEvent.click(within(exportDialog).getByLabelText(/I understand this export will include provider credentials/i))
+    await act(async () => {
+      fireEvent.click(within(exportDialog).getByRole('button', { name: /Generate export JSON/i }))
+    })
+
+    await waitFor(() => {
+      expect(providerStoreState.exportProvidersWithSecrets).toHaveBeenCalledWith({
+        all: true,
+        confirmation: { acknowledgedCredentialExposure: true },
+      })
+    })
+    expect(providerStoreState.exportProviders).not.toHaveBeenCalled()
+    const exportJson = within(exportDialog).getByLabelText('Credential-bearing export JSON') as HTMLTextAreaElement
+    expect(exportJson.value).toContain('"containsSecrets": true')
+    expect(exportJson.value).toContain('sk-live-secret-123')
+  })
+
+  it('previews pasted provider import bundles before any commit action runs', async () => {
+    await previewProviderImport()
+
+    expect(providerStoreState.commitProviderImport).not.toHaveBeenCalled()
+  })
+
+  it('clears stale provider import preview when the pasted JSON changes', async () => {
+    const dialog = await previewProviderImport()
+    const importJson = within(dialog).getByLabelText(/Provider import JSON/i)
+
+    fireEvent.change(importJson, {
+      target: {
+        value: JSON.stringify({
+          ...providerImportBundle,
+          providers: [],
+        }),
+      },
+    })
+
+    expect(within(dialog).queryByText(/Suggested action:/i)).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Import selected/i })).toBeDisabled()
+    expect(providerStoreState.commitProviderImport).not.toHaveBeenCalled()
+  })
+
+  it('shows conflicted provider imports with rename as the default resolution', async () => {
+    const conflictPreview: ProviderImportPreview = {
+      ...providerImportPreview,
+      candidates: [
+        {
+          ...providerImportPreview.candidates[0]!,
+          name: 'MiniMax-M2.7-highspeed(openai)',
+          conflict: {
+            type: 'name',
+            targetProviderId: 'provider-1',
+            targetProviderName: 'MiniMax-M2.7-highspeed(openai)',
+            reason: 'A provider with this name already exists.',
+          },
+          defaultResolution: 'rename',
+          suggestedName: 'MiniMax-M2.7-highspeed(openai) (imported)',
+        },
+      ],
+    }
+
+    const dialog = await previewProviderImport(conflictPreview)
+
+    expect(within(dialog).getByText(/Suggested action:\s*Rename and import/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Suggested action:\s*Replace existing/i)).not.toBeInTheDocument()
+  })
+
+  it('shows duplicate provider conflicts with friendly copy and action buttons', async () => {
+    const conflictPreview: ProviderImportPreview = {
+      ...providerImportPreview,
+      candidates: [
+        {
+          ...providerImportPreview.candidates[0]!,
+          name: 'MiniMax-M2.7-highspeed(openai)',
+          diagnostics: [
+            {
+              code: 'PROVIDER_CONFLICT',
+              severity: 'warning',
+              message: 'Source provider ID already exists locally.',
+              candidateId: '0',
+              path: 'providers[0].sourceProviderId',
+            },
+          ],
+          conflict: {
+            type: 'id',
+            targetProviderId: 'provider-1',
+            targetProviderName: 'MiniMax-M2.7-highspeed(openai)',
+            reason: 'Source provider ID already exists locally.',
+          },
+          defaultResolution: 'rename',
+          suggestedName: 'MiniMax-M2.7-highspeed(openai) (imported)',
+        },
+      ],
+    }
+
+    const dialog = await previewProviderImport(conflictPreview)
+
+    expect(dialog).toHaveTextContent('A provider with this identity is already in your providers.')
+    expect(dialog).toHaveTextContent('Choose how to import this provider.')
+    expect(dialog).not.toHaveTextContent('warning PROVIDER_CONFLICT')
+    expect(dialog).not.toHaveTextContent('PROVIDER_CONFLICT')
+    expect(dialog).not.toHaveTextContent('providers[0].sourceProviderId')
+    expect(dialog).not.toHaveTextContent('Source provider ID already exists locally.')
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Rename and import/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(dialog).getByRole('button', { name: /Replace existing/i })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Skip/i })).toBeInTheDocument()
+  })
+
+  it('shows missing secret diagnostics without rendering raw secret values', async () => {
+    const missingSecretPreview: ProviderImportPreview = {
+      ...providerImportPreview,
+      candidates: [
+        {
+          ...providerImportPreview.candidates[0]!,
+          credentialStatus: 'missing',
+          diagnostics: [
+            {
+              code: 'BUNDLE_INVALID_PROVIDER',
+              severity: 'warning',
+              message: 'API key required before activation.',
+              candidateId: '0',
+            },
+          ],
+        },
+      ],
+    }
+
+    const dialog = await previewProviderImport(missingSecretPreview)
+
+    expect(within(dialog).getByText('API key required before activation.')).toBeInTheDocument()
+    expect(dialog).not.toHaveTextContent('sk-live-secret-123')
+  })
+
+  it('refreshes providers after committing selected import candidates', async () => {
+    providerStoreState.commitProviderImport = vi.fn().mockImplementation(async () => {
+      await providerStoreState.fetchProviders()
+      return providerImportCommitResult
+    })
+    await previewProviderImport()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Import selected/i }))
+    })
+
+    await waitFor(() => {
+      expect(providerStoreState.commitProviderImport).toHaveBeenCalledWith(expect.objectContaining({
+        bundle: providerImportBundle,
+        resolutions: [
+          expect.objectContaining({
+            candidateId: '0',
+            action: 'add',
+          }),
+        ],
+      }))
+      expect(providerStoreState.fetchProviders).toHaveBeenCalledTimes(1)
+      expect(providerStoreState.activateProvider).not.toHaveBeenCalled()
+    })
+
+    const dialog = screen.getByRole('dialog')
+    const importJson = within(dialog).getByLabelText(/Provider import JSON/i) as HTMLTextAreaElement
+    expect(importJson.value).toBe('')
+    expect(within(dialog).queryByText(/Suggested action:/i)).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Import selected/i })).toBeDisabled()
   })
 
   it('requires confirmation before deleting a provider', async () => {

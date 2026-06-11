@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-013",
+  "source_path": "src/entrypoints/cli.tsx",
+  "evidence_type": "code_read",
+  "summary": "Bootstrap entrypoint for CLI. Fast-path for --version (zero imports). Dynamic imports for all other paths. Handles: --dump-system-prompt, --claude-in-chrome-mcp, --chrome-native-host, startup profiler loading. Sets COREPACK_ENABLE_AUTO_PIN=0, configures NODE_OPTIONS for CCR environments. ABLATION_BASELINE feature flag support.",
+  "classification": "critical",
+  "criticality": "critical"
+}

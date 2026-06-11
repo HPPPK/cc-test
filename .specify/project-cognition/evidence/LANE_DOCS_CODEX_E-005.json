@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-005",
+  "source_path": ".codex/skills/sp-debug/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-debug 工作流技能定义：可恢复的调试会话，支持证据收集、根因分析和修复验证",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-029",
+  "source_path": "src/tools/WebFetchTool/WebFetchTool.ts",
+  "evidence_type": "code_read",
+  "summary": "WebFetchTool - fetches URLs, converts to markdown, runs prompt. Zod schema with url+prompt inputs. Returns bytes/code/result/durationMs. Pre-approved host support.",
+  "classification": "critical",
+  "criticality": "critical"
+}

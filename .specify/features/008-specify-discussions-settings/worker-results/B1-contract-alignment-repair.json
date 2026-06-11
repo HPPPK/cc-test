@@ -1,0 +1,46 @@
+{
+  "status": "success",
+  "reported_status": "DONE",
+  "task_id": "B1-contract-alignment-repair",
+  "changed_files": [
+    "src/server/types/providerImportExport.ts",
+    "desktop/src/types/providerImportExport.ts"
+  ],
+  "validation_output": [
+    {
+      "command": "bun -e \"const mod = await import('./src/server/types/providerImportExport.ts'); mod.ProviderImportCommitResultSchema.parse({ created: [], updated: [], skipped: [], errors: [], shouldRefetchProviders: true, activeId: null }); console.log('server providerImportExport schema import/parse ok')\"",
+      "cwd": "F:\\github\\cc-jiangxia",
+      "exit_code": 0,
+      "output": "server providerImportExport schema import/parse ok"
+    },
+    {
+      "command": "bun run lint",
+      "cwd": "F:\\github\\cc-jiangxia\\desktop",
+      "exit_code": 0,
+      "output": "$ tsc --noEmit"
+    },
+    {
+      "command": "rg -n \"activeId|shouldRefetch\" src/server/types/providerImportExport.ts desktop/src/types/providerImportExport.ts",
+      "cwd": "F:\\github\\cc-jiangxia",
+      "exit_code": 0,
+      "output": "desktop/src/types/providerImportExport.ts:157:  shouldRefetchProviders?: boolean\ndesktop/src/types/providerImportExport.ts:158:  activeId: string | null\nsrc/server/types/providerImportExport.ts:222:  shouldRefetchProviders: z.boolean().optional(),\nsrc/server/types/providerImportExport.ts:223:  activeId: z.string().min(1).nullable(),"
+    }
+  ],
+  "must_preserve_evidence": [
+    "Server ProviderImportCommitResultSchema now includes activeId: string | null as response metadata.",
+    "Desktop ProviderImportCommitResult keeps activeId: string | null only on the commit result type.",
+    "No activeId field appears in bundle, export request, preview request, commit request, provider, or resolution types per focused rg check.",
+    "Both files now use the explicit refetch signal name shouldRefetchProviders."
+  ],
+  "concerns": [
+    "git status reports both scoped files as untracked, which matches these new B1 type files."
+  ],
+  "recovery_hints": [],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    "src/server/types/providerImportExport.ts",
+    "desktop/src/types/providerImportExport.ts"
+  ]
+}

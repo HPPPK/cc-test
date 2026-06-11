@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-016",
+  "source_path": ".codex/skills/sp-explain/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-explain 工作流技能定义：用通俗语言解释当前阶段制品、项目认知状态或兼容性导出制品",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

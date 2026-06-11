@@ -35,6 +35,21 @@ import type {
   ApiFormat,
   ProviderAuthStrategy,
 } from '../types/provider.js'
+import type {
+  ProviderBundleProvider,
+  ProviderExportRequest,
+  ProviderExportResponse,
+  ProviderImportCandidate,
+  ProviderImportCommitProviderSummary,
+  ProviderImportCommitRequest,
+  ProviderImportCommitResponse,
+  ProviderImportDiagnostic,
+  ProviderImportPreview,
+  ProviderImportPreviewRequest,
+  ProviderImportPreviewResponse,
+  ProviderImportResolution,
+  ProviderSecretExportConfirmationRequest,
+} from '../types/providerImportExport.js'
 
 const MANAGED_ENV_KEYS = [
   'ANTHROPIC_BASE_URL',
@@ -171,6 +186,232 @@ function buildProviderAuthEnv(
   }
 }
 
+function toSecretFreeBundleProvider(provider: SavedProvider): ProviderBundleProvider {
+  return {
+    sourceProviderId: provider.id,
+    name: provider.name,
+    presetId: provider.presetId,
+    baseUrl: provider.baseUrl,
+    apiFormat: provider.apiFormat ?? 'anthropic',
+    ...(provider.authStrategy !== undefined && { authStrategy: provider.authStrategy }),
+    models: provider.models,
+    ...(provider.autoCompactWindow !== undefined && { autoCompactWindow: provider.autoCompactWindow }),
+    ...(provider.modelContextWindows !== undefined && { modelContextWindows: provider.modelContextWindows }),
+    ...(provider.notes !== undefined && { notes: provider.notes }),
+    credential: provider.apiKey ? { status: 'redacted' } : { status: 'missing' },
+  }
+}
+
+function toCredentialBearingBundleProvider(provider: SavedProvider): ProviderBundleProvider {
+  return {
+    sourceProviderId: provider.id,
+    name: provider.name,
+    presetId: provider.presetId,
+    baseUrl: provider.baseUrl,
+    apiFormat: provider.apiFormat ?? 'anthropic',
+    ...(provider.authStrategy !== undefined && { authStrategy: provider.authStrategy }),
+    models: provider.models,
+    ...(provider.autoCompactWindow !== undefined && { autoCompactWindow: provider.autoCompactWindow }),
+    ...(provider.modelContextWindows !== undefined && { modelContextWindows: provider.modelContextWindows }),
+    ...(provider.notes !== undefined && { notes: provider.notes }),
+    credential: provider.apiKey
+      ? { status: 'present', apiKey: provider.apiKey }
+      : { status: 'missing' },
+  }
+}
+
+function toImportCommitProviderSummary(provider: SavedProvider): ProviderImportCommitProviderSummary {
+  return {
+    id: provider.id,
+    name: provider.name,
+    presetId: provider.presetId,
+    baseUrl: provider.baseUrl,
+    apiFormat: provider.apiFormat ?? 'anthropic',
+    ...(provider.authStrategy !== undefined && { authStrategy: provider.authStrategy }),
+    models: provider.models,
+    ...(provider.autoCompactWindow !== undefined && { autoCompactWindow: provider.autoCompactWindow }),
+    ...(provider.modelContextWindows !== undefined && { modelContextWindows: provider.modelContextWindows }),
+    ...(provider.notes !== undefined && { notes: provider.notes }),
+  }
+}
+
+function toSavedProviderFromBundle(
+  bundleProvider: ProviderBundleProvider,
+  id: string,
+  name: string,
+): SavedProvider {
+  return {
+    id,
+    presetId: bundleProvider.presetId,
+    name,
+    apiKey: bundleProvider.credential.status === 'present' ? bundleProvider.credential.apiKey : '',
+    ...(bundleProvider.authStrategy !== undefined && { authStrategy: bundleProvider.authStrategy }),
+    baseUrl: bundleProvider.baseUrl,
+    apiFormat: bundleProvider.apiFormat ?? 'anthropic',
+    models: normalizeModelMapping(bundleProvider.models),
+    ...(bundleProvider.autoCompactWindow !== undefined && {
+      autoCompactWindow: bundleProvider.autoCompactWindow,
+    }),
+    ...(bundleProvider.modelContextWindows !== undefined && {
+      modelContextWindows: bundleProvider.modelContextWindows,
+    }),
+    ...(bundleProvider.notes !== undefined && { notes: bundleProvider.notes }),
+  }
+}
+
+function makeImportDiagnostic(
+  input: Omit<ProviderImportDiagnostic, 'severity'> & {
+    severity?: ProviderImportDiagnostic['severity']
+  },
+): ProviderImportDiagnostic {
+  return {
+    severity: 'error',
+    ...input,
+  }
+}
+
+function getUniqueProviderName(name: string, providers: SavedProvider[]): string {
+  const existingNames = new Set(providers.map((provider) => provider.name))
+  if (!existingNames.has(name)) {
+    return name
+  }
+
+  const baseName = `${name} (imported)`
+  if (!existingNames.has(baseName)) {
+    return baseName
+  }
+
+  let suffix = 2
+  let candidate = `${baseName} ${suffix}`
+  while (existingNames.has(candidate)) {
+    suffix += 1
+    candidate = `${baseName} ${suffix}`
+  }
+  return candidate
+}
+
+function findImportConflict(
+  bundleProvider: ProviderBundleProvider,
+  providers: SavedProvider[],
+): ProviderImportCandidate['conflict'] {
+  const idMatch = bundleProvider.sourceProviderId
+    ? providers.find((provider) => provider.id === bundleProvider.sourceProviderId)
+    : undefined
+  if (idMatch) {
+    return {
+      type: 'id',
+      targetProviderId: idMatch.id,
+      targetProviderName: idMatch.name,
+      reason: 'Source provider ID already exists locally',
+    }
+  }
+
+  const nameMatch = providers.find((provider) => provider.name === bundleProvider.name)
+  if (nameMatch) {
+    return {
+      type: 'name',
+      targetProviderId: nameMatch.id,
+      targetProviderName: nameMatch.name,
+      reason: 'Provider name already exists locally',
+    }
+  }
+
+  const equivalentConfigMatch = providers.find((provider) =>
+    provider.presetId === bundleProvider.presetId &&
+    provider.baseUrl === bundleProvider.baseUrl &&
+    (provider.apiFormat ?? 'anthropic') === (bundleProvider.apiFormat ?? 'anthropic') &&
+    provider.models.main === bundleProvider.models.main
+  )
+  if (equivalentConfigMatch) {
+    return {
+      type: 'equivalent-config',
+      targetProviderId: equivalentConfigMatch.id,
+      targetProviderName: equivalentConfigMatch.name,
+      reason: 'A provider with equivalent configuration already exists locally',
+    }
+  }
+
+  return null
+}
+
+function buildProviderImportPreview(
+  input: ProviderImportPreviewRequest,
+  index: ProvidersIndex,
+): ProviderImportPreview {
+  const candidates = input.bundle.providers.map((provider, indexInBundle): ProviderImportCandidate => {
+    const candidateId = String(indexInBundle)
+    const diagnostics: ProviderImportDiagnostic[] = []
+    if (provider.credential.status === 'redacted') {
+      diagnostics.push(makeImportDiagnostic({
+        code: 'BUNDLE_INVALID_PROVIDER',
+        severity: 'warning',
+        message: 'Credential value was redacted and will be imported as empty',
+        candidateId,
+        ...(provider.sourceProviderId !== undefined && { sourceProviderId: provider.sourceProviderId }),
+      }))
+    } else if (provider.credential.status === 'missing') {
+      diagnostics.push(makeImportDiagnostic({
+        code: 'BUNDLE_INVALID_PROVIDER',
+        severity: 'warning',
+        message: 'Credential value is missing and will be imported as empty',
+        candidateId,
+        ...(provider.sourceProviderId !== undefined && { sourceProviderId: provider.sourceProviderId }),
+      }))
+    }
+
+    const conflict = findImportConflict(provider, index.providers)
+    if (conflict) {
+      diagnostics.push(makeImportDiagnostic({
+        code: 'PROVIDER_CONFLICT',
+        severity: 'warning',
+        message: conflict.reason,
+        candidateId,
+        ...(provider.sourceProviderId !== undefined && { sourceProviderId: provider.sourceProviderId }),
+      }))
+    }
+
+    const suggestedName = conflict
+      ? getUniqueProviderName(provider.name, index.providers)
+      : provider.name
+
+    return {
+      candidateId,
+      ...(provider.sourceProviderId !== undefined && { sourceProviderId: provider.sourceProviderId }),
+      name: provider.name,
+      credentialStatus: provider.credential.status,
+      valid: true,
+      diagnostics,
+      conflict,
+      defaultResolution: conflict ? 'rename' : 'add',
+      suggestedName,
+    }
+  })
+
+  return {
+    bundle: {
+      schemaVersion: input.bundle.schemaVersion,
+      containsSecrets: input.bundle.containsSecrets,
+      providerCount: input.bundle.providers.length,
+    },
+    candidates,
+    errors: [],
+    canCommit: candidates.every((candidate) => candidate.valid),
+  }
+}
+
+function getResolutionName(
+  resolution: ProviderImportResolution,
+  candidate: ProviderImportCandidate,
+): string {
+  if (resolution.action === 'rename') {
+    return resolution.name
+  }
+  if (resolution.action === 'add' && resolution.name) {
+    return resolution.name
+  }
+  return candidate.suggestedName ?? candidate.name
+}
+
 function getManagedEnvKeys(): string[] {
   const keys = new Set<string>(MANAGED_ENV_KEYS)
   for (const preset of PROVIDER_PRESETS) {
@@ -249,6 +490,151 @@ export class ProviderService {
   async listProviders(): Promise<{ providers: SavedProvider[]; activeId: string | null }> {
     const index = await this.readIndex()
     return { providers: index.providers, activeId: index.activeId }
+  }
+
+  async exportProviders(input: ProviderExportRequest): Promise<ProviderExportResponse> {
+    const index = await this.readIndex()
+    const selectedIds = new Set(input.providerIds)
+    const selectedProviders = input.all
+      ? index.providers
+      : index.providers.filter((provider) => selectedIds.has(provider.id))
+
+    return {
+      bundle: {
+        schemaVersion: 1,
+        kind: 'cc-jiangxia-provider-bundle',
+        exportedAt: new Date().toISOString(),
+        containsSecrets: false,
+        providers: selectedProviders.map(toSecretFreeBundleProvider),
+      },
+    }
+  }
+
+  async exportProvidersWithSecrets(input: ProviderSecretExportConfirmationRequest): Promise<ProviderExportResponse> {
+    const index = await this.readIndex()
+    const selectedIds = new Set(input.providerIds)
+    const selectedProviders = input.all
+      ? index.providers
+      : index.providers.filter((provider) => selectedIds.has(provider.id))
+
+    return {
+      bundle: {
+        schemaVersion: 1,
+        kind: 'cc-jiangxia-provider-bundle',
+        exportedAt: new Date().toISOString(),
+        app: {
+          name: 'cc-jiangxia credential-bearing provider bundle',
+        },
+        containsSecrets: true,
+        providers: selectedProviders.map(toCredentialBearingBundleProvider),
+      },
+    }
+  }
+
+  async previewProviderImport(input: ProviderImportPreviewRequest): Promise<ProviderImportPreviewResponse> {
+    const index = await this.readIndex()
+    return {
+      preview: buildProviderImportPreview(input, index),
+    }
+  }
+
+  async commitProviderImport(input: ProviderImportCommitRequest): Promise<ProviderImportCommitResponse> {
+    const index = await this.readIndex()
+    const preview = buildProviderImportPreview({ bundle: input.bundle }, index)
+    const candidatesById = new Map(preview.candidates.map((candidate) => [candidate.candidateId, candidate]))
+    const providersById = new Map(input.bundle.providers.map((provider, indexInBundle) => [String(indexInBundle), provider]))
+    const resolutionsById = new Map<string, ProviderImportResolution>()
+    const errors: ProviderImportDiagnostic[] = []
+
+    for (const resolution of input.resolutions) {
+      if (resolutionsById.has(resolution.candidateId)) {
+        errors.push(makeImportDiagnostic({
+          code: 'IMPORT_RESOLUTION_INVALID',
+          message: 'Duplicate import resolution for candidate',
+          candidateId: resolution.candidateId,
+        }))
+        continue
+      }
+      resolutionsById.set(resolution.candidateId, resolution)
+    }
+
+    const created: ProviderImportCommitProviderSummary[] = []
+    const updated: ProviderImportCommitProviderSummary[] = []
+    const skipped: ProviderImportCommitResponse['result']['skipped'] = []
+    let providersChanged = false
+
+    for (const [candidateId, resolution] of resolutionsById) {
+      const candidate = candidatesById.get(candidateId)
+      const bundleProvider = providersById.get(candidateId)
+      if (!candidate || !bundleProvider) {
+        errors.push(makeImportDiagnostic({
+          code: 'IMPORT_RESOLUTION_INVALID',
+          message: 'Import resolution references an unknown candidate',
+          candidateId,
+        }))
+        continue
+      }
+
+      if (!candidate.valid) {
+        errors.push(makeImportDiagnostic({
+          code: 'IMPORT_RESOLUTION_INVALID',
+          message: 'Import resolution references an invalid candidate',
+          candidateId,
+          ...(candidate.sourceProviderId !== undefined && { sourceProviderId: candidate.sourceProviderId }),
+        }))
+        continue
+      }
+
+      if (resolution.action === 'skip') {
+        skipped.push({ candidateId, reason: 'Skipped by import resolution' })
+        continue
+      }
+
+      if (resolution.action === 'overwrite') {
+        const targetIndex = index.providers.findIndex((provider) => provider.id === resolution.targetProviderId)
+        if (targetIndex === -1) {
+          errors.push(makeImportDiagnostic({
+            code: 'IMPORT_TARGET_STALE',
+            message: 'Overwrite target provider no longer exists',
+            candidateId,
+            ...(candidate.sourceProviderId !== undefined && { sourceProviderId: candidate.sourceProviderId }),
+          }))
+          continue
+        }
+
+        const overwritten = toSavedProviderFromBundle(
+          bundleProvider,
+          resolution.targetProviderId,
+          bundleProvider.name,
+        )
+        index.providers[targetIndex] = overwritten
+        updated.push(toImportCommitProviderSummary(overwritten))
+        providersChanged = true
+        continue
+      }
+
+      const name = getResolutionName(resolution, candidate)
+      const provider = toSavedProviderFromBundle(bundleProvider, crypto.randomUUID(), name)
+      index.providers.push(provider)
+      created.push(toImportCommitProviderSummary(provider))
+      providersChanged = true
+    }
+
+    if (providersChanged) {
+      await this.writeIndex(index)
+    }
+
+    return {
+      result: {
+        created,
+        updated,
+        skipped,
+        errors,
+        providers: index.providers.map(toImportCommitProviderSummary),
+        shouldRefetchProviders: true,
+        activeId: index.activeId,
+      },
+    }
   }
 
   async getProvider(id: string): Promise<SavedProvider> {

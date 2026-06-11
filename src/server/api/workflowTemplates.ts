@@ -779,6 +779,7 @@ function isAuthoringOperationInput(value: unknown): value is WorkflowTemplateAut
     (
       value.operation === 'guide' ||
       value.operation === 'skill_catalog' ||
+      value.operation === 'skill_create' ||
       value.operation === 'list' ||
       value.operation === 'inspect' ||
       value.operation === 'validate' ||

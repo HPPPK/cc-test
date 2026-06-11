@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-023",
+  "source_path": "src/tools/FileEditTool/FileEditTool.ts",
+  "evidence_type": "code_read",
+  "summary": "FileEditTool - precise string replacement in files. Integrates with LSP diagnostics, file history, skill discovery, team memory secrets guard. Uses buildTool pattern.",
+  "classification": "critical",
+  "criticality": "critical"
+}

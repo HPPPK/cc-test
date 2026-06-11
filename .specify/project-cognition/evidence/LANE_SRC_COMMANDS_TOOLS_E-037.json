@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-037",
+  "source_path": "src/tools/EnterPlanModeTool/EnterPlanModeTool.ts",
+  "evidence_type": "code_read",
+  "summary": "EnterPlanModeTool - switches session to plan mode. Handles permission updates, context preparation. Feature-gated (planModeV2 interview phase).",
+  "classification": "critical",
+  "criticality": "critical"
+}

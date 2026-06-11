@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-019",
+  "source_path": "src/commands/session/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/session' (alias '/remote') - local-jsx command showing remote session URL and QR code. Only enabled in remote mode.",
+  "classification": "normal",
+  "criticality": "normal"
+}

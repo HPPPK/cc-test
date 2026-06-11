@@ -1,0 +1,125 @@
+{
+  "status": "success",
+  "reported_status": "All required local gates now pass individually, but the final `bun run verify` report remains policy-non-green because live-provider-checks are escalated and were not executed in PR mode. The implementation work is complete; only maintainer-authorized live validation or waiver remains.",
+  "task_id": "T016",
+  "changed_files": [
+    {
+      "path": "desktop/src/api/providers.test.ts",
+      "status": "added",
+      "summary": "Added a focused Vitest case that exercises every provider import/export API wrapper method so the changed-lines coverage gate clears."
+    }
+  ],
+  "validation_output": {
+    "bun run check:server": [
+      {
+        "exit_code": 124,
+        "summary": "Initial run timed out after 124s with no test failures reported."
+      },
+      {
+        "exit_code": 0,
+        "summary": "Passed on rerun; server suite finished with 1138 passes, 7 skips, 0 failures."
+      }
+    ],
+    "bun run check:desktop": [
+      {
+        "exit_code": 0,
+        "summary": "Passed; desktop lint, Vitest, and production build all completed successfully."
+      }
+    ],
+    "bun run check:coverage": [
+      {
+        "exit_code": 1,
+        "summary": "Initial run failed; coverage report at artifacts/coverage/2026-06-10T07-58-42-641Z/coverage-report.md showed changed-lines coverage at 33.89% and multiple lane failures."
+      },
+      {
+        "exit_code": 0,
+        "summary": "Passed after adding the provider API coverage test; latest report at artifacts/coverage/2026-06-10T08-12-29-111Z/coverage-report.md shows changed-lines coverage at 90.15%."
+      }
+    ],
+    "bun run check:native": [
+      {
+        "exit_code": 101,
+        "summary": "Initial run failed with tauri-build permission denied because repo-owned target binaries were locked."
+      },
+      {
+        "exit_code": 0,
+        "summary": "Passed after stopping the repo-owned lock-holding processes `cc-jiangxia-desktop`, `claude-sidecar`, and `tauri`; cargo check completed successfully."
+      }
+    ],
+    "bun run verify": [
+      {
+        "exit_code": 1,
+        "summary": "Final PR quality report at artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.md shows 9 passed, 0 failed, 2 skipped, but the run is still marked not ready because live-provider-checks were escalated and not executed in PR mode."
+      }
+    ],
+    "bun run quality:providers": [
+      {
+        "exit_code": 0,
+        "summary": "Confirmed available provider selectors: current-runtime, glm:main:glm-main, deepseek:main:deepseek-main, deepseek:haiku:deepseek-haiku, mimo:main:mimo-main, and openai:main:openai-main."
+      }
+    ]
+  },
+  "report_paths": {
+    "quality": [
+      "artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.md",
+      "artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.json",
+      "artifacts/quality-runs/2026-06-10T08-25-52-251Z/junit.xml"
+    ],
+    "coverage": [
+      "artifacts/coverage/2026-06-10T08-29-24-154Z/coverage-report.md",
+      "artifacts/coverage/2026-06-10T08-29-24-154Z/coverage-report.json"
+    ]
+  },
+  "must_preserve_evidence": {
+    "G-SEC-REDIRECT": "Server-owned export tests and service coverage passed; no frontend-only credential security boundary was introduced.",
+    "G-NO-ACTIVE": "Final server tests cover active/default non-transfer and passed in check:server.",
+    "G-PREVIEW-COMMIT": "Final server and desktop tests cover preview before commit, commit refresh, and side-effect-free preview.",
+    "G-CONFLICT": "Final import tests cover conflict defaults and explicit overwrite behavior.",
+    "G-SECRET-EXPORT": "Final tests cover separate confirmed credential-bearing export path and non-remembered desktop confirmation.",
+    "G-SCOPE": "No .env, credential, user config, or unrelated state files were edited.",
+    "G-TEST": "check:server, check:desktop, check:coverage, and all non-live verify lanes passed.",
+    "CA-001": "Default export redaction is covered by server tests.",
+    "CA-002": "Preview side-effect-free behavior is covered by server tests.",
+    "CA-003": "Import active/default non-mutation is covered by server tests.",
+    "CA-004": "Conflict default and explicit overwrite behavior are covered by tests.",
+    "CA-005": "Generated local IDs are covered by server import tests.",
+    "CA-006": "Default export does not rely on frontend masking.",
+    "CA-007": "Secret export requires per-request confirmation and is labeled credential-bearing."
+  },
+  "blockers": [
+    {
+      "owner": "maintainer",
+      "summary": "The PR quality gate remains policy-non-green because live-provider-checks are escalated and were not executed in PR mode, even though all executed local lanes passed.",
+      "exact_next_action": "Run the live-provider gate in a maintainer-authorized environment with a configured selector, for example `bun run quality:gate --mode baseline --allow-live --provider-model openai:main:openai-main`, or explicitly waive the live-provider-checks lane.",
+      "evidence": "artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.md shows `Passed: 9`, `Failed: 0`, `Skipped: 2`, `Blocked by policy: yes`, and `Escalated Checks: live-provider-checks`.",
+      "unblock_criteria": "Live-provider-checks complete successfully or a maintainer records an explicit waiver for that lane.",
+      "implementation_can_continue": true
+    }
+  ],
+  "concerns": [
+    "The latest verify run is not failing on code quality; it is blocked by policy because live-provider-checks were not executed in PR mode.",
+    "The worktree remains dirty from pre-existing feature work; unrelated files were not normalized or reverted."
+  ],
+  "recovery_hints": [
+    "If a green end-to-end PR gate is required, run the live-provider gate with one of the configured selectors reported by `bun run quality:providers`.",
+    "No additional source changes are needed for the current coverage or native issues."
+  ],
+  "inspected_references": [
+    "desktop/src/api/providers.ts",
+    "desktop/src/api/providers.test.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/types/providerImportExport.ts",
+    "src/server/api/providers.ts",
+    "artifacts/coverage/2026-06-10T08-29-24-154Z/coverage-report.md",
+    "artifacts/quality-runs/2026-06-10T08-25-52-251Z/report.md"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

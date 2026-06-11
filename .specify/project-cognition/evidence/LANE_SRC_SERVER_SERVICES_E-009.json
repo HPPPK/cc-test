@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-009",
+  "source_path": "src/server/middleware/auth.ts",
+  "evidence_type": "code_read",
+  "summary": "Authentication middleware using Anthropic API Key via Bearer token. Validates Authorization header against ANTHROPIC_API_KEY env var. Also supports H5 token authentication.",
+  "classification": "critical",
+  "criticality": "critical"
+}

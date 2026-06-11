@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-012",
+  "source_path": "src/commands/createMovedToPluginCommand.ts",
+  "evidence_type": "code_read",
+  "summary": "Factory function creating commands that redirect to marketplace plugins. Handles private marketplace transition with fallback prompts.",
+  "classification": "normal",
+  "criticality": "normal"
+}

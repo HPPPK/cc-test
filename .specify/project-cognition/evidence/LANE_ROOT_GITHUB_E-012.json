@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-012",
+  "source_path": "CLAUDE.md",
+  "evidence_type": "config_read",
+  "summary": "Project-level Claude instructions: active technologies placeholder, project structure (.specify/, features/), commands (specify check, specify --help), command surface rules (treat live specify --help as authoritative), code style (follow existing conventions), workflow recovery rules (lane-first not branch-first, durable lane state), Spec Kit Plus managed rules ([AGENT] markers), always-on context (project cognition and memory available), workflow recommendations (sp-discussion, sp-specify, sp-deep-research, sp-debug), durable state rules.",
+  "classification": "important",
+  "criticality": "important"
+}

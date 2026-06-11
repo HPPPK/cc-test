@@ -326,3 +326,93 @@
 - open_question_delta:
   - handoff review blocker resolved.
 - semantic_checkpoint_required: yes
+
+## 2026-06-11T10:25:40.4674106+08:00
+
+- event_kind: discussion-reopened
+- user_input_summary: User selected workflows as an execution constraint system and asked to discuss workflow field design and what the constraint system means.
+- agent_conclusion: Reopened the workflows discussion from prior handoff-ready state. Recommended field model separates phase intent from phase contract. Intent fields explain purpose; contract fields constrain intake, allowed/forbidden behavior, required artifacts, completion criteria, evidence, handoff, transition authority, and phase-skill audit. Constraint strengths should be guidance, policy, evidence, and gate rather than treating every field as hard blocking.
+- evidence_used:
+  - project cognition query readiness review with partial facet coverage and false-positive GitHub Actions workflow candidate
+  - `src/server/services/workflowTypes.ts`
+  - `src/server/services/workflowRuntimeService.ts`
+  - `src/server/services/workflowToolPolicy.ts`
+  - `desktop/src/components/workflow/WorkflowTemplateEditor.tsx`
+  - `.specify/discussions/workflows/requirements.md`
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/open-questions.md`
+- open_question_delta:
+  - next decision: soft-by-default phase contract vs explicit per-field severity such as advisory/required/blocking
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T10:29:29.6375779+08:00
+
+- event_kind: recommendation-assessment
+- user_input_summary: User asked whether the proposed workflow constraint design is the best or most effective design.
+- agent_conclusion: Assessed the proposal as the most effective first design, not the theoretical maximum. Recommended keeping the phase-contract model, soft-by-default constraints, and sparse hard gates for artifacts, completion criteria, and transition authority. Rejected first-scope full workflow-engine semantics, severity on every field, and hard-gating every instruction because they increase brittleness and authoring cost before the core value is proven.
+- evidence_used:
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/discussion-state.md`
+  - prior truth pass evidence for workflow types, runtime prompt assembly, workflow-scoped completion tool, and template editor fields
+- open_question_delta:
+  - next decision moves from whether soft-by-default is acceptable to exact schema grouping for phase intent, contract, evidence policy, and runtime state.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T10:32:32.7706558+08:00
+
+- event_kind: schema-grouping-refined
+- user_input_summary: User agreed to continue refining the field structure.
+- agent_conclusion: Recommended grouped semantics with `intent`, `contract`, `evidencePolicy`, and session-owned `runtimeState`. Persistence should remain compatibility-aware: existing flat workflow fields can be mapped into the grouped model first, while future migration to direct grouped storage should wait for import/export validation and old-template fixture coverage.
+- evidence_used:
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/discussion-state.md`
+  - prior truth pass evidence for current workflow schema and editor fields
+- open_question_delta:
+  - next decision: whether the authoring UI should mirror the grouped model directly.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T10:34:24.4429462+08:00
+
+- event_kind: ui-grouping-confirmed
+- user_input_summary: User accepted continuing with UI grouping based on the grouped workflow field model.
+- agent_conclusion: Confirmed UI grouping: template authoring should expose editable Intent, Contract, and Evidence groups, while Runtime Status belongs to running workflow/session views. Runtime status should not be stored as editable template data.
+- evidence_used:
+  - user confirmation
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/requirements.md`
+- open_question_delta:
+  - next decision: define phase lifecycle/status behavior across ready, running, blocked, pending confirmation, completed, failed, cancelled, and resumed states.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T16:18:11.3555613+08:00
+
+- event_kind: lifecycle-model-refined
+- user_input_summary: User asked to continue the workflow discussion after UI grouping confirmation.
+- agent_conclusion: Recommended separating lifecycle status from completion submission status. Phase/session lifecycle should use created/running/pending-confirmation/completed/failed/cancelled/resume and source-status markers. Completion attempts should use ready/blocked/unable. Blocked and unable should remain recoverable outcomes inside running unless the runtime itself failed. Pending confirmation must resolve through confirm/reject/retry and should block duplicate ready submissions.
+- evidence_used:
+  - `src/server/services/workflowTypes.ts`
+  - `src/server/services/workflowRuntimeService.ts`
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/requirements.md`
+  - `.specify/discussions/workflows/open-questions.md`
+- open_question_delta:
+  - added and resolved OQ-016 for lifecycle status model.
+  - next decision: runtime UI controls and authority labels for confirm, reject, retry, cancel, resume, and auto-advance.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T16:50:38.3889373+08:00
+
+- event_kind: runtime-control-model-refined
+- user_input_summary: User accepted continuing into runtime UI controls and authority labels.
+- agent_conclusion: Recommended first-scope phase controls remain focused on completion/transition authority: Confirm/Reject/Retry for pending confirmation, Manually complete phase for explicit user override with summary/evidence, Retry only for blocked/unable outcomes, and auto-advance as an authority label. Cancel and resume should be session-level lifecycle/recovery controls, not phase completion controls.
+- evidence_used:
+  - project cognition attempted but unavailable: `project-cognition.exe` command not found and no local executable found by `rg --files`
+  - `desktop/src/types/session.ts`
+  - `desktop/src/components/workflow/WorkflowTransitionControls.tsx`
+  - `desktop/src/components/workflow/WorkflowStatusPanel.tsx`
+  - `desktop/src/pages/ActiveSession.tsx`
+  - `desktop/src/components/workflow/WorkflowComponents.test.tsx`
+- open_question_delta:
+  - added and resolved OQ-017 for runtime UI controls and authority labels.
+  - next decision: final handoff shape if user wants the refined workflow contract discussion carried to sp-specify.
+- semantic_checkpoint_required: yes

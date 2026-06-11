@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-022",
+  "source_path": "src/migrations/migrateAutoUpdatesToSettings.ts",
+  "evidence_type": "code_read",
+  "summary": "Migration: moves autoUpdates=false from globalConfig to settings.json env DISABLE_AUTOUPDATER=1. Skips if autoUpdatesProtectedForNative=true. Idempotent. Cleans up globalConfig after migration.",
+  "classification": "critical",
+  "criticality": "medium"
+}

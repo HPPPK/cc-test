@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-004",
+  "source_path": ".codex/skills/sp-implement/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-implement 工作流技能定义：通过跟踪的实现工作流执行计划工作，使用子代理分发和验证",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

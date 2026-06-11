@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
+import { withStreamIdleTimeout } from '../proxy/handler.js'
 import { openaiChatStreamToAnthropic } from '../proxy/streaming/openaiChatStreamToAnthropic.js'
 import { openaiResponsesStreamToAnthropic } from '../proxy/streaming/openaiResponsesStreamToAnthropic.js'
 
@@ -51,7 +52,49 @@ async function collectSse(stream: ReadableStream<Uint8Array>): Promise<Array<{ e
   return events
 }
 
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // ─── OpenAI Chat Completions SSE → Anthropic SSE ───────────────
+
+describe('withStreamIdleTimeout', () => {
+  test('passes through chunks when the stream stays active', async () => {
+    const encoder = new TextEncoder()
+    const upstream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        await delay(2)
+        controller.enqueue(encoder.encode('a'))
+        await delay(2)
+        controller.enqueue(encoder.encode('b'))
+        controller.close()
+      },
+    })
+
+    const reader = withStreamIdleTimeout(upstream, 50).getReader()
+    const first = await reader.read()
+    const second = await reader.read()
+    const done = await reader.read()
+
+    expect(new TextDecoder().decode(first.value)).toBe('a')
+    expect(new TextDecoder().decode(second.value)).toBe('b')
+    expect(done.done).toBe(true)
+  })
+
+  test('fails when upstream stream is idle for too long', async () => {
+    let canceled = false
+    const upstream = new ReadableStream<Uint8Array>({
+      cancel() {
+        canceled = true
+      },
+    })
+
+    const reader = withStreamIdleTimeout(upstream, 5).getReader()
+
+    await expect(reader.read()).rejects.toThrow('Upstream stream idle timeout')
+    expect(canceled).toBe(true)
+  })
+})
 
 describe('openaiChatStreamToAnthropic', () => {
   test('basic text streaming', async () => {

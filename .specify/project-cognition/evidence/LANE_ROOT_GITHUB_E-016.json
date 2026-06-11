@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-016",
+  "source_path": ".github/ISSUE_TEMPLATE/bug_report.md",
+  "evidence_type": "config_read",
+  "summary": "Bug report template (Chinese): pre-submission checklist (read FAQ, upgrade, search existing, hide secrets). Sections: problem description, runtime environment (desktop/CLI, OS, version, install source), provider/model config, reproduction steps, error logs, screenshots, supplementary info. Auto-triggers @dosubot.",
+  "classification": "minor",
+  "criticality": "minor"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-013",
+  "source_path": "src/services/api/errors.ts",
+  "evidence_type": "code_read",
+  "summary": "API error handling and classification. Wraps Anthropic SDK errors into user-facing messages. Handles rate limits, overage, connection errors, prompt-too-long. Types for ClaudeAI limits, overage disabled reasons.",
+  "classification": "critical",
+  "criticality": "high"
+}

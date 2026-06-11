@@ -1,0 +1,22 @@
+{
+  "source": "sp-debug",
+  "slug": "workflow-linked-source-completed-session",
+  "summary": "Linked workflow start now allows completed workflow sessions as historical context sources while preserving rejection for non-completed workflow source sessions.",
+  "behavior_surfaces": [
+    "server.api.sessions.workflow",
+    "desktop.workflow.api-client"
+  ],
+  "changed_files": [
+    "src/server/services/workflowSessionLinkService.ts",
+    "src/server/__tests__/sessions.test.ts"
+  ],
+  "evidence": [
+    "RED: bun test src/server/__tests__/sessions.test.ts -t \"completed workflow source sessions\" failed with expected 201 / received 400 before the production fix.",
+    "GREEN: bun test src/server/__tests__/sessions.test.ts -t \"completed workflow source sessions|non-completed workflow source\" passed 2 tests.",
+    "GUARD: bun test src/server/__tests__/sessions.test.ts -t \"WorkflowSessionLinkService should reject non-completed workflow\" passed 1 test."
+  ],
+  "contracts": [
+    "Completed workflow sessions are terminal historical context and may be used as linked workflow sources.",
+    "Non-completed workflow sessions remain invalid linked workflow sources."
+  ]
+}

@@ -51,3 +51,6 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+
+# Workflow/runtime state - not project graph evidence
+.specify/

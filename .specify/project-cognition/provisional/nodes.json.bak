@@ -1,0 +1,728 @@
+{
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "spec-kit-plus-workflow-skills",
+      "paths": [
+        ".codex/skills/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "sp-skills",
+          "workflow-skills",
+          "spec-kit-plus-skills"
+        ],
+        "domain": "workflow-automation",
+        "owner": "spec-kit-plus",
+        "workflow": "spec-kit-plus",
+        "route": "sp-*",
+        "route_hints": [
+          "$sp-specify",
+          "$sp-plan",
+          "$sp-implement",
+          "$sp-debug",
+          "$sp-deep-research",
+          "$sp-discussion",
+          "$sp-analyze",
+          "$sp-map-scan",
+          "$sp-map-build",
+          "$sp-tasks",
+          "$sp-quick",
+          "$sp-clarify",
+          "$sp-checklist",
+          "$sp-constitution",
+          "$sp-explain",
+          "$sp-fast",
+          "$sp-auto",
+          "$sp-map-update",
+          "$sp-prd-scan"
+        ],
+        "verification_hints": [
+          "specify --help",
+          "uvx --from git+https://github.com/chenziyang110/spec-kit-plusgit-history@8ab9ec8767203c4fe11eac38d901a9d56435d20d specify"
+        ]
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "workflow",
+      "title": "feature-development-workflow",
+      "paths": [
+        ".codex/skills/sp-specify/SKILL.md",
+        ".codex/skills/sp-plan/SKILL.md",
+        ".codex/skills/sp-tasks/SKILL.md",
+        ".codex/skills/sp-implement/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-004"
+      ],
+      "attrs": {
+        "aliases": [
+          "specify-plan-tasks-implement",
+          "full-workflow",
+          "feature-workflow"
+        ],
+        "domain": "feature-development",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-specify -> sp-plan -> sp-tasks -> sp-implement"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "workflow",
+      "title": "project-cognition-workflow",
+      "paths": [
+        ".codex/skills/sp-map-scan/SKILL.md",
+        ".codex/skills/sp-map-build/SKILL.md",
+        ".codex/skills/sp-map-update/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-019"
+      ],
+      "attrs": {
+        "aliases": [
+          "map-scan-build-update",
+          "cognition-workflow",
+          "project-cognition"
+        ],
+        "domain": "project-cognition",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-map-scan -> sp-map-build -> sp-map-update"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "workflow",
+      "title": "quality-assurance-workflow",
+      "paths": [
+        ".codex/skills/sp-analyze/SKILL.md",
+        ".codex/skills/sp-checklist/SKILL.md",
+        ".codex/skills/sp-constitution/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015"
+      ],
+      "attrs": {
+        "aliases": [
+          "analyze-checklist-constitution",
+          "qa-workflow",
+          "quality-workflow"
+        ],
+        "domain": "quality-assurance",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-analyze | sp-checklist | sp-constitution"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "workflow",
+      "title": "research-and-clarification-workflow",
+      "paths": [
+        ".codex/skills/sp-discussion/SKILL.md",
+        ".codex/skills/sp-clarify/SKILL.md",
+        ".codex/skills/sp-deep-research/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-006"
+      ],
+      "attrs": {
+        "aliases": [
+          "discussion-clarify-research",
+          "research-workflow",
+          "clarification-workflow"
+        ],
+        "domain": "research-clarification",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-discussion -> sp-clarify -> sp-deep-research"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "workflow",
+      "title": "execution-and-debugging-workflow",
+      "paths": [
+        ".codex/skills/sp-implement/SKILL.md",
+        ".codex/skills/sp-debug/SKILL.md",
+        ".codex/skills/sp-quick/SKILL.md",
+        ".codex/skills/sp-fast/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-017"
+      ],
+      "attrs": {
+        "aliases": [
+          "implement-debug-quick-fast",
+          "execution-workflow",
+          "debugging-workflow"
+        ],
+        "domain": "execution-debugging",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-implement | sp-debug | sp-quick | sp-fast"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "workflow",
+      "title": "automation-and-routing-workflow",
+      "paths": [
+        ".codex/skills/sp-auto/SKILL.md",
+        ".codex/skills/sp-explain/SKILL.md",
+        ".codex/skills/sp-prd-scan/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "auto-explain-prd",
+          "automation-workflow",
+          "routing-workflow"
+        ],
+        "domain": "automation-routing",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-auto | sp-explain | sp-prd-scan"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "config",
+      "title": "codex-configuration",
+      "paths": [
+        ".codex/config.toml"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-001"
+      ],
+      "attrs": {
+        "aliases": [
+          "codex-config",
+          "config-toml"
+        ],
+        "domain": "configuration",
+        "owner": "spec-kit-plus"
+      }
+    },
+    {
+      "id": "N-GIT-001",
+      "type": "state",
+      "title": "Project Evolution Timeline",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-001",
+        "LANE_GIT_EVOLUTION_E-GIT-004"
+      ],
+      "attrs": {
+        "aliases": [
+          "git history",
+          "project timeline",
+          "commit history"
+        ],
+        "domain": "evolution",
+        "owner": "project",
+        "start_date": "2026-03-31",
+        "latest_date": "2026-06-02",
+        "total_commits": 843,
+        "peak_months": [
+          "2026-04",
+          "2026-05"
+        ]
+      }
+    },
+    {
+      "id": "N-GIT-002",
+      "type": "state",
+      "title": "Contributor Patterns",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-002",
+        "LANE_GIT_EVOLUTION_E-GIT-006"
+      ],
+      "attrs": {
+        "aliases": [
+          "contributors",
+          "authors",
+          "team"
+        ],
+        "domain": "people",
+        "owner": "project",
+        "primary_author": "程序员阿江(Relakkes)",
+        "primary_commit_ratio": "87%",
+        "community_prs": 5
+      }
+    },
+    {
+      "id": "N-GIT-003",
+      "type": "state",
+      "title": "Branch Strategy",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-003"
+      ],
+      "attrs": {
+        "aliases": [
+          "branches",
+          "branching model",
+          "git flow"
+        ],
+        "domain": "workflow",
+        "owner": "project",
+        "active_branches": [
+          "main",
+          "007-workflow-phase-skills",
+          "008-specify-discussions-settings"
+        ],
+        "remote_branches": [
+          "origin/main",
+          "origin/006-agent-workflow-authoring-tools"
+        ],
+        "strategy": "numbered feature branches off main"
+      }
+    },
+    {
+      "id": "N-GIT-004",
+      "type": "state",
+      "title": "Active Development Areas",
+      "paths": [],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-005"
+      ],
+      "attrs": {
+        "aliases": [
+          "hot paths",
+          "changed directories",
+          "focus areas"
+        ],
+        "domain": "architecture",
+        "owner": "project",
+        "areas": [
+          "Desktop/Tauri app",
+          "Goal system",
+          "Agent system",
+          "Plugin/skill system",
+          ".specify/ scaffolding"
+        ]
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "module",
+      "title": "Docs Deployment Workflow",
+      "paths": [
+        "git-historyhub/workflows/deploy-docs.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-010"
+      ],
+      "attrs": {
+        "aliases": [
+          "docs CI",
+          "VitePress deploy"
+        ],
+        "domain": "ci-cd",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "module",
+      "title": "Repository Guidelines (AGENTS.md)",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ],
+      "attrs": {
+        "aliases": [
+          "repo guidelines",
+          "quality contract"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "module",
+      "title": "Claude Project Instructions",
+      "paths": [
+        "CLAUDE.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-012"
+      ],
+      "attrs": {
+        "aliases": [
+          "claude config",
+          "AI instructions"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "module",
+      "title": "Contributing Guide",
+      "paths": [
+        "CONTRIBUTING.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-013"
+      ],
+      "attrs": {
+        "aliases": [
+          "contrib guide"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "module",
+      "title": "GitHub Community Configuration",
+      "paths": [
+        "git-historyhub/copilot-instructions.md",
+        "git-historyhub/pull_request_template.md",
+        "git-historyhub/ISSUE_TEMPLATE/bug_report.md",
+        "git-historyhub/ISSUE_TEMPLATE/question.md",
+        "git-historyhub/ISSUE_TEMPLATE/config.yml",
+        "git-historyhub/FUNDING.yml"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-014",
+        "LANE_ROOT_GITHUB_E-015",
+        "LANE_ROOT_GITHUB_E-016",
+        "LANE_ROOT_GITHUB_E-017",
+        "LANE_ROOT_GITHUB_E-018",
+        "LANE_ROOT_GITHUB_E-022"
+      ],
+      "attrs": {
+        "aliases": [
+          "GitHub config",
+          "community templates"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "module",
+      "title": "Project Documentation (README)",
+      "paths": [
+        "README.md",
+        "README.en.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-019",
+        "LANE_ROOT_GITHUB_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "readme",
+          "project docs"
+        ],
+        "domain": "docs",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-015",
+      "type": "module",
+      "title": "Project License",
+      "paths": [
+        "LICENSE"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-021"
+      ],
+      "attrs": {
+        "aliases": [
+          "license"
+        ],
+        "domain": "governance",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-016",
+      "type": "module",
+      "title": "Cognition Ignore Rules",
+      "paths": [
+        ".cognitionignore"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-023"
+      ],
+      "attrs": {
+        "aliases": [
+          "cognition config"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-017",
+      "type": "module",
+      "title": "Placeholder Config Files",
+      "paths": [
+        "complexity.json",
+        "intent.json",
+        "route.json",
+        "handoff-to-specify.json"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-024",
+        "LANE_ROOT_GITHUB_E-025",
+        "LANE_ROOT_GITHUB_E-026",
+        "LANE_ROOT_GITHUB_E-027"
+      ],
+      "attrs": {
+        "aliases": [
+          "empty placeholders"
+        ],
+        "domain": "config",
+        "owner": "NanmiCoder"
+      }
+    },
+    {
+      "id": "N-018",
+      "type": "tool",
+      "title": "MCP Tools (MCP/McpAuth/ListMcpResources/ReadMcpResource)",
+      "paths": [
+        "src/tools/MCPTool/",
+        "src/tools/McpAuthTool/",
+        "src/tools/ListMcpResourcesTool/",
+        "src/tools/ReadMcpResourceTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-034"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-019",
+      "type": "tool",
+      "title": "SkillTool - Skill Invocation",
+      "paths": [
+        "src/tools/SkillTool/",
+        "src/tools/DiscoverSkillsTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-027"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-020",
+      "type": "tool",
+      "title": "TodoWriteTool - Session Checklist",
+      "paths": [
+        "src/tools/TodoWriteTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-028"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-021",
+      "type": "tool",
+      "title": "NotebookEditTool - Jupyter Editing",
+      "paths": [
+        "src/tools/NotebookEditTool/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-033"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-022",
+      "type": "tool",
+      "title": "Team Tools (Create/Delete)",
+      "paths": [
+        "src/tools/TeamCreateTool/",
+        "src/tools/TeamDeleteTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-023",
+      "type": "tool",
+      "title": "LSPTool - Language Server Integration",
+      "paths": [
+        "src/tools/LSPTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-024",
+      "type": "tool",
+      "title": "Shared Tool Utilities",
+      "paths": [
+        "src/tools/shared/",
+        "src/tools/utils.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-038",
+        "LANE_SRC_COMMANDS_TOOLS_E-039",
+        "LANE_SRC_COMMANDS_TOOLS_E-040"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-025",
+      "type": "tool",
+      "title": "Stub Tools (Ant-Internal DCE)",
+      "paths": [
+        "src/tools/MonitorTool/",
+        "src/tools/OverflowTestTool/",
+        "src/tools/PushNotificationTool/",
+        "src/tools/RemoteTriggerTool/",
+        "src/tools/REPLTool/",
+        "src/tools/ReviewArtifactTool/",
+        "src/tools/ScheduleCronTool/",
+        "src/tools/SendMessageTool/",
+        "src/tools/SendUserFileTool/",
+        "src/tools/SnipTool/",
+        "src/tools/SubmitPhaseCompletionTool/",
+        "src/tools/SubscribePRTool/",
+        "src/tools/SuggestBackgroundPRTool/",
+        "src/tools/SyntheticOutputTool/",
+        "src/tools/TerminalCaptureTool/",
+        "src/tools/TungstenTool/",
+        "src/tools/VerifyPlanExecutionTool/",
+        "src/tools/WorkflowTemplateAuthoringTool/",
+        "src/tools/WorkflowTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-046"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "ant-internal"
+      }
+    },
+    {
+      "id": "N-026",
+      "type": "tool",
+      "title": "Other Tools (Brief/Config/CtxInspect/ListPeers/Sleep/ToolSearch)",
+      "paths": [
+        "src/tools/BriefTool/",
+        "src/tools/ConfigTool/",
+        "src/tools/CtxInspectTool/",
+        "src/tools/ListPeersTool/",
+        "src/tools/SleepTool/",
+        "src/tools/ToolSearchTool/",
+        "src/tools/AskUserQuestionTool/"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "tools",
+        "owner": "core"
+      }
+    }
+  ]
+}

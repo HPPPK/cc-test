@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-013",
+  "source_path": "src/commands.ts",
+  "evidence_type": "code_read",
+  "summary": "Central slash command registry. Imports 50+ command modules: add-dir, autofix-pr, backfill-sessions, btw, good-claude, issue, feedback, goal, clear, color, commit, copy, desktop, commit-push-pr, compact, config, context, cost, diff, ctx_viz, doctor, memory, help, ide, init, keybindings, login, logout, mcp, mobile, onboarding, pr_comments, release-notes, rename, resume, review, session, share, skills, status, tasks, teleport, etc.",
+  "classification": "important",
+  "criticality": "important"
+}

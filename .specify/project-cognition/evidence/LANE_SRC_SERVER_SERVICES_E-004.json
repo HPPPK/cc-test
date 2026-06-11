@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-004",
+  "source_path": "src/server/services/conversationService.ts",
+  "evidence_type": "code_read",
+  "summary": "CLI subprocess manager. Each desktop session owns one CLI subprocess communicating over SDK WebSocket bridge. Manages spawn, permission requests, SDK messages, output callbacks. Supports file/image attachments.",
+  "classification": "critical",
+  "criticality": "critical"
+}

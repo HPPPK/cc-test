@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-041",
+  "source_path": "src/commands/insights.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for ant-internal feature-gated module. Proxy-based no-op for DCE compatibility.",
+  "classification": "normal",
+  "criticality": "low"
+}

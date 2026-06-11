@@ -1,0 +1,79 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "task_id": "T011",
+  "changed_files": [
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "validation_output": {
+    "project_cognition": {
+      "command": "project-cognition.exe lexicon --intent implement --query='T011 desktop provider import preview commit dialog store actions i18n' --mode catalog --format json",
+      "exit_code": 1,
+      "summary": "Blocked by missing .specify/project-cognition/project-cognition.db while status.json exists; continued with authoritative feature artifacts and live code evidence."
+    },
+    "generalSettings": {
+      "command": "cd desktop && bun run test -- generalSettings",
+      "exit_code": 0,
+      "summary": "1 test file passed; 47 tests passed. Existing React act(...) warnings from GeneralSettings were emitted."
+    },
+    "providerStore": {
+      "command": "cd desktop && bun run test -- providerStore",
+      "exit_code": 0,
+      "summary": "1 test file passed; 6 tests passed."
+    },
+    "lint": {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 0,
+      "summary": "tsc --noEmit passed."
+    },
+    "debug_leftovers_check": {
+      "command": "rg console.log|debugger|includeSecrets|defaultProviderId|export-with-secrets|sk-live-secret-123 in owned desktop files",
+      "exit_code": 0,
+      "summary": "No debug leftovers or forbidden secret-export UI markers found; activeId occurrences are existing provider-list/default-state reads, not import payload transfer."
+    }
+  },
+  "must_preserve_evidence": {
+    "CA_002_MP_008_G_PREVIEW_COMMIT": "Settings import dialog parses pasted JSON and calls previewProviderImport({ bundle }) from Preview import; commitProviderImport is only called from Import selected after preview and selected resolutions exist.",
+    "CA_004_MP_006_G_CONFLICT": "Preview candidates render default resolution text from server preview; conflict candidates offer rename/overwrite/skip, with rename preserved as the displayed default when supplied by preview.",
+    "CA_003_MP_007_G_NO_ACTIVE": "Desktop commit sends only bundle plus candidate resolutions; no active/default provider fields are added. Store commit refreshes providers after success and does not call activateProvider or activateOfficial.",
+    "diagnostics_no_raw_secret": "Diagnostics are rendered from server messages and additionally passed through a defensive sanitizer that redacts any credential.apiKey values present in the pasted bundle before display.",
+    "G_TEST": "T010 Settings tests now pass, providerStore tests pass, and desktop TypeScript no-emit lint passes."
+  },
+  "concerns": [
+    "Project cognition remains unavailable because project-cognition.db is missing; no cognition state was modified.",
+    "generalSettings passes but emits pre-existing React act(...) warnings from unrelated GeneralSettings cases."
+  ],
+  "recovery_hints": [
+    "If a future full gate fails on provider import backend availability, verify T009 server routes exist for /api/providers/import/preview and /api/providers/import/commit."
+  ],
+  "inspected_references": [
+    ".codex/skills/sp-implement/SKILL.md",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md",
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/worker-results/T010.json",
+    "desktop/src/types/providerImportExport.ts",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

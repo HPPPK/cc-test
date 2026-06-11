@@ -1,0 +1,25 @@
+{
+  "lane_id": "workflow-plus-menu-continuation",
+  "objective": "Fix completed workflow sessions so the current session plus menu offers a workflow continuation/start option using existing workflow launcher/API patterns.",
+  "scope": [
+    "desktop/src/components/chat",
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/components/workflow",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/api/workflowTemplates.ts"
+  ],
+  "constraints": [
+    "Do not change workflow state-machine semantics.",
+    "Do not mutate existing persisted transcripts.",
+    "Prefer reusing existing workflow launcher or template picker logic.",
+    "Add or update a focused regression test before production changes if a reliable test surface exists."
+  ],
+  "expected_handoff": [
+    "root cause",
+    "changed files",
+    "tests added or updated",
+    "validation command and result",
+    "remaining risks"
+  ]
+}

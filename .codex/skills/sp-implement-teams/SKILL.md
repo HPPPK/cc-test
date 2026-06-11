@@ -104,6 +104,16 @@ Before the teams runtime starts concrete work, ensure the current ready batch is
 3. join point expectations and result handoff expectations are explicit
 4. the team-managed lane cannot be treated as complete from a status flip alone; the leader still needs the promised completion handoff or result evidence
 
+Before assigning team-managed work, preserve the same project cognition bundle contract that `sp-implement` uses:
+
+1. run `project-cognition lexicon --intent implement --mode catalog` and include the lexicon result plus schema v2 `alias_index`-backed alias catalog in the execution context bundle
+2. normalize user input and write a `semantic_intake` object with `workflow_intent`, `normalized_query`, `intent_facets`, `negative_constraints`, `alias_interpretations`, and `open_semantic_questions`
+3. keep `alias_interpretations` object-shaped, for example `{"alias": "<user term>", "meaning": "<project term>", "confidence": "medium"}`, never as a string array
+4. build a `query_plan` with `selected_concepts`, `rejected_concepts`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `expanded_queries`, `repository_search_terms`, and justified `paths`
+5. derive project-language search terms from the alias catalog before source search; do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched terms, returned paths, `normalized_query`, and `expanded_queries`
+6. run `project-cognition query --intent implement --query-plan "<query_plan_json>" --format json` and preserve returned readiness, `minimal_live_reads`, and the task-local bundle in every teammate context packet
+7. if the query reports diagnostics, preserve `warnings`, `repair_hints`, normalized `query_plan`, structured `errors`, and `expected_shape` so the leader can repair the plan instead of losing the diagnostics in team chat
+
 The only intended difference is the dispatch path:
 
 1. `sp-implement` may route the current ready batch through subagents first

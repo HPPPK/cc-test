@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-017",
+  "source_path": "src/costHook.ts",
+  "evidence_type": "code_read",
+  "summary": "React hook useCostSummary() that registers process exit handler to print cost summary and save session costs. Simple 22-line file wrapping cost-tracker on exit.",
+  "classification": "important",
+  "criticality": "minor"
+}

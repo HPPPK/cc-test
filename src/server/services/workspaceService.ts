@@ -166,6 +166,9 @@ type GitCommandResult = {
   stdout: string
   stderr: string
   code: number
+  signal?: string | null
+  timedOut?: boolean
+  maxBufferExceeded?: boolean
 }
 
 type DiffStatsResult =
@@ -1301,19 +1304,32 @@ export class WorkspaceService {
   private async getStatusEntries(
     workDir: string,
   ): Promise<{ kind: 'ok'; entries: StatusEntry[] } | { kind: 'error'; message: string }> {
-    const result = await this.runGit(workDir, [
+    const allUntrackedArgs = [
       'status',
       '--porcelain=v1',
       '-z',
       '--untracked-files=all',
-    ])
+    ]
+    const topLevelUntrackedArgs = [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=normal',
+    ]
+    let statusArgs = allUntrackedArgs
+    let result = await this.runGit(workDir, allUntrackedArgs)
+
+    if (result.code !== 0 && this.shouldRetryRecursiveUntrackedStatus(result)) {
+      statusArgs = topLevelUntrackedArgs
+      result = await this.runGit(workDir, topLevelUntrackedArgs)
+    }
 
     if (result.code !== 0) {
       return {
         kind: 'error',
         message: this.formatGitError(
           'Failed to read git status',
-          ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+          statusArgs,
           workDir,
           result,
         ),
@@ -1350,6 +1366,18 @@ export class WorkspaceService {
     }
 
     return { kind: 'ok', entries }
+  }
+
+  private shouldRetryRecursiveUntrackedStatus(result: GitCommandResult): boolean {
+    const message = `${result.stderr}\n${result.stdout}`.toLowerCase()
+    return (
+      !message.trim() ||
+      result.timedOut === true ||
+      result.maxBufferExceeded === true ||
+      message.includes('could not open directory') ||
+      message.includes('permission denied') ||
+      message.includes('filename too long')
+    )
   }
 
   private async getDiffStats(
@@ -1580,8 +1608,11 @@ export class WorkspaceService {
             ? err.stderr
             : Buffer.isBuffer(err.stderr)
               ? err.stderr.toString('utf8')
-              : '',
+              : err.message || '',
         code: typeof err.code === 'number' ? err.code : 1,
+        signal: typeof err.signal === 'string' ? err.signal : null,
+        timedOut: err.killed === true && typeof err.signal === 'string',
+        maxBufferExceeded: err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
       }
     }
   }

@@ -39,7 +39,26 @@ type TasksFile = {
   tasks: CronTask[]
 }
 
-const TASKS_FILE_WRITE_ATTEMPTS = 2
+const TASKS_FILE_WRITE_ATTEMPTS = 5
+const TASKS_FILE_WRITE_RETRY_DELAY_MS = 10
+const RETRYABLE_TASKS_FILE_WRITE_ERRORS = new Set([
+  'ENOENT',
+  'EPERM',
+  'EACCES',
+  'EBUSY',
+])
+
+function isRetryableTasksFileWriteError(err: unknown): boolean {
+  return RETRYABLE_TASKS_FILE_WRITE_ERRORS.has(
+    (err as NodeJS.ErrnoException).code ?? '',
+  )
+}
+
+async function waitBeforeTasksFileRetry(attempt: number): Promise<void> {
+  await new Promise(resolve =>
+    setTimeout(resolve, TASKS_FILE_WRITE_RETRY_DELAY_MS * (attempt + 1)),
+  )
+}
 
 export class CronService {
   /** 任务文件路径 */
@@ -158,12 +177,10 @@ export class CronService {
         lastError = err as Error
         await fs.unlink(tmpFile).catch(() => {})
 
-        if (
-          (err as NodeJS.ErrnoException).code !== 'ENOENT' ||
-          attempt === TASKS_FILE_WRITE_ATTEMPTS - 1
-        ) {
+        if (!isRetryableTasksFileWriteError(err) || attempt === TASKS_FILE_WRITE_ATTEMPTS - 1) {
           break
         }
+        await waitBeforeTasksFileRetry(attempt)
       }
     }
 

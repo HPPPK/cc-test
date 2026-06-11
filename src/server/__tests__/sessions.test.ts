@@ -2729,7 +2729,7 @@ describe('Sessions API', () => {
         expect(JSON.stringify(artifact.content)).toContain('Summary: Preserve decisions.')
       })
 
-      it('WorkflowSessionLinkService should reject workflow, active, oversize inherit, and unavailable summarize sources without target creation', async () => {
+      it('WorkflowSessionLinkService should reject non-completed workflow, active, oversize inherit, and unavailable summarize sources without target creation', async () => {
         const workflowSourceSessionId = crypto.randomUUID()
         const workflowWorkDir = path.join(tmpDir, 'service-linked-workflow-source-is-workflow')
         const sourceFilePath = await writeSessionFile(sanitizePath(workflowWorkDir), workflowSourceSessionId, [
@@ -2903,7 +2903,69 @@ describe('Sessions API', () => {
         await expectSourceSessionUnchanged(source)
       })
 
-      it('POST /api/sessions/:id/workflow/start should reject workflow source sessions without changing their snapshot', async () => {
+      it('POST /api/sessions/:id/workflow/start should allow completed workflow source sessions as historical context', async () => {
+        const sourceSessionId = crypto.randomUUID()
+        const workDir = path.join(tmpDir, 'linked-completed-workflow-source')
+        await fs.mkdir(workDir, { recursive: true })
+        const sourceFilePath = await writeSessionFile(sanitizePath(workDir), sourceSessionId, [
+          makeSnapshotEntry(),
+          makeWorkflowSessionMetaEntry(sourceSessionId, workDir, {
+            status: 'completed',
+            workflowStatus: 'completed',
+            activePhaseId: null,
+          }),
+          makeUserEntry('Preserve the completed workflow decision.'),
+          makeAssistantEntry('Completed workflow result that should be inherited.'),
+        ])
+        const sourceRawBefore = await fs.readFile(sourceFilePath, 'utf-8')
+        const clientRequestId = 'linked-completed-workflow-source-0001'
+
+        const res = await startLinkedWorkflow(sourceSessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'builtin',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'inherit',
+          clientRequestId,
+        })
+        expect(res.status).toBe(201)
+
+        const body = await res.json() as {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+        expect(body.sessionId).toEqual(expect.any(String))
+        expect(body.workDir).toBe(workDir)
+        expect(body.workflow).toMatchObject({
+          mode: 'workflow',
+          templateId: 'agent-development',
+          activePhaseId: 'discussion',
+        })
+        expect(body.link).toMatchObject({
+          sourceSessionId,
+          targetSessionId: body.sessionId,
+          contextStrategy: 'inherit',
+          sourceMessageCount: 2,
+          clientRequestId,
+        })
+        expectNoAbsolutePathLeak(body.workflow)
+        expectNoAbsolutePathLeak(body.link)
+
+        const targetState = await readWorkflowSessionState(body.sessionId!)
+        expect(targetState.link).toMatchObject({
+          sourceSessionId,
+          contextStrategy: 'inherit',
+          sourceMessageCount: 2,
+          clientRequestId,
+        })
+        expect(JSON.stringify(targetState)).toContain('Completed workflow result that should be inherited.')
+        expect(await fs.readFile(sourceFilePath, 'utf-8')).toBe(sourceRawBefore)
+      })
+
+      it('POST /api/sessions/:id/workflow/start should reject non-completed workflow source sessions without changing their snapshot', async () => {
         const sourceSessionId = crypto.randomUUID()
         const workDir = path.join(tmpDir, 'linked-workflow-source-is-workflow')
         const sourceFilePath = await writeSessionFile(sanitizePath(workDir), sourceSessionId, [

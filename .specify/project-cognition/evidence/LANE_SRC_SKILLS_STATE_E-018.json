@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-018",
+  "source_path": "src/state/store.ts",
+  "evidence_type": "code_read",
+  "summary": "Generic Store<T> implementation with getState/setState/subscribe pattern. createStore() factory with onChange callback. Uses Object.is for equality check. Immutable update pattern (updater function).",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom'
 import { act } from 'react'
+import { ApiError } from '../../api/client'
 
 const viewportMocks = vi.hoisted(() => ({
   isMobile: false,
@@ -779,6 +780,43 @@ describe('ChatInput file mentions', () => {
     expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
   })
 
+  it('opens workflows from the plus menu after the current workflow is completed', async () => {
+    useSessionStore.setState({
+      sessions: [{
+        ...useSessionStore.getState().sessions[0]!,
+        workflow: {
+          ...LINKED_WORKFLOW_SUMMARY,
+          status: 'completed' as const,
+          activePhaseId: 'verification',
+          activePhaseIndex: 4,
+        },
+      }],
+    })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Inherit visible context/ }))
+
+    await waitFor(() => {
+      expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
+        workflow: {
+          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
+          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        },
+        contextStrategy: 'inherit',
+      }))
+    })
+  })
+
   it.each([
     ['clear' as const, /Start clean/, undefined],
     ['inherit' as const, /Inherit visible context/, undefined],
@@ -916,6 +954,28 @@ describe('ChatInput file mentions', () => {
     })
     expect(sourceSession?.workflow).toBeUndefined()
     expect(screen.getByTestId('workflow-context-strategy-dialog')).toBeInTheDocument()
+  })
+
+  it('keeps summary recovery visible after direct context inheritance is too large', async () => {
+    mocks.startLinkedWorkflowSession.mockRejectedValueOnce(new ApiError(422, {
+      code: 'WORKFLOW_CONTEXT_TOO_LARGE',
+      message: 'Source context is too large to inherit; choose summarize instead',
+    }))
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Inherit visible context/ }))
+
+    const alert = await within(strategyDialog).findByRole('alert')
+    expect(alert).toHaveTextContent('This chat is too large to inherit directly. Choose Summarize context instead.')
+    expect(within(strategyDialog).getByRole('button', { name: /Summarize context/ })).toBeInTheDocument()
+    expect(useTabStore.getState().activeTabId).toBe(sessionId)
   })
 
   it('starts an empty active session on the selected branch inside an isolated worktree', async () => {

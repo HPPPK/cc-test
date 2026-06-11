@@ -1,0 +1,57 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_EXPECTED_RED",
+  "task_id": "T008",
+  "changed_files": [
+    "src/server/__tests__/providers.test.ts"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/__tests__/providers.test.ts",
+    "exit_code": 1,
+    "summary": "58 passed, 5 failed. All failures are expected RED failures: import preview/commit endpoints currently return 405 instead of 200.",
+    "failed_tests": [
+      "POST /api/providers/import/preview should not write provider index or managed settings",
+      "POST /api/providers/import/preview should default conflicts to add or rename",
+      "POST /api/providers/import/commit should create a renamed provider with a generated local id",
+      "POST /api/providers/import/commit should overwrite only the explicit target provider",
+      "POST /api/providers/import/commit should not change activeId or managed active provider env"
+    ],
+    "failure_mode": "missing import preview/commit routes/behavior, not syntax or setup errors"
+  },
+  "must_preserve_evidence": {
+    "CA-002_MP-008_preview_side_effect_free": "Added preview test that captures providers.json and managed settings.json before preview and expects both unchanged after /api/providers/import/preview.",
+    "CA-003_MP-007_no_active_mutation": "Added commit test that activates a provider, attempts explicit overwrite, and expects activeId plus managed env settings to remain unchanged.",
+    "CA-004_MP-006_conflict_rules": "Added preview test asserting conflicts default to add/rename and never overwrite; added commit test requiring explicit targetProviderId.",
+    "CA-005_generated_local_ids": "Added commit rename test asserting created provider id differs from sourceProviderId and existing local id.",
+    "G-TEST": "Ran requested focused Bun test command and confirmed expected RED failures."
+  },
+  "concerns": [
+    "The focused diff for this task is limited to src/server/__tests__/providers.test.ts."
+  ],
+  "recovery_hints": [
+    "Implement POST /api/providers/import/preview and POST /api/providers/import/commit routing in src/server/api/providers.ts.",
+    "Add ProviderService preview/commit methods using ProviderImportPreviewRequestSchema and ProviderImportCommitRequestSchema.",
+    "Preview must read current providers/settings only and perform no writes.",
+    "Commit should generate new local ids for add/rename, require explicit targetProviderId for overwrite, and avoid activation/settings sync."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    "src/server/types/providerImportExport.ts",
+    "src/server/__tests__/providers.test.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

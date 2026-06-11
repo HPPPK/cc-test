@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-019",
+  "source_path": "src/services/SessionMemory/sessionMemory.ts",
+  "evidence_type": "code_read",
+  "summary": "Session Memory auto-maintains a markdown file with conversation notes. Runs periodically in background using forked subagent. Registers post-sampling hook. Integrates with auto-compact system.",
+  "classification": "critical",
+  "criticality": "high"
+}

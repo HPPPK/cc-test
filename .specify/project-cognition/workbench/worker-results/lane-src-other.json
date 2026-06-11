@@ -1,0 +1,1543 @@
+{
+  "packet_id": "lane-src-other",
+  "family_id": "src-important",
+  "assigned_paths": [
+    "src/QueryEngine.ts",
+    "src/Task.ts",
+    "src/Tool.ts",
+    "src/assistant/AssistantSessionChooser.ts",
+    "src/assistant/gate.ts",
+    "src/assistant/index.ts",
+    "src/assistant/sessionDiscovery.ts",
+    "src/assistant/sessionHistory.ts",
+    "src/bootstrap/state.ts",
+    "src/buddy/CompanionSprite.tsx",
+    "src/buddy/companion.ts",
+    "src/buddy/observer.ts",
+    "src/buddy/prompt.ts",
+    "src/buddy/sprites.ts",
+    "src/buddy/types.ts",
+    "src/buddy/useBuddyNotification.tsx",
+    "src/commands.ts",
+    "src/context.ts",
+    "src/coordinator/coordinatorMode.ts",
+    "src/coordinator/workerAgent.ts",
+    "src/cost-tracker.ts",
+    "src/costHook.ts",
+    "src/daemon/main.ts",
+    "src/daemon/workerRegistry.ts",
+    "src/dialogLaunchers.tsx",
+    "src/environment-runner/main.ts",
+    "src/goals/goalState.test.ts",
+    "src/goals/goalState.ts",
+    "src/history.ts",
+    "src/ink.ts",
+    "src/interactiveHelpers.tsx",
+    "src/jobs/classifier.ts",
+    "src/keybindings/KeybindingContext.tsx",
+    "src/keybindings/KeybindingProviderSetup.tsx",
+    "src/keybindings/defaultBindings.ts",
+    "src/keybindings/loadUserBindings.ts",
+    "src/keybindings/match.ts",
+    "src/keybindings/parser.ts",
+    "src/keybindings/reservedShortcuts.ts",
+    "src/keybindings/resolver.ts",
+    "src/keybindings/schema.ts",
+    "src/keybindings/shortcutFormat.ts",
+    "src/keybindings/template.ts",
+    "src/keybindings/types.ts",
+    "src/keybindings/useKeybinding.ts",
+    "src/keybindings/useShortcutDisplay.ts",
+    "src/keybindings/validate.ts",
+    "src/localRecoveryCli.ts",
+    "src/main.tsx",
+    "src/memdir/findRelevantMemories.ts",
+    "src/memdir/memdir.ts",
+    "src/memdir/memoryAge.ts",
+    "src/memdir/memoryScan.ts",
+    "src/memdir/memoryShapeTelemetry.ts",
+    "src/memdir/memoryTypes.ts",
+    "src/memdir/paths.ts",
+    "src/memdir/teamMemPaths.ts",
+    "src/memdir/teamMemPrompts.ts",
+    "src/moreright/useMoreRight.tsx",
+    "src/native-ts/color-diff/index.ts",
+    "src/native-ts/file-index/index.ts",
+    "src/native-ts/yoga-layout/enums.ts",
+    "src/native-ts/yoga-layout/index.ts",
+    "src/outputStyles/loadOutputStylesDir.ts",
+    "src/plugins/builtinPlugins.ts",
+    "src/plugins/bundled/index.ts",
+    "src/proactive/index.ts",
+    "src/proactive/useProactive.ts",
+    "src/projectOnboardingState.ts",
+    "src/query.ts",
+    "src/query/config.ts",
+    "src/query/deps.ts",
+    "src/query/stopHooks.test.ts",
+    "src/query/stopHooks.ts",
+    "src/query/tokenBudget.ts",
+    "src/query/transitions.ts",
+    "src/remote/RemoteSessionManager.ts",
+    "src/remote/SessionsWebSocket.ts",
+    "src/remote/remotePermissionBridge.ts",
+    "src/remote/sdkMessageAdapter.ts",
+    "src/replLauncher.tsx",
+    "src/schemas/hooks.ts",
+    "src/screens/Doctor.tsx",
+    "src/screens/REPL.tsx",
+    "src/screens/ResumeConversation.tsx",
+    "src/self-hosted-runner/main.ts",
+    "src/setup.ts",
+    "src/ssh/SSHSessionManager.ts",
+    "src/ssh/createSSHSession.ts",
+    "src/tasks.ts",
+    "src/tools.ts",
+    "src/upstreamproxy/relay.ts",
+    "src/upstreamproxy/upstreamproxy.ts",
+    "src/vim/motions.ts",
+    "src/vim/operators.ts",
+    "src/vim/textObjects.ts",
+    "src/vim/transitions.ts",
+    "src/vim/types.ts",
+    "src/voice/voiceModeEnabled.ts"
+  ],
+  "paths_read": [
+    "src/QueryEngine.ts",
+    "src/Task.ts",
+    "src/Tool.ts",
+    "src/assistant/AssistantSessionChooser.ts",
+    "src/assistant/gate.ts",
+    "src/assistant/index.ts",
+    "src/assistant/sessionDiscovery.ts",
+    "src/assistant/sessionHistory.ts",
+    "src/bootstrap/state.ts",
+    "src/buddy/CompanionSprite.tsx",
+    "src/buddy/companion.ts",
+    "src/buddy/observer.ts",
+    "src/buddy/prompt.ts",
+    "src/buddy/sprites.ts",
+    "src/buddy/types.ts",
+    "src/buddy/useBuddyNotification.tsx",
+    "src/commands.ts",
+    "src/context.ts",
+    "src/coordinator/coordinatorMode.ts",
+    "src/coordinator/workerAgent.ts",
+    "src/cost-tracker.ts",
+    "src/costHook.ts",
+    "src/daemon/main.ts",
+    "src/daemon/workerRegistry.ts",
+    "src/dialogLaunchers.tsx",
+    "src/environment-runner/main.ts",
+    "src/goals/goalState.test.ts",
+    "src/goals/goalState.ts",
+    "src/history.ts",
+    "src/ink.ts",
+    "src/interactiveHelpers.tsx",
+    "src/jobs/classifier.ts",
+    "src/keybindings/KeybindingContext.tsx",
+    "src/keybindings/KeybindingProviderSetup.tsx",
+    "src/keybindings/defaultBindings.ts",
+    "src/keybindings/loadUserBindings.ts",
+    "src/keybindings/match.ts",
+    "src/keybindings/parser.ts",
+    "src/keybindings/reservedShortcuts.ts",
+    "src/keybindings/resolver.ts",
+    "src/keybindings/schema.ts",
+    "src/keybindings/shortcutFormat.ts",
+    "src/keybindings/template.ts",
+    "src/keybindings/types.ts",
+    "src/keybindings/useKeybinding.ts",
+    "src/keybindings/useShortcutDisplay.ts",
+    "src/keybindings/validate.ts",
+    "src/localRecoveryCli.ts",
+    "src/main.tsx",
+    "src/memdir/findRelevantMemories.ts",
+    "src/memdir/memdir.ts",
+    "src/memdir/memoryAge.ts",
+    "src/memdir/memoryScan.ts",
+    "src/memdir/memoryShapeTelemetry.ts",
+    "src/memdir/memoryTypes.ts",
+    "src/memdir/paths.ts",
+    "src/memdir/teamMemPaths.ts",
+    "src/memdir/teamMemPrompts.ts",
+    "src/moreright/useMoreRight.tsx",
+    "src/native-ts/color-diff/index.ts",
+    "src/native-ts/file-index/index.ts",
+    "src/native-ts/yoga-layout/enums.ts",
+    "src/native-ts/yoga-layout/index.ts",
+    "src/outputStyles/loadOutputStylesDir.ts",
+    "src/plugins/builtinPlugins.ts",
+    "src/plugins/bundled/index.ts",
+    "src/proactive/index.ts",
+    "src/proactive/useProactive.ts",
+    "src/projectOnboardingState.ts",
+    "src/query.ts",
+    "src/query/config.ts",
+    "src/query/deps.ts",
+    "src/query/stopHooks.test.ts",
+    "src/query/stopHooks.ts",
+    "src/query/tokenBudget.ts",
+    "src/query/transitions.ts",
+    "src/remote/RemoteSessionManager.ts",
+    "src/remote/SessionsWebSocket.ts",
+    "src/remote/remotePermissionBridge.ts",
+    "src/remote/sdkMessageAdapter.ts",
+    "src/replLauncher.tsx",
+    "src/schemas/hooks.ts",
+    "src/screens/Doctor.tsx",
+    "src/screens/REPL.tsx",
+    "src/screens/ResumeConversation.tsx",
+    "src/self-hosted-runner/main.ts",
+    "src/setup.ts",
+    "src/ssh/SSHSessionManager.ts",
+    "src/ssh/createSSHSession.ts",
+    "src/tasks.ts",
+    "src/tools.ts",
+    "src/upstreamproxy/relay.ts",
+    "src/upstreamproxy/upstreamproxy.ts",
+    "src/vim/motions.ts",
+    "src/vim/operators.ts",
+    "src/vim/textObjects.ts",
+    "src/vim/transitions.ts",
+    "src/vim/types.ts",
+    "src/voice/voiceModeEnabled.ts"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      "src/QueryEngine.ts",
+      "src/Task.ts",
+      "src/Tool.ts",
+      "src/assistant/AssistantSessionChooser.ts",
+      "src/assistant/gate.ts",
+      "src/assistant/index.ts",
+      "src/assistant/sessionDiscovery.ts",
+      "src/assistant/sessionHistory.ts",
+      "src/bootstrap/state.ts",
+      "src/buddy/CompanionSprite.tsx",
+      "src/buddy/companion.ts",
+      "src/buddy/observer.ts",
+      "src/buddy/prompt.ts",
+      "src/buddy/sprites.ts",
+      "src/buddy/types.ts",
+      "src/buddy/useBuddyNotification.tsx",
+      "src/commands.ts",
+      "src/context.ts",
+      "src/coordinator/coordinatorMode.ts",
+      "src/coordinator/workerAgent.ts",
+      "src/cost-tracker.ts",
+      "src/costHook.ts",
+      "src/daemon/main.ts",
+      "src/daemon/workerRegistry.ts",
+      "src/dialogLaunchers.tsx",
+      "src/environment-runner/main.ts",
+      "src/goals/goalState.test.ts",
+      "src/goals/goalState.ts",
+      "src/history.ts",
+      "src/ink.ts",
+      "src/interactiveHelpers.tsx",
+      "src/jobs/classifier.ts",
+      "src/keybindings/KeybindingContext.tsx",
+      "src/keybindings/KeybindingProviderSetup.tsx",
+      "src/keybindings/defaultBindings.ts",
+      "src/keybindings/loadUserBindings.ts",
+      "src/keybindings/match.ts",
+      "src/keybindings/parser.ts",
+      "src/keybindings/reservedShortcuts.ts",
+      "src/keybindings/resolver.ts",
+      "src/keybindings/schema.ts",
+      "src/keybindings/shortcutFormat.ts",
+      "src/keybindings/template.ts",
+      "src/keybindings/types.ts",
+      "src/keybindings/useKeybinding.ts",
+      "src/keybindings/useShortcutDisplay.ts",
+      "src/keybindings/validate.ts",
+      "src/localRecoveryCli.ts",
+      "src/main.tsx",
+      "src/memdir/findRelevantMemories.ts",
+      "src/memdir/memdir.ts",
+      "src/memdir/memoryAge.ts",
+      "src/memdir/memoryScan.ts",
+      "src/memdir/memoryShapeTelemetry.ts",
+      "src/memdir/memoryTypes.ts",
+      "src/memdir/paths.ts",
+      "src/memdir/teamMemPaths.ts",
+      "src/memdir/teamMemPrompts.ts",
+      "src/moreright/useMoreRight.tsx",
+      "src/native-ts/color-diff/index.ts",
+      "src/native-ts/file-index/index.ts",
+      "src/native-ts/yoga-layout/enums.ts",
+      "src/native-ts/yoga-layout/index.ts",
+      "src/outputStyles/loadOutputStylesDir.ts",
+      "src/plugins/builtinPlugins.ts",
+      "src/plugins/bundled/index.ts",
+      "src/proactive/index.ts",
+      "src/proactive/useProactive.ts",
+      "src/projectOnboardingState.ts",
+      "src/query.ts",
+      "src/query/config.ts",
+      "src/query/deps.ts",
+      "src/query/stopHooks.test.ts",
+      "src/query/stopHooks.ts",
+      "src/query/tokenBudget.ts",
+      "src/query/transitions.ts",
+      "src/remote/RemoteSessionManager.ts",
+      "src/remote/SessionsWebSocket.ts",
+      "src/remote/remotePermissionBridge.ts",
+      "src/remote/sdkMessageAdapter.ts",
+      "src/replLauncher.tsx",
+      "src/schemas/hooks.ts",
+      "src/screens/Doctor.tsx",
+      "src/screens/REPL.tsx",
+      "src/screens/ResumeConversation.tsx",
+      "src/self-hosted-runner/main.ts",
+      "src/setup.ts",
+      "src/ssh/SSHSessionManager.ts",
+      "src/ssh/createSSHSession.ts",
+      "src/tasks.ts",
+      "src/tools.ts",
+      "src/upstreamproxy/relay.ts",
+      "src/upstreamproxy/upstreamproxy.ts",
+      "src/vim/motions.ts",
+      "src/vim/operators.ts",
+      "src/vim/textObjects.ts",
+      "src/vim/transitions.ts",
+      "src/vim/types.ts",
+      "src/voice/voiceModeEnabled.ts"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_SRC_OTHER_E-001",
+      "source_path": "src/QueryEngine.ts",
+      "evidence_type": "code_read",
+      "summary": "QueryEngine is the core conversation lifecycle manager. Owns session state, message history, file cache, usage tracking. submitMessage() is an async generator yielding SDKMessage events. Also exports ask() as a one-shot convenience wrapper. Depends on bootstrap/state, commands, cost-tracker, memdir, query, Tool, and many utils.",
+      "classification": "important",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-002",
+      "source_path": "src/Task.ts",
+      "evidence_type": "code_read",
+      "summary": "Defines TaskType (local_bash, local_agent, remote_agent, in_process_teammate, local_workflow, monitor_mcp, dream), TaskStatus, TaskHandle, TaskContext, TaskStateBase. Provides generateTaskId() with cryptographic random IDs and createTaskStateBase(). Task interface has name, type, kill() method.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-003",
+      "source_path": "src/Tool.ts",
+      "evidence_type": "code_read",
+      "summary": "Central Tool type definition and ToolUseContext. Tool<Input, Output, Progress> has call(), description(), inputSchema, checkPermissions(), prompt(), renderToolUseMessage(), etc. ToolUseContext carries options, abortController, readFileState, appState, and many UI/state callbacks. buildTool() fills safe defaults. Tools is readonly Tool[].",
+      "classification": "important",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-004",
+      "source_path": "src/assistant/sessionHistory.ts",
+      "evidence_type": "code_read",
+      "summary": "Fetches session history events from the API with pagination (HISTORY_PAGE_SIZE=100). Uses OAuth auth, axios for HTTP. Exports createHistoryAuthCtx(), fetchLatestEvents(), fetchOlderEvents(). All other assistant/* files are auto-generated stubs for feature-gated modules.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-005",
+      "source_path": "src/bootstrap/state.ts",
+      "evidence_type": "code_read",
+      "summary": "Massive global state singleton (State type) holding session metadata, telemetry counters, model usage, cost tracking, agent colors, cron tasks, plugin hooks, prompt cache latches, and 80+ getter/setter exports. Central to nearly every module. Exports getSessionId(), switchSession(), regenerateSessionId(), getCwdState(), and dozens of state accessors.",
+      "classification": "important",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-006",
+      "source_path": "src/buddy/companion.ts",
+      "evidence_type": "code_read",
+      "summary": "Companion system: deterministic PRNG-based creature generation from userId hash. Mulberry32 seeded RNG, rarity rolling, stat generation. getCompanion() regenerates bones from stored hatch seed. Species include duck, goose, blob, cat, dragon, octopus, etc.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-007",
+      "source_path": "src/buddy/CompanionSprite.tsx",
+      "evidence_type": "code_read",
+      "summary": "React component rendering companion sprite with ASCII art, speech bubbles, idle animations (500ms tick), pet burst hearts. Adapts to terminal width (narrow mode collapses to one-line face). CompanionFloatingBubble for fullscreen mode. Depends on companion.ts, sprites.ts, types.ts.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-008",
+      "source_path": "src/buddy/observer.ts",
+      "evidence_type": "code_read",
+      "summary": "Lightweight companion observer: generates fun quips based on last assistant message content. Fires 1 in 5 turns. Categorizes messages as debugging/code/general and picks appropriate quip. fireCompanionObserver() is async, checks companion config and mute state.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-009",
+      "source_path": "src/buddy/types.ts",
+      "evidence_type": "code_read",
+      "summary": "Type definitions for companion system: 18 species (duck, goose, blob, cat, dragon, octopus, owl, penguin, turtle, snail, ghost, axolotl, capybara, cactus, robot, rabbit, mushroom, chonk), 6 eyes, 8 hats, 5 rarities with weights, 5 stats (DEBUGGING, PATIENCE, CHAOS, WISDOM, SNARK). CompanionBones, CompanionSoul, Companion, StoredCompanion types.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-010",
+      "source_path": "src/buddy/sprites.ts",
+      "evidence_type": "code_read",
+      "summary": "ASCII art sprite definitions for all 18 companion species, each with 3 animation frames. Hat line rendering. renderSprite() substitutes eye characters. renderFace() returns single-line species face. spriteFrameCount() returns frame count per species.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-011",
+      "source_path": "src/buddy/prompt.ts",
+      "evidence_type": "code_read",
+      "summary": "companionIntroText() generates system prompt text for companion presence. getCompanionIntroAttachment() creates attachment for first-time companion announcement. Deduplicates by checking existing attachments.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-012",
+      "source_path": "src/buddy/useBuddyNotification.tsx",
+      "evidence_type": "code_read",
+      "summary": "React hook useBuddyNotification() shows rainbow /buddy teaser notification during teaser window (April 1-7, 2026). findBuddyTriggerPositions() finds /buddy occurrences in text for syntax highlighting. isBuddyTeaserWindow() and isBuddyLive() check date-based availability.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-013",
+      "source_path": "src/commands.ts",
+      "evidence_type": "code_read",
+      "summary": "Central slash command registry. Imports 50+ command modules: add-dir, autofix-pr, backfill-sessions, btw, good-claude, issue, feedback, goal, clear, color, commit, copy, desktop, commit-push-pr, compact, config, context, cost, diff, ctx_viz, doctor, memory, help, ide, init, keybindings, login, logout, mcp, mobile, onboarding, pr_comments, release-notes, rename, resume, review, session, share, skills, status, tasks, teleport, etc.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-014",
+      "source_path": "src/context.ts",
+      "evidence_type": "code_read",
+      "summary": "System prompt context assembly. getGitStatus() memoized git status. getUserContext() and getSystemContext() build context sections. setSystemPromptInjection() for cache-breaking debug. Integrates CLAUDE.md loading, git branch info, date injection.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-015",
+      "source_path": "src/coordinator/coordinatorMode.ts",
+      "evidence_type": "code_read",
+      "summary": "Coordinator mode feature gate. isCoordinatorMode() checks CLAUDE_CODE_COORDINATOR_MODE env var behind feature('COORDINATOR_MODE'). matchSessionMode() reconciles session mode on resume. getCoordinatorUserContext() provides user context for coordinator sessions. Internal worker tools: TEAM_CREATE, TEAM_DELETE, SEND_MESSAGE, SYNTHETIC_OUTPUT.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-016",
+      "source_path": "src/cost-tracker.ts",
+      "evidence_type": "code_read",
+      "summary": "Cost tracking and reporting. Integrates with bootstrap/state for total cost, model usage, API duration. formatTotalCost(), saveCurrentSessionCosts(), restoreCostStateForSession(). Calculates USD cost via calculateUSDCost(). Tracks lines changed, token counts, web search requests.",
+      "classification": "important",
+      "criticality": "important"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-017",
+      "source_path": "src/costHook.ts",
+      "evidence_type": "code_read",
+      "summary": "React hook useCostSummary() that registers process exit handler to print cost summary and save session costs. Simple 22-line file wrapping cost-tracker on exit.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-018",
+      "source_path": "src/goals/goalState.ts",
+      "evidence_type": "code_read",
+      "summary": "Goal system for thread-based objectives. ThreadGoal type with threadId, objective, hook, createdAt. parseGoalCommand() parses /goal <condition> | clear. Goals stored in per-thread Map. Integrates with session hooks for goal tracking.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-019",
+      "source_path": "src/vim/types.ts",
+      "evidence_type": "code_read",
+      "summary": "Vim mode state machine types. VimState (INSERT/NORMAL modes), CommandState (idle/count/operator/find/g/replace/indent states), PersistentState (lastChange, lastFind, register). RecordedChange for dot-repeat. Constants for operators, motions, text objects.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-020",
+      "source_path": "src/vim/motions.ts",
+      "evidence_type": "code_read",
+      "summary": "Pure motion resolution functions. resolveMotion() applies motion key with count to cursor position. Uses Cursor type from utils. Handles h/l/j/k/w/b/e/W/B/E/0/^/$ motions.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-021",
+      "source_path": "src/voice/voiceModeEnabled.ts",
+      "evidence_type": "code_read",
+      "summary": "Voice mode feature gating. isVoiceGrowthBookEnabled() checks tengu_amber_quartz_disabled kill-switch behind feature('VOICE_MODE'). hasVoiceAuth() checks Anthropic OAuth token. isVoiceModeEnabled() combines both checks.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-022",
+      "source_path": "src/assistant/sessionHistory.ts",
+      "evidence_type": "code_read",
+      "summary": "Session history pagination from remote API. HistoryPage type with events[], firstId, hasMore. createHistoryAuthCtx() prepares OAuth headers. fetchLatestEvents() and fetchOlderEvents() for paginated retrieval.",
+      "classification": "important",
+      "criticality": "minor"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-023",
+      "source_path": "src/assistant/AssistantSessionChooser.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for feature-gated module. Proxy-based noop placeholder for bun build resolver. Exports stubs for createCachedMCState, getCoordinatorUserContext, etc.",
+      "classification": "info",
+      "criticality": "trivial"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-024",
+      "source_path": "src/daemon/main.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for feature-gated daemon module. Same proxy-based noop pattern as other stubs.",
+      "classification": "info",
+      "criticality": "trivial"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-025",
+      "source_path": "src/coordinator/workerAgent.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for feature-gated coordinator worker agent module.",
+      "classification": "info",
+      "criticality": "trivial"
+    },
+    {
+      "id": "LANE_SRC_OTHER_E-026",
+      "source_path": "src/keybindings/types.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for feature-gated keybindings types module.",
+      "classification": "info",
+      "criticality": "trivial"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "QueryEngine",
+      "paths": [
+        "src/QueryEngine.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ],
+      "attrs": {
+        "aliases": [
+          "ask",
+          "query engine"
+        ],
+        "domain": "core/conversation",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "module",
+      "title": "Tool System",
+      "paths": [
+        "src/Tool.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-003"
+      ],
+      "attrs": {
+        "aliases": [
+          "Tool",
+          "ToolUseContext",
+          "Tools"
+        ],
+        "domain": "core/tools",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "module",
+      "title": "Task System",
+      "paths": [
+        "src/Task.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-002"
+      ],
+      "attrs": {
+        "aliases": [
+          "Task",
+          "TaskType",
+          "TaskStatus"
+        ],
+        "domain": "core/tasks",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "module",
+      "title": "Bootstrap State",
+      "paths": [
+        "src/bootstrap/state.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-005"
+      ],
+      "attrs": {
+        "aliases": [
+          "global state",
+          "session state"
+        ],
+        "domain": "core/state",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "module",
+      "title": "Buddy/Companion System",
+      "paths": [
+        "src/buddy/CompanionSprite.tsx",
+        "src/buddy/companion.ts",
+        "src/buddy/observer.ts",
+        "src/buddy/prompt.ts",
+        "src/buddy/sprites.ts",
+        "src/buddy/types.ts",
+        "src/buddy/useBuddyNotification.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-006",
+        "LANE_SRC_OTHER_E-007",
+        "LANE_SRC_OTHER_E-008",
+        "LANE_SRC_OTHER_E-009",
+        "LANE_SRC_OTHER_E-010",
+        "LANE_SRC_OTHER_E-011",
+        "LANE_SRC_OTHER_E-012"
+      ],
+      "attrs": {
+        "aliases": [
+          "buddy",
+          "companion",
+          "sprite"
+        ],
+        "domain": "ui/companion",
+        "owner": "ux-team"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "module",
+      "title": "Commands Registry",
+      "paths": [
+        "src/commands.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-013"
+      ],
+      "attrs": {
+        "aliases": [
+          "slash commands",
+          "commands"
+        ],
+        "domain": "core/commands",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "module",
+      "title": "Context Builder",
+      "paths": [
+        "src/context.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-014"
+      ],
+      "attrs": {
+        "aliases": [
+          "system prompt context",
+          "git status"
+        ],
+        "domain": "core/context",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "module",
+      "title": "Coordinator Mode",
+      "paths": [
+        "src/coordinator/coordinatorMode.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-015"
+      ],
+      "attrs": {
+        "aliases": [
+          "coordinator",
+          "multi-agent"
+        ],
+        "domain": "core/coordinator",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "module",
+      "title": "Cost Tracker",
+      "paths": [
+        "src/cost-tracker.ts",
+        "src/costHook.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-016",
+        "LANE_SRC_OTHER_E-017"
+      ],
+      "attrs": {
+        "aliases": [
+          "cost",
+          "billing",
+          "usage"
+        ],
+        "domain": "core/cost",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "module",
+      "title": "Goal System",
+      "paths": [
+        "src/goals/goalState.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-018"
+      ],
+      "attrs": {
+        "aliases": [
+          "goals",
+          "thread goals"
+        ],
+        "domain": "core/goals",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "module",
+      "title": "Vim Mode",
+      "paths": [
+        "src/vim/types.ts",
+        "src/vim/motions.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-019",
+        "LANE_SRC_OTHER_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "vim",
+          "vim mode",
+          "motions"
+        ],
+        "domain": "ui/vim",
+        "owner": "ux-team"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "module",
+      "title": "Voice Mode",
+      "paths": [
+        "src/voice/voiceModeEnabled.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-021"
+      ],
+      "attrs": {
+        "aliases": [
+          "voice",
+          "speech"
+        ],
+        "domain": "ui/voice",
+        "owner": "ux-team"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "module",
+      "title": "Session History",
+      "paths": [
+        "src/assistant/sessionHistory.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-022"
+      ],
+      "attrs": {
+        "aliases": [
+          "history",
+          "session events"
+        ],
+        "domain": "core/session",
+        "owner": "core-team"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "module",
+      "title": "Feature-Gated Stubs",
+      "paths": [
+        "src/assistant/AssistantSessionChooser.ts",
+        "src/assistant/gate.ts",
+        "src/assistant/index.ts",
+        "src/assistant/sessionDiscovery.ts",
+        "src/coordinator/workerAgent.ts",
+        "src/daemon/main.ts",
+        "src/daemon/workerRegistry.ts",
+        "src/keybindings/types.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-023",
+        "LANE_SRC_OTHER_E-024",
+        "LANE_SRC_OTHER_E-025",
+        "LANE_SRC_OTHER_E-026"
+      ],
+      "attrs": {
+        "aliases": [
+          "stubs",
+          "DCE stubs"
+        ],
+        "domain": "build/stubs",
+        "owner": "build-team"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ED-001",
+      "type": "dependency",
+      "source_id": "N-001",
+      "target_id": "N-002",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "ED-002",
+      "type": "dependency",
+      "source_id": "N-001",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "ED-003",
+      "type": "dependency",
+      "source_id": "N-001",
+      "target_id": "N-006",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "ED-004",
+      "type": "dependency",
+      "source_id": "N-001",
+      "target_id": "N-009",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "ED-005",
+      "type": "dependency",
+      "source_id": "N-005",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-006",
+        "LANE_SRC_OTHER_E-007"
+      ]
+    },
+    {
+      "id": "ED-006",
+      "type": "dependency",
+      "source_id": "N-007",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-014"
+      ]
+    },
+    {
+      "id": "ED-007",
+      "type": "dependency",
+      "source_id": "N-009",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-016"
+      ]
+    },
+    {
+      "id": "ED-008",
+      "type": "dependency",
+      "source_id": "N-010",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-018"
+      ]
+    },
+    {
+      "id": "ED-009",
+      "type": "dependency",
+      "source_id": "N-001",
+      "target_id": "N-008",
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "ED-010",
+      "type": "dependency",
+      "source_id": "N-013",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-022"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "O-001",
+      "observation_type": "pattern",
+      "summary": "Bootstrap state.ts is the central singleton consumed by nearly every module in the codebase. It holds session ID, cost tracking, telemetry counters, model usage, cron tasks, plugin hooks, and 80+ getter/setter exports. Any module that needs session state imports from bootstrap/state.",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-005",
+        "LANE_SRC_OTHER_E-001",
+        "LANE_SRC_OTHER_E-016",
+        "LANE_SRC_OTHER_E-014"
+      ]
+    },
+    {
+      "id": "O-002",
+      "observation_type": "pattern",
+      "summary": "Many files in the assigned paths are auto-generated stubs for ant-internal feature-gated modules. These use a Proxy-based noop pattern where all property accesses return proxied noops. They exist solely for bun build resolver compatibility when feature() returns false in external builds. Files: AssistantSessionChooser, gate, index, sessionDiscovery, workerAgent, daemon/main, daemon/workerRegistry, keybindings/types.",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-023",
+        "LANE_SRC_OTHER_E-024",
+        "LANE_SRC_OTHER_E-025",
+        "LANE_SRC_OTHER_E-026"
+      ]
+    },
+    {
+      "id": "O-003",
+      "observation_type": "pattern",
+      "summary": "The buddy/companion system is a self-contained UI feature with its own type system, sprite rendering, PRNG-based generation, and observer pattern. It depends on bootstrap/state (for config) and React/ink for rendering, but has no dependency on the core query/tool pipeline.",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-006",
+        "LANE_SRC_OTHER_E-007",
+        "LANE_SRC_OTHER_E-008",
+        "LANE_SRC_OTHER_E-009",
+        "LANE_SRC_OTHER_E-010"
+      ]
+    },
+    {
+      "id": "O-004",
+      "observation_type": "pattern",
+      "summary": "QueryEngine is the largest and most complex file in this assignment (1367 lines). It orchestrates the entire conversation lifecycle: system prompt assembly, user input processing, query loop, message persistence, usage tracking, budget enforcement, and structured output handling. It depends on nearly every other module.",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "id": "O-005",
+      "observation_type": "pattern",
+      "summary": "Feature gating is pervasive: feature('BUDDY'), feature('VOICE_MODE'), feature('COORDINATOR_MODE'), feature('HISTORY_SNIP') from bun:bundle control dead code elimination. GrowthBook flags provide runtime kill-switches. This dual-layer gating (build-time + runtime) is a core architectural pattern.",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-015",
+        "LANE_SRC_OTHER_E-021",
+        "LANE_SRC_OTHER_E-007"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "path": "src/QueryEngine.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-001"
+      ]
+    },
+    {
+      "path": "src/Task.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-002"
+      ]
+    },
+    {
+      "path": "src/Tool.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-003"
+      ]
+    },
+    {
+      "path": "src/assistant/AssistantSessionChooser.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-023"
+      ]
+    },
+    {
+      "path": "src/assistant/gate.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/assistant/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/assistant/sessionDiscovery.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/assistant/sessionHistory.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-004",
+        "LANE_SRC_OTHER_E-022"
+      ]
+    },
+    {
+      "path": "src/bootstrap/state.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-005"
+      ]
+    },
+    {
+      "path": "src/buddy/CompanionSprite.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-007"
+      ]
+    },
+    {
+      "path": "src/buddy/companion.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-006"
+      ]
+    },
+    {
+      "path": "src/buddy/observer.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-008"
+      ]
+    },
+    {
+      "path": "src/buddy/prompt.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-011"
+      ]
+    },
+    {
+      "path": "src/buddy/sprites.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-010"
+      ]
+    },
+    {
+      "path": "src/buddy/types.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-009"
+      ]
+    },
+    {
+      "path": "src/buddy/useBuddyNotification.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-012"
+      ]
+    },
+    {
+      "path": "src/commands.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-013"
+      ]
+    },
+    {
+      "path": "src/context.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-014"
+      ]
+    },
+    {
+      "path": "src/coordinator/coordinatorMode.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-015"
+      ]
+    },
+    {
+      "path": "src/coordinator/workerAgent.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-025"
+      ]
+    },
+    {
+      "path": "src/cost-tracker.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-016"
+      ]
+    },
+    {
+      "path": "src/costHook.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-017"
+      ]
+    },
+    {
+      "path": "src/daemon/main.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-024"
+      ]
+    },
+    {
+      "path": "src/daemon/workerRegistry.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/dialogLaunchers.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/environment-runner/main.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/goals/goalState.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/goals/goalState.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-018"
+      ]
+    },
+    {
+      "path": "src/history.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/ink.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/interactiveHelpers.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/jobs/classifier.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/KeybindingContext.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/KeybindingProviderSetup.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/defaultBindings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/loadUserBindings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/match.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/parser.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/reservedShortcuts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/resolver.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/schema.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/shortcutFormat.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/template.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/types.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-026"
+      ]
+    },
+    {
+      "path": "src/keybindings/useKeybinding.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/useShortcutDisplay.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/keybindings/validate.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/localRecoveryCli.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/main.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/findRelevantMemories.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/memdir.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/memoryAge.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/memoryScan.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/memoryShapeTelemetry.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/memoryTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/paths.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/teamMemPaths.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/memdir/teamMemPrompts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/moreright/useMoreRight.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/native-ts/color-diff/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/native-ts/file-index/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/native-ts/yoga-layout/enums.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/native-ts/yoga-layout/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/outputStyles/loadOutputStylesDir.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/plugins/builtinPlugins.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/plugins/bundled/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/proactive/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/proactive/useProactive.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/projectOnboardingState.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/config.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/deps.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/stopHooks.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/stopHooks.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/tokenBudget.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/query/transitions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/remote/RemoteSessionManager.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/remote/SessionsWebSocket.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/remote/remotePermissionBridge.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/remote/sdkMessageAdapter.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/replLauncher.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/schemas/hooks.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/screens/Doctor.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/screens/REPL.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/screens/ResumeConversation.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/self-hosted-runner/main.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/setup.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/ssh/SSHSessionManager.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/ssh/createSSHSession.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/tasks.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/tools.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/upstreamproxy/relay.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/upstreamproxy/upstreamproxy.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/vim/motions.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-020"
+      ]
+    },
+    {
+      "path": "src/vim/operators.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/vim/textObjects.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/vim/transitions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/vim/types.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-019"
+      ]
+    },
+    {
+      "path": "src/voice/voiceModeEnabled.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_OTHER_E-021"
+      ]
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

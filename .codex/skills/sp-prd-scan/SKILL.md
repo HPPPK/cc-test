@@ -43,8 +43,8 @@ Required context inputs:
   Run or emulate:
 
   ```text
-  C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent research --query=\"$ARGUMENTS\" --format json
-  # Agent: select from returned graph-backed project concept candidates; include selected_concepts, rejected_concepts, concept_decisions, lexicon_generation_id, expanded_queries, and justified paths in <query_plan_json>.
+  C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent research --query=\"$ARGUMENTS\" --mode catalog --format json
+  # Agent: retrieve the alias catalog, write semantic_intake with normalized_query, intent_facets, negative_constraints, and alias_interpretations; include selected_concepts, rejected_concepts, concept_decisions with covered_facets, missing_facets, match_sources, lexicon_generation_id, expanded_queries, repository_search_terms, and justified paths in <query_plan_json>. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Derive project-language search terms from the alias catalog before reading source. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, normalized_query, and expanded_queries. Use these project-language search terms before broad repository search.
   C:\Users\11034\.specify\bin\project-cognition.exe query --intent research --query-plan \"<query_plan_json>\" --format json
   ```
 
@@ -54,7 +54,7 @@ Required context inputs:
   - `review`: perform only the returned `minimal_live_reads` before continuing.
   - `ambiguous`: ask the user to select the intended candidate.
   - `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
-  - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
+  - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation path_index rows, missing or invalid alias_index, explicit_rebuild_requested, or baseline_identity_invalid.
   - `blocked`: stop and report the blocking runtime issue.
 - `PROJECT-HANDBOOK.md` only when compatibility/export evidence is explicitly relevant.
 - `.specify/prd/status.json` as the stable PRD scan freshness record when present.

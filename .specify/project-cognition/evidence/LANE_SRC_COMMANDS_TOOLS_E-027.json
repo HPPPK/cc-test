@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-027",
+  "source_path": "src/tools/SkillTool/SkillTool.ts",
+  "evidence_type": "code_read",
+  "summary": "SkillTool - executes skills within conversations. Integrates with command system, plugin identifiers, marketplace. Tracks invoked skills per session.",
+  "classification": "critical",
+  "criticality": "critical"
+}

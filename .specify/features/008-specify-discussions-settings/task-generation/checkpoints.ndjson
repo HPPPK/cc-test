@@ -1,0 +1,2 @@
+{"event":"task_generation_checkpoint","id":"cp-001","stage":"before-synthesis","dispatch_shape":"leader-inline","authoritative_inputs":["plan.md","data-model.md","contracts/provider-import-export-api.md","plan-contract.json"],"expected_outputs":["tasks.md","handoff-to-tasks.json","task-index.json","task-packets/*.json"],"status":"recorded"}
+{"event":"task_generation_checkpoint","id":"cp-002","stage":"after-self-audit","dispatch_shape":"leader-inline","checks":["json-parse","checklist-format","mp-ca-mapping","write-set-parallel-safety"],"status":"recorded"}

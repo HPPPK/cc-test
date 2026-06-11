@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-016",
+  "source_path": "src/entrypoints/sdk/coreTypes.ts",
+  "evidence_type": "code_read",
+  "summary": "SDK core types - generated from Zod schemas in coreSchemas.ts. Re-exports sandbox types. HOOK_EVENTS const array lists all hook event types: PreToolUse, PostToolUse, PostToolUseFailure, Notification, UserPromptSubmit, SessionStart, SessionEnd, Stop, StopFailure, SubagentStart, SubagentStop, PreCompact, PostCompact, PermissionRequest, PermissionDenied, Setup, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded.",
+  "classification": "critical",
+  "criticality": "critical"
+}

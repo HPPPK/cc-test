@@ -14,6 +14,14 @@ export type DailyModelTokens = {
   tokensByModel: Record<string, number>
 }
 
+export type DailyTokenBreakdown = {
+  date: string
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+}
+
 export type StreakInfo = {
   currentStreak: number
   longestStreak: number
@@ -37,6 +45,7 @@ export type ActivityStats = {
   streaks: StreakInfo
   dailyActivity: DailyActivity[]
   dailyModelTokens: DailyModelTokens[]
+  dailyTokenBreakdown?: DailyTokenBreakdown[]
   longestSession: SessionStats | null
   modelUsage: Record<string, unknown>
   firstSessionDate: string | null

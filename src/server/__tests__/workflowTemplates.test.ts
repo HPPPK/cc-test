@@ -582,6 +582,156 @@ describe('Workflow template API contract', () => {
     expect(await readWorkflowConfig()).toBeNull()
   })
 
+  it('POST /api/workflows/templates/authoring creates missing user skills for workflow phase references', async () => {
+    const { res, body } = await requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'skill_create',
+        name: 'superpowers-dev',
+        description: 'Use when running Superpowers workflow phases.',
+        body: 'Use this skill for Superpowers workflow phase guidance.',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      operation: 'skill_create',
+      status: 'succeeded',
+      persisted: true,
+      createdSkill: {
+        name: 'superpowers-dev',
+        source: 'user',
+        skillRoot: path.join(tmpDir, 'skills', 'superpowers-dev'),
+        skillFile: path.join(tmpDir, 'skills', 'superpowers-dev', 'SKILL.md'),
+        recommendedReference: {
+          name: 'superpowers-dev',
+          mode: 'recommended',
+          source: 'user',
+        },
+      },
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      nextAction: 'none',
+    })
+    expect(await fs.readFile(path.join(tmpDir, 'skills', 'superpowers-dev', 'SKILL.md'), 'utf-8'))
+      .toContain('Use this skill for Superpowers workflow phase guidance.')
+
+    const installedSkills = await requestJson('/api/skills')
+    expect(installedSkills.res.status).toBe(200)
+    expect(installedSkills.body.skills).toContainEqual(expect.objectContaining({
+      name: 'superpowers-dev',
+      source: 'user',
+      description: 'Use when running Superpowers workflow phases.',
+    }))
+
+    const installedSkillDetail = await requestJson('/api/skills/detail?source=user&name=superpowers-dev')
+    expect(installedSkillDetail.res.status).toBe(200)
+    expect(installedSkillDetail.body.detail).toMatchObject({
+      meta: {
+        name: 'superpowers-dev',
+        source: 'user',
+        description: 'Use when running Superpowers workflow phases.',
+      },
+      skillRoot: path.join(tmpDir, 'skills', 'superpowers-dev'),
+      files: expect.arrayContaining([
+        expect.objectContaining({
+          path: 'SKILL.md',
+          isEntry: true,
+          frontmatter: expect.objectContaining({
+            description: 'Use when running Superpowers workflow phases.',
+          }),
+          body: expect.stringContaining('Use this skill for Superpowers workflow phase guidance.'),
+        }),
+      ]),
+    })
+
+    const catalog = await requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'skill_catalog',
+        query: 'superpowers',
+        source: 'user',
+      }),
+    })
+    expect(catalog.body.skillCatalog).toContainEqual(expect.objectContaining({
+      name: 'superpowers-dev',
+      recommendedReference: {
+        name: 'superpowers-dev',
+        mode: 'recommended',
+        source: 'user',
+      },
+    }))
+  })
+
+  it('POST /api/workflows/templates/authoring refuses to overwrite existing user skills', async () => {
+    await writeUserSkill('existing-workflow-skill')
+    const skillFile = path.join(tmpDir, 'skills', 'existing-workflow-skill', 'SKILL.md')
+    const before = await fs.readFile(skillFile, 'utf-8')
+
+    const { res, body } = await requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'skill_create',
+        name: 'existing-workflow-skill',
+        description: 'Attempt to replace an installed skill.',
+        body: 'This content must not be written.',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: 'WORKFLOW_PHASE_SKILL_ALREADY_EXISTS',
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+    })
+    expect(await fs.readFile(skillFile, 'utf-8')).toBe(before)
+  })
+
+  it('POST /api/workflows/templates/authoring uses existing installed skills without requesting creation', async () => {
+    await writeUserSkill('installed-authoring-skill')
+    const template = validTemplate('installed-authoring-skill-workflow')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [
+      {
+        name: 'installed-authoring-skill',
+        mode: 'recommended',
+        source: 'user',
+      },
+    ]
+
+    const { res, body } = await requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'create',
+        template,
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(body).toMatchObject({
+      operation: 'create',
+      status: 'succeeded',
+      persisted: true,
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      nextAction: 'none',
+    })
+    expect(body.skillRepairGuidance).toBeUndefined()
+  })
+
   it('POST /api/workflows/templates/authoring updates a user template and makes the refreshed list reflect the change', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
@@ -702,6 +852,79 @@ describe('Workflow template API contract', () => {
       },
       nextAction: 'repair-and-validate',
     })
+  })
+
+  it('POST /api/workflows/templates/authoring rejects create templates with missing phase skills before writing', async () => {
+    const template = validTemplate('missing-authoring-skill')
+    const [phase] = template.phases as Array<Record<string, unknown>>
+    phase.skills = [
+      {
+        name: 'missing-authoring-skill',
+        mode: 'recommended',
+        source: 'user',
+      },
+    ]
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/authoring', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'create',
+        template,
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({
+      operation: 'create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            source: 'authoring',
+            templateId: 'missing-authoring-skill',
+            path: '$.template.phases[0].skills[0]',
+            code: 'WORKFLOW_PHASE_SKILL_MISSING',
+            message: expect.stringContaining('skill_create'),
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+    })
+    expect(body.skillRepairGuidance).toEqual([
+      expect.objectContaining({
+        templateId: 'missing-authoring-skill',
+        phaseId: 'draft',
+        skillName: 'missing-authoring-skill',
+        reference: {
+          name: 'missing-authoring-skill',
+          mode: 'recommended',
+          source: 'user',
+        },
+        diagnostic: expect.objectContaining({
+          code: 'WORKFLOW_PHASE_SKILL_MISSING',
+        }),
+        actions: [
+          {
+            operation: 'skill_catalog',
+            input: {
+              operation: 'skill_catalog',
+              query: 'missing-authoring-skill',
+              source: 'all',
+            },
+          },
+          {
+            operation: 'skill_create',
+            input: {
+              operation: 'skill_create',
+              name: 'missing-authoring-skill',
+              description: 'Use when workflow phases need Missing Authoring Skill guidance.',
+            },
+          },
+        ],
+      }),
+    ])
   })
 
   it('POST /api/workflows/templates/authoring rejects create id conflicts without writing', async () => {

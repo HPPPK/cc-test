@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-001",
+  "source_path": "src/QueryEngine.ts",
+  "evidence_type": "code_read",
+  "summary": "QueryEngine is the core conversation lifecycle manager. Owns session state, message history, file cache, usage tracking. submitMessage() is an async generator yielding SDKMessage events. Also exports ask() as a one-shot convenience wrapper. Depends on bootstrap/state, commands, cost-tracker, memdir, query, Tool, and many utils.",
+  "classification": "important",
+  "criticality": "critical"
+}

@@ -1,0 +1,32 @@
+{
+  "state_contracts": [
+    "markdown content rendering semantics unchanged",
+    "link click behavior unchanged"
+  ],
+  "confidence_notes": [
+    "Project cognition readiness was review with partial facet coverage; live search found BASE_PROSE_CLASSES using hover:prose-a:underline, which matches the reported grouped underline behavior."
+  ],
+  "generated_surfaces": [],
+  "user_decisions": [
+    "User reported hovering one link in the session page underlined other links together."
+  ],
+  "scope_paths": [
+    "desktop/src/components/markdown/MarkdownRenderer.tsx"
+  ],
+  "behavior_surfaces": [
+    "desktop markdown link hover styling",
+    "session chat rendered markdown links"
+  ],
+  "changed_paths": [
+    "desktop/src/components/markdown/MarkdownRenderer.tsx"
+  ],
+  "workflow": "sp-fast",
+  "verification": [
+    "not run: validation was not explicitly authorized in this turn"
+  ],
+  "known_unknowns": [
+    "visual hover behavior not browser-verified",
+    "test suite not run"
+  ],
+  "reason": "workflow-finalize"
+}

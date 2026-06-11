@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-003",
+  "source_path": "src/skills/loadSkillsDir.ts",
+  "evidence_type": "code_read",
+  "summary": "Main skill loading infrastructure (~1087 lines). Key exports: getSkillDirCommands (memoized, loads from managed/user/project/additional dirs + legacy commands), loadSkillsFromSkillsDir (directory format only: skill-name/SKILL.md), loadSkillsFromCommandsDir (legacy), createSkillCommand, parseSkillFrontmatterFields, discoverSkillDirsForPaths, addSkillDirectories, activateConditionalSkillsForPaths, getDynamicSkills, clearSkillCaches. LoadedFrom type: commands_DEPRECATED, skills, plugin, managed, bundled, mcp. Supports conditional skills with paths frontmatter (gitignore-style matching). Deduplication via realpath. Skill frontmatter supports: description, allowed-tools, argument-hint, when_to_use, model, hooks, context, agent, effort, shell, paths, user-invocable, disable-model-invocation.",
+  "classification": "critical",
+  "criticality": "critical"
+}

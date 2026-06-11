@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-024",
+  "source_path": "src/skills/bundled/batch.ts",
+  "evidence_type": "code_read",
+  "summary": "Batch skill for parallel work orchestration. Registers via registerBundledSkill(). Builds prompt for coordinator pattern: Phase 1 (research+plan), Phase 2 (spawn workers via Agent tool, 5-30 units), Phase 3 (collect results, create PRs). Worker instructions: simplify, run tests, e2e test, commit+push, report PR URL.",
+  "classification": "critical",
+  "criticality": "high"
+}

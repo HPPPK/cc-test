@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-007",
+  "source_path": "src/server/services/pluginService.ts",
+  "evidence_type": "code_read",
+  "summary": "Plugin lifecycle management: enable/disable/install/uninstall/update operations. Loads built-in and marketplace plugins. Manages MCP server integration, LSP server integration, hooks, and commands from plugins.",
+  "classification": "critical",
+  "criticality": "high"
+}

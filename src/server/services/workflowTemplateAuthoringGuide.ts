@@ -147,7 +147,8 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
       guidance: [
         'requestedModel is optional and should only be set when the phase has a concrete model need.',
         'Use workflow_template_authoring skill_catalog before create or update when assigning recommended phase skills.',
-        'phases[].skills should contain references to existing skills such as { name, mode: "recommended" }; add source, pluginName, namespace, version, contentHash, or referenceId only when needed for provenance or ambiguity.',
+        'If the needed skill is missing, use workflow_template_authoring skill_create to create a user skill first, then reference the returned recommendedReference.',
+        'phases[].skills should contain references to installed skills such as { name, mode: "recommended" }; add source, pluginName, namespace, version, contentHash, or referenceId only when needed for provenance or ambiguity.',
         'Do not duplicate skill-owned descriptions, applicability, reason, appliesWhen, assets, scripts, tools, model, or effort settings into workflow templates.',
         'Legacy reason fields are preserved if already present, but new workflow templates should rely on the skill catalog and the skill package itself for applicability.',
       ],
@@ -228,6 +229,16 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
     WORKFLOW_PHASE_SKILL_INVALID_REFERENCE: [
       'Set phases[].skills to an array of recommended skill references from workflow_template_authoring skill_catalog.',
       'Each phase skill reference needs a non-empty name and mode "recommended"; omit duplicated reason or appliesWhen text in new templates.',
+    ],
+    WORKFLOW_PHASE_SKILL_MISSING: [
+      'Run workflow_template_authoring skill_catalog and replace the missing reference with an installed skill reference.',
+      'If no installed skill fits, run workflow_template_authoring skill_create with a stable slug, description, and SKILL.md body, then use the returned recommendedReference.',
+    ],
+    WORKFLOW_PHASE_SKILL_AMBIGUOUS: [
+      'Use the skill_catalog recommendedReference for the intended skill so source and provenance are explicit.',
+    ],
+    WORKFLOW_PHASE_SKILL_UNSUPPORTED_SOURCE: [
+      'Replace the skill reference with a supported installed source from workflow_template_authoring skill_catalog.',
     ],
   },
 }

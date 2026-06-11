@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-033",
+  "source_path": "src/tools/NotebookEditTool/NotebookEditTool.ts",
+  "evidence_type": "code_read",
+  "summary": "NotebookEditTool - edits Jupyter notebook cells (replace/insert/delete). Zod schema with notebook_path, cell_id, new_source, cell_type, edit_mode.",
+  "classification": "critical",
+  "criticality": "critical"
+}

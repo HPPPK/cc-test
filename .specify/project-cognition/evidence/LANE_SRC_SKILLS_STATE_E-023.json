@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-023",
+  "source_path": "src/migrations/migrateFennecToOpus.ts",
+  "evidence_type": "code_read",
+  "summary": "Migration: maps removed fennec model aliases to opus aliases in userSettings. fennec-latest->opus, fennec-latest[1m]->opus[1m], fennec-fast-latest/opus-4-5-fast->opus[1m]+fastMode. Ant-only (USER_TYPE check). Idempotent.",
+  "classification": "critical",
+  "criticality": "medium"
+}

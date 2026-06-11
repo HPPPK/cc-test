@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-018",
+  "source_path": "src/services/extractMemories/extractMemories.ts",
+  "evidence_type": "code_read",
+  "summary": "Extracts durable memories from session transcripts to ~/.claude/projects/<path>/memory/. Runs once per query loop via stop hooks. Uses forked agent pattern sharing parent prompt cache. Manages tool permissions for extraction subagent.",
+  "classification": "critical",
+  "criticality": "high"
+}

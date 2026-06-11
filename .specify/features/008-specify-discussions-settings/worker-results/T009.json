@@ -1,0 +1,58 @@
+{
+  "status": "success",
+  "reported_status": "DONE",
+  "task_id": "T009",
+  "changed_files": [
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts"
+  ],
+  "validation_output": {
+    "focused_tests": {
+      "command": "bun test src/server/__tests__/providers.test.ts",
+      "exit_code": 0,
+      "summary": "63 pass, 0 fail"
+    },
+    "server_gate": {
+      "command": "bun run check:server",
+      "exit_code": 0,
+      "summary": "1134 pass, 7 skip, 0 fail"
+    },
+    "diff_check": {
+      "command": "git diff --check -- src/server/services/providerService.ts src/server/api/providers.ts",
+      "exit_code": 0,
+      "summary": "No whitespace errors; Git reported LF-to-CRLF working-copy warnings only."
+    }
+  },
+  "must_preserve_evidence": {
+    "CA-002_MP-008_preview_side_effect_free": "previewProviderImport only reads the provider index and returns diagnostics; focused test confirms provider index and managed settings remain unchanged.",
+    "CA-003_MP-007_no_active_mutation": "commitProviderImport writes providers.json directly and never calls activateProvider, activateOfficial, updateProvider, syncToSettings, or updateManagedSettings; focused active-env test passed.",
+    "CA-004_MP-006_conflict_rules": "preview reports conflicts with defaultResolution rename, never overwrite; overwrite commit path only runs for explicit overwrite resolutions with targetProviderId.",
+    "CA-005_generated_local_ids": "add/rename use crypto.randomUUID() and never reuse sourceProviderId; focused generated-local-id test passed.",
+    "G-TEST": "Focused providers test and bun run check:server both passed."
+  },
+  "concerns": [
+    "Project cognition query was unavailable because status.json exists but project-cognition.db is missing; implementation proceeded from authoritative feature artifacts and live code.",
+    "src/server/types/providerImportExport.ts is untracked from prior task work and was read but not modified."
+  ],
+  "recovery_hints": [],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/worker-results/T008.json",
+    "src/server/types/providerImportExport.ts",
+    "src/server/__tests__/providers.test.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

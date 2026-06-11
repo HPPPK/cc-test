@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-001",
+  "source_path": "src/skills/bundledSkills.ts",
+  "evidence_type": "code_read",
+  "summary": "Core type BundledSkillDefinition defines the shape of all bundled skills: name, description, aliases, whenToUse, allowedTools, model, hooks, context, agent, files, getPromptForCommand. registerBundledSkill() converts these to Command objects. getBundledSkills() returns registered skills. File extraction to disk with safe write (O_NOFOLLOW|O_EXCL) for reference files.",
+  "classification": "critical",
+  "criticality": "critical"
+}

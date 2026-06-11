@@ -431,6 +431,20 @@ describe('Settings API', () => {
     expect(body2.model).toBe('claude-opus-4-7')
   })
 
+  it('PUT /api/settings/user should reject non-object JSON bodies', async () => {
+    const url = new URL('/api/settings/user', 'http://localhost:3456')
+    const req = new Request(url.toString(), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'null',
+    })
+    const segments = url.pathname.split('/').filter(Boolean)
+
+    const res = await handleSettingsApi(req, url, segments)
+
+    expect(res.status).toBe(400)
+  })
+
   it('PUT /api/settings/user should sync thinking changes to active CLI sessions', async () => {
     const syncSpy = spyOn(conversationService, 'setMaxThinkingTokensForActiveSessions')
       .mockImplementation(() => 0)
@@ -448,6 +462,36 @@ describe('Settings API', () => {
 
       expect(syncSpy).toHaveBeenNthCalledWith(1, 0)
       expect(syncSpy).toHaveBeenNthCalledWith(2, null)
+    } finally {
+      syncSpy.mockRestore()
+    }
+  })
+
+  it('PUT /api/settings/user should sync settings env to active CLI sessions', async () => {
+    updateSettingsForSource('userSettings', {
+      env: {
+        AGENT_RUNTIME_TOKEN: 'old-value',
+        REMOVED_VALUE: 'remove-me',
+      },
+    })
+    const syncSpy = spyOn(conversationService as any, 'updateEnvironmentVariablesForActiveSessions')
+      .mockImplementation(() => 0)
+
+    try {
+      const { req, url, segments } = makeRequest('PUT', '/api/settings/user', {
+        env: {
+          AGENT_RUNTIME_TOKEN: 'runtime-value',
+          EMPTY_VALUE: '',
+        },
+      })
+
+      expect((await handleSettingsApi(req, url, segments)).status).toBe(200)
+
+      expect(syncSpy).toHaveBeenCalledWith({
+        AGENT_RUNTIME_TOKEN: 'runtime-value',
+        EMPTY_VALUE: '',
+        REMOVED_VALUE: null,
+      })
     } finally {
       syncSpy.mockRestore()
     }
@@ -498,6 +542,20 @@ describe('Settings API', () => {
     const { req, url, segments } = makeRequest('PUT', '/api/permissions/mode', {
       mode: 'yolo',
     })
+    const res = await handleSettingsApi(req, url, segments)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('PUT /api/permissions/mode should reject array JSON bodies', async () => {
+    const url = new URL('/api/permissions/mode', 'http://localhost:3456')
+    const req = new Request(url.toString(), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: '[]',
+    })
+    const segments = url.pathname.split('/').filter(Boolean)
+
     const res = await handleSettingsApi(req, url, segments)
 
     expect(res.status).toBe(400)

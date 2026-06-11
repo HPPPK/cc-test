@@ -1,0 +1,8 @@
+{
+  "id": "LANE_GIT_EVOLUTION_E-GIT-002",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "Primary contributor is '程序员阿江(Relakkes)' with 732 commits (~87% of total), followed by 'Relakkes Yang' (25), '程序员阿江-Relakkes' (25), 'pobb' (19), 'Robin11' (6), 'cynicalight' (6), 'Robin' (5). Multiple contributor name variants for the same primary author suggest identity/account changes. Community contributions are minimal but present (sigridjineth, 言志伟, chenziyang, etc.).",
+  "classification": "important",
+  "criticality": "important"
+}

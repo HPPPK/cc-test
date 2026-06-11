@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-014",
+  "source_path": "src/context.ts",
+  "evidence_type": "code_read",
+  "summary": "System prompt context assembly. getGitStatus() memoized git status. getUserContext() and getSystemContext() build context sections. setSystemPromptInjection() for cache-breaking debug. Integrates CLAUDE.md loading, git branch info, date injection.",
+  "classification": "important",
+  "criticality": "important"
+}

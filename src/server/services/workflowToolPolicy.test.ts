@@ -240,6 +240,7 @@ describe('workflowToolPolicy', () => {
       'validate',
     ])
     expect(WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS).toEqual([
+      'skill_create',
       'create',
       'update',
       'duplicate',

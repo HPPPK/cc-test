@@ -35,6 +35,14 @@ export type DailyModelTokens = {
   tokensByModel: { [modelName: string]: number } // total tokens (input + output + cache read + cache creation) per model
 }
 
+export type DailyTokenBreakdown = {
+  date: string // YYYY-MM-DD format
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+}
+
 export type StreakInfo = {
   currentStreak: number
   longestStreak: number
@@ -65,6 +73,7 @@ export type ClaudeCodeStats = {
 
   // Daily token usage per model for charts
   dailyModelTokens: DailyModelTokens[]
+  dailyTokenBreakdown: DailyTokenBreakdown[]
 
   // Session info
   longestSession: SessionStats | null
@@ -92,6 +101,7 @@ export type ClaudeCodeStats = {
 type ProcessedStats = {
   dailyActivity: DailyActivity[]
   dailyModelTokens: DailyModelTokens[]
+  dailyTokenBreakdown: DailyTokenBreakdown[]
   modelUsage: { [modelName: string]: ModelUsage }
   sessionStats: SessionStats[]
   hourCounts: { [hour: number]: number }
@@ -158,6 +168,7 @@ async function processSessionFiles(
   const dailyActivityMap = new Map<string, DailyActivity>()
   const dailySessionIdsMap = new Map<string, Set<string>>()
   const dailyModelTokensMap = new Map<string, { [modelName: string]: number }>()
+  const dailyTokenBreakdownMap = new Map<string, DailyTokenBreakdown>()
   const sessions: SessionStats[] = []
   const hourCounts = new Map<number, number>()
   let totalMessages = 0
@@ -385,6 +396,21 @@ async function processSessionFiles(
               const dayTokens = dailyModelTokensMap.get(tokenDateKey) || {}
               dayTokens[model] = (dayTokens[model] || 0) + totalTokens
               dailyModelTokensMap.set(tokenDateKey, dayTokens)
+
+              const breakdown = dailyTokenBreakdownMap.get(tokenDateKey) ?? {
+                date: tokenDateKey,
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadInputTokens: 0,
+                cacheCreationInputTokens: 0,
+              }
+              breakdown.inputTokens += usage.input_tokens || 0
+              breakdown.outputTokens += usage.output_tokens || 0
+              breakdown.cacheReadInputTokens +=
+                usage.cache_read_input_tokens || 0
+              breakdown.cacheCreationInputTokens +=
+                usage.cache_creation_input_tokens || 0
+              dailyTokenBreakdownMap.set(tokenDateKey, breakdown)
             }
           }
         }
@@ -403,6 +429,9 @@ async function processSessionFiles(
     dailyModelTokens: Array.from(dailyModelTokensMap.entries())
       .map(([date, tokensByModel]) => ({ date, tokensByModel }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+    dailyTokenBreakdown: Array.from(dailyTokenBreakdownMap.values()).sort(
+      (a, b) => a.date.localeCompare(b.date),
+    ),
     modelUsage: modelUsageAgg,
     sessionStats: sessions,
     hourCounts: Object.fromEntries(hourCounts),
@@ -523,6 +552,24 @@ function cacheToStats(
     }
   }
 
+  const dailyTokenBreakdownMap = new Map<string, DailyTokenBreakdown>()
+  for (const day of cache.dailyTokenBreakdown) {
+    dailyTokenBreakdownMap.set(day.date, { ...day })
+  }
+  if (todayStats) {
+    for (const day of todayStats.dailyTokenBreakdown) {
+      const existing = dailyTokenBreakdownMap.get(day.date)
+      if (existing) {
+        existing.inputTokens += day.inputTokens
+        existing.outputTokens += day.outputTokens
+        existing.cacheReadInputTokens += day.cacheReadInputTokens
+        existing.cacheCreationInputTokens += day.cacheCreationInputTokens
+      } else {
+        dailyTokenBreakdownMap.set(day.date, { ...day })
+      }
+    }
+  }
+
   // Merge model usage
   const modelUsage = { ...cache.modelUsage }
   if (todayStats) {
@@ -576,6 +623,9 @@ function cacheToStats(
   const dailyModelTokens = Array.from(dailyModelTokensMap.entries())
     .map(([date, tokensByModel]) => ({ date, tokensByModel }))
     .sort((a, b) => a.date.localeCompare(b.date))
+  const dailyTokenBreakdown = Array.from(dailyTokenBreakdownMap.values()).sort(
+    (a, b) => a.date.localeCompare(b.date),
+  )
 
   // Compute session aggregates: combine cache aggregates with today's stats
   const totalSessions =
@@ -645,6 +695,7 @@ function cacheToStats(
     streaks,
     dailyActivity: dailyActivityArray,
     dailyModelTokens,
+    dailyTokenBreakdown,
     longestSession,
     modelUsage,
     firstSessionDate,
@@ -804,6 +855,9 @@ function processedStatsToClaudeCodeStats(
   const dailyModelTokensSorted = stats.dailyModelTokens
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
+  const dailyTokenBreakdownSorted = stats.dailyTokenBreakdown
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   // Calculate streaks from daily activity
   const streaks = calculateStreaks(dailyActivitySorted)
@@ -866,6 +920,7 @@ function processedStatsToClaudeCodeStats(
     streaks,
     dailyActivity: dailyActivitySorted,
     dailyModelTokens: dailyModelTokensSorted,
+    dailyTokenBreakdown: dailyTokenBreakdownSorted,
     longestSession,
     modelUsage: stats.modelUsage,
     firstSessionDate,
@@ -1099,6 +1154,7 @@ function getEmptyStats(): ClaudeCodeStats {
     },
     dailyActivity: [],
     dailyModelTokens: [],
+    dailyTokenBreakdown: [],
     longestSession: null,
     modelUsage: {},
     firstSessionDate: null,

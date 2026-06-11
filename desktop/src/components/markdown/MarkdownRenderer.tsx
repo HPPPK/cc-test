@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { memo, useMemo, useCallback } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
@@ -12,6 +12,8 @@ type Props = {
   content: string
   variant?: 'default' | 'document' | 'compact'
   className?: string
+  cache?: boolean
+  streaming?: boolean
   onLinkClick?: (href: string, event: ReactMouseEvent<HTMLDivElement>) => boolean | void
 }
 
@@ -64,6 +66,20 @@ function shouldRenderAsMermaid(block: CodeBlock): boolean {
   }
 
   return looksLikeMermaid(block.code)
+}
+
+function MermaidStreamingPlaceholder() {
+  return (
+    <div
+      data-testid="mermaid-streaming-placeholder"
+      className="my-4 flex items-center justify-center rounded-[var(--radius-lg)] border border-[var(--color-border)]/50 bg-[var(--color-surface-container-low)] py-8"
+    >
+      <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-tertiary)]">
+        <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
+        Generating diagram...
+      </div>
+    </div>
+  )
 }
 
 const renderer = new marked.Renderer()
@@ -304,13 +320,99 @@ function parseMarkdown(content: string): { html: string; codeBlocks: CodeBlock[]
   return { html, codeBlocks, mathBlocks }
 }
 
+type MarkdownParseResult = ReturnType<typeof parseMarkdown>
+
+type CacheEntry = {
+  parsed: MarkdownParseResult
+  chars: number
+}
+
+const FINALIZED_CACHE_MAX_ENTRIES = 200
+const FINALIZED_CACHE_MAX_CHARS = 8_000_000
+const STREAMING_CACHE_MAX_ENTRIES = 4
+
+const finalizedMarkdownCache = new Map<string, CacheEntry>()
+const streamingMarkdownCache = new Map<string, CacheEntry>()
+let finalizedMarkdownCacheChars = 0
+
+function fnv1aHash(value: string): number {
+  let hash = 2166136261 >>> 0
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function buildMarkdownCacheKey(content: string): string {
+  return `${content.length}:${fnv1aHash(content).toString(36)}`
+}
+
+function evictFinalizedMarkdownEntries(): void {
+  while (
+    finalizedMarkdownCache.size > FINALIZED_CACHE_MAX_ENTRIES ||
+    finalizedMarkdownCacheChars > FINALIZED_CACHE_MAX_CHARS
+  ) {
+    const oldestKey = finalizedMarkdownCache.keys().next().value
+    if (typeof oldestKey !== 'string') break
+    const entry = finalizedMarkdownCache.get(oldestKey)
+    finalizedMarkdownCache.delete(oldestKey)
+    if (entry) finalizedMarkdownCacheChars -= entry.chars
+  }
+}
+
+function evictStreamingMarkdownEntries(): void {
+  while (streamingMarkdownCache.size > STREAMING_CACHE_MAX_ENTRIES) {
+    const oldestKey = streamingMarkdownCache.keys().next().value
+    if (typeof oldestKey !== 'string') break
+    streamingMarkdownCache.delete(oldestKey)
+  }
+}
+
+function getCachedMarkdownParse(content: string, streaming: boolean): MarkdownParseResult {
+  const cache = streaming ? streamingMarkdownCache : finalizedMarkdownCache
+  const key = buildMarkdownCacheKey(content)
+  const cached = cache.get(key)
+  if (cached) {
+    cache.delete(key)
+    cache.set(key, cached)
+    return cached.parsed
+  }
+
+  const parsed = parseMarkdown(content)
+  const entry: CacheEntry = { parsed, chars: content.length }
+  cache.set(key, entry)
+
+  if (streaming) {
+    evictStreamingMarkdownEntries()
+  } else {
+    finalizedMarkdownCacheChars += content.length
+    evictFinalizedMarkdownEntries()
+  }
+
+  return parsed
+}
+
+export const __markdownParseCacheInternals = {
+  finalizedSize: () => finalizedMarkdownCache.size,
+  streamingSize: () => streamingMarkdownCache.size,
+  finalizedChars: () => finalizedMarkdownCacheChars,
+  hasFinalized: (content: string) => finalizedMarkdownCache.has(buildMarkdownCacheKey(content)),
+  hasStreaming: (content: string) => streamingMarkdownCache.has(buildMarkdownCacheKey(content)),
+  reset: () => {
+    finalizedMarkdownCache.clear()
+    streamingMarkdownCache.clear()
+    finalizedMarkdownCacheChars = 0
+  },
+}
+
 const BASE_PROSE_CLASSES = `markdown-prose prose prose-sm min-w-0 max-w-none break-words [overflow-wrap:anywhere] text-[var(--color-text-primary)]
   prose-headings:text-[var(--color-text-primary)] prose-headings:font-semibold
   prose-p:my-2 prose-p:leading-relaxed
   prose-p:break-words prose-p:[overflow-wrap:anywhere]
   prose-code:text-[13px] prose-code:text-[var(--color-code-fg)] prose-code:font-[var(--font-mono)] prose-code:bg-[var(--color-code-bg)] prose-code:border prose-code:border-[var(--color-border)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:hidden prose-code:after:hidden
   prose-pre:!bg-transparent prose-pre:!p-0 prose-pre:!shadow-none
-  prose-a:text-[var(--color-text-accent)] prose-a:no-underline prose-a:[overflow-wrap:anywhere] hover:prose-a:underline
+  prose-a:text-[var(--color-text-accent)] prose-a:no-underline prose-a:[overflow-wrap:anywhere] [&_a:hover]:underline
   prose-strong:text-[var(--color-text-primary)]
   prose-ul:my-2 prose-ol:my-2
   prose-li:my-0.5
@@ -363,8 +465,18 @@ function getProseClasses(variant: 'default' | 'document' | 'compact', className?
     .join(' ')
 }
 
-export function MarkdownRenderer({ content, variant = 'default', className, onLinkClick }: Props) {
-  const { html, codeBlocks, mathBlocks } = useMemo(() => parseMarkdown(content), [content])
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  variant = 'default',
+  className,
+  cache = true,
+  streaming = false,
+  onLinkClick,
+}: Props) {
+  const { html, codeBlocks, mathBlocks } = useMemo(
+    () => cache ? getCachedMarkdownParse(content, streaming) : parseMarkdown(content),
+    [cache, content, streaming],
+  )
   const proseClasses = useMemo(
     () => getProseClasses(variant, className),
     [variant, className],
@@ -442,7 +554,11 @@ export function MarkdownRenderer({ content, variant = 'default', className, onLi
         part.type === 'html' ? (
           <div key={i} dangerouslySetInnerHTML={{ __html: part.content }} />
         ) : shouldRenderAsMermaid(part.block) ? (
-          <MermaidRenderer key={part.block.id} code={part.block.code} />
+          streaming ? (
+            <MermaidStreamingPlaceholder key={part.block.id} />
+          ) : (
+            <MermaidRenderer key={part.block.id} code={part.block.code} />
+          )
         ) : (
           <div key={part.block.id} className="my-4">
             <CodeViewer
@@ -454,4 +570,4 @@ export function MarkdownRenderer({ content, variant = 'default', className, onLi
       )}
     </div>
   )
-}
+})

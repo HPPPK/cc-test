@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-009",
+  "source_path": "src/commands/commit-push-pr.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/commit-push-pr' - combined commit, push, and PR creation workflow. Uses gh CLI for PR operations. Supports Slack notification.",
+  "classification": "critical",
+  "criticality": "critical"
+}

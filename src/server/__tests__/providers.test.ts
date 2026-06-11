@@ -65,6 +65,38 @@ function sampleInput(overrides?: Partial<CreateProviderInput>): CreateProviderIn
   }
 }
 
+function sampleBundleProvider(overrides?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    sourceProviderId: 'source-provider-id',
+    name: 'Imported Provider',
+    presetId: 'custom',
+    baseUrl: 'https://imported.example.com',
+    apiFormat: 'anthropic',
+    models: {
+      main: 'import-main',
+      haiku: 'import-haiku',
+      sonnet: 'import-sonnet',
+      opus: 'import-opus',
+    },
+    credential: { status: 'redacted' },
+    ...overrides,
+  }
+}
+
+function sampleProviderBundle(
+  providers: Array<Record<string, unknown>>,
+  overrides?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: 'cc-jiangxia-provider-bundle',
+    exportedAt: '2026-06-10T00:00:00.000Z',
+    containsSecrets: false,
+    providers,
+    ...overrides,
+  }
+}
+
 /** Read the settings.json written to the temp config dir */
 async function readSettings(): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(path.join(tmpDir, 'cc-jiangxia', 'settings.json'), 'utf-8')
@@ -943,6 +975,461 @@ describe('Providers API', () => {
     const res = await handleProvidersApi(req, url, segments)
 
     expect(res.status).toBe(400)
+  })
+
+  // ─── POST /api/providers/export ─────────────────────────────────────────
+
+  test('POST /api/providers/export should return a secret-free provider bundle', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export', {
+      providerIds: [provider.id],
+      all: false,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      bundle: {
+        schemaVersion: number
+        kind: string
+        containsSecrets: boolean
+        providers: Array<{ sourceProviderId?: string; credential?: { status: string }; apiKey?: string }>
+      }
+    }
+    const serialized = JSON.stringify(body.bundle)
+    expect(body.bundle.schemaVersion).toBe(1)
+    expect(body.bundle.kind).toBe('cc-jiangxia-provider-bundle')
+    expect(body.bundle.containsSecrets).toBe(false)
+    expect(body.bundle.providers).toHaveLength(1)
+    expect(body.bundle.providers[0].sourceProviderId).toBe(provider.id)
+    expect(body.bundle.providers[0].credential).toEqual({ status: 'redacted' })
+    expect(body.bundle.providers[0].apiKey).toBeUndefined()
+    expect(serialized).not.toContain('sk-test-key-123')
+  })
+
+  test('POST /api/providers/export should not include active or default provider state', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+    await svc.activateProvider(provider.id)
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export', {
+      all: true,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { bundle: Record<string, unknown> }
+    const serialized = JSON.stringify(body.bundle)
+    expect(body.bundle.activeId).toBeUndefined()
+    expect(body.bundle.activeProviderId).toBeUndefined()
+    expect(body.bundle.defaultProviderId).toBeUndefined()
+    expect(serialized).not.toContain('"activeId"')
+    expect(serialized).not.toContain('"activeProviderId"')
+    expect(serialized).not.toContain('"defaultProviderId"')
+  })
+
+  test('POST /api/providers/export should not write provider index or managed settings', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+    await svc.activateProvider(provider.id)
+    const providersBefore = await readProvidersConfig()
+    const settingsBefore = await readSettings()
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export', {
+      providerIds: [provider.id],
+      all: false,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    expect(await readProvidersConfig()).toEqual(providersBefore)
+    expect(await readSettings()).toEqual(settingsBefore)
+  })
+
+  // ─── POST /api/providers/export-with-secrets ────────────────────────────
+
+  test('POST /api/providers/export-with-secrets should reject missing credential exposure confirmation', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export-with-secrets', {
+      providerIds: [provider.id],
+      all: false,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error?: unknown; message?: unknown }
+    expect(body.error).toBe('SECRET_EXPORT_CONFIRMATION_REQUIRED')
+  })
+
+  test('POST /api/providers/export-with-secrets should reject false credential exposure confirmation', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export-with-secrets', {
+      providerIds: [provider.id],
+      all: false,
+      confirmation: {
+        acknowledgedCredentialExposure: false,
+      },
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error?: unknown; message?: unknown }
+    expect(body.error).toBe('SECRET_EXPORT_CONFIRMATION_REQUIRED')
+  })
+
+  test('POST /api/providers/export-with-secrets should reject non-object JSON bodies', async () => {
+    const url = new URL('/api/providers/export-with-secrets', 'http://localhost:3456')
+    const req = new Request(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'null',
+    })
+    const segments = url.pathname.split('/').filter(Boolean)
+
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error?: unknown; message?: unknown }
+    expect(body.error).toBe('SECRET_EXPORT_CONFIRMATION_REQUIRED')
+  })
+
+  test('POST /api/providers/export-with-secrets should label confirmed bundles as credential-bearing', async () => {
+    const svc = new ProviderService()
+    const provider = await svc.addProvider(sampleInput())
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export-with-secrets', {
+      providerIds: [provider.id],
+      all: false,
+      confirmation: {
+        acknowledgedCredentialExposure: true,
+      },
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      bundle: {
+        containsSecrets: boolean
+        app?: unknown
+        metadata?: unknown
+        labels?: unknown
+        security?: unknown
+      }
+    }
+    const labelingMetadata = JSON.stringify({
+      app: body.bundle.app,
+      metadata: body.bundle.metadata,
+      labels: body.bundle.labels,
+      security: body.bundle.security,
+    })
+    expect(body.bundle.containsSecrets).toBe(true)
+    expect(labelingMetadata).toContain('credential-bearing')
+  })
+
+  test('POST /api/providers/export-with-secrets should include only selected provider credentials and exclude local auth state', async () => {
+    const officialOAuthToken = 'official-oauth-token-123'
+    const officialLoginToken = 'official-login-token-456'
+    await fs.writeFile(
+      path.join(tmpDir, 'settings.json'),
+      JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: officialOAuthToken,
+          CLAUDE_CODE_OAUTH_TOKEN: officialLoginToken,
+        },
+      }),
+      'utf-8',
+    )
+    const svc = new ProviderService()
+    const selected = await svc.addProvider(sampleInput({
+      name: 'Selected Provider',
+      apiKey: 'sk-selected-secret-123',
+    }))
+    const unselected = await svc.addProvider(sampleInput({
+      name: 'Unselected Provider',
+      apiKey: 'sk-unselected-secret-456',
+    }))
+    await svc.activateProvider(selected.id)
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/export-with-secrets', {
+      providerIds: [selected.id],
+      all: false,
+      confirmation: {
+        acknowledgedCredentialExposure: true,
+      },
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      bundle: {
+        containsSecrets: boolean
+        providers: Array<{
+          sourceProviderId?: string
+          credential?: { status?: string; apiKey?: string }
+          apiKey?: string
+        }>
+        activeId?: unknown
+        activeProviderId?: unknown
+        defaultProviderId?: unknown
+      }
+    }
+    const serialized = JSON.stringify(body.bundle)
+    expect(body.bundle.containsSecrets).toBe(true)
+    expect(body.bundle.providers).toHaveLength(1)
+    expect(body.bundle.providers[0].sourceProviderId).toBe(selected.id)
+    expect(body.bundle.providers[0].credential).toEqual({
+      status: 'present',
+      apiKey: 'sk-selected-secret-123',
+    })
+    expect(body.bundle.providers[0].apiKey).toBeUndefined()
+    expect(body.bundle.activeId).toBeUndefined()
+    expect(body.bundle.activeProviderId).toBeUndefined()
+    expect(body.bundle.defaultProviderId).toBeUndefined()
+    expect(serialized).not.toContain(unselected.id)
+    expect(serialized).not.toContain('sk-unselected-secret-456')
+    expect(serialized).not.toContain(officialOAuthToken)
+    expect(serialized).not.toContain(officialLoginToken)
+    expect(serialized).not.toContain('ANTHROPIC_AUTH_TOKEN')
+    expect(serialized).not.toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(serialized).not.toContain('"activeId"')
+    expect(serialized).not.toContain('"activeProviderId"')
+    expect(serialized).not.toContain('"defaultProviderId"')
+  })
+
+  // ─── POST /api/providers/import/preview ─────────────────────────────────
+
+  test('POST /api/providers/import/preview should not write provider index or managed settings', async () => {
+    const svc = new ProviderService()
+    const active = await svc.addProvider(sampleInput())
+    await svc.activateProvider(active.id)
+    const providersBefore = await readProvidersConfig()
+    const settingsBefore = await readSettings()
+    const bundle = sampleProviderBundle([
+      sampleBundleProvider({
+        sourceProviderId: 'source-preview-provider',
+        name: 'Preview Only Provider',
+      }),
+    ])
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/import/preview', {
+      bundle,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      preview: {
+        bundle: { schemaVersion: number; containsSecrets: boolean; providerCount: number }
+        candidates: Array<{ candidateId: string; name: string; valid: boolean; credentialStatus: string }>
+        errors: unknown[]
+        canCommit: boolean
+      }
+    }
+    const serialized = JSON.stringify(body.preview)
+    expect(body.preview.bundle).toEqual({
+      schemaVersion: 1,
+      containsSecrets: false,
+      providerCount: 1,
+    })
+    expect(body.preview.candidates).toHaveLength(1)
+    expect(body.preview.candidates[0]).toMatchObject({
+      candidateId: '0',
+      name: 'Preview Only Provider',
+      valid: true,
+      credentialStatus: 'redacted',
+    })
+    expect(body.preview.errors).toEqual([])
+    expect(body.preview.canCommit).toBe(true)
+    expect(serialized).not.toContain('sk-test-key-123')
+    expect(await readProvidersConfig()).toEqual(providersBefore)
+    expect(await readSettings()).toEqual(settingsBefore)
+  })
+
+  test('POST /api/providers/import/preview should default conflicts to add or rename', async () => {
+    const svc = new ProviderService()
+    const existing = await svc.addProvider(sampleInput({ name: 'Local Duplicate' }))
+    const bundle = sampleProviderBundle([
+      sampleBundleProvider({
+        sourceProviderId: existing.id,
+        name: 'Local Duplicate',
+      }),
+    ])
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/import/preview', {
+      bundle,
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      preview: {
+        candidates: Array<{
+          conflict?: { targetProviderId: string; targetProviderName?: string; type: string }
+          defaultResolution: string
+          suggestedName?: string
+        }>
+      }
+    }
+    const candidate = body.preview.candidates[0]
+    expect(candidate.conflict).toMatchObject({
+      targetProviderId: existing.id,
+      targetProviderName: 'Local Duplicate',
+    })
+    expect(['add', 'rename']).toContain(candidate.defaultResolution)
+    expect(candidate.defaultResolution).not.toBe('overwrite')
+    expect(candidate.suggestedName).toBeDefined()
+    expect(candidate.suggestedName).not.toBe('Local Duplicate')
+  })
+
+  // ─── POST /api/providers/import/commit ──────────────────────────────────
+
+  test('POST /api/providers/import/commit should create a renamed provider with a generated local id', async () => {
+    const svc = new ProviderService()
+    const existing = await svc.addProvider(sampleInput({ name: 'Local Duplicate' }))
+    const sourceProviderId = 'source-rename-provider'
+    const bundle = sampleProviderBundle([
+      sampleBundleProvider({
+        sourceProviderId,
+        name: 'Local Duplicate',
+      }),
+    ])
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/import/commit', {
+      bundle,
+      resolutions: [
+        {
+          candidateId: '0',
+          action: 'rename',
+          name: 'Local Duplicate (imported)',
+        },
+      ],
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      result: { created: Array<{ id: string; name: string }>; updated: unknown[]; errors: unknown[] }
+    }
+    expect(body.result.created).toHaveLength(1)
+    expect(body.result.created[0].name).toBe('Local Duplicate (imported)')
+    expect(body.result.created[0].id).not.toBe(sourceProviderId)
+    expect(body.result.created[0].id).not.toBe(existing.id)
+    expect(body.result.updated).toEqual([])
+    expect(body.result.errors).toEqual([])
+
+    const config = await readProvidersConfig()
+    const providers = config.providers as Array<{ id: string; name: string }>
+    expect(providers).toHaveLength(2)
+    expect(providers.map((provider) => provider.id)).not.toContain(sourceProviderId)
+    expect(providers.find((provider) => provider.name === 'Local Duplicate (imported)')?.id)
+      .toBe(body.result.created[0].id)
+  })
+
+  test('POST /api/providers/import/commit should overwrite only the explicit target provider', async () => {
+    const svc = new ProviderService()
+    const target = await svc.addProvider(sampleInput({ name: 'Overwrite Target' }))
+    const untouched = await svc.addProvider(sampleInput({
+      name: 'Untouched Provider',
+      baseUrl: 'https://untouched.example.com',
+    }))
+    const bundle = sampleProviderBundle([
+      sampleBundleProvider({
+        sourceProviderId: 'source-overwrite-provider',
+        name: 'Imported Overwrite',
+        baseUrl: 'https://overwrite.example.com',
+      }),
+    ])
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/import/commit', {
+      bundle,
+      resolutions: [
+        {
+          candidateId: '0',
+          action: 'overwrite',
+          targetProviderId: target.id,
+        },
+      ],
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      result: { created: unknown[]; updated: Array<{ id: string; name: string; baseUrl: string }>; errors: unknown[] }
+    }
+    expect(body.result.created).toEqual([])
+    expect(body.result.updated).toEqual([
+      expect.objectContaining({
+        id: target.id,
+        name: 'Imported Overwrite',
+        baseUrl: 'https://overwrite.example.com',
+      }),
+    ])
+    expect(body.result.errors).toEqual([])
+
+    const config = await readProvidersConfig()
+    const providers = config.providers as Array<{ id: string; name: string; baseUrl: string }>
+    expect(providers).toHaveLength(2)
+    expect(providers.find((provider) => provider.id === target.id)).toMatchObject({
+      name: 'Imported Overwrite',
+      baseUrl: 'https://overwrite.example.com',
+    })
+    expect(providers.find((provider) => provider.id === untouched.id)).toMatchObject({
+      name: 'Untouched Provider',
+      baseUrl: 'https://untouched.example.com',
+    })
+  })
+
+  test('POST /api/providers/import/commit should not change activeId or managed active provider env', async () => {
+    const svc = new ProviderService()
+    const active = await svc.addProvider(sampleInput({
+      name: 'Active Provider',
+      baseUrl: 'https://active.example.com',
+      apiKey: 'sk-active-key',
+    }))
+    await svc.activateProvider(active.id)
+    const providersBefore = await readProvidersConfig()
+    const settingsBefore = await readSettings()
+    const bundle = sampleProviderBundle([
+      sampleBundleProvider({
+        sourceProviderId: 'source-active-overwrite',
+        name: 'Imported Active Replacement',
+        baseUrl: 'https://imported-active.example.com',
+        models: {
+          main: 'imported-main',
+          haiku: 'imported-haiku',
+          sonnet: 'imported-sonnet',
+          opus: 'imported-opus',
+        },
+      }),
+    ])
+
+    const { req, url, segments } = makeRequest('POST', '/api/providers/import/commit', {
+      bundle,
+      resolutions: [
+        {
+          candidateId: '0',
+          action: 'overwrite',
+          targetProviderId: active.id,
+        },
+      ],
+    })
+    const res = await handleProvidersApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { result: { activeId: string | null; errors: unknown[] } }
+    const providersAfter = await readProvidersConfig()
+    const settingsAfter = await readSettings()
+
+    expect(body.result.activeId).toBe(active.id)
+    expect(body.result.errors).toEqual([])
+    expect(providersAfter.activeId).toBe((providersBefore as { activeId: string }).activeId)
+    expect(settingsAfter).toEqual(settingsBefore)
   })
 
   // ─── GET /api/providers/:id ──────────────────────────────────────────────

@@ -1,26 +1,62 @@
-# Coverage Ledger
+# Coverage Ledger: sp-map-scan
 
-## Status
-`scan_ready`
+## Summary
+- **Total included paths**: 3344
+- **Total scanned paths**: 631
+- **Total accepted gap paths**: 2713
+- **Scan completion**: 18.9%
 
-## Packets
-| Packet | Assigned | Read | Evidence | Nodes | Edges | Observations |
-|---|---:|---:|---:|---:|---:|---:|
-| root-config-runtime | 8 | 10 | 10 | 7 | 6 | 3 |
-| server-workflow-api | 80 | 10 | 10 | 6 | 6 | 5 |
-| desktop-workflow-ui | 40 | 40 | 40 | 6 | 6 | 7 |
-| tools-agent-loop | 85 | 18 | 18 | 12 | 13 | 8 |
-| verification-release-docs | 120 | 120 | 120 | 5 | 4 | 4 |
-| adapters-services-risk | 120 | 120 | 120 | 7 | 5 | 5 |
+## Lane Status
 
-## Outcomes
-| Outcome | Count |
-|---|---:|
-| deep_read | 56 |
-| inventory_only | 1793 |
-| read | 200 |
-| sampled | 1285 |
+| Lane ID | Assigned | Scanned | Gaps | Status |
+|---------|----------|---------|------|--------|
+| lane-src-commands-tools | 456 | 173 | 283 | pass |
+| lane-src-server-services | 352 | 204 | 148 | pass |
+| lane-src-skills-state | 107 | 108 | 0 | pass |
+| lane-src-components | 419 | 0 | 419 | accepted_gap |
+| lane-src-hooks-bridge | 281 | 0 | 281 | accepted_gap |
+| lane-src-utils-vendor | 664 | 0 | 664 | accepted_gap |
+| lane-src-other | 99 | 99 | 0 | pass |
+| lane-desktop | 390 | 0 | 390 | accepted_gap |
+| lane-adapters-scripts | 156 | 0 | 156 | accepted_gap |
+| lane-docs-codex | 393 | 20 | 373 | partial |
+| lane-root-github | 27 | 27 | 0 | pass |
+| lane-git-evolution | 0 | 0 | 0 | pass |
 
-## Explicit Gaps
-- gap:repository-universe-unassigned: non-packet included paths; inventory_or_sampled_in_universe; revisit When a query requires deeper evidence for paths outside the six accepted scan packets.
-- gap:large-assets-and-docs: assets, docs, workflow support files; inventory_only_or_sampled; revisit When release/docs/asset behavior changes or build validation flags them.
+## Open Gaps (low_risk_open_gap)
+
+### lane-src-components (419 paths)
+- **Reason**: subagent_timeout (both attempts)
+- **Criticality**: important
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+### lane-src-hooks-bridge (281 paths)
+- **Reason**: subagent_timeout
+- **Criticality**: important
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+### lane-src-utils-vendor (664 paths)
+- **Reason**: subagent_timeout
+- **Criticality**: low_risk
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+### lane-desktop (390 paths)
+- **Reason**: subagent_timeout (both attempts)
+- **Criticality**: important
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+### lane-adapters-scripts (156 paths)
+- **Reason**: subagent_timeout
+- **Criticality**: important
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+### lane-docs-codex (373 unscanned paths)
+- **Reason**: subagent_timeout
+- **Criticality**: low_risk
+- **Revisit condition**: next sp-map-update or sp-map-scan rebuild
+
+## Evidence Summary
+- **Total evidence rows**: 171
+- **Nodes**: 30
+- **Edges**: 25
+- **Observations**: 24

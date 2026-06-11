@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-019",
+  "source_path": "src/state/selectors.ts",
+  "evidence_type": "code_read",
+  "summary": "Pure selector functions for derived state. getViewedTeammateTask() returns InProcessTeammateTaskState | undefined. getActiveAgentForInput() returns discriminated union: leader | viewed | named_agent for input routing.",
+  "classification": "critical",
+  "criticality": "high"
+}

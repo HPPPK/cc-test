@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-020",
+  "source_path": "src/commands/plan/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/plan' - local-jsx command enabling plan mode or viewing current session plan.",
+  "classification": "critical",
+  "criticality": "critical"
+}

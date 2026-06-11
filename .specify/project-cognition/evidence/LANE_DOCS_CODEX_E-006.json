@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-006",
+  "source_path": ".codex/skills/sp-deep-research/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-deep-research 工作流技能定义：协调研究、证据包和一次性演示，验证可行性后移交规划",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

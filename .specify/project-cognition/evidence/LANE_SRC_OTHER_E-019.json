@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-019",
+  "source_path": "src/vim/types.ts",
+  "evidence_type": "code_read",
+  "summary": "Vim mode state machine types. VimState (INSERT/NORMAL modes), CommandState (idle/count/operator/find/g/replace/indent states), PersistentState (lastChange, lastFind, register). RecordedChange for dot-repeat. Constants for operators, motions, text objects.",
+  "classification": "important",
+  "criticality": "minor"
+}

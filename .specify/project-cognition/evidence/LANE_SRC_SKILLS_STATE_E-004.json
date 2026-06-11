@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-004",
+  "source_path": "src/skills/mcpSkillBuilders.ts",
+  "evidence_type": "code_read",
+  "summary": "Write-once registry for createSkillCommand and parseSkillFrontmatterFields. Breaks circular dependency between mcpSkills.ts and loadSkillsDir.ts. MCPSkillBuilders type exported. registerMCPSkillBuilders() / getMCPSkillBuilders() pattern.",
+  "classification": "critical",
+  "criticality": "critical"
+}

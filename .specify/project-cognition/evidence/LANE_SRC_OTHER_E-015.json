@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-015",
+  "source_path": "src/coordinator/coordinatorMode.ts",
+  "evidence_type": "code_read",
+  "summary": "Coordinator mode feature gate. isCoordinatorMode() checks CLAUDE_CODE_COORDINATOR_MODE env var behind feature('COORDINATOR_MODE'). matchSessionMode() reconciles session mode on resume. getCoordinatorUserContext() provides user context for coordinator sessions. Internal worker tools: TEAM_CREATE, TEAM_DELETE, SEND_MESSAGE, SYNTHETIC_OUTPUT.",
+  "classification": "important",
+  "criticality": "important"
+}

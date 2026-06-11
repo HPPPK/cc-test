@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-022",
+  "source_path": "src/assistant/sessionHistory.ts",
+  "evidence_type": "code_read",
+  "summary": "Session history pagination from remote API. HistoryPage type with events[], firstId, hasMore. createHistoryAuthCtx() prepares OAuth headers. fetchLatestEvents() and fetchOlderEvents() for paginated retrieval.",
+  "classification": "important",
+  "criticality": "minor"
+}

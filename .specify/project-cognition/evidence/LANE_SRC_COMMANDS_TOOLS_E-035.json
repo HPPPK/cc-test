@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-035",
+  "source_path": "src/tools/FileReadTool/prompt.ts",
+  "evidence_type": "code_read",
+  "summary": "FileReadTool prompt - reads files with cat -n format, 2000 line limit, offset/limit support, image reading, PDF support. Unchanged file stub optimization.",
+  "classification": "critical",
+  "criticality": "critical"
+}

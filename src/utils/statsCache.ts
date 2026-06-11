@@ -9,10 +9,15 @@ import { errorMessage } from './errors.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
-import type { DailyActivity, DailyModelTokens, SessionStats } from './stats.js'
+import type {
+  DailyActivity,
+  DailyModelTokens,
+  DailyTokenBreakdown,
+  SessionStats,
+} from './stats.js'
 
-export const STATS_CACHE_VERSION = 5
-const MIN_MIGRATABLE_VERSION = 5
+export const STATS_CACHE_VERSION = 6
+const MIN_MIGRATABLE_VERSION = 6
 const STATS_CACHE_FILENAME = 'stats-cache.json'
 
 /**
@@ -58,6 +63,7 @@ export type PersistedStatsCache = {
   // Daily aggregates needed for heatmap, streaks, trends (bounded by days)
   dailyActivity: DailyActivity[]
   dailyModelTokens: DailyModelTokens[]
+  dailyTokenBreakdown: DailyTokenBreakdown[]
   // Model usage aggregated (bounded by number of models)
   modelUsage: { [modelName: string]: ModelUsage }
   // Session aggregates (replaces unbounded sessionStats array)
@@ -84,6 +90,7 @@ function getEmptyCache(): PersistedStatsCache {
     lastComputedDate: null,
     dailyActivity: [],
     dailyModelTokens: [],
+    dailyTokenBreakdown: [],
     modelUsage: {},
     totalSessions: 0,
     totalMessages: 0,
@@ -103,6 +110,10 @@ function getEmptyCache(): PersistedStatsCache {
  * sessions from message timestamps instead of session-start dates. Older
  * caches are intentionally rejected so the next aggregation recomputes daily
  * session counts and token buckets with the same date semantics.
+ *
+ * Daily token category accounting was added in v6. v5 has only daily total
+ * tokens by model, so it cannot be safely migrated without hiding cache-read
+ * usage behind inferred data. v5 and older caches are rejected and recomputed.
  */
 function migrateStatsCache(
   parsed: Partial<PersistedStatsCache> & { version: number },
@@ -117,6 +128,7 @@ function migrateStatsCache(
   if (
     !Array.isArray(parsed.dailyActivity) ||
     !Array.isArray(parsed.dailyModelTokens) ||
+    !Array.isArray(parsed.dailyTokenBreakdown) ||
     typeof parsed.totalSessions !== 'number' ||
     typeof parsed.totalMessages !== 'number'
   ) {
@@ -127,6 +139,7 @@ function migrateStatsCache(
     lastComputedDate: parsed.lastComputedDate ?? null,
     dailyActivity: parsed.dailyActivity,
     dailyModelTokens: parsed.dailyModelTokens,
+    dailyTokenBreakdown: parsed.dailyTokenBreakdown,
     modelUsage: parsed.modelUsage ?? {},
     totalSessions: parsed.totalSessions,
     totalMessages: parsed.totalMessages,
@@ -182,6 +195,7 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
     if (
       !Array.isArray(parsed.dailyActivity) ||
       !Array.isArray(parsed.dailyModelTokens) ||
+      !Array.isArray(parsed.dailyTokenBreakdown) ||
       typeof parsed.totalSessions !== 'number' ||
       typeof parsed.totalMessages !== 'number'
     ) {
@@ -262,6 +276,7 @@ export function mergeCacheWithNewStats(
   newStats: {
     dailyActivity: DailyActivity[]
     dailyModelTokens: DailyModelTokens[]
+    dailyTokenBreakdown: DailyTokenBreakdown[]
     modelUsage: { [modelName: string]: ModelUsage }
     sessionStats: SessionStats[]
     hourCounts: { [hour: number]: number }
@@ -290,6 +305,23 @@ export function mergeCacheWithNewStats(
   const dailyModelTokensMap = new Map<string, { [model: string]: number }>()
   for (const day of existingCache.dailyModelTokens) {
     dailyModelTokensMap.set(day.date, { ...day.tokensByModel })
+  }
+
+  // Merge daily token breakdown - combine by date
+  const dailyTokenBreakdownMap = new Map<string, DailyTokenBreakdown>()
+  for (const day of existingCache.dailyTokenBreakdown) {
+    dailyTokenBreakdownMap.set(day.date, { ...day })
+  }
+  for (const day of newStats.dailyTokenBreakdown) {
+    const existing = dailyTokenBreakdownMap.get(day.date)
+    if (existing) {
+      existing.inputTokens += day.inputTokens
+      existing.outputTokens += day.outputTokens
+      existing.cacheReadInputTokens += day.cacheReadInputTokens
+      existing.cacheCreationInputTokens += day.cacheCreationInputTokens
+    } else {
+      dailyTokenBreakdownMap.set(day.date, { ...day })
+    }
   }
   for (const day of newStats.dailyModelTokens) {
     const existing = dailyModelTokensMap.get(day.date)
@@ -370,6 +402,9 @@ export function mergeCacheWithNewStats(
     dailyModelTokens: Array.from(dailyModelTokensMap.entries())
       .map(([date, tokensByModel]) => ({ date, tokensByModel }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+    dailyTokenBreakdown: Array.from(dailyTokenBreakdownMap.values()).sort(
+      (a, b) => a.date.localeCompare(b.date),
+    ),
     modelUsage,
     totalSessions,
     totalMessages,

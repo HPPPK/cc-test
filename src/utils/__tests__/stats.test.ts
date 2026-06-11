@@ -139,6 +139,13 @@ describe('activity stats token accounting', () => {
 
     expect(totalForDate(stats.dailyModelTokens, sessionStart)).toBe(3)
     expect(totalForDate(stats.dailyModelTokens, nextDay)).toBe(100)
+    expect(stats.dailyTokenBreakdown.find(day => day.date === nextDay)).toEqual({
+      date: nextDay,
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheReadInputTokens: 30,
+      cacheCreationInputTokens: 40,
+    })
     expect(stats.dailyActivity.find(day => day.date === sessionStart)).toMatchObject({
       sessionCount: 1,
     })
@@ -233,7 +240,7 @@ describe('activity stats token accounting', () => {
     expect(totalForDate(stats.dailyModelTokens, future)).toBe(0)
   })
 
-  it('invalidates pre-v5 stats caches because daily activity accounting changed', async () => {
+  it('invalidates pre-v6 stats caches because token category accounting changed', async () => {
     await mkdir(tmpConfigDir, { recursive: true })
     await writeFile(
       join(tmpConfigDir, 'stats-cache.json'),
@@ -255,8 +262,46 @@ describe('activity stats token accounting', () => {
 
     const cache = await loadStatsCache()
 
-    expect(STATS_CACHE_VERSION).toBe(5)
+    expect(STATS_CACHE_VERSION).toBe(6)
     expect(cache.dailyModelTokens).toEqual([])
     expect(cache.totalSessions).toBe(0)
+  })
+
+  it('loads v6 stats caches with daily token breakdown intact', async () => {
+    await mkdir(tmpConfigDir, { recursive: true })
+    await writeFile(
+      join(tmpConfigDir, 'stats-cache.json'),
+      JSON.stringify({
+        version: STATS_CACHE_VERSION,
+        lastComputedDate: dateKey(-1),
+        dailyActivity: [{ date: dateKey(-1), messageCount: 1, sessionCount: 1, toolCallCount: 0 }],
+        dailyModelTokens: [{ date: dateKey(-1), tokensByModel: { 'claude-test': 11 } }],
+        dailyTokenBreakdown: [{
+          date: dateKey(-1),
+          inputTokens: 1,
+          outputTokens: 2,
+          cacheReadInputTokens: 3,
+          cacheCreationInputTokens: 4,
+        }],
+        modelUsage: {},
+        totalSessions: 1,
+        totalMessages: 1,
+        longestSession: null,
+        firstSessionDate: null,
+        hourCounts: {},
+        totalSpeculationTimeSavedMs: 0,
+      }),
+      'utf-8',
+    )
+
+    const cache = await loadStatsCache()
+
+    expect(cache.dailyTokenBreakdown).toEqual([{
+      date: dateKey(-1),
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadInputTokens: 3,
+      cacheCreationInputTokens: 4,
+    }])
   })
 })

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-007",
+  "source_path": ".codex/skills/sp-discussion/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-discussion 工作流技能定义：可恢复的产品和技术讨论，将粗略想法转化为需求和技术选项",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

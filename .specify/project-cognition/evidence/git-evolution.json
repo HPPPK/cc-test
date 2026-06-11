@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-06-04T14:30:00Z",
+  "analysis_period": "2026-04-01 to 2026-06-04",
+  "total_commits_in_period": 428,
+  "active_branches": ["007-workflow-phase-skills", "main", "remotes/origin/006-agent-workflow-authoring-tools", "remotes/origin/main"],
+  "contributors": [
+    {"name": "程序员阿江(Relakkes)", "commits": 729},
+    {"name": "Relakkes Yang", "commits": 24},
+    {"name": "pobb", "commits": 19},
+    {"name": "程序员阿江-Relakkes", "commits": 23},
+    {"name": "Robin11", "commits": 6},
+    {"name": "cynicalight", "commits": 6}
+  ],
+  "hotspot_directories": [
+    {"path": "desktop/src/components/chat", "changes": 391},
+    {"path": "src/server/__tests__", "changes": 310},
+    {"path": "desktop/src/stores", "changes": 292},
+    {"path": "desktop/src/pages", "changes": 269},
+    {"path": "src/server/services", "changes": 268},
+    {"path": "desktop/src/i18n/locales", "changes": 266},
+    {"path": "desktop/src/components/layout", "changes": 174},
+    {"path": "src/server/api", "changes": 136},
+    {"path": "desktop/src-tauri", "changes": 115},
+    {"path": "desktop/src/__tests__", "changes": 105}
+  ],
+  "hotspot_files": [
+    {"path": "desktop/src/i18n/locales/zh.ts", "changes": 134},
+    {"path": "desktop/src/i18n/locales/en.ts", "changes": 132},
+    {"path": "desktop/src/pages/Settings.tsx", "changes": 81},
+    {"path": "desktop/src/stores/chatStore.ts", "changes": 57},
+    {"path": "src/server/ws/handler.ts", "changes": 53},
+    {"path": "desktop/src/components/chat/MessageList.tsx", "changes": 50},
+    {"path": "src/server/services/conversationService.ts", "changes": 48},
+    {"path": "desktop/src/components/chat/ChatInput.tsx", "changes": 47}
+  ],
+  "recent_features": [
+    {"commit": "69a845e", "date": "2026-06-02", "summary": "skill增加搜索 workflow编辑页 skill增加选择页"},
+    {"commit": "a9f202c", "date": "2026-05-22", "summary": "feat: add workflow session mode"},
+    {"commit": "7af5df4", "date": "2026-05-19", "summary": "Merge upstream/main: 同步上游最新代码"},
+    {"commit": "db3e325", "date": "2026-05-18", "summary": "feat: layered test verify and teammate runtime selection"}
+  ],
+  "evolution_observations": [
+    "Desktop chat UI is the most actively evolved surface",
+    "Server services layer is second most active - workflow and session management",
+    "i18n files change with nearly every feature - localized product",
+    "Settings page has high churn - feature configuration surface",
+    "WebSocket handler is a key real-time communication hotspot"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-021",
+  "source_path": "src/state/teammateViewHelpers.ts",
+  "evidence_type": "code_read",
+  "summary": "Teammate transcript view management. enterTeammateView() transitions UI to view teammate's transcript (sets retain:true, clears evictAfter). exitTeammateView() returns to leader view (drops retain, schedules eviction). stopOrDismissAgent() handles running->abort and terminal->dismiss transitions. PANEL_GRACE_MS = 30s.",
+  "classification": "critical",
+  "criticality": "high"
+}

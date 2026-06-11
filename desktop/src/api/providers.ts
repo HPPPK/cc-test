@@ -9,6 +9,16 @@ import type {
   ProviderTestResult,
 } from '../types/provider'
 import type { ProviderPreset } from '../types/providerPreset'
+import type {
+  ProviderExportRequest,
+  ProviderExportResponse,
+  ProviderImportCommitRequest,
+  ProviderImportCommitResponse,
+  ProviderImportPreviewRequest,
+  ProviderImportPreviewResponse,
+  ProviderSecretExportRequest,
+  ProviderSecretExportResponse,
+} from '../types/providerImportExport'
 
 type ProvidersResponse = { providers: SavedProvider[]; activeId: string | null }
 type ProviderResponse = { provider: SavedProvider }
@@ -67,5 +77,21 @@ export const providersApi = {
 
   testConfig(input: TestProviderConfigInput) {
     return api.post<TestResultResponse>('/api/providers/test', input)
+  },
+
+  exportProviders(input: ProviderExportRequest) {
+    return api.post<ProviderExportResponse>('/api/providers/export', input)
+  },
+
+  exportProvidersWithSecrets(input: ProviderSecretExportRequest) {
+    return api.post<ProviderSecretExportResponse>('/api/providers/export-with-secrets', input)
+  },
+
+  previewProviderImport(input: ProviderImportPreviewRequest) {
+    return api.post<ProviderImportPreviewResponse>('/api/providers/import/preview', input)
+  },
+
+  commitProviderImport(input: ProviderImportCommitRequest) {
+    return api.post<ProviderImportCommitResponse>('/api/providers/import/commit', input)
   },
 }

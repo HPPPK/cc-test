@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-003",
+  "source_path": "bunfig.toml",
+  "evidence_type": "config_read",
+  "summary": "Bun config: preload = [\"./preload.ts\"]. Single preload hook that injects global MACRO constants (VERSION, PACKAGE_URL, BUILD_TIME, FEEDBACK_CHANNEL) and switches working directory to CALLER_DIR.",
+  "classification": "important",
+  "criticality": "important"
+}

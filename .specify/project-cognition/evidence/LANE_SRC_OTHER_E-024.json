@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-024",
+  "source_path": "src/daemon/main.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for feature-gated daemon module. Same proxy-based noop pattern as other stubs.",
+  "classification": "info",
+  "criticality": "trivial"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-002",
+  "source_path": "src/commands/commit.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/commit' - prompt-type command that generates git commit messages. Uses git status/diff/log context, enforces git safety protocol (no --amend, no hooks skip, no secrets).",
+  "classification": "critical",
+  "criticality": "critical"
+}

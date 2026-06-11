@@ -1,0 +1,12 @@
+{
+  "id": "ev-lane7-001",
+  "type": "source_analysis",
+  "source_path": "src/commands/add-dir/add-dir.tsx",
+  "summary": "Add directory command implementation",
+  "detail": "CLI command for adding directories to the workspace",
+  "quotes_or_symbols": [],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "lane-7",
+  "collected_at": "2026-06-05T07:07:10.774Z"
+}

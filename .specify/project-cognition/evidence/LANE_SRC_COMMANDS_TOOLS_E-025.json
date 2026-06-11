@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-025",
+  "source_path": "src/tools/GrepTool/GrepTool.ts",
+  "evidence_type": "code_read",
+  "summary": "GrepTool - content search using ripgrep. Zod schema with pattern, path, glob, output_mode inputs. Supports context lines, case insensitive, head_limit. Permission-checked.",
+  "classification": "critical",
+  "criticality": "critical"
+}

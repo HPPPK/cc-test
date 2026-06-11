@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-018",
+  "source_path": "src/goals/goalState.ts",
+  "evidence_type": "code_read",
+  "summary": "Goal system for thread-based objectives. ThreadGoal type with threadId, objective, hook, createdAt. parseGoalCommand() parses /goal <condition> | clear. Goals stored in per-thread Map. Integrates with session hooks for goal tracking.",
+  "classification": "important",
+  "criticality": "minor"
+}

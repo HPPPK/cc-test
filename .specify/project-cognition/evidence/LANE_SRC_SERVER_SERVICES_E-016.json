@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-016",
+  "source_path": "src/services/compact/autoCompact.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-compaction trigger. Monitors token count against context window. Triggers compaction when threshold exceeded. Circuit breaker for consecutive failures. Integrates with session memory compaction.",
+  "classification": "critical",
+  "criticality": "high"
+}

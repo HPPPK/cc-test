@@ -1,0 +1,36 @@
+{
+  "generated_surfaces": [],
+  "scope_paths": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "workflow": "sp-fast",
+  "verification": [
+    "not run: validation was not explicitly authorized in this turn"
+  ],
+  "behavior_surfaces": [
+    "desktop workflow status strip layout",
+    "workflow transition controls placement"
+  ],
+  "state_contracts": [
+    "manual_complete command payload unchanged",
+    "workflow status semantics unchanged"
+  ],
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "known_unknowns": [
+    "visual layout not browser-verified",
+    "test suite not run"
+  ],
+  "user_decisions": [
+    "User requested the Complete button be placed inside workflow status instead of a separate row."
+  ],
+  "confidence_notes": [
+    "Project cognition readiness was review with partial facet coverage; live reads identified the status panel, transition controls, and parent render site."
+  ]
+}

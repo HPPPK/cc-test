@@ -398,6 +398,128 @@ describe('workflow template authoring service read-only operations', () => {
     expect(JSON.stringify(result.skillCatalog)).not.toContain('Use this skill for release readiness checks')
   })
 
+  test('creates user skills in the installed skills directory for missing workflow phase skills', async () => {
+    const result = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'skill_create',
+      name: 'superpowers-dev',
+      description: 'Use when running the Superpowers development workflow.',
+      body: [
+        'Use this skill when the workflow phase needs Superpowers-style development discipline.',
+        '',
+        '## Instructions',
+        '',
+        '- Check the current workflow phase.',
+        '- Apply only the relevant method for that phase.',
+      ].join('\n'),
+    })
+
+    expect(result).toMatchObject({
+      operation: 'skill_create',
+      status: 'succeeded',
+      persisted: true,
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      createdSkill: {
+        name: 'superpowers-dev',
+        source: 'user',
+        skillRoot: path.join(tempConfigDir, 'skills', 'superpowers-dev'),
+        skillFile: path.join(tempConfigDir, 'skills', 'superpowers-dev', 'SKILL.md'),
+        recommendedReference: {
+          name: 'superpowers-dev',
+          mode: 'recommended',
+          source: 'user',
+        },
+      },
+      skillCatalog: [
+        expect.objectContaining({
+          name: 'superpowers-dev',
+          source: 'user',
+        }),
+      ],
+      nextAction: 'none',
+      message: 'Workflow phase skill created in the user skills directory.',
+    })
+
+    const skillFile = await fs.readFile(
+      path.join(tempConfigDir, 'skills', 'superpowers-dev', 'SKILL.md'),
+      'utf-8',
+    )
+    expect(skillFile).toContain('description: "Use when running the Superpowers development workflow."')
+    expect(skillFile).toContain('Use this skill when the workflow phase needs Superpowers-style development discipline.')
+
+    const catalogResult = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'skill_catalog',
+      query: 'superpowers',
+      source: 'user',
+    })
+    expect(catalogResult.skillCatalog).toContainEqual(expect.objectContaining({
+      name: 'superpowers-dev',
+      recommendedReference: {
+        name: 'superpowers-dev',
+        mode: 'recommended',
+        source: 'user',
+      },
+    }))
+  })
+
+  test('rejects invalid or existing user skill create requests without overwriting skill files', async () => {
+    const invalidName = await expectConfigUnchanged(() =>
+      executeWorkflowTemplateAuthoringOperation({
+        operation: 'skill_create',
+        name: '../escape',
+        description: 'Invalid path traversal skill.',
+      }),
+    )
+    expect(invalidName).toMatchObject({
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: 'WORKFLOW_PHASE_SKILL_CREATE_INVALID_NAME',
+            path: '$.name',
+          }),
+        ],
+      },
+    })
+
+    await writeUserSkill('existing-skill', 'Original skill body.')
+    const before = await fs.readFile(
+      path.join(tempConfigDir, 'skills', 'existing-skill', 'SKILL.md'),
+      'utf-8',
+    )
+    const duplicate = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'skill_create',
+      name: 'existing-skill',
+      description: 'Replacement attempt.',
+      body: 'Replacement body.',
+    })
+    const after = await fs.readFile(
+      path.join(tempConfigDir, 'skills', 'existing-skill', 'SKILL.md'),
+      'utf-8',
+    )
+
+    expect(duplicate).toMatchObject({
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: 'WORKFLOW_PHASE_SKILL_ALREADY_EXISTS',
+            path: '$.name',
+          }),
+        ],
+      },
+    })
+    expect(after).toBe(before)
+  })
+
   test('lists invalid user template diagnostics without writing', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
@@ -499,6 +621,48 @@ describe('workflow template authoring service read-only operations', () => {
     })
     expect(affectedBasisHash).toBe(summaryBasisHash)
     expect(affectedBasisHash).toBe(templateBasisHash)
+  })
+
+  test('validate rejects candidates with missing recommended phase skills before mutation', async () => {
+    const result = await expectConfigUnchanged(() =>
+      executeWorkflowTemplateAuthoringOperation({
+        operation: 'validate',
+        template: validTemplate({
+          id: 'validate-missing-skill',
+          phases: [
+            validPhase({
+              skills: [
+                {
+                  name: 'missing-validate-skill',
+                  mode: 'recommended',
+                  source: 'user',
+                },
+              ],
+            }),
+          ],
+        }),
+      }),
+    )
+
+    expect(result).toMatchObject({
+      operation: 'validate',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            source: 'authoring',
+            templateId: 'validate-missing-skill',
+            path: '$.template.phases[0].skills[0]',
+            code: 'WORKFLOW_PHASE_SKILL_MISSING',
+            message: expect.stringContaining('skill_create'),
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+    })
+    expect(result.template).toBeUndefined()
   })
 
   test('rejects missing inspect target without writing and gives inspect retry action', async () => {
@@ -759,6 +923,106 @@ describe('workflow template authoring service create operation', () => {
       },
       nextAction: 'choose-unique-target',
       message: 'Workflow template id already exists.',
+    })
+  })
+
+  test('rejects create candidates with unavailable recommended phase skills before writing', async () => {
+    const candidate = validTemplate({
+      id: 'missing-skill-workflow',
+      phases: [
+        validPhase({
+          skills: [
+            {
+              name: 'not-installed-skill',
+              mode: 'recommended',
+              source: 'user',
+            },
+          ],
+        }),
+      ],
+    })
+
+    const result = await expectConfigUnchanged(() =>
+      executeWorkflowTemplateAuthoringOperation({
+        operation: 'create',
+        template: candidate,
+      }),
+    )
+
+    expect(result).toMatchObject({
+      operation: 'create',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: {
+        source: 'user',
+        id: 'missing-skill-workflow',
+      },
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            source: 'authoring',
+            templateId: 'missing-skill-workflow',
+            path: '$.template.phases[0].skills[0]',
+            code: 'WORKFLOW_PHASE_SKILL_MISSING',
+            message: expect.stringContaining('skill_create'),
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+      message: 'Workflow template candidate references unavailable recommended phase skills.',
+    })
+  })
+
+  test('persists create candidates after creating and referencing the needed user skill', async () => {
+    const skillResult = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'skill_create',
+      name: 'phase-helper',
+      description: 'Use when a workflow phase needs extra helper guidance.',
+    })
+
+    const result = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'create',
+      template: validTemplate({
+        id: 'available-skill-workflow',
+        phases: [
+          validPhase({
+            skills: [
+              skillResult.createdSkill?.recommendedReference,
+            ],
+          }),
+        ],
+      }),
+    })
+
+    expect(result).toMatchObject({
+      operation: 'create',
+      status: 'succeeded',
+      persisted: true,
+      validation: {
+        valid: true,
+        issues: [],
+      },
+      invalidTemplates: [],
+    })
+    expect(await readWorkflowConfig()).toMatchObject({
+      schemaVersion: 1,
+      templates: [
+        expect.objectContaining({
+          id: 'available-skill-workflow',
+          phases: [
+            expect.objectContaining({
+              skills: [
+                {
+                  name: 'phase-helper',
+                  mode: 'recommended',
+                  source: 'user',
+                },
+              ],
+            }),
+          ],
+        }),
+      ],
     })
   })
 
@@ -1135,6 +1399,73 @@ describe('workflow template authoring service update operation', () => {
     expect(await readWorkflowConfig()).toEqual(manuallyEditedConfig)
   })
 
+  test('rejects updates that introduce unavailable recommended phase skills without changing config', async () => {
+    await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
+        id: 'skill-safe-update',
+        version: '1.0.0',
+        name: 'Skill Safe Update',
+      }),
+    ]))
+
+    const inspectResult = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'inspect',
+      selector: {
+        source: 'user',
+        id: 'skill-safe-update',
+      },
+    })
+    const basisHash = inspectResult.affectedTemplate?.basisHash
+    const beforeConfig = await readWorkflowConfig()
+
+    const result = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'update',
+      selector: {
+        source: 'user',
+        id: 'skill-safe-update',
+      },
+      basisHash,
+      template: validTemplate({
+        id: 'skill-safe-update',
+        version: '1.0.1',
+        name: 'Skill Safe Update Edited',
+        phases: [
+          validPhase({
+            skills: [
+              {
+                name: 'missing-update-skill',
+                mode: 'recommended',
+                source: 'user',
+              },
+            ],
+          }),
+        ],
+      }),
+    })
+
+    expect(result).toMatchObject({
+      operation: 'update',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: {
+        source: 'user',
+        id: 'skill-safe-update',
+      },
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: 'WORKFLOW_PHASE_SKILL_MISSING',
+            path: '$.template.phases[0].skills[0]',
+            message: expect.stringContaining('skill_create'),
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+    })
+    expect(await readWorkflowConfig()).toEqual(beforeConfig)
+  })
+
   test('rejects builtin template updates with copy guidance without writing config', async () => {
     const result = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({
@@ -1259,6 +1590,60 @@ describe('workflow template authoring service duplicate operation', () => {
     })
     expect(builtinAfter.template).toEqual(builtinBefore.template)
     expect(builtinAfter.affectedTemplate).toEqual(builtinBefore.affectedTemplate)
+  })
+
+  test('rejects duplicate when the source template carries unavailable recommended phase skills', async () => {
+    await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
+        id: 'duplicate-missing-skill-source',
+        name: 'Duplicate Missing Skill Source',
+        phases: [
+          validPhase({
+            skills: [
+              {
+                name: 'missing-duplicate-skill',
+                mode: 'recommended',
+                source: 'user',
+              },
+            ],
+          }),
+        ],
+      }),
+    ]))
+    const beforeConfig = await readWorkflowConfig()
+
+    const result = await executeWorkflowTemplateAuthoringOperation({
+      operation: 'duplicate',
+      selector: {
+        source: 'user',
+        id: 'duplicate-missing-skill-source',
+      },
+      target: {
+        id: 'duplicate-missing-skill-copy',
+      },
+    })
+
+    expect(result).toMatchObject({
+      operation: 'duplicate',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: {
+        source: 'user',
+        id: 'duplicate-missing-skill-copy',
+      },
+      validation: {
+        valid: false,
+        issues: [
+          expect.objectContaining({
+            code: 'WORKFLOW_PHASE_SKILL_MISSING',
+            path: '$.template.phases[0].skills[0]',
+            message: expect.stringContaining('skill_create'),
+          }),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+    })
+    expect(await readWorkflowConfig()).toEqual(beforeConfig)
   })
 
   test('chooses incrementing default target suffixes when prior user copies exist', async () => {

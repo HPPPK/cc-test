@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-013",
+  "source_path": ".codex/skills/sp-clarify/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-clarify 工作流技能定义：增强现有规范包，关闭规划关键差距而不重新运行整个 specify 流程",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

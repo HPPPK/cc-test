@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-008",
+  "source_path": "src/server/services/searchService.ts",
+  "evidence_type": "code_read",
+  "summary": "Workspace file search and session history search. Uses ripgrep (rg) with grep fallback. Types: SearchResult, SessionSearchResult. Supports glob filtering, case sensitivity, max results.",
+  "classification": "critical",
+  "criticality": "high"
+}

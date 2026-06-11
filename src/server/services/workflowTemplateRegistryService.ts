@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { getAppStoragePath } from '../../utils/appIdentity.js'
+import { getProjectDirsUpToHome } from '../../utils/markdownConfigLoader.js'
 
 import {
   BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES,
@@ -666,6 +667,10 @@ export async function collectTemplateSkillCatalog(): Promise<WorkflowPhaseSkillC
     { path: path.join(process.cwd(), '.agents', 'skills'), source: 'managed' },
     { path: path.join(process.cwd(), 'src', 'skills', 'bundled'), source: 'bundled' },
     { path: path.join(getConfigDir(), 'skills'), source: 'user' },
+    ...getProjectDirsUpToHome('skills', process.cwd()).map((skillsPath) => ({
+      path: skillsPath,
+      source: 'project' as const,
+    })),
   ]
 
   for (const root of roots) {

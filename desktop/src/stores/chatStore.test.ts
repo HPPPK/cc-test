@@ -1245,6 +1245,20 @@ describe('chatStore history mapping', () => {
     })
   })
 
+  it('can force reapply explicit runtime overrides over websocket', () => {
+    useChatStore.getState().setSessionRuntime(TEST_SESSION_ID, {
+      providerId: 'provider-a',
+      modelId: 'mimo-v2.5-pro[1m]',
+    }, { force: true })
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'set_runtime_config',
+      providerId: 'provider-a',
+      modelId: 'mimo-v2.5-pro[1m]',
+      force: true,
+    })
+  })
+
   it('keeps AskUserQuestion permission requests out of the message list while tracking the pending request', () => {
     useChatStore.setState({
       sessions: {

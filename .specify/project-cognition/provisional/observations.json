@@ -1,283 +1,369 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-05-28T03:28:41.238Z",
-  "command": "sp-map-scan",
   "observations": [
     {
-      "id": "obs:root-config-runtime:1",
-      "observation_type": "note",
-      "summary": "Repository-universe was used only to confirm packet scope and path existence; it is not included as graph evidence.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "root-config-runtime"
-    },
-    {
-      "id": "obs:root-config-runtime:2",
-      "observation_type": "note",
-      "summary": "Both launcher scripts converge on the same runtime targets and honor the same dotenv-suppression and recovery-mode environment controls.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "root-config-runtime"
-    },
-    {
-      "id": "obs:root-config-runtime:3",
-      "observation_type": "note",
-      "summary": "The root runtime stack is layered as policy -> manifest/config -> OS launchers -> `src/main.tsx` -> `setup()` orchestration.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "root-config-runtime"
-    },
-    {
-      "id": "obs:server-workflow-api:1",
-      "observation_type": "note",
-      "summary": "Workflow HTTP entry points are split between session-scoped state/report routes in src/server/api/sessions.ts and global template management routes in src/server/api/workflowTemplates.ts.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "server-workflow-api"
-    },
-    {
-      "id": "obs:server-workflow-api:2",
-      "observation_type": "note",
-      "summary": "The router treats workflow templates as a top-level /api/workflows/templates surface, while workflow execution stays nested under /api/sessions/:id/workflow/*.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "server-workflow-api"
-    },
-    {
-      "id": "obs:server-workflow-api:3",
-      "observation_type": "note",
-      "summary": "Final report persistence is explicitly gated by completed workflow state and immutable session-scoped artifact pointers; corrupt or missing reports are surfaced as recoverable read states instead of silent regeneration.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "server-workflow-api"
-    },
-    {
-      "id": "obs:server-workflow-api:4",
-      "observation_type": "note",
-      "summary": "WorkflowRuntimeService behavior was inferred from its contract tests because the packet assigned the runtime test file but not the implementation file itself.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "server-workflow-api"
-    },
-    {
-      "id": "obs:server-workflow-api:5",
-      "observation_type": "note",
-      "summary": "Most other assigned server test files in this packet were not on the traced workflow execution path and are therefore accounted for as inventory-only rather than graph evidence.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "server-workflow-api"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:1",
-      "observation_type": "note",
-      "summary": "Workflow entry is opt-in from EmptySession. Default dialogue creation remains unchanged until the user opens the Workflows tool and explicitly selects a template.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:2",
-      "observation_type": "note",
-      "summary": "Workflow template administration is isolated under a dedicated Settings tab and does not reuse the general/H5 settings sections.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:3",
-      "observation_type": "note",
-      "summary": "Template editing is server-validated before mutation: the editor runs local required-field checks, then calls sessionsApi.validateWorkflowTemplate before create/update.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:4",
-      "observation_type": "note",
-      "summary": "Invalid workflow templates are intentionally visible as diagnostics in both launch and management surfaces, but they are not rendered as startable/selectable workflow buttons.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:5",
-      "observation_type": "note",
-      "summary": "Runtime workflow UI is split between read-only status/history rendering and command emission; transition controls emit structured commands rather than mutating workflow artifacts locally.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:6",
-      "observation_type": "note",
-      "summary": "Navigation into the Workflows tab is store-driven through uiStore.pendingSettingsTab, allowing slash-command or other surfaces to route users directly into workflow settings.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:desktop-workflow-ui:7",
-      "observation_type": "note",
-      "summary": "Workflow API surface is centralized in sessionsApi and typed through desktop/src/types/session.ts, including template import/export, linked-start, report retrieval, and transition request contracts.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "desktop-workflow-ui"
-    },
-    {
-      "id": "obs:tools-agent-loop:1",
-      "observation_type": "note",
-      "summary": "Primary execution path traced: src/tools.ts -> AgentTool.call() -> runAgent() or task registration, with swarm and compaction subsystems attached as side paths.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:2",
-      "observation_type": "note",
-      "summary": "Backgrounded local agents and backgrounded main-session queries both rely on task-backed transcript output files rather than direct foreground stream ownership.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:3",
-      "observation_type": "note",
-      "summary": "In-process teammate execution is not a separate agent runtime; it wraps the shared runAgent() loop inside AsyncLocalStorage-backed teammate context and AppState task state.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:4",
-      "observation_type": "note",
-      "summary": "Permission escalation inside in-process swarms first prefers the leader ToolUseConfirm queue and only falls back to mailbox/file synchronization when the bridge is unavailable.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:5",
-      "observation_type": "note",
-      "summary": "Conversation compaction is actively used by the in-process teammate loop before each turn when token estimates exceed the autocompact threshold.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:6",
-      "observation_type": "note",
-      "summary": "reactiveCompact.ts in this lane is an autogenerated external-build stub, so graph evidence should treat it as a placeholder surface rather than a live implementation path.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:7",
-      "observation_type": "note",
-      "summary": "Remote agent tasks are structurally separate from local_agent tasks: they persist sidecar metadata, restore across resume, and parse remote session logs for ultraplan/review outputs.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:tools-agent-loop:8",
-      "observation_type": "note",
-      "summary": "Teammate runtime selection explicitly clears inherited provider-managed environment variables when a provider/model override is supplied, preventing credential bleed across teammates.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "tools-agent-loop"
-    },
-    {
-      "id": "obs:release-workflow-enforces-notes-version-match",
-      "observation_type": "note",
-      "summary": "The desktop release lane ties tag/app version to a matching release-notes filename before publishing.",
+      "id": "O-001",
+      "observation_type": "convention",
+      "summary": "所有 sp-* 工作流技能遵循统一的调用语法：$sp-plan 风格语法，并保留规范的工作流状态标识符",
       "evidence_ids": [
-        "ev-verification-release-docs-005"
-      ],
-      "attrs": {
-        "risk_surface": "release correctness"
-      },
-      "packet_id": "verification-release-docs"
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
     },
     {
-      "id": "obs:docs-workflow-uses-npm-not-bun",
-      "observation_type": "note",
-      "summary": "The docs publishing surface uses npm ci and Node 22, which is operationally distinct from Bun-based project workflows.",
+      "id": "O-002",
+      "observation_type": "workflow_pattern",
+      "summary": "主要功能开发工作流：sp-specify -> sp-plan -> sp-tasks -> sp-implement，支持分支路径 sp-clarify、sp-deep-research、sp-debug",
       "evidence_ids": [
-        "ev-verification-release-docs-002",
-        "ev-verification-release-docs-003"
-      ],
-      "attrs": {
-        "risk_surface": "toolchain split"
-      },
-      "packet_id": "verification-release-docs"
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-013"
+      ]
     },
     {
-      "id": "obs:tauri-native-surface-includes-updater-and-sidecar-lifecycle",
-      "observation_type": "note",
-      "summary": "The native desktop runtime bundles updater plugin support and explicit sidecar/process lifecycle management inside the Tauri library.",
+      "id": "O-003",
+      "observation_type": "architecture_decision",
+      "summary": "项目认知系统采用三层架构：sp-map-scan（证据收集）-> sp-map-build（图重建）-> sp-map-update（增量更新）",
       "evidence_ids": [
-        "ev-verification-release-docs-068",
-        "ev-verification-release-docs-072",
-        "ev-verification-release-docs-073"
-      ],
-      "attrs": {
-        "risk_surface": "native packaging/runtime"
-      },
-      "packet_id": "verification-release-docs"
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-019"
+      ]
     },
     {
-      "id": "obs:docs-corpus-is-bilingual-but-english-agent-section-is-partial",
-      "observation_type": "note",
-      "summary": "The assigned docs corpus includes bilingual agent content, but only the English agent subsection was in this packet scope, not English desktop/channel docs.",
+      "id": "O-004",
+      "observation_type": "convention",
+      "summary": "所有工作流技能都要求 spec-kit 项目结构，兼容性检查为 'Requires spec-kit project structure with .specify/ directory'",
       "evidence_ids": [
-        "ev-verification-release-docs-079",
-        "ev-verification-release-docs-111"
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-005",
+      "observation_type": "workflow_pattern",
+      "summary": "工作流技能支持多种执行模式：subagent-mandatory、subagents-first、adaptive、subagent-assisted，并包含 Codex 原生子代理集成",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-006",
+      "observation_type": "convention",
+      "summary": "工作流技能集成了项目认知运行时，支持 lexicon 和 query 命令进行语义搜索和上下文感知",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-007",
+      "observation_type": "architecture_decision",
+      "summary": "被动学习层集成：所有工作流技能都支持通过 uvx 命令启动学习、捕获和晋升，维护 .specify/memory/learnings/ 目录",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-008",
+      "observation_type": "convention",
+      "summary": "工作流状态管理：使用 workflow-state.md 作为阶段状态真理源，支持 compaction 后恢复",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-009",
+      "observation_type": "workflow_pattern",
+      "summary": "高级后果分析门控：所有工作流技能都包含 Senior Consequence Analysis Gate，用于生命周期、运行状态、破坏性行为、共享状态、下游消费者影响分析",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-010",
+      "observation_type": "convention",
+      "summary": "内联项目认知更新：所有工作流技能都遵循共享的内联关闭合同，在更改项目相关文件或行为后运行内联项目认知更新",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-GIT-001",
+      "observation_type": "evolution",
+      "summary": "Rapid fork-to-product evolution: Project started as a source code import from a leaked archive on 2026-03-31 and within 2 months accumulated 843 commits, transforming into an actively developed desktop AI assistant application with Tauri-based desktop shell, goal system, agent teams, plugin architecture, and Spec Kit Plus integration.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-001",
+        "LANE_GIT_EVOLUTION_E-GIT-004"
+      ]
+    },
+    {
+      "id": "O-GIT-002",
+      "observation_type": "evolution",
+      "summary": "Single-primary-author project: 程序员阿江(Relakkes) authored ~87% of all commits. This is a solo-maintainer project with occasional community PRs. The contributor uses multiple name variants (Relakkes Yang, 程序员阿江-Relakkes), likely across different machines or accounts. This concentration creates both velocity and bus-factor risk.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-002",
+        "LANE_GIT_EVOLUTION_E-GIT-006"
+      ]
+    },
+    {
+      "id": "O-GIT-003",
+      "observation_type": "evolution",
+      "summary": "Sequential numbered feature branches (006, 007, 008) indicate a disciplined feature-workflow approach where each major initiative gets its own branch. Current branch '008-specify-discussions-settings' focuses on Spec Kit Plus discussion and settings features. This pattern suggests the project uses a lightweight variant of trunk-based development with numbered feature lanes.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-003"
+      ]
+    },
+    {
+      "id": "O-GIT-004",
+      "observation_type": "evolution",
+      "summary": "Four distinct development phases visible in commit history: (1) Source import and documentation (late Mar 2026), (2) Core feature development - model support, commands, docs (early Apr 2026), (3) Desktop app and advanced features - Tauri shell, goal system, agent teams, plugins (Apr-May 2026), (4) Spec Kit Plus integration - .specify/ scaffolding, project cognition, skill system, workflow authoring (late May-Jun 2026). Each phase built upon the previous, showing organic architectural growth.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-004",
+        "LANE_GIT_EVOLUTION_E-GIT-005"
+      ]
+    },
+    {
+      "id": "O-GIT-005",
+      "observation_type": "evolution",
+      "summary": "Upstream sync pattern: The project is a fork that periodically syncs with upstream (cc-haha repository). Merge commits like 'Merge upstream/main: 同步上游最新代码' and 'Merge branch main of https://github.com/chenziyang110/cc-haha' show active upstream tracking. This means the project inherits upstream improvements while adding local customizations.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-006"
+      ]
+    },
+    {
+      "id": "O-GIT-006",
+      "observation_type": "evolution",
+      "summary": "Development velocity is exceptionally high: 838 commits in April-May 2026 combined (avg ~14 commits/day). This suggests rapid prototyping and iterative development. The commit message quality evolved from vague Chinese descriptions to more structured conventional commits over time, indicating growing development discipline.",
+      "evidence_ids": [
+        "LANE_GIT_EVOLUTION_E-GIT-001",
+        "LANE_GIT_EVOLUTION_E-GIT-007"
+      ]
+    },
+    {
+      "id": "O-011",
+      "observation_type": "convention",
+      "summary": "Commit convention: Conventional Commits (feat:, fix:, docs:, refactor:, test:, chore:, perf:, ci:). Branch naming: fix/xxx, feat/xxx, docs/xxx - no codex/ prefix allowed.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011"
+      ]
+    },
+    {
+      "id": "O-012",
+      "observation_type": "convention",
+      "summary": "Dual AI instruction system: AGENTS.md for general repository guidelines + CLAUDE.md for Claude-specific workflow rules including Spec Kit Plus managed blocks, sp-* workflow routing, project cognition always-on context, and durable state management.",
+      "evidence_ids": [
+        "LANE_ROOT_GITHUB_E-011",
+        "LANE_ROOT_GITHUB_E-012"
+      ]
+    },
+    {
+      "id": "OBS-001",
+      "summary": "Commands follow a consistent pattern: type='local-jsx' with lazy-loaded modules, or type='prompt' with inline prompt generation. All satisfy the Command interface.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-001",
+        "LANE_SRC_COMMANDS_TOOLS_E-013",
+        "LANE_SRC_COMMANDS_TOOLS_E-014",
+        "LANE_SRC_COMMANDS_TOOLS_E-015"
+      ]
+    },
+    {
+      "id": "OBS-002",
+      "summary": "Tools use buildTool() pattern with Zod input/output schemas, permission checking, and UI rendering functions (renderToolUseMessage, renderToolResultMessage).",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-024",
+        "LANE_SRC_COMMANDS_TOOLS_E-025",
+        "LANE_SRC_COMMANDS_TOOLS_E-028"
+      ]
+    },
+    {
+      "id": "OBS-003",
+      "summary": "Multiple files are auto-generated stubs (proxy-based no-ops) for ant-internal feature-gated modules that are DCE'd in external builds. These include: insights.ts, proactive.ts, torch.ts, subscribe-pr.ts, force-snip.ts, and many tool directories.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-041",
+        "LANE_SRC_COMMANDS_TOOLS_E-042",
+        "LANE_SRC_COMMANDS_TOOLS_E-043",
+        "LANE_SRC_COMMANDS_TOOLS_E-044",
+        "LANE_SRC_COMMANDS_TOOLS_E-045",
+        "LANE_SRC_COMMANDS_TOOLS_E-046"
+      ]
+    },
+    {
+      "id": "OBS-004",
+      "summary": "The src/commands/ directory contains 90+ slash command subdirectories plus 18 top-level .ts files. The src/tools/ directory contains 59 tool subdirectories plus 1 utils.ts file and a shared/ directory.",
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-005",
+      "summary": "Security is pervasive: BashTool has sandbox/permission integration, PowerShellTool has AST-based security analysis, file tools check write permissions, web tools check pre-approved hosts.",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_COMMANDS_TOOLS_E-022",
+        "LANE_SRC_COMMANDS_TOOLS_E-026",
+        "LANE_SRC_COMMANDS_TOOLS_E-023",
+        "LANE_SRC_COMMANDS_TOOLS_E-029"
+      ]
+    },
+    {
+      "id": "OBS-006",
+      "summary": "The CLI has three entrypoint patterns: cli.tsx (bootstrap with fast-paths), init.ts (memoized initialization), mcp.ts (MCP server). Dynamic imports are used extensively to minimize startup time.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-011",
+        "N-012",
+        "N-013"
       ],
-      "attrs": {
-        "scope_note": "packet bounded coverage"
-      },
-      "packet_id": "verification-release-docs"
-    },
-    {
-      "id": "obs:adapters-services-risk:1",
-      "observation_type": "note",
-      "summary": "All four IM adapter entrypoints follow the same control loop: authorize/pair user, resolve or create a Claude session through AdapterHttpClient, attach a WsBridge handler, then stream server messages back through platform-specific UX primitives.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "adapters-services-risk"
-    },
-    {
-      "id": "obs:adapters-services-risk:2",
-      "observation_type": "note",
-      "summary": "Attachment handling is centralized in shared adapter/common modules: AttachmentStore stages downloaded media under ~/.claude/im-downloads, checkAttachmentLimit applies platform/API size guards, and ImageBlockWatcher converts assistant markdown images into outbound upload work.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "adapters-services-risk"
-    },
-    {
-      "id": "obs:adapters-services-risk:3",
-      "observation_type": "note",
-      "summary": "WsBridge serializes server-message handlers per chatId with handlerChains, which reduces race risk when adapter handlers await outbound IM API calls.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "adapters-services-risk"
-    },
-    {
-      "id": "obs:adapters-services-risk:4",
-      "observation_type": "note",
-      "summary": "The memory lane is feature-flag aware: memdir.ts imports growthbook gating and path/session helpers, while AutoDream layers a consolidation lock and forked agent execution on top of the same memory directory model.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "adapters-services-risk"
-    },
-    {
-      "id": "obs:adapters-services-risk:5",
-      "observation_type": "note",
-      "summary": "The API lane is broad and risk-heavy in this packet: client/provider wrappers, error shaping, prompt cache diffing, files API, usage and quota fetchers, and retry logic all sit under src/services/api with analytics hooks nearby.",
-      "evidence_ids": [],
-      "attrs": {},
-      "packet_id": "adapters-services-risk"
+      "evidence_ids": []
     }
   ]
 }

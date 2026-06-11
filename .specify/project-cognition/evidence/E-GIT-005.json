@@ -1,0 +1,8 @@
+{
+  "id": "E-GIT-005",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "Active development areas from commit messages: (1) Desktop/Tauri app - most frequently changed area with UI improvements, tab management, proxy support, zoom, file drag-drop; (2) Goal system - goal commands, goal sessions, background work, goal UI; (3) Agent system - team member lifecycle, agent progress display, subagent readability; (4) Plugin/skill system - slash commands, plugin skills, workflow session mode; (5) .specify/ - Spec Kit Plus scaffolding, project cognition, skill definitions.",
+  "classification": "important",
+  "criticality": "important"
+}

@@ -96,12 +96,12 @@ describe('provider-aware thinking support', () => {
 
   test('MiniMax preset models declare thinking support without effort passthrough', () => {
     process.env.ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
-    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'MiniMax-M2.7'
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'MiniMax-M3'
     delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES
     clearCapabilityCache()
 
-    expect(modelSupportsThinking('MiniMax-M2.7')).toBe(true)
-    expect(modelSupportsAdaptiveThinking('MiniMax-M2.7')).toBe(false)
+    expect(modelSupportsThinking('MiniMax-M3')).toBe(true)
+    expect(modelSupportsAdaptiveThinking('MiniMax-M3')).toBe(false)
   })
 
   test('side queries inherit explicit disabled thinking for opted-in providers', () => {

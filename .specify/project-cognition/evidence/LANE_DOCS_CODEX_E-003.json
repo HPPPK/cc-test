@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-003",
+  "source_path": ".codex/skills/sp-plan/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-plan 工作流技能定义：将规范包转换为实现设计制品，输出 plan.md、research.md、quickstart.md 等",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

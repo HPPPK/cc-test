@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-006",
+  "source_path": "src/buddy/companion.ts",
+  "evidence_type": "code_read",
+  "summary": "Companion system: deterministic PRNG-based creature generation from userId hash. Mulberry32 seeded RNG, rarity rolling, stat generation. getCompanion() regenerates bones from stored hatch seed. Species include duck, goose, blob, cat, dragon, octopus, etc.",
+  "classification": "important",
+  "criticality": "minor"
+}

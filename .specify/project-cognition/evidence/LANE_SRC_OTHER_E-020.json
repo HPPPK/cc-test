@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-020",
+  "source_path": "src/vim/motions.ts",
+  "evidence_type": "code_read",
+  "summary": "Pure motion resolution functions. resolveMotion() applies motion key with count to cursor position. Uses Cursor type from utils. Handles h/l/j/k/w/b/e/W/B/E/0/^/$ motions.",
+  "classification": "important",
+  "criticality": "minor"
+}

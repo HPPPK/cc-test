@@ -94,16 +94,16 @@ Use `execution_surface: native-subagents`.
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning start --command checklist --format json` when available so passive learning files exist and the current checklist run can consume reusable requirement-quality lessons before generating new review items.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command checklist --format json` when available so passive learning files exist and the current checklist run can consume reusable requirement-quality lessons before generating new review items.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader checklist shaping.
 - Open only learning detail docs linked from checklist-relevant index entries, especially repeated requirement gaps, review defaults, or project constraints that should shape the generated checklist.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail markdown document without asking for routine permission.
 - [AGENT] When checklist-shaping friction exposes user corrections, artifact rewrites, scope changes, false starts, hidden dependencies, validation gaps, or reusable constraints, make sure durable state captures that context.
-- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning capture-auto --command checklist --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
+- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture-auto --command checklist --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, or reusable constraints.
 - [AGENT] When the durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 - [AGENT] Before the final report, when the checklist exposes a reusable requirement-quality gap that should influence future workflows and auto-capture did not preserve it, use the manual `learning capture` helper surface.
   Required options: `--command`, `--type`, `--summary`, `--evidence`
-  Command shape: `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning capture --command checklist --type <workflow_gap|decision_debt|project_constraint> --summary \"<summary>\" --evidence \"<evidence>\"`
+  Command shape: `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture --command checklist --type <workflow_gap|decision_debt|project_constraint> --summary \"<summary>\" --evidence \"<evidence>\"`
 
 ## Execution Steps
 
@@ -112,13 +112,13 @@ Use `execution_surface: native-subagents`.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Query brownfield navigation context before shaping the checklist**
-   - [AGENT] Run or emulate `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --format json`, then select from returned graph-backed project concept candidates, write `concept_decisions`, carry `lexicon_generation_id`, then generate a `query_plan`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json`.
+   - [AGENT] Run or emulate `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --mode catalog --format json`, write `semantic_intake` from the alias catalog, select candidates by facet coverage, write `concept_decisions` with `covered_facets`, `missing_facets`, and `match_sources`, carry `lexicon_generation_id`, add `repository_search_terms`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json`. Derive project-language search terms from the alias catalog before source search. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, `normalized_query`, and `expanded_queries`. Use these project-language search terms before broad repository search.
    - [AGENT] Use the returned readiness:
      - `ready`: continue with the returned task-local bundle.
      - `review`: perform only the returned `minimal_live_reads` before continuing.
      - `ambiguous`: ask the user to select the intended candidate.
      - `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
-     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, zero active-generation path_index rows, explicit_rebuild_requested, or baseline_identity_invalid.
+     - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation path_index rows, missing or invalid alias_index, explicit_rebuild_requested, or baseline_identity_invalid.
      - `blocked`: stop and report the blocking runtime issue.
    - Treat this as a coverage-model check, not a file-presence check. If the returned task-local bundle cannot identify the touched area's owning surfaces, change-propagation hotspots, verification entry points, or known unknowns, route through the returned `recommended_next_action`.
 
@@ -424,6 +424,6 @@ Sample items:
 
 ## Checklist Project Cognition Intake
 
-- Run `project-cognition lexicon --intent plan`, select from graph-backed project concept candidates, include `concept_decisions` and `lexicon_generation_id` in the `query_plan`, then run `project-cognition query --intent plan --query-plan` before shaping the checklist.
+- Run `project-cognition lexicon --intent plan --mode catalog`, use the schema v2 `alias_index`-backed alias catalog to normalize user input and write `semantic_intake` with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`, include `concept_decisions` with `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, and `repository_search_terms` in the `query_plan`, then run `project-cognition query --intent plan --query-plan` before shaping the checklist. Do not trust top similarity alone. Do not search only the raw user words; use project-language search terms before broad repository search. If readiness reports schema v1 or rebuild required, run sp-map-scan -> sp-map-build for a usable brownfield schema v2 alias catalog; map points, code proves.
 - Use the returned task-local bundle and `minimal_live_reads` to decide whether the touched area's owning surfaces are covered; if coverage is missing, stale, or too broad, follow the returned `recommended_next_action`.
 - `needs_update`: for checklist intake, treat this as advisory routing. Use `{{invoke:map-update}}` or `/sp-map-update` only when the user requested map maintenance or checklist quality depends on a separate map-maintenance pass; otherwise continue with returned `minimal_live_reads` and live evidence.

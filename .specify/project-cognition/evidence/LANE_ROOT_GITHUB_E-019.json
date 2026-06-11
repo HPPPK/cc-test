@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-019",
+  "source_path": "README.md",
+  "evidence_type": "config_read",
+  "summary": "Chinese README: project is a desktop Claude Code workspace (macOS/Windows) built on leaked Anthropic source. Tech stack: TypeScript, Tauri 2, React+Vite, Bun, Ink (terminal UI), Commander.js, Anthropic SDK, MCP/LSP. Features: multi-session workspace, branch/Worktree launch, right-side file changes, code diff, permission review, multi-provider, Computer Use, H5 remote access, IM integration (Telegram/Feishu/WeChat/DingTalk), scheduled tasks. GitHub: NanmiCoder/cc-jiangxia. Docs site: claudecode-jiangxia.relakkesyang.org.",
+  "classification": "important",
+  "criticality": "important"
+}

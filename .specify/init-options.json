@@ -7,5 +7,5 @@
   "integration": "codex",
   "preset": null,
   "script": "ps",
-  "speckit_version": "0.5.4.dev0"
+  "speckit_version": "0.5.6"
 }

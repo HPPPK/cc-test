@@ -22,6 +22,7 @@ type WorkflowTransitionControlsProps = {
   workflow?: WorkflowStatusPanelSummary | null
   stateVersion?: number
   transitionId?: string
+  embedded?: boolean
   onConfirm: (command: WorkflowTransitionCommand) => void
   onReject: (command: WorkflowTransitionCommand) => void
   onRetry: (command: WorkflowTransitionCommand) => void
@@ -31,6 +32,7 @@ export function WorkflowTransitionControls({
   workflow,
   stateVersion,
   transitionId,
+  embedded = false,
   onConfirm,
   onReject,
   onRetry,
@@ -56,7 +58,10 @@ export function WorkflowTransitionControls({
 
   if (pending) {
     return (
-      <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
+      <section className={embedded
+        ? 'rounded-[8px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container)] px-3 py-2'
+        : 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3'}
+      >
         <div className="mb-2 text-[12px] font-medium text-[var(--color-text-primary)]">
           Waiting for confirmation
         </div>
@@ -93,20 +98,23 @@ export function WorkflowTransitionControls({
     const trimmedEvidence = manualEvidence.trim()
 
     return (
-      <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
+      <section className={embedded
+        ? 'flex flex-wrap items-center gap-2'
+        : 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3'}
+      >
         <button
           type="button"
           onClick={() => setManualDialogOpen(true)}
           className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
         >
-          Complete Phase
+          Manually Complete Phase
         </button>
         {manualDialogOpen ? (
           <div
             role="dialog"
             aria-modal="true"
             aria-label={`Complete ${phaseLabel} phase`}
-            className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+            className={`${embedded ? 'basis-full' : ''} mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3`}
           >
             <label className="block text-[12px] font-semibold text-[var(--color-text-primary)]">
               Summary
@@ -165,8 +173,11 @@ export function WorkflowTransitionControls({
   }
 
   return (
-    <section className="rounded-[var(--radius-lg)] border border-[var(--color-error)]/20 bg-[var(--color-error)]/6 p-3">
-      {workflow.blockedReason && (
+    <section className={embedded
+      ? 'flex flex-wrap gap-2'
+      : 'rounded-[var(--radius-lg)] border border-[var(--color-error)]/20 bg-[var(--color-error)]/6 p-3'}
+    >
+      {!embedded && workflow.blockedReason && (
         <p className="mb-2 text-[12px] leading-5 text-[var(--color-error)]">
           {workflow.blockedReason}
         </p>

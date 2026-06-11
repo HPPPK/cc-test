@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-008",
+  "source_path": "src/commands/security-review.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/security-review' - prompt-type command for security review of branch changes. Uses git diff/log/show for analysis. Allows Task tool for subagent delegation.",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-031",
+  "source_path": "src/tools/TaskStopTool/TaskStopTool.ts",
+  "evidence_type": "code_read",
+  "summary": "TaskStopTool - stops background tasks by task_id (or deprecated shell_id). Returns message/task_id/task_type/command.",
+  "classification": "critical",
+  "criticality": "critical"
+}

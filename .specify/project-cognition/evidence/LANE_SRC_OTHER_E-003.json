@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-003",
+  "source_path": "src/Tool.ts",
+  "evidence_type": "code_read",
+  "summary": "Central Tool type definition and ToolUseContext. Tool<Input, Output, Progress> has call(), description(), inputSchema, checkPermissions(), prompt(), renderToolUseMessage(), etc. ToolUseContext carries options, abortController, readFileState, appState, and many UI/state callbacks. buildTool() fills safe defaults. Tools is readonly Tool[].",
+  "classification": "important",
+  "criticality": "critical"
+}

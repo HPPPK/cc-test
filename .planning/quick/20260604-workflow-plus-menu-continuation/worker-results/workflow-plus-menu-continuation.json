@@ -1,0 +1,35 @@
+{
+  "status": "DONE",
+  "root_cause": "ChatInput already supported linked workflow start for non-empty active sessions, but the plus-menu workflow action was gated by !activeSession.workflow. Completed workflow sessions still retain session.workflow, so the Workflows menu item was hidden after completion.",
+  "changed_files": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx"
+  ],
+  "validation_evidence": [
+    {
+      "command": "cd desktop; bun run test -- ChatInput.test.tsx -t \"opens workflows from the plus menu after the current workflow is completed\"",
+      "red_result": "failed before production change because the Workflows button was absent from the plus menu",
+      "final_result": "passed after production change: 1 test passed, 24 skipped"
+    }
+  ],
+  "behavior_surfaces": [
+    "desktop chat input plus menu",
+    "completed workflow session linked workflow start",
+    "workflow start dialog",
+    "workflow context strategy dialog"
+  ],
+  "residual_risks": [
+    "No browser/manual visual validation was run; only focused Vitest coverage was executed.",
+    "ActiveSession, EmptySession, workflow component, and sessions API surfaces were inspected as live context but not modified."
+  ],
+  "intentionally_not_checked": [
+    {
+      "surface": "desktop/src/api/workflowTemplates.ts",
+      "reason": "This path does not exist in the current checkout; workflow template API calls live in desktop/src/api/sessions.ts."
+    },
+    {
+      "surface": "full desktop test suite",
+      "reason": "The task requested the smallest meaningful validation for the touched UI path; focused ChatInput regression covered the changed behavior."
+    }
+  ]
+}

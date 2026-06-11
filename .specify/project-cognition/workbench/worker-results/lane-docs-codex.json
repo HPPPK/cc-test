@@ -1,0 +1,926 @@
+{
+  "packet_id": "lane-docs-codex",
+  "family_id": "docs-ref",
+  "assigned_paths": [
+    ".codex/config.toml",
+    ".codex/skills/sp-specify/SKILL.md",
+    ".codex/skills/sp-plan/SKILL.md",
+    ".codex/skills/sp-implement/SKILL.md",
+    ".codex/skills/sp-debug/SKILL.md",
+    ".codex/skills/sp-deep-research/SKILL.md",
+    ".codex/skills/sp-discussion/SKILL.md",
+    ".codex/skills/sp-analyze/SKILL.md",
+    ".codex/skills/sp-map-scan/SKILL.md",
+    ".codex/skills/sp-map-build/SKILL.md",
+    ".codex/skills/sp-tasks/SKILL.md",
+    ".codex/skills/sp-quick/SKILL.md",
+    ".codex/skills/sp-clarify/SKILL.md",
+    ".codex/skills/sp-checklist/SKILL.md",
+    ".codex/skills/sp-constitution/SKILL.md",
+    ".codex/skills/sp-explain/SKILL.md",
+    ".codex/skills/sp-fast/SKILL.md",
+    ".codex/skills/sp-auto/SKILL.md",
+    ".codex/skills/sp-map-update/SKILL.md",
+    ".codex/skills/sp-prd-scan/SKILL.md"
+  ],
+  "paths_read": [
+    ".codex/config.toml",
+    ".codex/skills/sp-specify/SKILL.md",
+    ".codex/skills/sp-plan/SKILL.md",
+    ".codex/skills/sp-implement/SKILL.md",
+    ".codex/skills/sp-debug/SKILL.md",
+    ".codex/skills/sp-deep-research/SKILL.md",
+    ".codex/skills/sp-discussion/SKILL.md",
+    ".codex/skills/sp-analyze/SKILL.md",
+    ".codex/skills/sp-map-scan/SKILL.md",
+    ".codex/skills/sp-map-build/SKILL.md",
+    ".codex/skills/sp-tasks/SKILL.md",
+    ".codex/skills/sp-quick/SKILL.md",
+    ".codex/skills/sp-clarify/SKILL.md",
+    ".codex/skills/sp-checklist/SKILL.md",
+    ".codex/skills/sp-constitution/SKILL.md",
+    ".codex/skills/sp-explain/SKILL.md",
+    ".codex/skills/sp-fast/SKILL.md",
+    ".codex/skills/sp-auto/SKILL.md",
+    ".codex/skills/sp-map-update/SKILL.md",
+    ".codex/skills/sp-prd-scan/SKILL.md"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      ".codex/config.toml",
+      ".codex/skills/sp-analyze/SKILL.md",
+      ".codex/skills/sp-auto/SKILL.md",
+      ".codex/skills/sp-checklist/SKILL.md",
+      ".codex/skills/sp-clarify/SKILL.md",
+      ".codex/skills/sp-constitution/SKILL.md",
+      ".codex/skills/sp-debug/SKILL.md",
+      ".codex/skills/sp-deep-research/SKILL.md",
+      ".codex/skills/sp-discussion/SKILL.md",
+      ".codex/skills/sp-explain/SKILL.md",
+      ".codex/skills/sp-fast/SKILL.md",
+      ".codex/skills/sp-implement/SKILL.md",
+      ".codex/skills/sp-map-build/SKILL.md",
+      ".codex/skills/sp-map-scan/SKILL.md",
+      ".codex/skills/sp-map-update/SKILL.md",
+      ".codex/skills/sp-plan/SKILL.md",
+      ".codex/skills/sp-prd-scan/SKILL.md",
+      ".codex/skills/sp-quick/SKILL.md",
+      ".codex/skills/sp-specify/SKILL.md",
+      ".codex/skills/sp-tasks/SKILL.md"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_DOCS_CODEX_E-001",
+      "source_path": ".codex/config.toml",
+      "evidence_type": "config_read",
+      "summary": "Codex 配置文件定义了 sp-teams 通知钩子，使用 uvx 从 spec-kit-plus 仓库执行",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-002",
+      "source_path": ".codex/skills/sp-specify/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-specify 工作流技能定义：需求发现和规范包生成，输出 spec.md、alignment.md、context.md 等规划就绪的规范包",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-003",
+      "source_path": ".codex/skills/sp-plan/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-plan 工作流技能定义：将规范包转换为实现设计制品，输出 plan.md、research.md、quickstart.md 等",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-004",
+      "source_path": ".codex/skills/sp-implement/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-implement 工作流技能定义：通过跟踪的实现工作流执行计划工作，使用子代理分发和验证",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-005",
+      "source_path": ".codex/skills/sp-debug/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-debug 工作流技能定义：可恢复的调试会话，支持证据收集、根因分析和修复验证",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-006",
+      "source_path": ".codex/skills/sp-deep-research/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-deep-research 工作流技能定义：协调研究、证据包和一次性演示，验证可行性后移交规划",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-007",
+      "source_path": ".codex/skills/sp-discussion/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-discussion 工作流技能定义：可恢复的产品和技术讨论，将粗略想法转化为需求和技术选项",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-008",
+      "source_path": ".codex/skills/sp-analyze/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-analyze 工作流技能定义：跨制品的一致性和边界护栏分析，只读分析报告",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-009",
+      "source_path": ".codex/skills/sp-map-scan/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-map-scan 工作流技能定义：棕地工作流需要新鲜的图原生认知基线，收集全项目内部证据",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-010",
+      "source_path": ".codex/skills/sp-map-build/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-map-build 工作流技能定义：从扫描证据重建项目认知 SQLite 运行时",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-011",
+      "source_path": ".codex/skills/sp-tasks/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-tasks 工作流技能定义：将计划制品转换为依赖感知的执行任务，支持并行批处理和连接点",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-012",
+      "source_path": ".codex/skills/sp-quick/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-quick 工作流技能定义：小型非平凡任务的轻量级跟踪规划、验证或可恢复执行",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-013",
+      "source_path": ".codex/skills/sp-clarify/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-clarify 工作流技能定义：增强现有规范包，关闭规划关键差距而不重新运行整个 specify 流程",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-014",
+      "source_path": ".codex/skills/sp-checklist/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-checklist 工作流技能定义：生成领域特定检查清单，验证需求质量而非实现行为",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-015",
+      "source_path": ".codex/skills/sp-constitution/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-constitution 工作流技能定义：创建或更新项目章程作为下游规范、规划和执行工作的权威规则层",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-016",
+      "source_path": ".codex/skills/sp-explain/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-explain 工作流技能定义：用通俗语言解释当前阶段制品、项目认知状态或兼容性导出制品",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-017",
+      "source_path": ".codex/skills/sp-fast/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-fast 工作流技能定义：真正琐碎、本地、低风险的更改，无需进入完整 specify-plan 工作流",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-018",
+      "source_path": ".codex/skills/sp-auto/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-auto 工作流技能定义：状态驱动的入口点，自动恢复推荐的下一个 Spec Kit Plus 工作流步骤",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-019",
+      "source_path": ".codex/skills/sp-map-update/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-map-update 工作流技能定义：增量更新现有查询支持的项目认知基线",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    },
+    {
+      "id": "LANE_DOCS_CODEX_E-020",
+      "source_path": ".codex/skills/sp-prd-scan/SKILL.md",
+      "evidence_type": "skill_definition",
+      "summary": "sp-prd-scan 工作流技能定义：重建级扫描输出，为 PRD 套件编译做准备",
+      "classification": "low_risk",
+      "criticality": "low_risk"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "spec-kit-plus-workflow-skills",
+      "paths": [
+        ".codex/skills/"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "sp-skills",
+          "workflow-skills",
+          "spec-kit-plus-skills"
+        ],
+        "domain": "workflow-automation",
+        "owner": "spec-kit-plus",
+        "workflow": "spec-kit-plus",
+        "route": "sp-*",
+        "route_hints": [
+          "$sp-specify",
+          "$sp-plan",
+          "$sp-implement",
+          "$sp-debug",
+          "$sp-deep-research",
+          "$sp-discussion",
+          "$sp-analyze",
+          "$sp-map-scan",
+          "$sp-map-build",
+          "$sp-tasks",
+          "$sp-quick",
+          "$sp-clarify",
+          "$sp-checklist",
+          "$sp-constitution",
+          "$sp-explain",
+          "$sp-fast",
+          "$sp-auto",
+          "$sp-map-update",
+          "$sp-prd-scan"
+        ],
+        "verification_hints": [
+          "specify --help",
+          "uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@8ab9ec8767203c4fe11eac38d901a9d56435d20d specify"
+        ]
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "workflow",
+      "title": "feature-development-workflow",
+      "paths": [
+        ".codex/skills/sp-specify/SKILL.md",
+        ".codex/skills/sp-plan/SKILL.md",
+        ".codex/skills/sp-tasks/SKILL.md",
+        ".codex/skills/sp-implement/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-004"
+      ],
+      "attrs": {
+        "aliases": [
+          "specify-plan-tasks-implement",
+          "full-workflow",
+          "feature-workflow"
+        ],
+        "domain": "feature-development",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-specify -> sp-plan -> sp-tasks -> sp-implement"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "workflow",
+      "title": "project-cognition-workflow",
+      "paths": [
+        ".codex/skills/sp-map-scan/SKILL.md",
+        ".codex/skills/sp-map-build/SKILL.md",
+        ".codex/skills/sp-map-update/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-019"
+      ],
+      "attrs": {
+        "aliases": [
+          "map-scan-build-update",
+          "cognition-workflow",
+          "project-cognition"
+        ],
+        "domain": "project-cognition",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-map-scan -> sp-map-build -> sp-map-update"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "workflow",
+      "title": "quality-assurance-workflow",
+      "paths": [
+        ".codex/skills/sp-analyze/SKILL.md",
+        ".codex/skills/sp-checklist/SKILL.md",
+        ".codex/skills/sp-constitution/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015"
+      ],
+      "attrs": {
+        "aliases": [
+          "analyze-checklist-constitution",
+          "qa-workflow",
+          "quality-workflow"
+        ],
+        "domain": "quality-assurance",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-analyze | sp-checklist | sp-constitution"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "workflow",
+      "title": "research-and-clarification-workflow",
+      "paths": [
+        ".codex/skills/sp-discussion/SKILL.md",
+        ".codex/skills/sp-clarify/SKILL.md",
+        ".codex/skills/sp-deep-research/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-006"
+      ],
+      "attrs": {
+        "aliases": [
+          "discussion-clarify-research",
+          "research-workflow",
+          "clarification-workflow"
+        ],
+        "domain": "research-clarification",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-discussion -> sp-clarify -> sp-deep-research"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "workflow",
+      "title": "execution-and-debugging-workflow",
+      "paths": [
+        ".codex/skills/sp-implement/SKILL.md",
+        ".codex/skills/sp-debug/SKILL.md",
+        ".codex/skills/sp-quick/SKILL.md",
+        ".codex/skills/sp-fast/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-017"
+      ],
+      "attrs": {
+        "aliases": [
+          "implement-debug-quick-fast",
+          "execution-workflow",
+          "debugging-workflow"
+        ],
+        "domain": "execution-debugging",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-implement | sp-debug | sp-quick | sp-fast"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "workflow",
+      "title": "automation-and-routing-workflow",
+      "paths": [
+        ".codex/skills/sp-auto/SKILL.md",
+        ".codex/skills/sp-explain/SKILL.md",
+        ".codex/skills/sp-prd-scan/SKILL.md"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "auto-explain-prd",
+          "automation-workflow",
+          "routing-workflow"
+        ],
+        "domain": "automation-routing",
+        "owner": "spec-kit-plus",
+        "workflow": "sp-auto | sp-explain | sp-prd-scan"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "config",
+      "title": "codex-configuration",
+      "paths": [
+        ".codex/config.toml"
+      ],
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-001"
+      ],
+      "attrs": {
+        "aliases": [
+          "codex-config",
+          "config-toml"
+        ],
+        "domain": "configuration",
+        "owner": "spec-kit-plus"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ED-001",
+      "type": "dependency",
+      "source_id": "N-002",
+      "target_id": "N-003",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-009"
+      ],
+      "attrs": {
+        "description": "功能开发工作流依赖项目认知工作流提供棕色地上下文"
+      }
+    },
+    {
+      "id": "ED-002",
+      "type": "dependency",
+      "source_id": "N-002",
+      "target_id": "N-005",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-013"
+      ],
+      "attrs": {
+        "description": "功能开发工作流依赖研究和澄清工作流处理需求差距"
+      }
+    },
+    {
+      "id": "ED-003",
+      "type": "dependency",
+      "source_id": "N-002",
+      "target_id": "N-004",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-014"
+      ],
+      "attrs": {
+        "description": "功能开发工作流依赖质量保证工作流进行分析和检查清单验证"
+      }
+    },
+    {
+      "id": "ED-004",
+      "type": "dependency",
+      "source_id": "N-002",
+      "target_id": "N-006",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005"
+      ],
+      "attrs": {
+        "description": "功能开发工作流依赖执行和调试工作流进行实现和问题修复"
+      }
+    },
+    {
+      "id": "ED-005",
+      "type": "orchestration",
+      "source_id": "N-007",
+      "target_id": "N-002",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-018"
+      ],
+      "attrs": {
+        "description": "自动化和路由工作流编排功能开发工作流的执行"
+      }
+    },
+    {
+      "id": "ED-006",
+      "type": "orchestration",
+      "source_id": "N-007",
+      "target_id": "N-006",
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-018"
+      ],
+      "attrs": {
+        "description": "自动化和路由工作流编排执行和调试工作流"
+      }
+    },
+    {
+      "id": "ED-007",
+      "type": "configuration",
+      "source_id": "N-008",
+      "target_id": "N-001",
+      "confidence": "medium",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-001"
+      ],
+      "attrs": {
+        "description": "Codex 配置文件配置 sp-teams 通知钩子"
+      }
+    }
+  ],
+  "observations": [
+    {
+      "id": "O-001",
+      "observation_type": "convention",
+      "summary": "所有 sp-* 工作流技能遵循统一的调用语法：$sp-plan 风格语法，并保留规范的工作流状态标识符",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-002",
+      "observation_type": "workflow_pattern",
+      "summary": "主要功能开发工作流：sp-specify -> sp-plan -> sp-tasks -> sp-implement，支持分支路径 sp-clarify、sp-deep-research、sp-debug",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-013"
+      ]
+    },
+    {
+      "id": "O-003",
+      "observation_type": "architecture_decision",
+      "summary": "项目认知系统采用三层架构：sp-map-scan（证据收集）-> sp-map-build（图重建）-> sp-map-update（增量更新）",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-019"
+      ]
+    },
+    {
+      "id": "O-004",
+      "observation_type": "convention",
+      "summary": "所有工作流技能都要求 spec-kit 项目结构，兼容性检查为 'Requires spec-kit project structure with .specify/ directory'",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-005",
+      "observation_type": "workflow_pattern",
+      "summary": "工作流技能支持多种执行模式：subagent-mandatory、subagents-first、adaptive、subagent-assisted，并包含 Codex 原生子代理集成",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-006",
+      "observation_type": "convention",
+      "summary": "工作流技能集成了项目认知运行时，支持 lexicon 和 query 命令进行语义搜索和上下文感知",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-007",
+      "observation_type": "architecture_decision",
+      "summary": "被动学习层集成：所有工作流技能都支持通过 uvx 命令启动学习、捕获和晋升，维护 .specify/memory/learnings/ 目录",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-008",
+      "observation_type": "convention",
+      "summary": "工作流状态管理：使用 workflow-state.md 作为阶段状态真理源，支持 compaction 后恢复",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-009",
+      "observation_type": "workflow_pattern",
+      "summary": "高级后果分析门控：所有工作流技能都包含 Senior Consequence Analysis Gate，用于生命周期、运行状态、破坏性行为、共享状态、下游消费者影响分析",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    },
+    {
+      "id": "O-010",
+      "observation_type": "convention",
+      "summary": "内联项目认知更新：所有工作流技能都遵循共享的内联关闭合同，在更改项目相关文件或行为后运行内联项目认知更新",
+      "evidence_ids": [
+        "LANE_DOCS_CODEX_E-002",
+        "LANE_DOCS_CODEX_E-003",
+        "LANE_DOCS_CODEX_E-004",
+        "LANE_DOCS_CODEX_E-005",
+        "LANE_DOCS_CODEX_E-006",
+        "LANE_DOCS_CODEX_E-007",
+        "LANE_DOCS_CODEX_E-008",
+        "LANE_DOCS_CODEX_E-009",
+        "LANE_DOCS_CODEX_E-010",
+        "LANE_DOCS_CODEX_E-011",
+        "LANE_DOCS_CODEX_E-012",
+        "LANE_DOCS_CODEX_E-013",
+        "LANE_DOCS_CODEX_E-014",
+        "LANE_DOCS_CODEX_E-015",
+        "LANE_DOCS_CODEX_E-016",
+        "LANE_DOCS_CODEX_E-017",
+        "LANE_DOCS_CODEX_E-018",
+        "LANE_DOCS_CODEX_E-019",
+        "LANE_DOCS_CODEX_E-020"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "path": ".codex/config.toml",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-specify/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-plan/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-implement/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-debug/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-deep-research/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-discussion/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-analyze/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-map-scan/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-map-build/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-tasks/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-quick/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-clarify/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-checklist/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-constitution/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-explain/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-fast/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-auto/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-map-update/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": ".codex/skills/sp-prd-scan/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

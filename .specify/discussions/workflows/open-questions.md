@@ -132,6 +132,26 @@
 - resolution: Share workflow packages with template plus skill dependency manifest by default. Do not bundle skill package contents by default. For missing recommended phase skills, allow import with warnings, keep the reference, mark the skill unavailable in preview/runtime, and use soft audit if it was relevant. Future explicit bundle mode should be limited to reviewed project-owned skills; future required phase skills may use stricter blocking or explicit skip evidence.
 - stop_and_reopen_condition: If export/import lacks a dependency policy, phase skill references may silently break after transfer.
 
+### OQ-016: Phase Lifecycle Status Model
+
+- question: How should workflow phases represent ready, running, blocked, pending confirmation, completed, failed, cancelled, resumed, stale-template, and missing-template behavior?
+- owner: user
+- latest_resolve_phase: technical-options
+- blocking_level: hard
+- status: resolved
+- resolution: Use lifecycle status for session/phase state and submission status for completion attempts. Keep `created`, `running`, `pending-confirmation`, `completed`, `failed`, `cancelled`, and resume/source-status markers as lifecycle concepts. Treat `ready`, `blocked`, and `unable` as completion submission outcomes. Do not make `blocked` a long-lived first-scope phase status; represent it as `running` with blocked evidence and retry path.
+- stop_and_reopen_condition: If later specification makes normal blocked/unable completion attempts terminal failures, silently resumes cancelled runs, or lets pending confirmation be bypassed by duplicate ready submissions, return to sp-discussion.
+
+### OQ-017: Runtime UI Controls And Authority Labels
+
+- question: Which runtime controls should appear for confirm, reject, retry, cancel, resume, manual completion, and auto-advance?
+- owner: user
+- latest_resolve_phase: technical-options
+- blocking_level: hard
+- status: resolved
+- resolution: First-scope phase transition controls should cover `confirm`, `reject`, `retry`, and `manual_complete`. Pending confirmation shows Confirm/Reject/Retry and blocks other completion controls. Running phases with user-confirmation authority can show Manually complete phase as a manual override with summary/evidence. Blocked/unable outcomes show Retry only. Auto-advance is an authority/status label, not a button. Cancel and resume are session-level lifecycle/recovery controls, not phase completion controls.
+- stop_and_reopen_condition: If later UI mixes pending confirmation with manual completion, exposes advancement controls for blocked/unable states, or treats cancel/resume as ordinary phase transitions without a lifecycle/recovery contract, return to sp-discussion.
+
 ## Soft Questions
 
 ### OQ-004: Priority Semantics

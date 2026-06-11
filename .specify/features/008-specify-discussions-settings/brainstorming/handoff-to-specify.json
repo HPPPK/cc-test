@@ -1,0 +1,188 @@
+{
+  "version": 2,
+  "status": "ready-for-plan",
+  "entry_source": "sp-discussion",
+  "handoff_goal": "Plan Settings > Providers import/export for shareable provider configuration bundles, including default secret-free export, optional high-friction secret export, side-effect-free import preview, explicit conflict handling, and no active/default provider transfer.",
+  "context_boundary": {
+    "current_project_root": "F:/github/cc-jiangxia",
+    "current_project_roles": [
+      {
+        "role": "discussion-host",
+        "scope": "Store discussion and specification artifacts.",
+        "evidence_source": "User confirmation and current working directory.",
+        "notes": "Current repository is also the implementation target."
+      },
+      {
+        "role": "implementation-target",
+        "scope": "Desktop Settings > Providers UI, provider API/store/types, server provider REST API/service/types, provider persistence, and managed settings sync.",
+        "evidence_source": "Discussion handoff and targeted live repository reads.",
+        "notes": "Planning must preserve provider-record-only scope."
+      }
+    ],
+    "target_project_root": "F:/github/cc-jiangxia",
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Add provider import/export capability for the current app's Settings provider surface.",
+        "evidence_source": "User request, specification artifacts, and live repository reads.",
+        "notes": "Sharing is provider-record focused, not local active state transfer."
+      }
+    ],
+    "reference_projects": [],
+    "external_systems": [],
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "actual_project": "F:/github/cc-jiangxia",
+    "target_root": "F:/github/cc-jiangxia",
+    "target_paths": [
+      "desktop/src/pages/Settings.tsx",
+      "desktop/src/api/providers.ts",
+      "desktop/src/stores/providerStore.ts",
+      "desktop/src/types/provider.ts",
+      "desktop/src/lib/providerSettingsJson.ts",
+      "src/server/api/providers.ts",
+      "src/server/services/providerService.ts",
+      "src/server/types/provider.ts",
+      "src/server/__tests__/providers.test.ts"
+    ],
+    "required_target_paths_to_verify": [
+      "Exact i18n keys and location for Settings provider dialog text.",
+      "Whether import/export UI logic should be extracted from Settings.tsx into provider-specific components."
+    ],
+    "target_project_cognition_status": "blocked: project-cognition.db missing"
+  },
+  "source_handoff": ".specify/discussions/settings-provider-import-export/handoff-to-specify.md",
+  "source_handoff_json": ".specify/discussions/settings-provider-import-export/handoff-to-specify.json",
+  "source_files_read": [
+    ".specify/discussions/settings-provider-import-export/handoff-to-specify.md",
+    ".specify/discussions/settings-provider-import-export/handoff-to-specify.json",
+    ".specify/discussions/settings-provider-import-export/discussion-log.md",
+    ".specify/discussions/settings-provider-import-export/requirements.md",
+    ".specify/discussions/settings-provider-import-export/technical-options.md",
+    ".specify/discussions/settings-provider-import-export/project-context.md",
+    ".specify/discussions/settings-provider-import-export/open-questions.md",
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/types/provider.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/lib/providerSettingsJson.ts",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "src/server/api/providers.ts",
+    "src/server/services/providerService.ts",
+    "src/server/types/provider.ts",
+    "src/server/__tests__/providers.test.ts"
+  ],
+  "source_signal_disposition": [
+    {
+      "signal": "MP-001 Add Settings > Providers import/export for shareable provider configuration.",
+      "source": "user request",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#overview",
+      "user_confirmed": true,
+      "reopen_trigger": "Feature becomes unrelated settings backup."
+    },
+    {
+      "signal": "MP-002 Import/export covers saved provider records only.",
+      "source": "discussion",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Scope adds unrelated settings."
+    },
+    {
+      "signal": "MP-003 Users may choose whether to export API keys/secrets.",
+      "source": "user confirmation",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Secret export is omitted or made default."
+    },
+    {
+      "signal": "MP-004 Secret-free export is the default.",
+      "source": "discussion and risk review",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Default export includes credentials."
+    },
+    {
+      "signal": "MP-005 Secret-including export requires a separate dangerous action, warning, second confirmation, no remembered choice, and labeling.",
+      "source": "user selected recommendation",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Secret export is remembered, casual, or unlabeled."
+    },
+    {
+      "signal": "MP-006 Import conflicts default to add/rename; overwrite requires explicit selection.",
+      "source": "user confirmation",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Import silently overwrites an existing provider."
+    },
+    {
+      "signal": "MP-007 Active/default provider selection is not exported or imported.",
+      "source": "user confirmation",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Import changes active provider selection."
+    },
+    {
+      "signal": "MP-008 Import uses preview before commit with diagnostics.",
+      "source": "discussion and workflow UI precedent",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#scenarios-and-usage-paths",
+      "user_confirmed": true,
+      "reopen_trigger": "Import writes during preview or lacks diagnostics."
+    },
+    {
+      "signal": "MP-009 Workflow import/export dialog is a process precedent, not provider schema source.",
+      "source": "live code evidence",
+      "disposition": "preserved",
+      "artifact_location": "context.md#existing-patterns-and-reuse-notes",
+      "user_confirmed": true,
+      "reopen_trigger": "Workflow template semantics leak into provider bundle design."
+    },
+    {
+      "signal": "MP-010 Resolve raw-vs-masked provider API key behavior before claiming export security.",
+      "source": "live code/test conflict",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#risks-and-gaps",
+      "user_confirmed": true,
+      "reopen_trigger": "Export security relies only on frontend masking assumptions."
+    }
+  ],
+  "must_preserve": [
+    "Provider import/export covers saved provider records only.",
+    "Default export is secret-free.",
+    "Users may choose secret-including export only through high-friction dangerous flow.",
+    "Secret export choice is not remembered.",
+    "Credential-bearing export artifacts are clearly labeled.",
+    "Import preview occurs before commit and is side-effect free.",
+    "Import conflicts default to add/rename; overwrite is explicit.",
+    "Active/default provider selection is not exported or imported.",
+    "Import does not auto-activate or write active provider env.",
+    "New imports use generated local IDs by default.",
+    "Official OAuth/login state is not exported."
+  ],
+  "coverage_status": "live-evidence-with-cognition-gap",
+  "planning_gate_status": "ready",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "quality_gate": {
+    "status": "user_confirmed",
+    "self_reviewed_at": "2026-06-10",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-06-10T14:16:15.4971387+08:00",
+    "blocked_reasons": [],
+    "known_risks": [
+      "Raw-vs-masked provider API key behavior must be resolved during implementation design before security-ready export claims."
+    ],
+    "recommended_next_command": "/sp.plan"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-024",
+  "source_path": "src/tools/GlobTool/GlobTool.ts",
+  "evidence_type": "code_read",
+  "summary": "GlobTool - fast file pattern matching. Zod schema with pattern+path inputs. Returns filenames array with truncation flag (100 file limit). Permission-checked.",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -1728,7 +1728,7 @@ describe('WorkflowStatusPanel', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('shows progress, lifecycle, transition authority, fallback, and server state pointer', () => {
+  it('renders a collapsed summary by default and expands workflow details on demand', () => {
     render(<WorkflowStatusPanel workflow={WORKFLOW_SUMMARY} />)
 
     const panel = screen.getByTestId('workflow-status-panel')
@@ -1736,6 +1736,14 @@ describe('WorkflowStatusPanel', () => {
     expect(within(panel).getByText(/specify/i)).toBeInTheDocument()
     expect(within(panel).getByText(/phase 2 of 5/i)).toBeInTheDocument()
     expect(within(panel).getByText(/running/i)).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /show workflow details/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(panel).queryByTestId('workflow-status-details')).not.toBeInTheDocument()
+    expect(within(panel).queryByText(/claude-opus-4/i)).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
+    expect(within(panel).getByRole('button', { name: /hide workflow details/i })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(panel).getByTestId('workflow-status-details')).toBeInTheDocument()
     expect(within(panel).getByText(/auto/i)).toBeInTheDocument()
     expect(within(panel).getByText(/claude-opus-4/i)).toBeInTheDocument()
     expect(within(panel).getByText(/claude-sonnet-4/i)).toBeInTheDocument()
@@ -1783,6 +1791,10 @@ describe('WorkflowStatusPanel', () => {
     )
 
     const panel = screen.getByTestId('workflow-status-panel')
+    expect(within(panel).queryByTestId('workflow-recommended-skill-status')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     const skillStatus = within(panel).getByTestId('workflow-recommended-skill-status')
     expect(skillStatus).toHaveTextContent(/recommended skills/i)
     expect(skillStatus).toHaveTextContent(/1 available/i)
@@ -1836,6 +1848,10 @@ describe('WorkflowStatusPanel', () => {
     const panel = screen.getByTestId('workflow-status-panel')
     expect(within(panel).getByText(/waiting for confirmation/i)).toBeInTheDocument()
     expect(within(panel).queryByText(/^running$/i)).not.toBeInTheDocument()
+    expect(within(panel).queryByTestId('workflow-recommended-skill-status')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     expect(within(panel).getByTestId('workflow-recommended-skill-status')).toHaveTextContent(/recommended skills/i)
   })
 
@@ -1859,6 +1875,10 @@ describe('WorkflowStatusPanel', () => {
     )
 
     const panel = screen.getByTestId('workflow-status-panel')
+    expect(within(panel).queryByTestId('workflow-pending-artifact')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     const pendingArtifact = within(panel).getByTestId('workflow-pending-artifact')
     expect(within(pendingArtifact).getByText(/plan handoff/i)).toBeInTheDocument()
     expect(within(pendingArtifact).getByText(/pending/i)).toBeInTheDocument()
@@ -1888,6 +1908,10 @@ describe('WorkflowStatusPanel', () => {
         }}
       />,
     )
+
+    expect(screen.queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /show workflow details/i }))
 
     const history = screen.getByTestId('workflow-artifact-history')
     for (const artifact of ARTIFACT_HISTORY) {
@@ -1966,6 +1990,10 @@ describe('WorkflowStatusPanel', () => {
 
     const panel = screen.getByTestId('workflow-status-panel')
     expect(panel).toHaveTextContent(blockedReason)
+    expect(within(panel).queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     expect(panel).toHaveTextContent(new RegExp(blockedStatus, 'i'))
     expect(panel).toHaveTextContent(evidencePattern)
     expect(within(panel).queryByRole('button', { name: /confirm|complete phase/i })).not.toBeInTheDocument()

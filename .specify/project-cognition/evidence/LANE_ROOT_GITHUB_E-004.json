@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-004",
+  "source_path": "preload.ts",
+  "evidence_type": "config_read",
+  "summary": "Bun preload script that injects MACRO global object with VERSION (default 999.0.0-local), PACKAGE_URL, BUILD_TIME, FEEDBACK_CHANNEL=local. Sets CLAUDE_CODE_LOCAL_SKIP_REMOTE_PREFETCH=1. Switches cwd to CALLER_DIR if set.",
+  "classification": "important",
+  "criticality": "important"
+}

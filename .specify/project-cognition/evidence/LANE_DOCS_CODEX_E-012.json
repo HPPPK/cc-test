@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-012",
+  "source_path": ".codex/skills/sp-quick/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-quick 工作流技能定义：小型非平凡任务的轻量级跟踪规划、验证或可恢复执行",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

@@ -1,0 +1,51 @@
+{
+  "status": "success",
+  "reported_status": "RED_EXPECTED",
+  "task_id": "T006",
+  "changed_files": [
+    "desktop/src/stores/providerStore.test.ts"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- providerStore",
+    "exit_code": 1,
+    "result": "RED as expected: 6 tests ran, 3 passed, 3 failed",
+    "expected_failures": [
+      "providerStore provider export > calls the secret-free export API with selected provider request shape: TypeError: store.exportProviders is not a function",
+      "providerStore provider export > returns the secret-free provider bundle from export: TypeError: store.exportProviders is not a function",
+      "providerStore provider export > does not activate providers or mutate activeId while exporting: TypeError: store.exportProviders is not a function"
+    ],
+    "setup_status": "No syntax/setup errors observed; existing runtime refresh tests still pass."
+  },
+  "must_preserve_evidence": [
+    "MP-001/MP-002/G-SCOPE: tests use provider bundle records only; no Settings JSON backup, OAuth state, chat, MCP, skills, workflows, or global settings are involved.",
+    "MP-004/MP-010: tests expect the store to call a secret-free export API action; they do not treat frontend masking as the security boundary.",
+    "MP-007: request-shape test asserts no includeSecrets, activeId, or defaultProviderId fields are sent.",
+    "Export non-mutation test asserts no provider activation calls and activeId remains unchanged."
+  ],
+  "concerns": [
+    "The focused RED currently stops at the missing providerStore export action before request-shape assertions execute. Once T007 adds the action, these assertions will validate the secret-free request shape and returned bundle.",
+    "The working diff also shows existing runtime refresh expectation changes relative to HEAD in the same file; they were already present in the initial read and were left intact."
+  ],
+  "recovery_hints": [
+    "Implement providersApi.exportProviders(input) in desktop/src/api/providers.ts to POST /api/providers/export with only providerIds/all.",
+    "Expose providerStore.exportProviders(input) in desktop/src/stores/providerStore.ts, call providersApi.exportProviders(input), return response.bundle, and do not call activate/fetch activation paths or mutate activeId."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    "desktop/src/types/providerImportExport.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/stores/providerStore.test.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

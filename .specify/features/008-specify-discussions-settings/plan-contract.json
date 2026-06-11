@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "status": "ready-for-tasks",
+  "route": "sp-plan",
+  "feature": {
+    "branch": "008-specify-discussions-settings",
+    "feature_dir": ".specify/features/008-specify-discussions-settings",
+    "summary": "Settings > Providers import/export with secret-free default export, optional high-friction secret export, side-effect-free import preview, explicit conflict handling, and no active/default provider transfer."
+  },
+  "recommended_next_command": "/sp.tasks",
+  "handoff_to_tasks_ready": true,
+  "planning_gate": {
+    "user_confirmed_at": "2026-06-10T14:16:15.4971387+08:00",
+    "hard_unknown_count": 0,
+    "open_conflict_count": 0,
+    "known_risks": [
+      "Raw-vs-masked provider API key behavior must be resolved during implementation design; export redaction must be server-owned."
+    ],
+    "project_cognition_status": "blocked: project-cognition.db missing; live repository evidence used"
+  },
+  "artifacts": {
+    "spec": ".specify/features/008-specify-discussions-settings/spec.md",
+    "alignment": ".specify/features/008-specify-discussions-settings/alignment.md",
+    "context": ".specify/features/008-specify-discussions-settings/context.md",
+    "research": ".specify/features/008-specify-discussions-settings/research.md",
+    "data_model": ".specify/features/008-specify-discussions-settings/data-model.md",
+    "quickstart": ".specify/features/008-specify-discussions-settings/quickstart.md",
+    "contracts": [
+      ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md"
+    ],
+    "plan": ".specify/features/008-specify-discussions-settings/plan.md"
+  },
+  "must_preserve": [
+    {
+      "id": "MP-001",
+      "obligation": "Provider configuration sharing remains the goal."
+    },
+    {
+      "id": "MP-002",
+      "obligation": "Import/export covers saved provider records only."
+    },
+    {
+      "id": "MP-003",
+      "obligation": "Users may choose whether to export secrets."
+    },
+    {
+      "id": "MP-004",
+      "obligation": "Default export is secret-free."
+    },
+    {
+      "id": "MP-005",
+      "obligation": "Secret export is separate, dangerous, second-confirmed, not remembered, and clearly labeled."
+    },
+    {
+      "id": "MP-006",
+      "obligation": "Conflict default is add/rename; overwrite is explicit."
+    },
+    {
+      "id": "MP-007",
+      "obligation": "Active/default provider selection is not exported or imported."
+    },
+    {
+      "id": "MP-008",
+      "obligation": "Import preview with diagnostics occurs before commit."
+    },
+    {
+      "id": "MP-009",
+      "obligation": "Workflow import/export is process precedent only."
+    },
+    {
+      "id": "MP-010",
+      "obligation": "Server-owned redaction resolves raw-vs-masked key evidence conflict for export safety."
+    }
+  ],
+  "consequence_obligations": [
+    {
+      "id": "CA-001",
+      "claim": "Default export must not include credentials; optional secret export is explicit only.",
+      "validation": "Server tests assert secret-free bundle lacks raw keys/tokens."
+    },
+    {
+      "id": "CA-002",
+      "claim": "Import preview must be side-effect free.",
+      "validation": "Server tests assert provider index and settings unchanged after preview."
+    },
+    {
+      "id": "CA-003",
+      "claim": "Import/export must not carry active/default provider selection or mutate active runtime env.",
+      "validation": "Server tests assert activeId and managed env unchanged."
+    },
+    {
+      "id": "CA-004",
+      "claim": "Conflict handling defaults to add/rename; overwrite is explicit.",
+      "validation": "Server and desktop tests cover default resolution and explicit overwrite."
+    },
+    {
+      "id": "CA-005",
+      "claim": "New imports use generated IDs by default.",
+      "validation": "Server tests assert generated local IDs differ from source IDs."
+    },
+    {
+      "id": "CA-006",
+      "claim": "Resolve raw-vs-masked API key behavior by making export redaction server-owned.",
+      "validation": "Tests prove export redaction independent of provider list response shape."
+    },
+    {
+      "id": "CA-007",
+      "claim": "Secret export uses high-friction protection and credential-bearing artifact labeling.",
+      "validation": "Server and desktop tests cover explicit confirmation and labeling."
+    }
+  ],
+  "implementation_boundaries": {
+    "server": [
+      "src/server/types/provider.ts or colocated provider import/export schema module",
+      "src/server/services/providerService.ts",
+      "src/server/api/providers.ts",
+      "src/server/__tests__/providers.test.ts"
+    ],
+    "desktop": [
+      "desktop/src/types/provider.ts",
+      "desktop/src/api/providers.ts",
+      "desktop/src/stores/providerStore.ts",
+      "desktop/src/pages/Settings.tsx or provider import/export component",
+      "desktop/src/i18n/locales/en.ts",
+      "desktop/src/i18n/locales/zh.ts",
+      "focused desktop provider/settings tests"
+    ]
+  },
+  "forbidden_drift": [
+    "Do not implement raw Settings JSON as the main provider sharing path.",
+    "Do not export/import activeId or default provider selection.",
+    "Do not auto-activate imported providers.",
+    "Do not silently overwrite providers.",
+    "Do not make secret export a remembered checkbox.",
+    "Do not rely on frontend-only masking for export security."
+  ],
+  "validation_gates": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run verify"
+  ],
+  "dispatch": {
+    "execution_model": "adaptive",
+    "execution_mode": "standard",
+    "dispatch_shape": "leader-inline",
+    "execution_surface": "leader-inline",
+    "capability_degraded": true,
+    "delegated_planning_lanes": [],
+    "reason": "Native subagent spawning is visible but not authorized by the current tool contract without an explicit user subagent request; artifact-only planning proceeded leader-inline."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-011",
+  "source_path": "src/buddy/prompt.ts",
+  "evidence_type": "code_read",
+  "summary": "companionIntroText() generates system prompt text for companion presence. getCompanionIntroAttachment() creates attachment for first-time companion announcement. Deduplicates by checking existing attachments.",
+  "classification": "important",
+  "criticality": "minor"
+}

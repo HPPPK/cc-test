@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-010",
+  "source_path": "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+  "evidence_type": "code_read",
+  "summary": "SSE streaming transformation: OpenAI Chat Completions -> Anthropic Messages format. Handles provider-specific reasoning formats (DeepSeek, OpenAI o-series, GLM-5, etc.). Derived from cc-switch project (MIT).",
+  "classification": "critical",
+  "criticality": "high"
+}

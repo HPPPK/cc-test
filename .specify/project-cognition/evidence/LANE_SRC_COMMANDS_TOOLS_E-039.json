@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-039",
+  "source_path": "src/tools/shared/spawnMultiAgent.ts",
+  "evidence_type": "code_read",
+  "summary": "Shared spawn module for teammate creation. Extracted from TeammateTool for reuse by AgentTool. Handles model override, permission mode, tmux detection.",
+  "classification": "critical",
+  "criticality": "critical"
+}

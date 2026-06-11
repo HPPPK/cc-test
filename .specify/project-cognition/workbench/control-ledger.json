@@ -1,58 +1,17 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-05-28T03:28:41.238Z",
-  "command": "sp-map-scan",
-  "rows": [
-    {
-      "id": "control:subagent-dispatch",
-      "title": "Native subagent dispatch used for all six scan lanes.",
-      "status": "pass",
-      "packet_ids": [
-        "root-config-runtime",
-        "server-workflow-api",
-        "desktop-workflow-ui",
-        "tools-agent-loop",
-        "verification-release-docs",
-        "adapters-services-risk"
-      ],
-      "confidence": "high"
-    },
-    {
-      "id": "control:hard-boundary-specify",
-      "title": ".specify/** excluded from repository graph evidence and only used as workflow state.",
-      "status": "pass",
-      "packet_ids": [],
-      "confidence": "high"
-    },
-    {
-      "id": "control:queue-acceptance",
-      "title": "Each queued packet has a worker result with acceptance=pass and assigned-path coverage.",
-      "status": "pass",
-      "packet_ids": [
-        "root-config-runtime",
-        "server-workflow-api",
-        "desktop-workflow-ui",
-        "tools-agent-loop",
-        "verification-release-docs",
-        "adapters-services-risk"
-      ],
-      "confidence": "high"
-    },
-    {
-      "id": "control:stale-packet-cleanup",
-      "title": "Stale May 26 packet/result files removed before final validation.",
-      "status": "pass",
-      "packet_ids": [],
-      "confidence": "high"
-    },
-    {
-      "id": "control:unassigned-universe-coverage",
-      "title": "Included paths outside worker packets are represented as explicit universe coverage rows.",
-      "status": "pass",
-      "packet_ids": [
-        "repository-universe"
-      ],
-      "confidence": "high"
-    }
+  "schema_version": "1.0.0",
+  "generated_at": "2026-06-04T14:30:00Z",
+  "command": "map-scan",
+  "control_nodes": [
+    {"id": "ctrl-entry-bin", "type": "entrypoint", "paths": ["bin/claude-jiangxia", "bin/cc-jiangxia", "bin/claude-haha"], "description": "CLI binary entrypoints", "criticality": "critical"},
+    {"id": "ctrl-entry-desktop", "type": "entrypoint", "paths": ["desktop/index.html", "desktop/src-tauri/src/main.rs"], "description": "Desktop app entrypoints (web + native)", "criticality": "critical"},
+    {"id": "ctrl-config-pkg", "type": "config", "paths": ["package.json", "tsconfig.json"], "description": "Root project configuration", "criticality": "critical"},
+    {"id": "ctrl-config-desktop", "type": "config", "paths": ["desktop/package.json", "desktop/vite.config.ts", "desktop/tsconfig.json"], "description": "Desktop build configuration", "criticality": "critical"},
+    {"id": "ctrl-config-tauri", "type": "config", "paths": ["desktop/src-tauri/tauri.conf.json", "desktop/src-tauri/Cargo.toml"], "description": "Tauri native configuration", "criticality": "important"},
+    {"id": "ctrl-ci-pr", "type": "ci", "paths": [".github/workflows/pr-quality.yml", ".github/workflows/pr-triage.yml"], "description": "PR quality and triage workflows", "criticality": "important"},
+    {"id": "ctrl-ci-release", "type": "ci", "paths": [".github/workflows/release-desktop.yml", ".github/workflows/build-desktop-dev.yml"], "description": "Release and dev build workflows", "criticality": "important"},
+    {"id": "ctrl-server-router", "type": "router", "paths": ["src/server/router.ts"], "description": "Server API router", "criticality": "critical"},
+    {"id": "ctrl-tools-registry", "type": "registry", "paths": ["src/tools.ts"], "description": "Tool registry - all tools registered here", "criticality": "critical"},
+    {"id": "ctrl-quality-gate", "type": "gate", "paths": ["scripts/quality-gate/index.ts"], "description": "Quality gate entrypoint", "criticality": "important"}
   ]
 }

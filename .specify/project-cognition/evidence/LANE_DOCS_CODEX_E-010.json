@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-010",
+  "source_path": ".codex/skills/sp-map-build/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-map-build 工作流技能定义：从扫描证据重建项目认知 SQLite 运行时",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

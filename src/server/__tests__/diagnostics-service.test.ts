@@ -138,7 +138,7 @@ describe('DiagnosticsService', () => {
 
   test('keeps fatal startup errors visible on stderr while recording diagnostics', async () => {
     const port = await getPort()
-    const serverArgs = ['bun', 'run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)]
+    const serverArgs = [process.execPath, 'run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)]
     const env = {
       ...process.env,
       CLAUDE_CONFIG_DIR: tmpDir,

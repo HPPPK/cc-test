@@ -1,0 +1,77 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workspaceService.ts",
+    "src/server/__tests__/workspace-service.test.ts",
+    ".planning/debug/changed-files-git-status-home-permission.md"
+  ],
+  "scope_paths": [
+    "src/server/services/workspaceService.ts",
+    "src/server/__tests__/workspace-service.test.ts",
+    "desktop/src/components/workspace/WorkspacePanel.tsx",
+    "desktop/src/stores/workspacePanelStore.ts"
+  ],
+  "behavior_surfaces": [
+    "server workspace status API",
+    "desktop changed-files panel data source",
+    "git status command execution for workspace changed-files"
+  ],
+  "generated_surfaces": [
+    ".planning/debug/changed-files-git-status-home-permission.md"
+  ],
+  "state_contracts": [
+    "WorkspaceService.getStatus should still return explicit error for generic git status failures.",
+    "When recursive untracked git status fails with traversal-style warnings, WorkspaceService retries with top-level untracked status and returns a degraded changed-files list instead of failing the whole panel.",
+    "Normal project repositories still use recursive untracked status first to preserve per-file untracked detail.",
+    "If the top-level untracked fallback also fails, WorkspaceService reports the fallback git command in the error message.",
+    "Recursive untracked status timeout or maxBuffer failures also trigger the top-level untracked fallback, even when child-process stdout/stderr are empty."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/__tests__/workspace-service.test.ts -t \"falls back to top-level untracked status\"",
+      "result": "passed"
+    },
+    {
+      "command": "bun test src/server/__tests__/workspace-service.test.ts",
+      "result": "passed: 15 pass, 2 skip, 0 fail"
+    },
+    {
+      "command": "Node execFile simulation in C:\\Users\\11034 with WorkspaceService git timeout/maxBuffer options",
+      "result": "recursive --untracked-files=all timed out and retry predicate returned true; --untracked-files=normal returned code 0"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "blocked before tests by expired quarantine entries: server:cron-scheduler, server:providers-real, server:tasks, server:e2e:business-flow, server:e2e:full-flow"
+    },
+    {
+      "command": "bun run verify",
+      "result": "failed: passed=4 failed=5 skipped=2; server, coverage, policy blocked by expired quarantine entries; native failed with Tauri build permission denied"
+    }
+  ],
+  "known_unknowns": [
+    "Full server gate cannot complete until expired quarantine review dates are resolved.",
+    "Full PR gate also includes unrelated dirty-worktree impact across cli-core, desktop, server, and native surfaces.",
+    "Human verification is needed in the desktop UI to confirm the changed-files panel no longer shows the screenshot error for C:\\Users\\11034."
+  ],
+  "confidence_notes": [
+    "Root cause confirmed with live Git commands in C:\\Users\\11034 and service-level RED/GREEN regression.",
+    "Fallback is limited to traversal-style warning signals to avoid hiding generic git failures."
+  ],
+  "user_decisions": [
+    "User invoked $sp-debug for screenshot error investigation."
+  ],
+  "boundary": {
+    "in_scope": [
+      "WorkspaceService git status fallback behavior",
+      "server regression test for traversal failure fallback",
+      "debug-session documentation"
+    ],
+    "out_of_scope": [
+      "Changing the user's home Git repository configuration",
+      "Fixing expired quarantine review dates",
+      "Fixing native Tauri build permission failure",
+      "Changing desktop UI layout"
+    ]
+  }
+}

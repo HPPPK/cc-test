@@ -110,11 +110,15 @@ standalone branch-creation command.
   map maintenance first, including ordinary existing-baseline gaps.
 - If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements. Do not recommend map-scan -> map-build solely because the graph has no paths.
 - Use map-update for ordinary existing-baseline gaps. Use map-scan -> map-build
-  only for brownfield first/missing/unusable baseline, schema failure, zero active-generation
-  path_index rows outside `greenfield_empty`, `explicit_rebuild_requested`, or
-  `baseline_identity_invalid`.
+  only for brownfield first/missing/unusable baseline, schema failure, schema v1
+  or old broad-schema rebuild-required readiness, zero active-generation
+  path_index rows outside `greenfield_empty`, missing or invalid `alias_index`,
+  `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+  Schema v2 brownfield readiness also requires `alias_index`; schema v1 or old
+  broad-schema baselines must rebuild through `sp-map-scan -> sp-map-build`
+  before their alias catalog is usable navigation.
 - `sp-map-update` is for manual/external maintenance as the external/manual maintenance entrypoint for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. A source-changing `sp-*` workflow does not hand off its own verified changes to `sp-map-update`; it runs inline project cognition update during closeout from its workflow-owned changed paths, affected surfaces, and verification evidence. In shared routing summaries, sp-map-update is for manual/external maintenance.
-- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`. Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output.
+- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`. Payload files accept `verification` plus the compatibility alias `verification_evidence`, and `generated_surfaces` plus the compatibility alias `generated_surface_notes`; failed verification evidence cannot produce a clean `ready` closeout. Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output.
 - Workflow-owned mutation closeout is not external map maintenance. Dirty state is fallback-only after inline update cannot complete.
 - Use `sp-analyze` only for optional diagnostics, explicit user requests, or persisted legacy `/sp.analyze` state.
 - Use `sp-explain` when the user needs a plain-language explanation of current
@@ -124,10 +128,34 @@ standalone branch-creation command.
   symptom route exists; do not jump straight to broad repository search.
 - Use the direct `project-cognition` query planning flow required by the
   selected workflow contract to retrieve the task-local project cognition
-  bundle. The agent must translate the raw user request into a `query_plan`
-  using returned graph-backed project concept candidates, `concept_decisions`,
-  and `lexicon_generation_id` before running
+  bundle. Retrieve the project alias catalog with `project-cognition lexicon --mode catalog`,
+  write explicit `semantic_intake` from the raw prompt plus project vocabulary,
+  including `normalized_query`, `intent_facets`, `negative_constraints`,
+  `alias_interpretations`, and open semantic questions, then translate that into
+  a `query_plan` using returned graph-backed project concept candidates,
+  `concept_decisions`, and `lexicon_generation_id` before running
   `project-cognition query --query-plan`.
+  Candidate selection must satisfy facet coverage through `covered_facets`,
+  `missing_facets`, and `match_sources`; do not trust top similarity alone,
+  whether lexical or vector-based.
+  Before source search, write project-language search terms derived from the
+  alias catalog, `semantic_intake`, selected candidates, and route metadata.
+  Write them as `repository_search_terms`; include component names, state names,
+  file names, command names, UI labels, and route names when present. Do not
+  search only the raw user words. Use these project-language search terms before
+  broad repository search.
+  Use the alias-first project cognition flow: read the schema v2
+  `alias_index`-backed alias catalog, normalize user input into project
+  vocabulary, record `alias_interpretations`, and only then call
+  `project-cognition query --query-plan`. If the runtime reports schema v1 or
+  rebuild-required readiness, do not query through the old DB; continue with
+  live repository evidence and recommend `sp-map-scan -> sp-map-build` when a
+  usable brownfield baseline is needed. Map points, code proves: the alias
+  catalog is route vocabulary, not evidence by itself.
+  If the query command reports query-plan diagnostics, preserve its `warnings`,
+  `repair_hints`, normalized `query_plan`, structured `errors`, and
+  `expected_shape` so the owning workflow can repair the plan instead of ending
+  on a raw parser exception.
   Treat raw graph JSON artifacts as obsolete runtime surfaces.
 
 ## Consequence-Aware Routing

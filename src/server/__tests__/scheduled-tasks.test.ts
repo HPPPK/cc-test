@@ -174,6 +174,41 @@ describe('CronService', () => {
       renameSpy.mockRestore()
     }
   })
+
+  it('should retry the atomic write when Windows temporarily denies rename', async () => {
+    const originalRename = fs.rename
+    let renameCalls = 0
+
+    const renameSpy = spyOn(fs, 'rename')
+    renameSpy.mockImplementation(async (...args) => {
+      renameCalls += 1
+
+      if (renameCalls <= 2) {
+        const error = new Error(
+          'EPERM: operation not permitted, rename tmp -> scheduled_tasks.json',
+        ) as NodeJS.ErrnoException
+        error.code = 'EPERM'
+        throw error
+      }
+
+      return originalRename(...args)
+    })
+
+    try {
+      const task = await service.createTask({
+        cron: '0 9 * * *',
+        prompt: 'Retry rename permission denial',
+      })
+
+      const tasks = await service.listTasks()
+      expect(task.id).toBeDefined()
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]?.prompt).toBe('Retry rename permission denial')
+      expect(renameCalls).toBe(3)
+    } finally {
+      renameSpy.mockRestore()
+    }
+  })
 })
 
 // ─── SearchService tests ────────────────────────────────────────────────────

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-015",
+  "source_path": "src/commands/mcp/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/mcp' - local-jsx command managing MCP servers. Immediate execution. Supports enable/disable per server.",
+  "classification": "critical",
+  "criticality": "critical"
+}

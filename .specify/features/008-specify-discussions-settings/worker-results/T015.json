@@ -1,0 +1,73 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "task_id": "T015",
+  "changed_files": [
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "validation_output": [
+    {
+      "command": "cd desktop && bun run test -- generalSettings",
+      "exit_code": 0,
+      "summary": "1 test file passed, 52 tests passed. Existing React act(...) warnings were emitted from GeneralSettings tests."
+    },
+    {
+      "command": "cd desktop && bun run test -- providerStore",
+      "exit_code": 0,
+      "summary": "1 test file passed, 6 tests passed."
+    },
+    {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 0,
+      "summary": "tsc --noEmit completed successfully."
+    }
+  ],
+  "must_preserve_evidence": {
+    "G-SECRET-EXPORT": "Default export still calls exportProviders only; credential export calls exportProvidersWithSecrets only after acknowledgment with confirmation. No generated credential-bearing artifact was written to disk.",
+    "G-SCOPE": "Edits were limited to the five assigned desktop files. No server files, .env files, credential files, or user config files were edited by this worker.",
+    "G-TEST": "Requested generalSettings, providerStore, and lint commands all exited 0.",
+    "MP-003": "Both secret-free exportProviders and credential-bearing exportProvidersWithSecrets paths are present and separate.",
+    "MP-005": "Credential-bearing export is a separate danger action with warning dialog, explicit checkbox acknowledgment, and no remembered acknowledgment state.",
+    "CA-007": "The warning dialog resets acknowledgment on each open; cancel or unacknowledged confirm does not call exportProvidersWithSecrets."
+  },
+  "concerns": [
+    "Project cognition query was blocked before implementation: status.json exists but project-cognition.db is missing. I continued with live repository evidence.",
+    "The workspace is broadly dirty with many unrelated concurrent changes, including files outside this task. I did not revert or modify those unrelated files."
+  ],
+  "recovery_hints": [
+    "If a later gate requires project cognition freshness, rebuild or restore the missing project-cognition.db outside this task.",
+    "When reviewing, isolate this worker's intended changes to the five changed_files listed above because the worktree contains unrelated concurrent edits."
+  ],
+  "inspected_references": [
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/types/providerImportExport.ts",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md"
+  ],
+  "leader_validation": {
+    "commands": [
+      {
+        "command": "bun run check:desktop",
+        "exit_code": 0,
+        "summary": "JP7 desktop gate passed; log: .specify/features/008-specify-discussions-settings/validation-logs/jp7-check-desktop.log"
+      }
+    ]
+  },
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

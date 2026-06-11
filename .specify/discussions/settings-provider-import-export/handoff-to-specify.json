@@ -1,0 +1,588 @@
+{
+  "discussion_slug": "settings-provider-import-export",
+  "handoff_goal": "Specify Settings > Providers import/export for shareable provider configuration bundles, including optional high-friction secret export, previewed import with conflict handling, and no active/default provider transfer.",
+  "created_at": "2026-06-10T13:51:52.7189300+08:00",
+  "context_boundary": {
+    "current_project_root": "F:/github/cc-jiangxia",
+    "current_project_roles": [
+      {
+        "role": "discussion-host",
+        "scope": "Store the discussion and handoff artifacts.",
+        "evidence_source": "User confirmation and current working directory.",
+        "notes": "Prior Workflows discussions are not the target."
+      },
+      {
+        "role": "implementation-target",
+        "scope": "Desktop Settings > Providers UI, provider API/store/types, server provider REST API/service/types, provider persistence and managed settings sync.",
+        "evidence_source": "Live repository reads.",
+        "notes": "No cross-project transfer requested."
+      }
+    ],
+    "target_project_root": "F:/github/cc-jiangxia",
+    "target_project_roles": [
+      {
+        "role": "implementation-target",
+        "scope": "Add provider import/export capability for the current app's Settings provider surface.",
+        "evidence_source": "User request plus live repository reads.",
+        "notes": "Sharing is provider-record focused, not local active state transfer."
+      }
+    ],
+    "reference_projects": [],
+    "external_systems": [],
+    "path_status": "target-read-confirmed",
+    "boundary_confidence": "high",
+    "boundary_unknowns": []
+  },
+  "implementation_target": {
+    "actual_project_to_change": "F:/github/cc-jiangxia",
+    "target_root_path": "F:/github/cc-jiangxia",
+    "target_paths_or_modules": [
+      "desktop/src/pages/Settings.tsx",
+      "desktop/src/api/providers.ts",
+      "desktop/src/stores/providerStore.ts",
+      "desktop/src/types/provider.ts",
+      "desktop/src/lib/providerSettingsJson.ts",
+      "src/server/api/providers.ts",
+      "src/server/services/providerService.ts",
+      "src/server/types/provider.ts",
+      "src/server/__tests__/providers.test.ts"
+    ],
+    "target_paths_still_to_verify": [
+      "Exact i18n keys and location for new Settings provider dialog text.",
+      "Whether import/export logic should be extracted from Settings.tsx into a provider-specific component."
+    ],
+    "target_project_cognition_status": "blocked: project-cognition.db missing",
+    "cross_project_cognition_note": "Current project cognition cannot prove another project's implementation facts; no other target project was requested."
+  },
+  "source_evidence": [
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/pages/Settings.tsx",
+      "claim": "Settings defaults to the providers tab and renders ProviderSettings for provider CRUD/test/activation/delete."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/api/providers.ts",
+      "claim": "Provider API wrapper has CRUD/test/settings methods but no provider import/export wrappers."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/stores/providerStore.ts",
+      "claim": "Provider store wraps CRUD/test/activation and refreshes connected sessions after provider updates."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/types/provider.ts",
+      "claim": "SavedProvider contains credential-bearing apiKey plus preset, base URL, API format, model mappings, context windows, and notes."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "src/server/api/providers.ts",
+      "claim": "Provider REST API has no import/export routes today."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "src/server/services/providerService.ts",
+      "claim": "Providers are persisted in the cc-jiangxia app config providers index; activation syncs provider-managed env into managed settings."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/lib/providerSettingsJson.ts",
+      "claim": "Existing helpers mask/restore provider-related secret env values for Settings JSON."
+    },
+    {
+      "source_type": "live_code",
+      "evidence_status": "verified",
+      "source": "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+      "claim": "Existing import/export interaction precedent includes JSON export, preview, diagnostics, conflict handling, and commit."
+    },
+    {
+      "source_type": "test",
+      "evidence_status": "verified",
+      "source": "src/server/__tests__/providers.test.ts",
+      "claim": "Provider tests cover CRUD, activation sync, active deletion conflict, malformed settings recovery, auth strategies, and proxy behavior."
+    },
+    {
+      "source_type": "project_cognition",
+      "evidence_status": "blocked",
+      "source": ".specify/project-cognition/status.json and project-cognition lexicon command",
+      "claim": "Cognition graph is unavailable because the database is missing.",
+      "needs_refresh": true
+    }
+  ],
+  "blocking_unknowns": {
+    "hard": [],
+    "soft": [
+      {
+        "id": "SU-001",
+        "unknown": "Exact UI placement, dialog layout, and warning copy.",
+        "owner": "downstream-contract",
+        "latest_resolve_phase": "specification",
+        "stop_and_reopen_condition": "Spec cannot express import/export states or warnings clearly."
+      },
+      {
+        "id": "SU-002",
+        "unknown": "Raw-vs-masked provider API key behavior conflict.",
+        "owner": "evidence",
+        "latest_resolve_phase": "implementation design",
+        "stop_and_reopen_condition": "Export security relies on an unverified frontend masking assumption."
+      }
+    ]
+  },
+  "downstream_instructions": {
+    "settled_decisions": [
+      "Provider import/export covers saved provider records only.",
+      "Active/default provider selection is excluded from export and import.",
+      "Default export is secret-free.",
+      "Users may choose secret-including export.",
+      "Secret-including export is a separate dangerous action with warning and second confirmation.",
+      "The app must not remember or preselect secret export.",
+      "Secret-bearing export artifacts must be clearly labeled.",
+      "Import uses preview before commit.",
+      "Conflict default is add/rename; overwrite requires explicit selection.",
+      "Import does not auto-activate imported providers or write active-provider env.",
+      "Imported providers should get generated IDs by default.",
+      "Official login/OAuth state is not exported."
+    ],
+    "assumptions_to_preserve": [
+      "Provider records may include sensitive credentials and must be redacted server-side for default export.",
+      "Workflow import/export is a UI/process precedent, not a provider schema source."
+    ],
+    "conflicts_requiring_return_to_discussion": [
+      "A later requirement wants default export to include credentials.",
+      "A later requirement wants import to auto-activate providers.",
+      "A later requirement wants export/import to include active/default provider selection."
+    ],
+    "capability_map": [
+      "Export selected/all saved provider records.",
+      "Export secret-free bundle by default.",
+      "Export with secrets through high-friction path.",
+      "Parse and validate provider bundle JSON.",
+      "Preview valid, invalid, conflicting, secret-bearing, and secret-missing entries.",
+      "Commit selected import candidates with add/rename/overwrite resolutions.",
+      "Refresh provider list after commit."
+    ],
+    "recommended_sequence": [
+      "Define provider bundle schema and redaction semantics.",
+      "Define server-side export and import preview/commit contracts.",
+      "Add provider service import/export logic with validation and tests.",
+      "Add desktop API/store wrappers.",
+      "Add Settings > Providers UI controls and dialog.",
+      "Add focused desktop tests for interaction states and warnings."
+    ],
+    "dependencies": [
+      "ProviderService persistence",
+      "ManagedSettingsService active env sync behavior",
+      "Provider Settings UI",
+      "Provider API client/store",
+      "Existing provider tests"
+    ],
+    "deferred_scope": [
+      "Encryption/password-protected bundles.",
+      "Official OAuth login export/import.",
+      "Active/default provider selection export/import.",
+      "Whole-app settings backup/restore."
+    ],
+    "reopen_conditions": [
+      "Default export includes credentials.",
+      "Secret export becomes a remembered checkbox or unlabeled artifact.",
+      "Import changes active provider selection.",
+      "Import silently overwrites provider records.",
+      "Implementation relies on unresolved API key masking behavior."
+    ]
+  },
+  "ui_discussion": {
+    "ui_discussion_status": "deferred",
+    "confirmed_ui_decisions": [
+      "Provider import/export lives in Settings > Providers.",
+      "Secret export must not be casual or remembered.",
+      "Import preview must show conflicts and credential status before commit."
+    ],
+    "deferred_ui_decisions": [
+      "Exact placement of import/export controls.",
+      "Exact dialog copy.",
+      "Whether export selected/all is one dialog or separate actions."
+    ],
+    "interaction_expectations": [
+      "Use a preview step before import commit.",
+      "Display explicit warnings for secret-bearing exports and imports.",
+      "Avoid revealing secrets in routine diagnostics."
+    ],
+    "state_requirements": [
+      "empty provider list",
+      "export selected/all",
+      "export no selection",
+      "export with secrets confirmation",
+      "invalid JSON import",
+      "valid candidates",
+      "invalid candidates",
+      "conflicts",
+      "missing secrets",
+      "secret-bearing import",
+      "commit success/failure"
+    ],
+    "accessibility_expectations": [
+      "Dialog controls must be keyboard reachable.",
+      "Warning and error states must be announced in text, not color alone."
+    ],
+    "ui_sketches_present": false,
+    "ui_sketch_summary": "No ASCII sketches were produced.",
+    "ui_sketch_reference": "none"
+  },
+  "must_preserve_ledger": [
+    {
+      "id": "MP-001",
+      "type": "goal",
+      "claim": "Add Settings > Providers import/export so provider configurations can be shared with other people.",
+      "source": "user request",
+      "downstream_requirement": "Spec must center provider configuration sharing.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Feature becomes unrelated settings backup.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-002",
+      "type": "scope",
+      "claim": "Import/export covers saved provider records only.",
+      "source": "user discussion",
+      "downstream_requirement": "Bundle schema excludes unrelated app state.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Spec includes chat, MCP, skills, workflows, plugins, or global settings.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-003",
+      "type": "decision",
+      "claim": "Users may choose whether to export API keys/secrets.",
+      "source": "user confirmation",
+      "downstream_requirement": "Spec includes both secret-free and secret-including export paths.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Secret export is omitted or made default.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-004",
+      "type": "decision",
+      "claim": "Secret-free export is the default.",
+      "source": "user discussion and risk review",
+      "downstream_requirement": "Default export redacts credentials.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Default export includes API keys or tokens.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-005",
+      "type": "decision",
+      "claim": "Secret-including export requires a separate dangerous action, warning, second confirmation, no remembered choice, and clear artifact labeling.",
+      "source": "user selected recommendation",
+      "downstream_requirement": "Spec must encode high-friction protection.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Secret export is a remembered checkbox or unlabeled artifact.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-006",
+      "type": "decision",
+      "claim": "Import conflicts default to add/rename; overwrite requires explicit selection.",
+      "source": "user confirmation",
+      "downstream_requirement": "Spec must include previewed conflict resolutions.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Import silently overwrites an existing provider.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-007",
+      "type": "non_goal",
+      "claim": "Active/default provider selection is not exported or imported.",
+      "source": "user confirmation",
+      "downstream_requirement": "Bundle schema excludes activeId/default selection.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Import changes active provider selection.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-008",
+      "type": "scenario",
+      "claim": "Import uses preview before commit with diagnostics for invalid entries, conflicts, missing secrets, and secret-bearing entries.",
+      "source": "discussion and workflow UI precedent",
+      "downstream_requirement": "Spec must require side-effect-free preview.",
+      "blocking_level": "hard",
+      "owner": "downstream-contract",
+      "latest_resolve_phase": "specification",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Import writes during preview or lacks diagnostics.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-009",
+      "type": "reference",
+      "claim": "Existing workflow import/export dialog is a useful UI/process precedent, not a domain model to reuse blindly.",
+      "source": "live code evidence",
+      "downstream_requirement": "Spec may borrow interaction shape while defining provider-specific schema.",
+      "blocking_level": "soft",
+      "owner": "evidence",
+      "latest_resolve_phase": "plan",
+      "status": "mapped",
+      "deferred_to": null,
+      "stop_and_reopen_condition": "Workflow template semantics leak into provider bundle design.",
+      "mapped_to": ""
+    },
+    {
+      "id": "MP-010",
+      "type": "blocking_question",
+      "claim": "Resolve raw-vs-masked provider API key behavior before claiming export security.",
+      "source": "live code/test conflict",
+      "downstream_requirement": "Plan or implementation design must verify and handle server-side redaction.",
+      "blocking_level": "soft",
+      "owner": "evidence",
+      "latest_resolve_phase": "implementation design",
+      "status": "deferred",
+      "deferred_to": "implementation design",
+      "stop_and_reopen_condition": "Export security relies only on frontend masking assumptions.",
+      "mapped_to": ""
+    }
+  ],
+  "senior_consequence_analysis": {
+    "triggered": true,
+    "trigger_reason": "Provider import/export can expose credentials by explicit user choice, mutate provider persistence, affect active runtime settings if implemented incorrectly, collide with existing providers, and interact with managed settings preservation.",
+    "affected_object_map": [
+      "Provider records in cc-jiangxia providers index.",
+      "Provider API responses and provider bundle artifacts.",
+      "Active provider ID, by exclusion from import/export.",
+      "cc-jiangxia managed settings env, by ensuring import does not activate or sync env.",
+      "Settings > Providers list, dialogs, and warning states.",
+      "Connected sessions that currently refresh on provider update.",
+      "Provider test/proxy runtime path."
+    ],
+    "state_behavior_matrix": [
+      {
+        "state": "no providers",
+        "behavior": "Export empty/disabled state; import can add providers."
+      },
+      {
+        "state": "inactive provider",
+        "behavior": "Exportable and importable."
+      },
+      {
+        "state": "active provider",
+        "behavior": "Provider record exportable, but active selection excluded."
+      },
+      {
+        "state": "secret-free export",
+        "behavior": "Credentials redacted/omitted and artifact marked secret-free."
+      },
+      {
+        "state": "secret export",
+        "behavior": "Requires separate action, warning, second confirmation, no remembered choice, and artifact marked credential-bearing."
+      },
+      {
+        "state": "conflict",
+        "behavior": "Default add/rename, overwrite only by explicit selection."
+      }
+    ],
+    "dependency_impact_table": [
+      {
+        "dependency": "ProviderService",
+        "impact": "Needs export, preview, and commit behavior without bypassing validation.",
+        "validation_route": "Server unit tests."
+      },
+      {
+        "dependency": "ManagedSettingsService",
+        "impact": "Import must not write active provider env.",
+        "validation_route": "Server tests asserting settings unchanged."
+      },
+      {
+        "dependency": "providerStore",
+        "impact": "Needs import/export actions and refresh after commit.",
+        "validation_route": "Store/UI tests."
+      },
+      {
+        "dependency": "Settings Provider UI",
+        "impact": "Needs controls, dialogs, warnings, preview, commit states.",
+        "validation_route": "Testing Library/Vitest tests."
+      }
+    ],
+    "recovery_and_validation_contract": [
+      "Export is read-only.",
+      "Import preview is side-effect free.",
+      "Import commit is validated server-side.",
+      "Import commit is additive by default.",
+      "Overwrite is explicit and should re-read current provider state.",
+      "Import never changes active/default provider selection.",
+      "Failed import must not mutate managed settings env.",
+      "Tests prove default export redacts secrets and secret export requires explicit flag/path."
+    ],
+    "coverage_gaps": [
+      {
+        "id": "CG-001",
+        "gap": "Project cognition database is missing.",
+        "owner": "evidence",
+        "latest_resolve_phase": "specification",
+        "routing_decision": "Continue with live evidence; carry gap.",
+        "stop_and_reopen_condition": "Spec claims graph-proven ownership without live evidence."
+      },
+      {
+        "id": "CG-002",
+        "gap": "Provider API key masking behavior has conflicting evidence.",
+        "owner": "evidence",
+        "latest_resolve_phase": "implementation design",
+        "routing_decision": "Resolve before security-ready implementation.",
+        "stop_and_reopen_condition": "Export security relies only on frontend masking."
+      }
+    ],
+    "consequence_obligations": [
+      {
+        "id": "CA-001",
+        "claim": "Default export must not include credentials; optional secret export is explicit only.",
+        "affected_objects": [
+          "Provider records",
+          "export artifact"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specification",
+        "status": "mapped",
+        "blocking_level": "hard",
+        "stop_and_reopen_condition": "Default export includes secrets."
+      },
+      {
+        "id": "CA-002",
+        "claim": "Import preview must be side-effect free.",
+        "affected_objects": [
+          "Provider index",
+          "settings env"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "plan",
+        "status": "mapped",
+        "blocking_level": "hard",
+        "stop_and_reopen_condition": "Preview writes persistence."
+      },
+      {
+        "id": "CA-003",
+        "claim": "Import/export must not carry active/default provider selection or mutate active runtime env.",
+        "affected_objects": [
+          "activeId",
+          "managed settings env"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specification",
+        "status": "mapped",
+        "blocking_level": "hard",
+        "stop_and_reopen_condition": "Import changes active provider or active env."
+      },
+      {
+        "id": "CA-004",
+        "claim": "Conflict handling defaults to add/rename; overwrite is explicit.",
+        "affected_objects": [
+          "Provider records"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "tasks",
+        "status": "mapped",
+        "blocking_level": "hard",
+        "stop_and_reopen_condition": "Import silently overwrites records."
+      },
+      {
+        "id": "CA-005",
+        "claim": "New imports use generated IDs by default.",
+        "affected_objects": [
+          "Provider IDs"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "plan",
+        "status": "pending",
+        "blocking_level": "soft",
+        "stop_and_reopen_condition": "Imported IDs collide or shadow without preview resolution."
+      },
+      {
+        "id": "CA-006",
+        "claim": "Resolve raw-vs-masked API key evidence conflict before claiming security.",
+        "affected_objects": [
+          "Provider API",
+          "provider list",
+          "provider export"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "implementation design",
+        "status": "pending",
+        "blocking_level": "soft",
+        "stop_and_reopen_condition": "Export relies on unverified masking."
+      },
+      {
+        "id": "CA-007",
+        "claim": "Secret export uses high-friction protection and credential-bearing artifact labeling.",
+        "affected_objects": [
+          "Export UI",
+          "artifact"
+        ],
+        "owner_workflow": "sp-specify/sp-plan",
+        "latest_resolve_phase": "specification",
+        "status": "mapped",
+        "blocking_level": "hard",
+        "stop_and_reopen_condition": "Secret export is casual, remembered, or unlabeled."
+      }
+    ]
+  },
+  "quality_gate": {
+    "status": "user_confirmed",
+    "self_reviewed_at": "2026-06-10T13:51:52.7189300+08:00",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-06-10T13:58:44.8314216+08:00",
+    "blocked_reasons": [],
+    "coverage_status": "live-evidence-with-cognition-gap",
+    "planning_gate_status": "handoff-ready",
+    "hard_unknown_count": 0,
+    "open_conflict_count": 1
+  },
+  "self_review": {
+    "status": "passed",
+    "checks": [
+      "Handoff goal is concrete.",
+      "Context boundary is locked to the current repository.",
+      "Current and target roles are explicit role objects.",
+      "Source evidence includes live code/test paths and cognition gap.",
+      "Hard unknowns are absent for specification entry.",
+      "Soft unknowns have owners, latest resolve phases, and stop/reopen conditions.",
+      "Must-Preserve Ledger includes goal, scope, non-goals, decisions, scenario, reference, and blocking evidence question.",
+      "Senior Consequence Analysis obligations are preserved.",
+      "Markdown and JSON companion were written together.",
+      "User confirmation is still required before marking handoff-ready."
+    ]
+  }
+}

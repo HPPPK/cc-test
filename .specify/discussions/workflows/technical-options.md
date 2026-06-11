@@ -67,6 +67,181 @@ Treat phase skill as a recommended binding/policy layer over existing skills. St
 - `source_catalog`: workflow authoring should draw selectable skills from the shared capability catalog behind Settings > Skills and plugin capability navigation, rather than inventing a separate workflow-specific skill inventory.
 - `binding_target`: confirmed as skill. Plugins are not the primary workflow binding target; they are dependency/provenance for plugin-provided skills.
 
+## Execution Constraint System Field Model
+
+Reopened discussion on 2026-06-11 selected option 1: workflows as an execution constraint system.
+
+The recommended field model is to separate **phase intent** from **phase contract**.
+
+### Phase Intent Fields
+
+Intent fields help the agent understand what the phase is for. They guide behavior, but should not be treated as hard machine gates by default.
+
+- `id`: stable phase identifier.
+- `label` / `name`: human-readable phase name.
+- `role`: the operating stance for the agent in this phase.
+- `instructions`: freeform phase instructions.
+- `phasePrompt.objective`: concise objective for the phase.
+- `requestedModel`: optional model preference.
+- `skills`: recommended phase skill references.
+
+### Phase Contract Fields
+
+Contract fields define what the phase may do, must produce, must prove, and how it may advance.
+
+- `phasePrompt.handoffInput`: what this phase must receive or reconstruct before working.
+- `phasePrompt.executionRules`: local execution rules for the phase.
+- `actionPolicy.allowedActions`: allowed action categories.
+- `actionPolicy.forbiddenActions`: forbidden action categories.
+- `requiredArtifacts`: named outputs the phase must produce.
+- `completionCriteria`: acceptance criteria for treating the phase as ready, blocked, or unable.
+- `phasePrompt.completionRules`: stop rules and completion-specific constraints.
+- `transitionAuthority`: whether completion can auto-advance or requires user confirmation.
+- `CompletionSubmission.evidence`: evidence required when the agent claims readiness/blockage.
+- `CompletionSubmission.handoff`: structured handoff payload for the next phase.
+- `WorkflowPhaseSkillEvidence`: soft audit for recommended skills used or clearly relevant but skipped/unavailable.
+
+### Constraint Strengths
+
+Not every field should be a hard blocker. The recommended model uses four strengths:
+
+- `guidance`: influences behavior but does not block. Example: role, objective, general instructions.
+- `policy`: constrains what the agent may do. Example: forbidden actions, allowed actions.
+- `evidence`: requires the agent to report proof before phase completion. Example: completion evidence, artifact pointers, skill audit.
+- `gate`: blocks phase transition until satisfied or explicitly skipped by a stronger authority. Example: required artifacts, required completion criteria, user-confirmation transition.
+
+### Product Recommendation
+
+The first-class workflow value should be the phase contract:
+
+- a phase has explicit inputs,
+- explicit allowed and forbidden behavior,
+- explicit required outputs,
+- explicit completion evidence,
+- explicit handoff payload,
+- explicit transition authority.
+
+This keeps workflows from becoming only a template editor. Templates remain the authoring format, but runtime value comes from enforcing and auditing the phase contract.
+
+### Best-Effective Design Assessment
+
+This is the recommended **most effective first design**, not the theoretical maximum workflow-engine design.
+
+The design is best for the current product shape because it uses the workflow structures already present in the system while giving them sharper runtime meaning:
+
+- phase intent remains readable and authorable by humans,
+- phase contract becomes the durable execution boundary,
+- completion evidence and transition authority create real control points,
+- recommended skills stay useful without becoming brittle mandatory automation,
+- hard gates are reserved for artifacts, completion criteria, and user/authority transitions.
+
+Rejected stronger alternatives for first scope:
+
+- **Make every field severity-typed**: too much authoring friction and validation complexity for limited first-version gain.
+- **Make workflows a full execution engine**: expressive, but too large a blast radius across tool permissions, skill invocation, session resume, import/export, and UI.
+- **Make all constraints hard gates**: looks rigorous but will produce false blocks because many workflow instructions are contextual judgment, not machine-verifiable facts.
+
+The effective rule is: use hard gates only where the product can clearly explain the blocked state to the user and the runtime can validate or request authority. Everything else should be guidance, policy, or evidence.
+
+### Current Project Evidence
+
+- `src/server/services/workflowTypes.ts` already defines `WorkflowPhaseDefinition` with `instructions`, `skills`, `skillDeclarations`, `requiredArtifacts`, `completionCriteria`, `transitionAuthority`, `actionPolicy`, and `phasePrompt`.
+- `src/server/services/workflowRuntimeService.ts` already assembles the active phase prompt from phase instructions, `phasePrompt`, action policy, recommended skills, required artifacts, completion criteria, prior artifacts, skill guidance, and model selection.
+- `src/server/services/workflowToolPolicy.ts` exposes `submit_phase_completion` as the workflow-only tool and requires phaseId, stateVersion, status, handoff, rationale, and evidence.
+- `desktop/src/components/workflow/WorkflowTemplateEditor.tsx` already exposes many corresponding authoring fields: objective, intake, recommended skills, output artifact, handoff, execution rules, completion criteria, transition authority, and requested model.
+
+### Open Design Point
+
+The next decision is whether first-scope field design should keep constraints soft-by-default, with hard gates only for required artifacts/completion/transition, or introduce explicit per-field severity such as `advisory | required | blocking`.
+
+### Recommended Schema Grouping
+
+Decision refined on 2026-06-11: use grouped semantics as the product and runtime model, while keeping a compatibility adapter for existing flat fields.
+
+The recommended grouping is:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "feature-delivery",
+  "displayName": "Feature Delivery",
+  "description": "Plan, implement, verify, and hand off a scoped feature.",
+  "phases": [
+    {
+      "id": "implementation",
+      "label": "Implementation",
+      "intent": {
+        "role": "executor",
+        "objective": "Implement the scoped change according to the accepted plan.",
+        "instructions": "Keep edits scoped and follow repository conventions.",
+        "requestedModel": "optional-model-id",
+        "recommendedSkills": [
+          {
+            "name": "tdd-workflow",
+            "source": "optional-source-hint",
+            "required": false
+          }
+        ]
+      },
+      "contract": {
+        "handoffInput": [
+          "Accepted requirements or prior phase handoff",
+          "Known constraints and non-goals"
+        ],
+        "executionRules": [
+          "Read relevant code before editing",
+          "Do not expand scope without user confirmation"
+        ],
+        "actionPolicy": {
+          "allowedActions": ["read-code", "edit-code", "run-tests"],
+          "forbiddenActions": ["destructive-git-reset", "secret-exposure"]
+        },
+        "requiredArtifacts": [
+          {
+            "id": "implementation-summary",
+            "kind": "markdown",
+            "description": "Files changed, behavior changed, and verification run"
+          }
+        ],
+        "completionCriteria": [
+          {
+            "id": "tests-pass",
+            "description": "Relevant checks pass or blockers are explicitly documented",
+            "gate": true
+          }
+        ],
+        "completionRules": [
+          "Submit completion only after evidence exists",
+          "If blocked, submit blocked status with concrete blocker and recovery path"
+        ],
+        "transitionAuthority": "user-confirmation"
+      },
+      "evidencePolicy": {
+        "requiredSubmissionFields": ["handoff", "rationale", "evidence"],
+        "artifactEvidence": "required-for-required-artifacts",
+        "skillAudit": "used-or-relevant-skipped",
+        "missingDependencyBehavior": "warn-and-carry-reference"
+      }
+    }
+  ]
+}
+```
+
+Field meaning:
+
+- `intent`: what the phase is trying to accomplish. It guides the agent and UI, but should not block completion by itself.
+- `contract`: what the phase must receive, may do, must avoid, must produce, must prove, and who can advance it.
+- `evidencePolicy`: what proof must be supplied at completion. This keeps completion evidence explicit without turning every instruction into a hard gate.
+- `runtimeState`: should remain session-owned, not template-owned. It records active phase, state version, pending confirmation, completion submission, artifact references, transition history, skill audit, and blocked/completed status.
+
+Compatibility recommendation:
+
+- First implementation can keep existing flat storage fields and map them into the grouped model in runtime/editor code.
+- New UI should present the grouped model even if persistence is still flat.
+- Future schema migration can persist `intent`, `contract`, and `evidencePolicy` directly once import/export, validation, and old-template fixtures are covered.
+
+This avoids a breaking persistence migration while still making the product model clean enough for prompt assembly, UI grouping, validation, and future handoff/spec work.
+
 ## Settings-Backed Skill Reference Model
 
 Workflow authoring can reference skills from the same current available skill catalog the user already sees in Settings.
@@ -154,6 +329,104 @@ Show recommended phase skills in active workflow status only as a concise status
 
 - Product behavior: users can see why the agent may focus on certain skills and whether any selected phase skill is unavailable.
 - Interaction: display used/relevant-unavailable evidence at phase completion; avoid listing every recommended skill as a noisy checklist.
+
+### Confirmed UI Grouping For Constraint Fields
+
+Decision refined on 2026-06-11: the workflow authoring and runtime UI should mirror the grouped field model, but separate template authoring from session status.
+
+Recommended editor structure:
+
+- **Intent**: phase name, role, objective, instructions, requested model, recommended skills.
+- **Contract**: required intake, execution rules, allowed/forbidden actions, required artifacts, completion criteria, completion rules, transition authority.
+- **Evidence**: required completion submission fields, artifact evidence expectations, skill audit policy, missing dependency behavior.
+- **Runtime Status**: visible in running workflow/session views, not as editable template data. Shows active phase, pending confirmation, blocked/completed status, produced artifacts, transition history, and skill audit.
+
+Interaction recommendation:
+
+- Template editor should use tabs or stacked sections for Intent, Contract, and Evidence.
+- Runtime view should use a compact status area for Runtime Status and expand only when there is a warning, blocked state, pending confirmation, missing dependency, or completion evidence.
+- Required/gated fields should use clear state labels such as required, missing, blocked, ready, or needs confirmation.
+- Recommended or guidance fields should not look like validation blockers.
+
+This keeps authoring understandable while preventing the common schema mistake of storing runtime lifecycle data inside the template definition.
+
+## Recommended Phase Lifecycle Model
+
+Decision refined on 2026-06-11: keep the lifecycle model simple, session-owned, and aligned with the current workflow runtime vocabulary.
+
+The key distinction:
+
+- Phase/session status describes the lifecycle of the workflow run.
+- Completion submission status describes one attempt to finish the phase.
+
+Recommended lifecycle states:
+
+| State | Scope | Meaning | Allowed next actions |
+| --- | --- | --- | --- |
+| `created` | workflow and phase | Session or phase exists but is not actively executing yet. | Start first phase or activate when previous phase completes. |
+| `running` | workflow and active phase | The active phase is doing work. It can also carry `blockedReason` when the last completion attempt was `blocked` or `unable`. | Continue work, submit completion, retry after blocked evidence, cancel. |
+| `pending-confirmation` | workflow and active phase | Agent or system says the phase is ready, but transition authority requires user confirmation. | User confirms, rejects, or retries. New ready submissions should be blocked until pending confirmation is resolved. |
+| `completed` | workflow and phase | Phase or whole workflow has accepted completion evidence and transition/result is recorded. | Advance to next phase, generate final report, inspect artifacts. No ordinary rework without an explicit new/recovery flow. |
+| `failed` | workflow and phase | Runtime/system failure, corrupted state, or unrecoverable execution failure. This should not be used for normal "agent cannot complete" cases. | Recovery/resume flow, inspect error, or end run. |
+| `cancelled` | workflow and phase | User/system intentionally stopped the run. | Inspect history or start a new run; no silent resume. |
+| `resumed` | workflow and phase event/status marker | A recovery/resume event occurred. It should usually be shown as an event or badge, then return to the restored operational state. | Continue from restored `running`, `pending-confirmation`, or terminal state. |
+| `stale-template` | workflow/session source status | Source template changed after the session snapshot. Snapshot remains authoritative. | Continue with warning, optionally start a new run from the updated template. |
+| `missing-template` | workflow/session source status | Source template is no longer available. Snapshot remains authoritative if present. | Continue from snapshot with warning, export/report diagnostics. |
+
+Recommended completion submission statuses:
+
+| Submission status | Meaning | Runtime effect |
+| --- | --- | --- |
+| `ready` | The phase claims it has met completion criteria and includes handoff/evidence. | Auto-advance when authority allows, otherwise enter `pending-confirmation`. |
+| `blocked` | The phase cannot pass completion criteria yet, but work can continue if the blocker is resolved. | Stay `running`, record `blockedReason`, notify user, allow retry. |
+| `unable` | The phase cannot complete under the current contract or available information. | Stay `running` with a stronger blocked/user-direction signal, record evidence, and require user or downstream decision. |
+
+Recommended product rules:
+
+- Do not introduce long-lived `blocked` as a separate phase status in first scope. Model it as `running` plus `blockedReason`, failed completion check, and user-visible warning.
+- Do not treat `unable` as `failed`. `failed` is for runtime/system failure; `unable` is an agent/completion judgment.
+- `pending-confirmation` is a real blocking state. It prevents duplicate ready submissions and asks the user to confirm, reject, or retry.
+- `stateVersion` should protect completion submissions and transition actions from stale UI/session state.
+- `transitionHistory` should record every confirmation, rejection, retry, auto-advance, cancellation, resume, stale-template, and missing-template decision.
+- Session snapshots stay authoritative for active runs. Template source changes should produce `stale-template` or `missing-template` warnings, not silent behavior changes.
+
+## Recommended Runtime UI Controls
+
+Decision refined on 2026-06-11: first-scope phase controls should cover phase completion/transition authority only. Session stop/recovery controls should remain separate.
+
+Current live evidence supports this split:
+
+- `desktop/src/types/session.ts` models phase transition actions as `confirm`, `reject`, `retry`, and `manual_complete`.
+- `desktop/src/components/workflow/WorkflowTransitionControls.tsx` already prioritizes pending confirmation controls, sends `stateVersion`, and treats manual completion as a separate dialog.
+- `desktop/src/components/workflow/WorkflowStatusPanel.tsx` displays pending confirmation above stale lifecycle signals and keeps artifact evidence/details separate.
+- `desktop/src/pages/ActiveSession.tsx` wires transition controls through the active session strip and hides controls for completed, stale-template, and missing-template status.
+
+Recommended control matrix:
+
+| Runtime condition | Primary UI state | Controls | Authority label | Notes |
+| --- | --- | --- | --- | --- |
+| `pending-confirmation` or `pendingConfirmation=true` | Waiting for confirmation | `Confirm`, `Reject`, `Retry` | `User confirmation required` | Highest priority. Do not show manual completion here. Controls must carry `stateVersion` and transition id when available. |
+| `running` + `transitionAuthority=user-confirmation` + no pending/blocker | Working phase with manual override available | `Manually complete phase` opens a dialog, then `Confirm completion` | `Manual user completion` | This is user takeover, not agent-ready confirmation. Keep it visually secondary or in an advanced action area. |
+| `running` + `blockedStatus=blocked` or `blockedReason` | Blocked but recoverable | `Retry` | `Completion blocked` | Show blocker reason and evidence. Do not show `Confirm`, `Reject`, or `Complete phase`. |
+| `running` + `blockedStatus=unable` | Unable under current contract | `Retry` plus visible need-for-user-direction language | `Unable to complete` | Stronger than blocked, but still not runtime failed. Avoid advancement controls until user changes context or retries. |
+| `running` + `transitionAuthority=auto` | Agent can auto-advance after ready evidence | No manual phase controls by default | `Auto advance` | Show authority label and transition history. Avoid a tempting manual button unless an explicit override feature is added. |
+| `completed` | Terminal success | No phase controls | `Completed` | Show final report/artifacts only. |
+| `failed` | Runtime/system failure | Recovery/session controls only | `Runtime failure` | Do not reuse phase retry unless recovery semantics are defined. |
+| `cancelled` | Terminal stop | No phase controls | `Cancelled` | Resume should require an explicit session recovery design, not implicit phase retry. |
+| `stale-template` or `missing-template` | Source warning | No phase transition controls | `Snapshot run` | Show warning and snapshot provenance. Continue behavior should be explicit and evidence-backed. |
+
+Recommended labels:
+
+- `Confirm`: approve the pending agent/system ready submission and advance or finish.
+- `Reject`: reject the pending submission and return the phase to running.
+- `Retry`: supersede pending evidence or re-run/re-attempt current phase completion without advancing.
+- `Manually complete phase`: user starts an override path while the phase is running and user-confirmation authority applies.
+- `Confirm completion`: final button inside the manual-completion dialog after summary/evidence is provided.
+- `Auto advance`: status/authority label, not a button.
+- `Cancel workflow`: session-level destructive/terminal action, not a phase transition control.
+- `Resume workflow`: session-level recovery action, not a phase transition control.
+
+UI rule: controls should describe the authority source, not just the action. The user should be able to tell whether the phase is waiting for agent-ready confirmation, manual user completion, auto-advance, recovery, or cancellation.
 
 ## Senior Consequence Analysis
 

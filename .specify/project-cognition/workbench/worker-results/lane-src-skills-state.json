@@ -1,0 +1,1683 @@
+{
+  "packet_id": "lane-src-skills-state",
+  "family_id": "src-critical",
+  "assigned_paths": [
+    "src/skills/bundled/batch.ts",
+    "src/skills/bundled/claude-api/SKILL.md",
+    "src/skills/bundled/claude-api/csharp/claude-api.md",
+    "src/skills/bundled/claude-api/curl/examples.md",
+    "src/skills/bundled/claude-api/go/claude-api.md",
+    "src/skills/bundled/claude-api/java/claude-api.md",
+    "src/skills/bundled/claude-api/php/claude-api.md",
+    "src/skills/bundled/claude-api/python/agent-sdk/README.md",
+    "src/skills/bundled/claude-api/python/agent-sdk/patterns.md",
+    "src/skills/bundled/claude-api/python/claude-api/batches.md",
+    "src/skills/bundled/claude-api/python/claude-api/README.md",
+    "src/skills/bundled/claude-api/python/claude-api/files-api.md",
+    "src/skills/bundled/claude-api/python/claude-api/streaming.md",
+    "src/skills/bundled/claude-api/python/claude-api/tool-use.md",
+    "src/skills/bundled/claude-api/ruby/claude-api.md",
+    "src/skills/bundled/claude-api/shared/error-codes.md",
+    "src/skills/bundled/claude-api/shared/live-sources.md",
+    "src/skills/bundled/claude-api/shared/models.md",
+    "src/skills/bundled/claude-api/shared/prompt-caching.md",
+    "src/skills/bundled/claude-api/shared/tool-use-concepts.md",
+    "src/skills/bundled/claude-api/typescript/agent-sdk/patterns.md",
+    "src/skills/bundled/claude-api/typescript/agent-sdk/README.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/batches.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/files-api.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/README.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/streaming.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/tool-use.md",
+    "src/skills/bundled/claudeApi.ts",
+    "src/skills/bundled/claudeApiContent.ts",
+    "src/skills/bundled/claudeInChrome.ts",
+    "src/skills/bundled/debug.ts",
+    "src/skills/bundled/dream.ts",
+    "src/skills/bundled/hunter.ts",
+    "src/skills/bundled/index.ts",
+    "src/skills/bundled/keybindings.ts",
+    "src/skills/bundled/loop.ts",
+    "src/skills/bundled/loremIpsum.ts",
+    "src/skills/bundled/remember.ts",
+    "src/skills/bundled/runSkillGenerator.ts",
+    "src/skills/bundled/scheduleRemoteAgents.ts",
+    "src/skills/bundled/simplify.ts",
+    "src/skills/bundled/skillify.ts",
+    "src/skills/bundled/stuck.ts",
+    "src/skills/bundled/updateConfig.ts",
+    "src/skills/bundled/verify/examples/cli.md",
+    "src/skills/bundled/verify/SKILL.md",
+    "src/skills/bundled/verify.ts",
+    "src/skills/bundled/verify/examples/server.md",
+    "src/skills/bundled/verifyContent.ts",
+    "src/skills/bundledSkills.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/skills/mcpSkillBuilders.ts",
+    "src/skills/mcpSkills.ts",
+    "src/cli/bg.ts",
+    "src/cli/exit.ts",
+    "src/cli/handlers/agents.ts",
+    "src/cli/handlers/ant.ts",
+    "src/cli/handlers/auth.ts",
+    "src/cli/handlers/autoMode.ts",
+    "src/cli/handlers/mcp.tsx",
+    "src/cli/handlers/plugins.ts",
+    "src/cli/handlers/templateJobs.ts",
+    "src/cli/handlers/util.tsx",
+    "src/cli/ndjsonSafeStringify.ts",
+    "src/cli/print.ts",
+    "src/cli/remoteIO.ts",
+    "src/cli/transports/HybridTransport.ts",
+    "src/cli/transports/SerialBatchEventUploader.ts",
+    "src/cli/transports/SSETransport.ts",
+    "src/cli/transports/Transport.ts",
+    "src/cli/transports/WebSocketTransport.ts",
+    "src/cli/transports/ccrClient.ts",
+    "src/cli/transports/transportUtils.ts",
+    "src/cli/transports/WorkerStateUploader.ts",
+    "src/cli/update.ts",
+    "src/cli/structuredIO.ts",
+    "src/cli/structuredIO.test.ts",
+    "src/entrypoints/agentSdkTypes.ts",
+    "src/entrypoints/cli.tsx",
+    "src/entrypoints/init.ts",
+    "src/entrypoints/mcp.ts",
+    "src/entrypoints/sandboxTypes.ts",
+    "src/entrypoints/sdk/controlTypes.ts",
+    "src/entrypoints/sdk/coreSchemas.ts",
+    "src/entrypoints/sdk/coreTypes.generated.ts",
+    "src/entrypoints/sdk/coreTypes.ts",
+    "src/entrypoints/sdk/runtimeTypes.ts",
+    "src/entrypoints/sdk/sdkUtilityTypes.ts",
+    "src/entrypoints/sdk/settingsTypes.generated.ts",
+    "src/entrypoints/sdk/toolTypes.ts",
+    "src/entrypoints/sdk/controlSchemas.ts",
+    "src/state/AppState.tsx",
+    "src/state/AppStateStore.ts",
+    "src/state/onChangeAppState.ts",
+    "src/state/selectors.ts",
+    "src/state/store.ts",
+    "src/state/teammateViewHelpers.ts",
+    "src/migrations/migrateAutoUpdatesToSettings.ts",
+    "src/migrations/migrateBypassPermissionsAcceptedToSettings.ts",
+    "src/migrations/migrateEnableAllProjectMcpServersToSettings.ts",
+    "src/migrations/migrateFennecToOpus.ts",
+    "src/migrations/migrateLegacyOpusToCurrent.ts",
+    "src/migrations/migrateOpusToOpus1m.ts",
+    "src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts",
+    "src/migrations/migrateSonnet1mToSonnet45.ts",
+    "src/migrations/migrateSonnet45ToSonnet46.ts",
+    "src/migrations/migrateResetAutoModeOptInForDefaultOffer.ts",
+    "src/migrations/resetProToOpusDefault.ts"
+  ],
+  "paths_read": [
+    "src/skills/bundled/batch.ts",
+    "src/skills/bundled/claude-api/SKILL.md",
+    "src/skills/bundled/claude-api/csharp/claude-api.md",
+    "src/skills/bundled/claude-api/curl/examples.md",
+    "src/skills/bundled/claude-api/go/claude-api.md",
+    "src/skills/bundled/claude-api/java/claude-api.md",
+    "src/skills/bundled/claude-api/php/claude-api.md",
+    "src/skills/bundled/claude-api/python/agent-sdk/README.md",
+    "src/skills/bundled/claude-api/python/agent-sdk/patterns.md",
+    "src/skills/bundled/claude-api/python/claude-api/batches.md",
+    "src/skills/bundled/claude-api/python/claude-api/README.md",
+    "src/skills/bundled/claude-api/python/claude-api/files-api.md",
+    "src/skills/bundled/claude-api/python/claude-api/streaming.md",
+    "src/skills/bundled/claude-api/python/claude-api/tool-use.md",
+    "src/skills/bundled/claude-api/ruby/claude-api.md",
+    "src/skills/bundled/claude-api/shared/error-codes.md",
+    "src/skills/bundled/claude-api/shared/live-sources.md",
+    "src/skills/bundled/claude-api/shared/models.md",
+    "src/skills/bundled/claude-api/shared/prompt-caching.md",
+    "src/skills/bundled/claude-api/shared/tool-use-concepts.md",
+    "src/skills/bundled/claude-api/typescript/agent-sdk/patterns.md",
+    "src/skills/bundled/claude-api/typescript/agent-sdk/README.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/batches.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/files-api.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/README.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/streaming.md",
+    "src/skills/bundled/claude-api/typescript/claude-api/tool-use.md",
+    "src/skills/bundled/claudeApi.ts",
+    "src/skills/bundled/claudeApiContent.ts",
+    "src/skills/bundled/claudeInChrome.ts",
+    "src/skills/bundled/debug.ts",
+    "src/skills/bundled/dream.ts",
+    "src/skills/bundled/hunter.ts",
+    "src/skills/bundled/index.ts",
+    "src/skills/bundled/keybindings.ts",
+    "src/skills/bundled/loop.ts",
+    "src/skills/bundled/loremIpsum.ts",
+    "src/skills/bundled/remember.ts",
+    "src/skills/bundled/runSkillGenerator.ts",
+    "src/skills/bundled/scheduleRemoteAgents.ts",
+    "src/skills/bundled/simplify.ts",
+    "src/skills/bundled/skillify.ts",
+    "src/skills/bundled/stuck.ts",
+    "src/skills/bundled/updateConfig.ts",
+    "src/skills/bundled/verify/examples/cli.md",
+    "src/skills/bundled/verify/SKILL.md",
+    "src/skills/bundled/verify.ts",
+    "src/skills/bundled/verify/examples/server.md",
+    "src/skills/bundled/verifyContent.ts",
+    "src/skills/bundledSkills.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/skills/mcpSkillBuilders.ts",
+    "src/skills/mcpSkills.ts",
+    "src/cli/bg.ts",
+    "src/cli/exit.ts",
+    "src/cli/handlers/agents.ts",
+    "src/cli/handlers/ant.ts",
+    "src/cli/handlers/auth.ts",
+    "src/cli/handlers/autoMode.ts",
+    "src/cli/handlers/mcp.tsx",
+    "src/cli/handlers/plugins.ts",
+    "src/cli/handlers/templateJobs.ts",
+    "src/cli/handlers/util.tsx",
+    "src/cli/ndjsonSafeStringify.ts",
+    "src/cli/print.ts",
+    "src/cli/remoteIO.ts",
+    "src/cli/transports/HybridTransport.ts",
+    "src/cli/transports/SerialBatchEventUploader.ts",
+    "src/cli/transports/SSETransport.ts",
+    "src/cli/transports/Transport.ts",
+    "src/cli/transports/WebSocketTransport.ts",
+    "src/cli/transports/ccrClient.ts",
+    "src/cli/transports/transportUtils.ts",
+    "src/cli/transports/WorkerStateUploader.ts",
+    "src/cli/update.ts",
+    "src/cli/structuredIO.ts",
+    "src/cli/structuredIO.test.ts",
+    "src/entrypoints/agentSdkTypes.ts",
+    "src/entrypoints/cli.tsx",
+    "src/entrypoints/init.ts",
+    "src/entrypoints/mcp.ts",
+    "src/entrypoints/sandboxTypes.ts",
+    "src/entrypoints/sdk/controlTypes.ts",
+    "src/entrypoints/sdk/coreSchemas.ts",
+    "src/entrypoints/sdk/coreTypes.generated.ts",
+    "src/entrypoints/sdk/coreTypes.ts",
+    "src/entrypoints/sdk/runtimeTypes.ts",
+    "src/entrypoints/sdk/sdkUtilityTypes.ts",
+    "src/entrypoints/sdk/settingsTypes.generated.ts",
+    "src/entrypoints/sdk/toolTypes.ts",
+    "src/entrypoints/sdk/controlSchemas.ts",
+    "src/state/AppState.tsx",
+    "src/state/AppStateStore.ts",
+    "src/state/onChangeAppState.ts",
+    "src/state/selectors.ts",
+    "src/state/store.ts",
+    "src/state/teammateViewHelpers.ts",
+    "src/migrations/migrateAutoUpdatesToSettings.ts",
+    "src/migrations/migrateBypassPermissionsAcceptedToSettings.ts",
+    "src/migrations/migrateEnableAllProjectMcpServersToSettings.ts",
+    "src/migrations/migrateFennecToOpus.ts",
+    "src/migrations/migrateLegacyOpusToCurrent.ts",
+    "src/migrations/migrateOpusToOpus1m.ts",
+    "src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts",
+    "src/migrations/migrateSonnet1mToSonnet45.ts",
+    "src/migrations/migrateSonnet45ToSonnet46.ts",
+    "src/migrations/migrateResetAutoModeOptInForDefaultOffer.ts",
+    "src/migrations/resetProToOpusDefault.ts"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      "src/cli/bg.ts",
+      "src/cli/exit.ts",
+      "src/cli/handlers/agents.ts",
+      "src/cli/handlers/ant.ts",
+      "src/cli/handlers/auth.ts",
+      "src/cli/handlers/autoMode.ts",
+      "src/cli/handlers/mcp.tsx",
+      "src/cli/handlers/plugins.ts",
+      "src/cli/handlers/templateJobs.ts",
+      "src/cli/handlers/util.tsx",
+      "src/cli/ndjsonSafeStringify.ts",
+      "src/cli/print.ts",
+      "src/cli/remoteIO.ts",
+      "src/cli/structuredIO.test.ts",
+      "src/cli/structuredIO.ts",
+      "src/cli/transports/HybridTransport.ts",
+      "src/cli/transports/SSETransport.ts",
+      "src/cli/transports/SerialBatchEventUploader.ts",
+      "src/cli/transports/Transport.ts",
+      "src/cli/transports/WebSocketTransport.ts",
+      "src/cli/transports/WorkerStateUploader.ts",
+      "src/cli/transports/ccrClient.ts",
+      "src/cli/transports/transportUtils.ts",
+      "src/cli/update.ts",
+      "src/entrypoints/agentSdkTypes.ts",
+      "src/entrypoints/cli.tsx",
+      "src/entrypoints/init.ts",
+      "src/entrypoints/mcp.ts",
+      "src/entrypoints/sandboxTypes.ts",
+      "src/entrypoints/sdk/controlSchemas.ts",
+      "src/entrypoints/sdk/controlTypes.ts",
+      "src/entrypoints/sdk/coreSchemas.ts",
+      "src/entrypoints/sdk/coreTypes.generated.ts",
+      "src/entrypoints/sdk/coreTypes.ts",
+      "src/entrypoints/sdk/runtimeTypes.ts",
+      "src/entrypoints/sdk/sdkUtilityTypes.ts",
+      "src/entrypoints/sdk/settingsTypes.generated.ts",
+      "src/entrypoints/sdk/toolTypes.ts",
+      "src/migrations/migrateAutoUpdatesToSettings.ts",
+      "src/migrations/migrateBypassPermissionsAcceptedToSettings.ts",
+      "src/migrations/migrateEnableAllProjectMcpServersToSettings.ts",
+      "src/migrations/migrateFennecToOpus.ts",
+      "src/migrations/migrateLegacyOpusToCurrent.ts",
+      "src/migrations/migrateOpusToOpus1m.ts",
+      "src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts",
+      "src/migrations/migrateResetAutoModeOptInForDefaultOffer.ts",
+      "src/migrations/migrateSonnet1mToSonnet45.ts",
+      "src/migrations/migrateSonnet45ToSonnet46.ts",
+      "src/migrations/resetProToOpusDefault.ts",
+      "src/skills/bundled/batch.ts",
+      "src/skills/bundled/claude-api/SKILL.md",
+      "src/skills/bundled/claude-api/csharp/claude-api.md",
+      "src/skills/bundled/claude-api/curl/examples.md",
+      "src/skills/bundled/claude-api/go/claude-api.md",
+      "src/skills/bundled/claude-api/java/claude-api.md",
+      "src/skills/bundled/claude-api/php/claude-api.md",
+      "src/skills/bundled/claude-api/python/agent-sdk/README.md",
+      "src/skills/bundled/claude-api/python/agent-sdk/patterns.md",
+      "src/skills/bundled/claude-api/python/claude-api/README.md",
+      "src/skills/bundled/claude-api/python/claude-api/batches.md",
+      "src/skills/bundled/claude-api/python/claude-api/files-api.md",
+      "src/skills/bundled/claude-api/python/claude-api/streaming.md",
+      "src/skills/bundled/claude-api/python/claude-api/tool-use.md",
+      "src/skills/bundled/claude-api/ruby/claude-api.md",
+      "src/skills/bundled/claude-api/shared/error-codes.md",
+      "src/skills/bundled/claude-api/shared/live-sources.md",
+      "src/skills/bundled/claude-api/shared/models.md",
+      "src/skills/bundled/claude-api/shared/prompt-caching.md",
+      "src/skills/bundled/claude-api/shared/tool-use-concepts.md",
+      "src/skills/bundled/claude-api/typescript/agent-sdk/README.md",
+      "src/skills/bundled/claude-api/typescript/agent-sdk/patterns.md",
+      "src/skills/bundled/claude-api/typescript/claude-api/README.md",
+      "src/skills/bundled/claude-api/typescript/claude-api/batches.md",
+      "src/skills/bundled/claude-api/typescript/claude-api/files-api.md",
+      "src/skills/bundled/claude-api/typescript/claude-api/streaming.md",
+      "src/skills/bundled/claude-api/typescript/claude-api/tool-use.md",
+      "src/skills/bundled/claudeApi.ts",
+      "src/skills/bundled/claudeApiContent.ts",
+      "src/skills/bundled/claudeInChrome.ts",
+      "src/skills/bundled/debug.ts",
+      "src/skills/bundled/dream.ts",
+      "src/skills/bundled/hunter.ts",
+      "src/skills/bundled/index.ts",
+      "src/skills/bundled/keybindings.ts",
+      "src/skills/bundled/loop.ts",
+      "src/skills/bundled/loremIpsum.ts",
+      "src/skills/bundled/remember.ts",
+      "src/skills/bundled/runSkillGenerator.ts",
+      "src/skills/bundled/scheduleRemoteAgents.ts",
+      "src/skills/bundled/simplify.ts",
+      "src/skills/bundled/skillify.ts",
+      "src/skills/bundled/stuck.ts",
+      "src/skills/bundled/updateConfig.ts",
+      "src/skills/bundled/verify.ts",
+      "src/skills/bundled/verify/SKILL.md",
+      "src/skills/bundled/verify/examples/cli.md",
+      "src/skills/bundled/verify/examples/server.md",
+      "src/skills/bundled/verifyContent.ts",
+      "src/skills/bundledSkills.ts",
+      "src/skills/loadSkillsDir.ts",
+      "src/skills/mcpSkillBuilders.ts",
+      "src/skills/mcpSkills.ts",
+      "src/state/AppState.tsx",
+      "src/state/AppStateStore.ts",
+      "src/state/onChangeAppState.ts",
+      "src/state/selectors.ts",
+      "src/state/store.ts",
+      "src/state/teammateViewHelpers.ts"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-001",
+      "source_path": "src/skills/bundledSkills.ts",
+      "evidence_type": "code_read",
+      "summary": "Core type BundledSkillDefinition defines the shape of all bundled skills: name, description, aliases, whenToUse, allowedTools, model, hooks, context, agent, files, getPromptForCommand. registerBundledSkill() converts these to Command objects. getBundledSkills() returns registered skills. File extraction to disk with safe write (O_NOFOLLOW|O_EXCL) for reference files.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-002",
+      "source_path": "src/skills/bundled/index.ts",
+      "evidence_type": "code_read",
+      "summary": "initBundledSkills() registers all bundled skills at startup via require() calls. Skills: updateConfig, keybindings, verify, debug, loremIpsum, skillify, remember, simplify, batch, stuck. Conditional: dream (KAIROS), hunter (REVIEW_ARTIFACT), loop (AGENT_TRIGGERS), scheduleRemoteAgents (AGENT_TRIGGERS_REMOTE), claudeApi (BUILDING_CLAUDE_APPS), claudeInChrome (auto-enable check), runSkillGenerator (RUN_SKILL_GENERATOR).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-003",
+      "source_path": "src/skills/loadSkillsDir.ts",
+      "evidence_type": "code_read",
+      "summary": "Main skill loading infrastructure (~1087 lines). Key exports: getSkillDirCommands (memoized, loads from managed/user/project/additional dirs + legacy commands), loadSkillsFromSkillsDir (directory format only: skill-name/SKILL.md), loadSkillsFromCommandsDir (legacy), createSkillCommand, parseSkillFrontmatterFields, discoverSkillDirsForPaths, addSkillDirectories, activateConditionalSkillsForPaths, getDynamicSkills, clearSkillCaches. LoadedFrom type: commands_DEPRECATED, skills, plugin, managed, bundled, mcp. Supports conditional skills with paths frontmatter (gitignore-style matching). Deduplication via realpath. Skill frontmatter supports: description, allowed-tools, argument-hint, when_to_use, model, hooks, context, agent, effort, shell, paths, user-invocable, disable-model-invocation.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-004",
+      "source_path": "src/skills/mcpSkillBuilders.ts",
+      "evidence_type": "code_read",
+      "summary": "Write-once registry for createSkillCommand and parseSkillFrontmatterFields. Breaks circular dependency between mcpSkills.ts and loadSkillsDir.ts. MCPSkillBuilders type exported. registerMCPSkillBuilders() / getMCPSkillBuilders() pattern.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-005",
+      "source_path": "src/skills/mcpSkills.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub for ant-internal feature() gated modules. Proxy-based noop stub with __stubMissing=true. Exports: createCachedMCState, isCachedMicrocompactEnabled, isModelSupportedForCacheEditing, getCachedMCConfig, markToolsSentToAPI, resetCachedMCState, checkProtectedNamespace, getCoordinatorUserContext.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-006",
+      "source_path": "src/cli/print.ts",
+      "evidence_type": "code_read",
+      "summary": "Main headless/SDK orchestrator (~5600+ lines). Exports runHeadless() which is the primary non-interactive entry point. Manages: session lifecycle, MCP server setup, tool assembly, message queuing, streaming output, permission handling, plugin installation, skill hot-reload, proactive mode, idle timeout, model switching, file state caching, bridge forwarding, elicitation handlers. Imports from ~100+ modules across the codebase. Key function: runHeadlessStreaming() handles the async iterable message loop with ask().",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-007",
+      "source_path": "src/cli/exit.ts",
+      "evidence_type": "code_read",
+      "summary": "CLI exit helpers: cliError(msg?) exits with code 1, cliOk(msg?) exits with code 0. Return type ': never' for TypeScript control flow narrowing. Used across CLI subcommand handlers.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-008",
+      "source_path": "src/cli/update.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-update logic for Claude Code CLI. Handles native installation updates, npm-based updates (local and global), package manager detection (homebrew, winget, apk, pacman, deb, rpm). Doctor diagnostic integration. Config/install method mismatch detection and correction.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-009",
+      "source_path": "src/cli/transports/Transport.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub (same pattern as mcpSkills.ts/bg.ts). Proxy-based noop for ant-internal feature() gated modules.",
+      "classification": "critical",
+      "criticality": "medium"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-010",
+      "source_path": "src/cli/bg.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-generated stub (same pattern as Transport.ts). Proxy-based noop for ant-internal feature() gated modules.",
+      "classification": "critical",
+      "criticality": "medium"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-011",
+      "source_path": "src/cli/structuredIO.ts",
+      "evidence_type": "code_read",
+      "summary": "StructuredIO class for SDK/headless communication. Handles stdin/stdout JSON message protocol, control requests/responses, permission prompts, elicitation forwarding. Imports SDK types from entrypoints/. Uses Stream utility for outbound queue.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-012",
+      "source_path": "src/cli/handlers/auth.ts",
+      "evidence_type": "code_read",
+      "summary": "Auth handler for CLI. installOAuthTokens() handles post-token-acquisition: saves tokens, fetches profile/roles, sets up local auth state. Imports from oauth, auth, config, analytics modules. Supports Claude AI auth, OpenAI OAuth, API key management.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-013",
+      "source_path": "src/entrypoints/cli.tsx",
+      "evidence_type": "code_read",
+      "summary": "Bootstrap entrypoint for CLI. Fast-path for --version (zero imports). Dynamic imports for all other paths. Handles: --dump-system-prompt, --claude-in-chrome-mcp, --chrome-native-host, startup profiler loading. Sets COREPACK_ENABLE_AUTO_PIN=0, configures NODE_OPTIONS for CCR environments. ABLATION_BASELINE feature flag support.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-014",
+      "source_path": "src/entrypoints/init.ts",
+      "evidence_type": "code_read",
+      "summary": "Main initialization function (memoized). Enables configs, applies safe env vars, applies extra CA certs, configures global agents/proxy, sets up telemetry, initializes policy limits, remote managed settings, OAuth, LSP server manager, repository detection. Telemetry initialized lazily.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-015",
+      "source_path": "src/entrypoints/mcp.ts",
+      "evidence_type": "code_read",
+      "summary": "MCP server entrypoint. startMCPServer() creates a Model Context Protocol server using @modelcontextprotocol/sdk. Exposes tools via ListToolsRequestSchema/CallToolRequestSchema. Uses review command as MCP_COMMANDS. LRU cache for readFileState (100 files, 25MB limit).",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-016",
+      "source_path": "src/entrypoints/sdk/coreTypes.ts",
+      "evidence_type": "code_read",
+      "summary": "SDK core types - generated from Zod schemas in coreSchemas.ts. Re-exports sandbox types. HOOK_EVENTS const array lists all hook event types: PreToolUse, PostToolUse, PostToolUseFailure, Notification, UserPromptSubmit, SessionStart, SessionEnd, Stop, StopFailure, SubagentStart, SubagentStop, PreCompact, PostCompact, PermissionRequest, PermissionDenied, Setup, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-017",
+      "source_path": "src/state/AppStateStore.ts",
+      "evidence_type": "code_read",
+      "summary": "Central AppState type definition (~570 lines). DeepImmutable<AppState> with ~80+ fields covering: settings, model, status, UI state, tool permissions, MCP state, plugins, agent definitions, file history, attribution, todos, notifications, elicitation, thinking, session hooks, bridge state, team context, inbox, sandbox permissions, speculation, skill improvement, auth, ultraplan, REPL context. getDefaultAppState() factory function.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-018",
+      "source_path": "src/state/store.ts",
+      "evidence_type": "code_read",
+      "summary": "Generic Store<T> implementation with getState/setState/subscribe pattern. createStore() factory with onChange callback. Uses Object.is for equality check. Immutable update pattern (updater function).",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-019",
+      "source_path": "src/state/selectors.ts",
+      "evidence_type": "code_read",
+      "summary": "Pure selector functions for derived state. getViewedTeammateTask() returns InProcessTeammateTaskState | undefined. getActiveAgentForInput() returns discriminated union: leader | viewed | named_agent for input routing.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-020",
+      "source_path": "src/state/onChangeAppState.ts",
+      "evidence_type": "code_read",
+      "summary": "Side-effect handler for AppState changes. Syncs toolPermissionContext.mode changes to CCR/SDK via notifySessionMetadataChanged and notifyPermissionModeChanged. Persists mainLoopModel to settings. Persists expandedView/verbose to global config. Clears auth caches on settings change. Applies config env vars on settings.env change.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-021",
+      "source_path": "src/state/teammateViewHelpers.ts",
+      "evidence_type": "code_read",
+      "summary": "Teammate transcript view management. enterTeammateView() transitions UI to view teammate's transcript (sets retain:true, clears evictAfter). exitTeammateView() returns to leader view (drops retain, schedules eviction). stopOrDismissAgent() handles running->abort and terminal->dismiss transitions. PANEL_GRACE_MS = 30s.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-022",
+      "source_path": "src/migrations/migrateAutoUpdatesToSettings.ts",
+      "evidence_type": "code_read",
+      "summary": "Migration: moves autoUpdates=false from globalConfig to settings.json env DISABLE_AUTOUPDATER=1. Skips if autoUpdatesProtectedForNative=true. Idempotent. Cleans up globalConfig after migration.",
+      "classification": "critical",
+      "criticality": "medium"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-023",
+      "source_path": "src/migrations/migrateFennecToOpus.ts",
+      "evidence_type": "code_read",
+      "summary": "Migration: maps removed fennec model aliases to opus aliases in userSettings. fennec-latest->opus, fennec-latest[1m]->opus[1m], fennec-fast-latest/opus-4-5-fast->opus[1m]+fastMode. Ant-only (USER_TYPE check). Idempotent.",
+      "classification": "critical",
+      "criticality": "medium"
+    },
+    {
+      "id": "LANE_SRC_SKILLS_STATE_E-024",
+      "source_path": "src/skills/bundled/batch.ts",
+      "evidence_type": "code_read",
+      "summary": "Batch skill for parallel work orchestration. Registers via registerBundledSkill(). Builds prompt for coordinator pattern: Phase 1 (research+plan), Phase 2 (spawn workers via Agent tool, 5-30 units), Phase 3 (collect results, create PRs). Worker instructions: simplify, run tests, e2e test, commit+push, report PR URL.",
+      "classification": "critical",
+      "criticality": "high"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "Skills - Bundled Skills Registry",
+      "paths": [
+        "src/skills/bundledSkills.ts",
+        "src/skills/bundled/index.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-001",
+        "LANE_SRC_SKILLS_STATE_E-002"
+      ],
+      "attrs": {
+        "aliases": [
+          "bundled skills",
+          "built-in skills"
+        ],
+        "domain": "skills",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "module",
+      "title": "Skills - Loading & Discovery Engine",
+      "paths": [
+        "src/skills/loadSkillsDir.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-003"
+      ],
+      "attrs": {
+        "aliases": [
+          "skill loader",
+          "skill discovery"
+        ],
+        "domain": "skills",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "module",
+      "title": "Skills - MCP Skill Builders Bridge",
+      "paths": [
+        "src/skills/mcpSkillBuilders.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-004"
+      ],
+      "attrs": {
+        "aliases": [
+          "MCP skill bridge"
+        ],
+        "domain": "skills",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "module",
+      "title": "Skills - MCP Skills Stub",
+      "paths": [
+        "src/skills/mcpSkills.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-005"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "skills",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "skill",
+      "title": "Skills - Individual Bundled Skills",
+      "paths": [
+        "src/skills/bundled/batch.ts",
+        "src/skills/bundled/claudeApi.ts",
+        "src/skills/bundled/claudeApiContent.ts",
+        "src/skills/bundled/claudeInChrome.ts",
+        "src/skills/bundled/debug.ts",
+        "src/skills/bundled/dream.ts",
+        "src/skills/bundled/hunter.ts",
+        "src/skills/bundled/keybindings.ts",
+        "src/skills/bundled/loop.ts",
+        "src/skills/bundled/loremIpsum.ts",
+        "src/skills/bundled/remember.ts",
+        "src/skills/bundled/runSkillGenerator.ts",
+        "src/skills/bundled/scheduleRemoteAgents.ts",
+        "src/skills/bundled/simplify.ts",
+        "src/skills/bundled/skillify.ts",
+        "src/skills/bundled/stuck.ts",
+        "src/skills/bundled/updateConfig.ts",
+        "src/skills/bundled/verify.ts",
+        "src/skills/bundled/verifyContent.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-024"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "skills",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "module",
+      "title": "CLI - Headless/SDK Orchestrator",
+      "paths": [
+        "src/cli/print.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-006"
+      ],
+      "attrs": {
+        "aliases": [
+          "headless mode",
+          "SDK mode",
+          "print mode"
+        ],
+        "domain": "cli",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "module",
+      "title": "CLI - Structured I/O",
+      "paths": [
+        "src/cli/structuredIO.ts",
+        "src/cli/structuredIO.test.ts",
+        "src/cli/remoteIO.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-011"
+      ],
+      "attrs": {
+        "aliases": [
+          "SDK I/O",
+          "JSON protocol"
+        ],
+        "domain": "cli",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "module",
+      "title": "CLI - Transports",
+      "paths": [
+        "src/cli/transports/Transport.ts",
+        "src/cli/transports/HybridTransport.ts",
+        "src/cli/transports/SerialBatchEventUploader.ts",
+        "src/cli/transports/SSETransport.ts",
+        "src/cli/transports/WebSocketTransport.ts",
+        "src/cli/transports/ccrClient.ts",
+        "src/cli/transports/transportUtils.ts",
+        "src/cli/transports/WorkerStateUploader.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-009"
+      ],
+      "attrs": {
+        "aliases": [
+          "CCR transport",
+          "SSE transport",
+          "WebSocket transport"
+        ],
+        "domain": "cli",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "module",
+      "title": "CLI - Handlers",
+      "paths": [
+        "src/cli/handlers/agents.ts",
+        "src/cli/handlers/ant.ts",
+        "src/cli/handlers/auth.ts",
+        "src/cli/handlers/autoMode.ts",
+        "src/cli/handlers/mcp.tsx",
+        "src/cli/handlers/plugins.ts",
+        "src/cli/handlers/templateJobs.ts",
+        "src/cli/handlers/util.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-012"
+      ],
+      "attrs": {
+        "aliases": [
+          "subcommand handlers"
+        ],
+        "domain": "cli",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "module",
+      "title": "CLI - Utilities",
+      "paths": [
+        "src/cli/exit.ts",
+        "src/cli/update.ts",
+        "src/cli/bg.ts",
+        "src/cli/ndjsonSafeStringify.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-007",
+        "LANE_SRC_SKILLS_STATE_E-008",
+        "LANE_SRC_SKILLS_STATE_E-010"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "cli",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "module",
+      "title": "Entrypoints - CLI Bootstrap",
+      "paths": [
+        "src/entrypoints/cli.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-013"
+      ],
+      "attrs": {
+        "aliases": [
+          "CLI entry",
+          "main entrypoint"
+        ],
+        "domain": "entrypoints",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "module",
+      "title": "Entrypoints - Initialization",
+      "paths": [
+        "src/entrypoints/init.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-014"
+      ],
+      "attrs": {
+        "aliases": [
+          "init",
+          "bootstrap"
+        ],
+        "domain": "entrypoints",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "module",
+      "title": "Entrypoints - MCP Server",
+      "paths": [
+        "src/entrypoints/mcp.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-015"
+      ],
+      "attrs": {
+        "aliases": [
+          "MCP server entrypoint"
+        ],
+        "domain": "entrypoints",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "module",
+      "title": "Entrypoints - SDK Types",
+      "paths": [
+        "src/entrypoints/agentSdkTypes.ts",
+        "src/entrypoints/sandboxTypes.ts",
+        "src/entrypoints/sdk/controlTypes.ts",
+        "src/entrypoints/sdk/coreSchemas.ts",
+        "src/entrypoints/sdk/coreTypes.generated.ts",
+        "src/entrypoints/sdk/coreTypes.ts",
+        "src/entrypoints/sdk/runtimeTypes.ts",
+        "src/entrypoints/sdk/sdkUtilityTypes.ts",
+        "src/entrypoints/sdk/settingsTypes.generated.ts",
+        "src/entrypoints/sdk/toolTypes.ts",
+        "src/entrypoints/sdk/controlSchemas.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-016"
+      ],
+      "attrs": {
+        "aliases": [
+          "SDK types",
+          "SDK schemas"
+        ],
+        "domain": "entrypoints",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-015",
+      "type": "module",
+      "title": "State - AppState Store",
+      "paths": [
+        "src/state/store.ts",
+        "src/state/AppStateStore.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-017",
+        "LANE_SRC_SKILLS_STATE_E-018"
+      ],
+      "attrs": {
+        "aliases": [
+          "AppState",
+          "global state"
+        ],
+        "domain": "state",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-016",
+      "type": "module",
+      "title": "State - Selectors & Helpers",
+      "paths": [
+        "src/state/selectors.ts",
+        "src/state/teammateViewHelpers.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-019",
+        "LANE_SRC_SKILLS_STATE_E-021"
+      ],
+      "attrs": {
+        "aliases": [
+          "state selectors",
+          "derived state"
+        ],
+        "domain": "state",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-017",
+      "type": "module",
+      "title": "State - Side Effects & Change Handler",
+      "paths": [
+        "src/state/onChangeAppState.ts",
+        "src/state/AppState.tsx"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-020"
+      ],
+      "attrs": {
+        "aliases": [
+          "onChangeAppState",
+          "state side effects"
+        ],
+        "domain": "state",
+        "owner": "core"
+      }
+    },
+    {
+      "id": "N-018",
+      "type": "module",
+      "title": "Migrations",
+      "paths": [
+        "src/migrations/migrateAutoUpdatesToSettings.ts",
+        "src/migrations/migrateBypassPermissionsAcceptedToSettings.ts",
+        "src/migrations/migrateEnableAllProjectMcpServersToSettings.ts",
+        "src/migrations/migrateFennecToOpus.ts",
+        "src/migrations/migrateLegacyOpusToCurrent.ts",
+        "src/migrations/migrateOpusToOpus1m.ts",
+        "src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts",
+        "src/migrations/migrateSonnet1mToSonnet45.ts",
+        "src/migrations/migrateSonnet45ToSonnet46.ts",
+        "src/migrations/migrateResetAutoModeOptInForDefaultOffer.ts",
+        "src/migrations/resetProToOpusDefault.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-022",
+        "LANE_SRC_SKILLS_STATE_E-023"
+      ],
+      "attrs": {
+        "aliases": [
+          "settings migrations",
+          "model migrations"
+        ],
+        "domain": "migrations",
+        "owner": "core"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "N-001",
+      "to": "N-002",
+      "label": "bundledSkills.ts imports from loadSkillsDir for type compatibility",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-002",
+      "to": "N-003",
+      "label": "loadSkillsDir registers MCPSkillBuilders at module init",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-003",
+      "to": "N-004",
+      "label": "mcpSkillBuilders bridges loadSkillsDir functions to mcpSkills discovery",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-006",
+      "to": "N-007",
+      "label": "print.ts creates StructuredIO/RemoteIO for SDK communication",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-006",
+      "to": "N-008",
+      "label": "print.ts uses transports for CCR/bridge connectivity",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-006",
+      "to": "N-015",
+      "label": "print.ts reads/writes AppState via getAppState/setAppState",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-006",
+      "to": "N-001",
+      "label": "print.ts uses commands (including bundled skills) in ask()",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-011",
+      "to": "N-012",
+      "label": "cli.tsx dynamically imports init.ts",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-012",
+      "to": "N-014",
+      "label": "init.ts initializes systems referenced by SDK types",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-015",
+      "to": "N-016",
+      "label": "selectors read from AppState store",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-015",
+      "to": "N-017",
+      "label": "store onChange triggers onChangeAppState handler",
+      "evidence_ids": []
+    },
+    {
+      "from": "N-017",
+      "to": "N-006",
+      "label": "onChangeAppState notifies SDK via notifyPermissionModeChanged",
+      "evidence_ids": []
+    }
+  ],
+  "observations": [
+    {
+      "id": "OBS-001",
+      "summary": "print.ts is the largest single file in this scan (~5600+ lines). It serves as the headless/SDK orchestrator and imports from ~100+ modules. This is a significant complexity hotspot that could benefit from decomposition.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-006"
+      ],
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-002",
+      "summary": "The skills system has a clear layered architecture: bundledSkills.ts (registration) -> loadSkillsDir.ts (discovery+loading) -> mcpSkillBuilders.ts (bridge) -> mcpSkills.ts (MCP discovery). The circular dependency between loadSkillsDir and mcpSkills is explicitly broken via the mcpSkillBuilders registry pattern.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-001",
+        "N-002",
+        "N-003",
+        "N-004"
+      ],
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-003",
+      "summary": "AppState is a massive DeepImmutable type (~80+ fields) covering virtually every concern in the application. The store.ts is a simple 35-line generic implementation. onChangeAppState.ts handles side effects for mode/model/settings changes.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-015",
+        "N-017"
+      ],
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-004",
+      "summary": "Multiple auto-generated stubs exist (bg.ts, Transport.ts, mcpSkills.ts) using the same Proxy-based noop pattern for ant-internal feature() gated modules. These are build artifacts for external builds.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-004",
+        "N-008",
+        "N-010"
+      ],
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-005",
+      "summary": "Migrations are self-contained, idempotent functions that move settings between globalConfig and settings.json, or update model aliases. Pattern: read source, check condition, write target, clean up source.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-018"
+      ],
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-006",
+      "summary": "The CLI has three entrypoint patterns: cli.tsx (bootstrap with fast-paths), init.ts (memoized initialization), mcp.ts (MCP server). Dynamic imports are used extensively to minimize startup time.",
+      "classification": "observation",
+      "related_nodes": [
+        "N-011",
+        "N-012",
+        "N-013"
+      ],
+      "evidence_ids": []
+    }
+  ],
+  "coverage": [
+    {
+      "path": "src/skills/bundled/batch.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-024"
+      ]
+    },
+    {
+      "path": "src/skills/bundled/claude-api/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/csharp/claude-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/curl/examples.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/go/claude-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/java/claude-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/php/claude-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/agent-sdk/README.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/agent-sdk/patterns.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/claude-api/batches.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/claude-api/README.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/claude-api/files-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/claude-api/streaming.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/python/claude-api/tool-use.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/ruby/claude-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/shared/error-codes.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/shared/live-sources.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/shared/models.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/shared/prompt-caching.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/shared/tool-use-concepts.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/agent-sdk/patterns.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/agent-sdk/README.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/claude-api/batches.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/claude-api/files-api.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/claude-api/README.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/claude-api/streaming.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claude-api/typescript/claude-api/tool-use.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claudeApi.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claudeApiContent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/claudeInChrome.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/debug.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/dream.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/hunter.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/index.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-002"
+      ]
+    },
+    {
+      "path": "src/skills/bundled/keybindings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/loop.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/loremIpsum.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/remember.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/runSkillGenerator.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/scheduleRemoteAgents.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/simplify.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/skillify.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/stuck.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/updateConfig.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/verify/examples/cli.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/verify/SKILL.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/verify.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/verify/examples/server.md",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundled/verifyContent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/skills/bundledSkills.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-001"
+      ]
+    },
+    {
+      "path": "src/skills/loadSkillsDir.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-003"
+      ]
+    },
+    {
+      "path": "src/skills/mcpSkillBuilders.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-004"
+      ]
+    },
+    {
+      "path": "src/skills/mcpSkills.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-005"
+      ]
+    },
+    {
+      "path": "src/cli/bg.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-010"
+      ]
+    },
+    {
+      "path": "src/cli/exit.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-007"
+      ]
+    },
+    {
+      "path": "src/cli/handlers/agents.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/ant.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/auth.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-012"
+      ]
+    },
+    {
+      "path": "src/cli/handlers/autoMode.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/mcp.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/plugins.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/templateJobs.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/handlers/util.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/ndjsonSafeStringify.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/print.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-006"
+      ]
+    },
+    {
+      "path": "src/cli/remoteIO.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/HybridTransport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/SerialBatchEventUploader.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/SSETransport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/Transport.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-009"
+      ]
+    },
+    {
+      "path": "src/cli/transports/WebSocketTransport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/ccrClient.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/transportUtils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/transports/WorkerStateUploader.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/cli/update.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-008"
+      ]
+    },
+    {
+      "path": "src/cli/structuredIO.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-011"
+      ]
+    },
+    {
+      "path": "src/cli/structuredIO.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/agentSdkTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/cli.tsx",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-013"
+      ]
+    },
+    {
+      "path": "src/entrypoints/init.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-014"
+      ]
+    },
+    {
+      "path": "src/entrypoints/mcp.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-015"
+      ]
+    },
+    {
+      "path": "src/entrypoints/sandboxTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/controlTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/coreSchemas.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/coreTypes.generated.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/coreTypes.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-016"
+      ]
+    },
+    {
+      "path": "src/entrypoints/sdk/runtimeTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/sdkUtilityTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/settingsTypes.generated.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/toolTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/entrypoints/sdk/controlSchemas.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/state/AppState.tsx",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/state/AppStateStore.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-017"
+      ]
+    },
+    {
+      "path": "src/state/onChangeAppState.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-020"
+      ]
+    },
+    {
+      "path": "src/state/selectors.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-019"
+      ]
+    },
+    {
+      "path": "src/state/store.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-018"
+      ]
+    },
+    {
+      "path": "src/state/teammateViewHelpers.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-021"
+      ]
+    },
+    {
+      "path": "src/migrations/migrateAutoUpdatesToSettings.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-022"
+      ]
+    },
+    {
+      "path": "src/migrations/migrateBypassPermissionsAcceptedToSettings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateEnableAllProjectMcpServersToSettings.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateFennecToOpus.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SKILLS_STATE_E-023"
+      ]
+    },
+    {
+      "path": "src/migrations/migrateLegacyOpusToCurrent.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateOpusToOpus1m.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateSonnet1mToSonnet45.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateSonnet45ToSonnet46.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/migrateResetAutoModeOptInForDefaultOffer.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/migrations/resetProToOpusDefault.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

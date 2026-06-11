@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-001",
+  "source_path": "src/server/server.ts",
+  "evidence_type": "code_read",
+  "summary": "Bun.serve() based HTTP+WebSocket server. Entry point for Claude Code Desktop App. Handles /api/, /ws/, /sdk/, /proxy/ routes. Integrates CORS, auth middleware, H5 access policy, team watcher, cron scheduler. Graceful shutdown kills CLI subprocesses.",
+  "classification": "critical",
+  "criticality": "critical"
+}

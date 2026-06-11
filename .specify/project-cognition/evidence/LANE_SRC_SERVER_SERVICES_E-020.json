@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-020",
+  "source_path": "src/services/lsp/manager.ts",
+  "evidence_type": "code_read",
+  "summary": "LSP server manager singleton. Lazy initialization with state tracking (not-started/pending/success/failed). Creates LSPServerManager instance, registers notification handlers. Generation counter prevents stale promises.",
+  "classification": "critical",
+  "criticality": "high"
+}

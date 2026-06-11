@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-004",
+  "source_path": "src/assistant/sessionHistory.ts",
+  "evidence_type": "code_read",
+  "summary": "Fetches session history events from the API with pagination (HISTORY_PAGE_SIZE=100). Uses OAuth auth, axios for HTTP. Exports createHistoryAuthCtx(), fetchLatestEvents(), fetchOlderEvents(). All other assistant/* files are auto-generated stubs for feature-gated modules.",
+  "classification": "important",
+  "criticality": "minor"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-008",
+  "source_path": ".github/workflows/release-desktop.yml",
+  "evidence_type": "config_read",
+  "summary": "Release workflow: triggers on tag push (v*.*.*) or workflow_dispatch. Builds for macOS-ARM64, macOS-x64, Linux-x64, Linux-ARM64, Windows-x64. Validates tag matches app version. Requires release-notes/vX.Y.Z.md file. Uses tauri-action with signing keys (TAURI_SIGNING_PRIVATE_KEY). Uploads to GitHub Releases.",
+  "classification": "critical",
+  "criticality": "critical"
+}

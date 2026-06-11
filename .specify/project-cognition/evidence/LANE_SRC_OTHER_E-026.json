@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-026",
+  "source_path": "src/keybindings/types.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for feature-gated keybindings types module.",
+  "classification": "info",
+  "criticality": "trivial"
+}

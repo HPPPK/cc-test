@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "status": "ready",
+  "feature": "settings-provider-import-export",
+  "tasks": [
+    {"id": "T001", "story": null, "phase": "guardrails", "parallel_safe": false, "packet": "task-packets/T001.json"},
+    {"id": "T002", "story": null, "phase": "foundation", "parallel_safe": true, "packet": "task-packets/T002.json"},
+    {"id": "T003", "story": null, "phase": "foundation", "parallel_safe": true, "packet": "task-packets/T003.json"},
+    {"id": "T004", "story": "US1", "phase": "secret-free-export-tests", "parallel_safe": true, "packet": "task-packets/T004.json"},
+    {"id": "T005", "story": "US1", "phase": "secret-free-export-server", "parallel_safe": true, "packet": "task-packets/T005.json"},
+    {"id": "T006", "story": "US1", "phase": "secret-free-export-desktop-tests", "parallel_safe": true, "packet": "task-packets/T006.json"},
+    {"id": "T007", "story": "US1", "phase": "secret-free-export-desktop", "parallel_safe": true, "packet": "task-packets/T007.json"},
+    {"id": "T008", "story": "US2", "phase": "import-tests-server", "parallel_safe": true, "packet": "task-packets/T008.json"},
+    {"id": "T009", "story": "US2", "phase": "import-server", "parallel_safe": true, "packet": "task-packets/T009.json"},
+    {"id": "T010", "story": "US2", "phase": "import-tests-desktop", "parallel_safe": true, "packet": "task-packets/T010.json"},
+    {"id": "T011", "story": "US2", "phase": "import-desktop", "parallel_safe": true, "packet": "task-packets/T011.json"},
+    {"id": "T012", "story": "US3", "phase": "secret-export-tests-server", "parallel_safe": true, "packet": "task-packets/T012.json"},
+    {"id": "T013", "story": "US3", "phase": "secret-export-server", "parallel_safe": true, "packet": "task-packets/T013.json"},
+    {"id": "T014", "story": "US3", "phase": "secret-export-tests-desktop", "parallel_safe": true, "packet": "task-packets/T014.json"},
+    {"id": "T015", "story": "US3", "phase": "secret-export-desktop", "parallel_safe": true, "packet": "task-packets/T015.json"},
+    {"id": "T016", "story": null, "phase": "verification", "parallel_safe": false, "packet": "task-packets/T016.json"}
+  ],
+  "dependencies": {
+    "T001": [],
+    "T002": ["T001"],
+    "T003": ["T001"],
+    "T004": ["T002"],
+    "T005": ["T004", "T002"],
+    "T006": ["T003"],
+    "T007": ["T003", "T006"],
+    "T008": ["T002", "T005", "T007"],
+    "T009": ["T008", "T005"],
+    "T010": ["T003", "T007"],
+    "T011": ["T010"],
+    "T012": ["T005", "T009", "T011"],
+    "T013": ["T012", "T005"],
+    "T014": ["T007", "T009", "T011"],
+    "T015": ["T014"],
+    "T016": ["T013", "T015"]
+  },
+  "parallel_batches": [
+    {"id": "B1", "tasks": ["T002", "T003"], "join_point": "JP1"},
+    {"id": "B2", "tasks": ["T004", "T006"], "join_point": "JP2"},
+    {"id": "B3", "tasks": ["T005", "T007"], "join_point": "JP3"},
+    {"id": "B4", "tasks": ["T008", "T010"], "join_point": "JP4"},
+    {"id": "B5", "tasks": ["T009", "T011"], "join_point": "JP5"},
+    {"id": "B6", "tasks": ["T012", "T014"], "join_point": "JP6"},
+    {"id": "B7", "tasks": ["T013", "T015"], "join_point": "JP7"}
+  ]
+}

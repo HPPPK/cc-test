@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-011",
+  "source_path": "src/commands/bridge-kick.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/bridge-kick' - ant-only debug command for injecting bridge failure states. Supports ws_closed, poll errors, register failures, heartbeat failures.",
+  "classification": "normal",
+  "criticality": "normal"
+}

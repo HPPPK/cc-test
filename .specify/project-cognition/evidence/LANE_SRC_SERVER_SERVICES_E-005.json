@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-005",
+  "source_path": "src/server/services/workflowRuntimeService.ts",
+  "evidence_type": "code_read",
+  "summary": "Workflow session state machine. Manages phase transitions, completion submissions, artifact pointers, prompt assembly with skill provenance. Imports workflow types, template registry, phase skill resolver, tool policy.",
+  "classification": "critical",
+  "criticality": "critical"
+}

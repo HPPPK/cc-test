@@ -1,0 +1,82 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "scope_paths": [
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/types/providerImportExport.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop Settings > Providers import dialog",
+    "provider import preview conflict diagnostics",
+    "provider import candidate resolution selection UI",
+    "provider import i18n strings",
+    "same-area Settings provider tests"
+  ],
+  "generated_surfaces": [
+    ".planning/quick/20260610-provider-import-conflict-ux/STATUS.md",
+    ".planning/quick/20260610-provider-import-conflict-ux/SUMMARY.md"
+  ],
+  "state_contracts": [
+    "Provider import commit resolutions continue to use existing ProviderImportResolutionAction values: add, rename, overwrite, skip.",
+    "Provider import diagnostics remain sanitized for secret values before display.",
+    "Conflict diagnostics are displayed as localized user-facing copy instead of severity/code/path UI."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test -- --run src/__tests__/generalSettings.test.tsx -t \"Settings > Providers tab\"",
+      "result": "passed, 17 passed / 37 skipped"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop; bun run test -- --run src/__tests__/generalSettings.test.tsx",
+      "result": "passed, 54 passed with pre-existing GeneralSettings act warnings"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed, 98 test files and 853 tests passed; production build passed"
+    },
+    {
+      "command": "git diff --check -- desktop/src/pages/Settings.tsx desktop/src/__tests__/generalSettings.test.tsx desktop/src/i18n/locales/en.ts desktop/src/i18n/locales/zh.ts .planning/quick/20260610-provider-import-conflict-ux/STATUS.md",
+      "result": "passed"
+    },
+    {
+      "command": "Invoke-WebRequest http://127.0.0.1:5173/",
+      "result": "HTTP 200"
+    }
+  ],
+  "known_unknowns": [
+    "Full `bun run verify` was not rerun after this quick task; earlier same-session verify failed in native checks because a running desktop sidecar locked the default Cargo target sidecar executable.",
+    "Project cognition entry query had partial facet coverage and selected a weak workflow concept; live repository evidence established the implementation owner paths."
+  ],
+  "confidence_notes": [
+    "The change is limited to the provider import dialog rendering, tests, and translations.",
+    "Provider import API and type contracts were inspected and left unchanged.",
+    "Desktop checks provide executable coverage for the revised conflict text and action control."
+  ],
+  "user_decisions": [
+    "User confirmed replacing professional conflict diagnostics with user-facing copy and improving the action UI while staying within the import dialog."
+  ],
+  "boundary": {
+    "scope": "Quick task limited to desktop provider import conflict UX, same-area tests, and i18n labels.",
+    "excluded": [
+      "provider import API semantics changes",
+      "server conflict resolution changes",
+      "credential persistence or secret-handling changes",
+      "provider export dialog behavior",
+      "full repository quality gate"
+    ]
+  }
+}

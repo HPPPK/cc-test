@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-001",
+  "source_path": ".codex/config.toml",
+  "evidence_type": "config_read",
+  "summary": "Codex 配置文件定义了 sp-teams 通知钩子，使用 uvx 从 spec-kit-plus 仓库执行",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

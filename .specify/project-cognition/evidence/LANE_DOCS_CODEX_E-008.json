@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-008",
+  "source_path": ".codex/skills/sp-analyze/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-analyze 工作流技能定义：跨制品的一致性和边界护栏分析，只读分析报告",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

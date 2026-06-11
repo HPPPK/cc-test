@@ -18,8 +18,10 @@
 ## Project Cognition
 
 - latest_cognition_intent: discussion
-- latest_cognition_readiness: blocked
+- latest_cognition_readiness: unavailable-on-2026-06-11-runtime-ui-pass
 - baseline_health: stale/blocked, dirty=true, graph_ready=true
+- latest_attempt: `project-cognition.exe lexicon --intent discussion --query "workflow runtime UI controls confirm reject retry cancel resume auto-advance pending confirmation desktop" --mode catalog --format json`
+- latest_attempt_result: command not found in PATH; no local project-cognition executable found by `rg --files | rg "project-cognition"`.
 - query_plan:
   - selected_concepts: term:workflows, term:skills, term:agent, term:runtime, term:priority
   - rejected_concepts: term:higher, term:executable
@@ -56,6 +58,11 @@
 - `desktop/src/components/workflow/WorkflowTemplateManager.tsx`: Settings workflow manager already owns create/edit/copy/delete/import/export actions for workflow templates.
 - `desktop/src/components/workflow/WorkflowImportExportDialog.tsx`: Import preview and export generation already exist; this is the natural place to show workflow package dependency diagnostics.
 - `desktop/src/components/workflow/WorkflowTemplatePicker.tsx`: Workflow start selection already shows invalid template diagnostics; this can eventually surface start-time dependency issues.
+- `desktop/src/types/session.ts`: Phase transition actions are currently modeled as `confirm`, `reject`, `retry`, and `manual_complete`.
+- `desktop/src/components/workflow/WorkflowTransitionControls.tsx`: Runtime controls prioritize pending confirmation, expose Confirm/Reject/Retry for pending states, use a summary/evidence dialog for manual completion, and send transition context including state version.
+- `desktop/src/components/workflow/WorkflowStatusPanel.tsx`: Pending confirmation display takes priority over stale lifecycle status; blocked reason and artifact evidence are displayed separately from transition details.
+- `desktop/src/pages/ActiveSession.tsx`: The active session strip wires workflow transition controls into the session view and hides controls for completed, stale-template, and missing-template states.
+- `desktop/src/components/workflow/WorkflowComponents.test.tsx`: Existing tests assert pending confirmation controls carry idempotent context, pending confirmation outranks stale lifecycle status, manual completion requires summary/evidence, and blocked/unable states do not expose unsafe advancement actions.
 
 ## Coverage Gaps
 
@@ -67,6 +74,7 @@
 - Export/import behavior for referenced phase skills is unresolved.
 - Existing validation source labels for skills do not cover all current skill sources such as managed, plugin, bundled, and MCP.
 - The Settings skill API and runtime skill loader may not currently expose exactly the same source universe; workflow authoring should not treat the Settings UI list as complete until the underlying catalog is aligned.
+- Project cognition runtime was unavailable for the 2026-06-11 runtime UI controls pass; recommendations are based on live file reads and should be rechecked if cognition tooling is restored before formal handoff.
 
 ## Inference Notes
 
@@ -75,3 +83,4 @@
 - Workflow phase skill design must account for tool permissions, forked agents, shell expansion, model/effort modifiers, and session resume provenance.
 - The Settings page is not itself the integration boundary; the underlying skill catalog/API should be the integration boundary so workflow authoring, import/export, settings, and runtime resolution stay aligned.
 - Product concept: a plugin is a package/distribution boundary, while a skill is an agent-invocable capability. A workflow phase skill should primarily reference the skill; plugin identity should be preserved as source/provenance and import dependency when relevant.
+- Runtime UI concept: phase transition controls should represent completion authority only. Cancel/resume are broader session lifecycle controls and should not be folded into the same component without a separate recovery contract.

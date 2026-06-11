@@ -31,7 +31,7 @@ const targetSchema = z.strictObject({
 
 const templateSchema = z.unknown()
 const basisHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
-const operationNames = ['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'] as const
+const operationNames = ['guide', 'skill_catalog', 'skill_create', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'] as const
 
 const selectorJSONSchema = {
   type: 'object',
@@ -81,6 +81,21 @@ const workflowTemplateAuthoringInputJSONSchema: ToolInputJSONSchema = {
       maximum: 200,
       description: 'Optional maximum number of skill_catalog entries to return.',
     },
+    name: {
+      type: 'string',
+      minLength: 1,
+      description: 'Lowercase user skill slug when operation is skill_create.',
+    },
+    description: {
+      type: 'string',
+      minLength: 1,
+      description: 'Skill description frontmatter when operation is skill_create.',
+    },
+    body: {
+      type: 'string',
+      minLength: 1,
+      description: 'Optional SKILL.md body when operation is skill_create.',
+    },
     selector: {
       ...selectorJSONSchema,
       description: 'Template selector for inspect, update, duplicate, and delete operations.',
@@ -122,6 +137,12 @@ const inputSchema = lazySchema(() =>
       limit: z.number().int().min(1).max(200).nullable().optional(),
     }),
     z.strictObject({
+      operation: z.literal('skill_create'),
+      name: z.string().min(1),
+      description: z.string().min(1),
+      body: z.string().min(1).optional(),
+    }),
+    z.strictObject({
       operation: z.literal('list'),
       source: z.enum(['all', 'builtin', 'user']).optional(),
     }),
@@ -159,7 +180,7 @@ const inputSchema = lazySchema(() =>
 
 const outputSchema = lazySchema(() =>
   z.object({
-    operation: z.enum(['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete']),
+    operation: z.enum(['guide', 'skill_catalog', 'skill_create', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete']),
     status: z.enum(['succeeded', 'validated', 'rejected', 'failed']),
     persisted: z.boolean(),
     affectedTemplate: z.record(z.string(), z.unknown()).optional(),
@@ -171,6 +192,7 @@ const outputSchema = lazySchema(() =>
     }).optional(),
     templates: z.array(z.record(z.string(), z.unknown())).optional(),
     skillCatalog: z.array(z.record(z.string(), z.unknown())).optional(),
+    createdSkill: z.record(z.string(), z.unknown()).optional(),
     invalidTemplates: z.array(z.record(z.string(), z.unknown())).optional(),
     guide: z.record(z.string(), z.unknown()).optional(),
     template: z.record(z.string(), z.unknown()).optional(),
@@ -320,10 +342,10 @@ export const WorkflowTemplateAuthoringTool = buildTool({
   maxResultSizeChars: 200_000,
   inputJSONSchema: workflowTemplateAuthoringInputJSONSchema,
   async description() {
-    return 'Guide, list, inspect, validate, create, update, duplicate, and delete workflow templates'
+    return 'Guide, list, inspect, validate, create, update, duplicate, delete workflow templates, and create missing user skills for workflow phases'
   },
   async prompt() {
-    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Use skill_catalog before assigning phases[].skills so recommended phase skills reference existing skills instead of guessed names or copied skill instructions. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
+    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Use skill_catalog before assigning phases[].skills so recommended phase skills reference installed skills instead of guessed names or copied skill instructions. If the needed skill is missing, use skill_create first to create a user skill under the installed skills directory, then reference the returned recommendedReference. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
   },
   get inputSchema(): InputSchema {
     return inputSchema()

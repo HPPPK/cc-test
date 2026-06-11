@@ -1,0 +1,75 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/utils/stats.ts",
+    "src/utils/statsCache.ts",
+    "src/utils/__tests__/stats.test.ts",
+    "desktop/src/api/activityStats.ts",
+    "desktop/src/pages/ActivitySettings.tsx",
+    "desktop/src/pages/ActivitySettings.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    ".planning/debug/token-usage-overcount.md"
+  ],
+  "scope_paths": [
+    "src/utils",
+    "desktop/src/api/activityStats.ts",
+    "desktop/src/pages/ActivitySettings.tsx",
+    "desktop/src/i18n/locales"
+  ],
+  "behavior_surfaces": [
+    "Claude Code local transcript token aggregation",
+    "activity stats cache persistence schema",
+    "desktop Activity settings Token usage summary",
+    "desktop activity stats API response shape"
+  ],
+  "generated_surfaces": [
+    ".planning/debug/token-usage-overcount.md",
+    ".specify/project-cognition/updates/20260602-token-usage-breakdown-debug.json"
+  ],
+  "state_contracts": [
+    "Local Claude Code transcript records remain read-only and are not mutated.",
+    "dailyModelTokens keeps the existing total-token semantic including cache read and cache creation tokens.",
+    "dailyTokenBreakdown exposes per-day input, output, cache read, and cache creation token categories for UI explanation.",
+    "stats-cache.json schema is v6; pre-v6 caches are rejected and recomputed because token categories cannot be reconstructed safely.",
+    "ActivityStats dailyTokenBreakdown is optional on the desktop API type for backward compatibility with older server responses."
+  ],
+  "verification": [
+    "cd desktop && bun run test ActivitySettings.test.tsx: passed 2 tests after red-first regression",
+    "bun test src\\utils\\__tests__\\stats.test.ts: passed 6 tests / 19 expects",
+    "bun run check:persistence-upgrade: passed server persistent JSON migrations and desktop localStorage migrations",
+    "bun run check:desktop: passed 96 test files / 828 tests plus desktop build/typecheck",
+    "bun run check:server: blocked by existing expired quarantine entries before relevant checks",
+    "bun run check:coverage: blocked by existing expired quarantine entries before coverage calculation"
+  ],
+  "verification_evidence": [
+    "Read-only replay of local Claude Code transcripts for 2026-06-02 produced 246,202,200 total tokens: input 7,426,293, output 777,315, cache read 237,998,592.",
+    "ActivitySettings regression asserts daily cache contribution appears in the Today summary detail.",
+    "stats regression asserts dailyTokenBreakdown preserves token categories and v6 cache loading keeps the breakdown intact.",
+    "stats cache regression asserts pre-v6 caches are invalidated instead of migrated with inferred category data."
+  ],
+  "known_unknowns": [
+    "Live desktop screenshot/browser smoke was not run in this pass.",
+    "Full verify/coverage could not complete until expired quarantine entries are reviewed.",
+    "Existing unrelated dirty files were present and preserved."
+  ],
+  "confidence_notes": [
+    "The user-visible anomaly was reproduced from local read-only transcript data before implementation.",
+    "The fix is additive at the API/UI observation boundary and keeps existing total-token aggregation semantics stable.",
+    "The persistence schema change has both an old-cache invalidation test and a current-cache load test."
+  ],
+  "user_decisions": [
+    "User reported that Today 230M tokens looked implausible and asked whether the Token usage calculation was wrong."
+  ],
+  "boundary": {
+    "type": "bounded-stats-observability-debug",
+    "description": "Token usage dashboard explanation/debug fix; no local transcript mutation and no provider/runtime token metering changes.",
+    "excludes": [
+      "Claude Code CLI transcript file format changes",
+      "provider API usage accounting",
+      "billing/cost calculation",
+      "workflow UI compacting changes from the previous task"
+    ]
+  }
+}

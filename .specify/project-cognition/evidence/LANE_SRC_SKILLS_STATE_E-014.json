@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-014",
+  "source_path": "src/entrypoints/init.ts",
+  "evidence_type": "code_read",
+  "summary": "Main initialization function (memoized). Enables configs, applies safe env vars, applies extra CA certs, configures global agents/proxy, sets up telemetry, initializes policy limits, remote managed settings, OAuth, LSP server manager, repository detection. Telemetry initialized lazily.",
+  "classification": "critical",
+  "criticality": "critical"
+}

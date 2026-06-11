@@ -1,0 +1,21 @@
+[
+  "src/components/tasks/RemoteSessionDetailDialog.tsx",
+  "src/components/tasks/RemoteSessionProgress.tsx",
+  "src/components/tasks/ShellDetailDialog.tsx",
+  "src/components/tasks/ShellProgress.tsx",
+  "src/components/tasks/WorkflowDetailDialog.ts",
+  "src/components/tasks/renderToolActivity.tsx",
+  "src/components/tasks/taskStatusUtils.tsx",
+  "src/components/teams/TeamStatus.tsx",
+  "src/components/teams/TeamsDialog.tsx",
+  "src/components/ui/OrderedList.tsx",
+  "src/components/ui/OrderedListItem.tsx",
+  "src/components/ui/TreeSelect.tsx",
+  "src/components/ui/option.ts",
+  "src/components/wizard/WizardDialogLayout.tsx",
+  "src/components/wizard/WizardNavigationFooter.tsx",
+  "src/components/wizard/WizardProvider.tsx",
+  "src/components/wizard/index.ts",
+  "src/components/wizard/types.ts",
+  "src/components/wizard/useWizard.ts"
+]

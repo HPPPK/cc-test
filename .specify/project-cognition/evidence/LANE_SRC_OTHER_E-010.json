@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-010",
+  "source_path": "src/buddy/sprites.ts",
+  "evidence_type": "code_read",
+  "summary": "ASCII art sprite definitions for all 18 companion species, each with 3 animation frames. Hat line rendering. renderSprite() substitutes eye characters. renderFace() returns single-line species face. spriteFrameCount() returns frame count per species.",
+  "classification": "important",
+  "criticality": "minor"
+}

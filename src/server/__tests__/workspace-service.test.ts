@@ -516,6 +516,134 @@ describe('WorkspaceService', () => {
     expect(result.error).toContain('synthetic git failure')
   })
 
+  it('falls back to top-level untracked status when recursive untracked scan cannot traverse the workspace', async () => {
+    const repoDir = await createGitWorkspace()
+    await fs.mkdir(path.join(repoDir, 'AppData'))
+    const statusCalls: string[][] = []
+    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
+      runGit: (workDir: string, args: string[]) => Promise<{
+        stdout: string
+        stderr: string
+        code: number
+      }>
+    }
+
+    service.runGit = async (workDir, args) => {
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+        return { stdout: `${workDir}\n`, stderr: '', code: 0 }
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+        return { stdout: 'main\n', stderr: '', code: 0 }
+      }
+      if (args[0] === 'status') {
+        statusCalls.push(args)
+        if (args.includes('--untracked-files=all')) {
+          return {
+            stdout: '',
+            stderr: "warning: could not open directory 'AppData/Local/Application Data/': Permission denied",
+            code: 1,
+          }
+        }
+        return { stdout: '?? AppData/\0 M tracked.txt\0', stderr: '', code: 0 }
+      }
+      if (args[0] === 'diff' && args.includes('--numstat')) {
+        return { stdout: '1\t0\ttracked.txt\n', stderr: '', code: 0 }
+      }
+      return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
+    }
+
+    const result = await service.getStatus('session-1')
+
+    expect(result.state).toBe('ok')
+    expect(statusCalls).toEqual([
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      ['status', '--porcelain=v1', '-z', '--untracked-files=normal'],
+    ])
+    expect(result.changedFiles).toEqual([
+      { path: 'AppData/', oldPath: undefined, status: 'untracked', additions: 0, deletions: 0 },
+      { path: 'tracked.txt', oldPath: undefined, status: 'modified', additions: 1, deletions: 0 },
+    ])
+  })
+
+  it('falls back to top-level untracked status when recursive untracked scan times out without stderr', async () => {
+    const repoDir = await createGitWorkspace()
+    const statusCalls: string[][] = []
+    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
+      runGit: (workDir: string, args: string[]) => Promise<{
+        stdout: string
+        stderr: string
+        code: number
+      }>
+    }
+
+    service.runGit = async (workDir, args) => {
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+        return { stdout: `${workDir}\n`, stderr: '', code: 0 }
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+        return { stdout: 'main\n', stderr: '', code: 0 }
+      }
+      if (args[0] === 'status') {
+        statusCalls.push(args)
+        if (args.includes('--untracked-files=all')) {
+          return { stdout: '', stderr: '', code: 1 }
+        }
+        return { stdout: ' M tracked.txt\0', stderr: '', code: 0 }
+      }
+      if (args[0] === 'diff' && args.includes('--numstat')) {
+        return { stdout: '1\t0\ttracked.txt\n', stderr: '', code: 0 }
+      }
+      return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
+    }
+
+    const result = await service.getStatus('session-1')
+
+    expect(result.state).toBe('ok')
+    expect(statusCalls).toEqual([
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      ['status', '--porcelain=v1', '-z', '--untracked-files=normal'],
+    ])
+    expect(result.changedFiles).toEqual([
+      { path: 'tracked.txt', oldPath: undefined, status: 'modified', additions: 1, deletions: 0 },
+    ])
+  })
+
+  it('reports the fallback git status command when top-level untracked retry also fails', async () => {
+    const repoDir = await createGitWorkspace()
+    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
+      runGit: (workDir: string, args: string[]) => Promise<{
+        stdout: string
+        stderr: string
+        code: number
+      }>
+    }
+
+    service.runGit = async (workDir, args) => {
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+        return { stdout: `${workDir}\n`, stderr: '', code: 0 }
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+        return { stdout: 'main\n', stderr: '', code: 0 }
+      }
+      if (args[0] === 'status') {
+        return {
+          stdout: '',
+          stderr: args.includes('--untracked-files=all')
+            ? "warning: could not open directory 'AppData/Local/Application Data/': Permission denied"
+            : 'fatal: fallback status failed',
+          code: 1,
+        }
+      }
+      return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
+    }
+
+    const result = await service.getStatus('session-1')
+
+    expect(result.state).toBe('error')
+    expect(result.error).toContain('git status --porcelain=v1 -z --untracked-files=normal')
+    expect(result.error).toContain('fallback status failed')
+  })
+
   it('reads tracked diff stats in one bulk git call', async () => {
     const repoDir = await makeTempDir('workspace-service-bulk-stats-')
     await fs.writeFile(path.join(repoDir, 'a.txt'), 'a\n')

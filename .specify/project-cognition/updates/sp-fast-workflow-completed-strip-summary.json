@@ -1,0 +1,32 @@
+{
+  "state_contracts": [
+    "workflow status semantics unchanged",
+    "phase count data unchanged",
+    "completed workflow report link unchanged"
+  ],
+  "behavior_surfaces": [
+    "desktop completed workflow status strip summary"
+  ],
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "generated_surfaces": [],
+  "known_unknowns": [
+    "visual layout not browser-verified",
+    "test suite not run"
+  ],
+  "workflow": "sp-fast",
+  "user_decisions": [
+    "User identified completed workflow status displaying Phase 1 of 5 as confusing."
+  ],
+  "verification": [
+    "not run: validation was not explicitly authorized in this turn"
+  ],
+  "scope_paths": [
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "confidence_notes": [
+    "Project cognition readiness was review; query matched workflow runtime status components with no missing coverage. Root cause was completed strip reusing active phase summary formatter."
+  ]
+}

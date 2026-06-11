@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-021",
+  "source_path": "src/tools/AgentTool/builtInAgents.ts",
+  "evidence_type": "code_read",
+  "summary": "Built-in agent definitions: GENERAL_PURPOSE_AGENT, STATUSLINE_SETUP_AGENT, EXPLORE_AGENT, PLAN_AGENT, VERIFICATION_AGENT, CLAUDE_CODE_GUIDE_AGENT. Feature-gated via GrowthBook. Supports coordinator mode.",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-017",
+  "source_path": ".codex/skills/sp-fast/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-fast 工作流技能定义：真正琐碎、本地、低风险的更改，无需进入完整 specify-plan 工作流",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

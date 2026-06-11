@@ -63,7 +63,7 @@ handoff mechanism; this command does not apply the follow-up work.
 
 ## Process
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning start --command constitution --format json`
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command constitution --format json`
   when available so passive learning files exist and relevant shared memory is
   visible before broader context collection.
 - Load the current constitution, then read `.specify/memory/project-rules.md`
@@ -142,12 +142,12 @@ as pending follow-up items in the Sync Impact Report instead of applying them.
 **Note**: If `.specify/memory/constitution.md` does not exist yet, it should
 have been initialized from `.specify/templates/constitution-template.md`
 during project setup. That project-local template may be the default product
-constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify init`. If it is
+constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify init`. If it is
 missing, copy the template first.
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning start --command constitution --format json` when
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command constitution --format json` when
   available so passive learning files exist before deeper context collection.
 - Read `.specify/memory/constitution.md`,
   `.specify/memory/project-rules.md`, and
@@ -166,7 +166,7 @@ missing, copy the template first.
   chat-only discussion.
 - If `workflow-state.md` already preserves route reasons, false starts,
   hidden dependencies, or reusable constraints that would normally justify
-  `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@a8f273c8463584b9ef296295fc777783a4ae9096 specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json`,
+  `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json`,
   report that as a learning follow-up instead of running the mutating command.
 - Do not run learning capture commands that mutate learning files unless the
   user explicitly requested learning updates in the same request.
@@ -176,7 +176,7 @@ missing, copy the template first.
 ## Repository Context and Navigation Freshness
 
 - If repo-derived evidence is needed, read `.specify/project-cognition/status.json` plus the smallest relevant query bundle or graph artifact first to assess map freshness as advisory navigation before trusting any compatibility/export artifact.
-- If the navigation system is stale or weak for an existing usable baseline, continue with live repository evidence and recommend `/sp-map-update` only as external/manual map maintenance when the user asks for map maintenance or before a separate map-maintenance pass rather than fabricating repository context. That route is external map maintenance, not constitution closeout ownership. Use `/sp-map-scan` followed by `/sp-map-build` only for first/missing/unusable baseline, schema failure, zero active-generation `path_index` rows, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+- If the navigation system is stale or weak for an existing usable baseline, continue with live repository evidence and recommend `/sp-map-update` only as external/manual map maintenance when the user asks for map maintenance or before a separate map-maintenance pass rather than fabricating repository context. That route is external map maintenance, not constitution closeout ownership. Use `/sp-map-scan` followed by `/sp-map-build` only for first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 - A constitution-only amendment does not own project cognition mutation closeout.
   Do not run `project-cognition update`, `project-cognition mark-dirty`, or
   related mutation commands from this workflow unless the user explicitly asked

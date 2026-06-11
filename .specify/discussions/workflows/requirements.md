@@ -21,6 +21,9 @@
 - The user accepted the missing-skill import policy: allow import with warnings for missing recommended phase skills while keeping runtime visibility and soft audit evidence.
 - The user accepted discussing UI/interaction for workflow phase skill selection.
 - The user accepted the UI mainline: phase-local skill selector in workflow template editor, workflow-level dependency diagnostics in import/export, and lightweight runtime status/evidence only.
+- The user accepted that workflow UI should mirror the grouped field model: Intent, Contract, Evidence, and Runtime Status. Template authoring should expose Intent, Contract, and Evidence as editable groups; Runtime Status belongs to running workflow/session views rather than persisted template fields.
+- The user continued into phase lifecycle design. Recommended state model: phase/session lifecycle uses `created`, `running`, `pending-confirmation`, `completed`, `failed`, `cancelled`, and resume/source-status markers; completion attempts use `ready`, `blocked`, and `unable`.
+- The user continued into runtime UI control design. Recommended first-scope controls: phase transition controls cover `confirm`, `reject`, `retry`, and `manual_complete`; session stop/recovery controls such as cancel/resume should remain separate.
 
 ## Confirmed Scope
 
@@ -43,6 +46,17 @@
 - Workflow sharing should make dependency status visible to the receiver before import or first run.
 - Missing recommended phase skills should not block workflow import by default; the imported workflow should retain the references and mark them unavailable until resolved.
 - Future required phase skills may use stricter blocking or explicit skip evidence, but that is not part of the current recommended-first default.
+- Workflow template authoring should group editable fields as Intent, Contract, and Evidence so users understand whether they are defining purpose, execution boundaries, or completion proof.
+- Runtime state should remain session-owned and shown in running workflow views, not stored as editable template configuration.
+- `blocked` should not be a long-lived first-scope phase status. It should appear as `running` plus `blockedReason`, failed completion check, and user-visible warning so the phase remains recoverable.
+- `unable` should not be treated as runtime `failed`. It is a completion submission outcome that asks for user or downstream direction.
+- `pending-confirmation` should block duplicate ready submissions and require confirm, reject, or retry before the workflow advances.
+- `stateVersion` and transition history should protect lifecycle operations from stale UI actions and preserve every completion/transition decision.
+- Pending confirmation should be the highest-priority runtime UI state and should show `Confirm`, `Reject`, and `Retry` only.
+- Manual completion should be an explicit user override while a phase is running under user-confirmation authority; it should require a summary/evidence dialog and should not be confused with confirming an agent-ready submission.
+- Blocked or unable completion outcomes should show reason/evidence and a recovery-oriented `Retry`, but should not expose advancement controls such as `Confirm`, `Reject`, or `Complete phase`.
+- Auto-advance should be represented as an authority/status label, not a button, unless a future explicit override flow is designed.
+- Cancel and resume should be session-level lifecycle/recovery controls, not phase completion controls.
 
 ## Confirmed Non-Goals
 
@@ -114,6 +128,7 @@ Settings-backed source refinement: workflow phase skill selection should reuse t
 - Workflow templates and sessions must preserve enough provenance to explain which skill definition influenced a phase.
 - The design must avoid recursive or unbounded skill invocation loops.
 - Existing workflow sessions must not silently change behavior when an underlying skill changes unless the product explicitly defines that upgrade path.
+- Existing workflow sessions must keep their template snapshot authoritative; stale or missing source templates should surface warnings rather than silently changing run behavior.
 
 ## Success Signals
 
@@ -125,3 +140,6 @@ Settings-backed source refinement: workflow phase skill selection should reuse t
 - Confirmed primary UI direction: phase skill selection belongs in the workflow template editor at the selected phase level, replacing or augmenting the current advanced freeform skills textarea with a shared-catalog selector.
 - Confirmed secondary UI direction: workflow import/export should show skill dependency diagnostics but should not become the primary place to author phase skills.
 - Confirmed runtime/status UI direction: active workflow phase surfaces should show recommended phase skills and unavailable state only when useful, avoiding noisy checklists.
+- Confirmed field grouping direction: workflow template editor should expose editable Intent, Contract, and Evidence groups; running workflow/session surfaces should expose Runtime Status separately.
+- Confirmed lifecycle direction: runtime status UI should distinguish lifecycle state from completion attempt result. In particular, show blocked/unable as actionable completion outcomes inside a still-running phase unless the runtime itself failed or the user cancelled.
+- Confirmed runtime-control direction: use clear authority labels and controls. Pending confirmation exposes Confirm/Reject/Retry; running user-confirmation exposes Manually complete phase as an advanced/manual path; blocked/unable exposes Retry only; auto-advance, cancel, and resume are not phase-completion buttons.

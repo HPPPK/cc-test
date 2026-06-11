@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-013",
+  "source_path": "CONTRIBUTING.md",
+  "evidence_type": "config_read",
+  "summary": "Contributing guide: bun install + bun run verify as PR readiness check. Quality report artifacts at artifacts/quality-runs/<timestamp>/ and artifacts/coverage/<timestamp>/. Coverage baseline requires allow-coverage-baseline-change. Quarantined tests need owner/reviewAfter/exitCriteria. Git hooks install via bun run hooks:install for pre-push quality gate. Adapter deps: cd adapters && bun install. Live provider baseline for chat/agent/provider changes. Docs build uses npm ci.",
+  "classification": "important",
+  "criticality": "important"
+}

@@ -1,0 +1,64 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "task_id": "T012",
+  "changed_files": [
+    "src/server/__tests__/providers.test.ts"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/__tests__/providers.test.ts",
+    "exit_code": 1,
+    "summary": "RED as expected: 63 passed, 4 failed. All failures are new POST /api/providers/export-with-secrets tests receiving 405 from the missing route instead of expected confirmation rejection or confirmed credential-bearing export behavior."
+  },
+  "must_preserve_evidence": {
+    "G-SECRET-EXPORT": "Added tests requiring /api/providers/export-with-secrets to reject missing and false confirmation with SECRET_EXPORT_CONFIRMATION_REQUIRED, and to return containsSecrets:true only after acknowledgedCredentialExposure:true.",
+    "G-SEC-REDIRECT": "Confirmed-export test expects selected provider credential only at providers[0].credential={status:'present', apiKey}; it rejects top-level provider apiKey leakage, unselected provider secrets, official/local auth tokens, and env key names.",
+    "G-TEST": "Ran the required focused suite and verified RED failure is behavioral: missing route returns 405. No syntax/setup failure occurred.",
+    "G-SCOPE": "Modified only src/server/__tests__/providers.test.ts; no production, desktop, .env, credential, or user config files were changed.",
+    "MP-003": "Tests preserve both paths by leaving existing secret-free export coverage intact and adding separate credential-bearing endpoint coverage.",
+    "MP-004": "Existing default export redaction tests remain unchanged; new secret tests do not make default export credential-bearing.",
+    "MP-005": "Confirmed export must be high-friction and labeled: tests require explicit confirmation and credential-bearing labeling metadata containing credential-bearing.",
+    "MP-010": "Tests enforce server-owned export behavior by asserting serialized server response excludes unselected credentials and local auth state.",
+    "CA-001": "Export remains read-only in the covered path; selected provider bundle assertions are response-only.",
+    "CA-006": "Credential inclusion is asserted through server bundle construction, independent of provider list masking behavior.",
+    "CA-007": "RED tests directly cover confirmation, containsSecrets:true, credential-bearing labeling, and no remembered/local auth state transfer."
+  },
+  "concerns": [
+    "Project cognition command was attempted and blocked: status.json exists but project-cognition.db is missing. I proceeded from the allowed live references and feature artifacts.",
+    "Workspace already had concurrent modifications in src/server/__tests__/providers.test.ts plus production/type files before this task. I preserved them and only appended T012 tests inside the assigned file.",
+    "The labeling assertion is intentionally contract-level: it accepts credential-bearing labeling in app, metadata, labels, or security metadata, but requires the serialized metadata to contain credential-bearing."
+  ],
+  "recovery_hints": [
+    "Implement T013 by adding POST /api/providers/export-with-secrets route parsing ProviderSecretExportConfirmationRequestSchema or equivalent confirmation logic.",
+    "Return a stable SECRET_EXPORT_CONFIRMATION_REQUIRED error for missing or false confirmation.",
+    "Confirmed export should map selected providers to credential.status='present' with apiKey only inside the credential-bearing bundle provider credential object, set containsSecrets:true, add credential-bearing metadata, and keep active/default/OAuth/login state out of the bundle."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/task-packets/T012.json",
+    ".specify/features/008-specify-discussions-settings/plan-contract.json",
+    "src/server/__tests__/providers.test.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts",
+    "src/server/types/providerImportExport.ts",
+    "src/server/middleware/errorHandler.ts"
+  ],
+  "leader_validation": {
+    "command": "bun test src/server/__tests__/providers.test.ts",
+    "exit_code": 1,
+    "summary": "JP6 server RED confirmed by leader rerun; log: .specify/features/008-specify-discussions-settings/validation-logs/jp6-red-server.log"
+  },
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

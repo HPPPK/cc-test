@@ -1123,7 +1123,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(screen.getByText(/最终报告应该按 Markdown 展示。/)).toBeTruthy()
+    expect(screen.queryByText(/最终报告应该按 Markdown 展示。/)).toBeNull()
     expect(screen.queryByText(/raw structured JSON should not be shown/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'View result' }))
@@ -1186,7 +1186,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(screen.getByText(/git:v0\.2\.6\.\.v0\.2\.7:0/)).toBeTruthy()
+    expect(screen.queryByText(/git:v0\.2\.6\.\.v0\.2\.7:0/)).toBeNull()
     expect(screen.queryByText(/\{"results"/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'View result' }))

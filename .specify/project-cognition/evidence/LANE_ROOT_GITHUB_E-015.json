@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-015",
+  "source_path": ".github/pull_request_template.md",
+  "evidence_type": "config_read",
+  "summary": "PR template with Feature Quality Contract sections: changed surface, tests added/updated, coverage evidence, E2E/live-model evidence, known risk/rollback. Verification checklist: ran local checks, added same-area tests, ran bun run verify, changed-line coverage threshold met, attached quality report. Risk checklist: CLI core policy, missing tests policy, coverage baseline policy, quarantined tests, provider/runtime coverage.",
+  "classification": "important",
+  "criticality": "important"
+}

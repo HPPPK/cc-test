@@ -521,6 +521,8 @@ function AgentCallCard({
   const terminalTaskSummary = status === 'done' || status === 'stopped' ? taskSummary : ''
   const previewText = terminalTaskReport || fullOutputText || terminalTaskSummary
   const outputSummary = previewText ? getAgentOutputSummary(previewText) : ''
+  const showInlineOutputSummary = outputSummary && status !== 'done' && status !== 'stopped'
+  const showCollapsedRecentTools = status !== 'done' && status !== 'stopped'
   const description = typeof input.description === 'string' ? input.description : ''
 
   return (
@@ -536,12 +538,12 @@ function AgentCallCard({
               </span>
             )}
           </div>
-          {!expanded && outputSummary && (
+          {!expanded && showInlineOutputSummary && (
             <div className="mt-1 line-clamp-2 text-[11px] text-[var(--color-text-tertiary)]">
               {outputSummary}
             </div>
           )}
-          {!expanded && !outputSummary && recentToolCalls.length > 0 && (
+          {!expanded && !showInlineOutputSummary && showCollapsedRecentTools && recentToolCalls.length > 0 && (
             <div className="mt-1 space-y-1">
               {recentToolCalls.map((recentToolCall) => (
                 <div
@@ -553,7 +555,7 @@ function AgentCallCard({
               ))}
             </div>
           )}
-          {!expanded && !outputSummary && !recentToolCalls.length && errorText && (
+          {!expanded && !showInlineOutputSummary && !recentToolCalls.length && errorText && (
             <div className="mt-1 truncate text-[11px] text-[var(--color-error)]">
               {errorText}
             </div>

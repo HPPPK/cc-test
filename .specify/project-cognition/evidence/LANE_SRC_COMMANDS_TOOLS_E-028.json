@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-028",
+  "source_path": "src/tools/TodoWriteTool/TodoWriteTool.ts",
+  "evidence_type": "code_read",
+  "summary": "TodoWriteTool - manages session task checklist. Uses TodoListSchema. Outputs old/new todos with optional verification nudge. Feature-gated (TodoV2).",
+  "classification": "critical",
+  "criticality": "critical"
+}

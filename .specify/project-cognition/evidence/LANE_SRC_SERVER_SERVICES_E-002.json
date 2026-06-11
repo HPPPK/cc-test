@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-002",
+  "source_path": "src/server/router.ts",
+  "evidence_type": "code_read",
+  "summary": "Central API router mapping ~25 resource endpoints (sessions, workflows, settings, models, teams, providers, mcp, plugins, computer-use, diagnostics, doctor, h5-access, memory, desktop-ui, etc.) to handler modules via switch-case on URL segments.",
+  "classification": "critical",
+  "criticality": "critical"
+}

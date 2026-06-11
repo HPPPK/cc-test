@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-003",
+  "source_path": "src/commands/review.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash commands '/review' and '/ultrareview' - PR code review. /review is local prompt-based, /ultrareview is local-jsx that delegates to remote bughunter. Uses gh CLI for PR access.",
+  "classification": "critical",
+  "criticality": "critical"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-002",
+  "source_path": ".codex/skills/sp-specify/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-specify 工作流技能定义：需求发现和规范包生成，输出 spec.md、alignment.md、context.md 等规划就绪的规范包",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

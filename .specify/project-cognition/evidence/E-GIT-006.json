@@ -1,0 +1,8 @@
+{
+  "id": "E-GIT-006",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "External community contributions came via pull requests: PR #447 from 1506086927 (portable mode), PR #3 from NanmiCoder (teams lifecycle), PR #1 from 1506086927 (teams state persistence), PR #27 from studyzy (docs), PR #2 from dhb52 (docs). The project also synced with upstream (cc-haha repository) indicating it is a fork.",
+  "classification": "normal",
+  "criticality": "normal"
+}

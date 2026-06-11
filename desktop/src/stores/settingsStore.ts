@@ -60,6 +60,7 @@ type SettingsStore = {
   desktopTerminal: DesktopTerminalSettings
   webSearch: WebSearchSettings
   updateProxy: UpdateProxySettings
+  agentEnvironmentVariables: Record<string, string>
   h5Access: H5AccessSettings
   h5AccessError: string | null
   responseLanguage: string
@@ -83,6 +84,7 @@ type SettingsStore = {
   setDesktopTerminal: (settings: DesktopTerminalSettings) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
   setUpdateProxy: (settings: UpdateProxySettings) => Promise<void>
+  setAgentEnvironmentVariables: (env: Record<string, string>) => Promise<void>
   enableH5Access: () => Promise<string>
   disableH5Access: () => Promise<void>
   regenerateH5AccessToken: () => Promise<string>
@@ -127,6 +129,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   desktopTerminal: DEFAULT_DESKTOP_TERMINAL_SETTINGS,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
   updateProxy: DEFAULT_UPDATE_PROXY_SETTINGS,
+  agentEnvironmentVariables: {},
   h5Access: DEFAULT_H5_ACCESS_SETTINGS,
   h5AccessError: null,
   responseLanguage: '',
@@ -175,6 +178,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         desktopTerminal: normalizeDesktopTerminalSettings(userSettings.desktopTerminal),
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
         updateProxy: normalizeUpdateProxySettings(userSettings.updateProxy),
+        agentEnvironmentVariables: normalizeAgentEnvironmentVariables(userSettings.env),
         h5Access: h5AccessResult.settings,
         h5AccessError: h5AccessResult.error,
         responseLanguage: typeof userSettings.language === 'string' ? userSettings.language : '',
@@ -309,6 +313,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ updateProxy: next })
     } catch (error) {
       set({ updateProxy: prev })
+      throw error
+    }
+  },
+
+  setAgentEnvironmentVariables: async (env) => {
+    const prev = get().agentEnvironmentVariables
+    const next = normalizeAgentEnvironmentVariables(env)
+    set({ agentEnvironmentVariables: next })
+    try {
+      await settingsApi.updateUser({ env: next })
+    } catch (error) {
+      set({ agentEnvironmentVariables: prev })
       throw error
     }
   },
@@ -454,6 +470,19 @@ function normalizeDesktopTerminalSettings(
       ? settings.customShellPath
       : DEFAULT_DESKTOP_TERMINAL_SETTINGS.customShellPath,
   }
+}
+
+function normalizeAgentEnvironmentVariables(
+  env: Record<string, unknown> | undefined,
+): Record<string, string> {
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return {}
+  const normalized: Record<string, string> = {}
+  for (const [rawKey, value] of Object.entries(env)) {
+    const key = rawKey.trim()
+    if (!key || typeof value !== 'string') continue
+    normalized[key] = value
+  }
+  return normalized
 }
 
 function normalizeH5AccessSettings(settings: H5AccessSettings | undefined): H5AccessSettings {

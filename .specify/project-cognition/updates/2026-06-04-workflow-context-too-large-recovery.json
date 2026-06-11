@@ -1,0 +1,59 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/pages/ActiveSession.test.tsx",
+    ".planning/debug/workflow-inherit-context-too-large-summary-fallback.md",
+    ".planning/debug/workflow-linked-source-completed-session.md"
+  ],
+  "scope_paths": [
+    "desktop/src/components/chat",
+    "desktop/src/pages",
+    ".planning/debug"
+  ],
+  "behavior_surfaces": [
+    "desktop linked workflow context strategy dialog",
+    "desktop linked workflow start error handling",
+    "desktop workflow details test coverage for manual completion controls",
+    "sp-debug session state"
+  ],
+  "generated_surfaces": [
+    "artifacts/quality-runs/2026-06-04T06-08-58-611Z/report.md"
+  ],
+  "state_contracts": [
+    "WORKFLOW_CONTEXT_TOO_LARGE remains an explicit direct-inherit failure; desktop now preserves a dialog-local recovery prompt instead of silently changing the selected context strategy.",
+    "Manual workflow completion controls remain inside the workflow details panel; the ActiveSession integration test now expands details before clicking Complete Phase."
+  ],
+  "verification": [
+    "cd desktop; bun run test src/components/chat/ChatInput.test.tsx -t \"keeps summary recovery visible\" passed after RED failure",
+    "cd desktop; bun run test src/components/chat/ChatInput.test.tsx passed 26 tests",
+    "cd desktop; bun run test src/pages/ActiveSession.test.tsx -t \"confirms manual completion\" passed",
+    "bun run check:desktop passed desktop lint, Vitest, and production build",
+    "bun run verify failed with passed=4 failed=5 skipped=2 because quarantine review dates are expired and native cargo check hit Windows PermissionDenied"
+  ],
+  "known_unknowns": [
+    "Repository-level verify remains blocked by expired quarantine entries unrelated to this desktop change: server:cron-scheduler, server:providers-real, server:tasks, server:e2e:business-flow, server:e2e:full-flow.",
+    "Native check remains blocked by a Windows PermissionDenied from tauri-build during cargo check.",
+    "Server summary runtime availability is unchanged; this fix does not make summarize mode provider-backed when summaryContext is unavailable."
+  ],
+  "confidence_notes": [
+    "The changed desktop lane passed. The failed repository verify lanes do not point to the modified ChatInput files.",
+    "The fix intentionally avoids silent fallback from inherit to summarize to preserve explicit user context strategy semantics."
+  ],
+  "user_decisions": [
+    "User reported the oversized direct context inheritance error during existing-session workflow start."
+  ],
+  "boundary": {
+    "in_scope": [
+      "desktop recovery affordance for oversized direct context inheritance",
+      "component and desktop verification"
+    ],
+    "out_of_scope": [
+      "enabling server-side provider-backed summarize runtime",
+      "changing global provider context window limits",
+      "renewing quarantine governance dates without maintainer review"
+    ]
+  }
+}

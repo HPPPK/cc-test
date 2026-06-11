@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-011",
+  "source_path": "AGENTS.md",
+  "evidence_type": "config_read",
+  "summary": "Comprehensive repository guidelines covering: project structure (src/ for CLI+server, desktop/ for Tauri+React, docs/ for VitePress), build/test commands, startup safety rules (never kill processes broadly, identify PID first), desktop release workflow (GitHub Actions on tag push, release-notes/vX.Y.Z.md required), docs workflow (npm ci not Bun, Node 22), coding style (TypeScript, 2-space indent, ESM, no semicolons), testing (Vitest + Testing Library), persistent storage compatibility rules, feature quality contract (changed surface identification, same-area tests, coverage ratchet, E2E requirements), quality gate automation (bun run verify as unified entrypoint), commit/PR guidelines (conventional commits, no codex/ branches). Also contains Spec Kit Plus managed block.",
+  "classification": "critical",
+  "criticality": "critical"
+}

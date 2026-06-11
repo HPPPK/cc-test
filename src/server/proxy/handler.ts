@@ -19,6 +19,106 @@ import { openaiResponsesStreamToAnthropic } from './streaming/openaiResponsesStr
 import type { AnthropicRequest } from './transform/types.js'
 
 const providerService = new ProviderService()
+const UPSTREAM_REQUEST_TIMEOUT_MS = 300_000
+
+function createTimeoutController(timeoutMs: number): {
+  signal: AbortSignal
+  clear: () => void
+} {
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException('The operation timed out.', 'TimeoutError'))
+  }, timeoutMs)
+
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+  }
+}
+
+async function fetchUpstreamWithTimeout(
+  url: string,
+  init: Omit<RequestInit, 'signal'>,
+  timeoutMs: number,
+  isStream: boolean,
+): Promise<Response> {
+  if (!isStream) {
+    return fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  }
+
+  // Streaming timeout covers connection and headers only. Leaving it attached
+  // after fetch resolves aborts long generations mid-body.
+  const timeout = createTimeoutController(timeoutMs)
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: timeout.signal,
+    })
+  } finally {
+    timeout.clear()
+  }
+}
+
+export function withStreamIdleTimeout(
+  upstream: ReadableStream<Uint8Array>,
+  timeoutMs: number,
+): ReadableStream<Uint8Array> {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const clearIdleTimer = () => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+
+  return new ReadableStream({
+    async start(controller) {
+      reader = upstream.getReader()
+      let timedOut = false
+
+      const armIdleTimer = () => {
+        clearIdleTimer()
+        timer = setTimeout(() => {
+          timedOut = true
+          void reader?.cancel('stream idle timeout').catch(() => undefined)
+          controller.error(new Error(`Upstream stream idle timeout after ${timeoutMs}ms`))
+        }, timeoutMs)
+      }
+
+      try {
+        armIdleTimer()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done || timedOut) break
+
+          controller.enqueue(value)
+          armIdleTimer()
+        }
+        clearIdleTimer()
+        if (!timedOut) {
+          controller.close()
+        }
+      } catch (error) {
+        clearIdleTimer()
+        if (!timedOut) {
+          controller.error(error)
+        }
+      } finally {
+        reader?.releaseLock()
+        reader = null
+      }
+    },
+    async cancel(reason) {
+      clearIdleTimer()
+      await reader?.cancel(reason).catch(() => undefined)
+    },
+  })
+}
 
 export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
   const providerMatch = url.pathname.match(/^\/proxy\/providers\/([^/]+)\/v1\/messages$/)
@@ -109,18 +209,22 @@ async function handleOpenaiChat(
   apiKey: string,
   isStream: boolean,
 ): Promise<Response> {
-  const transformed = anthropicToOpenaiChat(body)
+  const deepSeekCompatible = shouldUseDeepSeekReasoningCompat(baseUrl)
+  const transformed = anthropicToOpenaiChat(body, {
+    roundTripReasoningContent: deepSeekCompatible,
+    passThinkingToggle: deepSeekCompatible,
+    imageContentMode: shouldUseTextOnlyOpenAIChatContent(baseUrl) ? 'text_only' : 'vision',
+  })
   const url = `${baseUrl}/v1/chat/completions`
 
-  const upstream = await fetch(url, {
+  const upstream = await fetchUpstreamWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(transformed),
-    signal: isStream ? AbortSignal.timeout(30_000) : AbortSignal.timeout(300_000),
-  })
+  }, UPSTREAM_REQUEST_TIMEOUT_MS, isStream)
 
   if (!upstream.ok) {
     const errText = await upstream.text().catch(() => '')
@@ -143,7 +247,8 @@ async function handleOpenaiChat(
         { status: 502 },
       )
     }
-    const anthropicStream = openaiChatStreamToAnthropic(upstream.body, body.model)
+    const upstreamBody = withStreamIdleTimeout(upstream.body, UPSTREAM_REQUEST_TIMEOUT_MS)
+    const anthropicStream = openaiChatStreamToAnthropic(upstreamBody, body.model)
     return new Response(anthropicStream, {
       status: 200,
       headers: {
@@ -160,6 +265,17 @@ async function handleOpenaiChat(
   return Response.json(anthropicResponse)
 }
 
+function shouldUseDeepSeekReasoningCompat(baseUrl: string): boolean {
+  return (
+    /(^|[./-])deepseek([./-]|$)/i.test(baseUrl) ||
+    /(^|[./-])opencode\.ai([:/]|$)/i.test(baseUrl)
+  )
+}
+
+function shouldUseTextOnlyOpenAIChatContent(baseUrl: string): boolean {
+  return shouldUseDeepSeekReasoningCompat(baseUrl)
+}
+
 async function handleOpenaiResponses(
   body: AnthropicRequest,
   baseUrl: string,
@@ -169,15 +285,14 @@ async function handleOpenaiResponses(
   const transformed = anthropicToOpenaiResponses(body)
   const url = `${baseUrl}/v1/responses`
 
-  const upstream = await fetch(url, {
+  const upstream = await fetchUpstreamWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(transformed),
-    signal: isStream ? AbortSignal.timeout(30_000) : AbortSignal.timeout(300_000),
-  })
+  }, UPSTREAM_REQUEST_TIMEOUT_MS, isStream)
 
   if (!upstream.ok) {
     const errText = await upstream.text().catch(() => '')
@@ -200,7 +315,8 @@ async function handleOpenaiResponses(
         { status: 502 },
       )
     }
-    const anthropicStream = openaiResponsesStreamToAnthropic(upstream.body, body.model)
+    const upstreamBody = withStreamIdleTimeout(upstream.body, UPSTREAM_REQUEST_TIMEOUT_MS)
+    const anthropicStream = openaiResponsesStreamToAnthropic(upstreamBody, body.model)
     return new Response(anthropicStream, {
       status: 200,
       headers: {

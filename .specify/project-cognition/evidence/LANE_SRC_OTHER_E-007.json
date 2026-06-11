@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-007",
+  "source_path": "src/buddy/CompanionSprite.tsx",
+  "evidence_type": "code_read",
+  "summary": "React component rendering companion sprite with ASCII art, speech bubbles, idle animations (500ms tick), pet burst hearts. Adapts to terminal width (narrow mode collapses to one-line face). CompanionFloatingBubble for fullscreen mode. Depends on companion.ts, sprites.ts, types.ts.",
+  "classification": "important",
+  "criticality": "minor"
+}

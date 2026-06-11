@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-017",
+  "source_path": "src/services/autoDream/autoDream.ts",
+  "evidence_type": "code_read",
+  "summary": "Background memory consolidation. Fires /dream prompt as forked subagent when time-gate AND session-gate pass. Uses consolidation lock, session scanning throttle. Integrates with DreamTask system.",
+  "classification": "critical",
+  "criticality": "high"
+}

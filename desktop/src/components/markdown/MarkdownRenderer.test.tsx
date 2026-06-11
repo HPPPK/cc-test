@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
@@ -16,7 +16,7 @@ vi.mock('../chat/MermaidRenderer', () => ({
   ),
 }))
 
-import { MarkdownRenderer } from './MarkdownRenderer'
+import { MarkdownRenderer, __markdownParseCacheInternals } from './MarkdownRenderer'
 
 function visibleMathText(container: HTMLElement): string {
   const clone = container.cloneNode(true) as HTMLElement
@@ -25,6 +25,10 @@ function visibleMathText(container: HTMLElement): string {
 }
 
 describe('MarkdownRenderer', () => {
+  beforeEach(() => {
+    __markdownParseCacheInternals.reset()
+  })
+
   it('applies document prose classes and custom width classes', () => {
     const { container } = render(
       <MarkdownRenderer
@@ -93,6 +97,37 @@ describe('MarkdownRenderer', () => {
       /graph TB\s+A-->B/,
     )
     expect(screen.queryByTestId('code-viewer')).not.toBeInTheDocument()
+  })
+
+  it('uses a lightweight mermaid placeholder while streaming', () => {
+    render(
+      <MarkdownRenderer
+        content={'```mermaid\ngraph TB\nA-->B\n```'}
+        streaming
+      />,
+    )
+
+    expect(screen.getByTestId('mermaid-streaming-placeholder')).toBeInTheDocument()
+    expect(screen.queryByTestId('mermaid-renderer')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('code-viewer')).not.toBeInTheDocument()
+  })
+
+  it('caches finalized and streaming markdown parses separately', () => {
+    const finalizedContent = '## Cached\n\nFinal answer.'
+    const streamingContent = 'Streaming answer'
+
+    const { rerender } = render(<MarkdownRenderer content={finalizedContent} />)
+
+    expect(__markdownParseCacheInternals.hasFinalized(finalizedContent)).toBe(true)
+    expect(__markdownParseCacheInternals.finalizedSize()).toBe(1)
+
+    rerender(<MarkdownRenderer content={finalizedContent} />)
+    expect(__markdownParseCacheInternals.finalizedSize()).toBe(1)
+
+    rerender(<MarkdownRenderer content={streamingContent} streaming />)
+    expect(__markdownParseCacheInternals.hasStreaming(streamingContent)).toBe(true)
+    expect(__markdownParseCacheInternals.streamingSize()).toBe(1)
+    expect(__markdownParseCacheInternals.hasFinalized(streamingContent)).toBe(false)
   })
 
   it('detects mermaid diagrams even when the fence has no language tag', () => {

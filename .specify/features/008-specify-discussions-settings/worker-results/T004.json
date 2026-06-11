@@ -1,0 +1,59 @@
+{
+  "status": "success",
+  "reported_status": "DONE",
+  "task_id": "T004",
+  "changed_files": [
+    "src/server/__tests__/providers.test.ts"
+  ],
+  "validation_output": {
+    "command": "bun test src/server/__tests__/providers.test.ts",
+    "exit_code": 1,
+    "summary": "55 passed, 3 failed, 58 total",
+    "expected_red_failures": [
+      "Providers API > POST /api/providers/export should return a secret-free provider bundle: expected 200, received 405",
+      "Providers API > POST /api/providers/export should not include active or default provider state: expected 200, received 405",
+      "Providers API > POST /api/providers/export should not write provider index or managed settings: expected 200, received 405"
+    ],
+    "red_assessment": "Valid RED. Failures point to missing /api/providers/export route/behavior, not syntax or setup errors."
+  },
+  "must_preserve_evidence": {
+    "MP-004": "Added default export test asserting containsSecrets:false, credential status redacted, no provider apiKey field, and serialized bundle excludes sk-test-key-123.",
+    "MP-010": "Assertions are server/API-level against handleProvidersApi, so redaction must be server-owned rather than frontend-only.",
+    "MP-007": "Added active/default state exclusion test after activating a provider; asserts activeId, activeProviderId, and defaultProviderId are absent.",
+    "CA-001": "Secret-free export test covers bundle kind/schemaVersion and raw key exclusion.",
+    "CA-003": "Active/default selection is asserted absent from the export bundle.",
+    "CA-006": "Test uses stored provider key sk-test-key-123 and requires API export serialization not to contain it."
+  },
+  "concerns": [
+    "Only API-level RED tests were added. Service-level export behavior is indirectly required by the route implementation, but no direct ProviderService export method test was added because current patterns primarily exercise provider API plus service CRUD."
+  ],
+  "recovery_hints": [
+    "Implement POST /api/providers/export in src/server/api/providers.ts before /api/providers/:id handling.",
+    "Add a ProviderService export method that reads current provider index, selects providerIds or all providers, emits schemaVersion 1 and kind cc-jiangxia-provider-bundle, sets containsSecrets:false, maps credentials to { status: 'redacted' }, and never writes providers.json or settings.json.",
+    "Keep activeId/default provider state out of the bundle entirely."
+  ],
+  "inspected_references": [
+    ".codex/skills/tdd-workflow/SKILL.md",
+    ".codex/skills/sp-implement/SKILL.md",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md",
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    "src/server/types/providerImportExport.ts",
+    "src/server/types/provider.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts",
+    "src/server/__tests__/providers.test.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

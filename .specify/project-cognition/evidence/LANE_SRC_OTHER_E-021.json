@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-021",
+  "source_path": "src/voice/voiceModeEnabled.ts",
+  "evidence_type": "code_read",
+  "summary": "Voice mode feature gating. isVoiceGrowthBookEnabled() checks tengu_amber_quartz_disabled kill-switch behind feature('VOICE_MODE'). hasVoiceAuth() checks Anthropic OAuth token. isVoiceModeEnabled() combines both checks.",
+  "classification": "important",
+  "criticality": "minor"
+}

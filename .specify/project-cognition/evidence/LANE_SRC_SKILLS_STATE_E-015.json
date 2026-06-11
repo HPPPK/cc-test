@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-015",
+  "source_path": "src/entrypoints/mcp.ts",
+  "evidence_type": "code_read",
+  "summary": "MCP server entrypoint. startMCPServer() creates a Model Context Protocol server using @modelcontextprotocol/sdk. Exposes tools via ListToolsRequestSchema/CallToolRequestSchema. Uses review command as MCP_COMMANDS. LRU cache for readFileState (100 files, 25MB limit).",
+  "classification": "critical",
+  "criticality": "high"
+}

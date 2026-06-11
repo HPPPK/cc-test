@@ -1,0 +1,8 @@
+{
+  "id": "E-GIT-004",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "Project evolution phases: (1) Init phase (2026-03-31): source code import from src.zip, README creation, bilingual docs; (2) Bootstrap phase (Apr 2026): Azure OpenAI support, /buddy command, third-party model integration, FAQ, issue templates; (3) Feature expansion (Apr-May 2026): desktop app (Tauri), goal system, agent teams, plugin system, Feishu IM integration, workflow session mode; (4) Spec Kit Plus phase (May-Jun 2026): .specify/ scaffolding, project cognition, skill system, workflow authoring tools.",
+  "classification": "important",
+  "criticality": "important"
+}

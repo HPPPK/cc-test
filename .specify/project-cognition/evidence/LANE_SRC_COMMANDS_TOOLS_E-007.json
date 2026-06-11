@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-007",
+  "source_path": "src/commands/version.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/version' - local command printing session version. Ant-only (USER_TYPE === 'ant'). Supports non-interactive mode.",
+  "classification": "normal",
+  "criticality": "normal"
+}

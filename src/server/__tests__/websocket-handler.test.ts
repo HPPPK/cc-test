@@ -8,6 +8,7 @@ import {
   closeSessionConnection,
   getActiveSessionIds,
   handleWebSocket,
+  sendToSession,
   type WebSocketData,
 } from '../ws/handler.js'
 import { conversationService } from '../services/conversationService.js'
@@ -336,6 +337,128 @@ describe('WebSocket handler session isolation', () => {
     expect(ws.close).toHaveBeenCalledWith(1000, 'session deleted')
     expect(clearCallbacks).toHaveBeenCalledWith(sessionId)
     expect(cancelComputerUse).toHaveBeenCalledWith(sessionId)
+  })
+
+  it('broadcasts session messages to all connected clients for the same session', () => {
+    const sessionId = `broadcast-${crypto.randomUUID()}`
+    const first = makeClientSocket(sessionId)
+    const second = makeClientSocket(sessionId)
+
+    handleWebSocket.open(first)
+    handleWebSocket.open(second)
+
+    expect(sendToSession(sessionId, {
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    })).toBe(true)
+
+    expect(parseSentMessages(first)).toContainEqual(expect.objectContaining({
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    }))
+    expect(parseSentMessages(second)).toContainEqual(expect.objectContaining({
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    }))
+  })
+
+  it('translates streaming SDK messages once before broadcasting to multiple clients', () => {
+    const sessionId = `stream-broadcast-${crypto.randomUUID()}`
+    const first = makeClientSocket(sessionId)
+    const second = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+
+    try {
+      handleWebSocket.open(first)
+      handleWebSocket.open(second)
+
+      expect(session.outputCallbacks).toHaveLength(1)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_start',
+          index: 0,
+          content_block: {
+            type: 'tool_use',
+            id: 'tool-1',
+            name: 'Read',
+          },
+        },
+      })
+      callback({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: '{"path":"README.md"}',
+          },
+        },
+      })
+      callback({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_stop',
+          index: 0,
+        },
+      })
+
+      const expectedToolComplete = expect.objectContaining({
+        type: 'tool_use_complete',
+        toolName: 'Read',
+        toolUseId: 'tool-1',
+        input: { path: 'README.md' },
+      })
+      expect(parseSentMessages(first)).toContainEqual(expectedToolComplete)
+      expect(parseSentMessages(second)).toContainEqual(expectedToolComplete)
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('replays pending permission requests when a client reconnects', () => {
+    const sessionId = `permission-replay-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
+      requestId: 'perm-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-1',
+      input: { question: 'Proceed?' },
+      description: 'Workflow confirmation',
+    }])
+
+    handleWebSocket.open(ws)
+
+    expect(parseSentMessages(ws)).toContainEqual({
+      type: 'permission_request',
+      requestId: 'perm-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-1',
+      input: { question: 'Proceed?' },
+      description: 'Workflow confirmation',
+    })
   })
 })
 
@@ -827,6 +950,43 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(autoContinuePrompts).toHaveLength(1)
     expect(autoContinuePrompts[0]?.[1]).toContain('Workflow mode')
     expect(autoContinuePrompts[0]?.[1]).toContain('Active phase: technical-design')
+  })
+
+  it('restarts an active CLI when the same runtime selection is force-reapplied', async () => {
+    const sessionId = `runtime-force-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'mimo-v2.5-pro[1m]',
+    }))
+    await waitForCondition(() => startSession.mock.calls.length === 1)
+
+    startSession.mockClear()
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'mimo-v2.5-pro[1m]',
+      force: true,
+    }))
+    await waitForCondition(() => startSession.mock.calls.length === 1)
+
+    expect(startSession).toHaveBeenCalledWith(
+      sessionId,
+      process.cwd(),
+      expect.stringContaining(`/sdk/${sessionId}`),
+      expect.objectContaining({
+        providerId: null,
+        model: 'mimo-v2.5-pro[1m]',
+      }),
+    )
   })
 
   it.each(['reject', 'retry'] as const)(

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "status": "ready-for-implement",
+  "route": "sp-tasks",
+  "feature_dir": ".specify/features/008-specify-discussions-settings",
+  "tasks_md": ".specify/features/008-specify-discussions-settings/tasks.md",
+  "task_index": ".specify/features/008-specify-discussions-settings/task-index.json",
+  "recommended_next_command": "/sp.implement",
+  "execution_model": "adaptive",
+  "execution_mode": "standard",
+  "workflow_status": "ready",
+  "dispatch_shape": "leader-inline",
+  "execution_surface": "leader-inline",
+  "capability_degraded": true,
+  "delegated_task_generation_lanes": [],
+  "feature_delivery_shape": "serial foundation with intra-story server/desktop parallel batches and explicit high-risk join points",
+  "must_preserve": ["MP-001", "MP-002", "MP-003", "MP-004", "MP-005", "MP-006", "MP-007", "MP-008", "MP-009", "MP-010"],
+  "consequence_obligations": ["CA-001", "CA-002", "CA-003", "CA-004", "CA-005", "CA-006", "CA-007"],
+  "guardrails": ["G-SEC-REDIRECT", "G-NO-ACTIVE", "G-PREVIEW-COMMIT", "G-CONFLICT", "G-SECRET-EXPORT", "G-SCOPE", "G-TEST"],
+  "validation_gates": ["bun run check:server", "bun run check:desktop", "bun run check:coverage", "bun run verify"],
+  "parallel_batches": [
+    {"id": "B1", "tasks": ["T002", "T003"], "join_point": "JP1"},
+    {"id": "B2", "tasks": ["T004", "T006"], "join_point": "JP2"},
+    {"id": "B3", "tasks": ["T005", "T007"], "join_point": "JP3"},
+    {"id": "B4", "tasks": ["T008", "T010"], "join_point": "JP4"},
+    {"id": "B5", "tasks": ["T009", "T011"], "join_point": "JP5"},
+    {"id": "B6", "tasks": ["T012", "T014"], "join_point": "JP6"},
+    {"id": "B7", "tasks": ["T013", "T015"], "join_point": "JP7"}
+  ],
+  "task_packets_dir": ".specify/features/008-specify-discussions-settings/task-packets",
+  "task_packets": [
+    ".specify/features/008-specify-discussions-settings/task-packets/T001.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T002.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T003.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T004.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T005.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T006.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T007.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T008.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T009.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T010.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T011.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T012.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T013.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T014.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T015.json",
+    ".specify/features/008-specify-discussions-settings/task-packets/T016.json"
+  ],
+  "project_cognition": {
+    "status": "blocked",
+    "reason": "project-cognition.db missing",
+    "routing": "artifact-only task generation continued with live evidence"
+  },
+  "self_audit": {
+    "buildable_fr_coverage": "passed",
+    "locked_decision_preservation": "passed",
+    "guardrail_mapping": "passed",
+    "packet_readiness": "passed",
+    "reference_fidelity_mapping": "not_applicable",
+    "unmapped_tasks": "passed",
+    "write_set_conflicts": "passed"
+  }
+}

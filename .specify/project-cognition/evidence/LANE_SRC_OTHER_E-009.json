@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-009",
+  "source_path": "src/buddy/types.ts",
+  "evidence_type": "code_read",
+  "summary": "Type definitions for companion system: 18 species (duck, goose, blob, cat, dragon, octopus, owl, penguin, turtle, snail, ghost, axolotl, capybara, cactus, robot, rabbit, mushroom, chonk), 6 eyes, 8 hats, 5 rarities with weights, 5 stats (DEBUGGING, PATIENCE, CHAOS, WISDOM, SNARK). CompanionBones, CompanionSoul, Companion, StoredCompanion types.",
+  "classification": "important",
+  "criticality": "minor"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-002",
+  "source_path": "src/skills/bundled/index.ts",
+  "evidence_type": "code_read",
+  "summary": "initBundledSkills() registers all bundled skills at startup via require() calls. Skills: updateConfig, keybindings, verify, debug, loremIpsum, skillify, remember, simplify, batch, stuck. Conditional: dream (KAIROS), hunter (REVIEW_ARTIFACT), loop (AGENT_TRIGGERS), scheduleRemoteAgents (AGENT_TRIGGERS_REMOTE), claudeApi (BUILDING_CLAUDE_APPS), claudeInChrome (auto-enable check), runSkillGenerator (RUN_SKILL_GENERATOR).",
+  "classification": "critical",
+  "criticality": "critical"
+}

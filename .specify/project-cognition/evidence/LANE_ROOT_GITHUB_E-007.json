@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-007",
+  "source_path": ".github/workflows/pr-triage.yml",
+  "evidence_type": "config_read",
+  "summary": "PR triage workflow: auto-labels PRs by changed-area (desktop, server, adapters, docs, release, cli-core). Detects missing-test signals (desktop/server/adapter/agent-runtime product files without matching test files). Detects CLI core changes requiring maintainer approval. Detects coverage baseline changes requiring maintainer approval. Posts structured triage comment with area labels, policy blocks, expected checks, test signals, risk notes.",
+  "classification": "important",
+  "criticality": "important"
+}

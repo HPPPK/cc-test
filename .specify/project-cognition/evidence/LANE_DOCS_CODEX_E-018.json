@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-018",
+  "source_path": ".codex/skills/sp-auto/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-auto 工作流技能定义：状态驱动的入口点，自动恢复推荐的下一个 Spec Kit Plus 工作流步骤",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-023",
+  "source_path": ".cognitionignore",
+  "evidence_type": "config_read",
+  "summary": "Project cognition exclusion list: build output (node_modules, dist, build, .out, tsbuildinfo), Rust target, artifacts, generated lock files, IDE metadata, Python bytecode, runtime state (.opencode, .planning), git internals, env files, and .specify/ directory.",
+  "classification": "minor",
+  "criticality": "minor"
+}

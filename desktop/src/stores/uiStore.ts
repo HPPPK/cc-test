@@ -37,6 +37,7 @@ export type SettingsTab =
   | 'workflows'
   | 'adapters'
   | 'terminal'
+  | 'environment'
   | 'mcp'
   | 'agents'
   | 'skills'

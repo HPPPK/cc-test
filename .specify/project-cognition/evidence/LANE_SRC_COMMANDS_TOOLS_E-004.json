@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-004",
+  "source_path": "src/commands/headless.ts",
+  "evidence_type": "code_read",
+  "summary": "Headless mode support - filters commands for non-interactive execution. SupportsHeadlessSlashCommand checks command type compatibility.",
+  "classification": "critical",
+  "criticality": "critical"
+}

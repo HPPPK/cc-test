@@ -1,0 +1,76 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "task_id": "T013",
+  "changed_files": [
+    {
+      "path": "src/server/services/providerService.ts",
+      "summary": "Added confirmed credential-bearing export bundle construction with API keys only under credential: { status: 'present', apiKey }, containsSecrets: true, and credential-bearing app metadata."
+    },
+    {
+      "path": "src/server/api/providers.ts",
+      "summary": "Added POST /api/providers/export-with-secrets route with per-request confirmation enforcement and stable SECRET_EXPORT_CONFIRMATION_REQUIRED rejection."
+    }
+  ],
+  "validation_output": {
+    "bun test src/server/__tests__/providers.test.ts": {
+      "exit_code": 0,
+      "summary": "67 pass, 0 fail, 226 expect() calls. New export-with-secrets confirmation, labeling, selected credential, and local auth exclusion tests passed."
+    },
+    "bun run check:server": {
+      "exit_code": 0,
+      "summary": "1138 pass, 7 skip, 0 fail, 4180 expect() calls across 101 files. Initial 120s attempt timed out with no result; rerun with 300s timeout completed successfully."
+    }
+  },
+  "must_preserve_evidence": {
+    "G-SECRET-EXPORT": "Missing or false confirmation returns 400 with SECRET_EXPORT_CONFIRMATION_REQUIRED; confirmed route sets containsSecrets true and does not remember confirmation.",
+    "G-SEC-REDIRECT": "Default /api/providers/export still uses the existing secret-free mapper; secret export puts selected provider API keys only inside provider.credential.",
+    "G-SCOPE": "Edits were limited to src/server/services/providerService.ts and src/server/api/providers.ts; no .env, desktop, user config, credential, or generated output artifact was edited.",
+    "G-TEST": "Focused provider tests and server check both passed.",
+    "MP-003": "Both secret-free and credential-bearing export paths exist as separate endpoints.",
+    "MP-004": "Default export path remains containsSecrets false and credential redacted/missing.",
+    "MP-005": "Secret export is high-friction via explicit acknowledgedCredentialExposure true and credential-bearing metadata.",
+    "MP-010": "Server-owned export mapping controls redaction and secret inclusion; no frontend masking dependency was introduced.",
+    "CA-001": "Exports read the provider index and return bundles without writing provider index or managed settings.",
+    "CA-006": "Raw API keys are excluded from default export and only included by the confirmed secret route.",
+    "CA-007": "Confirmed secret export is per request, labeled credential-bearing, and excludes official OAuth/login/local auth state."
+  },
+  "concerns": [
+    "Project cognition query was blocked before implementation: status.json exists but project-cognition.db is missing. Proceeded with live repo evidence per workflow guidance.",
+    "Repository already had concurrent/uncommitted changes in tests/spec artifacts and existing provider import/export work; I did not revert or overwrite them.",
+    "Native subagent dispatch tools were not exposed in this runtime, so execution proceeded inline within the explicit T013 packet scope."
+  ],
+  "recovery_hints": [
+    "If future verification needs project cognition closeout, repair or rebuild .specify/project-cognition/project-cognition.db first.",
+    "For any future schema tightening, keep credential-bearing metadata inside fields accepted by ProviderBundleSchema or update the schema and tests together."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    "src/server/types/providerImportExport.ts",
+    "src/server/__tests__/providers.test.ts",
+    "src/server/services/providerService.ts",
+    "src/server/api/providers.ts",
+    "src/server/middleware/errorHandler.ts"
+  ],
+  "leader_validation": {
+    "commands": [
+      {
+        "command": "bun run check:server",
+        "exit_code": 0,
+        "summary": "JP7 server gate passed; log: .specify/features/008-specify-discussions-settings/validation-logs/jp7-check-server.log"
+      }
+    ]
+  },
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

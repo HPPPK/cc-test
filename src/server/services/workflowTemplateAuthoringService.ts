@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
 import {
   WorkflowTemplateRegistryService,
@@ -6,6 +9,7 @@ import {
   type WorkflowTemplateRegistryTemplate,
   collectTemplateSkillCatalog,
 } from './workflowTemplateRegistryService.js'
+import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { workflowTemplateAuthoringGuide, type WorkflowTemplateAuthoringGuide } from './workflowTemplateAuthoringGuide.js'
 import {
   isNonEmptyString,
@@ -17,10 +21,12 @@ import type { WorkflowTemplateSource } from './workflowTypes.js'
 import type {
   WorkflowPhaseSkillSource,
 } from './workflowTypes.js'
+import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 
 export type WorkflowTemplateAuthoringOperationName =
   | 'guide'
   | 'skill_catalog'
+  | 'skill_create'
   | 'list'
   | 'inspect'
   | 'validate'
@@ -46,6 +52,13 @@ export type WorkflowTemplateAuthoringSkillCatalogInput = {
   limit?: number | null
 }
 
+export type WorkflowTemplateAuthoringSkillCreateInput = {
+  operation: 'skill_create'
+  name: string
+  description: string
+  body?: string
+}
+
 export type WorkflowTemplateAuthoringListInput = {
   operation: 'list'
   source?: 'all' | WorkflowTemplateSource
@@ -63,7 +76,7 @@ export type WorkflowTemplateAuthoringValidateInput = {
 }
 
 export type WorkflowTemplateAuthoringMutatingInput = {
-  operation: 'create' | 'update' | 'duplicate' | 'delete'
+  operation: 'skill_create' | 'create' | 'update' | 'duplicate' | 'delete'
   [key: string]: unknown
 }
 
@@ -97,6 +110,7 @@ export type WorkflowTemplateAuthoringDeleteInput = {
 export type WorkflowTemplateAuthoringOperationInput =
   | WorkflowTemplateAuthoringGuideInput
   | WorkflowTemplateAuthoringSkillCatalogInput
+  | WorkflowTemplateAuthoringSkillCreateInput
   | WorkflowTemplateAuthoringListInput
   | WorkflowTemplateAuthoringInspectInput
   | WorkflowTemplateAuthoringValidateInput
@@ -133,6 +147,48 @@ export type WorkflowTemplateSummary = {
   editable: boolean
   copyable: boolean
   basisHash?: string
+}
+
+export type WorkflowTemplateAuthoringCreatedSkill = {
+  name: string
+  source: 'user'
+  skillRoot: string
+  skillFile: string
+  recommendedReference: {
+    name: string
+    mode: 'recommended'
+    source: 'user'
+  }
+}
+
+export type WorkflowTemplateAuthoringSkillRepairGuidance = {
+  templateId: string
+  phaseId: string
+  skillName: string
+  reference: {
+    name: string
+    mode: 'recommended'
+    source?: WorkflowPhaseSkillSource
+    pluginName?: string
+    namespace?: string
+    version?: string
+    contentHash?: string
+    referenceId?: string
+  }
+  diagnostic: {
+    code: string
+    message: string
+  }
+  actions: Array<
+    | {
+        operation: 'skill_catalog'
+        input: WorkflowTemplateAuthoringSkillCatalogInput
+      }
+    | {
+        operation: 'skill_create'
+        input: Omit<WorkflowTemplateAuthoringSkillCreateInput, 'body'>
+      }
+  >
 }
 
 export type WorkflowTemplateBasis = {
@@ -184,6 +240,8 @@ export type WorkflowTemplateAuthoringResult = {
   }
   templates?: WorkflowTemplateSummary[]
   skillCatalog?: WorkflowTemplateAuthoringSkillCatalogEntry[]
+  createdSkill?: WorkflowTemplateAuthoringCreatedSkill
+  skillRepairGuidance?: WorkflowTemplateAuthoringSkillRepairGuidance[]
   invalidTemplates?: WorkflowTemplateAuthoringIssue[]
   guide?: WorkflowTemplateAuthoringGuide
   template?: WorkflowTemplateRegistryTemplate
@@ -282,6 +340,14 @@ function validationContext(registry: WorkflowTemplateRegistryListResult) {
   }
 }
 
+function getConfigDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
+}
+
+function getUserSkillsDir(): string {
+  return path.join(getConfigDir(), 'skills')
+}
+
 function matchesSource(
   template: WorkflowTemplateRegistryTemplate,
   source: WorkflowTemplateAuthoringListInput['source'],
@@ -330,6 +396,195 @@ function authoringIssue(
     severity: 'error',
     ...(templateId ? { templateId } : {}),
   }
+}
+
+function skillAuthoringIssue(
+  pathValue: string,
+  code: string,
+  message: string,
+): WorkflowTemplateAuthoringIssue {
+  return authoringIssue(pathValue, code, message)
+}
+
+function normalizeSkillName(value: unknown): string | null {
+  if (!isNonEmptyString(value)) return null
+  const trimmed = value.trim()
+  if (trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..')) return null
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(trimmed)) return null
+  return trimmed
+}
+
+function skillDisplayNameFromSlug(name: string): string {
+  return name
+    .split(/[-_:]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
+function escapeYamlScalar(value: string): string {
+  return JSON.stringify(value)
+}
+
+function skillMarkdown(name: string, description: string, body: string | undefined): string {
+  const contentBody = isNonEmptyString(body)
+    ? body.trim()
+    : [
+        `Use this skill when the task matches ${skillDisplayNameFromSlug(name)}.`,
+        '',
+        '## Instructions',
+        '',
+        '- Clarify the expected outcome before applying this skill.',
+        '- Keep work scoped to the user request and repository conventions.',
+        '- Report verification evidence before claiming completion.',
+      ].join('\n')
+
+  return [
+    '---',
+    `name: ${escapeYamlScalar(skillDisplayNameFromSlug(name))}`,
+    `description: ${escapeYamlScalar(description.trim())}`,
+    '---',
+    '',
+    contentBody,
+    '',
+  ].join('\n')
+}
+
+function validateSkillMarkdownShape(
+  skillFile: string,
+  content: string,
+): WorkflowTemplateAuthoringIssue[] {
+  const parsed = parseFrontmatter(content, skillFile)
+  const issues: WorkflowTemplateAuthoringIssue[] = []
+
+  if (!isNonEmptyString(parsed.frontmatter.description)) {
+    issues.push(skillAuthoringIssue(
+      '$.description',
+      'WORKFLOW_PHASE_SKILL_CREATE_INVALID_SKILL_MD',
+      'Generated SKILL.md must include non-empty description frontmatter.',
+    ))
+  }
+
+  if (!isNonEmptyString(parsed.content)) {
+    issues.push(skillAuthoringIssue(
+      '$.body',
+      'WORKFLOW_PHASE_SKILL_CREATE_INVALID_SKILL_MD',
+      'Generated SKILL.md must include non-empty markdown instructions.',
+    ))
+  }
+
+  return issues
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath)
+    return true
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return false
+    }
+    throw error
+  }
+}
+
+function availabilityIssueForDiagnostic(
+  template: WorkflowTemplateRegistryTemplate,
+  phaseIndex: number,
+  skillIndex: number,
+  code: string,
+  message: string,
+): WorkflowTemplateAuthoringIssue {
+  return authoringIssue(
+    `$.template.phases[${phaseIndex}].skills[${skillIndex}]`,
+    code,
+    message,
+    template.id,
+  )
+}
+
+async function validateTemplatePhaseSkillAvailability(
+  template: WorkflowTemplateRegistryTemplate,
+): Promise<{
+  issues: WorkflowTemplateAuthoringIssue[]
+  repairGuidance: WorkflowTemplateAuthoringSkillRepairGuidance[]
+}> {
+  const issues: WorkflowTemplateAuthoringIssue[] = []
+  const repairGuidance: WorkflowTemplateAuthoringSkillRepairGuidance[] = []
+  const catalog = await collectTemplateSkillCatalog()
+
+  for (const [phaseIndex, phase] of template.phases.entries()) {
+    if (phase.skills.length === 0) continue
+
+    const result = await resolveWorkflowPhaseSkills({
+      templateId: template.id,
+      phaseId: phase.id,
+      references: phase.skills,
+      catalog,
+    })
+
+    result.resolutions.forEach((resolution, skillIndex) => {
+      const diagnostic = resolution.diagnostic
+      if (!diagnostic || diagnostic.severity === 'info') return
+      const repairHint = resolution.status === 'missing'
+        ? ' Run workflow_template_authoring skill_catalog to choose an installed skill, or use skill_create to create a user skill before referencing it.'
+        : ''
+      issues.push(availabilityIssueForDiagnostic(
+        template,
+        phaseIndex,
+        skillIndex,
+        diagnostic.code,
+        `${diagnostic.message}${repairHint}`,
+      ))
+
+      if (resolution.status === 'missing') {
+        repairGuidance.push({
+          templateId: template.id,
+          phaseId: phase.id,
+          skillName: resolution.reference.name,
+          reference: {
+            name: resolution.reference.name,
+            mode: 'recommended',
+            ...(resolution.reference.source ? { source: resolution.reference.source } : {}),
+            ...(resolution.reference.pluginName ? { pluginName: resolution.reference.pluginName } : {}),
+            ...(resolution.reference.namespace ? { namespace: resolution.reference.namespace } : {}),
+            ...(resolution.reference.version ? { version: resolution.reference.version } : {}),
+            ...(resolution.reference.contentHash ? { contentHash: resolution.reference.contentHash } : {}),
+            ...(resolution.reference.referenceId ? { referenceId: resolution.reference.referenceId } : {}),
+          },
+          diagnostic: {
+            code: diagnostic.code,
+            message: diagnostic.message,
+          },
+          actions: [
+            {
+              operation: 'skill_catalog',
+              input: {
+                operation: 'skill_catalog',
+                query: resolution.reference.name,
+                source: 'all',
+              },
+            },
+            {
+              operation: 'skill_create',
+              input: {
+                operation: 'skill_create',
+                name: resolution.reference.name,
+                description: `Use when workflow phases need ${skillDisplayNameFromSlug(resolution.reference.name)} guidance.`,
+              },
+            },
+          ],
+        })
+      }
+    })
+  }
+
+  return { issues, repairGuidance }
 }
 
 function recordValue(value: unknown, key: string): unknown {
@@ -508,6 +763,156 @@ async function executeSkillCatalog(
   }
 }
 
+async function executeSkillCreate(
+  input: WorkflowTemplateAuthoringSkillCreateInput,
+): Promise<WorkflowTemplateAuthoringResult> {
+  const name = normalizeSkillName(input.name)
+  if (!name) {
+    return {
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          skillAuthoringIssue(
+            '$.name',
+            'WORKFLOW_PHASE_SKILL_CREATE_INVALID_NAME',
+            'Skill name must be a stable lowercase slug without path separators.',
+          ),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+      message: 'Workflow phase skill create request is invalid.',
+    }
+  }
+
+  if (!isNonEmptyString(input.description)) {
+    return {
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          skillAuthoringIssue(
+            '$.description',
+            'WORKFLOW_PHASE_SKILL_CREATE_DESCRIPTION_REQUIRED',
+            'Skill creation requires a non-empty description so agents can discover when to use it.',
+          ),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+      message: 'Workflow phase skill create request is invalid.',
+    }
+  }
+
+  const skillRoot = path.join(getUserSkillsDir(), name)
+  const skillFile = path.join(skillRoot, 'SKILL.md')
+  if (await pathExists(skillFile)) {
+    return {
+      operation: 'skill_create',
+      status: 'rejected',
+      persisted: false,
+      validation: {
+        valid: false,
+        issues: [
+          skillAuthoringIssue(
+            '$.name',
+            'WORKFLOW_PHASE_SKILL_ALREADY_EXISTS',
+            'A user skill with this name already exists; use skill_catalog and reference the existing skill.',
+          ),
+        ],
+      },
+      nextAction: 'repair-and-validate',
+      message: 'Workflow phase skill already exists.',
+    }
+  }
+
+  await fs.mkdir(skillRoot, { recursive: true })
+  await fs.writeFile(
+    skillFile,
+    skillMarkdown(name, input.description, input.body),
+    {
+      encoding: 'utf-8',
+      flag: 'wx',
+    },
+  )
+  const writtenContent = await fs.readFile(skillFile, 'utf-8')
+  const skillMarkdownIssues = validateSkillMarkdownShape(skillFile, writtenContent)
+  if (skillMarkdownIssues.length > 0) {
+    return {
+      operation: 'skill_create',
+      status: 'failed',
+      persisted: true,
+      validation: {
+        valid: false,
+        issues: skillMarkdownIssues,
+      },
+      nextAction: 'repair-and-validate',
+      message: 'Workflow phase skill was written but generated SKILL.md is invalid.',
+    }
+  }
+
+  const createdSkill: WorkflowTemplateAuthoringCreatedSkill = {
+    name,
+    source: 'user',
+    skillRoot,
+    skillFile,
+    recommendedReference: {
+      name,
+      mode: 'recommended',
+      source: 'user',
+    },
+  }
+  const catalog = await collectTemplateSkillCatalog()
+  const catalogEntry = catalog.find((entry) =>
+    entry.name === name &&
+    entry.source === 'user' &&
+    path.normalize(entry.sourcePath ?? '') === path.normalize(skillFile)
+  )
+  if (!catalogEntry) {
+    return {
+      operation: 'skill_create',
+      status: 'failed',
+      persisted: true,
+      validation: {
+        valid: false,
+        issues: [
+          skillAuthoringIssue(
+            '$.name',
+            'WORKFLOW_PHASE_SKILL_CREATE_NOT_CATALOGED',
+            'Created skill was not found in the installed user skill catalog.',
+          ),
+        ],
+      },
+      createdSkill,
+      nextAction: 'repair-and-validate',
+      message: 'Workflow phase skill was written but is not visible in the installed skill catalog.',
+    }
+  }
+
+  return {
+    operation: 'skill_create',
+    status: 'succeeded',
+    persisted: true,
+    validation: {
+      valid: true,
+      issues: [],
+    },
+    createdSkill,
+    skillCatalog: [
+      {
+        name,
+        source: 'user',
+        recommendedReference: createdSkill.recommendedReference,
+      },
+    ],
+    nextAction: 'none',
+    message: 'Workflow phase skill created in the user skills directory.',
+  }
+}
+
 async function executeList(
   input: WorkflowTemplateAuthoringListInput,
   registryService: WorkflowTemplateRegistryService,
@@ -593,20 +998,27 @@ async function executeValidate(
     allowExistingId: input.allowExistingId ?? undefined,
   })
   const normalized = validation.template ?? undefined
+  const skillAvailability = normalized
+    ? await validateTemplatePhaseSkillAvailability(normalized)
+    : { issues: [], repairGuidance: [] }
+  const issues = [...validation.issues, ...skillAvailability.issues]
 
   return {
     operation: 'validate',
-    status: validation.issues.length === 0 ? 'validated' : 'rejected',
+    status: issues.length === 0 ? 'validated' : 'rejected',
     persisted: false,
     ...(normalized ? { affectedTemplate: affectedTemplate(normalized, { includeBasisHash: false }) } : {}),
     validation: {
-      valid: validation.issues.length === 0,
-      issues: validation.issues,
+      valid: issues.length === 0,
+      issues,
     },
+    ...(skillAvailability.repairGuidance.length > 0
+      ? { skillRepairGuidance: skillAvailability.repairGuidance }
+      : {}),
     invalidTemplates: registry.invalidTemplates,
-    ...(normalized ? { template: cloneJson(normalized) } : {}),
-    nextAction: validation.issues.length === 0 ? 'none' : 'repair-and-validate',
-    message: validation.issues.length === 0
+    ...(normalized && issues.length === 0 ? { template: cloneJson(normalized) } : {}),
+    nextAction: issues.length === 0 ? 'none' : 'repair-and-validate',
+    message: issues.length === 0
       ? 'Workflow template candidate is valid.'
       : 'Workflow template candidate is invalid.',
   }
@@ -652,6 +1064,26 @@ async function executeCreate(
       message: conflictIssue
         ? 'Workflow template id already exists.'
         : 'Workflow template candidate is invalid.',
+    }
+  }
+
+  const skillAvailability = await validateTemplatePhaseSkillAvailability(validation.template)
+  if (skillAvailability.issues.length > 0) {
+    return {
+      operation: 'create',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: affectedTemplate(validation.template, { includeBasisHash: false }),
+      validation: {
+        valid: false,
+        issues: skillAvailability.issues,
+      },
+      ...(skillAvailability.repairGuidance.length > 0
+        ? { skillRepairGuidance: skillAvailability.repairGuidance }
+        : {}),
+      invalidTemplates: registry.invalidTemplates,
+      nextAction: 'repair-and-validate',
+      message: 'Workflow template candidate references unavailable recommended phase skills.',
     }
   }
 
@@ -810,6 +1242,27 @@ async function executeUpdate(
       invalidTemplates: registry.invalidTemplates,
       nextAction: 'repair-and-validate',
       message: 'Workflow template candidate is invalid.',
+    }
+  }
+
+  const skillAvailability = await validateTemplatePhaseSkillAvailability(validation.template)
+  if (skillAvailability.issues.length > 0) {
+    return {
+      operation: 'update',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: affectedTemplate(selected),
+      beforeSummary: summarizeTemplate(selected),
+      validation: {
+        valid: false,
+        issues: skillAvailability.issues,
+      },
+      ...(skillAvailability.repairGuidance.length > 0
+        ? { skillRepairGuidance: skillAvailability.repairGuidance }
+        : {}),
+      invalidTemplates: registry.invalidTemplates,
+      nextAction: 'repair-and-validate',
+      message: 'Workflow template candidate references unavailable recommended phase skills.',
     }
   }
 
@@ -1015,6 +1468,30 @@ async function executeDuplicate(
       message: conflictIssue
         ? 'Workflow template id already exists.'
         : 'Workflow template candidate is invalid.',
+    }
+  }
+
+  const skillAvailability = await validateTemplatePhaseSkillAvailability(validation.template)
+  if (skillAvailability.issues.length > 0) {
+    return {
+      operation: 'duplicate',
+      status: 'rejected',
+      persisted: false,
+      affectedTemplate: {
+        source: 'user',
+        id: targetId,
+      },
+      beforeSummary: summarizeTemplate(selected),
+      validation: {
+        valid: false,
+        issues: skillAvailability.issues,
+      },
+      ...(skillAvailability.repairGuidance.length > 0
+        ? { skillRepairGuidance: skillAvailability.repairGuidance }
+        : {}),
+      invalidTemplates: registry.invalidTemplates,
+      nextAction: 'repair-and-validate',
+      message: 'Workflow template candidate references unavailable recommended phase skills.',
     }
   }
 
@@ -1244,6 +1721,8 @@ export async function executeWorkflowTemplateAuthoringOperation(
         return await executeGuide(input)
       case 'skill_catalog':
         return await executeSkillCatalog(input as WorkflowTemplateAuthoringSkillCatalogInput)
+      case 'skill_create':
+        return await executeSkillCreate(input as WorkflowTemplateAuthoringSkillCreateInput)
       case 'list':
         return await executeList(input, registryService)
       case 'inspect':

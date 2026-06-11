@@ -14,6 +14,16 @@ import type {
   ProviderTestResult,
 } from '../types/provider'
 import type { ProviderPreset } from '../types/providerPreset'
+import type {
+  ProviderExportRequest,
+  ProviderImportCommitRequest,
+  ProviderImportCommitResult,
+  ProviderImportPreview,
+  ProviderImportPreviewRequest,
+  ProviderSecretBundle,
+  ProviderSecretExportRequest,
+  ProviderSecretFreeBundle,
+} from '../types/providerImportExport'
 import type { RuntimeSelection } from '../types/runtime'
 
 type ProviderStore = {
@@ -32,6 +42,10 @@ type ProviderStore = {
   deleteProvider: (id: string) => Promise<void>
   activateProvider: (id: string) => Promise<void>
   activateOfficial: () => Promise<void>
+  exportProviders: (input: ProviderExportRequest) => Promise<ProviderSecretFreeBundle>
+  exportProvidersWithSecrets: (input: ProviderSecretExportRequest) => Promise<ProviderSecretBundle>
+  previewProviderImport: (input: ProviderImportPreviewRequest) => Promise<ProviderImportPreview>
+  commitProviderImport: (input: ProviderImportCommitRequest) => Promise<ProviderImportCommitResult>
   testProvider: (id: string, overrides?: { baseUrl?: string; modelId?: string; apiFormat?: string; authStrategy?: string }) => Promise<ProviderTestResult>
   testConfig: (input: TestProviderConfigInput) => Promise<ProviderTestResult>
 }
@@ -86,7 +100,7 @@ function refreshConnectedSessionsForProvider(provider: SavedProvider, activeId: 
     if (!selection) continue
 
     runtimeStore.setSelection(sessionId, selection)
-    chatStore.setSessionRuntime(sessionId, selection)
+    chatStore.setSessionRuntime(sessionId, selection, { force: true })
   }
 }
 
@@ -160,6 +174,27 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     const settings = useSettingsStore.getState()
     await settings.setModel(OFFICIAL_DEFAULT_MODEL_ID)
     await settings.fetchAll()
+  },
+
+  exportProviders: async (input) => {
+    const { bundle } = await providersApi.exportProviders(input)
+    return bundle
+  },
+
+  exportProvidersWithSecrets: async (input) => {
+    const { bundle } = await providersApi.exportProvidersWithSecrets(input)
+    return bundle
+  },
+
+  previewProviderImport: async (input) => {
+    const { preview } = await providersApi.previewProviderImport(input)
+    return preview
+  },
+
+  commitProviderImport: async (input) => {
+    const { result } = await providersApi.commitProviderImport(input)
+    await get().fetchProviders()
+    return result
   },
 
   testProvider: async (id, overrides?) => {

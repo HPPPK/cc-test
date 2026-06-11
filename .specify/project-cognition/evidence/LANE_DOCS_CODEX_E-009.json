@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-009",
+  "source_path": ".codex/skills/sp-map-scan/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-map-scan 工作流技能定义：棕地工作流需要新鲜的图原生认知基线，收集全项目内部证据",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

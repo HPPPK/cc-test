@@ -8,67 +8,40 @@
   "status_path": "F:/github/cc-jiangxia/.specify/project-cognition/status.json",
   "graph_store_path": ".specify/project-cognition/project-cognition.db",
   "graph_ready": true,
-  "active_generation_id": "GEN-20260528T034105.715065300Z",
+  "active_generation_id": "GEN-20260610T112843.959253900Z",
+  "baseline_kind": "brownfield_full",
   "query_contract_version": 1,
   "update_contract_version": 1,
   "dirty": true,
-  "dirty_reasons": [
-    "quick 003 settings skills search sort changed desktop skills UI and api skill timestamp metadata; inline update returned blocked/review_project_cognition_update after adopting paths"
-  ],
-  "dirty_origin_command": "sp-quick",
+  "dirty_reasons": [],
+  "dirty_origin_command": "",
   "dirty_origin_feature_dir": "",
-  "dirty_origin_lane_id": "003-settings-skills-search-sort",
-  "dirty_scope_paths": [
-    "desktop/src/__tests__/skillsSettings.test.tsx",
-    "desktop/src/components/skills",
-    "desktop/src/i18n/locales/en.ts",
-    "desktop/src/i18n/locales/zh.ts",
-    "desktop/src/types/skill.ts",
-    "src/server/__tests__/skills.test.ts",
-    "src/server/api/skills.ts"
-  ],
+  "dirty_origin_lane_id": "",
+  "dirty_scope_paths": [],
   "stale_paths": [
-    "desktop/src/__tests__",
-    "desktop/src/__tests__/skillsSettings.test.tsx",
-    "desktop/src/api/skills.ts",
-    "desktop/src/components/skills",
-    "desktop/src/components/skills/SkillList.tsx",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/api/providers.ts",
     "desktop/src/i18n/locales/en.ts",
     "desktop/src/i18n/locales/zh.ts",
-    "desktop/src/stores/skillStore.ts",
-    "desktop/src/types/skill.ts",
-    "src/server/__tests__",
-    "src/server/__tests__/skills.test.ts",
-    "src/server/api",
-    "src/server/api/skills.ts",
-    "src/server/services/workflowFinalReport.ts",
-    "src/server/services/workflowRuntimeService.ts",
-    "src/server/services/workflowSessionCreateService.ts",
-    "src/server/services/workflowSummary.ts",
-    "src/server/services/workflowTemplateAuthoringGuide.ts",
-    "src/server/services/workflowTemplateAuthoringService.ts",
-    "src/server/services/workflowTemplateRegistryService.ts",
-    "src/server/services/workflowTemplateValidation.ts",
-    "src/server/services/workflowToolPolicy.ts",
-    "src/server/services/workflowTypes.ts",
-    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx"
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/types/providerImportExport.ts"
   ],
   "stale_reasons": [
-    "map-update: skills-search-sort + workflow-phase-skills",
-    "quick 003 settings skills search sort changed desktop skills UI and api skill timestamp metadata; inline update returned blocked/review_project_cognition_update after adopting paths",
-    "workflow-finalize quick 003 settings skills search sort",
-    "workflow-finalize quick 004 skill search fuzzy normalization"
+    "workflow-finalize"
   ],
   "last_refresh_reason": "",
-  "last_refresh_basis": "map-build",
+  "last_refresh_basis": "",
   "last_refresh_changed_files_basis": [
-    "desktop/src/__tests__/skillsSettings.test.tsx",
-    "desktop/src/components/skills",
-    "desktop/src/components/skills/SkillList.tsx"
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    "desktop/src/api/providers.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/types/providerImportExport.ts"
   ],
-  "last_update_id": "upd-20260602T033234.410460500Z",
+  "last_update_id": "upd-20260610T124434.718378000Z",
   "last_delta_session_id": "",
   "last_update_outcome": "partial_refresh",
   "last_update_boundary": "",
-  "updated_at": "2026-06-02T03:32:34Z"
+  "updated_at": "2026-06-10T12:44:34Z"
 }

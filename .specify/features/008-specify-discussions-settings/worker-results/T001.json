@@ -1,0 +1,56 @@
+{
+  "status": "success",
+  "reported_status": "completed",
+  "task_id": "T001",
+  "changed_files": [],
+  "validation_output": "Read-only guardrail review completed. No files edited. No broad verification commands run, per packet. Inspected only the requested feature artifacts and scoped source files with narrow in-file symbol searches.",
+  "validation_results": [
+    {
+      "name": "guardrail review",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Guardrail review consumed feature plan, data model, API contract, provider service, and Settings UI references before implementation tasks."
+  ],
+  "must_preserve_evidence": {
+    "boundary_surfaces_confirmed": [
+      "src/server/services/providerService.ts owns provider persistence via providers.json, provider CRUD, activeId, activation, and managed settings sync.",
+      "desktop/src/pages/Settings.tsx owns the Settings > Providers UI surface and currently contains provider CRUD, activation, testing, and provider-form settings JSON behavior."
+    ],
+    "mp_obligations_recognized": [
+      "MP-001 through MP-010 must be preserved: provider sharing goal, saved-provider-only scope, separate secret-free and secret export paths, server-side redaction, high-friction secret export, add/rename default conflicts, no active/default transfer, side-effect-free preview, workflow UI as interaction precedent only, and no frontend-only masking as export safety."
+    ],
+    "ca_obligations_recognized": [
+      "CA-001 through CA-007 are downstream implementation obligations: read-only default export redaction, side-effect-free preview, commit without activation/env mutation, explicit conflict resolution, generated local IDs, redaction independent of list masking, and explicit per-request secret export confirmation."
+    ],
+    "forbidden_drift_downstream_must_preserve": [
+      "Do not implement provider sharing as raw Settings JSON import/export.",
+      "Do not include activeId, default provider selection, official OAuth/login state, chat/session/plugin/skill/MCP/workflow state, or global app settings in provider bundles.",
+      "Do not silently overwrite existing providers.",
+      "Do not implement secret export as a remembered checkbox.",
+      "Do not rely on frontend apiKey masking for export safety.",
+      "Do not mutate ~/.claude/settings.json as part of provider import.",
+      "Do not transfer active/default provider selection during import or export.",
+      "Do not expose raw credentials in diagnostics, logs, previews, or default bundles."
+    ]
+  },
+  "concerns": [
+    "Settings.tsx already has provider-form settings JSON masking/restoration helpers; downstream work must keep that behavior separate from the new provider-specific bundle model.",
+    "ProviderService currently syncs managed settings when active providers are updated or activated; import commit must avoid calling activation paths or active-provider settings sync.",
+    "ProviderService list/get/proxy paths can expose stored apiKey internally; default export must construct bundles server-side with explicit credential redaction rather than reusing raw provider objects blindly.",
+    "Project cognition remains unavailable because .specify/project-cognition/project-cognition.db is missing, so this review used live repository evidence and feature artifacts only."
+  ],
+  "recovery_hints": [
+    "If downstream implementation needs more context, read the required implementation references listed in plan.md before editing, especially src/server/api/providers.ts, src/server/types/provider.ts, desktop/src/api/providers.ts, desktop/src/stores/providerStore.ts, and WorkflowImportExportDialog.tsx.",
+    "Keep import/export schema separate from persisted ProvidersIndex and from Settings JSON helpers.",
+    "Add server-side tests first for CA-001 through CA-006 before wiring desktop behavior; add desktop confirmation/preview tests for CA-007 and UI diagnostics."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    "src/server/services/providerService.ts",
+    "desktop/src/pages/Settings.tsx"
+  ]
+}

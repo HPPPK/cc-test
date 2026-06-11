@@ -23,6 +23,12 @@ import {
   UpdateProviderSchema,
   TestProviderSchema,
 } from '../types/provider.js'
+import {
+  ProviderExportRequestSchema,
+  ProviderImportCommitRequestSchema,
+  ProviderImportPreviewRequestSchema,
+  ProviderSecretExportConfirmationRequestSchema,
+} from '../types/providerImportExport.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { diagnosticsService } from '../services/diagnosticsService.js'
 
@@ -60,6 +66,7 @@ export async function handleProvidersApi(
       }
       if (req.method === 'PUT') {
         const body = await parseJsonBody(req)
+        if (!isRecord(body)) throw ApiError.badRequest('Invalid JSON body')
         await providerService.updateManagedSettings(body)
         return Response.json({ ok: true })
       }
@@ -70,6 +77,30 @@ export async function handleProvidersApi(
     if (id === 'official' && req.method === 'POST') {
       await providerService.activateOfficial()
       return Response.json({ ok: true })
+    }
+
+    // /api/providers/export
+    if (id === 'export') {
+      if (req.method !== 'POST') throw methodNotAllowed(req.method)
+      return await handleExport(req)
+    }
+
+    // /api/providers/export-with-secrets
+    if (id === 'export-with-secrets') {
+      if (req.method !== 'POST') throw methodNotAllowed(req.method)
+      return await handleExportWithSecrets(req)
+    }
+
+    // /api/providers/import/preview
+    if (id === 'import' && action === 'preview') {
+      if (req.method !== 'POST') throw methodNotAllowed(req.method)
+      return await handleImportPreview(req)
+    }
+
+    // /api/providers/import/commit
+    if (id === 'import' && action === 'commit') {
+      if (req.method !== 'POST') throw methodNotAllowed(req.method)
+      return await handleImportCommit(req)
     }
 
     // /api/providers (no ID)
@@ -137,6 +168,62 @@ export async function handleProvidersApi(
   }
 }
 
+async function handleExport(req: Request): Promise<Response> {
+  const body = await parseJsonBody(req)
+  try {
+    const input = ProviderExportRequestSchema.parse(body)
+    return Response.json(await providerService.exportProviders(input))
+  } catch (err) {
+    if (err instanceof z.ZodError) throw ApiError.badRequest(err.issues.map((i) => i.message).join('; '))
+    throw err
+  }
+}
+
+async function handleExportWithSecrets(req: Request): Promise<Response> {
+  const body = await parseJsonBody(req)
+  if (
+    !isRecord(body) ||
+    !isRecord(body.confirmation) ||
+    body.confirmation.acknowledgedCredentialExposure !== true
+  ) {
+    throw new ApiError(
+      400,
+      'Credential exposure confirmation is required before exporting provider secrets',
+      'SECRET_EXPORT_CONFIRMATION_REQUIRED',
+    )
+  }
+
+  try {
+    const input = ProviderSecretExportConfirmationRequestSchema.parse(body)
+    return Response.json(await providerService.exportProvidersWithSecrets(input))
+  } catch (err) {
+    if (err instanceof z.ZodError) throw ApiError.badRequest(err.issues.map((i) => i.message).join('; '))
+    throw err
+  }
+}
+
+async function handleImportPreview(req: Request): Promise<Response> {
+  const body = await parseJsonBody(req)
+  try {
+    const input = ProviderImportPreviewRequestSchema.parse(body)
+    return Response.json(await providerService.previewProviderImport(input))
+  } catch (err) {
+    if (err instanceof z.ZodError) throw ApiError.badRequest(err.issues.map((i) => i.message).join('; '))
+    throw err
+  }
+}
+
+async function handleImportCommit(req: Request): Promise<Response> {
+  const body = await parseJsonBody(req)
+  try {
+    const input = ProviderImportCommitRequestSchema.parse(body)
+    return Response.json(await providerService.commitProviderImport(input))
+  } catch (err) {
+    if (err instanceof z.ZodError) throw ApiError.badRequest(err.issues.map((i) => i.message).join('; '))
+    throw err
+  }
+}
+
 async function handleCreate(req: Request): Promise<Response> {
   const body = await parseJsonBody(req)
   try {
@@ -196,9 +283,13 @@ async function handleTestUnsaved(req: Request): Promise<Response> {
   }
 }
 
-async function parseJsonBody(req: Request): Promise<Record<string, unknown>> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function parseJsonBody(req: Request): Promise<unknown> {
   try {
-    return (await req.json()) as Record<string, unknown>
+    return await req.json()
   } catch {
     throw ApiError.badRequest('Invalid JSON body')
   }

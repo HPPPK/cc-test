@@ -1,0 +1,118 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/services/workflowTemplateAuthoringService.test.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    ".planning/quick/20260603-workflow-authoring-skill-installation/STATUS.md",
+    ".planning/quick/20260603-workflow-authoring-skill-installation/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+  ],
+  "behavior_surfaces": [
+    "server workflow template authoring API",
+    "workflow_template_authoring tool schema and prompt",
+    "workflow phase recommended skill validation",
+    "workflow phase skill creation in recognized user skill directory",
+    "installed skill catalog visibility for workflow-created user skills",
+    "workflow authoring guide repair hints",
+    "workflow phase tool policy for authoring mutations"
+  ],
+  "generated_surfaces": [
+    ".planning/quick/20260603-workflow-authoring-skill-installation",
+    ".specify/project-cognition/updates/20260603-workflow-authoring-skill-installation.json"
+  ],
+  "state_contracts": [
+    "Authoring validate/create/update/duplicate must reject unresolved recommended phase skills before mutating workflow templates and return repair guidance.",
+    "skill_create must write only a new SKILL.md under the recognized user skills directory and must not overwrite an existing user skill.",
+    "Created skills must be visible through the same workflow skill catalog and /api/skills installed skills surface used by the client.",
+    "Recommended phase skills remain prompt/catalog guidance and do not grant tool permissions or enable SkillTool globally.",
+    "Imported templates can still preserve unresolved recommended skill references with dependency diagnostics; import compatibility is not tightened by authoring-time mutation checks."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/__tests__/workflowTemplates.test.ts",
+      "result": "passed: 50 pass, 0 fail"
+    },
+    {
+      "command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts",
+      "result": "passed: 33 pass, 0 fail"
+    },
+    {
+      "command": "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "result": "passed: 23 pass, 0 fail"
+    },
+    {
+      "command": "bun test src/server/services/workflowTemplateAuthoringGuide.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+      "result": "passed: 42 pass, 0 fail"
+    },
+    {
+      "command": "git diff --check -- <scoped files>",
+      "result": "passed with LF/CRLF normalization warnings only"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "failed before tests because expired quarantine entries require review: server:cron-scheduler, server:providers-real, server:tasks, server:e2e:business-flow, server:e2e:full-flow"
+    },
+    {
+      "command": "bun run verify",
+      "result": "failed: report artifacts/quality-runs/2026-06-03T07-46-47-767Z/report.md, passed=4 failed=5 skipped=2"
+    }
+  ],
+  "verification_evidence": [
+    "Server API test covers skill_create, installed skills API visibility, duplicate no-overwrite, existing installed skill references, and missing-skill repair guidance.",
+    "Authoring service tests cover skill catalog, skill creation, invalid/existing skill rejection, validate/create/update/duplicate missing-skill rejection, and create-after-skill-create success.",
+    "Tool tests cover API schema, direct and desktop endpoint skill_create paths, prompt guidance, and phase policy gating.",
+    "Guide and policy tests cover missing skill repair hints and recommended skills not bypassing permissions."
+  ],
+  "known_unknowns": [
+    "Full server and coverage gates cannot complete until expired quarantine review dates are resolved.",
+    "Full PR gate includes unrelated dirty worktree impact across cli-core, desktop, and server.",
+    "Native check failed with Windows Tauri build PermissionDenied unrelated to the workflow skill authoring implementation.",
+    "No live provider/model baseline was run."
+  ],
+  "confidence_notes": [
+    "Live reads and focused tests back the workflow authoring, skill catalog, skill creation, and policy behavior.",
+    "The project cognition entry state was partial_refresh/review and dirty before this closeout; live code and tests are the completion evidence.",
+    "The quick task is resolved for scoped implementation but not PR-ready because broad quality gates are blocked externally."
+  ],
+  "user_decisions": [
+    "User confirmed continuing the quick task in Chinese after the understanding checkpoint.",
+    "User wanted the root fix: agents should first check whether workflow phase skills are installed and create/install missing skills in a client-recognized location."
+  ],
+  "boundary": {
+    "type": "bounded-server-tooling",
+    "in_scope": [
+      "workflow template authoring server/API behavior",
+      "workflow_template_authoring tool contract",
+      "workflow phase skill catalog and validation",
+      "user skill creation path for missing phase skills",
+      "same-area server/tool/guide/policy tests"
+    ],
+    "out_of_scope": [
+      "GitHub Actions workflows",
+      "broad agent runtime task execution behavior",
+      "quarantine governance review-date maintenance",
+      "native Tauri permission failure",
+      "live provider/model baseline"
+    ]
+  }
+}

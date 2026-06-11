@@ -39,6 +39,15 @@ const activityResponse = {
     { date: '2026-05-07', tokensByModel: { 'claude-sonnet': 64_000 } },
     { date: '2026-05-09', tokensByModel: { 'claude-sonnet': 128_000 } },
   ],
+  dailyTokenBreakdown: [
+    {
+      date: '2026-05-09',
+      inputTokens: 7_000,
+      outputTokens: 1_000,
+      cacheReadInputTokens: 120_000,
+      cacheCreationInputTokens: 0,
+    },
+  ],
   longestSession: null,
   modelUsage: {},
   firstSessionDate: '2025-06-01T10:00:00.000Z',
@@ -83,6 +92,7 @@ describe('ActivitySettings', () => {
     expect(screen.getByText('30 days')).toBeInTheDocument()
     expect(screen.getByText('0 tokens')).toBeInTheDocument()
     expect(screen.getByText('128K tokens')).toBeInTheDocument()
+    expect(screen.getByText('4 sessions · cache 120K')).toBeInTheDocument()
     expect(screen.getByText('2.9M tokens')).toBeInTheDocument()
     expect(screen.getAllByText('May').length).toBeGreaterThan(0)
     expect(screen.queryByText('5月')).not.toBeInTheDocument()

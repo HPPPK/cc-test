@@ -1,0 +1,12 @@
+{
+  "id": "ev-lane6b-001",
+  "type": "source_analysis",
+  "source_path": "src/components/AgentProgressLine.tsx",
+  "summary": "Agent progress line indicator component for CLI",
+  "detail": "Displays agent progress status in the CLI interface",
+  "quotes_or_symbols": [],
+  "content": "",
+  "key_findings": null,
+  "packet_id": "lane-6b",
+  "collected_at": "2026-06-05T07:07:10.772Z"
+}

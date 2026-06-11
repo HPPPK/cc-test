@@ -335,6 +335,10 @@ describe('ActiveSession task polling', () => {
     expect(panel).toHaveTextContent(/agent development/i)
     expect(panel).toHaveTextContent(/specify/i)
     expect(panel).toHaveTextContent(/phase 2 of 5/i)
+    expect(panel).not.toHaveTextContent(/state-001/i)
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     expect(panel).toHaveTextContent(/state-001/i)
   })
 
@@ -392,13 +396,92 @@ describe('ActiveSession task polling', () => {
     expect(statusPanel).toHaveTextContent(/phase 2 of 5/i)
     const detailsToggle = within(statusPanel).getByRole('button', { name: /workflow details/i })
     expect(detailsToggle).toHaveAttribute('aria-expanded', 'false')
-    const details = statusPanel.querySelector('#workflow-status-details')
-    expect(details).toHaveAttribute('hidden')
+    expect(within(statusPanel).queryByTestId('workflow-status-details')).not.toBeInTheDocument()
+
+    fireEvent.click(detailsToggle)
+
+    const details = within(statusPanel).getByTestId('workflow-status-details')
     expect(details).toHaveTextContent(/state-001/i)
     expect(screen.queryByText(/final report not ready/i)).not.toBeInTheDocument()
     expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
     expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
     expect(chatColumn.children[0]).toContainElement(statusPanel)
+  })
+
+  it('renders completed workflows as a single compact strip with report access', () => {
+    const sessionId = 'workflow-completed-session'
+    const workflow: WorkflowSessionSummary = {
+      ...WORKFLOW_SUMMARY,
+      status: 'completed',
+      activePhaseId: 'implement',
+      activePhaseIndex: 4,
+      reportPointer: {
+        kind: 'final-report',
+        sessionId,
+        artifactId: 'final-report-001',
+        schemaVersion: 1,
+        createdAt: '2026-05-20T00:10:00.000Z',
+        label: 'Final workflow report',
+        uri: 'artifact://final-report-001',
+      },
+    }
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Workflow Completed Session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:10:00.000Z',
+        messageCount: 3,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        workflow,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Workflow Completed Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'workflow complete', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const chatColumn = screen.getByTestId('active-session-chat-column')
+    const strip = within(chatColumn).getByTestId('workflow-session-strip')
+    expect(strip).toHaveAttribute('data-compact', 'true')
+    expect(within(strip).getByTestId('completed-workflow-strip')).toHaveTextContent(/agent development/i)
+    expect(within(strip).getByTestId('completed-workflow-strip')).toHaveTextContent(/completed/i)
+    expect(within(chatColumn).queryByTestId('workflow-status-panel')).not.toBeInTheDocument()
+    const reportLink = within(strip).getByRole('link', { name: /final workflow report/i })
+    expect(reportLink).toHaveAttribute('data-compact', 'true')
+    expect(reportLink).toHaveAttribute('href', 'artifact://final-report-001')
+    expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
+    expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
   })
 
   it('renders bounded recommended skill evidence without listing unused recommendations', () => {
@@ -507,6 +590,10 @@ describe('ActiveSession task polling', () => {
     render(<ActiveSession />)
 
     const panel = screen.getByTestId('workflow-status-panel')
+    expect(within(panel).queryByTestId('workflow-recommended-skill-status')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     const skillStatus = within(panel).getByTestId('workflow-recommended-skill-status')
     expect(skillStatus).toHaveTextContent(/recommended skills/i)
     expect(skillStatus).toHaveTextContent(/2 available/i)
@@ -602,13 +689,21 @@ describe('ActiveSession task polling', () => {
     expect(panel).toHaveTextContent(/plan/i)
     expect(panel).toHaveTextContent(/phase 3 of 5/i)
     expect(panel).toHaveTextContent(/waiting for confirmation/i)
+    expect(panel).not.toHaveTextContent(/state-resumed-002/i)
+    expect(panel).not.toHaveTextContent(/claude-opus-4/i)
+    expect(panel).not.toHaveTextContent(/claude-sonnet-4/i)
+    expect(panel).not.toHaveTextContent(/requested phase model is unavailable/i)
+    expect(panel).not.toHaveTextContent(/stale-local-state/i)
+    expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     expect(panel).toHaveTextContent(/state-resumed-002/i)
     expect(panel).toHaveTextContent(/claude-opus-4/i)
     expect(panel).toHaveTextContent(/claude-sonnet-4/i)
     expect(panel).toHaveTextContent(/requested phase model is unavailable/i)
     expect(panel).not.toHaveTextContent(/stale-local-state/i)
-    expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
   })
 
   it('renders pending confirmation artifact evidence, model provenance, and read-only artifact history', () => {
@@ -689,6 +784,12 @@ describe('ActiveSession task polling', () => {
     render(<ActiveSession />)
 
     const panel = screen.getByTestId('workflow-status-panel')
+    expect(panel).not.toHaveTextContent(/claude-opus-4/i)
+    expect(within(panel).queryByTestId('workflow-pending-artifact')).not.toBeInTheDocument()
+    expect(within(panel).queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
     expect(panel).toHaveTextContent(/claude-opus-4/i)
     expect(panel).toHaveTextContent(/claude-sonnet-4/i)
     expect(panel).toHaveTextContent(/provider/i)
@@ -842,8 +943,9 @@ describe('ActiveSession task polling', () => {
 
     const reportLink = screen.getByRole('link', { name: /final workflow report/i })
     expect(reportLink).toHaveAttribute('href', 'report-001')
-    expect(screen.getByText(/report-001/i)).toBeInTheDocument()
-    expect(screen.getByTestId('workflow-status-panel')).toHaveTextContent(/state-completed-005/i)
+    expect(reportLink).toHaveAttribute('data-compact', 'true')
+    expect(screen.queryByText(/report-001/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('workflow-status-panel')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
@@ -922,6 +1024,10 @@ describe('ActiveSession task polling', () => {
     render(<ActiveSession />)
 
     expect(screen.getByRole('link', { name: /final workflow report/i })).toHaveAttribute('href', 'final')
+    expect(screen.queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /details/i }))
+
     const history = screen.getByTestId('workflow-artifact-history')
     expect(history).toHaveTextContent(/specification accepted for planning/i)
     expect(history).toHaveTextContent(/earlier plan omitted rollback evidence/i)
@@ -1166,6 +1272,7 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
+    fireEvent.click(screen.getByRole('button', { name: /show workflow details/i }))
     fireEvent.click(screen.getByRole('button', { name: /complete phase/i }))
 
     expect(sendWorkflowTransition).not.toHaveBeenCalled()
@@ -1290,6 +1397,11 @@ describe('ActiveSession task polling', () => {
 
       const panel = screen.getByTestId('workflow-status-panel')
       expect(panel).toHaveTextContent(blockedReason)
+      expect(panel).not.toHaveTextContent(new RegExp(blockedStatus, 'i'))
+      expect(panel).not.toHaveTextContent(evidencePattern)
+
+      fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
       expect(panel).toHaveTextContent(new RegExp(blockedStatus, 'i'))
       expect(panel).toHaveTextContent(evidencePattern)
       expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
@@ -1633,7 +1745,7 @@ describe('ActiveSession task polling', () => {
     expect(screen.getByTestId('chat-input')).toHaveAttribute('data-variant', 'default')
   })
 
-  it('collapses completed background agent tasks by default and can be expanded', () => {
+  it('does not render a page-level panel for completed background agent tasks', () => {
     const sessionId = 'background-agent-completed-session'
 
     useSessionStore.setState({
@@ -1692,18 +1804,9 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    const panel = screen.getByTestId('background-agent-panel')
-    expect(panel).toHaveTextContent('后台 Agent')
-    expect(panel).toHaveTextContent('1 个运行中或最近任务')
+    expect(screen.queryByTestId('background-agent-panel')).not.toBeInTheDocument()
     expect(screen.queryByText('小明已完成介绍')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByLabelText('展开后台 Agent'))
-
-    expect(screen.getByText('小明已完成介绍')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByLabelText('折叠后台 Agent'))
-
-    expect(screen.queryByText('小明已完成介绍')).not.toBeInTheDocument()
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
   })
 
   it('refreshes CLI tasks repeatedly while a turn is active', async () => {

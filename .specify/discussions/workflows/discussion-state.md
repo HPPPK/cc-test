@@ -4,22 +4,22 @@
 
 - active_command: sp-discussion
 - state_surface: discussion-state
-- status: handoff-ready
+- status: active
 - slug: workflows
-- updated_at: 2026-05-29T15:54:40.6502152+08:00
+- updated_at: 2026-06-11T16:50:38.3889373+08:00
 
 ## Phase Mode
 
 - phase_mode: discussion-only
-- summary: New discussion opened to explore "workflows". The user chose to start a fresh discussion instead of resuming prior handoff-ready workflow discussions, then selected the overall direction option. The clarified direction is not to invent "workflow skills" as a separate prompt-only system. Existing skills already have passive discovery, explicit invocation, metadata, and sometimes bundled scripts/templates/assets/tools. A workflow phase skill should primarily be a fixed recommended skill set on the phase: selected when the workflow template/phase is authored, surfaced in the active phase prompt, and treated as phase-local skills the agent should pay special attention to. The phase binding should not duplicate reason/appliesWhen-style metadata because the skill itself already owns its description and applicability semantics. Names are acceptable by default; source/qualified reference should be used only when needed for ambiguity or portability. Skill source should be the same current available capability catalog users see in Settings > Skills and plugin capability navigation, not a workflow-local skill store. Current source evidence shows that Settings > Skills uses `/api/skills` and `useSkillStore`, plugin detail can navigate plugin skills into the shared skill detail flow, and frontend skill types already include user/project/plugin/mcp/bundled while the current server API primarily collects user/project/plugin. User confirmed workflow should bind to skills, not plugins; plugin identity is secondary provenance/dependency when a selected skill is plugin-provided. Workflow sharing should use a workflow package model: export the template plus a skill dependency manifest, not skill package contents by default. Import should diagnose available, missing, ambiguous, unsupported-source, and optionally installable skill dependencies. Confirmed default for missing recommended phase skills is import-with-warnings: keep the reference, mark the skill unavailable in import preview/runtime prompt, and soft-audit relevant missing skills; do not block import or completion by default. UI direction is confirmed: phase-local skill selector in WorkflowTemplateEditor is the primary authoring surface, workflow-level import/export shows dependency diagnostics, and runtime surfaces show only lightweight skill status/evidence. Future required/contract phase skills may use stricter blocking or explicit skip evidence. Future explicit bundle mode may be allowed only for reviewed project-owned skills. Whether to use a phase skill remains the agent's judgment based on the current task. The accepted prompt semantics are: these skills are selected for the active phase; pay special attention to them when deciding whether a skill applies; invoke when the current task matches; do not invoke when irrelevant; at phase completion, briefly note any phase skills used or clearly relevant but skipped/unavailable. Phase skills do not auto-execute or block completion by default.
+- summary: New discussion opened to explore "workflows". The user chose to start a fresh discussion instead of resuming prior handoff-ready workflow discussions, then selected the overall direction option. The clarified direction is not to invent "workflow skills" as a separate prompt-only system. Existing skills already have passive discovery, explicit invocation, metadata, and sometimes bundled scripts/templates/assets/tools. A workflow phase skill should primarily be a fixed recommended skill set on the phase: selected when the workflow template/phase is authored, surfaced in the active phase prompt, and treated as phase-local skills the agent should pay special attention to. The phase binding should not duplicate reason/appliesWhen-style metadata because the skill itself already owns description and applicability semantics. Workflow sharing should use a workflow package model with a skill dependency manifest, not bundled skill contents by default. The discussion was reopened on 2026-06-11 to focus on option 1: workflows as an execution constraint system. Current recommendation: field design should separate phase intent from phase contract. Intent fields explain what the phase is for; contract fields constrain execution with intake, allowed/forbidden actions, required artifacts, completion criteria, transition authority, and evidence/audit expectations. This is the most effective first design rather than the theoretically strongest workflow-engine design: hard gates should stay limited to artifacts, completion criteria, and transition authority; contextual rules should remain guidance, policy, or evidence. Schema grouping recommendation: use `intent`, `contract`, and `evidencePolicy` as the product/runtime model, keep `runtimeState` session-owned, and preserve compatibility by mapping existing flat fields into grouped semantics before any direct persistence migration. UI grouping recommendation confirmed: template editor exposes editable Intent, Contract, and Evidence groups; running workflow/session views expose Runtime Status separately. Lifecycle recommendation: distinguish phase/session lifecycle from completion submission outcome. Keep `blocked` and `unable` as completion outcomes inside a recoverable `running` phase, reserve `failed` for runtime/system failure, and require `pending-confirmation` to resolve through confirm/reject/retry before advancing. Runtime control recommendation: phase transition controls cover Confirm/Reject/Retry for pending confirmation, Manually complete phase for explicit user override, and Retry for blocked/unable; auto-advance is an authority label, while cancel/resume are session-level controls.
 
 ## Session Routing
 
-- current_stage: handoff-ready
-- current_topic: workflows
-- next_question: none
+- current_stage: technical-options
+- current_topic: workflow field design and execution constraint system
+- next_question: Decide the final handoff shape if the user wants this refined workflow contract discussion carried into sp-specify.
 - blocker_reason: none
-- readiness_note: User confirmed the self-reviewed handoff pair. Discussion is handoff-ready for later `sp-specify` input; `sp-specify` was not run automatically.
+- readiness_note: Previous handoff remains historical, but user reopened the discussion to refine workflow field design and constraint semantics before any new handoff.
 - ui_discussion_status: completed
 
 ## Lightweight Recovery
@@ -60,7 +60,7 @@
 ## Evidence Navigation
 
 - latest_cognition_intent: discussion
-- latest_cognition_readiness: blocked
+- latest_cognition_readiness: unavailable for runtime UI controls pass; prior readiness review still advisory for earlier workflow field discussion
 - latest_minimal_live_reads:
   - src/tools/SkillTool/SkillTool.ts
   - src/tools/SkillTool/prompt.ts
@@ -89,6 +89,18 @@
   - desktop/src/components/workflow/WorkflowTemplateManager.tsx provides Settings workflow template management with create/edit/copy/delete/import/export.
   - desktop/src/components/workflow/WorkflowImportExportDialog.tsx provides import preview and export generation but does not currently show skill dependency status.
   - desktop/src/components/workflow/WorkflowTemplatePicker.tsx is the workflow start template selection surface and can show invalid template diagnostics.
+  - 2026-06-11 truth pass: `src/server/services/workflowTypes.ts` defines phase fields for instructions, skills, skillDeclarations, requiredArtifacts, completionCriteria, transitionAuthority, actionPolicy, and phasePrompt.
+  - 2026-06-11 truth pass: `src/server/services/workflowRuntimeService.ts` assembles active phase prompts from phase instructions, phasePrompt, actionPolicy, recommended skills, required artifacts, completion criteria, prior artifacts, skill guidance, and model fields.
+  - 2026-06-11 truth pass: `src/server/services/workflowToolPolicy.ts` exposes submit_phase_completion as the workflow-only tool and says recommended phase skills do not grant tool permissions or enable SkillTool globally.
+  - 2026-06-11 truth pass: `desktop/src/components/workflow/WorkflowTemplateEditor.tsx` already exposes phase fields for id, name, role, objective, instructions, intake, recommended skills, output artifact, handoff, execution rules, completion criteria, transition authority, and requested model.
+  - 2026-06-11 lifecycle pass: `src/server/services/workflowTypes.ts` defines workflow statuses `created`, `running`, `pending-confirmation`, `failed`, `cancelled`, `completed`, `resumed`, `stale-template`, and `missing-template`; phase statuses exclude the template-source states; completion submissions use `ready`, `blocked`, and `unable`.
+  - 2026-06-11 lifecycle pass: `src/server/services/workflowRuntimeService.ts` records `ready` submissions as auto-advance or `pending-confirmation`, records non-ready submissions as `running` with `blockedReason`, blocks duplicate ready submissions while pending, and records transitions with state versions.
+  - 2026-06-11 runtime UI pass: project-cognition.exe was not available in PATH and no local project-cognition executable was found by file search.
+  - 2026-06-11 runtime UI pass: `desktop/src/types/session.ts` models transition actions as `confirm`, `reject`, `retry`, and `manual_complete`.
+  - 2026-06-11 runtime UI pass: `desktop/src/components/workflow/WorkflowTransitionControls.tsx` shows Confirm/Reject/Retry for pending confirmation, manual completion as a summary/evidence dialog, and Retry for blocked states.
+  - 2026-06-11 runtime UI pass: `desktop/src/components/workflow/WorkflowStatusPanel.tsx` makes pending confirmation display win over stale lifecycle status and keeps artifact/evidence details separate.
+  - 2026-06-11 runtime UI pass: `desktop/src/pages/ActiveSession.tsx` wires workflow controls only for non-completed, non-stale-template, non-missing-template workflow sessions.
+  - 2026-06-11 runtime UI pass: `desktop/src/components/workflow/WorkflowComponents.test.tsx` covers pending context, manual completion evidence, pending-over-stale priority, and no unsafe advancement controls for blocked/unable states.
 - cognition_authority_rule: project cognition navigates; live repository evidence proves
 - unresolved_evidence_conflicts: []
 

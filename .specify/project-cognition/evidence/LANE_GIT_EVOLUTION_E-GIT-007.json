@@ -1,0 +1,8 @@
+{
+  "id": "LANE_GIT_EVOLUTION_E-GIT-007",
+  "source_path": "git-history",
+  "evidence_type": "git_history",
+  "summary": "Commit message style: Mix of English conventional commits (feat:, fix:, chore:, docs:) and Chinese descriptive messages. Later commits (2026-05+) increasingly follow conventional commit format with type prefixes. The most recent commits focus on .specify/ skill system and workflow authoring.",
+  "classification": "normal",
+  "criticality": "low"
+}

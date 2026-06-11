@@ -1,0 +1,36 @@
+{
+  "generated_surfaces": [],
+  "reason": "workflow-finalize",
+  "confidence_notes": [
+    "Project cognition readiness was review; query matched workflow runtime status components with no missing coverage."
+  ],
+  "changed_paths": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx"
+  ],
+  "verification": [
+    "not run: validation was not explicitly authorized in this turn"
+  ],
+  "behavior_surfaces": [
+    "desktop workflow status details layout",
+    "manual workflow phase completion action visibility"
+  ],
+  "known_unknowns": [
+    "visual layout not browser-verified",
+    "test suite not run"
+  ],
+  "scope_paths": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx"
+  ],
+  "workflow": "sp-fast",
+  "state_contracts": [
+    "manual_complete command payload unchanged",
+    "pending confirmation controls remain primary",
+    "blocked retry controls remain primary",
+    "workflow status semantics unchanged"
+  ],
+  "user_decisions": [
+    "User accepted moving Complete Phase out of the primary status area and treating it as an advanced/details action."
+  ]
+}

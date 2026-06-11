@@ -27,24 +27,58 @@ judgment in an established Spec Kit Plus repository:
 
 - Use the direct `project-cognition` query planning flow required by the active
   workflow contract to retrieve the task-local project cognition bundle. Run
-  `project-cognition lexicon` first to get graph-backed project concept candidates
-  from the active project cognition graph. The user request ranks and filters
-  existing project concepts; it does not create project concepts. Choose
+  `project-cognition lexicon --mode catalog` first to get the project alias catalog
+  plus graph-backed project concept candidates from the active project cognition
+  graph. The alias catalog comes before narrow retrieval: use it to translate
+  user language into project language before selecting candidates. The user
+  request ranks and filters existing project concepts; it does not create
+  project concepts. Write an explicit `semantic_intake` object with
+  `workflow_intent`, `normalized_query`, `intent_facets`, `negative_constraints`,
+  `alias_interpretations`, and `open_semantic_questions`. Choose
   task-relevant `selected_concepts`, record considered but unsafe or irrelevant
   `rejected_concepts`, write per-concept `concept_decisions`, carry
   `lexicon_generation_id` in the `query_plan`, and then run
   `project-cognition query --query-plan`.
+  If the query command reports query-plan diagnostics, preserve its `warnings`,
+  `repair_hints`, normalized `query_plan`, structured `errors`, and
+  `expected_shape` so the workflow can repair the plan instead of ending on a
+  raw parser exception.
+  Before any source search, turn the user's wording into project-language search
+  terms derived from the alias catalog, `semantic_intake`, selected candidates,
+  and returned route metadata. Write these as `repository_search_terms` in the
+  query plan or workflow notes. Include component names, state names, file names,
+  command names, UI labels, and route names when the lexicon or candidate
+  payload exposes them. Do not search only the raw user words. If the user's
+  phrase has no direct code match, use `normalized_query`,
+  `alias_interpretations`, candidate titles, candidate aliases, `matched_terms`,
+  `colloquial_matches`, returned paths, and `expanded_queries` to form the
+  first search set. Use these project-language search terms before broad
+  repository search; only widen after the translated terms and returned
+  `minimal_live_reads` fail to identify the owner.
+  Use the alias-first project cognition flow: read the schema v2
+  `alias_index`-backed alias catalog, normalize user input into project
+  vocabulary, record `alias_interpretations`, and only then call
+  `project-cognition query --query-plan`. If the runtime reports schema v1 or
+  rebuild-required readiness, do not query through the old DB; continue with
+  live repository evidence and recommend `sp-map-scan -> sp-map-build` when a
+  usable brownfield baseline is needed. Map points, code proves: the alias
+  catalog is route vocabulary, not evidence by itself.
   Treat raw graph JSON artifacts as obsolete runtime surfaces.
 - Treat `concept_candidates` as structured project concept candidates, not a
   flat keyword list. Resolve broad, conflicting, or unknown candidates through
   the returned readiness state; do not widen live repository reads beyond the
   returned `route_pack` and `minimal_live_reads`.
+- Candidate selection must satisfy facet coverage for the active workflow. Each
+  `concept_decisions` item should include `covered_facets`, `missing_facets`,
+  `match_sources`, confidence, and risk. Do not trust top similarity alone:
+  lexical overlap, vector similarity, alias matches, path matches, and graph
+  neighbor expansion are signals, not route truth.
 - For `sp-discussion`, product framing may begin before the cognition gate. Before
   technical options, affected-surface claims, testing strategy claims tied to
   existing code, implementation-path recommendations, or source-grounded
   recommendations, complete the workflow's Truth Pass with the active
   launcher-backed project cognition query planning flow and bounded live evidence.
-  Use `project-cognition lexicon --intent discussion` and
+  Use `project-cognition lexicon --intent discussion --mode catalog` and
   `project-cognition query --intent discussion` for discussion grounding. Record
   `verified_project_facts`, `open_assumptions`, `evidence_checked`, and
   `advice_confidence`. Do not use `--intent plan` from `sp-discussion`.
@@ -70,7 +104,9 @@ judgment in an established Spec Kit Plus repository:
   constrains inspection, live evidence proves technical claims, and relevant
   facts are carried into the next workflow artifact or execution state.
 - Extract and carry forward `selected_concepts`, `rejected_concepts`,
-  `selection_reason`, `concept_decisions`, `lexicon_generation_id`, the matched
+  `selection_reason`, `semantic_intake`, `normalized_query`, `intent_facets`,
+  `negative_constraints`, `concept_decisions`, `covered_facets`,
+  `missing_facets`, `match_sources`, `lexicon_generation_id`, the matched
   capability or symptom, affected nodes and subgraph, `route_pack`,
   `minimal_live_reads`, missing coverage, evidence traces, verification routes,
   ambiguity, conflicts, and weak coverage.
@@ -136,6 +172,14 @@ judgment in an established Spec Kit Plus repository:
 - If the freshness state is `partial_refresh`, tell the user the refresh was
   recorded but readiness did not pass; follow the reported
   `recommended_next_action` instead of implying success.
+- If `partial_refresh` follows `sp-map-update` and validation shows bounded
+  path-led `identity_reconciliation` debt, the next action is a focused
+  identity-repair pass inside `sp-map-update`, not an immediate user choice
+  between repair and full rebuild. Escalate to `sp-map-scan -> sp-map-build`
+  only when validation reports a reserved rebuild condition such as unusable
+  baseline, schema failure, zero active-generation path index rows outside
+  `greenfield_empty`, missing or invalid `alias_index`,
+  `explicit_rebuild_requested`, or `baseline_identity_invalid`.
 - If project cognition readiness is `blocked`, report the runtime issue as
   degraded advisory map state. Ordinary discussion may continue with product
   framing or bounded live evidence; recommend a map maintenance workflow only
@@ -145,13 +189,18 @@ judgment in an established Spec Kit Plus repository:
   guidance: `freshness` records factual state, while `recommended_next_action`
   tells the operator what to do next.
 - Use `map-update` for ordinary existing-baseline gaps. Use `map-scan -> map-build`
-  only for brownfield first/missing/unusable baseline, schema failure, zero active-generation
-  path_index rows outside `greenfield_empty`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+  only for brownfield first/missing/unusable baseline, schema failure, schema v1
+  or old broad-schema rebuild-required readiness, zero active-generation
+  path_index rows outside `greenfield_empty`, missing or invalid `alias_index`,
+  `explicit_rebuild_requested`, or `baseline_identity_invalid`.
+  Schema v2 brownfield readiness also requires `alias_index`; schema v1 or old
+  broad-schema baselines must be rebuilt through `sp-map-scan -> sp-map-build`
+  before their alias catalog is treated as usable navigation.
   Uncertain closure can be recorded by `sp-map-update` as partial/low-confidence
   facts, known unknowns, and `minimal_live_reads`.
 - Entry-time stale or weak cognition is still an advisory navigation concern unless the user explicitly requested map maintenance. A workflow may continue from live evidence when entry guidance allows it. That entry routing rule does not waive closeout ownership.
 - Workflow-owned mutation closeout is not an external map-maintenance handoff. If the active workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, or behavior-bearing docs, closeout must run inline project cognition update from the workflow-owned ledger.
-- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`.
+- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`. Payload files accept `verification` plus the compatibility alias `verification_evidence`, and `generated_surfaces` plus the compatibility alias `generated_surface_notes`; failed verification evidence cannot produce a clean `ready` closeout.
 - Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output. Use `project-cognition mark-dirty --reason "<reason>" --format json` only when inline update is unavailable, fails before recording useful update data, cannot safely identify workflow-owned scope, is blocked by runtime state, or verification/workflow completion is not trustworthy. Dirty only when inline update cannot complete.
 - `sp-map-update` is for manual/external maintenance and follow-up repair after user edits, interrupted workflows, or explicit operator map-maintenance requests. It is external map maintenance, not routine cleanup for changes this workflow just made. In shared routing summaries, sp-map-update is for manual/external maintenance.
 - Do not rely on generic framework instinct, chat memory, or prior sessions when the

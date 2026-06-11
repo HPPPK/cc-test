@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-017",
+  "source_path": "src/state/AppStateStore.ts",
+  "evidence_type": "code_read",
+  "summary": "Central AppState type definition (~570 lines). DeepImmutable<AppState> with ~80+ fields covering: settings, model, status, UI state, tool permissions, MCP state, plugins, agent definitions, file history, attribution, todos, notifications, elicitation, thinking, session hooks, bridge state, team context, inbox, sandbox permissions, speculation, skill improvement, auth, ultraplan, REPL context. getDefaultAppState() factory function.",
+  "classification": "critical",
+  "criticality": "critical"
+}

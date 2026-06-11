@@ -117,6 +117,21 @@ function getDailyTokenMap(stats: ActivityStatsResponse | null) {
   return map
 }
 
+function getDailyTokenBreakdownMap(stats: ActivityStatsResponse | null) {
+  return new Map((stats?.dailyTokenBreakdown ?? []).map((day) => [day.date, day]))
+}
+
+function formatMetricDetail(day: HeatmapDay | null | undefined, stats: ActivityStatsResponse | null, t: ReturnType<typeof useTranslation>) {
+  const sessionCount = formatSessionCount(day?.sessionCount ?? 0, t)
+  if (!day) return sessionCount
+
+  const breakdown = getDailyTokenBreakdownMap(stats).get(day.date)
+  const cacheTokens = (breakdown?.cacheReadInputTokens ?? 0) + (breakdown?.cacheCreationInputTokens ?? 0)
+  if (cacheTokens <= 0) return sessionCount
+
+  return `${sessionCount} · ${t('settings.activity.cacheTokens', { tokens: formatTokens(cacheTokens) })}`
+}
+
 function getHeatLevel(day: DailyActivity | undefined, tokens: number, maxScore: number) {
   const sessionCount = day?.sessionCount ?? 0
   if (sessionCount === 0 && tokens === 0) return 0
@@ -278,12 +293,12 @@ export function ActivitySettings() {
     {
       label: t('settings.activity.metric.today'),
       value: today ? `${formatTokens(today.tokens)} tokens` : '0 tokens',
-      detail: today ? formatSessionCount(today.sessionCount, t) : formatSessionCount(0, t),
+      detail: formatMetricDetail(today, stats, t),
     },
     {
       label: t('settings.activity.metric.yesterday'),
       value: `${formatTokens(yesterday?.tokens ?? 0)} tokens`,
-      detail: formatSessionCount(yesterday?.sessionCount ?? 0, t),
+      detail: formatMetricDetail(yesterday, stats, t),
     },
     {
       label: t('settings.activity.metric.last30'),

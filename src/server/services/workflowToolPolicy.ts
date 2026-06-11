@@ -32,6 +32,7 @@ export const WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS = [
 ] as const
 
 export const WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS = [
+  'skill_create',
   'create',
   'update',
   'duplicate',

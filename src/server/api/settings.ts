@@ -69,9 +69,16 @@ async function handleUserSettings(req: Request): Promise<Response> {
   }
 
   if (req.method === 'PUT') {
-    const body = await parseJsonBody(req)
+    const body = await parseJsonObjectBody(req)
+    const previousEnv = Object.prototype.hasOwnProperty.call(body, 'env')
+      ? normalizeEnvSettings((await settingsService.getUserSettings()).env)
+      : null
+    if (Object.prototype.hasOwnProperty.call(body, 'env')) {
+      body.env = normalizeEnvSettings(body.env)
+    }
     await settingsService.updateUserSettings(body)
     syncThinkingSettingToActiveSessions(body)
+    syncEnvSettingsToActiveSessions(previousEnv, body)
     return Response.json({ ok: true })
   }
 
@@ -86,7 +93,7 @@ async function handleProjectSettings(req: Request, url: URL): Promise<Response> 
   }
 
   if (req.method === 'PUT') {
-    const body = await parseJsonBody(req)
+    const body = await parseJsonObjectBody(req)
     await settingsService.updateProjectSettings(body, projectRoot)
     return Response.json({ ok: true })
   }
@@ -101,7 +108,7 @@ async function handlePermissionMode(req: Request): Promise<Response> {
   }
 
   if (req.method === 'PUT') {
-    const body = await parseJsonBody(req)
+    const body = await parseJsonObjectBody(req)
     const mode = body.mode
     if (typeof mode !== 'string') {
       throw ApiError.badRequest('Missing or invalid "mode" in request body')
@@ -115,9 +122,19 @@ async function handlePermissionMode(req: Request): Promise<Response> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function parseJsonBody(req: Request): Promise<Record<string, unknown>> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function parseJsonObjectBody(req: Request): Promise<Record<string, unknown>> {
+  const body = await parseJsonBody(req)
+  if (!isRecord(body)) throw ApiError.badRequest('Invalid JSON body')
+  return body
+}
+
+async function parseJsonBody(req: Request): Promise<unknown> {
   try {
-    return (await req.json()) as Record<string, unknown>
+    return await req.json()
   } catch {
     throw ApiError.badRequest('Invalid JSON body')
   }
@@ -138,4 +155,46 @@ function syncThinkingSettingToActiveSessions(settings: Record<string, unknown>):
   conversationService.setMaxThinkingTokensForActiveSessions(
     settings.alwaysThinkingEnabled ? null : 0,
   )
+}
+
+function syncEnvSettingsToActiveSessions(
+  previousEnv: Record<string, string> | null,
+  settings: Record<string, unknown>,
+): void {
+  if (previousEnv === null || !Object.prototype.hasOwnProperty.call(settings, 'env')) {
+    return
+  }
+
+  const nextEnv = normalizeEnvSettings(settings.env)
+  const changed: Record<string, string | null> = {}
+  for (const [key, value] of Object.entries(nextEnv)) {
+    if (previousEnv[key] !== value) {
+      changed[key] = value
+    }
+  }
+  for (const key of Object.keys(previousEnv)) {
+    if (!Object.prototype.hasOwnProperty.call(nextEnv, key)) {
+      changed[key] = null
+    }
+  }
+
+  conversationService.updateEnvironmentVariablesForActiveSessions(changed)
+}
+
+function normalizeEnvSettings(value: unknown): Record<string, string> {
+  if (value == null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw ApiError.badRequest('"env" must be an object of string values')
+  }
+
+  const env: Record<string, string> = {}
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim()
+    if (!key) continue
+    if (typeof rawValue !== 'string') {
+      throw ApiError.badRequest(`Environment variable "${key}" must be a string`)
+    }
+    env[key] = rawValue
+  }
+  return env
 }

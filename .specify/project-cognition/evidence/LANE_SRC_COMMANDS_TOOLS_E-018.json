@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-018",
+  "source_path": "src/commands/login/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/login' - local-jsx command for Anthropic account sign-in/switch. Disabled via DISABLE_LOGIN_COMMAND env var.",
+  "classification": "critical",
+  "criticality": "critical"
+}

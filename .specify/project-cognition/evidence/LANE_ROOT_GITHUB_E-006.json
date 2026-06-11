@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-006",
+  "source_path": ".github/workflows/pr-quality.yml",
+  "evidence_type": "config_read",
+  "summary": "PR quality gate workflow: triggers on PR open/sync/reopen/ready_for_review/label/unlabel. Change-policy job evaluates changed files and determines which quality lanes to run (desktop-checks, server-checks, adapter-checks, desktop-native-checks, docs-checks, coverage-checks). Final pr-quality-gate job aggregates results; change-policy must pass, others allow skip-or-success. Coverage uploads report artifacts for 14 days.",
+  "classification": "critical",
+  "criticality": "critical"
+}

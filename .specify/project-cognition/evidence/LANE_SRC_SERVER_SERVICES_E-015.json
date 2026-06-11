@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-015",
+  "source_path": "src/services/compact/compact.ts",
+  "evidence_type": "code_read",
+  "summary": "Conversation compaction engine. Summarizes older messages while preserving recent history. Supports full, partial, and auto compaction. Uses forked agent for prompt cache sharing. Post-compact restores file attachments, plan files, skills, async agent status. ~1700 lines.",
+  "classification": "critical",
+  "criticality": "critical"
+}

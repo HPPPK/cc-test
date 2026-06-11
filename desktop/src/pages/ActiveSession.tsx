@@ -139,19 +139,19 @@ function BackgroundAgentPanel({
   return (
     <div
       data-testid="background-agent-panel"
-      className="border-b border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-4 py-2"
+      className="border-b border-[var(--color-border)]/40 bg-[var(--color-surface)]/60 px-4 py-1.5"
     >
       <div className="mx-auto w-full max-w-[860px]">
         <button
           type="button"
           aria-label={expanded ? t('chat.backgroundAgents.collapse') : t('chat.backgroundAgents.expand')}
           onClick={() => setExpanded((value) => !value)}
-          className="flex w-full min-w-0 items-center gap-2 text-left"
+          className="flex w-full min-w-0 items-center gap-1.5 text-left"
         >
-          <span className="material-symbols-outlined text-[16px] text-[var(--color-text-tertiary)]" aria-hidden="true">
+          <span className="material-symbols-outlined text-[14px] text-[var(--color-text-tertiary)]" aria-hidden="true">
             {expanded ? 'expand_more' : 'chevron_right'}
           </span>
-          <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+          <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
             {t('chat.backgroundAgents.title')}
           </span>
           <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-text-tertiary)]">
@@ -190,6 +190,104 @@ function BackgroundAgentPanel({
       </div>
     </div>
   )
+}
+
+function CompletedWorkflowStrip({
+  workflow,
+  reportState,
+}: {
+  workflow: WorkflowStatusPanelSummary
+  reportState: string | null
+}) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  return (
+    <div className="min-w-0 flex-1">
+      <div
+        data-testid="completed-workflow-strip"
+        className="flex min-w-0 items-center gap-2 text-[11px] text-[var(--color-text-tertiary)]"
+      >
+        <span
+          className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-success)]"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+          aria-hidden="true"
+        >
+          check_circle
+        </span>
+        <span className="shrink-0 font-semibold text-[var(--color-text-primary)]">
+          {humanizeWorkflowValue(workflow.templateId)}
+        </span>
+        <span className="shrink-0 text-[var(--color-success)]">Completed</span>
+        <span className="min-w-0 flex-1 truncate">
+          {resolveWorkflowPhaseSummary(workflow)}
+        </span>
+        {reportState ? (
+          <span className="shrink-0 rounded-[6px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-2 py-1 text-[11px] font-medium text-[var(--color-text-secondary)]">
+            {reportState}
+          </span>
+        ) : null}
+        {workflow.artifactHistory?.length ? (
+          <button
+            type="button"
+            aria-expanded={detailsOpen}
+            aria-controls="completed-workflow-details"
+            onClick={() => setDetailsOpen((open) => !open)}
+            className="shrink-0 text-[11px] font-medium text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            Details
+          </button>
+        ) : null}
+      </div>
+      {workflow.artifactHistory?.length && detailsOpen ? (
+        <div id="completed-workflow-details">
+          <section
+            data-testid="workflow-artifact-history"
+            className="mt-2 rounded-[8px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-3 py-2 text-[11px] leading-5"
+          >
+            <div className="mb-1 text-[10px] font-semibold uppercase text-[var(--color-text-tertiary)]">
+              Artifact history
+            </div>
+            <div className="grid gap-1.5">
+              {workflow.artifactHistory.map((artifact) => (
+                <div key={artifact.artifactId} className="rounded-[7px] bg-[var(--color-surface-container)] px-2 py-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-[var(--color-text-primary)]">{artifact.label}</span>
+                    <span className="shrink-0 text-[10px] uppercase text-[var(--color-text-tertiary)]">{artifact.status}</span>
+                  </div>
+                  <p className="mt-0.5 text-[var(--color-text-primary)]">{artifact.handoffSummary}</p>
+                  <p className="mt-0.5 text-[var(--color-text-secondary)]">{artifact.evidenceSummary}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function resolveWorkflowPhaseSummary(workflow: WorkflowStatusPanelSummary) {
+  if (workflow.status === 'completed') {
+    return workflow.phaseCount > 0
+      ? `All ${workflow.phaseCount} ${workflow.phaseCount === 1 ? 'phase' : 'phases'} completed`
+      : 'Workflow completed'
+  }
+
+  const phaseName = workflow.activePhaseIndex >= 0
+    ? workflow.phaseNames?.[workflow.activePhaseIndex]
+    : null
+  const label = phaseName ?? workflow.activePhaseId
+  return label
+    ? `${humanizeWorkflowValue(label)} · Phase ${Math.max(workflow.activePhaseIndex + 1, 1)} of ${workflow.phaseCount}`
+    : `Phase ${Math.max(workflow.activePhaseIndex + 1, 1)} of ${workflow.phaseCount}`
+}
+
+function humanizeWorkflowValue(value: string) {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function WorkspaceResizeHandle() {
@@ -369,9 +467,9 @@ export function ActiveSession() {
   const startMemberPolling = useTeamStore((s) => s.startMemberPolling)
   const isMemberSession = !!memberInfo
   const isDisconnectedMemberSession = isMemberSession && sessionState?.connectionState === 'disconnected'
-  const completedBackgroundAgentTasks = useMemo(
+  const attentionBackgroundAgentTasks = useMemo(
     () => backgroundAgentTasks
-      .filter((task) => task.status !== 'running')
+      .filter((task) => task.status !== 'running' && task.status !== 'completed')
       .sort((a, b) => b.updatedAt - a.updatedAt),
     [backgroundAgentTasks],
   )
@@ -457,6 +555,7 @@ export function ActiveSession() {
   const workflowReportState = workflowDisplay && !workflowDisplay.reportPointer
     ? workflowDisplay.status === 'completed' ? 'Final report unavailable' : null
     : null
+  const isCompletedWorkflow = workflowDisplay?.status === 'completed'
   const workflowStateVersion = workflowDisplay
     ? workflowDisplay.stateVersion
     : undefined
@@ -542,20 +641,39 @@ export function ActiveSession() {
           )}
 
           {!isMemberSession && workflowDisplay ? (
-            <div className="shrink-0 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)] px-4 py-3">
-              <div className={showWorkspacePanel ? 'flex w-full flex-col gap-3' : 'mx-auto flex w-full max-w-[860px] flex-col gap-3'}>
-                <WorkflowStatusPanel workflow={workflowDisplay} />
-                {canShowWorkflowControls ? (
-                  <WorkflowTransitionControls
-                    workflow={workflowControlsDisplay}
-                    stateVersion={workflowStateVersion}
-                    onConfirm={handleWorkflowTransition}
-                    onReject={handleWorkflowTransition}
-                    onRetry={handleWorkflowTransition}
+            <div
+              data-testid="workflow-session-strip"
+              data-compact={isCompletedWorkflow ? 'true' : 'false'}
+              className={
+                isCompletedWorkflow
+                  ? 'shrink-0 border-b border-[var(--color-border)]/50 bg-[var(--color-surface)]/80 px-4 py-1.5'
+                  : 'shrink-0 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)] px-4 py-3'
+              }
+            >
+              <div className={
+                showWorkspacePanel
+                  ? `flex w-full ${isCompletedWorkflow ? 'flex-row flex-wrap items-center gap-2' : 'flex-col gap-3'}`
+                  : `mx-auto flex w-full max-w-[860px] ${isCompletedWorkflow ? 'flex-row flex-wrap items-center gap-2' : 'flex-col gap-3'}`
+              }>
+                {isCompletedWorkflow ? (
+                  <CompletedWorkflowStrip workflow={workflowDisplay} reportState={workflowReportState} />
+                ) : (
+                  <WorkflowStatusPanel
+                    workflow={workflowDisplay}
+                    actions={canShowWorkflowControls ? (
+                      <WorkflowTransitionControls
+                        workflow={workflowControlsDisplay}
+                        stateVersion={workflowStateVersion}
+                        embedded
+                        onConfirm={handleWorkflowTransition}
+                        onReject={handleWorkflowTransition}
+                        onRetry={handleWorkflowTransition}
+                      />
+                    ) : null}
                   />
-                ) : null}
-                <WorkflowReportLink workflow={workflowDisplay} />
-                {workflowReportState ? (
+                )}
+                <WorkflowReportLink workflow={workflowDisplay} compact={isCompletedWorkflow} />
+                {!isCompletedWorkflow && workflowReportState ? (
                   <div className="inline-flex max-w-full items-center gap-2 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)]">
                     <span className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-text-tertiary)]" aria-hidden="true">
                       description
@@ -662,7 +780,7 @@ export function ActiveSession() {
               )}
 
               {!isMemberSession && !isMobileLayout ? (
-                <BackgroundAgentPanel tasks={completedBackgroundAgentTasks} />
+                <BackgroundAgentPanel tasks={attentionBackgroundAgentTasks} />
               ) : null}
 
               <MessageList compact={showWorkspacePanel} />

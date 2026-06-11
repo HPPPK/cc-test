@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-020",
+  "source_path": "README.en.md",
+  "evidence_type": "config_read",
+  "summary": "English README: mirrors Chinese README content. Same tech stack, features, sponsor info, and documentation links with English-language doc paths (docs/en/...).",
+  "classification": "minor",
+  "criticality": "minor"
+}

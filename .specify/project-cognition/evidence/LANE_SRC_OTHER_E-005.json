@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-005",
+  "source_path": "src/bootstrap/state.ts",
+  "evidence_type": "code_read",
+  "summary": "Massive global state singleton (State type) holding session metadata, telemetry counters, model usage, cost tracking, agent colors, cron tasks, plugin hooks, prompt cache latches, and 80+ getter/setter exports. Central to nearly every module. Exports getSessionId(), switchSession(), regenerateSessionId(), getCwdState(), and dozens of state accessors.",
+  "classification": "important",
+  "criticality": "critical"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-008",
+  "source_path": "src/buddy/observer.ts",
+  "evidence_type": "code_read",
+  "summary": "Lightweight companion observer: generates fun quips based on last assistant message content. Fires 1 in 5 turns. Categorizes messages as debugging/code/general and picks appropriate quip. fireCompanionObserver() is async, checks companion config and mute state.",
+  "classification": "important",
+  "criticality": "minor"
+}

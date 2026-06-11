@@ -1,0 +1,67 @@
+{
+  "status": "success",
+  "reported_status": "completed_with_concerns",
+  "task_id": "T002",
+  "changed_files": [
+    "src/server/types/providerImportExport.ts"
+  ],
+  "validation_output": {
+    "bun run check:server": {
+      "status": "not_completed",
+      "summary": "Timed out after 124s before producing a pass/fail result."
+    },
+    "focused_schema_runtime_check": {
+      "status": "passed",
+      "summary": "Imported providerImportExport.ts, parsed a minimal bundle, confirmed activeId is rejected, and confirmed a secret-free bundle with present apiKey is rejected."
+    },
+    "bun test src/server/__tests__/providers.test.ts --timeout=20000": {
+      "status": "passed",
+      "summary": "55 pass, 0 fail."
+    },
+    "bun build src/server/types/providerImportExport.ts --target=bun": {
+      "status": "passed",
+      "summary": "Bundled successfully."
+    },
+    "bunx tsc --noEmit --pretty false --project tsconfig.json": {
+      "status": "failed_environment",
+      "summary": "Failed before useful file diagnostics: missing type definition file 'bun-types' and tsconfig baseUrl deprecation for TypeScript 7."
+    }
+  },
+  "validation_results": [
+    {
+      "name": "schema runtime and downstream JP1 validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Server provider import/export schemas were consumed by later service/API tasks and passed JP1 plus final server gates."
+  ],
+  "must_preserve_evidence": {
+    "G_SEC_REDIRECT": "ProviderBundleCredentialSchema separates redacted/missing/present credential states; ProviderBundleSchema rejects credential status 'present' when containsSecrets is false.",
+    "G_NO_ACTIVE": "New schemas do not define activeId, default provider selection, active provider env, OAuth, or login state. Strict bundle/request schemas reject unknown active/default fields.",
+    "G_SCOPE": "ProviderBundleProviderSchema models saved provider record fields only and includes sourceProviderId only as optional diagnostic/source metadata.",
+    "MP_001_to_MP_010": "Schemas cover provider-only bundles, secret-free export, explicit secret export confirmation, preview diagnostics, commit resolutions, conflicts, and no active/default transfer.",
+    "CA_001_CA_003_CA_006": "Default export schema supports server-owned redaction; import/commit schemas omit activation state; diagnostics and summaries avoid raw credential exposure except the explicit credential-bearing bundle path."
+  },
+  "concerns": [
+    "Full bun run check:server did not complete within the task timeout; focused same-area tests and schema checks passed.",
+    "Project TypeScript check is currently blocked by repository/toolchain setup before reaching this file: missing bun-types and TS 7 baseUrl deprecation.",
+    "There are many unrelated dirty files in the workspace, including desktop files; I did not modify them."
+  ],
+  "recovery_hints": [
+    "When later behavior tasks wire routes/services, use ProviderExportRequestSchema for secret-free export and ProviderSecretExportConfirmationRequestSchema for the dangerous credential-bearing route.",
+    "Commit implementation should preserve this schema decision: no activeId/default selection in import/export payloads or commit results.",
+    "If maintainers require full TypeScript verification, repair/install bun-types or pin the TypeScript invocation to the repository-supported version first."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/worker-results/T001.json",
+    "src/server/types/provider.ts",
+    "package.json",
+    "scripts/pr/run-server-tests.ts",
+    "tsconfig.json"
+  ]
+}

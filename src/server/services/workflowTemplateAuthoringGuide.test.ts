@@ -123,10 +123,21 @@ describe('workflow template authoring guide', () => {
 
     expect(modelSkills?.optionalFields).toContain('phases[].skills')
     expect(guidance).toContain('workflow_template_authoring skill_catalog')
+    expect(guidance).toContain('workflow_template_authoring skill_create')
     expect(guidance).toContain('{ name, mode: "recommended" }')
     expect(guidance).toContain('Do not duplicate skill-owned descriptions')
     expect(guidance).toContain('Legacy reason fields are preserved')
     expect(guidance).not.toContain('Skills should include a name and reason')
+  })
+
+  test('documents missing phase skill repair through catalog or skill creation', () => {
+    expect(workflowTemplateAuthoringGuide.repairHintsByIssueCode.WORKFLOW_PHASE_SKILL_MISSING).toEqual([
+      expect.stringContaining('skill_catalog'),
+      expect.stringContaining('skill_create'),
+    ])
+    expect(workflowTemplateAuthoringGuide.repairHintsByIssueCode.WORKFLOW_PHASE_SKILL_AMBIGUOUS).toEqual([
+      expect.stringContaining('recommendedReference'),
+    ])
   })
 
   test('lists unsupported shape names that map to shared linear-only validation codes', () => {

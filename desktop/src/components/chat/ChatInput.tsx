@@ -49,7 +49,11 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { useComposerFileDrop } from './useComposerFileDrop'
-import type { LinkedWorkflowContextStrategy, WorkflowTemplateSource } from '../../types/session'
+import type {
+  LinkedWorkflowContextStrategy,
+  LinkedWorkflowSessionStartErrorCode,
+  WorkflowTemplateSource,
+} from '../../types/session'
 
 type GitInfo = SessionGitInfo
 
@@ -122,6 +126,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const [pendingLinkedWorkflowSelection, setPendingLinkedWorkflowSelection] =
     useState<WorkflowStartDialogSelection | null>(null)
   const [linkedWorkflowStarting, setLinkedWorkflowStarting] = useState(false)
+  const [linkedWorkflowRecoveryError, setLinkedWorkflowRecoveryError] =
+    useState<'context-too-large' | null>(null)
   const [summaryInstructions, setSummaryInstructions] = useState('')
   const composingRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -189,7 +195,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     isMemberSession && connectionState === 'disconnected'
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
-  const canOpenWorkflowDialog = !isMemberSession && !!activeTabId && !activeSession?.workflow
+  const hasBlockingWorkflow = !!activeSession?.workflow && activeSession.workflow.status !== 'completed'
+  const canOpenWorkflowDialog = !isMemberSession && !!activeTabId && !hasBlockingWorkflow
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
   const isHeroComposer = variant === 'hero' && !isMemberSession && !compact
   const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
@@ -337,6 +344,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       setWorkflowDialogOpen(false)
       setWorkflowContextDialogOpen(false)
       setPendingLinkedWorkflowSelection(null)
+      setLinkedWorkflowRecoveryError(null)
       return
     }
 
@@ -890,6 +898,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       if (!activeTabId || !canOpenWorkflowDialog || messageCount === 0 || isActive || linkedWorkflowStarting) return
       setPendingLinkedWorkflowSelection(selection)
       setSummaryInstructions('')
+      setLinkedWorkflowRecoveryError(null)
       setWorkflowDialogOpen(false)
       setWorkflowContextDialogOpen(true)
       return
@@ -940,6 +949,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     }
 
     setLinkedWorkflowStarting(true)
+    setLinkedWorkflowRecoveryError(null)
     try {
       const response = await sessionsApi.startLinkedWorkflowSession(activeTabId, {
         workflow: {
@@ -983,6 +993,9 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       setPendingLinkedWorkflowSelection(null)
       setSummaryInstructions('')
     } catch (error) {
+      if (getLinkedWorkflowStartErrorCode(error) === 'WORKFLOW_CONTEXT_TOO_LARGE') {
+        setLinkedWorkflowRecoveryError('context-too-large')
+      }
       useUIStore.getState().addToast({
         type: 'error',
         message: getLinkedWorkflowStartErrorMessage(error, t),
@@ -1031,11 +1044,13 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
         open={workflowContextDialogOpen}
         starting={linkedWorkflowStarting}
         summaryInstructions={summaryInstructions}
+        recoveryError={linkedWorkflowRecoveryError}
         onSummaryInstructionsChange={setSummaryInstructions}
         onStart={handleStartLinkedWorkflow}
         onBack={() => {
           if (linkedWorkflowStarting) return
           setWorkflowContextDialogOpen(false)
+          setLinkedWorkflowRecoveryError(null)
           setWorkflowDialogOpen(true)
         }}
         onClose={() => {
@@ -1043,6 +1058,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           setWorkflowContextDialogOpen(false)
           setPendingLinkedWorkflowSelection(null)
           setSummaryInstructions('')
+          setLinkedWorkflowRecoveryError(null)
         }}
       />
       <div
@@ -1376,6 +1392,7 @@ function WorkflowContextStrategyDialog({
   open,
   starting,
   summaryInstructions,
+  recoveryError,
   onSummaryInstructionsChange,
   onStart,
   onBack,
@@ -1384,6 +1401,7 @@ function WorkflowContextStrategyDialog({
   open: boolean
   starting: boolean
   summaryInstructions: string
+  recoveryError: 'context-too-large' | null
   onSummaryInstructionsChange: (value: string) => void
   onStart: (strategy: LinkedWorkflowContextStrategy) => void
   onBack: () => void
@@ -1461,7 +1479,21 @@ function WorkflowContextStrategyDialog({
             disabled={starting}
             onClick={() => onStart('inherit')}
           />
-          <div className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3">
+          <div className={`rounded-[8px] border bg-[var(--color-surface-container-lowest)] p-3 ${
+            recoveryError === 'context-too-large'
+              ? 'border-[var(--color-warning)]/35'
+              : 'border-[var(--color-border)]'
+          }`}
+          >
+            {recoveryError === 'context-too-large' && (
+              <div
+                role="alert"
+                className="mb-3 flex items-start gap-2 rounded-[7px] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/8 px-3 py-2 text-xs leading-5 text-[var(--color-text-secondary)]"
+              >
+                <span className="material-symbols-outlined mt-0.5 text-[15px] text-[var(--color-warning)]" aria-hidden="true">warning</span>
+                <span>{t('workflows.linkedStart.error.contextTooLarge')}</span>
+              </div>
+            )}
             <ContextStrategyButton
               icon="summarize"
               title={t('workflows.linkedStart.summarize.title')}
@@ -1540,16 +1572,24 @@ function ContextStrategyButton({
   )
 }
 
-function getLinkedWorkflowStartErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>) {
+function getLinkedWorkflowStartErrorCode(error: unknown): LinkedWorkflowSessionStartErrorCode | null {
   if (error instanceof ApiError) {
     const body = error.body
-    const code = body && typeof body === 'object'
+    return body && typeof body === 'object'
       ? ('code' in body && typeof body.code === 'string'
-          ? body.code
+          ? body.code as LinkedWorkflowSessionStartErrorCode
           : 'error' in body && typeof body.error === 'string'
-            ? body.error
+            ? body.error as LinkedWorkflowSessionStartErrorCode
             : null)
       : null
+  }
+
+  return null
+}
+
+function getLinkedWorkflowStartErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>) {
+  if (error instanceof ApiError) {
+    const code = getLinkedWorkflowStartErrorCode(error)
 
     if (code === 'WORKFLOW_SOURCE_ACTIVE') return t('workflows.linkedStart.error.sourceActive')
     if (code === 'WORKFLOW_CONTEXT_TOO_LARGE') return t('workflows.linkedStart.error.contextTooLarge')

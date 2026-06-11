@@ -674,9 +674,9 @@ export const SDKUpdateEnvironmentVariablesMessageSchema = lazySchema(() =>
   z
     .object({
       type: z.literal('update_environment_variables'),
-      variables: z.record(z.string(), z.string()),
+      variables: z.record(z.string(), z.union([z.string(), z.null()])),
     })
-    .describe('Updates environment variables at runtime.'),
+    .describe('Updates environment variables at runtime. Null unsets a variable.'),
 )
 
 // ============================================================================

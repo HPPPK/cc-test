@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-021",
+  "source_path": "src/server/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Generated stub from scan-missing-imports. Placeholder for ant-internal feature() gated modules. Proxy-based noop that satisfies bun build resolver. Exports stub functions for cached MC state, protected namespace checks, coordinator context.",
+  "classification": "critical",
+  "criticality": "low"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-022",
+  "source_path": "src/tools/BashTool/prompt.ts",
+  "evidence_type": "code_read",
+  "summary": "BashTool prompt generation - builds system prompt for bash execution. Includes git instructions, sandbox config, attribution, timeout settings. References other tools (FileEdit, FileRead, Glob, Grep).",
+  "classification": "critical",
+  "criticality": "critical"
+}

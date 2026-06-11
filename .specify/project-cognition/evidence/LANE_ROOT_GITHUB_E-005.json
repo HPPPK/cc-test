@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-005",
+  "source_path": ".env.example",
+  "evidence_type": "config_read",
+  "summary": "Multi-provider env template: MiniMax (Anthropic-compatible direct), OpenAI (via LiteLLM proxy), DeepSeek (via LiteLLM proxy), OpenRouter (direct), Azure OpenAI (Codex). Common settings: DISABLE_TELEMETRY=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1. Uses ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_DEFAULT_OPUS_MODEL pattern for all providers.",
+  "classification": "important",
+  "criticality": "important"
+}

@@ -1,0 +1,2431 @@
+{
+  "packet_id": "lane-src-server-services",
+  "family_id": "src-critical",
+  "assigned_paths": [
+    "src/server/index.ts",
+    "src/server/server.ts",
+    "src/server/router.ts",
+    "src/server/serverBanner.ts",
+    "src/server/serverLog.ts",
+    "src/server/lockfile.ts",
+    "src/server/h5AccessPolicy.ts",
+    "src/server/connectHeadless.ts",
+    "src/server/createDirectConnectSession.ts",
+    "src/server/directConnectManager.ts",
+    "src/server/parseConnectUrl.ts",
+    "src/server/api/activityStats.ts",
+    "src/server/api/adapters.ts",
+    "src/server/api/agents.ts",
+    "src/server/api/computer-use.ts",
+    "src/server/api/computer-use-python.ts",
+    "src/server/api/conversations.ts",
+    "src/server/api/desktop-ui.ts",
+    "src/server/api/diagnostics.ts",
+    "src/server/api/doctor.ts",
+    "src/server/api/filesystem.ts",
+    "src/server/api/h5-access.ts",
+    "src/server/api/jiangxia-oauth.ts",
+    "src/server/api/jiangxia-openai-oauth.ts",
+    "src/server/api/mcp.ts",
+    "src/server/api/memory.ts",
+    "src/server/api/models.ts",
+    "src/server/api/open-targets.ts",
+    "src/server/api/plugins.ts",
+    "src/server/api/scheduled-tasks.ts",
+    "src/server/api/search.ts",
+    "src/server/api/sessions.ts",
+    "src/server/api/status.ts",
+    "src/server/api/teams.ts",
+    "src/server/backends/dangerousBackend.ts",
+    "src/server/config/providerPresets.ts",
+    "src/server/middleware/auth.ts",
+    "src/server/middleware/cors.ts",
+    "src/server/middleware/cors.test.ts",
+    "src/server/middleware/errorHandler.ts",
+    "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+    "src/server/proxy/streaming/openaiResponsesStreamToAnthropic.ts",
+    "src/server/proxy/transform/anthropicToOpenaiResponses.ts",
+    "src/server/proxy/transform/openaiChatToAnthropic.ts",
+    "src/server/proxy/transform/openaiResponsesToAnthropic.ts",
+    "src/server/proxy/transform/toolArguments.ts",
+    "src/server/services/adapterService.ts",
+    "src/server/services/agentService.ts",
+    "src/server/services/computerUseApprovalService.ts",
+    "src/server/services/conversationService.ts",
+    "src/server/services/cronScheduler.ts",
+    "src/server/services/cronService.ts",
+    "src/server/services/desktopCliLauncherService.ts",
+    "src/server/services/desktopUiPreferencesService.ts",
+    "src/server/services/diagnosticsService.ts",
+    "src/server/services/doctorService.ts",
+    "src/server/services/h5AccessService.ts",
+    "src/server/services/jiangxiaOAuthService.ts",
+    "src/server/services/jiangxiaOpenAIOAuthService.ts",
+    "src/server/services/managedSettingsService.ts",
+    "src/server/services/mcpHostPreflight.ts",
+    "src/server/services/mcpHostPreflight.test.ts",
+    "src/server/services/notificationService.ts",
+    "src/server/services/openTargetService.ts",
+    "src/server/services/persistentStorageMigrations.ts",
+    "src/server/services/pluginService.ts",
+    "src/server/services/providerService.ts",
+    "src/server/services/recoverableJsonFile.ts",
+    "src/server/services/repositoryLaunchService.ts",
+    "src/server/services/searchService.ts",
+    "src/server/services/sessionRewindService.ts",
+    "src/server/services/sessionService.ts",
+    "src/server/services/settingsService.ts",
+    "src/server/services/taskService.ts",
+    "src/server/services/teamService.ts",
+    "src/server/services/teamWatcher.ts",
+    "src/server/services/titleService.ts",
+    "src/server/services/workspaceService.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    "src/server/services/workflowReportStore.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowSessionLinkService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/services/AgentSummary/agentSummary.ts",
+    "src/services/MagicDocs/magicDocs.ts",
+    "src/services/MagicDocs/prompts.ts",
+    "src/services/PromptSuggestion/promptSuggestion.ts",
+    "src/services/PromptSuggestion/speculation.ts",
+    "src/services/SessionMemory/prompts.ts",
+    "src/services/SessionMemory/sessionMemory.ts",
+    "src/services/SessionMemory/sessionMemoryUtils.ts",
+    "src/services/analytics/config.ts",
+    "src/services/analytics/datadog.ts",
+    "src/services/analytics/firstPartyEventLogger.ts",
+    "src/services/analytics/firstPartyEventLoggingExporter.ts",
+    "src/services/analytics/growthbook.ts",
+    "src/services/analytics/index.ts",
+    "src/services/analytics/metadata.ts",
+    "src/services/analytics/sink.ts",
+    "src/services/analytics/sinkKillswitch.ts",
+    "src/services/api/adminRequests.ts",
+    "src/services/api/azureOpenAI.ts",
+    "src/services/api/bootstrap.ts",
+    "src/services/api/claude.ts",
+    "src/services/api/client.ts",
+    "src/services/api/client.test.ts",
+    "src/services/api/dumpPrompts.ts",
+    "src/services/api/emptyUsage.ts",
+    "src/services/api/emptyUsage.test.ts",
+    "src/services/api/errorUtils.ts",
+    "src/services/api/errors.ts",
+    "src/services/api/filesApi.ts",
+    "src/services/api/firstTokenDate.ts",
+    "src/services/api/grove.ts",
+    "src/services/api/logging.ts",
+    "src/services/api/metricsOptOut.ts",
+    "src/services/api/overageCreditGrant.ts",
+    "src/services/api/promptCacheBreakDetection.ts",
+    "src/services/api/referral.ts",
+    "src/services/api/sessionIngress.ts",
+    "src/services/api/ultrareviewQuota.ts",
+    "src/services/api/usage.ts",
+    "src/services/api/withRetry.ts",
+    "src/services/autoDream/autoDream.ts",
+    "src/services/autoDream/config.ts",
+    "src/services/autoDream/consolidationLock.ts",
+    "src/services/autoDream/consolidationPrompt.ts",
+    "src/services/awaySummary.ts",
+    "src/services/claudeAiLimits.ts",
+    "src/services/claudeAiLimitsHook.ts",
+    "src/services/compact/apiMicrocompact.ts",
+    "src/services/compact/autoCompact.ts",
+    "src/services/compact/autoCompact.test.ts",
+    "src/services/compact/cachedMCConfig.ts",
+    "src/services/compact/cachedMicrocompact.ts",
+    "src/services/compact/compact.ts",
+    "src/services/compact/compactWarningHook.ts",
+    "src/services/compact/compactWarningState.ts",
+    "src/services/compact/grouping.ts",
+    "src/services/compact/microCompact.ts",
+    "src/services/compact/postCompactCleanup.ts",
+    "src/services/compact/prompt.ts",
+    "src/services/compact/reactiveCompact.ts",
+    "src/services/compact/sessionMemoryCompact.ts",
+    "src/services/compact/snipCompact.ts",
+    "src/services/compact/snipProjection.ts",
+    "src/services/compact/timeBasedMCConfig.ts",
+    "src/services/compact/workflowSummaryCarryover.ts",
+    "src/services/contextCollapse/index.ts",
+    "src/services/contextCollapse/operations.ts",
+    "src/services/contextCollapse/persist.ts",
+    "src/services/diagnosticTracking.ts",
+    "src/services/extractMemories/extractMemories.ts",
+    "src/services/extractMemories/prompts.ts",
+    "src/services/internalLogging.ts",
+    "src/services/lsp/LSPClient.ts",
+    "src/services/lsp/LSPDiagnosticRegistry.ts",
+    "src/services/lsp/LSPServerInstance.ts",
+    "src/services/lsp/LSPServerManager.ts",
+    "src/services/lsp/config.ts",
+    "src/services/lsp/manager.ts",
+    "src/services/lsp/passiveFeedback.ts",
+    "src/services/lsp/types.ts",
+    "src/services/mcp/InProcessTransport.ts",
+    "src/services/mcp/SdkControlTransport.ts",
+    "src/services/mcp/auth.ts",
+    "src/services/mcp/channelAllowlist.ts",
+    "src/services/mcp/channelNotification.ts",
+    "src/services/mcp/channelPermissions.ts",
+    "src/services/mcp/claudeai.ts",
+    "src/services/mcp/client.ts",
+    "src/services/mcp/config.ts",
+    "src/services/mcp/elicitationHandler.ts",
+    "src/services/mcp/envExpansion.ts",
+    "src/services/mcp/headersHelper.ts",
+    "src/services/mcp/mcpStringUtils.ts",
+    "src/services/mcp/normalization.ts",
+    "src/services/mcp/oauthPort.ts",
+    "src/services/mcp/officialRegistry.ts",
+    "src/services/mcp/types.ts",
+    "src/services/mcp/useManageMCPConnections.ts",
+    "src/services/mcp/utils.ts",
+    "src/services/mcp/vscodeSdkMcp.ts",
+    "src/services/mcp/aa.ts",
+    "src/services/mcp/aaIdpLogin.ts",
+    "src/services/mockRateLimits.ts",
+    "src/services/notifier.ts",
+    "src/services/preventSleep.ts",
+    "src/services/rateLimitMessages.ts",
+    "src/services/rateLimitMocking.ts",
+    "src/services/tokenEstimation.ts",
+    "src/services/vcr.ts",
+    "src/services/voice.ts",
+    "src/services/voiceKeyterms.ts",
+    "src/services/voiceStreamSTT.ts"
+  ],
+  "paths_read": [
+    "src/server/index.ts",
+    "src/server/server.ts",
+    "src/server/router.ts",
+    "src/server/serverBanner.ts",
+    "src/server/serverLog.ts",
+    "src/server/lockfile.ts",
+    "src/server/h5AccessPolicy.ts",
+    "src/server/connectHeadless.ts",
+    "src/server/createDirectConnectSession.ts",
+    "src/server/directConnectManager.ts",
+    "src/server/parseConnectUrl.ts",
+    "src/server/api/activityStats.ts",
+    "src/server/api/adapters.ts",
+    "src/server/api/agents.ts",
+    "src/server/api/computer-use.ts",
+    "src/server/api/computer-use-python.ts",
+    "src/server/api/conversations.ts",
+    "src/server/api/desktop-ui.ts",
+    "src/server/api/diagnostics.ts",
+    "src/server/api/doctor.ts",
+    "src/server/api/filesystem.ts",
+    "src/server/api/h5-access.ts",
+    "src/server/api/jiangxia-oauth.ts",
+    "src/server/api/jiangxia-openai-oauth.ts",
+    "src/server/api/mcp.ts",
+    "src/server/api/memory.ts",
+    "src/server/api/models.ts",
+    "src/server/api/open-targets.ts",
+    "src/server/api/plugins.ts",
+    "src/server/api/scheduled-tasks.ts",
+    "src/server/api/search.ts",
+    "src/server/api/sessions.ts",
+    "src/server/api/status.ts",
+    "src/server/api/teams.ts",
+    "src/server/backends/dangerousBackend.ts",
+    "src/server/config/providerPresets.ts",
+    "src/server/middleware/auth.ts",
+    "src/server/middleware/cors.ts",
+    "src/server/middleware/cors.test.ts",
+    "src/server/middleware/errorHandler.ts",
+    "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+    "src/server/proxy/streaming/openaiResponsesStreamToAnthropic.ts",
+    "src/server/proxy/transform/anthropicToOpenaiResponses.ts",
+    "src/server/proxy/transform/openaiChatToAnthropic.ts",
+    "src/server/proxy/transform/openaiResponsesToAnthropic.ts",
+    "src/server/proxy/transform/toolArguments.ts",
+    "src/server/services/adapterService.ts",
+    "src/server/services/agentService.ts",
+    "src/server/services/computerUseApprovalService.ts",
+    "src/server/services/conversationService.ts",
+    "src/server/services/cronScheduler.ts",
+    "src/server/services/cronService.ts",
+    "src/server/services/desktopCliLauncherService.ts",
+    "src/server/services/desktopUiPreferencesService.ts",
+    "src/server/services/diagnosticsService.ts",
+    "src/server/services/doctorService.ts",
+    "src/server/services/h5AccessService.ts",
+    "src/server/services/jiangxiaOAuthService.ts",
+    "src/server/services/jiangxiaOpenAIOAuthService.ts",
+    "src/server/services/managedSettingsService.ts",
+    "src/server/services/mcpHostPreflight.ts",
+    "src/server/services/mcpHostPreflight.test.ts",
+    "src/server/services/notificationService.ts",
+    "src/server/services/openTargetService.ts",
+    "src/server/services/persistentStorageMigrations.ts",
+    "src/server/services/pluginService.ts",
+    "src/server/services/providerService.ts",
+    "src/server/services/recoverableJsonFile.ts",
+    "src/server/services/repositoryLaunchService.ts",
+    "src/server/services/searchService.ts",
+    "src/server/services/sessionRewindService.ts",
+    "src/server/services/sessionService.ts",
+    "src/server/services/settingsService.ts",
+    "src/server/services/taskService.ts",
+    "src/server/services/teamService.ts",
+    "src/server/services/teamWatcher.ts",
+    "src/server/services/titleService.ts",
+    "src/server/services/workspaceService.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    "src/server/services/workflowReportStore.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowSessionLinkService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowTypes.ts",
+    "src/services/AgentSummary/agentSummary.ts",
+    "src/services/MagicDocs/magicDocs.ts",
+    "src/services/MagicDocs/prompts.ts",
+    "src/services/PromptSuggestion/promptSuggestion.ts",
+    "src/services/PromptSuggestion/speculation.ts",
+    "src/services/SessionMemory/prompts.ts",
+    "src/services/SessionMemory/sessionMemory.ts",
+    "src/services/SessionMemory/sessionMemoryUtils.ts",
+    "src/services/analytics/config.ts",
+    "src/services/analytics/datadog.ts",
+    "src/services/analytics/firstPartyEventLogger.ts",
+    "src/services/analytics/firstPartyEventLoggingExporter.ts",
+    "src/services/analytics/growthbook.ts",
+    "src/services/analytics/index.ts",
+    "src/services/analytics/metadata.ts",
+    "src/services/analytics/sink.ts",
+    "src/services/analytics/sinkKillswitch.ts",
+    "src/services/api/adminRequests.ts",
+    "src/services/api/azureOpenAI.ts",
+    "src/services/api/bootstrap.ts",
+    "src/services/api/claude.ts",
+    "src/services/api/client.ts",
+    "src/services/api/client.test.ts",
+    "src/services/api/dumpPrompts.ts",
+    "src/services/api/emptyUsage.ts",
+    "src/services/api/emptyUsage.test.ts",
+    "src/services/api/errorUtils.ts",
+    "src/services/api/errors.ts",
+    "src/services/api/filesApi.ts",
+    "src/services/api/firstTokenDate.ts",
+    "src/services/api/grove.ts",
+    "src/services/api/logging.ts",
+    "src/services/api/metricsOptOut.ts",
+    "src/services/api/overageCreditGrant.ts",
+    "src/services/api/promptCacheBreakDetection.ts",
+    "src/services/api/referral.ts",
+    "src/services/api/sessionIngress.ts",
+    "src/services/api/ultrareviewQuota.ts",
+    "src/services/api/usage.ts",
+    "src/services/api/withRetry.ts",
+    "src/services/autoDream/autoDream.ts",
+    "src/services/autoDream/config.ts",
+    "src/services/autoDream/consolidationLock.ts",
+    "src/services/autoDream/consolidationPrompt.ts",
+    "src/services/awaySummary.ts",
+    "src/services/claudeAiLimits.ts",
+    "src/services/claudeAiLimitsHook.ts",
+    "src/services/compact/apiMicrocompact.ts",
+    "src/services/compact/autoCompact.ts",
+    "src/services/compact/autoCompact.test.ts",
+    "src/services/compact/cachedMCConfig.ts",
+    "src/services/compact/cachedMicrocompact.ts",
+    "src/services/compact/compact.ts",
+    "src/services/compact/compactWarningHook.ts",
+    "src/services/compact/compactWarningState.ts",
+    "src/services/compact/grouping.ts",
+    "src/services/compact/microCompact.ts",
+    "src/services/compact/postCompactCleanup.ts",
+    "src/services/compact/prompt.ts",
+    "src/services/compact/reactiveCompact.ts",
+    "src/services/compact/sessionMemoryCompact.ts",
+    "src/services/compact/snipCompact.ts",
+    "src/services/compact/snipProjection.ts",
+    "src/services/compact/timeBasedMCConfig.ts",
+    "src/services/compact/workflowSummaryCarryover.ts",
+    "src/services/contextCollapse/index.ts",
+    "src/services/contextCollapse/operations.ts",
+    "src/services/contextCollapse/persist.ts",
+    "src/services/diagnosticTracking.ts",
+    "src/services/extractMemories/extractMemories.ts",
+    "src/services/extractMemories/prompts.ts",
+    "src/services/internalLogging.ts",
+    "src/services/lsp/LSPClient.ts",
+    "src/services/lsp/LSPDiagnosticRegistry.ts",
+    "src/services/lsp/LSPServerInstance.ts",
+    "src/services/lsp/LSPServerManager.ts",
+    "src/services/lsp/config.ts",
+    "src/services/lsp/manager.ts",
+    "src/services/lsp/passiveFeedback.ts",
+    "src/services/lsp/types.ts",
+    "src/services/mcp/InProcessTransport.ts",
+    "src/services/mcp/SdkControlTransport.ts",
+    "src/services/mcp/auth.ts",
+    "src/services/mcp/channelAllowlist.ts",
+    "src/services/mcp/channelNotification.ts",
+    "src/services/mcp/channelPermissions.ts",
+    "src/services/mcp/claudeai.ts",
+    "src/services/mcp/client.ts",
+    "src/services/mcp/config.ts",
+    "src/services/mcp/elicitationHandler.ts",
+    "src/services/mcp/envExpansion.ts",
+    "src/services/mcp/headersHelper.ts",
+    "src/services/mcp/mcpStringUtils.ts",
+    "src/services/mcp/normalization.ts",
+    "src/services/mcp/oauthPort.ts",
+    "src/services/mcp/officialRegistry.ts",
+    "src/services/mcp/types.ts",
+    "src/services/mcp/useManageMCPConnections.ts",
+    "src/services/mcp/utils.ts",
+    "src/services/mcp/vscodeSdkMcp.ts",
+    "src/services/mcp/aa.ts",
+    "src/services/mcp/aaIdpLogin.ts",
+    "src/services/mockRateLimits.ts",
+    "src/services/notifier.ts",
+    "src/services/preventSleep.ts",
+    "src/services/rateLimitMessages.ts",
+    "src/services/rateLimitMocking.ts",
+    "src/services/tokenEstimation.ts",
+    "src/services/vcr.ts",
+    "src/services/voice.ts",
+    "src/services/voiceKeyterms.ts",
+    "src/services/voiceStreamSTT.ts"
+  ],
+  "ledger": {
+    "todo": [],
+    "doing": [],
+    "done": [
+      "src/server/api/activityStats.ts",
+      "src/server/api/adapters.ts",
+      "src/server/api/agents.ts",
+      "src/server/api/computer-use-python.ts",
+      "src/server/api/computer-use.ts",
+      "src/server/api/conversations.ts",
+      "src/server/api/desktop-ui.ts",
+      "src/server/api/diagnostics.ts",
+      "src/server/api/doctor.ts",
+      "src/server/api/filesystem.ts",
+      "src/server/api/h5-access.ts",
+      "src/server/api/jiangxia-oauth.ts",
+      "src/server/api/jiangxia-openai-oauth.ts",
+      "src/server/api/mcp.ts",
+      "src/server/api/memory.ts",
+      "src/server/api/models.ts",
+      "src/server/api/open-targets.ts",
+      "src/server/api/plugins.ts",
+      "src/server/api/scheduled-tasks.ts",
+      "src/server/api/search.ts",
+      "src/server/api/sessions.ts",
+      "src/server/api/status.ts",
+      "src/server/api/teams.ts",
+      "src/server/backends/dangerousBackend.ts",
+      "src/server/config/providerPresets.ts",
+      "src/server/connectHeadless.ts",
+      "src/server/createDirectConnectSession.ts",
+      "src/server/directConnectManager.ts",
+      "src/server/h5AccessPolicy.ts",
+      "src/server/index.ts",
+      "src/server/lockfile.ts",
+      "src/server/middleware/auth.ts",
+      "src/server/middleware/cors.test.ts",
+      "src/server/middleware/cors.ts",
+      "src/server/middleware/errorHandler.ts",
+      "src/server/parseConnectUrl.ts",
+      "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+      "src/server/proxy/streaming/openaiResponsesStreamToAnthropic.ts",
+      "src/server/proxy/transform/anthropicToOpenaiResponses.ts",
+      "src/server/proxy/transform/openaiChatToAnthropic.ts",
+      "src/server/proxy/transform/openaiResponsesToAnthropic.ts",
+      "src/server/proxy/transform/toolArguments.ts",
+      "src/server/router.ts",
+      "src/server/server.ts",
+      "src/server/serverBanner.ts",
+      "src/server/serverLog.ts",
+      "src/server/services/adapterService.ts",
+      "src/server/services/agentService.ts",
+      "src/server/services/computerUseApprovalService.ts",
+      "src/server/services/conversationService.ts",
+      "src/server/services/cronScheduler.ts",
+      "src/server/services/cronService.ts",
+      "src/server/services/desktopCliLauncherService.ts",
+      "src/server/services/desktopUiPreferencesService.ts",
+      "src/server/services/diagnosticsService.ts",
+      "src/server/services/doctorService.ts",
+      "src/server/services/h5AccessService.ts",
+      "src/server/services/jiangxiaOAuthService.ts",
+      "src/server/services/jiangxiaOpenAIOAuthService.ts",
+      "src/server/services/managedSettingsService.ts",
+      "src/server/services/mcpHostPreflight.test.ts",
+      "src/server/services/mcpHostPreflight.ts",
+      "src/server/services/notificationService.ts",
+      "src/server/services/openTargetService.ts",
+      "src/server/services/persistentStorageMigrations.ts",
+      "src/server/services/pluginService.ts",
+      "src/server/services/providerService.ts",
+      "src/server/services/recoverableJsonFile.ts",
+      "src/server/services/repositoryLaunchService.ts",
+      "src/server/services/searchService.ts",
+      "src/server/services/sessionRewindService.ts",
+      "src/server/services/sessionService.ts",
+      "src/server/services/settingsService.ts",
+      "src/server/services/taskService.ts",
+      "src/server/services/teamService.ts",
+      "src/server/services/teamWatcher.ts",
+      "src/server/services/titleService.ts",
+      "src/server/services/workflowFinalReport.ts",
+      "src/server/services/workflowPhaseSkillResolver.ts",
+      "src/server/services/workflowReportStore.ts",
+      "src/server/services/workflowRuntimeService.ts",
+      "src/server/services/workflowSessionCreateService.ts",
+      "src/server/services/workflowSessionLinkService.ts",
+      "src/server/services/workflowSessionStateService.ts",
+      "src/server/services/workflowSummary.ts",
+      "src/server/services/workflowTemplateAuthoringGuide.ts",
+      "src/server/services/workflowTemplateAuthoringService.ts",
+      "src/server/services/workflowTemplateRegistryService.ts",
+      "src/server/services/workflowTemplateValidation.ts",
+      "src/server/services/workflowToolPolicy.ts",
+      "src/server/services/workflowTypes.ts",
+      "src/server/services/workspaceService.ts",
+      "src/services/AgentSummary/agentSummary.ts",
+      "src/services/MagicDocs/magicDocs.ts",
+      "src/services/MagicDocs/prompts.ts",
+      "src/services/PromptSuggestion/promptSuggestion.ts",
+      "src/services/PromptSuggestion/speculation.ts",
+      "src/services/SessionMemory/prompts.ts",
+      "src/services/SessionMemory/sessionMemory.ts",
+      "src/services/SessionMemory/sessionMemoryUtils.ts",
+      "src/services/analytics/config.ts",
+      "src/services/analytics/datadog.ts",
+      "src/services/analytics/firstPartyEventLogger.ts",
+      "src/services/analytics/firstPartyEventLoggingExporter.ts",
+      "src/services/analytics/growthbook.ts",
+      "src/services/analytics/index.ts",
+      "src/services/analytics/metadata.ts",
+      "src/services/analytics/sink.ts",
+      "src/services/analytics/sinkKillswitch.ts",
+      "src/services/api/adminRequests.ts",
+      "src/services/api/azureOpenAI.ts",
+      "src/services/api/bootstrap.ts",
+      "src/services/api/claude.ts",
+      "src/services/api/client.test.ts",
+      "src/services/api/client.ts",
+      "src/services/api/dumpPrompts.ts",
+      "src/services/api/emptyUsage.test.ts",
+      "src/services/api/emptyUsage.ts",
+      "src/services/api/errorUtils.ts",
+      "src/services/api/errors.ts",
+      "src/services/api/filesApi.ts",
+      "src/services/api/firstTokenDate.ts",
+      "src/services/api/grove.ts",
+      "src/services/api/logging.ts",
+      "src/services/api/metricsOptOut.ts",
+      "src/services/api/overageCreditGrant.ts",
+      "src/services/api/promptCacheBreakDetection.ts",
+      "src/services/api/referral.ts",
+      "src/services/api/sessionIngress.ts",
+      "src/services/api/ultrareviewQuota.ts",
+      "src/services/api/usage.ts",
+      "src/services/api/withRetry.ts",
+      "src/services/autoDream/autoDream.ts",
+      "src/services/autoDream/config.ts",
+      "src/services/autoDream/consolidationLock.ts",
+      "src/services/autoDream/consolidationPrompt.ts",
+      "src/services/awaySummary.ts",
+      "src/services/claudeAiLimits.ts",
+      "src/services/claudeAiLimitsHook.ts",
+      "src/services/compact/apiMicrocompact.ts",
+      "src/services/compact/autoCompact.test.ts",
+      "src/services/compact/autoCompact.ts",
+      "src/services/compact/cachedMCConfig.ts",
+      "src/services/compact/cachedMicrocompact.ts",
+      "src/services/compact/compact.ts",
+      "src/services/compact/compactWarningHook.ts",
+      "src/services/compact/compactWarningState.ts",
+      "src/services/compact/grouping.ts",
+      "src/services/compact/microCompact.ts",
+      "src/services/compact/postCompactCleanup.ts",
+      "src/services/compact/prompt.ts",
+      "src/services/compact/reactiveCompact.ts",
+      "src/services/compact/sessionMemoryCompact.ts",
+      "src/services/compact/snipCompact.ts",
+      "src/services/compact/snipProjection.ts",
+      "src/services/compact/timeBasedMCConfig.ts",
+      "src/services/compact/workflowSummaryCarryover.ts",
+      "src/services/contextCollapse/index.ts",
+      "src/services/contextCollapse/operations.ts",
+      "src/services/contextCollapse/persist.ts",
+      "src/services/diagnosticTracking.ts",
+      "src/services/extractMemories/extractMemories.ts",
+      "src/services/extractMemories/prompts.ts",
+      "src/services/internalLogging.ts",
+      "src/services/lsp/LSPClient.ts",
+      "src/services/lsp/LSPDiagnosticRegistry.ts",
+      "src/services/lsp/LSPServerInstance.ts",
+      "src/services/lsp/LSPServerManager.ts",
+      "src/services/lsp/config.ts",
+      "src/services/lsp/manager.ts",
+      "src/services/lsp/passiveFeedback.ts",
+      "src/services/lsp/types.ts",
+      "src/services/mcp/InProcessTransport.ts",
+      "src/services/mcp/SdkControlTransport.ts",
+      "src/services/mcp/aa.ts",
+      "src/services/mcp/aaIdpLogin.ts",
+      "src/services/mcp/auth.ts",
+      "src/services/mcp/channelAllowlist.ts",
+      "src/services/mcp/channelNotification.ts",
+      "src/services/mcp/channelPermissions.ts",
+      "src/services/mcp/claudeai.ts",
+      "src/services/mcp/client.ts",
+      "src/services/mcp/config.ts",
+      "src/services/mcp/elicitationHandler.ts",
+      "src/services/mcp/envExpansion.ts",
+      "src/services/mcp/headersHelper.ts",
+      "src/services/mcp/mcpStringUtils.ts",
+      "src/services/mcp/normalization.ts",
+      "src/services/mcp/oauthPort.ts",
+      "src/services/mcp/officialRegistry.ts",
+      "src/services/mcp/types.ts",
+      "src/services/mcp/useManageMCPConnections.ts",
+      "src/services/mcp/utils.ts",
+      "src/services/mcp/vscodeSdkMcp.ts",
+      "src/services/mockRateLimits.ts",
+      "src/services/notifier.ts",
+      "src/services/preventSleep.ts",
+      "src/services/rateLimitMessages.ts",
+      "src/services/rateLimitMocking.ts",
+      "src/services/tokenEstimation.ts",
+      "src/services/vcr.ts",
+      "src/services/voice.ts",
+      "src/services/voiceKeyterms.ts",
+      "src/services/voiceStreamSTT.ts"
+    ],
+    "blocked": [],
+    "overflow": []
+  },
+  "evidence": [
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-001",
+      "source_path": "src/server/server.ts",
+      "evidence_type": "code_read",
+      "summary": "Bun.serve() based HTTP+WebSocket server. Entry point for Claude Code Desktop App. Handles /api/, /ws/, /sdk/, /proxy/ routes. Integrates CORS, auth middleware, H5 access policy, team watcher, cron scheduler. Graceful shutdown kills CLI subprocesses.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-002",
+      "source_path": "src/server/router.ts",
+      "evidence_type": "code_read",
+      "summary": "Central API router mapping ~25 resource endpoints (sessions, workflows, settings, models, teams, providers, mcp, plugins, computer-use, diagnostics, doctor, h5-access, memory, desktop-ui, etc.) to handler modules via switch-case on URL segments.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-003",
+      "source_path": "src/server/services/sessionService.ts",
+      "evidence_type": "code_read",
+      "summary": "Session file read/write operations for CLI-persisted JSONL session data under ~/.claude/projects/. Types: SessionListItem, SessionDetail, SessionLaunchInfo. Ensures Desktop App and CLI data interop.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-004",
+      "source_path": "src/server/services/conversationService.ts",
+      "evidence_type": "code_read",
+      "summary": "CLI subprocess manager. Each desktop session owns one CLI subprocess communicating over SDK WebSocket bridge. Manages spawn, permission requests, SDK messages, output callbacks. Supports file/image attachments.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-005",
+      "source_path": "src/server/services/workflowRuntimeService.ts",
+      "evidence_type": "code_read",
+      "summary": "Workflow session state machine. Manages phase transitions, completion submissions, artifact pointers, prompt assembly with skill provenance. Imports workflow types, template registry, phase skill resolver, tool policy.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-006",
+      "source_path": "src/server/services/teamWatcher.ts",
+      "evidence_type": "code_read",
+      "summary": "Polls ~/.claude/teams/ directory for changes. Detects team_created/team_update/team_deleted events. Pushes real-time WebSocket updates to connected clients. Uses polling for cross-platform reliability.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-007",
+      "source_path": "src/server/services/pluginService.ts",
+      "evidence_type": "code_read",
+      "summary": "Plugin lifecycle management: enable/disable/install/uninstall/update operations. Loads built-in and marketplace plugins. Manages MCP server integration, LSP server integration, hooks, and commands from plugins.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-008",
+      "source_path": "src/server/services/searchService.ts",
+      "evidence_type": "code_read",
+      "summary": "Workspace file search and session history search. Uses ripgrep (rg) with grep fallback. Types: SearchResult, SessionSearchResult. Supports glob filtering, case sensitivity, max results.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-009",
+      "source_path": "src/server/middleware/auth.ts",
+      "evidence_type": "code_read",
+      "summary": "Authentication middleware using Anthropic API Key via Bearer token. Validates Authorization header against ANTHROPIC_API_KEY env var. Also supports H5 token authentication.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-010",
+      "source_path": "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+      "evidence_type": "code_read",
+      "summary": "SSE streaming transformation: OpenAI Chat Completions -> Anthropic Messages format. Handles provider-specific reasoning formats (DeepSeek, OpenAI o-series, GLM-5, etc.). Derived from cc-switch project (MIT).",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-011",
+      "source_path": "src/services/analytics/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Analytics event logging public API. Queue-based design with no dependencies to avoid import cycles. Events queued until attachAnalyticsSink() called. Supports sync/async logging. PII-tagged proto fields stripped before Datadog. Marker types enforce safe metadata.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-012",
+      "source_path": "src/services/api/client.ts",
+      "evidence_type": "code_read",
+      "summary": "Anthropic API client factory. Supports Direct API, AWS Bedrock, Azure Foundry, Vertex AI, and OpenAI Codex auth. Handles OAuth, API key resolution, custom headers, proxy options, request timeouts. ~440 lines of multi-provider client construction.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-013",
+      "source_path": "src/services/api/errors.ts",
+      "evidence_type": "code_read",
+      "summary": "API error handling and classification. Wraps Anthropic SDK errors into user-facing messages. Handles rate limits, overage, connection errors, prompt-too-long. Types for ClaudeAI limits, overage disabled reasons.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-014",
+      "source_path": "src/services/mcp/client.ts",
+      "evidence_type": "code_read",
+      "summary": "MCP (Model Context Protocol) client. Manages connections to stdio, SSE, HTTP, WebSocket, SDK, and claudeai-proxy MCP servers. Handles OAuth auth, session expiry, tool/resource/command fetching, elicitation, cleanup. ~2400 lines. Core MCP infrastructure.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-015",
+      "source_path": "src/services/compact/compact.ts",
+      "evidence_type": "code_read",
+      "summary": "Conversation compaction engine. Summarizes older messages while preserving recent history. Supports full, partial, and auto compaction. Uses forked agent for prompt cache sharing. Post-compact restores file attachments, plan files, skills, async agent status. ~1700 lines.",
+      "classification": "critical",
+      "criticality": "critical"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-016",
+      "source_path": "src/services/compact/autoCompact.ts",
+      "evidence_type": "code_read",
+      "summary": "Auto-compaction trigger. Monitors token count against context window. Triggers compaction when threshold exceeded. Circuit breaker for consecutive failures. Integrates with session memory compaction.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-017",
+      "source_path": "src/services/autoDream/autoDream.ts",
+      "evidence_type": "code_read",
+      "summary": "Background memory consolidation. Fires /dream prompt as forked subagent when time-gate AND session-gate pass. Uses consolidation lock, session scanning throttle. Integrates with DreamTask system.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-018",
+      "source_path": "src/services/extractMemories/extractMemories.ts",
+      "evidence_type": "code_read",
+      "summary": "Extracts durable memories from session transcripts to ~/.claude/projects/<path>/memory/. Runs once per query loop via stop hooks. Uses forked agent pattern sharing parent prompt cache. Manages tool permissions for extraction subagent.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-019",
+      "source_path": "src/services/SessionMemory/sessionMemory.ts",
+      "evidence_type": "code_read",
+      "summary": "Session Memory auto-maintains a markdown file with conversation notes. Runs periodically in background using forked subagent. Registers post-sampling hook. Integrates with auto-compact system.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-020",
+      "source_path": "src/services/lsp/manager.ts",
+      "evidence_type": "code_read",
+      "summary": "LSP server manager singleton. Lazy initialization with state tracking (not-started/pending/success/failed). Creates LSPServerManager instance, registers notification handlers. Generation counter prevents stale promises.",
+      "classification": "critical",
+      "criticality": "high"
+    },
+    {
+      "id": "LANE_SRC_SERVER_SERVICES_E-021",
+      "source_path": "src/server/index.ts",
+      "evidence_type": "code_read",
+      "summary": "Generated stub from scan-missing-imports. Placeholder for ant-internal feature() gated modules. Proxy-based noop that satisfies bun build resolver. Exports stub functions for cached MC state, protected namespace checks, coordinator context.",
+      "classification": "critical",
+      "criticality": "low"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N-001",
+      "type": "module",
+      "title": "server-core",
+      "paths": [
+        "src/server/server.ts",
+        "src/server/router.ts",
+        "src/server/index.ts",
+        "src/server/serverBanner.ts",
+        "src/server/serverLog.ts",
+        "src/server/lockfile.ts",
+        "src/server/h5AccessPolicy.ts",
+        "src/server/connectHeadless.ts",
+        "src/server/createDirectConnectSession.ts",
+        "src/server/directConnectManager.ts",
+        "src/server/parseConnectUrl.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-001",
+        "LANE_SRC_SERVER_SERVICES_E-002",
+        "LANE_SRC_SERVER_SERVICES_E-021"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-002",
+      "type": "module",
+      "title": "server-api-handlers",
+      "paths": [
+        "src/server/api/activityStats.ts",
+        "src/server/api/adapters.ts",
+        "src/server/api/agents.ts",
+        "src/server/api/computer-use.ts",
+        "src/server/api/computer-use-python.ts",
+        "src/server/api/conversations.ts",
+        "src/server/api/desktop-ui.ts",
+        "src/server/api/diagnostics.ts",
+        "src/server/api/doctor.ts",
+        "src/server/api/filesystem.ts",
+        "src/server/api/h5-access.ts",
+        "src/server/api/jiangxia-oauth.ts",
+        "src/server/api/jiangxia-openai-oauth.ts",
+        "src/server/api/mcp.ts",
+        "src/server/api/memory.ts",
+        "src/server/api/models.ts",
+        "src/server/api/open-targets.ts",
+        "src/server/api/plugins.ts",
+        "src/server/api/scheduled-tasks.ts",
+        "src/server/api/search.ts",
+        "src/server/api/sessions.ts",
+        "src/server/api/status.ts",
+        "src/server/api/teams.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-002"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-003",
+      "type": "module",
+      "title": "server-middleware",
+      "paths": [
+        "src/server/middleware/auth.ts",
+        "src/server/middleware/cors.ts",
+        "src/server/middleware/cors.test.ts",
+        "src/server/middleware/errorHandler.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-009"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-004",
+      "type": "module",
+      "title": "server-proxy",
+      "paths": [
+        "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+        "src/server/proxy/streaming/openaiResponsesStreamToAnthropic.ts",
+        "src/server/proxy/transform/anthropicToOpenaiResponses.ts",
+        "src/server/proxy/transform/openaiChatToAnthropic.ts",
+        "src/server/proxy/transform/openaiResponsesToAnthropic.ts",
+        "src/server/proxy/transform/toolArguments.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-010"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-005",
+      "type": "module",
+      "title": "server-services-session",
+      "paths": [
+        "src/server/services/sessionService.ts",
+        "src/server/services/conversationService.ts",
+        "src/server/services/sessionRewindService.ts",
+        "src/server/services/repositoryLaunchService.ts",
+        "src/server/services/workspaceService.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-003",
+        "LANE_SRC_SERVER_SERVICES_E-004"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-006",
+      "type": "module",
+      "title": "server-services-workflow",
+      "paths": [
+        "src/server/services/workflowRuntimeService.ts",
+        "src/server/services/workflowSessionCreateService.ts",
+        "src/server/services/workflowSessionStateService.ts",
+        "src/server/services/workflowSessionLinkService.ts",
+        "src/server/services/workflowReportStore.ts",
+        "src/server/services/workflowFinalReport.ts",
+        "src/server/services/workflowSummary.ts",
+        "src/server/services/workflowTypes.ts",
+        "src/server/services/workflowPhaseSkillResolver.ts",
+        "src/server/services/workflowTemplateRegistryService.ts",
+        "src/server/services/workflowTemplateAuthoringGuide.ts",
+        "src/server/services/workflowTemplateAuthoringService.ts",
+        "src/server/services/workflowTemplateValidation.ts",
+        "src/server/services/workflowToolPolicy.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-005"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "workflow-team"
+      }
+    },
+    {
+      "id": "N-007",
+      "type": "module",
+      "title": "server-services-infrastructure",
+      "paths": [
+        "src/server/services/adapterService.ts",
+        "src/server/services/agentService.ts",
+        "src/server/services/computerUseApprovalService.ts",
+        "src/server/services/cronScheduler.ts",
+        "src/server/services/cronService.ts",
+        "src/server/services/desktopCliLauncherService.ts",
+        "src/server/services/desktopUiPreferencesService.ts",
+        "src/server/services/diagnosticsService.ts",
+        "src/server/services/doctorService.ts",
+        "src/server/services/h5AccessService.ts",
+        "src/server/services/jiangxiaOAuthService.ts",
+        "src/server/services/jiangxiaOpenAIOAuthService.ts",
+        "src/server/services/managedSettingsService.ts",
+        "src/server/services/mcpHostPreflight.ts",
+        "src/server/services/notificationService.ts",
+        "src/server/services/openTargetService.ts",
+        "src/server/services/persistentStorageMigrations.ts",
+        "src/server/services/pluginService.ts",
+        "src/server/services/providerService.ts",
+        "src/server/services/recoverableJsonFile.ts",
+        "src/server/services/searchService.ts",
+        "src/server/services/settingsService.ts",
+        "src/server/services/taskService.ts",
+        "src/server/services/teamService.ts",
+        "src/server/services/teamWatcher.ts",
+        "src/server/services/titleService.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-006",
+        "LANE_SRC_SERVER_SERVICES_E-007",
+        "LANE_SRC_SERVER_SERVICES_E-008"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "server",
+        "owner": "desktop-team"
+      }
+    },
+    {
+      "id": "N-008",
+      "type": "module",
+      "title": "services-analytics",
+      "paths": [
+        "src/services/analytics/config.ts",
+        "src/services/analytics/datadog.ts",
+        "src/services/analytics/firstPartyEventLogger.ts",
+        "src/services/analytics/firstPartyEventLoggingExporter.ts",
+        "src/services/analytics/growthbook.ts",
+        "src/services/analytics/index.ts",
+        "src/services/analytics/metadata.ts",
+        "src/services/analytics/sink.ts",
+        "src/services/analytics/sinkKillswitch.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-011"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "platform-team"
+      }
+    },
+    {
+      "id": "N-009",
+      "type": "module",
+      "title": "services-api",
+      "paths": [
+        "src/services/api/adminRequests.ts",
+        "src/services/api/azureOpenAI.ts",
+        "src/services/api/bootstrap.ts",
+        "src/services/api/claude.ts",
+        "src/services/api/client.ts",
+        "src/services/api/dumpPrompts.ts",
+        "src/services/api/emptyUsage.ts",
+        "src/services/api/errorUtils.ts",
+        "src/services/api/errors.ts",
+        "src/services/api/filesApi.ts",
+        "src/services/api/firstTokenDate.ts",
+        "src/services/api/grove.ts",
+        "src/services/api/logging.ts",
+        "src/services/api/metricsOptOut.ts",
+        "src/services/api/overageCreditGrant.ts",
+        "src/services/api/promptCacheBreakDetection.ts",
+        "src/services/api/referral.ts",
+        "src/services/api/sessionIngress.ts",
+        "src/services/api/ultrareviewQuota.ts",
+        "src/services/api/usage.ts",
+        "src/services/api/withRetry.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-012",
+        "LANE_SRC_SERVER_SERVICES_E-013"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "api-team"
+      }
+    },
+    {
+      "id": "N-010",
+      "type": "module",
+      "title": "services-mcp",
+      "paths": [
+        "src/services/mcp/InProcessTransport.ts",
+        "src/services/mcp/SdkControlTransport.ts",
+        "src/services/mcp/auth.ts",
+        "src/services/mcp/channelAllowlist.ts",
+        "src/services/mcp/channelNotification.ts",
+        "src/services/mcp/channelPermissions.ts",
+        "src/services/mcp/claudeai.ts",
+        "src/services/mcp/client.ts",
+        "src/services/mcp/config.ts",
+        "src/services/mcp/elicitationHandler.ts",
+        "src/services/mcp/envExpansion.ts",
+        "src/services/mcp/headersHelper.ts",
+        "src/services/mcp/mcpStringUtils.ts",
+        "src/services/mcp/normalization.ts",
+        "src/services/mcp/oauthPort.ts",
+        "src/services/mcp/officialRegistry.ts",
+        "src/services/mcp/types.ts",
+        "src/services/mcp/useManageMCPConnections.ts",
+        "src/services/mcp/utils.ts",
+        "src/services/mcp/vscodeSdkMcp.ts",
+        "src/services/mcp/aa.ts",
+        "src/services/mcp/aaIdpLogin.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-014"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "mcp-team"
+      }
+    },
+    {
+      "id": "N-011",
+      "type": "module",
+      "title": "services-compact",
+      "paths": [
+        "src/services/compact/apiMicrocompact.ts",
+        "src/services/compact/autoCompact.ts",
+        "src/services/compact/cachedMCConfig.ts",
+        "src/services/compact/cachedMicrocompact.ts",
+        "src/services/compact/compact.ts",
+        "src/services/compact/compactWarningHook.ts",
+        "src/services/compact/compactWarningState.ts",
+        "src/services/compact/grouping.ts",
+        "src/services/compact/microCompact.ts",
+        "src/services/compact/postCompactCleanup.ts",
+        "src/services/compact/prompt.ts",
+        "src/services/compact/reactiveCompact.ts",
+        "src/services/compact/sessionMemoryCompact.ts",
+        "src/services/compact/snipCompact.ts",
+        "src/services/compact/snipProjection.ts",
+        "src/services/compact/timeBasedMCConfig.ts",
+        "src/services/compact/workflowSummaryCarryover.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-015",
+        "LANE_SRC_SERVER_SERVICES_E-016"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "context-team"
+      }
+    },
+    {
+      "id": "N-012",
+      "type": "module",
+      "title": "services-memory",
+      "paths": [
+        "src/services/autoDream/autoDream.ts",
+        "src/services/autoDream/config.ts",
+        "src/services/autoDream/consolidationLock.ts",
+        "src/services/autoDream/consolidationPrompt.ts",
+        "src/services/extractMemories/extractMemories.ts",
+        "src/services/extractMemories/prompts.ts",
+        "src/services/SessionMemory/prompts.ts",
+        "src/services/SessionMemory/sessionMemory.ts",
+        "src/services/SessionMemory/sessionMemoryUtils.ts",
+        "src/services/MagicDocs/magicDocs.ts",
+        "src/services/MagicDocs/prompts.ts",
+        "src/services/AgentSummary/agentSummary.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-017",
+        "LANE_SRC_SERVER_SERVICES_E-018",
+        "LANE_SRC_SERVER_SERVICES_E-019"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "memory-team"
+      }
+    },
+    {
+      "id": "N-013",
+      "type": "module",
+      "title": "services-lsp",
+      "paths": [
+        "src/services/lsp/LSPClient.ts",
+        "src/services/lsp/LSPDiagnosticRegistry.ts",
+        "src/services/lsp/LSPServerInstance.ts",
+        "src/services/lsp/LSPServerManager.ts",
+        "src/services/lsp/config.ts",
+        "src/services/lsp/manager.ts",
+        "src/services/lsp/passiveFeedback.ts",
+        "src/services/lsp/types.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-020"
+      ],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "lsp-team"
+      }
+    },
+    {
+      "id": "N-014",
+      "type": "module",
+      "title": "services-standalone",
+      "paths": [
+        "src/services/awaySummary.ts",
+        "src/services/claudeAiLimits.ts",
+        "src/services/claudeAiLimitsHook.ts",
+        "src/services/contextCollapse/index.ts",
+        "src/services/contextCollapse/operations.ts",
+        "src/services/contextCollapse/persist.ts",
+        "src/services/diagnosticTracking.ts",
+        "src/services/internalLogging.ts",
+        "src/services/mockRateLimits.ts",
+        "src/services/notifier.ts",
+        "src/services/preventSleep.ts",
+        "src/services/rateLimitMessages.ts",
+        "src/services/rateLimitMocking.ts",
+        "src/services/tokenEstimation.ts",
+        "src/services/vcr.ts",
+        "src/services/voice.ts",
+        "src/services/voiceKeyterms.ts",
+        "src/services/voiceStreamSTT.ts",
+        "src/services/PromptSuggestion/promptSuggestion.ts",
+        "src/services/PromptSuggestion/speculation.ts"
+      ],
+      "confidence": "high",
+      "evidence_ids": [],
+      "attrs": {
+        "aliases": [],
+        "domain": "services",
+        "owner": "platform-team"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "EDGE-001",
+      "source": "N-001",
+      "target": "N-002",
+      "type": "routes_to",
+      "label": "router dispatches to API handlers",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-002",
+      "source": "N-001",
+      "target": "N-003",
+      "type": "uses",
+      "label": "server applies auth/cors/errorHandler middleware",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-003",
+      "source": "N-001",
+      "target": "N-004",
+      "type": "routes_to",
+      "label": "server forwards /proxy/ requests to proxy handler",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-004",
+      "source": "N-001",
+      "target": "N-005",
+      "type": "uses",
+      "label": "server starts teamWatcher, cronScheduler; conversationService for shutdown",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-005",
+      "source": "N-001",
+      "target": "N-007",
+      "type": "uses",
+      "label": "server uses providerService, diagnosticsService, h5AccessService",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-006",
+      "source": "N-005",
+      "target": "N-006",
+      "type": "uses",
+      "label": "sessionService imports workflow session metadata types",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-007",
+      "source": "N-009",
+      "target": "N-008",
+      "type": "uses",
+      "label": "API client imports analytics for event logging",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-008",
+      "source": "N-011",
+      "target": "N-012",
+      "type": "uses",
+      "label": "compact integrates with session memory compaction",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-009",
+      "source": "N-010",
+      "target": "N-008",
+      "type": "uses",
+      "label": "MCP client logs analytics events",
+      "evidence_ids": []
+    },
+    {
+      "id": "EDGE-010",
+      "source": "N-012",
+      "target": "N-011",
+      "type": "uses",
+      "label": "sessionMemory checks autoCompact state",
+      "evidence_ids": []
+    }
+  ],
+  "observations": [
+    {
+      "id": "OBS-001",
+      "summary": "The server is a Bun.serve() HTTP+WS application serving as the Claude Code Desktop App backend, with ~25 REST API endpoints, WebSocket channels (client + SDK), and an OpenAI-compatible proxy layer.",
+      "node_ids": [
+        "N-001",
+        "N-002",
+        "N-004"
+      ],
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-002",
+      "summary": "src/server/services/ contains ~30 service modules covering session management, workflow orchestration, team watching, cron scheduling, plugin lifecycle, OAuth, diagnostics, and more. The workflow subsystem alone has 14 files spanning runtime, templates, validation, and reporting.",
+      "node_ids": [
+        "N-005",
+        "N-006",
+        "N-007"
+      ],
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-003",
+      "summary": "src/services/ is the CLI-side services layer. The MCP client (~2400 lines) and compact system (~1700 lines for compact.ts alone) are the largest single modules. Memory services (autoDream, extractMemories, SessionMemory) use a forked-agent pattern for background processing.",
+      "node_ids": [
+        "N-010",
+        "N-011",
+        "N-012"
+      ],
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-004",
+      "summary": "The API client (src/services/api/client.ts) is a multi-provider factory supporting Direct Anthropic, AWS Bedrock, Azure Foundry, Google Vertex, and OpenAI Codex authentication, making it a critical dependency for all LLM interactions.",
+      "node_ids": [
+        "N-009"
+      ],
+      "confidence": "high",
+      "evidence_ids": []
+    },
+    {
+      "id": "OBS-005",
+      "summary": "Several files are auto-generated stubs (src/server/index.ts, src/services/contextCollapse/index.ts) from scan-missing-imports, serving as placeholders for ant-internal feature() gated modules in the external build.",
+      "node_ids": [
+        "N-001",
+        "N-014"
+      ],
+      "confidence": "high",
+      "evidence_ids": []
+    }
+  ],
+  "coverage": [
+    {
+      "path": "src/server/index.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-021"
+      ]
+    },
+    {
+      "path": "src/server/server.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-001"
+      ]
+    },
+    {
+      "path": "src/server/router.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-002"
+      ]
+    },
+    {
+      "path": "src/server/serverBanner.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/serverLog.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/lockfile.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/h5AccessPolicy.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/connectHeadless.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/createDirectConnectSession.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/directConnectManager.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/parseConnectUrl.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/activityStats.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/adapters.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/agents.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/computer-use.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/computer-use-python.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/conversations.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/desktop-ui.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/diagnostics.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/doctor.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/filesystem.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/h5-access.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/jiangxia-oauth.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/jiangxia-openai-oauth.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/mcp.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/memory.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/models.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/open-targets.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/plugins.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/scheduled-tasks.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/search.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/sessions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/status.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/api/teams.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/backends/dangerousBackend.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/config/providerPresets.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/middleware/auth.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-009"
+      ]
+    },
+    {
+      "path": "src/server/middleware/cors.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/middleware/cors.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/middleware/errorHandler.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/proxy/streaming/openaiChatStreamToAnthropic.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-010"
+      ]
+    },
+    {
+      "path": "src/server/proxy/streaming/openaiResponsesStreamToAnthropic.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/proxy/transform/anthropicToOpenaiResponses.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/proxy/transform/openaiChatToAnthropic.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/proxy/transform/openaiResponsesToAnthropic.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/proxy/transform/toolArguments.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/adapterService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/agentService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/computerUseApprovalService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/conversationService.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-004"
+      ]
+    },
+    {
+      "path": "src/server/services/cronScheduler.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/cronService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/desktopCliLauncherService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/desktopUiPreferencesService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/diagnosticsService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/doctorService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/h5AccessService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/jiangxiaOAuthService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/jiangxiaOpenAIOAuthService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/managedSettingsService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/mcpHostPreflight.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/mcpHostPreflight.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/notificationService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/openTargetService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/persistentStorageMigrations.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/pluginService.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-007"
+      ]
+    },
+    {
+      "path": "src/server/services/providerService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/recoverableJsonFile.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/repositoryLaunchService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/searchService.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-008"
+      ]
+    },
+    {
+      "path": "src/server/services/sessionRewindService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/sessionService.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-003"
+      ]
+    },
+    {
+      "path": "src/server/services/settingsService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/taskService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/teamService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/teamWatcher.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-006"
+      ]
+    },
+    {
+      "path": "src/server/services/titleService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workspaceService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowFinalReport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowPhaseSkillResolver.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowReportStore.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowRuntimeService.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-005"
+      ]
+    },
+    {
+      "path": "src/server/services/workflowSessionCreateService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowSessionLinkService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowSessionStateService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowSummary.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowTemplateAuthoringGuide.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowTemplateAuthoringService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowTemplateRegistryService.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowTemplateValidation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowToolPolicy.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/server/services/workflowTypes.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/AgentSummary/agentSummary.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/MagicDocs/magicDocs.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/MagicDocs/prompts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/PromptSuggestion/promptSuggestion.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/PromptSuggestion/speculation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/SessionMemory/prompts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/SessionMemory/sessionMemory.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-019"
+      ]
+    },
+    {
+      "path": "src/services/SessionMemory/sessionMemoryUtils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/config.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/datadog.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/firstPartyEventLogger.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/firstPartyEventLoggingExporter.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/growthbook.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/index.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-011"
+      ]
+    },
+    {
+      "path": "src/services/analytics/metadata.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/sink.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/analytics/sinkKillswitch.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/adminRequests.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/azureOpenAI.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/bootstrap.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/claude.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/client.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-012"
+      ]
+    },
+    {
+      "path": "src/services/api/client.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/dumpPrompts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/emptyUsage.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/emptyUsage.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/errorUtils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/errors.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-013"
+      ]
+    },
+    {
+      "path": "src/services/api/filesApi.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/firstTokenDate.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/grove.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/logging.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/metricsOptOut.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/overageCreditGrant.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/promptCacheBreakDetection.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/referral.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/sessionIngress.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/ultrareviewQuota.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/usage.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/api/withRetry.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/autoDream/autoDream.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-017"
+      ]
+    },
+    {
+      "path": "src/services/autoDream/config.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/autoDream/consolidationLock.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/autoDream/consolidationPrompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/awaySummary.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/claudeAiLimits.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/claudeAiLimitsHook.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/apiMicrocompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/autoCompact.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-016"
+      ]
+    },
+    {
+      "path": "src/services/compact/autoCompact.test.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/cachedMCConfig.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/cachedMicrocompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/compact.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-015"
+      ]
+    },
+    {
+      "path": "src/services/compact/compactWarningHook.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/compactWarningState.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/grouping.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/microCompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/postCompactCleanup.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/prompt.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/reactiveCompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/sessionMemoryCompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/snipCompact.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/snipProjection.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/timeBasedMCConfig.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/compact/workflowSummaryCarryover.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/contextCollapse/index.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/contextCollapse/operations.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/contextCollapse/persist.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/diagnosticTracking.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/extractMemories/extractMemories.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-018"
+      ]
+    },
+    {
+      "path": "src/services/extractMemories/prompts.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/internalLogging.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/LSPClient.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/LSPDiagnosticRegistry.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/LSPServerInstance.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/LSPServerManager.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/config.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/manager.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-020"
+      ]
+    },
+    {
+      "path": "src/services/lsp/passiveFeedback.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/lsp/types.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/InProcessTransport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/SdkControlTransport.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/auth.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/channelAllowlist.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/channelNotification.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/channelPermissions.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/claudeai.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/client.ts",
+      "outcome": "read",
+      "evidence_ids": [
+        "LANE_SRC_SERVER_SERVICES_E-014"
+      ]
+    },
+    {
+      "path": "src/services/mcp/config.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/elicitationHandler.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/envExpansion.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/headersHelper.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/mcpStringUtils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/normalization.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/oauthPort.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/officialRegistry.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/types.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/useManageMCPConnections.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/utils.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/vscodeSdkMcp.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/aa.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mcp/aaIdpLogin.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/mockRateLimits.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/notifier.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/preventSleep.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/rateLimitMessages.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/rateLimitMocking.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/tokenEstimation.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/vcr.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/voice.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/voiceKeyterms.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    },
+    {
+      "path": "src/services/voiceStreamSTT.ts",
+      "outcome": "inventory_only",
+      "evidence_ids": []
+    }
+  ],
+  "confidence": "high",
+  "acceptance": "pass"
+}

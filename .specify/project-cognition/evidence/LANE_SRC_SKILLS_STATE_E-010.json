@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-010",
+  "source_path": "src/cli/bg.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub (same pattern as Transport.ts). Proxy-based noop for ant-internal feature() gated modules.",
+  "classification": "critical",
+  "criticality": "medium"
+}

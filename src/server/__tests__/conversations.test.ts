@@ -289,6 +289,41 @@ describe('ConversationService', () => {
     ])
   })
 
+  it('should send environment variable updates to active CLI sessions', () => {
+    const svc = new ConversationService() as any
+    const sent: string[] = []
+    svc.sessions.set('session-env-control', {
+      sdkSocket: { send: (data: string) => sent.push(data) },
+      pendingOutbound: [],
+    })
+
+    expect(svc.updateEnvironmentVariables('session-env-control', {
+      AGENT_RUNTIME_TOKEN: 'runtime-value',
+      EMPTY_VALUE: '',
+      REMOVED_VALUE: null,
+    })).toBe(true)
+    expect(svc.updateEnvironmentVariablesForActiveSessions({
+      AGENT_RUNTIME_TOKEN: 'runtime-value',
+    })).toBe(1)
+
+    expect(sent.map((line) => JSON.parse(line))).toEqual([
+      {
+        type: 'update_environment_variables',
+        variables: {
+          AGENT_RUNTIME_TOKEN: 'runtime-value',
+          EMPTY_VALUE: '',
+          REMOVED_VALUE: null,
+        },
+      },
+      {
+        type: 'update_environment_variables',
+        variables: {
+          AGENT_RUNTIME_TOKEN: 'runtime-value',
+        },
+      },
+    ])
+  })
+
   it('should return false when sending interrupt to non-existent session', () => {
     const svc = new ConversationService()
     const result = svc.sendInterrupt('no-such-session')

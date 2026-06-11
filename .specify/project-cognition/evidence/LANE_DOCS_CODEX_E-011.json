@@ -1,0 +1,8 @@
+{
+  "id": "LANE_DOCS_CODEX_E-011",
+  "source_path": ".codex/skills/sp-tasks/SKILL.md",
+  "evidence_type": "skill_definition",
+  "summary": "sp-tasks 工作流技能定义：将计划制品转换为依赖感知的执行任务，支持并行批处理和连接点",
+  "classification": "low_risk",
+  "criticality": "low_risk"
+}

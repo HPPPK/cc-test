@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-021",
+  "source_path": "LICENSE",
+  "evidence_type": "config_read",
+  "summary": "Custom educational/research license based on Anthropic leaked source. Restrictions: no commercial use, no competing with Anthropic, no redistribution/sublicensing/sale, comply with local laws. No warranty. For AI Agent engineering study: agent architecture, tool use, multi-agent orchestration, TUI, MCP integration.",
+  "classification": "important",
+  "criticality": "important"
+}

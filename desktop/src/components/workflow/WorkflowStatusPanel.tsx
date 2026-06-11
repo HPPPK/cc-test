@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 type ArtifactPointer = {
   id?: string
@@ -113,6 +113,9 @@ export type WorkflowStatusPanelSummary = {
 
 type WorkflowStatusPanelProps = {
   workflow?: WorkflowStatusPanelSummary | null
+  compact?: boolean
+  hideDetails?: boolean
+  actions?: ReactNode
 }
 
 const STATUS_LABELS: Record<WorkflowStatusPanelSummary['status'], string> = {
@@ -127,7 +130,7 @@ const STATUS_LABELS: Record<WorkflowStatusPanelSummary['status'], string> = {
   'missing-template': 'Template source is missing',
 }
 
-export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
+export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = false, actions }: WorkflowStatusPanelProps) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   if (!workflow) return null
@@ -148,15 +151,30 @@ export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
     workflow.model?.source ? { label: 'Model source', value: workflow.model.source } : null,
     fallbackLabel ? { label: 'Fallback', value: fallbackLabel } : null,
   ].filter(Boolean) as Array<{ label: string; value: string; mono?: boolean }>
+  const actionsAreManualCompletion = Boolean(
+    actions &&
+    workflow.status === 'running' &&
+    workflow.transitionAuthority === 'user-confirmation' &&
+    !workflow.pendingConfirmation &&
+    !workflow.blockedStatus &&
+    !workflow.blockedReason,
+  )
+  const inlineActions = actionsAreManualCompletion ? null : actions
+  const detailActions = actionsAreManualCompletion ? actions : null
 
   return (
     <section
       data-testid="workflow-status-panel"
-      className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 text-[12px]"
+      data-compact={compact ? 'true' : 'false'}
+      className={
+        compact
+          ? 'rounded-[8px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-2.5 py-1.5 text-[11px]'
+          : 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 text-[12px]'
+      }
     >
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+          <div className={`${compact ? 'text-[12px]' : 'text-[13px]'} truncate font-semibold text-[var(--color-text-primary)]`}>
             {humanize(workflow.templateId)}
           </div>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-text-tertiary)]">
@@ -177,73 +195,98 @@ export function WorkflowStatusPanel({ workflow }: WorkflowStatusPanelProps) {
         />
       </div>
 
-      <RecommendedSkillStatusStrip workflow={workflow} />
-
-      <div className="mt-2">
-        <button
-          type="button"
-          aria-expanded={detailsOpen}
-          aria-controls="workflow-status-details"
-          onClick={() => setDetailsOpen((open) => !open)}
-          className="flex max-w-full items-center gap-2 text-[11px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-        >
-          <span className={`material-symbols-outlined text-[14px] transition-transform ${detailsOpen ? 'rotate-90' : ''}`} aria-hidden="true">
-            chevron_right
-          </span>
-          <span className="font-medium">Workflow details</span>
-        </button>
-        <div id="workflow-status-details" hidden={!detailsOpen}>
-          <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-            {detailRows.map((row) => (
-              <InfoRow key={row.label} label={row.label} value={row.value} mono={row.mono} />
-            ))}
-          </dl>
-          {workflow.model?.fallbackReason && (
-            <div className="mt-2 rounded-[8px] border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-text-secondary)]">
-              {workflow.model.fallbackReason}
-            </div>
-          )}
+      {workflow.blockedReason && inlineActions ? (
+        <div className="mt-2 rounded-[8px] border border-[var(--color-error)]/20 bg-[var(--color-error)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-error)]">
+          <p>{workflow.blockedReason}</p>
+          <div className="mt-2">
+            {inlineActions}
+          </div>
         </div>
-      </div>
+      ) : inlineActions ? (
+        <div className="mt-2">
+          {inlineActions}
+        </div>
+      ) : null}
+
+      {hideDetails ? null : (
+        <div className="mt-2">
+          <button
+            type="button"
+            aria-expanded={detailsOpen}
+            aria-controls="workflow-status-details"
+            onClick={() => setDetailsOpen((open) => !open)}
+            className="flex max-w-full items-center gap-2 text-[11px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+          >
+            <span className={`material-symbols-outlined text-[14px] transition-transform ${detailsOpen ? 'rotate-90' : ''}`} aria-hidden="true">
+              chevron_right
+            </span>
+            <span className="font-medium">{detailsOpen ? 'Hide workflow details' : 'Show workflow details'}</span>
+          </button>
+          {detailsOpen ? (
+            <div id="workflow-status-details" data-testid="workflow-status-details">
+              {compact ? null : <RecommendedSkillStatusStrip workflow={workflow} />}
+              {detailActions ? (
+                <section className="mt-2 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 py-2">
+                  <div className="mb-2 text-[10px] font-semibold uppercase text-[var(--color-text-tertiary)]">
+                    Advanced workflow actions
+                  </div>
+                  {detailActions}
+                </section>
+              ) : null}
+              <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                {detailRows.map((row) => (
+                  <InfoRow key={row.label} label={row.label} value={row.value} mono={row.mono} />
+                ))}
+              </dl>
+              {workflow.model?.fallbackReason && (
+                <div className="mt-2 rounded-[8px] border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-text-secondary)]">
+                  {workflow.model.fallbackReason}
+                </div>
+              )}
+
+              {!compact && workflow.pendingArtifact ? (
+                <ArtifactCard
+                  artifact={workflow.pendingArtifact}
+                  testId="workflow-pending-artifact"
+                  title="Current artifact"
+                  statusLabel="Awaiting"
+                  showLabel
+                  showMetadata
+                />
+              ) : null}
+
+              {!compact && workflow.artifactHistory?.length ? (
+                <section
+                  data-testid="workflow-artifact-history"
+                  className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container)] p-3"
+                >
+                  <div className="mb-2 text-[11px] font-semibold uppercase text-[var(--color-text-tertiary)]">
+                    Artifact history
+                  </div>
+                  <div className="grid gap-2">
+                    {workflow.artifactHistory.map((artifact) => (
+                      <ArtifactCard
+                        key={artifact.artifactId}
+                        artifact={artifact}
+                        testId={`workflow-artifact-${artifact.artifactId}`}
+                        showPhase={!artifact.handoffSummary.toLowerCase().includes(artifact.phaseId.toLowerCase())}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
 
 
-      {workflow.blockedReason && (
+      {workflow.blockedReason && !inlineActions && (
         <div className="mt-2 rounded-[8px] border border-[var(--color-error)]/20 bg-[var(--color-error)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-error)]">
           {workflow.blockedReason}
         </div>
       )}
 
-      {workflow.pendingArtifact ? (
-        <ArtifactCard
-          artifact={workflow.pendingArtifact}
-          testId="workflow-pending-artifact"
-          title="Current artifact"
-          statusLabel="Awaiting"
-          showLabel
-          showMetadata
-        />
-      ) : null}
-
-      {workflow.artifactHistory?.length ? (
-        <section
-          data-testid="workflow-artifact-history"
-          className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container)] p-3"
-        >
-          <div className="mb-2 text-[11px] font-semibold uppercase text-[var(--color-text-tertiary)]">
-            Artifact history
-          </div>
-          <div className="grid gap-2">
-            {workflow.artifactHistory.map((artifact) => (
-              <ArtifactCard
-                key={artifact.artifactId}
-                artifact={artifact}
-                testId={`workflow-artifact-${artifact.artifactId}`}
-                showPhase={!artifact.handoffSummary.toLowerCase().includes(artifact.phaseId.toLowerCase())}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </section>
   )
 }

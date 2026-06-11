@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-032",
+  "source_path": "src/tools/WebSearchTool/WebSearchTool.ts",
+  "evidence_type": "code_read",
+  "summary": "WebSearchTool - web search with multiple backends (Anthropic native, external providers). Supports domain filtering. Falls back on native errors.",
+  "classification": "critical",
+  "criticality": "critical"
+}

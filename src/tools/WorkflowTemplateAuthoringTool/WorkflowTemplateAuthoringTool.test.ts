@@ -226,7 +226,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
       type: 'object',
       properties: {
         operation: expect.objectContaining({
-          enum: ['guide', 'skill_catalog', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'],
+          enum: ['guide', 'skill_catalog', 'skill_create', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'],
         }),
       },
       required: ['operation'],
@@ -307,9 +307,66 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(await readWorkflowConfig()).toBeUndefined()
   })
 
-  test.each(['create', 'update', 'duplicate'] as const)('marks %s as mutating and non-destructive', async (operation) => {
+  test('calls the direct authoring service path for creating missing user skills', async () => {
+    delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
     const tool = await loadTool()
-    const input = operation === 'create'
+    const result = await tool.call(
+      {
+        operation: 'skill_create',
+        name: 'workflow-helper',
+        description: 'Use when a workflow phase needs helper guidance.',
+        body: 'Use this skill for workflow helper phases.',
+      },
+      contextFor(),
+      async () => ({ behavior: 'allow', updatedInput: {} }),
+      {} as never,
+    )
+    const block = tool.mapToolResultToToolResultBlockParam(result.data, 'tool-use-skill-create')
+
+    expect(result.data).toMatchObject({
+      operation: 'skill_create',
+      status: 'succeeded',
+      persisted: true,
+      createdSkill: {
+        name: 'workflow-helper',
+        source: 'user',
+        skillRoot: path.join(tempConfigDir, 'skills', 'workflow-helper'),
+        recommendedReference: {
+          name: 'workflow-helper',
+          mode: 'recommended',
+          source: 'user',
+        },
+      },
+      validation: {
+        valid: true,
+        issues: [],
+      },
+    })
+    expect(block.content).toContain('operation=skill_create')
+    expect(block.content).toContain('persisted=true')
+    expect(await fs.readFile(path.join(tempConfigDir, 'skills', 'workflow-helper', 'SKILL.md'), 'utf-8'))
+      .toContain('Use this skill for workflow helper phases.')
+    expect(await readWorkflowConfig()).toBeUndefined()
+  })
+
+  test('guides agents to create missing skills instead of guessing phase skill names', async () => {
+    const tool = await loadTool()
+    const prompt = await tool.prompt?.({})
+
+    expect(prompt).toContain('Use skill_catalog before assigning phases[].skills')
+    expect(prompt).toContain('If the needed skill is missing, use skill_create first')
+    expect(prompt).toContain('returned recommendedReference')
+  })
+
+  test.each(['skill_create', 'create', 'update', 'duplicate'] as const)('marks %s as mutating and non-destructive', async (operation) => {
+    const tool = await loadTool()
+    const input = operation === 'skill_create'
+      ? {
+          operation,
+          name: 'workflow-helper',
+          description: 'Use when a workflow phase needs helper guidance.',
+        }
+      : operation === 'create'
       ? { operation, template: validTemplate() }
       : operation === 'update'
         ? {
@@ -600,6 +657,15 @@ describe('WorkflowTemplateAuthoringTool', () => {
       const tool = await loadTool()
       const cases = [
         {
+          operation: 'skill_create' as const,
+          input: {
+            operation: 'skill_create' as const,
+            name: 'desktop-skill',
+            description: 'Desktop skill create request.',
+            body: 'Desktop skill body.',
+          },
+        },
+        {
           operation: 'create' as const,
           input: { operation: 'create' as const, template: validTemplate('desktop-create-workflow') },
         },
@@ -658,6 +724,11 @@ describe('WorkflowTemplateAuthoringTool', () => {
         expect.objectContaining({
           method: 'POST',
           url: '/api/workflows/templates/authoring',
+          body: expect.objectContaining({ operation: 'skill_create' }),
+        }),
+        expect.objectContaining({
+          method: 'POST',
+          url: '/api/workflows/templates/authoring',
           body: expect.objectContaining({ operation: 'create' }),
         }),
         expect.objectContaining({
@@ -705,6 +776,14 @@ describe('WorkflowTemplateAuthoringTool', () => {
     try {
       const tool = await loadTool()
       const cases = [
+        {
+          operation: 'skill_create' as const,
+          input: {
+            operation: 'skill_create' as const,
+            name: 'desktop-skill-failure',
+            description: 'Desktop skill create failure.',
+          },
+        },
         {
           operation: 'create' as const,
           input: { operation: 'create' as const, template: validTemplate('desktop-create-failure') },
@@ -766,6 +845,11 @@ describe('WorkflowTemplateAuthoringTool', () => {
       }
 
       expect(requests).toEqual([
+        expect.objectContaining({
+          method: 'POST',
+          url: '/api/workflows/templates/authoring',
+          body: expect.objectContaining({ operation: 'skill_create' }),
+        }),
         expect.objectContaining({
           method: 'POST',
           url: '/api/workflows/templates/authoring',

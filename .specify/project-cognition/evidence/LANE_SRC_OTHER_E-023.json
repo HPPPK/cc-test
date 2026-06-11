@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-023",
+  "source_path": "src/assistant/AssistantSessionChooser.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for feature-gated module. Proxy-based noop placeholder for bun build resolver. Exports stubs for createCachedMCState, getCoordinatorUserContext, etc.",
+  "classification": "info",
+  "criticality": "trivial"
+}

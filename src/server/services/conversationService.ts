@@ -68,7 +68,9 @@ type SessionProcess = {
     string,
     {
       toolName: string
+      toolUseId?: string
       input: Record<string, unknown>
+      description?: string
       permissionSuggestions?: unknown[]
     }
   >
@@ -83,6 +85,8 @@ type SessionStartOptions = {
   disallowedTools?: string[]
   workflowSessionId?: string
 }
+
+type RuntimeEnvironmentVariables = Record<string, string | null>
 
 export class ConversationStartupError extends Error {
   constructor(
@@ -472,6 +476,50 @@ export class ConversationService {
     return sent
   }
 
+  updateEnvironmentVariables(
+    sessionId: string,
+    variables: RuntimeEnvironmentVariables,
+  ): boolean {
+    if (Object.keys(variables).length === 0) return false
+    return this.sendSdkMessage(sessionId, {
+      type: 'update_environment_variables',
+      variables,
+    })
+  }
+
+  getPendingPermissionRequests(sessionId: string): Array<{
+    requestId: string
+    toolName: string
+    toolUseId?: string
+    input: Record<string, unknown>
+    description?: string
+  }> {
+    const session = this.sessions.get(sessionId)
+    if (!session) return []
+    return [...session.pendingPermissionRequests.entries()].map(
+      ([requestId, request]) => ({
+        requestId,
+        toolName: request.toolName,
+        ...(request.toolUseId ? { toolUseId: request.toolUseId } : {}),
+        input: request.input,
+        ...(request.description ? { description: request.description } : {}),
+      }),
+    )
+  }
+
+  updateEnvironmentVariablesForActiveSessions(
+    variables: RuntimeEnvironmentVariables,
+  ): number {
+    if (Object.keys(variables).length === 0) return 0
+    let sent = 0
+    for (const sessionId of this.getActiveSessions()) {
+      if (this.updateEnvironmentVariables(sessionId, variables)) {
+        sent += 1
+      }
+    }
+    return sent
+  }
+
   sendInterrupt(sessionId: string): boolean {
     return this.sendSdkMessage(sessionId, {
       type: 'control_request',
@@ -652,10 +700,16 @@ export class ConversationService {
               typeof msg.request.tool_name === 'string'
                 ? msg.request.tool_name
                 : 'Unknown',
+            ...(typeof msg.request.tool_use_id === 'string'
+              ? { toolUseId: msg.request.tool_use_id }
+              : {}),
             input:
               msg.request.input && typeof msg.request.input === 'object'
                 ? (msg.request.input as Record<string, unknown>)
                 : {},
+            ...(typeof msg.request.description === 'string'
+              ? { description: msg.request.description }
+              : {}),
             permissionSuggestions: Array.isArray(msg.request.permission_suggestions)
               ? msg.request.permission_suggestions
               : undefined,

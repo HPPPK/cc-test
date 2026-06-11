@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
 import QRCode from 'qrcode'
 import { Copy, Eye, EyeOff, PowerOff, QrCode, RotateCw } from 'lucide-react'
 import { useSettingsStore, UI_ZOOM_DEFAULT, UI_ZOOM_MIN, UI_ZOOM_MAX, UI_ZOOM_STEP } from '../stores/settingsStore'
@@ -13,6 +13,14 @@ import type { PermissionMode, EffortLevel, ThemeMode, UpdateProxyMode, WebSearch
 import type { Locale } from '../i18n'
 import type { SavedProvider, UpdateProviderInput, ProviderTestResult, ModelMapping, ApiFormat, ProviderAuthStrategy } from '../types/provider'
 import type { ProviderPreset } from '../types/providerPreset'
+import type {
+  ProviderBundle,
+  ProviderImportCandidate,
+  ProviderImportDiagnostic,
+  ProviderImportPreview,
+  ProviderImportResolution,
+  ProviderImportResolutionAction,
+} from '../types/providerImportExport'
 import { AdapterSettings } from './AdapterSettings'
 import { useAgentStore } from '../stores/agentStore'
 import { useSessionStore } from '../stores/sessionStore'
@@ -27,6 +35,7 @@ import { PluginDetail } from '../components/plugins/PluginDetail'
 import { ComputerUseSettings } from './ComputerUseSettings'
 import { McpSettings } from './McpSettings'
 import { TerminalSettings } from './TerminalSettings'
+import { EnvironmentSettings } from './EnvironmentSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
 import { MemorySettings } from './MemorySettings'
@@ -92,6 +101,7 @@ export function Settings() {
             <TabButton icon="account_tree" label={t('settings.tab.workflows')} active={activeTab === 'workflows'} onClick={() => setActiveTab('workflows')} />
             <TabButton icon="chat" label={t('settings.tab.adapters')} active={activeTab === 'adapters'} onClick={() => setActiveTab('adapters')} />
             <TabButton icon="terminal" label={t('settings.tab.terminal')} active={activeTab === 'terminal'} onClick={() => setActiveTab('terminal')} />
+            <TabButton icon="deployed_code" label={t('settings.tab.environment')} active={activeTab === 'environment'} onClick={() => setActiveTab('environment')} />
             <TabButton icon="dns" label={t('settings.tab.mcp')} active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} />
             <TabButton icon="smart_toy" label={t('settings.tab.agents')} active={activeTab === 'agents'} onClick={() => setActiveTab('agents')} />
             <TabButton icon="auto_awesome" label={t('settings.tab.skills')} active={activeTab === 'skills'} onClick={() => setActiveTab('skills')} />
@@ -116,6 +126,7 @@ export function Settings() {
           {activeTab === 'workflows' && <WorkflowsSettings />}
           {activeTab === 'adapters' && <AdapterSettings />}
           {activeTab === 'terminal' && <TerminalSettings showPreferences />}
+          {activeTab === 'environment' && <EnvironmentSettings />}
           {activeTab === 'mcp' && <McpSettings />}
           {activeTab === 'agents' && <AgentsSettings />}
           {activeTab === 'skills' && <SkillSettings />}
@@ -177,6 +188,10 @@ function ProviderSettings() {
     deleteProvider,
     activateProvider,
     activateOfficial,
+    exportProviders,
+    exportProvidersWithSecrets,
+    previewProviderImport,
+    commitProviderImport,
     testProvider,
   } = useProviderStore()
   const fetchSettings = useSettingsStore((s) => s.fetchAll)
@@ -186,16 +201,44 @@ function ProviderSettings() {
   const [pendingDeleteProvider, setPendingDeleteProvider] = useState<SavedProvider | null>(null)
   const [isDeletingProvider, setIsDeletingProvider] = useState(false)
   const [testResults, setTestResults] = useState<Record<string, { loading: boolean; result?: ProviderTestResult }>>({})
+  const [selectedExportProviderIds, setSelectedExportProviderIds] = useState<Set<string>>(new Set())
+  const [includeExportCredentials, setIncludeExportCredentials] = useState(false)
+  const [credentialExportAcknowledged, setCredentialExportAcknowledged] = useState(false)
+  const [exportJson, setExportJson] = useState('')
+  const [exportContainsSecrets, setExportContainsSecrets] = useState(false)
+  const [isExportingProviders, setIsExportingProviders] = useState(false)
+  const [exportStatus, setExportStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [showExportDialog, setShowExportDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   useEffect(() => {
-    void fetchProviders()
+    if (!hasLoadedProviders) {
+      void fetchProviders()
+    }
     void fetchPresets()
-  }, [fetchPresets, fetchProviders])
+  }, [fetchPresets, fetchProviders, hasLoadedProviders])
 
   const presetMap = useMemo(
     () => new Map(presets.map((preset) => [preset.id, preset])),
     [presets],
   )
+  const exportProviderIds = useMemo(() => providers.map((provider) => provider.id), [providers])
+  const selectedExportCount = selectedExportProviderIds.size
+  const allExportProvidersSelected = providers.length > 0 && selectedExportCount === providers.length
+
+  useEffect(() => {
+    setSelectedExportProviderIds((current) => {
+      const knownIds = new Set(exportProviderIds)
+      const next = new Set([...current].filter((providerId) => knownIds.has(providerId)))
+      return next.size === current.size ? current : next
+    })
+  }, [exportProviderIds])
+
+  useEffect(() => {
+    if (!includeExportCredentials) {
+      setCredentialExportAcknowledged(false)
+    }
+  }, [includeExportCredentials])
 
   const handleDelete = async (provider: SavedProvider) => {
     if (activeId === provider.id) return
@@ -235,6 +278,113 @@ function ProviderSettings() {
     await fetchSettings()
   }
 
+  const handleProviderExportSelectionChange = (providerId: string, selected: boolean) => {
+    setSelectedExportProviderIds((current) => {
+      const next = new Set(current)
+      if (selected) next.add(providerId)
+      else next.delete(providerId)
+      return next
+    })
+  }
+
+  const handleToggleAllExportProviders = () => {
+    setSelectedExportProviderIds(
+      allExportProvidersSelected
+        ? new Set()
+        : new Set(exportProviderIds),
+    )
+    setExportStatus(null)
+  }
+
+  const handleExportProviders = async () => {
+    const providerIds = Array.from(selectedExportProviderIds)
+    if (providerIds.length === 0) {
+      setExportStatus({ tone: 'error', message: t('settings.providers.export.error.noSelection') })
+      return
+    }
+    if (includeExportCredentials && !credentialExportAcknowledged) {
+      setExportStatus({ tone: 'error', message: t('settings.providers.export.error.confirmCredentials') })
+      return
+    }
+
+    setIsExportingProviders(true)
+    setExportStatus(null)
+    try {
+      const request = providerIds.length === providers.length
+        ? { all: true as const }
+        : { all: false as const, providerIds }
+      const bundle = includeExportCredentials
+        ? await exportProvidersWithSecrets({
+          ...request,
+          confirmation: { acknowledgedCredentialExposure: true },
+        })
+        : await exportProviders(
+          request.all
+            ? { all: true }
+            : { all: false, providerIds },
+        )
+      setExportJson(JSON.stringify(bundle, null, 2))
+      setExportContainsSecrets(includeExportCredentials)
+      setExportStatus({
+        tone: 'success',
+        message: includeExportCredentials
+          ? t('settings.providers.export.secretSuccess', { count: String(bundle.providers.length) })
+          : t('settings.providers.export.success', { count: String(bundle.providers.length) }),
+      })
+    } catch (error) {
+      setExportStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : t('settings.providers.export.error.failed'),
+      })
+    } finally {
+      setIsExportingProviders(false)
+    }
+  }
+
+  const handleCopyProviderExport = async () => {
+    if (!exportJson) return
+    const copied = await copyTextToClipboard(exportJson)
+    setExportStatus({
+      tone: copied ? 'success' : 'error',
+      message: copied
+        ? t('settings.providers.export.copied')
+        : t('settings.providers.export.copyFailed'),
+    })
+  }
+
+  const handleSaveProviderExport = async () => {
+    if (!exportJson) return
+    const filename = exportContainsSecrets
+      ? 'cc-jiangxia-providers.with-credentials.json'
+      : 'cc-jiangxia-providers.secret-free.json'
+
+    try {
+      const savedWithPicker = await saveTextFileWithPicker(exportJson, filename)
+      if (savedWithPicker === 'cancelled') return
+      setExportStatus({
+        tone: 'success',
+        message: savedWithPicker === 'saved'
+          ? t('settings.providers.export.saved')
+          : t('settings.providers.export.downloadStarted'),
+      })
+    } catch (error) {
+      setExportStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : t('settings.providers.export.saveFailed'),
+      })
+    }
+  }
+
+  const openProviderExportDialog = () => {
+    setSelectedExportProviderIds(new Set(exportProviderIds))
+    setIncludeExportCredentials(false)
+    setCredentialExportAcknowledged(false)
+    setExportJson('')
+    setExportContainsSecrets(false)
+    setExportStatus(null)
+    setShowExportDialog(true)
+  }
+
   const isOfficialActive = hasLoadedProviders && activeId === null
 
   return (
@@ -244,11 +394,169 @@ function ProviderSettings() {
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">{t('settings.providers.title')}</h2>
           <p className="text-sm text-[var(--color-text-tertiary)] mt-0.5">{t('settings.providers.description')}</p>
         </div>
-        <Button size="sm" onClick={() => setShowCreateModal(true)} disabled={isPresetsLoading || presets.length === 0}>
-          <span className="material-symbols-outlined text-[16px]">add</span>
-          {t('settings.providers.addProvider')}
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="secondary" onClick={openProviderExportDialog}>
+            <span className="material-symbols-outlined text-[16px]">ios_share</span>
+            {t('settings.providers.export.open')}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowImportDialog(true)}>
+            <span className="material-symbols-outlined text-[16px]">file_download</span>
+            {t('settings.providers.import.open')}
+          </Button>
+          <Button size="sm" onClick={() => setShowCreateModal(true)} disabled={isPresetsLoading || presets.length === 0}>
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            {t('settings.providers.addProvider')}
+          </Button>
+        </div>
       </div>
+
+      <Modal
+        open={showExportDialog}
+        onClose={() => {
+          if (isExportingProviders) return
+          setShowExportDialog(false)
+        }}
+        title={t('settings.providers.export.title')}
+        width={760}
+        footer={(
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowExportDialog(false)}
+            disabled={isExportingProviders}
+          >
+            {t('common.cancel')}
+          </Button>
+        )}
+      >
+        <div className="space-y-4">
+          <p className="text-xs leading-5 text-[var(--color-text-tertiary)]">
+            {t('settings.providers.export.description')}
+          </p>
+          <section className="space-y-2">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-[var(--color-text-tertiary)]">
+                {t('settings.providers.export.selectedCount', { count: String(selectedExportCount) })}
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleToggleAllExportProviders}
+                disabled={providers.length === 0}
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  {allExportProvidersSelected ? 'remove_done' : 'done_all'}
+                </span>
+                {allExportProvidersSelected
+                  ? t('settings.providers.export.clearSelection')
+                  : t('settings.providers.export.selectAll')}
+              </Button>
+            </div>
+            <div className="max-h-[180px] space-y-2 overflow-y-auto rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2">
+              {providers.map((provider) => (
+                <label key={provider.id} className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    aria-label={t('settings.providers.export.selectProvider', { name: provider.name })}
+                    checked={selectedExportProviderIds.has(provider.id)}
+                    onChange={(event) => handleProviderExportSelectionChange(provider.id, event.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-[var(--color-border)]"
+                  />
+                  <span className="truncate">{provider.name}</span>
+                </label>
+              ))}
+              {providers.length === 0 && (
+                <p className="py-2 text-xs text-[var(--color-text-tertiary)]">
+                  {t('settings.providers.export.noProviders')}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <label className="flex items-start gap-2 rounded-[8px] border border-[var(--color-border)] px-3 py-2 text-sm leading-5 text-[var(--color-text-secondary)]">
+            <input
+              type="checkbox"
+              checked={includeExportCredentials}
+              onChange={(event) => {
+                setIncludeExportCredentials(event.target.checked)
+                setExportStatus(null)
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--color-border)]"
+            />
+            <span>{t('settings.providers.export.includeCredentials')}</span>
+          </label>
+
+          {includeExportCredentials && (
+            <div className="space-y-3 rounded-[8px] border border-[var(--color-error)]/30 bg-[var(--color-error)]/8 px-3 py-3">
+              <div className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                <p className="font-medium text-[var(--color-error)]">
+                  {t('settings.providers.export.secretWarningTitle')}
+                </p>
+                <p className="mt-1">
+                  {t('settings.providers.export.secretWarningBody')}
+                </p>
+              </div>
+              <label className="flex items-start gap-2 text-sm leading-5 text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={credentialExportAcknowledged}
+                  onChange={(event) => setCredentialExportAcknowledged(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--color-border)]"
+                />
+                <span>{t('settings.providers.export.secretAcknowledgement')}</span>
+              </label>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleExportProviders}
+              loading={isExportingProviders}
+              disabled={providers.length === 0 || selectedExportProviderIds.size === 0 || (includeExportCredentials && !credentialExportAcknowledged)}
+            >
+              <span className="material-symbols-outlined text-[16px]">ios_share</span>
+              {t('settings.providers.export.generate')}
+            </Button>
+          </div>
+          {exportStatus && (
+            <div className={`rounded-[7px] border px-3 py-2 text-xs ${
+              exportStatus.tone === 'error'
+                ? 'border-[var(--color-error)]/30 bg-[var(--color-error)]/8 text-[var(--color-error)]'
+                : 'border-[var(--color-success)]/30 bg-[var(--color-success)]/8 text-[var(--color-success)]'
+            }`}>
+              {exportStatus.message}
+            </div>
+          )}
+          {exportJson && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-medium text-[var(--color-text-secondary)]" htmlFor="provider-export-json">
+                  {exportContainsSecrets
+                    ? t('settings.providers.export.secretJsonLabel')
+                    : t('settings.providers.export.jsonLabel')}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleCopyProviderExport}>
+                    <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                    {t('settings.providers.export.copy')}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => void handleSaveProviderExport()}>
+                    <span className="material-symbols-outlined text-[16px]">download</span>
+                    {t('settings.providers.export.saveFile')}
+                  </Button>
+                </div>
+              </div>
+              <textarea
+                id="provider-export-json"
+                readOnly
+                value={exportJson}
+                className="min-h-[180px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)]"
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Official provider — always visible at top */}
       <div
@@ -299,7 +607,7 @@ function ProviderSettings() {
                   isActive
                     ? 'border-[var(--color-brand)] bg-[var(--color-surface-container)] shadow-[var(--shadow-focus-ring)]'
                     : 'border-[var(--color-border)] hover:border-[var(--color-border-focus)]'
-                }`}
+                  }`}
               >
                 <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-tertiary)]'}`} />
                 <div className="flex-1 min-w-0">
@@ -358,6 +666,13 @@ function ProviderSettings() {
         <ProviderFormModal open={true} onClose={() => setShowCreateModal(false)} mode="create" presets={presets} />
       )}
 
+      <ProviderImportDialog
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        previewProviderImport={previewProviderImport}
+        commitProviderImport={commitProviderImport}
+      />
+
       {/* Edit Modal */}
       {editingProvider && (
         <ProviderFormModal key={editingProvider.id} open={true} onClose={() => setEditingProvider(null)} mode="edit" provider={editingProvider} presets={presets} />
@@ -379,6 +694,598 @@ function ProviderSettings() {
       />
     </div>
   )
+}
+
+type ProviderImportDialogProps = {
+  open: boolean
+  onClose: () => void
+  previewProviderImport: (input: { bundle: ProviderBundle }) => Promise<ProviderImportPreview>
+  commitProviderImport: (input: { bundle: ProviderBundle; resolutions: ProviderImportResolution[] }) => Promise<unknown>
+}
+
+type ProviderImportSelection = {
+  selected: boolean
+  action: ProviderImportResolutionAction
+  name: string
+  targetProviderId: string
+}
+
+function ProviderImportDialog({
+  open,
+  onClose,
+  previewProviderImport,
+  commitProviderImport,
+}: ProviderImportDialogProps) {
+  const t = useTranslation()
+  const [importJson, setImportJson] = useState('')
+  const [bundle, setBundle] = useState<ProviderBundle | null>(null)
+  const [preview, setPreview] = useState<ProviderImportPreview | null>(null)
+  const [selections, setSelections] = useState<Record<string, ProviderImportSelection>>({})
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setImportJson('')
+    setBundle(null)
+    setPreview(null)
+    setSelections({})
+    setBusy(false)
+    setStatus(null)
+  }, [open])
+
+  const selectedCount = preview?.candidates.filter((candidate) => selections[candidate.candidateId]?.selected).length ?? 0
+
+  const clearImportPreview = () => {
+    setBundle(null)
+    setPreview(null)
+    setSelections({})
+  }
+
+  const handleImportJsonChange = (value: string) => {
+    setImportJson(value)
+    clearImportPreview()
+    setStatus(null)
+  }
+
+  const handlePreview = async () => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const parsedBundle = parseProviderImportBundle(importJson, t('settings.providers.import.invalidJson'))
+      const nextPreview = await previewProviderImport({ bundle: parsedBundle })
+      setBundle(parsedBundle)
+      setPreview(nextPreview)
+      setSelections(Object.fromEntries(
+        nextPreview.candidates.map((candidate) => [
+          candidate.candidateId,
+          {
+            selected: candidate.valid,
+            action: candidate.defaultResolution,
+            name: candidate.suggestedName ?? candidate.name,
+            targetProviderId: candidate.conflict?.targetProviderId ?? '',
+          },
+        ]),
+      ))
+    } catch (error) {
+      setBundle(null)
+      setPreview(null)
+      setSelections({})
+      setStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : t('settings.providers.import.invalidJson'),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setBusy(true)
+    setStatus(null)
+    try {
+      const contents = await readProviderImportFile(file)
+      setImportJson(contents)
+      clearImportPreview()
+    } catch (error) {
+      setStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : t('settings.providers.import.fileReadFailed'),
+      })
+    } finally {
+      setBusy(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleCommit = async () => {
+    if (!bundle || !preview) return
+
+    const resolutions = preview.candidates
+      .filter((candidate) => candidate.valid && selections[candidate.candidateId]?.selected)
+      .map((candidate) => buildProviderImportResolution(candidate, selections[candidate.candidateId]))
+
+    if (resolutions.length === 0) {
+      setStatus({ tone: 'error', message: t('settings.providers.import.error.noSelection') })
+      return
+    }
+
+    setBusy(true)
+    setStatus(null)
+    try {
+      await commitProviderImport({ bundle, resolutions })
+      setImportJson('')
+      clearImportPreview()
+      setStatus({ tone: 'success', message: t('settings.providers.import.success', { count: String(resolutions.length) }) })
+    } catch (error) {
+      setStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : t('settings.providers.import.error.failed'),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('settings.providers.import.title')}
+      width={760}
+      footer={(
+        <>
+          <span className="mr-auto self-center text-xs text-[var(--color-text-tertiary)]">
+            {t('settings.providers.import.selectedCount', { count: String(selectedCount) })}
+          </span>
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleCommit}
+            loading={busy}
+            disabled={!preview?.canCommit || selectedCount === 0}
+          >
+            <span className="material-symbols-outlined text-[16px]">download_done</span>
+            {t('settings.providers.import.commit')}
+          </Button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {status && (
+          <div className={`rounded-[7px] border px-3 py-2 text-xs ${
+            status.tone === 'error'
+              ? 'border-[var(--color-error)]/30 bg-[var(--color-error)]/8 text-[var(--color-error)]'
+              : 'border-[var(--color-success)]/30 bg-[var(--color-success)]/8 text-[var(--color-success)]'
+          }`}>
+            {status.message}
+          </div>
+        )}
+
+        <label className="block">
+          <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+            {t('settings.providers.import.fileLabel')}
+          </span>
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={(event) => void handleImportFileChange(event)}
+            className="mt-1 block w-full text-xs text-[var(--color-text-secondary)] file:mr-3 file:rounded-[7px] file:border file:border-[var(--color-border)] file:bg-[var(--color-surface)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[var(--color-text-primary)]"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+            {t('settings.providers.import.jsonLabel')}
+          </span>
+          <textarea
+            value={importJson}
+            onChange={(event) => handleImportJsonChange(event.target.value)}
+            placeholder={t('settings.providers.import.jsonPlaceholder')}
+            className="mt-1 min-h-[150px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+          />
+        </label>
+
+        <Button size="sm" onClick={handlePreview} loading={busy} disabled={importJson.trim().length === 0}>
+          <span className="material-symbols-outlined text-[16px]">plagiarism</span>
+          {t('settings.providers.import.preview')}
+        </Button>
+
+        {preview && (
+          <ProviderImportPreviewPanel
+            preview={preview}
+            bundle={bundle}
+            selections={selections}
+            onSelectionChange={(candidateId, next) => {
+              setSelections((current) => ({
+                ...current,
+                [candidateId]: {
+                  selected: next.selected ?? current[candidateId]?.selected ?? false,
+                  action: next.action ?? current[candidateId]?.action ?? 'add',
+                  name: next.name ?? current[candidateId]?.name ?? '',
+                  targetProviderId: next.targetProviderId ?? current[candidateId]?.targetProviderId ?? '',
+                },
+              }))
+            }}
+          />
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function ProviderImportPreviewPanel({
+  preview,
+  bundle,
+  selections,
+  onSelectionChange,
+}: {
+  preview: ProviderImportPreview
+  bundle: ProviderBundle | null
+  selections: Record<string, ProviderImportSelection>
+  onSelectionChange: (candidateId: string, next: Partial<ProviderImportSelection>) => void
+}) {
+  const t = useTranslation()
+  const secretValues = useMemo(() => collectProviderImportSecrets(bundle), [bundle])
+  const diagnostics = sanitizeProviderImportDiagnostics(preview.errors, secretValues)
+
+  return (
+    <section className="space-y-3" aria-label={t('settings.providers.import.previewTitle')}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
+          {t('settings.providers.import.previewTitle')}
+        </h4>
+        <ProviderImportStatusChip>{t('settings.providers.import.candidateCount', { count: String(preview.candidates.length) })}</ProviderImportStatusChip>
+        <ProviderImportStatusChip>{t('settings.providers.import.providerCount', { count: String(preview.bundle.providerCount) })}</ProviderImportStatusChip>
+      </div>
+
+      {diagnostics.length > 0 && (
+        <ProviderImportDiagnosticList title={t('settings.providers.import.bundleDiagnostics')} diagnostics={diagnostics} />
+      )}
+
+      <div className="overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)]">
+        {preview.candidates.length > 0 ? preview.candidates.map((candidate) => {
+          const selection = selections[candidate.candidateId] ?? {
+            selected: false,
+            action: candidate.defaultResolution,
+            name: candidate.suggestedName ?? candidate.name,
+            targetProviderId: candidate.conflict?.targetProviderId ?? '',
+          }
+          const candidateDiagnostics = sanitizeProviderImportDiagnostics(candidate.diagnostics, secretValues)
+          const defaultResolution = getProviderImportResolutionDetail(candidate.defaultResolution, t)
+          const conflictCopy = candidate.conflict ? getProviderImportConflictCopy(candidate, t) : null
+
+          return (
+            <article
+              key={candidate.candidateId}
+              className="grid min-w-0 gap-3 border-b border-[var(--color-border)] px-3 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_300px]"
+            >
+              <div className="min-w-0">
+                <label className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selection.selected}
+                    disabled={!candidate.valid}
+                    onChange={(event) => onSelectionChange(candidate.candidateId, { selected: event.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                        {candidate.name}
+                      </span>
+                      <ProviderImportStatusChip>{candidate.credentialStatus}</ProviderImportStatusChip>
+                      {candidate.conflict && <ProviderImportStatusChip>{t('settings.providers.import.conflictChip')}</ProviderImportStatusChip>}
+                      {!candidate.valid && <ProviderImportStatusChip>{t('settings.providers.import.notSelectable')}</ProviderImportStatusChip>}
+                    </span>
+                    <span className="mt-1 block font-mono text-[11px] text-[var(--color-text-tertiary)]">
+                      {candidate.sourceProviderId ?? candidate.candidateId}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">
+                      {t('settings.providers.import.defaultResolution', { resolution: defaultResolution.label })}
+                    </span>
+                    {conflictCopy && (
+                      <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">
+                        {conflictCopy}
+                      </span>
+                    )}
+                  </span>
+                </label>
+
+                {candidateDiagnostics.length > 0 && (
+                  <ProviderImportDiagnosticList
+                    title={t('settings.providers.import.candidateDiagnostics')}
+                    diagnostics={candidateDiagnostics}
+                    compact
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                    {t('settings.providers.import.resolution')}
+                  </div>
+                  <div className="mt-1 grid gap-1.5" role="group" aria-label={t('settings.providers.import.resolution')}>
+                    {providerImportResolutionOptions(candidate).map((resolution) => {
+                      const resolutionDetail = getProviderImportResolutionDetail(resolution, t)
+                      const active = selection.action === resolution
+                      return (
+                        <button
+                          key={resolution}
+                          type="button"
+                          aria-pressed={active}
+                          disabled={!candidate.valid || !selection.selected}
+                          onClick={() => onSelectionChange(candidate.candidateId, { action: resolution })}
+                          className={`flex min-w-0 items-start gap-2 rounded-[7px] border px-2.5 py-2 text-left transition-colors ${
+                            active
+                              ? 'border-[var(--color-brand)] bg-[var(--color-surface-selected)] text-[var(--color-text-primary)]'
+                              : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          <span className="material-symbols-outlined mt-0.5 text-[16px]">
+                            {resolutionDetail.icon}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-semibold">{resolutionDetail.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--color-text-tertiary)]">
+                              {resolutionDetail.description}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                {selection.action === 'rename' && (
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                      {t('settings.providers.import.name')}
+                    </span>
+                    <input
+                      value={selection.name}
+                      disabled={!candidate.valid || !selection.selected}
+                      onChange={(event) => onSelectionChange(candidate.candidateId, { name: event.target.value })}
+                      className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                )}
+                {selection.action === 'overwrite' && (
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                      {t('settings.providers.import.targetProvider')}
+                    </span>
+                    <input
+                      value={selection.targetProviderId}
+                      disabled={!candidate.valid || !selection.selected}
+                      onChange={(event) => onSelectionChange(candidate.candidateId, { targetProviderId: event.target.value })}
+                      className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-xs text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                )}
+              </div>
+            </article>
+          )
+        }) : (
+          <div className="px-3 py-4 text-sm text-[var(--color-text-secondary)]">
+            {t('settings.providers.import.noCandidates')}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ProviderImportDiagnosticList({
+  title,
+  diagnostics,
+  compact = false,
+}: {
+  title: string
+  diagnostics: ProviderImportDiagnostic[]
+  compact?: boolean
+}) {
+  const t = useTranslation()
+
+  return (
+    <section className={`${compact ? 'mt-3' : ''} rounded-[8px] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/8 px-3 py-2`}>
+      <h5 className="text-xs font-semibold text-[var(--color-warning)]">{title}</h5>
+      <ul className="mt-2 space-y-1.5">
+        {diagnostics.map((diagnostic, index) => (
+          <li key={`${diagnostic.candidateId ?? 'bundle'}:${diagnostic.code}:${diagnostic.path ?? ''}:${index}`} className="text-xs leading-5 text-[var(--color-text-secondary)]">
+            {getProviderImportDiagnosticMessage(diagnostic, t)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function ProviderImportStatusChip({ children }: { children: ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-[5px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--color-text-tertiary)]">
+      {children}
+    </span>
+  )
+}
+
+function readProviderImportFile(file: File): Promise<string> {
+  if (typeof file.text === 'function') {
+    return file.text()
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      resolve(typeof reader.result === 'string' ? reader.result : '')
+    }
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('Could not read file'))
+    }
+    reader.readAsText(file)
+  })
+}
+
+function parseProviderImportBundle(value: string, invalidMessage: string): ProviderBundle {
+  try {
+    return JSON.parse(value) as ProviderBundle
+  } catch {
+    throw new Error(invalidMessage)
+  }
+}
+
+function providerImportResolutionOptions(candidate: ProviderImportCandidate): ProviderImportResolutionAction[] {
+  if (candidate.conflict) return ['rename', 'overwrite', 'skip']
+  return ['add', 'rename', 'skip']
+}
+
+type SettingsTranslator = ReturnType<typeof useTranslation>
+
+function getProviderImportResolutionDetail(action: ProviderImportResolutionAction, t: SettingsTranslator) {
+  switch (action) {
+    case 'add':
+      return {
+        icon: 'add_circle',
+        label: t('settings.providers.import.resolution.add.label'),
+        description: t('settings.providers.import.resolution.add.description'),
+      }
+    case 'rename':
+      return {
+        icon: 'drive_file_rename_outline',
+        label: t('settings.providers.import.resolution.rename.label'),
+        description: t('settings.providers.import.resolution.rename.description'),
+      }
+    case 'overwrite':
+      return {
+        icon: 'sync_alt',
+        label: t('settings.providers.import.resolution.overwrite.label'),
+        description: t('settings.providers.import.resolution.overwrite.description'),
+      }
+    case 'skip':
+      return {
+        icon: 'block',
+        label: t('settings.providers.import.resolution.skip.label'),
+        description: t('settings.providers.import.resolution.skip.description'),
+      }
+  }
+}
+
+function getProviderImportConflictCopy(candidate: ProviderImportCandidate, t: SettingsTranslator): string {
+  if (!candidate.conflict) return ''
+  if (candidate.conflict.type === 'name') {
+    return t('settings.providers.import.conflict.name', {
+      name: candidate.conflict.targetProviderName ?? candidate.name,
+    })
+  }
+  return t('settings.providers.import.conflict.identity')
+}
+
+function getProviderImportDiagnosticMessage(diagnostic: ProviderImportDiagnostic, t: SettingsTranslator): string {
+  if (diagnostic.code === 'PROVIDER_CONFLICT') {
+    return t('settings.providers.import.conflict.identity')
+  }
+  return diagnostic.message
+}
+
+function buildProviderImportResolution(
+  candidate: ProviderImportCandidate,
+  selection: ProviderImportSelection | undefined,
+): ProviderImportResolution {
+  const action = selection?.action ?? candidate.defaultResolution
+  const resolution: ProviderImportResolution = {
+    candidateId: candidate.candidateId,
+    action,
+  }
+  if (action === 'rename') {
+    resolution.name = selection?.name || candidate.suggestedName || candidate.name
+  }
+  if (action === 'overwrite') {
+    resolution.targetProviderId = selection?.targetProviderId || candidate.conflict?.targetProviderId
+  }
+  return resolution
+}
+
+function collectProviderImportSecrets(bundle: ProviderBundle | null): string[] {
+  if (!bundle) return []
+  return bundle.providers
+    .map((provider) => provider.credential.apiKey?.trim())
+    .filter((value): value is string => Boolean(value))
+}
+
+function sanitizeProviderImportDiagnostics(
+  diagnostics: ProviderImportDiagnostic[],
+  secretValues: string[],
+): ProviderImportDiagnostic[] {
+  if (secretValues.length === 0) return diagnostics
+  return diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    message: secretValues.reduce(
+      (message, secret) => message.replaceAll(secret, '[redacted]'),
+      diagnostic.message,
+    ),
+  }))
+}
+
+type SaveFilePickerHandle = {
+  createWritable: () => Promise<{
+    write: (contents: string) => Promise<void>
+    close: () => Promise<void>
+  }>
+}
+
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName: string
+    types: Array<{
+      description: string
+      accept: Record<string, string[]>
+    }>
+  }) => Promise<SaveFilePickerHandle>
+}
+
+async function saveTextFileWithPicker(contents: string, suggestedName: string): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+  if (picker) {
+    try {
+      const fileHandle = await picker({
+        suggestedName,
+        types: [
+          {
+            description: 'JSON',
+            accept: { 'application/json': ['.json'] },
+          },
+        ],
+      })
+      const writable = await fileHandle.createWritable()
+      await writable.write(contents)
+      await writable.close()
+      return 'saved'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return 'cancelled'
+      }
+      throw error
+    }
+  }
+
+  downloadTextFile(contents, suggestedName)
+  return 'downloaded'
+}
+
+function downloadTextFile(contents: string, filename: string) {
+  const blob = new Blob([contents], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 // ─── Provider Form Modal ──────────────────────────────────────

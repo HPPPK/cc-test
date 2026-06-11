@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-016",
+  "source_path": "src/commands/skills/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Slash command '/skills' - local-jsx command listing available skills. Lazy-loads skills.js.",
+  "classification": "critical",
+  "criticality": "critical"
+}

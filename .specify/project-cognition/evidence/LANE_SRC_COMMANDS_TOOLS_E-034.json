@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-034",
+  "source_path": "src/tools/MCPTool/MCPTool.ts",
+  "evidence_type": "code_read",
+  "summary": "MCPTool - generic MCP tool execution. Open-world schema (passthrough). Name/args overridden by mcpClient.ts at runtime.",
+  "classification": "critical",
+  "criticality": "critical"
+}

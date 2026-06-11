@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SERVER_SERVICES_E-011",
+  "source_path": "src/services/analytics/index.ts",
+  "evidence_type": "code_read",
+  "summary": "Analytics event logging public API. Queue-based design with no dependencies to avoid import cycles. Events queued until attachAnalyticsSink() called. Supports sync/async logging. PII-tagged proto fields stripped before Datadog. Marker types enforce safe metadata.",
+  "classification": "critical",
+  "criticality": "high"
+}

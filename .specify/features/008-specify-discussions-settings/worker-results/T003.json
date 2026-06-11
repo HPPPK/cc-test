@@ -1,0 +1,61 @@
+{
+  "status": "success",
+  "reported_status": "completed",
+  "task_id": "T003",
+  "changed_files": [
+    "desktop/src/types/providerImportExport.ts"
+  ],
+  "validation_output": {
+    "verification": "passed",
+    "commands": [
+      {
+        "command": "bun run check:desktop",
+        "status": "passed",
+        "summary": "Ran desktop lint/typecheck, Vitest, and production build. Vitest: 97 files passed, 838 tests passed. Build completed successfully."
+      }
+    ],
+    "diagnostics": "No separate lsp_diagnostics tool is available in this runtime; TypeScript no-emit via check:desktop passed.",
+    "warnings": [
+      "Existing React act(...) warnings appeared in src/__tests__/generalSettings.test.tsx during the desktop test run; they did not fail the gate and were unrelated to this type-only change."
+    ]
+  },
+  "must_preserve_evidence": {
+    "MP-001_MP-002_MP-009_saved_provider_scope": "The new ProviderBundle contains only provider bundle metadata and ProviderBundleProvider records; no chat, MCP, skills, workflows, plugins, global settings, or whole-app backup fields were added.",
+    "MP-003_MP-005_secret_paths": "Defined separate ProviderExportResponse with ProviderSecretFreeBundle containsSecrets:false and ProviderSecretExportRequest/ProviderSecretExportResponse with ProviderSecretBundle containsSecrets:true plus confirmation.acknowledgedCredentialExposure:true.",
+    "MP-004_MP-010_redaction_boundary": "Credential payload is represented as ProviderBundleCredential with status redacted|present|missing; default export response is typed as secret-free. No frontend-only masking behavior was introduced.",
+    "MP-006_conflict_resolution": "Import conflict/resolution types include add, rename, overwrite, and skip; overwrite remains an explicit resolution with optional targetProviderId carried only on the resolution type.",
+    "MP-007_no_active_default_transfer": "No activeId/default selection fields exist on ProviderBundle, ProviderBundleProvider, export requests, import preview requests, commit requests, or resolutions. The only activeId field is in ProviderImportCommitResult, matching the API contract's unchanged activeId response.",
+    "MP-008_preview_commit_separation": "Preview and commit have separate request/response types: ProviderImportPreviewRequest/Response and ProviderImportCommitRequest/Response."
+  },
+  "concerns": [
+    "Project cognition query was attempted and blocked with: status.json exists but project-cognition.db is missing. This matches the feature plan's known cognition gap, so implementation proceeded from live repository evidence and authoritative feature artifacts.",
+    "The repository has many pre-existing unrelated dirty files. I only modified desktop/src/types/providerImportExport.ts.",
+    "ProviderImportCommitResult includes activeId solely because the API contract response includes an unchanged activeId; downstream code should not treat it as an imported or selectable value."
+  ],
+  "recovery_hints": [
+    "If downstream API/store work needs these types, import from desktop/src/types/providerImportExport.ts and keep active/default provider selection out of request and bundle payloads.",
+    "If the server contract changes field names, update this desktop type file in lockstep with contracts/provider-import-export-api.md.",
+    "Do not wire ProviderSecretExportRequest into the default export path; it is the separate dangerous path."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/data-model.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/worker-results/T001.json",
+    "desktop/src/types/provider.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/package.json",
+    "package.json"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

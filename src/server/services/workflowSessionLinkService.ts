@@ -289,7 +289,7 @@ export class WorkflowSessionLinkService {
     if (!source) {
       throw workflowLinkError(404, 'SESSION_NOT_FOUND', `Session not found: ${sourceSessionId}`)
     }
-    if (source.workflow?.mode === 'workflow') {
+    if (source.workflow?.mode === 'workflow' && source.workflow.status !== 'completed') {
       throw workflowLinkError(400, 'WORKFLOW_SOURCE_INVALID', 'Workflow sessions cannot be used as linked workflow sources')
     }
     if (await this.isSourceActive(sourceSessionId)) {

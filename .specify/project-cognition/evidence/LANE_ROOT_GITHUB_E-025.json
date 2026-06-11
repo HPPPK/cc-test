@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-025",
+  "source_path": "intent.json",
+  "evidence_type": "config_read",
+  "summary": "Empty file (0 bytes). Placeholder for project intent metadata.",
+  "classification": "minor",
+  "criticality": "minor"
+}

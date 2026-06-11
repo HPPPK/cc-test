@@ -1,0 +1,70 @@
+{
+  "status": "success",
+  "reported_status": "IMPLEMENTED_WITH_NON_OWNED_DESKTOP_GATE_BLOCKER",
+  "task_id": "T007",
+  "changed_files": [
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "validation_output": {
+    "focused_tests": {
+      "command": "cd desktop && bun run test -- providerStore",
+      "exit_code": 0,
+      "result": "PASS: 1 test file, 6 tests passed"
+    },
+    "lint": {
+      "command": "cd desktop && bun run lint",
+      "exit_code": 1,
+      "result": "BLOCKED outside T007 write scope: desktop/src/stores/providerStore.test.ts(206,21): error TS2532: Object is possibly 'undefined'."
+    },
+    "desktop_gate": {
+      "command": "bun run check:desktop",
+      "exit_code": 1,
+      "result": "BLOCKED at lint by the same non-owned T006 test nullability error before test/build lanes ran."
+    },
+    "diff_check": {
+      "command": "git diff --check -- desktop/src/api/providers.ts desktop/src/stores/providerStore.ts desktop/src/pages/Settings.tsx desktop/src/i18n/locales/en.ts desktop/src/i18n/locales/zh.ts",
+      "exit_code": 0,
+      "result": "No whitespace errors; Git emitted CRLF normalization warnings only."
+    }
+  },
+  "must_preserve_evidence": [
+    "MP-001/MP-002/G-SCOPE: Settings UI exports provider bundle JSON only; no raw Settings JSON backup, OAuth/login state, chat, MCP, skills, workflows, or global settings export was added.",
+    "MP-004/MP-010: UI/store default path calls providersApi.exportProviders, which posts to /api/providers/export and relies on server-side redaction. No frontend-only secret filtering was added.",
+    "MP-007: export request construction sends either {\"all\":true} or {\"all\":false,\"providerIds\":[...]}; no activeId/defaultProviderId fields are included and store export does not activate or fetch activation paths.",
+    "No secret export, export-with-secrets endpoint, includeSecrets checkbox, import preview/commit, or remembered secret option was implemented."
+  ],
+  "concerns": [
+    "Full desktop gate was blocked by desktop/src/stores/providerStore.test.ts line 206 before the T006-test-lint-repair worker fixed it.",
+    "Working tree already contained unrelated local edits in the same owned files, such as Environment tab/i18n changes and provider runtime refresh changes; these were preserved and not reverted."
+  ],
+  "recovery_hints": [
+    "Server behavior must exist for POST /api/providers/export before manual UI export can succeed against a live backend."
+  ],
+  "inspected_references": [
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/worker-results/T006.json",
+    "desktop/src/types/providerImportExport.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/stores/providerStore.test.ts",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

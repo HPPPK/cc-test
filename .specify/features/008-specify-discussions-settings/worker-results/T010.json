@@ -1,0 +1,61 @@
+{
+  "status": "success",
+  "reported_status": "DONE_WITH_EXPECTED_RED",
+  "task_id": "T010",
+  "changed_files": [
+    "desktop/src/__tests__/generalSettings.test.tsx"
+  ],
+  "validation_output": {
+    "command": "cd desktop && bun run test -- generalSettings",
+    "exit_code": 1,
+    "summary": "47 tests run: 43 passed, 4 failed",
+    "expected_red_failures": [
+      "previews pasted provider import bundles before any commit action runs",
+      "shows conflicted provider imports with rename as the default resolution",
+      "shows missing secret diagnostics without rendering raw secret values",
+      "refreshes providers after committing selected import candidates"
+    ],
+    "failure_reason": "Expected missing behavior: Providers tab has export controls but no accessible Import providers control/dialog/actions yet. Failures are not syntax/setup failures."
+  },
+  "must_preserve_evidence": {
+    "G_PREVIEW_COMMIT": "Added preview-before-commit test asserting previewProviderImport receives the parsed bundle and commitProviderImport is not called during preview.",
+    "G_CONFLICT": "Added conflict preview test expecting default resolution text to be rename and not overwrite.",
+    "G_TEST": "Added same-area desktop Settings tests only in desktop/src/__tests__/generalSettings.test.tsx and ran the scoped Vitest command.",
+    "CA_002_MP_008": "Preview test uses provider import bundle fixture and requires preview interaction before any commit action.",
+    "CA_004_MP_006": "Conflict test expects rename default for an existing-provider name conflict.",
+    "missing_secret_diagnostics": "Missing-secret diagnostic test expects an actionable API key warning while asserting raw secret text is not rendered.",
+    "commit_refresh": "Commit test expects selected add resolution, provider refresh, and no provider activation."
+  },
+  "concerns": [
+    "All four new RED tests currently stop at the missing Import providers button, so deeper assertions will become active once T011 adds the import entrypoint.",
+    "Existing production files desktop/src/api/providers.ts, desktop/src/pages/Settings.tsx, desktop/src/stores/providerStore.ts, and desktop/src/types/providerImportExport.ts were already dirty/untracked from other work and were not modified by this task."
+  ],
+  "recovery_hints": [
+    "Implement an accessible Providers-tab import control named Import providers.",
+    "Import dialog should expose Provider import JSON, Preview import, and Import selected controls.",
+    "Settings should call providerStore.previewProviderImport({ bundle }) before commit and providerStore.commitProviderImport({ bundle, resolutions }) only on Import selected.",
+    "Render preview diagnostics without raw credential values, show conflict default resolution as add/rename, and refresh providers after successful commit without activating imported providers."
+  ],
+  "inspected_references": [
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md",
+    ".specify/features/008-specify-discussions-settings/tasks.md",
+    ".specify/features/008-specify-discussions-settings/plan.md",
+    ".specify/features/008-specify-discussions-settings/contracts/provider-import-export-api.md",
+    ".specify/features/008-specify-discussions-settings/quickstart.md",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/types/providerImportExport.ts",
+    "desktop/src/api/providers.ts",
+    "desktop/src/__tests__/generalSettings.test.tsx"
+  ],
+  "validation_results": [
+    {
+      "name": "leader accepted task validation",
+      "status": "passed"
+    }
+  ],
+  "consumer_evidence": [
+    "Task evidence was consumed by downstream join points and final verification; see implement-tracker completed_checks plus this result validation_output."
+  ]
+}

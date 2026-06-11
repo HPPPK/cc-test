@@ -1,0 +1,75 @@
+# Failed implementation tasks should keep execution in recovery until validation turns green
+
+<!-- SPECKIT_LEARNING_DATA_BEGIN -->
+[
+  {
+    "id": "LRN-20260610-084242-504967",
+    "summary": "Failed implementation tasks should keep execution in recovery until validation turns green",
+    "learning_type": "pitfall",
+    "source_command": "sp-implement",
+    "evidence": "Observed auto-capture evidence from implement-tracker.md\n- feature_dir: F:\\github\\cc-jiangxia\\.specify\\features\\008-specify-discussions-settings\n- tracker_status: blocked\n- retry_attempts: 1\n- current_batch: closeout\n- failed_tasks: none\n- planned_checks: Focused checks specified by tasks.md and workflow-state.md., Required closeout command before final completion.\n- completed_checks: Prerequisites resolved active feature directory., Checklist requirements.md passed with 31 complete and 0 incomplete items., T001 pre-dispatch validation passed: executor role exists, dependencies are acyclic, read-scope paths exist, write scope is empty, forbidden paths include secrets/user config., T001 worker result consumed from native subagent and recorded in worker-results/T001.json., B1 pre-dispatch validation passed: executor roles exist, dependencies are acyclic, write scopes are isolated, missing write paths are expected new files., T002 and T003 worker handoffs consumed; leader review found B1 response contract mismatch before JP1 acceptance., B1 repair worker handoff consumed and recorded in worker-results/B1-contract-alignment-repair.json., JP1 focused schema validation passed: server schema imports, valid bundle parses, bundle-level activeId is rejected, secret-free present apiKey is rejected, commit result activeId metadata parses., B2 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist., JP2 RED validation accepted: server tests fail with 405 for missing `/api/providers/export`; desktop tests fail because `store.exportProviders` is missing., B3 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., JP3 accepted: T005 worker passed `bun test src/server/__tests__/providers.test.ts` and `bun run check:server`; T007 worker passed focused providerStore tests, a bounded test repair cleared desktop lint, and leader reran `bun run check:server` plus `bun run check:desktop` successfully., B4 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist., JP4 RED validation accepted: server import preview/commit tests fail with expected 405s; desktop import UI tests fail at missing Import providers control., B5 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., T009 and T011 worker handoffs consumed from worker-results/T009.json and worker-results/T011.json., JP5 accepted: `bun run check:server` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp5-check-server.log`; `bun run check:desktop` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp5-check-desktop.log`., B6 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist, and tests are expected to fail RED for missing secret export confirmation/labeling behavior., T012 and T014 worker handoffs consumed from worker-results/T012.json and worker-results/T014.json., JP6 RED validation accepted: server secret export tests fail with expected 405 for missing `/api/providers/export-with-secrets`; desktop secret export tests fail at missing separate `Export with credentials` action/warning flow. Logs captured under `.specify/features/008-specify-discussions-settings/validation-logs/jp6-red-server.log` and `jp6-red-desktop.log`., B7 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., T013 and T015 worker handoffs consumed from worker-results/T013.json and worker-results/T015.json., JP7 accepted: `bun run check:server` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp7-check-server.log`; `bun run check:desktop` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp7-check-desktop.log`., T016 pre-dispatch validation passed: build-fixer role exists, dependencies are completed, dependencies are acyclic, and verification may read the full repository while write scope is limited to implementation-touched files if checks fail., T016 worker handoff consumed from worker-results/T016.json., Final local verification accepted: `bun run check:server`, `bun run check:desktop`, `bun run check:coverage`, and all non-live `bun run verify` lanes passed. `bun run verify` remains PR-not-ready solely because live-provider-checks are escalated and maintainer-only.\n- blockers: Continue from live repository evidence and carry cognition coverage gap; inline closeout update or dirty marker will be handled after mutations if possible., Maintainer runs `bun run quality:gate --mode baseline --allow-live --provider-model <selector>` with an authorized selector or records an explicit live-provider waiver.",
+    "recurrence_key": "implement.failed-tasks-keep-recovery-active-until-validation",
+    "default_scope": "implementation-heavy",
+    "applies_to": [
+      "sp-debug",
+      "sp-implement",
+      "sp-quick"
+    ],
+    "signal_strength": "medium",
+    "status": "candidate",
+    "first_seen": "2026-06-10T08:42:42Z",
+    "last_seen": "2026-06-10T08:42:42Z",
+    "occurrence_count": 1,
+    "pain_score": 0,
+    "false_starts": [],
+    "rejected_paths": [],
+    "decisive_signal": "",
+    "root_cause_family": "",
+    "injection_targets": [],
+    "promotion_hint": ""
+  }
+]
+<!-- SPECKIT_LEARNING_DATA_END -->
+
+## Problem
+
+Failed implementation tasks should keep execution in recovery until validation turns green
+
+## Lesson
+
+Observed auto-capture evidence from implement-tracker.md
+
+## When To Apply
+
+sp-debug, sp-implement, sp-quick
+
+## Trigger Signals
+
+- medium
+- pitfall
+
+## Evidence
+
+Observed auto-capture evidence from implement-tracker.md
+- feature_dir: F:\github\cc-jiangxia\.specify\features\008-specify-discussions-settings
+- tracker_status: blocked
+- retry_attempts: 1
+- current_batch: closeout
+- failed_tasks: none
+- planned_checks: Focused checks specified by tasks.md and workflow-state.md., Required closeout command before final completion.
+- completed_checks: Prerequisites resolved active feature directory., Checklist requirements.md passed with 31 complete and 0 incomplete items., T001 pre-dispatch validation passed: executor role exists, dependencies are acyclic, read-scope paths exist, write scope is empty, forbidden paths include secrets/user config., T001 worker result consumed from native subagent and recorded in worker-results/T001.json., B1 pre-dispatch validation passed: executor roles exist, dependencies are acyclic, write scopes are isolated, missing write paths are expected new files., T002 and T003 worker handoffs consumed; leader review found B1 response contract mismatch before JP1 acceptance., B1 repair worker handoff consumed and recorded in worker-results/B1-contract-alignment-repair.json., JP1 focused schema validation passed: server schema imports, valid bundle parses, bundle-level activeId is rejected, secret-free present apiKey is rejected, commit result activeId metadata parses., B2 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist., JP2 RED validation accepted: server tests fail with 405 for missing `/api/providers/export`; desktop tests fail because `store.exportProviders` is missing., B3 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., JP3 accepted: T005 worker passed `bun test src/server/__tests__/providers.test.ts` and `bun run check:server`; T007 worker passed focused providerStore tests, a bounded test repair cleared desktop lint, and leader reran `bun run check:server` plus `bun run check:desktop` successfully., B4 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist., JP4 RED validation accepted: server import preview/commit tests fail with expected 405s; desktop import UI tests fail at missing Import providers control., B5 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., T009 and T011 worker handoffs consumed from worker-results/T009.json and worker-results/T011.json., JP5 accepted: `bun run check:server` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp5-check-server.log`; `bun run check:desktop` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp5-check-desktop.log`., B6 pre-dispatch validation passed: test-engineer roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated, read/write paths exist, and tests are expected to fail RED for missing secret export confirmation/labeling behavior., T012 and T014 worker handoffs consumed from worker-results/T012.json and worker-results/T014.json., JP6 RED validation accepted: server secret export tests fail with expected 405 for missing `/api/providers/export-with-secrets`; desktop secret export tests fail at missing separate `Export with credentials` action/warning flow. Logs captured under `.specify/features/008-specify-discussions-settings/validation-logs/jp6-red-server.log` and `jp6-red-desktop.log`., B7 pre-dispatch validation passed: executor roles exist, dependencies are completed, dependencies are acyclic, write scopes are isolated between server and desktop surfaces., T013 and T015 worker handoffs consumed from worker-results/T013.json and worker-results/T015.json., JP7 accepted: `bun run check:server` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp7-check-server.log`; `bun run check:desktop` passed with output captured at `.specify/features/008-specify-discussions-settings/validation-logs/jp7-check-desktop.log`., T016 pre-dispatch validation passed: build-fixer role exists, dependencies are completed, dependencies are acyclic, and verification may read the full repository while write scope is limited to implementation-touched files if checks fail., T016 worker handoff consumed from worker-results/T016.json., Final local verification accepted: `bun run check:server`, `bun run check:desktop`, `bun run check:coverage`, and all non-live `bun run verify` lanes passed. `bun run verify` remains PR-not-ready solely because live-provider-checks are escalated and maintainer-only.
+- blockers: Continue from live repository evidence and carry cognition coverage gap; inline closeout update or dirty marker will be handled after mutations if possible., Maintainer runs `bun run quality:gate --mode baseline --allow-live --provider-model <selector>` with an authorized selector or records an explicit live-provider waiver.
+
+## Prevention Or Recovery
+
+Decisive signal: not recorded
+
+False starts:
+_No false starts recorded._
+
+Rejected paths:
+_No rejected paths recorded._
+
+## Exceptions
+
+_No exceptions recorded yet._

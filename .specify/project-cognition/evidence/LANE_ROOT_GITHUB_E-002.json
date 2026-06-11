@@ -1,0 +1,8 @@
+{
+  "id": "LANE_ROOT_GITHUB_E-002",
+  "source_path": "tsconfig.json",
+  "evidence_type": "config_read",
+  "summary": "TypeScript config: target=ESNext, module=ESNext, moduleResolution=bundler, allowJs=true, jsx=react-jsx. Path aliases: @ant/claude-for-chrome-mcp -> ./stubs/ant-claude-for-chrome-mcp.ts, color-diff-napi -> ./stubs/color-diff-napi.ts, src/* -> ./src/*. Types: bun-types.",
+  "classification": "important",
+  "criticality": "important"
+}

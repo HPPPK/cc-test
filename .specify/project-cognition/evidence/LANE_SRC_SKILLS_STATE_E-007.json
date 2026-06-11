@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_SKILLS_STATE_E-007",
+  "source_path": "src/cli/exit.ts",
+  "evidence_type": "code_read",
+  "summary": "CLI exit helpers: cliError(msg?) exits with code 1, cliOk(msg?) exits with code 0. Return type ': never' for TypeScript control flow narrowing. Used across CLI subcommand handlers.",
+  "classification": "critical",
+  "criticality": "high"
+}

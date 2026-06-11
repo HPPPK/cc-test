@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-016",
+  "source_path": "src/cost-tracker.ts",
+  "evidence_type": "code_read",
+  "summary": "Cost tracking and reporting. Integrates with bootstrap/state for total cost, model usage, API duration. formatTotalCost(), saveCurrentSessionCosts(), restoreCostStateForSession(). Calculates USD cost via calculateUSDCost(). Tracks lines changed, token counts, web search requests.",
+  "classification": "important",
+  "criticality": "important"
+}

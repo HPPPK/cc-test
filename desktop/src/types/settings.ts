@@ -64,6 +64,7 @@ export type UserSettings = {
   updateProxy?: Partial<UpdateProxySettings>
   language?: string
   desktopTerminal?: Partial<DesktopTerminalSettings>
+  env?: Record<string, string>
   [key: string]: unknown
 }
 

@@ -74,9 +74,11 @@ export function buildClaudeCliArgs(
   launcher: ClaudeCliLauncher,
   baseArgs: string[],
   appRoot: string | undefined = process.env.CLAUDE_APP_ROOT,
+  runtimePath: string = process.execPath,
 ): string[] {
   if (launcher.kind === 'script') {
-    return ['bun', launcher.command, ...baseArgs]
+    const runtime = process.platform === 'win32' ? runtimePath : 'bun'
+    return [runtime, launcher.command, ...baseArgs]
   }
 
   if (launcher.kind === 'sidecar') {

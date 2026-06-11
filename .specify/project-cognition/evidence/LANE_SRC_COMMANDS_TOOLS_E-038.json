@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_COMMANDS_TOOLS_E-038",
+  "source_path": "src/tools/shared/gitOperationTracking.ts",
+  "evidence_type": "code_read",
+  "summary": "Shell-agnostic git operation tracking for usage metrics. Detects git commit/push, gh pr create, glab mr create, curl PR creation. Increments OTLP counters.",
+  "classification": "normal",
+  "criticality": "normal"
+}

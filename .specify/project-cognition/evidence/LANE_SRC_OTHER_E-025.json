@@ -1,0 +1,8 @@
+{
+  "id": "LANE_SRC_OTHER_E-025",
+  "source_path": "src/coordinator/workerAgent.ts",
+  "evidence_type": "code_read",
+  "summary": "Auto-generated stub for feature-gated coordinator worker agent module.",
+  "classification": "info",
+  "criticality": "trivial"
+}

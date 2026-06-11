@@ -1,90 +1,23 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-05-28T03:28:41.238Z",
-  "command": "sp-map-scan",
-  "rows": [
-    {
-      "id": "cap:root-runtime",
-      "title": "Root CLI/runtime startup",
-      "node_ids": [
-        "node:root-main-runtime",
-        "node:root-setup-orchestrator"
-      ],
-      "packet_ids": [
-        "root-config-runtime"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    },
-    {
-      "id": "cap:workflow-server-api",
-      "title": "Workflow session and template APIs",
-      "node_ids": [
-        "server.api.sessions.workflow",
-        "server.api.workflow_templates",
-        "server.service.workflow_runtime"
-      ],
-      "packet_ids": [
-        "server-workflow-api"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    },
-    {
-      "id": "cap:desktop-workflow-ui",
-      "title": "Desktop workflow authoring and launch UI",
-      "node_ids": [
-        "desktop.workflow.empty-session",
-        "desktop.workflow.start-dialog",
-        "desktop.workflow.template-manager"
-      ],
-      "packet_ids": [
-        "desktop-workflow-ui"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    },
-    {
-      "id": "cap:agent-loop-tools",
-      "title": "Agent tool execution and in-process teammate runtime",
-      "node_ids": [
-        "node.agent_tool",
-        "node.agent_runner",
-        "node.inprocess_runner"
-      ],
-      "packet_ids": [
-        "tools-agent-loop"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    },
-    {
-      "id": "cap:adapter-service-risk",
-      "title": "IM adapters, memory, API, analytics, auto-dream surfaces",
-      "node_ids": [
-        "node.adapters.im_runtime",
-        "node.services.memory",
-        "node.services.api"
-      ],
-      "packet_ids": [
-        "adapters-services-risk"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    },
-    {
-      "id": "cap:verification-release-docs",
-      "title": "Release, docs, Tauri packaging, and desktop assets",
-      "node_ids": [
-        "workflow:desktop-release-pipeline",
-        "workflow:docs-publishing",
-        "module:desktop-tauri-packaging"
-      ],
-      "packet_ids": [
-        "verification-release-docs"
-      ],
-      "confidence": "medium",
-      "status": "provisional_scan"
-    }
+  "schema_version": "1.0.0",
+  "generated_at": "2026-06-04T14:30:00Z",
+  "command": "map-scan",
+  "capabilities": [
+    {"id": "cap-server-api", "name": "Server API Layer", "paths": ["src/server/api/"], "lane": "lane-1", "criticality": "critical", "owner": "server-team"},
+    {"id": "cap-server-services", "name": "Server Services", "paths": ["src/server/services/"], "lane": "lane-1", "criticality": "critical", "owner": "server-team"},
+    {"id": "cap-server-ws", "name": "WebSocket Real-time", "paths": ["src/server/ws/"], "lane": "lane-1", "criticality": "critical", "owner": "server-team"},
+    {"id": "cap-server-infra", "name": "Server Infrastructure", "paths": ["src/server/config/", "src/server/middleware/", "src/server/types/"], "lane": "lane-2", "criticality": "important", "owner": "server-team"},
+    {"id": "cap-tools", "name": "Tool System", "paths": ["src/tools/"], "lane": "lane-3", "criticality": "critical", "owner": "core-team"},
+    {"id": "cap-desktop-ui", "name": "Desktop UI", "paths": ["desktop/src/"], "lane": "lane-4", "criticality": "critical", "owner": "desktop-team"},
+    {"id": "cap-adapters", "name": "Channel Adapters", "paths": ["adapters/"], "lane": "lane-5", "criticality": "important", "owner": "adapter-team"},
+    {"id": "cap-runtime", "name": "Runtime Module", "paths": ["runtime/"], "lane": "lane-5", "criticality": "important", "owner": "core-team"},
+    {"id": "cap-utils", "name": "Utility Functions", "paths": ["src/utils/"], "lane": "lane-6a", "criticality": "important", "owner": "core-team"},
+    {"id": "cap-services", "name": "Client Services", "paths": ["src/services/"], "lane": "lane-6a", "criticality": "important", "owner": "core-team"},
+    {"id": "cap-tasks", "name": "Task System", "paths": ["src/tasks/"], "lane": "lane-6a", "criticality": "important", "owner": "core-team"},
+    {"id": "cap-components", "name": "CLI Components", "paths": ["src/components/"], "lane": "lane-6b", "criticality": "important", "owner": "cli-team"},
+    {"id": "cap-skills", "name": "Skill System", "paths": ["src/skills/", ".codex/skills/"], "lane": "lane-6b", "criticality": "important", "owner": "core-team"},
+    {"id": "cap-commands", "name": "CLI Commands", "paths": ["src/commands/"], "lane": "lane-7", "criticality": "important", "owner": "cli-team"},
+    {"id": "cap-build", "name": "Build & CI", "paths": ["scripts/", ".github/"], "lane": "lane-8", "criticality": "important", "owner": "devops-team"},
+    {"id": "cap-docs", "name": "Documentation", "paths": ["docs/"], "lane": "lane-8", "criticality": "low_risk", "owner": "docs-team"}
   ]
 }

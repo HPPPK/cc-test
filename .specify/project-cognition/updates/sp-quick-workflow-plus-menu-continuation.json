@@ -1,0 +1,50 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-plus-menu-continuation worker closeout",
+  "changed_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx"
+  ],
+  "scope_paths": [
+    "desktop/src/components/chat",
+    "desktop/src/pages/ActiveSession.tsx",
+    "desktop/src/pages/EmptySession.tsx",
+    "desktop/src/components/workflow",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/pages/EmptySession.test.tsx"
+  ],
+  "behavior_surfaces": [
+    "desktop chat input plus menu",
+    "completed workflow session linked workflow start",
+    "workflow start dialog",
+    "workflow context strategy dialog"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "No workflow state-machine semantics changed.",
+    "Existing persisted transcripts are not mutated.",
+    "Completed workflow sessions may act as source sessions for linked workflow start; non-completed workflow sessions remain blocked by the UI gate."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test -- ChatInput.test.tsx -t \"opens workflows from the plus menu after the current workflow is completed\"",
+      "result": "pass"
+    },
+    {
+      "command": "cd desktop; bun run test -- ChatInput.test.tsx -t \"opens workflows from the plus menu after the current workflow is completed\"",
+      "result": "red check failed before production change because the Workflows button was absent from the plus menu"
+    }
+  ],
+  "known_unknowns": [
+    "No browser/manual visual validation was run.",
+    "No full desktop test suite was run."
+  ],
+  "confidence_notes": [
+    "The fix reuses the existing WorkflowStartDialog and startLinkedWorkflowSession path.",
+    "The code change is limited to the workflow menu eligibility gate.",
+    "Worker lane only; no workflow state-machine, API contract, or transcript persistence changes."
+  ],
+  "user_decisions": [
+    "User confirmed the quick-task direction before implementation."
+  ]
+}
