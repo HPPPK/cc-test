@@ -1,0 +1,36 @@
+{
+  "task_id": "B1-desktop-test-lint-recovery",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "validation_evidence": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 0,
+      "result": "Passed. 1 test file passed, 47 tests passed.",
+      "details": [
+        "The workflow component test file still passes all 47 tests.",
+        "The jsdom bootstrap and direct-runner compatibility remain intact."
+      ]
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "exit_code": 0,
+      "result": "Passed.",
+      "details": [
+        "The previous TS2306 error for '@testing-library/jest-dom/types/index.d.ts' is gone.",
+        "No unrelated lint failures appeared."
+      ]
+    }
+  ],
+  "blockers": [],
+  "failed_assumptions": [
+    "None."
+  ],
+  "recovery_guidance": [
+    "Keep the jsdom bootstrap before the matcher import if this file needs to stay runnable under the direct Bun runner.",
+    "Prefer '@testing-library/jest-dom/vitest' here rather than the package root so TypeScript resolves a real module entrypoint."
+  ]
+}

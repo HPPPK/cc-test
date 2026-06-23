@@ -697,6 +697,10 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const streamingText = sessionState?.streamingText ?? ''
   const activeThinkingId = sessionState?.activeThinkingId ?? null
   const agentTaskNotifications = sessionState?.agentTaskNotifications ?? {}
+  const transcriptMessages = useMemo(
+    () => messages.filter((message) => !(message.type === 'user_text' && message.queued)),
+    [messages],
+  )
   const shouldFollowContentResize =
     streamingText.trim().length > 0 ||
     chatState === 'streaming' ||
@@ -839,10 +843,10 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   }, [scrollToBottom, shouldFollowContentResize])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
-    () => buildRenderModel(messages),
-    [messages],
+    () => buildRenderModel(transcriptMessages),
+    [transcriptMessages],
   )
-  const deferredMessages = useDeferredValue(messages)
+  const deferredMessages = useDeferredValue(transcriptMessages)
   const completedTurnTargets = useMemo(
     () => getCompletedTurnTargets(deferredMessages),
     [deferredMessages],
@@ -1137,6 +1141,12 @@ export const MessageBlock = memo(function MessageBlock({
           <UserMessage
             content={message.content}
             attachments={message.attachments}
+            queued={message.queued}
+            onGuideQueued={
+              message.queued && sessionId
+                ? () => useChatStore.getState().guideQueuedMessage(sessionId, message.id)
+                : undefined
+            }
           />
         </SelectableChatMessage>
       )

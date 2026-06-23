@@ -1,0 +1,64 @@
+{
+  "id": "T004",
+  "title": "Implement grouped server compatibility",
+  "story": "US1",
+  "agent": "executor",
+  "depends_on": ["T002"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "src/server/services/workflowTypes.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+    ".specify/features/009-specify-discussions-workflows/data-model.md"
+  ],
+  "write_scope": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowTypes.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "desktop files",
+    "SkillTool files"
+  ],
+  "expected_outputs": [
+    "Compatibility projection from legacy flat fields to grouped contract shape",
+    "Validation diagnostics for strength, source, and provenance fields",
+    "Template persistence excludes runtimeState",
+    "Unknown fields remain preserved"
+  ],
+  "anti_goals": [
+    "No destructive migration",
+    "No storage rewrite",
+    "No scheduler or gate executor"
+  ],
+  "does_not_remove": [
+    "MP-003",
+    "MP-004",
+    "MP-011"
+  ],
+  "capability_operations": [
+    "CAP-001 implementation",
+    "CAP-007 compatibility implementation"
+  ],
+  "acceptance_criteria": [
+    "T002 tests pass",
+    "Existing workflow template API tests pass"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "handoff_format": [
+    "compatibility_projection_summary",
+    "validation_rejection_summary",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

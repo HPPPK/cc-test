@@ -24,7 +24,7 @@ describe('appZoom', () => {
     expect(normalizeAppZoomLevel('1.25')).toBe(1.25)
     expect(normalizeAppZoomLevel('bad')).toBe(1)
     expect(normalizeAppZoomLevel(4)).toBe(2)
-    expect(normalizeAppZoomLevel(0.1)).toBe(0.5)
+    expect(normalizeAppZoomLevel(0.1)).toBe(0.8)
 
     expect(nextAppZoomLevel(1, 'in')).toBe(1.1)
     expect(nextAppZoomLevel(1, 'out')).toBe(0.9)
@@ -40,6 +40,15 @@ describe('appZoom', () => {
     expect(document.documentElement.getAttribute('data-app-zoom-percent')).toBe('120')
     expect(document.documentElement.style.getPropertyValue('--app-zoom')).toBe('1.2')
     expect(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)).toBe('1.2')
+  })
+
+  it('clamps persisted tiny zoom values to the readable minimum', async () => {
+    window.localStorage.setItem(APP_ZOOM_STORAGE_KEY, '0.5')
+
+    await initializeAppZoom()
+
+    expect(document.documentElement.getAttribute('data-app-zoom-percent')).toBe('80')
+    expect(document.documentElement.style.getPropertyValue('--app-zoom')).toBe('0.8')
   })
 
   it('reads the legacy UI zoom key when the app zoom key is absent', async () => {

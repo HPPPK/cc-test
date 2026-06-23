@@ -1102,6 +1102,133 @@ describe('chatStore history mapping', () => {
     })
   })
 
+  it('settles busy chat state without auto-submitting queued prompts when workflow_state reaches completed', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 3,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+    }]
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'thinking',
+          messages: [{
+            id: 'assistant-final',
+            type: 'assistant_text',
+            content: 'Workflow completed.',
+            timestamp: 1,
+          }],
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'start a follow-up workflow')
+    sendMock.mockClear()
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'completed',
+        activePhaseId: null,
+        activePhaseIndex: 4,
+        phaseCount: 5,
+        pendingConfirmation: false,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+        reportPointer: {
+          kind: 'final-report',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'final-report',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.chatState).toBe('idle')
+    expect(updateTabStatusMock).toHaveBeenCalledWith(TEST_SESSION_ID, 'idle')
+    expect(sendMock).not.toHaveBeenCalled()
+
+    const queuedMessage = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.find(
+      (message) => message.type === 'user_text' && message.content === 'start a follow-up workflow',
+    )
+    expect(queuedMessage).toMatchObject({
+      pending: true,
+      queued: true,
+    })
+
+    useChatStore.getState().guideQueuedMessage(TEST_SESSION_ID, queuedMessage!.id)
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: 'start a follow-up workflow',
+      attachments: undefined,
+    })
+  })
+
+  it('keeps terminal workflow_state from interrupting an active tool run', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'tool_executing',
+          activeToolUseId: 'tool-1',
+          activeToolName: 'Bash',
+          messages: [],
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'queued behind tool')
+    sendMock.mockClear()
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'completed',
+        activePhaseId: null,
+        activePhaseIndex: 4,
+        phaseCount: 5,
+        pendingConfirmation: false,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      chatState: 'tool_executing',
+      activeToolUseId: 'tool-1',
+      activeToolName: 'Bash',
+    })
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
   it('ignores raw workflow state payloads that cannot drive the desktop phase panel', () => {
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,
@@ -1257,6 +1384,45 @@ describe('chatStore history mapping', () => {
       modelId: 'mimo-v2.5-pro[1m]',
       force: true,
     })
+  })
+
+  it('restores the previous saved runtime selection when a model switch restart fails', () => {
+    const previousSelection = {
+      providerId: 'provider-a',
+      modelId: 'stable-model',
+    }
+    const failedSelection = {
+      providerId: 'provider-b',
+      modelId: 'bad-model',
+    }
+    useSessionRuntimeStore.getState().setSelection(TEST_SESSION_ID, failedSelection)
+
+    useChatStore.getState().setSessionRuntime(TEST_SESSION_ID, failedSelection, {
+      previousSelection,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'error',
+      code: 'CLI_RESTART_FAILED',
+      message: 'Failed to switch provider/model: CLI exited during startup with code 143',
+    })
+
+    expect(useSessionRuntimeStore.getState().selections[TEST_SESSION_ID]).toEqual(previousSelection)
+  })
+
+  it('clears a replayed saved runtime selection when reconnect startup fails', () => {
+    useSessionRuntimeStore.getState().setSelection(TEST_SESSION_ID, {
+      providerId: 'provider-b',
+      modelId: 'bad-model',
+    })
+
+    useChatStore.getState().connectToSession(TEST_SESSION_ID)
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'error',
+      code: 'CLI_RESTART_FAILED',
+      message: 'Failed to switch provider/model: CLI exited during startup with code 143',
+    })
+
+    expect(useSessionRuntimeStore.getState().selections[TEST_SESSION_ID]).toBeUndefined()
   })
 
   it('keeps AskUserQuestion permission requests out of the message list while tracking the pending request', () => {
@@ -1893,7 +2059,7 @@ describe('chatStore history mapping', () => {
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.activeGoal).toBeNull()
   })
 
-  it('flushes the previous assistant draft before starting a new user turn', () => {
+  it('queues a user message during streaming and sends it after the active turn completes', () => {
     useChatStore.setState({
       sessions: {
         [TEST_SESSION_ID]: {
@@ -1919,17 +2085,228 @@ describe('chatStore history mapping', () => {
 
     useChatStore.getState().sendMessage(TEST_SESSION_ID, '你是什么模型？')
 
-    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+    const queuedSession = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(queuedSession?.streamingText).toBe('上一次分析结果 **还在流式区域**')
+    expect(queuedSession?.messages).toMatchObject([
       {
-        type: 'assistant_text',
-        content: '上一次分析结果 **还在流式区域**',
+        type: 'user_text',
+        content: '你是什么模型？',
+        pending: true,
+        queued: true,
       },
+    ])
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'message_complete',
+      usage: { input_tokens: 1, output_tokens: 2 },
+    })
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: '你是什么模型？',
+      attachments: undefined,
+    })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
       {
         type: 'user_text',
         content: '你是什么模型？',
       },
+      {
+        type: 'assistant_text',
+        content: '上一次分析结果 **还在流式区域**',
+      },
     ])
-    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.streamingText).toBe('')
+  })
+
+  it('queues a user message while the session is busy and sends it after the active turn completes', () => {
+    vi.useFakeTimers()
+
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'tool_executing',
+          streamingToolInput: '{"command":"bun test"}',
+          activeToolUseId: 'tool-1',
+          activeToolName: 'Bash',
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'use the test result next')
+
+    const queuedSession = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(queuedSession?.chatState).toBe('tool_executing')
+    expect(queuedSession?.streamingToolInput).toBe('{"command":"bun test"}')
+    expect(queuedSession?.messages).toMatchObject([
+      {
+        type: 'user_text',
+        content: 'use the test result next',
+        pending: true,
+        queued: true,
+      },
+    ])
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'message_complete',
+      usage: { input_tokens: 3, output_tokens: 5 },
+    })
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: 'use the test result next',
+      attachments: undefined,
+    })
+    const submittedMessage = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages[0]
+    expect(submittedMessage).toMatchObject({
+      type: 'user_text',
+      content: 'use the test result next',
+    })
+    expect(submittedMessage && 'pending' in submittedMessage ? submittedMessage.pending : false).toBe(false)
+    expect(submittedMessage && 'queued' in submittedMessage ? submittedMessage.queued : false).toBe(false)
+
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
+  })
+
+  it('guides a queued message to run next without interrupting the active turn', () => {
+    vi.useFakeTimers()
+
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'streaming',
+          streamingText: 'current answer is still running',
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'first queued')
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'guided queued')
+
+    const queuedMessages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    const guidedMessage = queuedMessages.find(
+      (message) => message.type === 'user_text' && message.content === 'guided queued',
+    )
+    expect(guidedMessage).toBeTruthy()
+
+    useChatStore.getState().guideQueuedMessage(TEST_SESSION_ID, guidedMessage!.id)
+
+    expect(sendMock).not.toHaveBeenCalled()
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'message_complete',
+      usage: { input_tokens: 2, output_tokens: 4 },
+    })
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: 'guided queued',
+      attachments: undefined,
+    })
+    const remainingQueued = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.find(
+      (message) => message.type === 'user_text' && message.content === 'first queued',
+    )
+    expect(remainingQueued).toMatchObject({ pending: true, queued: true })
+
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
+  })
+
+  it('drains the guided queued message when a stopped session reports idle', () => {
+    vi.useFakeTimers()
+
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'streaming',
+          streamingText: 'current answer is still running',
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'first queued')
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'guided queued')
+
+    const guidedMessage = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.find(
+      (message) => message.type === 'user_text' && message.content === 'guided queued',
+    )
+    expect(guidedMessage).toBeTruthy()
+
+    useChatStore.getState().guideQueuedMessage(TEST_SESSION_ID, guidedMessage!.id)
+    expect(sendMock).not.toHaveBeenCalled()
+
+    useChatStore.getState().stopGeneration(TEST_SESSION_ID)
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, { type: 'stop_generation' })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'status',
+      state: 'idle',
+    })
+
+    expect(sendMock).toHaveBeenCalledTimes(2)
+    expect(sendMock).toHaveBeenLastCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: 'guided queued',
+      attachments: undefined,
+    })
+    const remainingQueued = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.find(
+      (message) => message.type === 'user_text' && message.content === 'first queued',
+    )
+    expect(remainingQueued).toMatchObject({ pending: true, queued: true })
+
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
+  })
+
+  it('deletes a queued message from both the visible list and outbound queue', () => {
+    vi.useFakeTimers()
+
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'streaming',
+          streamingText: 'current answer is still running',
+        }),
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'delete this queued turn')
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, 'keep this queued turn')
+
+    const queuedMessages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    const deletedMessage = queuedMessages.find(
+      (message) => message.type === 'user_text' && message.content === 'delete this queued turn',
+    )
+    expect(deletedMessage).toBeTruthy()
+
+    useChatStore.getState().deleteQueuedMessage(TEST_SESSION_ID, deletedMessage!.id)
+
+    const afterDelete = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(afterDelete.some(
+      (message) => message.type === 'user_text' && message.content === 'delete this queued turn',
+    )).toBe(false)
+    expect(afterDelete.find(
+      (message) => message.type === 'user_text' && message.content === 'keep this queued turn',
+    )).toMatchObject({ pending: true, queued: true })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'message_complete',
+      usage: { input_tokens: 2, output_tokens: 4 },
+    })
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: 'keep this queued turn',
+      attachments: undefined,
+    })
+
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
   })
 
   it('resets completed CLI tasks before continuing the next user turn', () => {

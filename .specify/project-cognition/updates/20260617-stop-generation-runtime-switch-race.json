@@ -1,0 +1,85 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/conversationService.ts",
+    "src/server/ws/handler.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    ".planning/debug/workflow-completed-session-queued-start-blocked.md",
+    ".specify/memory/learnings/INDEX.md",
+    ".specify/memory/learnings/learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md"
+  ],
+  "scope_paths": [
+    "src/server/services/conversationService.ts",
+    "src/server/ws/handler.ts",
+    "src/server/__tests__/websocket-handler.test.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop WebSocket stop_generation handling",
+    "runtime provider/model switch restart path",
+    "ConversationService CLI process lifecycle ownership",
+    "linked workflow start active-source guard observation",
+    "passive project learning for runtime-switch failures"
+  ],
+  "generated_surfaces": [
+    "desktop Tauri dev sidecar restarted from current source on port 59374"
+  ],
+  "state_contracts": [
+    "Delayed stop force-kill may only terminate the same CLI process generation that received the interrupt.",
+    "Runtime provider/model restart may replace the CLI process without being killed by an older stop timer.",
+    "Idle prewarmed sessions must not be classified as active workflow sources."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/__tests__/websocket-handler.test.ts -t \"delayed stop force-kill\"",
+      "result": "RED before fix, GREEN after fix"
+    },
+    {
+      "command": "bun test src/server/__tests__/websocket-handler.test.ts -t \"runtime\"",
+      "result": "passed 27 tests"
+    },
+    {
+      "command": "bun test src/server/__tests__/conversations.test.ts -t \"synchronize WebSocket turn status\"",
+      "result": "passed"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed 1181 tests, 7 skipped, 0 failed"
+    },
+    {
+      "command": "cd desktop && bun run build",
+      "result": "passed"
+    },
+    {
+      "command": "restart desktop with bun run tauri dev",
+      "result": "new sidecar listening at http://127.0.0.1:59374"
+    },
+    {
+      "command": "GET /api/sessions/b5912322-035b-47e7-b937-d49b4e42ca8f/chat/status",
+      "result": "{\"state\":\"idle\"}"
+    }
+  ],
+  "known_unknowns": [
+    "Human verification still needs the reporter to retry the completed workflow start and stop-then-model-switch flow in the restarted desktop app.",
+    "Project cognition runtime is currently blocked by a schema v1 database while the CLI expects schema v2."
+  ],
+  "confidence_notes": [
+    "Live logs directly showed the stale stop timer killing the new runtime-switch process.",
+    "Regression test reproduces the exact ownership failure and proves the delayed force-kill no longer kills a newer process."
+  ],
+  "user_decisions": [
+    "User requested using docs/starup/jiangxia-startup.md and recompiling/restarting the client."
+  ],
+  "boundary": {
+    "in_scope": [
+      "stop_generation delayed force-kill ownership",
+      "runtime provider/model restart race",
+      "local dev client rebuild/restart"
+    ],
+    "out_of_scope": [
+      "changing provider credentials",
+      "changing workflow template semantics",
+      "project cognition schema migration"
+    ]
+  }
+}

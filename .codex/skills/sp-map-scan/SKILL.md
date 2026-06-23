@@ -154,7 +154,7 @@ activation. `low_risk_open_gap` may pass only with owner, reason,
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning start --command map-scan --format json` when available so passive learning files exist and repeated cognition-runtime scan blind spots can be promoted at start.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader scan context.
 - Passive learning files are workflow guidance, not scan evidence.
 - `.specify/**` must never enter the project cognition graph.
@@ -411,6 +411,20 @@ If project-relevant evidence cannot be classified, the scan must remain blocked 
 - Record colloquial user phrases, aliases, shorthand, command names, workflow
   names, symptoms, and domain vocabulary that maintainers naturally use when
   asking for work.
+- Record these signals so downstream agent-owned semantic normalization can
+  extract embedded project terms when raw lexicon ranking and
+  `agent_normalization` are only bootstrap signals, all candidates are
+  `score=0`, or user prompts are localized, mixed-language, CJK, colloquial,
+  symptom-first, or mixed-language or CJK text. If
+  `agent_normalization.required=true`, treat it as a non-intelligent CLI
+  reminder to write `semantic_intake` from the alias catalog (action:
+  write_semantic_intake_from_alias_catalog). If `agent_normalization` is
+  omitted, treat it as `required=false`; omission does not make raw lexical
+  ranking authoritative. CJK or mixed CJK/ASCII input still requires agent
+  normalization even when positive raw lexical matches exist because embedded
+  project tokens do not translate the surrounding user language. The agent still
+  owns translation; `agent_normalization` is advisory guidance, not a route
+  decision.
 - Attach domain ownership evidence to each retrieval signal, including owning
   paths, modules, generated surfaces, workflow artifacts, tests, and supporting
   evidence rows.

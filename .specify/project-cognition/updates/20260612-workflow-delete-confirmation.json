@@ -1,0 +1,52 @@
+{
+  "workflow": "sp-fast",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "scope_paths": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/shared/ConfirmDialog.tsx"
+  ],
+  "behavior_surfaces": [
+    "desktop Settings > Workflows template delete action",
+    "workflow template delete confirmation dialog",
+    "same-area workflow component tests"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "A user workflow template delete request opens a confirmation dialog first.",
+    "Cancelling the confirmation dialog must not call sessionsApi.deleteWorkflowTemplate.",
+    "The existing delete API/storage behavior is called only after the user confirms deletion."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "result": "RED before production edit: 1 failed because no delete confirmation dialog existed; GREEN after implementation: 48 passed."
+    }
+  ],
+  "known_unknowns": [
+    "Project cognition entry readiness was review/partial_refresh with path coverage gaps for desktop workflow components; live reads were limited to the returned workflow component paths.",
+    "Manual visual browser smoke was not run for this small fast-path change; behavior is covered by Testing Library dialog and API-call assertions."
+  ],
+  "confidence_notes": [
+    "Change is frontend-only and limited to the workflow template manager row delete flow.",
+    "No workflow template API, registry, router, persistence, built-in workflow creation, or workflow modification semantics were changed.",
+    "The destructive-operation consequence gate stood down because the only semantic change is an additional user confirmation before the existing delete mutation."
+  ],
+  "user_decisions": [
+    "User requested a confirmation popup for deleting workflow templates from the Workflows settings page."
+  ],
+  "boundary": {
+    "scope": "sp-fast change limited to adding a confirmation layer before desktop workflow template deletion.",
+    "excluded": [
+      "server delete API changes",
+      "workflow template storage or migration changes",
+      "built-in workflow creation/modification semantics",
+      "workflow registry or authoring tool changes",
+      "new i18n locale key expansion"
+    ]
+  }
+}

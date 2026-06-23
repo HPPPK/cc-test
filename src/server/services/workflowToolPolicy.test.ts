@@ -172,6 +172,38 @@ function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): Workflow
   } as WorkflowSessionState
 }
 
+function workflowStateWithToolPolicy(
+  activePhaseId: string,
+  allowedTools: string[],
+): WorkflowSessionState {
+  return {
+    ...stateFor(activePhaseId),
+    templateSnapshot: {
+      schemaVersion: 1,
+      id: 'custom-tools',
+      source: 'user',
+      version: '1',
+      displayName: 'Custom Tools',
+      description: 'Custom tool policy fixture',
+      phases: [
+        {
+          id: activePhaseId,
+          label: 'Custom tools phase',
+          instructions: 'Run with custom tool access.',
+          requestedModel: null,
+          toolPolicy: {
+            allowedTools,
+          },
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['custom policy satisfied'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+  } as WorkflowSessionState
+}
+
 describe('workflowToolPolicy', () => {
   test('defines explicit allowed and forbidden actions for the builtin five-phase workflow', () => {
     const requirements = getWorkflowPhaseActionPolicy(stateFor('requirements-clarification'))
@@ -219,6 +251,17 @@ describe('workflowToolPolicy', () => {
   test('allows implementation tools only in implementation and keeps verification test-only', () => {
     expect(getWorkflowPhaseDisallowedTools(stateFor('implementation'))).toEqual([])
     expect(getWorkflowPhaseDisallowedTools(stateFor('implement'))).toEqual([])
+    expect(getWorkflowPhaseDisallowedTools(stateFor('sp-implement'))).toEqual([])
+    expect(getWorkflowPhaseDisallowedTools(stateFor('sp_implement'))).toEqual([])
+    expect(getWorkflowPhaseDisallowedTools(stateFor('implementation-planning'))).toEqual([
+      'Write',
+      'Edit',
+      'MultiEdit',
+      'NotebookEdit',
+      'Bash',
+      'PowerShell',
+      'Agent',
+    ])
     expect(getWorkflowPhaseDisallowedTools(stateFor('verification'))).toEqual([
       'Write',
       'Edit',
@@ -226,9 +269,61 @@ describe('workflowToolPolicy', () => {
       'NotebookEdit',
       'Agent',
     ])
+    expect(isWorkflowPhaseToolDenied('Write', stateFor('sp-implement'))).toBe(false)
     expect(isWorkflowPhaseToolDenied('Bash', stateFor('verification'))).toBe(false)
     expect(isWorkflowPhaseToolDenied('Write', stateFor('verification'))).toBe(true)
     expect(getWorkflowPhaseDisallowedTools(stateFor(null))).toEqual([])
+  })
+
+  test('treats SuperSpec implementation phase ids as implementation for action and authoring policy', () => {
+    const phaseState = stateFor('sp-implement')
+
+    expect(getWorkflowPhaseActionPolicy(phaseState)).toMatchObject({
+      phaseId: 'sp-implement',
+      allowedActions: expect.arrayContaining([
+        'Create and edit scoped production, test, and documentation files',
+      ]),
+    })
+    expect(getWorkflowTemplateAuthoringOperationPolicy('create', phaseState)).toMatchObject({
+      allowed: true,
+      denied: false,
+      reason: 'implementation-phase',
+      phaseId: 'sp-implement',
+    })
+  })
+
+  test('uses explicit per-phase tool policy for managed and workflow-scoped tools', () => {
+    const getToolNames = requireWorkflowScopedToolNames()
+    const state = workflowStateWithToolPolicy('requirements-clarification', [
+      'Bash',
+      SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+    ])
+
+    expect(getWorkflowPhaseDisallowedTools(state)).toEqual([
+      'Write',
+      'Edit',
+      'MultiEdit',
+      'NotebookEdit',
+      'PowerShell',
+      'Agent',
+      'workflow_template_authoring',
+    ])
+    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+  })
+
+  test('allows workflow built-in tools to be disabled per phase', () => {
+    const getToolNames = requireWorkflowScopedToolNames()
+    const state = workflowStateWithToolPolicy('requirements-clarification', ['Bash'])
+
+    expect(getToolNames(state)).toEqual([])
+    expect(getWorkflowTemplateAuthoringOperationPolicy('list', state)).toMatchObject({
+      allowed: false,
+      denied: true,
+      reason: 'phase-tool-policy-denies-workflow-template-authoring',
+    })
+    expect(getWorkflowPromptToolGuidance(state)).toContain('disabled by this phase tool policy')
   })
 
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
@@ -435,5 +530,28 @@ describe('workflowToolPolicy', () => {
     expect(guidance).not.toContain('fork')
     expect(guidance).not.toContain('shell')
     expect(guidance).not.toContain('hook')
+  })
+
+  test('priority recommendations are described as attention metadata without granting SkillTool access', () => {
+    const getToolNames = requireWorkflowScopedToolNames()
+    const getPromptGuidance = requireWorkflowPromptToolGuidance()
+    const state = workflowStateWithRecommendedPhaseSkills()
+    const phase = state.templateSnapshot.phases[0]
+    phase.skills = [
+      {
+        name: 'requirements-review',
+        mode: 'recommended',
+        source: 'project',
+        priority: 'high',
+        reason: 'Treat this as especially relevant to requirements ambiguity.',
+      },
+    ]
+
+    const guidance = getPromptGuidance(state)
+
+    expect(guidance).toContain('higher priority')
+    expect(guidance).toContain('attention')
+    expect(guidance).toContain('not a safety override')
+    expect(getToolNames(state)).not.toContain('SkillTool')
   })
 })

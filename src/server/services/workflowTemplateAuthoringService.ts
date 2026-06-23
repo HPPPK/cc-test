@@ -1036,12 +1036,8 @@ async function executeCreate(
 
   if (validation.issues.length > 0 || !validation.template) {
     const conflictIssue = validation.issues.find((issue) =>
-      issue.code === 'WORKFLOW_TEMPLATE_CONFLICT' ||
-      issue.code === 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT'
+      issue.code === 'WORKFLOW_TEMPLATE_CONFLICT'
     )
-    const conflictSource: WorkflowTemplateSource = conflictIssue?.code === 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT'
-      ? 'builtin'
-      : 'user'
 
     return {
       operation: 'create',
@@ -1050,7 +1046,7 @@ async function executeCreate(
       ...(conflictIssue?.templateId
         ? {
             affectedTemplate: {
-              source: conflictSource,
+              source: 'user',
               id: conflictIssue.templateId,
             },
           }
@@ -1446,8 +1442,7 @@ async function executeDuplicate(
 
   if (validation.issues.length > 0 || !validation.template) {
     const conflictIssue = validation.issues.find((issue) =>
-      issue.code === 'WORKFLOW_TEMPLATE_CONFLICT' ||
-      issue.code === 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT'
+      issue.code === 'WORKFLOW_TEMPLATE_CONFLICT'
     )
 
     return {

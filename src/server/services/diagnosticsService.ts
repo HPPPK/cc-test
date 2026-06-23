@@ -361,7 +361,11 @@ export class DiagnosticsService {
 
   private writeProcessFailureToStderr(label: string, reason: unknown): void {
     if (reason instanceof Error && reason.stack) {
-      process.stderr.write(`[Server] ${label}:\n${reason.stack}\n`)
+      const summary = reason.message ? `${reason.name}: ${reason.message}` : reason.name
+      const stack = reason.message && !reason.stack.includes(reason.message)
+        ? `${summary}\n${reason.stack}`
+        : reason.stack
+      process.stderr.write(`[Server] ${label}:\n${stack}\n`)
       return
     }
     const summary = reason instanceof Error

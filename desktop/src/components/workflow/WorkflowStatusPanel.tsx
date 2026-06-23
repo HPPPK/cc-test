@@ -6,6 +6,10 @@ type ArtifactPointer = {
   uri?: string
   artifactId?: string
   kind?: string
+  sessionId?: string
+  schemaVersion?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 type WorkflowModel = {
@@ -62,6 +66,9 @@ type WorkflowRecommendedSkillStatusSummary = {
     status: WorkflowPhaseSkillResolutionStatus | (string & {})
     source?: WorkflowPhaseSkillSource | (string & {})
     pluginName?: string
+    namespace?: string
+    referenceId?: string
+    contentHash?: string
   }>
 }
 
@@ -136,12 +143,16 @@ export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = f
   if (!workflow) return null
 
   const phaseName = resolvePhaseName(workflow)
+  const authorityLabel = authorityText(workflow.transitionAuthority)
   const requestedModel = workflow.model?.requested ?? workflow.model?.requestedModel
   const actualModel = workflow.model?.actual ?? workflow.model?.actualModel
   const statePointer = pointerText(workflow.statePointer)
   const fallbackLabel = typeof workflow.model?.fallbackApplied === 'boolean'
     ? workflow.model.fallbackApplied ? 'Fallback applied' : 'No fallback'
     : null
+  const hasActiveBlockedRecovery = !workflow.pendingConfirmation && (
+    Boolean(workflow.blockedStatus) || Boolean(workflow.blockedReason)
+  )
   const detailRows = [
     { label: 'Transition authority', value: workflow.transitionAuthority ?? 'auto' },
     { label: 'State pointer', value: statePointer, mono: true },
@@ -156,8 +167,7 @@ export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = f
     workflow.status === 'running' &&
     workflow.transitionAuthority === 'user-confirmation' &&
     !workflow.pendingConfirmation &&
-    !workflow.blockedStatus &&
-    !workflow.blockedReason,
+    !hasActiveBlockedRecovery,
   )
   const inlineActions = actionsAreManualCompletion ? null : actions
   const detailActions = actionsAreManualCompletion ? actions : null
@@ -183,6 +193,8 @@ export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = f
             <span className="truncate">
               {phaseName} · Phase {Math.max(workflow.activePhaseIndex + 1, 1)} of {workflow.phaseCount}
             </span>
+            <span className="text-[var(--color-border)]" aria-hidden="true">/</span>
+            <span className="truncate">Authority: {authorityLabel}</span>
           </div>
         </div>
         <StatusBadge status={displayStatus(workflow)} />
@@ -195,7 +207,7 @@ export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = f
         />
       </div>
 
-      {workflow.blockedReason && inlineActions ? (
+      {hasActiveBlockedRecovery && workflow.blockedReason && inlineActions ? (
         <div className="mt-2 rounded-[8px] border border-[var(--color-error)]/20 bg-[var(--color-error)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-error)]">
           <p>{workflow.blockedReason}</p>
           <div className="mt-2">
@@ -281,7 +293,7 @@ export function WorkflowStatusPanel({ workflow, compact = false, hideDetails = f
       )}
 
 
-      {workflow.blockedReason && !inlineActions && (
+      {hasActiveBlockedRecovery && workflow.blockedReason && !inlineActions && (
         <div className="mt-2 rounded-[8px] border border-[var(--color-error)]/20 bg-[var(--color-error)]/8 px-3 py-2 text-[11px] leading-5 text-[var(--color-error)]">
           {workflow.blockedReason}
         </div>
@@ -304,8 +316,9 @@ function RecommendedSkillStatusStrip({ workflow }: { workflow: WorkflowStatusPan
   const activeItems = workflow.recommendedSkillEvidence
     ? activePhaseItems
       .filter((item) => item.status !== 'available' || evidenceNames.has(item.name))
-      .slice(0, 3)
-    : activePhaseItems.slice(0, 3)
+    : activePhaseItems.filter((item) => item.status !== 'available' || item.source !== 'bundled')
+  const evidenceItems = (workflow.recommendedSkillEvidence ?? [])
+    .filter((item) => isRelevantEvidenceOutcome(item.outcome))
 
   return (
     <section
@@ -320,20 +333,62 @@ function RecommendedSkillStatusStrip({ workflow }: { workflow: WorkflowStatusPan
         <span>{status.evidenceCount} evidence</span>
       </div>
       {activeItems.length ? (
-        <div className="mt-1 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {activeItems.map((item) => (
             <span
               key={`${item.name}-${item.status}-${item.pluginName ?? item.source ?? ''}`}
               className="rounded-[6px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)]"
-              title={[item.status, item.source, item.pluginName].filter(Boolean).join(' / ')}
+              title={skillStatusParts(item).join(' / ')}
             >
-              {item.name}
+              {item.name} · {skillStatusParts(item).join(' · ')}
             </span>
+          ))}
+        </div>
+      ) : null}
+      {evidenceItems.length ? (
+        <div className="mt-2 grid gap-1.5">
+          {evidenceItems.map((item) => (
+            <div
+              key={`${item.phaseId}-${item.name}-${item.outcome}-${item.recordedAt}`}
+              className="rounded-[6px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2 py-1.5"
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+                <span className="font-semibold text-[var(--color-text-primary)]">{item.name}</span>
+                <span>{item.outcome}</span>
+                {item.resolutionStatus ? <span>{item.resolutionStatus}</span> : null}
+                {item.source ? <span>{item.source}</span> : null}
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--color-text-secondary)]">{item.rationale}</p>
+              {(item.toolUseId || item.artifactRef) ? (
+                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-[10px] text-[var(--color-text-tertiary)]">
+                  {item.toolUseId ? <span>{item.toolUseId}</span> : null}
+                  {item.artifactRef ? <span>{item.artifactRef}</span> : null}
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
     </section>
   )
+}
+
+function skillStatusParts(item: {
+  status: string
+  source?: string
+  pluginName?: string
+  namespace?: string
+  referenceId?: string
+  contentHash?: string
+}) {
+  return [
+    item.status,
+    item.source,
+    item.pluginName,
+    item.namespace,
+    item.referenceId,
+    item.contentHash,
+  ].filter(Boolean) as string[]
 }
 
 function ArtifactCard({
@@ -412,6 +467,12 @@ function StatusBadge({ status }: { status: WorkflowStatusPanelSummary['status'] 
 function displayStatus(workflow: WorkflowStatusPanelSummary): WorkflowStatusPanelSummary['status'] {
   if (workflow.pendingConfirmation) return 'pending-confirmation'
   return workflow.status
+}
+
+function authorityText(authority?: string) {
+  if (authority === 'user-confirmation') return 'User confirmation required'
+  if (authority === 'auto') return 'Automatic transition'
+  return authority ?? 'Automatic transition'
 }
 
 function isRelevantEvidenceOutcome(outcome: string): outcome is WorkflowPhaseSkillEvidence['outcome'] {

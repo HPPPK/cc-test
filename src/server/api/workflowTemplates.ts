@@ -12,7 +12,6 @@ import {
 } from '../services/workflowTemplateRegistryService.js'
 import { resolveWorkflowPhaseSkills } from '../services/workflowPhaseSkillResolver.js'
 import {
-  WORKFLOW_TEMPLATE_BUILTIN_ID,
   isNonEmptyString,
   isRecord,
   normalizeStringList,
@@ -59,7 +58,6 @@ type WorkflowSkillDependency = {
 }
 
 const registryService = new WorkflowTemplateRegistryService()
-const BUILTIN_TEMPLATE_ID = WORKFLOW_TEMPLATE_BUILTIN_ID
 const VALID_SOURCES = new Set(['builtin', 'user'])
 
 export async function handleWorkflowTemplatesApi(req: Request, url: URL, segments: string[]): Promise<Response> {
@@ -157,8 +155,11 @@ async function getTemplateDetail(source: WorkflowTemplateSource, id: string): Pr
 async function validateTemplate(req: Request): Promise<Response> {
   const body = await parseJsonBody(req)
   const template = isRecord(body) ? body.template : undefined
+  const allowExistingId = isRecord(body) && isNonEmptyString(body.allowExistingId)
+    ? body.allowExistingId
+    : undefined
   const registry = await registryService.listTemplates()
-  const result = validateUserTemplate(template, '$.template', 'request', registry)
+  const result = validateUserTemplate(template, '$.template', 'request', registry, { allowExistingId })
 
   return Response.json({
     valid: result.issues.length === 0,
@@ -365,11 +366,9 @@ async function buildImportCandidates(payload: unknown, registry: WorkflowTemplat
   for (const [index, template] of importedTemplates.entries()) {
     const importId = `candidate-${index + 1}`
     const originalId = isRecord(template) && isNonEmptyString(template.id) ? template.id : importId
-    const conflict = originalId === BUILTIN_TEMPLATE_ID
-      ? 'builtin-template'
-      : registry.templates.some((candidate) => candidate.source === 'user' && candidate.id === originalId)
-        ? 'user-template'
-        : 'none'
+    const conflict = registry.templates.some((candidate) => candidate.source === 'user' && candidate.id === originalId)
+      ? 'user-template'
+      : 'none'
     const proposedId = conflict === 'none' ? originalId : nextAvailableId(`${originalId}-imported`, registry)
     const validationDraft = isRecord(template) ? { ...template, id: proposedId, source: 'user' } : template
     const validation = validateUserTemplate(validationDraft, `$.payload.templates[${index}]`, 'import', registry, {
@@ -649,9 +648,6 @@ async function writeUserTemplates(templates: WorkflowTemplateRegistryTemplate[])
 
 function validationErrorResponse(issues: ApiValidationIssue[], fallbackSource: 'request' | 'import' = 'request'): Response {
   const firstCode = issues[0]?.code
-  if (firstCode === 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT') {
-    return workflowError(400, firstCode, issues[0]?.message ?? 'User templates cannot shadow builtin template ids.', { issues })
-  }
   if (firstCode === 'WORKFLOW_TEMPLATE_CONFLICT') {
     return workflowError(409, firstCode, issues[0]?.message ?? 'Workflow template conflict.', { issues })
   }

@@ -1,0 +1,58 @@
+{
+  "task_id": "T004",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T004.json"
+  ],
+  "compatibility_projection_summary": [
+    "Legacy flat phase fields now project into grouped intent, contract, and evidencePolicy sections during template normalization while preserving accepted original and unknown fields.",
+    "Grouped-only phase contracts now normalize into the existing startable registry shape by deriving flat name, instructions, requiredIntake, handoffRules, outputArtifact, completionCriteria, and transition fields without requiring duplicate flat authoring fields.",
+    "Session-owned runtimeState is stripped from template persistence on create/update while preserving unknown config, template, phase, output artifact, completion criteria, transition, skill, and required artifact fields."
+  ],
+  "validation_rejection_summary": [
+    "Grouped constraint strengths outside their owning section are rejected with WORKFLOW_PHASE_CONSTRAINT_STRENGTH_INVALID.",
+    "Plugin skill references without non-empty plugin provenance are rejected with WORKFLOW_PHASE_SKILL_INVALID_PROVENANCE."
+  ],
+  "validation_evidence": [
+    {
+      "command": "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts",
+      "exit_code": 0,
+      "result": "PASS: 86 pass, 0 fail, 320 expect() calls across 3 files. T002 RED tests now pass and existing workflow template API tests still pass."
+    },
+    {
+      "command": "bun run check:server",
+      "exit_code": 124,
+      "result": "Timed out after 124s without usable output; not counted as passing evidence. The task-required focused verification above passed."
+    }
+  ],
+  "tests_run": [
+    "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "must_preserve_evidence": {
+    "MP-003": {
+      "preserved": true,
+      "evidence": "Grouped intent, contract, and evidencePolicy are normalized as template contract fields, while runtimeState is stripped from persisted templates and remains session-owned."
+    },
+    "MP-004": {
+      "preserved": true,
+      "evidence": "Validation keeps guidance, policy, evidence, and gate strengths distinct by accepting only section-appropriate strength values and rejecting mismatches."
+    },
+    "MP-011": {
+      "preserved": true,
+      "evidence": "Implementation uses compatibility projection at normalization/list/write boundaries and does not rewrite existing storage or require destructive grouped persistence migration."
+    }
+  },
+  "ca_evidence": {
+    "CA-007": {
+      "preserved": true,
+      "evidence": "Authoring/list validation now rejects invalid grouped skill provenance and preserves valid recommended skill references for existing registry/API consumers."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": []
+}

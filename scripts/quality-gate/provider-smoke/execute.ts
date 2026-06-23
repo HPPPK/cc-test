@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { createServer } from 'node:net'
 import { ProviderService } from '../../../src/server/services/providerService'
 import type { BaselineTarget, LaneResult } from '../types'
+import { bunCommand } from '../bunRuntime'
 
 type SavedProvider = Awaited<ReturnType<ProviderService['getProvider']>>
 
@@ -57,7 +58,7 @@ async function runProxyProbe(
   const serverLogPath = join(artifactDir, 'proxy-server.log')
   ProviderService.setServerPort(port)
 
-  const server = Bun.spawn(['bun', 'run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)], {
+  const server = Bun.spawn(bunCommand(['run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)]), {
     cwd: rootDir,
     stdout: 'pipe',
     stderr: 'pipe',

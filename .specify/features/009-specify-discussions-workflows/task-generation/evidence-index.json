@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "feature": "Workflow Phase Execution Contracts",
+  "generation_mode": "leader-inline",
+  "capability_degraded": true,
+  "delegated_handoffs": [],
+  "evidence_sources": [
+    {
+      "id": "precheck",
+      "type": "script",
+      "path": ".specify/scripts/powershell/check-prerequisites.ps1 -Json",
+      "consumers": ["task availability", "feature_dir", "available_docs"]
+    },
+    {
+      "id": "template",
+      "type": "template",
+      "path": ".specify/templates/tasks-template.md",
+      "consumers": ["task enriched fields", "guardrail index", "self-audit"]
+    },
+    {
+      "id": "project-memory",
+      "type": "memory",
+      "path": ".specify/memory/project-rules.md and learnings index",
+      "consumers": ["G-COMPAT", "G-UI", "G-SKILL", "G-EVIDENCE"]
+    },
+    {
+      "id": "project-cognition",
+      "type": "cognition",
+      "path": ".specify/project-cognition/GEN-20260610T112843.959253900Z",
+      "consumers": ["minimal live reads", "write-set validation", "test inventory"]
+    },
+    {
+      "id": "plan-contract",
+      "type": "contract",
+      "path": ".specify/features/009-specify-discussions-workflows/plan-contract.json",
+      "consumers": ["MP mapping", "CA mapping", "verification requirements", "task grouping"]
+    },
+    {
+      "id": "workflow-contracts",
+      "type": "contract",
+      "path": ".specify/features/009-specify-discussions-workflows/contracts",
+      "consumers": ["T002-T018 acceptance criteria", "dependency manifest", "transition submission"]
+    }
+  ],
+  "consumer_map": {
+    "T001": ["template", "plan-contract", "project-memory"],
+    "T002": ["workflow-contracts", "project-cognition", "live test inventory"],
+    "T003": ["workflow-contracts", "quickstart", "live test inventory"],
+    "T004": ["T002", "workflow-contracts", "plan-contract"],
+    "T005": ["T003", "workflow-contracts", "quickstart"],
+    "T006": ["T002", "T003", "T004", "T005"],
+    "T007": ["workflow-contracts", "project-memory", "SkillTool live reads"],
+    "T008": ["T007", "plan-contract", "SkillTool live reads"],
+    "T009": ["quickstart", "desktop skill live reads"],
+    "T010": ["T008", "T009", "desktop workflow live reads"],
+    "T011": ["dependency manifest contract", "workflowTemplates tests"],
+    "T012": ["T011", "server API live reads"],
+    "T013": ["dependency manifest contract", "WorkflowImportExportDialog tests"],
+    "T014": ["T012", "T013", "export fallback learning"],
+    "T015": ["transition contract", "pending confirmation learning", "session fixtures"],
+    "T016": ["T015", "runtime live reads"],
+    "T017": ["T016", "pending confirmation learning", "desktop controls live reads"],
+    "T018": ["AGENTS.md quality contract", "all story checkpoints"]
+  },
+  "decisions": [
+    {
+      "id": "D001",
+      "decision": "Use standard leader-inline decomposition and record multi-agent capability degradation.",
+      "consumers": ["handoff-to-tasks.json", "task-index.json"]
+    },
+    {
+      "id": "D002",
+      "decision": "Require T001 implementation matrix before source edits.",
+      "consumers": ["T001", "Dependencies", "Checkpoint 0"]
+    },
+    {
+      "id": "D003",
+      "decision": "Keep parallel batches only where write sets do not overlap.",
+      "consumers": ["Batch A", "Batch B", "task-index.json"]
+    },
+    {
+      "id": "D004",
+      "decision": "Serialize shared desktop workflow test and locale writes after parallel batches.",
+      "consumers": ["T005", "T010", "T014", "T017"]
+    },
+    {
+      "id": "D005",
+      "decision": "Treat import/export as dependency diagnostics only, with no skill package bundling or installer flow.",
+      "consumers": ["T011", "T012", "T013", "T014"]
+    }
+  ]
+}

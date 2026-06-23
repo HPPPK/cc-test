@@ -122,6 +122,58 @@ describe('workflow domain types', () => {
     expect(resolution.diagnostic?.severity).toBe('warning')
   })
 
+  test('grouped phase contracts keep guidance, policy, evidence, and runtime state distinct', () => {
+    const groupedPhaseContract = {
+      id: 'specify',
+      intent: {
+        objective: 'Convert accepted discussion output into planning-ready requirements.',
+        role: 'requirements analyst',
+        intake: ['Use the discussion brief from the previous phase.'],
+        strength: 'guidance',
+      },
+      contract: {
+        instructions: 'Write explicit requirements without planning implementation.',
+        executionRules: ['Do not edit production files during specification.'],
+        actionPolicy: {
+          allowedActions: ['read project context', 'write specification artifacts'],
+          forbiddenActions: ['modify production source'],
+          strength: 'policy',
+        },
+        transitionAuthority: 'user-confirmation',
+      },
+      evidencePolicy: {
+        outputArtifact: {
+          id: 'specification-brief',
+          name: 'Specification Brief',
+          kind: 'markdown',
+          description: 'Planning-ready requirements and acceptance criteria.',
+          required: true,
+          strength: 'evidence',
+        },
+        requiredArtifacts: [],
+        completionCriteria: {
+          type: 'manual-checklist',
+          description: 'Requirements are explicit, testable, and ready for planning.',
+          strength: 'gate',
+        },
+        handoffRules: ['Summarize requirements and unresolved questions.'],
+      },
+      runtimeState: {
+        status: 'running',
+        pendingConfirmation: false,
+      },
+    }
+
+    expect(groupedPhaseContract.intent.strength).toBe('guidance')
+    expect(groupedPhaseContract.contract.actionPolicy.strength).toBe('policy')
+    expect(groupedPhaseContract.evidencePolicy.outputArtifact.strength).toBe('evidence')
+    expect(groupedPhaseContract.evidencePolicy.completionCriteria.strength).toBe('gate')
+    expect(groupedPhaseContract.runtimeState).toMatchObject({
+      status: 'running',
+      pendingConfirmation: false,
+    })
+  })
+
   test('completion submissions and pending confirmations model the refreshed runtime contract', () => {
     const submission: CompletionSubmission = {
       phaseId: 'specify',

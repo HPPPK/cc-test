@@ -36,15 +36,19 @@ Turn a new or changed feature request into a reviewed, planning-ready specificat
 
 ## Context
 
-- Primary inputs: the user's request, current repository context, passive memory, project cognition only as advisory navigation, and discussion source files when a discussion handoff is supplied.
+- Primary inputs: the user's request, current repository context, passive memory, project cognition only as advisory navigation, and discussion source files when a handoff-ready discussion is supplied or uniquely discoverable.
 - Authoritative outputs: `spec.md`, `alignment.md`, `context.md`, `references.md` when useful, `workflow-state.md`, `checklists/requirements.md`, and a minimal `brainstorming/handoff-to-specify.json` compatibility handoff.
 - This command is specification-only. It is not permission to implement code.
 
 ## Process
 
 - Create or resume the feature workspace and `workflow-state.md`.
+- Before creating a feature workspace, classify arguments as either a normal feature description or a discussion handoff path/JSON path/slug. If no arguments are supplied, use exactly one unconsumed `status: handoff-ready` discussion whose `next_command` is `/sp.specify` or `sp-specify`; if there are zero or multiple candidates, stop and ask for a feature description or specific handoff.
+- For a discussion handoff, require the Markdown/JSON pair, `handoff_status: handoff-ready` or `discussion-state.md` `status: handoff-ready`, `planning_gate_status: ready`, `quality_gate.status: user_confirmed`, zero hard unknowns, zero open conflicts, a `Handoff Reviewer Guide`, and no Markdown/JSON drift in protected `MP-*`, `CA-###`, source evidence, or settled-decision coverage.
+- Derive the feature description from `handoff_goal` plus the implementation target summary. Do not pass the raw handoff path, JSON path, or slug to the create-feature script as the feature description.
 - Explore project context only enough to understand ownership, constraints, adjacent surfaces, and source evidence.
-- If invoked from `sp-discussion`, read `handoff-to-specify.md` and `.json` when present, then read the handoff-declared source files. At minimum inspect `discussion-log.md`, `requirements.md`, and `open-questions.md` when they exist; inspect `technical-options.md` and `project-context.md` when present or named.
+- If invoked from `sp-discussion`, re-read the selected `handoff-to-specify.md` and `.json`, then read the handoff-declared source files. At minimum inspect `discussion-log.md`, `requirements.md`, and `open-questions.md` when they exist; inspect `technical-options.md` and `project-context.md` when present or named.
+- If invoked from `sp-discussion`, keep the source discussion slug from `.specify/discussions/<slug>/handoff-to-specify.md`; after the feature package is written and self-reviewed, run `specify discussion mark-consumed <slug> --feature-dir "$FEATURE_DIR"` or manually write `handoff_consumption_status: consumed`, `consumed_by_feature_dir: $FEATURE_DIR`, `status: completed`, and `next_command: none`.
 - Extract every upstream capability-like signal from those sources and assign exactly one disposition: `preserved`, `in_scope`, `deferred`, `dropped`, or `clarification_blocker`.
 - Ask one high-impact question at a time when the answer can change scope, acceptance, architecture, compatibility, security, data shape, external integration, or downstream planning.
 - Decompose ambiguous terms such as capability, real, usable, works, end-to-end, fetch, probe, health, model, endpoint, integration, auth, `new` command, `<tool> new`, create, scaffold, authoring, template creation, authoring workflow, CLI path, TUI path, `能力`, `真实`, and `可用` before compiling the spec.
@@ -77,7 +81,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance.
+Project cognition readiness provides routing advice. If readiness is `query_ready`, read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing and treat `coverage_diagnostics` as confidence and closeout signals. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If readiness is `unsupported_runtime`, continue with live evidence and record that compass intake was unavailable. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance and ordinary existing-baseline gaps.
 
 Required output when the gate triggers:
 
@@ -126,11 +130,35 @@ If the gate triggers and the current workflow cannot preserve the required outpu
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently.
 
+**Resolve discussion handoff intake before feature creation**:
+- Classify the supplied arguments before running `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"`:
+  - normal feature description
+  - `.specify/discussions/<slug>/handoff-to-specify.md`
+  - `.specify/discussions/<slug>/handoff-to-specify.json`
+  - a discussion `<slug>` whose workspace contains the handoff pair
+  - no arguments with exactly one unconsumed `status: handoff-ready` discussion whose `next_command` is `/sp.specify` or `sp-specify`
+- If no feature description is supplied and there is no exactly-one unconsumed handoff-ready discussion, stop with: `ERROR: No feature description provided`.
+- If multiple unconsumed `handoff-ready` discussions exist, stop before creating a feature workspace and ask the user for the specific slug or handoff path.
+- When a discussion handoff is selected, treat it as the authoritative upstream input and set `SOURCE_HANDOFF_MD`, `SOURCE_HANDOFF_JSON`, and `SOURCE_DISCUSSION_SLUG`. Do not rediscover or switch to another handoff later in the run.
+- Require both `handoff-to-specify.md` and `handoff-to-specify.json` before feature creation. Missing Markdown or JSON is `blocked_by_handoff_integrity`; route back to `sp-discussion` to refresh the pair instead of reconstructing it here.
+- Parse the JSON before feature creation and require:
+  - `entry_source: sp-discussion`
+  - `handoff_status: handoff-ready` or source `discussion-state.md` `status: handoff-ready`
+  - `planning_gate_status: ready`
+  - `quality_gate.status: user_confirmed` or `quality_gate.status: user-confirmed`
+  - `hard_unknown_count: 0`
+  - `open_conflict_count: 0`
+- Check the Markdown for `Handoff Reviewer Guide`, `Quality Gate`, `Must-Preserve Ledger`, and source evidence sections before creating a feature workspace.
+- Check Markdown/JSON companion integrity for protected downstream facts: quality gate status, planning gate status, handoff status, `MP-*` IDs and claims, `CA-###` IDs and claims, hard unknowns, open conflicts, and structured `source_evidence` / settled-decision coverage. If the Markdown carries protected source evidence or settled decisions that the JSON omits, block before feature creation and return to `sp-discussion` to refresh the handoff pair.
+- If `target_project_root` is present and differs from the current repository root, do not create a feature workspace in the wrong project. Ask the user to run the target project's `sp-specify` with this handoff path, or to confirm that the current repository is the intended target.
+- Derive the feature description for `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"` from `handoff_goal` plus the confirmed implementation target summary. Do not pass the raw handoff file path, JSON path, or slug as the feature description.
+- Preserve the selected source handoff path and slug for `workflow-state.md`, `alignment.md`, and `brainstorming/handoff-to-specify.json`.
+
 **Set the working boundary**:
 - Treat the user request as the starting point for a specification, not permission to implement.
-- If no feature description was supplied, stop with: `ERROR: No feature description provided`.
+- If no feature description or accepted discussion handoff was supplied, stop with: `ERROR: No feature description provided`.
 - Verify the installed CLI surface with `specify --help` when command availability is uncertain; feature creation uses the generated create-feature script, not an imagined `specify create-feature` command.
-- Run `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"` from the repo root to create or resume the feature workspace. For generated projects this resolves to `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS"` or `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"`; Codex-generated skills should run `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS"` from the repo root for the shell variant.
+- Run `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"` from the repo root to create or resume the feature workspace using the normal feature description, or the handoff-derived feature description when discussion intake selected a handoff. For generated projects this resolves to `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS"` or `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS"`; Codex-generated skills should run `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS"` from the repo root for the shell variant.
 - If the feature-creation script exits non-zero, stop and report the script error; do not call `specify lane register` or any invented branch command as a substitute.
 - After the script succeeds, set:
   - `FEATURE_DIR`
@@ -151,12 +179,12 @@ If the gate triggers and the current workflow cannot preserve the required outpu
 
 ## Passive Project Learning Layer
 
-- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command specify --format json` when available so passive learning files exist and the current specification run sees relevant shared project memory.
+- [AGENT] Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning start --command specify --format json` when available so passive learning files exist and the current specification run sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order when they exist.
 - Open only learning detail docs that clearly match the request, repeated workflow gaps, user preferences, or constraints for the affected area.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail document without asking for routine permission.
 - Treat passive memory as advisory evidence. Repository evidence and explicit user confirmation outrank older memory.
-- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture-auto --command specify --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
+- [AGENT] Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning capture-auto --command specify --feature-dir \"$FEATURE_DIR\" --format json` when `workflow-state.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
 - Before closeout, if this specification run exposes a reusable workflow gap, user preference, or project constraint, capture it in the learning layer or record why it is one-off.
 - Required options: `--command`, `--type`, `--summary`, `--evidence`.
 
@@ -167,22 +195,21 @@ If the gate triggers and the current workflow cannot preserve the required outpu
 - Run or emulate:
 
 ```text
-C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent plan --query=\"$ARGUMENTS\" --mode catalog --format json
-# Agent: retrieve the alias catalog, write semantic_intake with normalized_query, intent_facets, negative_constraints, and alias_interpretations; include selected_concepts, rejected_concepts, concept_decisions with covered_facets, missing_facets, match_sources, lexicon_generation_id, expanded_queries, repository_search_terms, and justified paths in <query_plan_json>. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Derive project-language search terms from the alias catalog before reading source. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, normalized_query, and expanded_queries. Use these project-language search terms before broad repository search.
-C:\Users\11034\.specify\bin\project-cognition.exe query --intent plan --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe compass --intent plan --query=\"$ARGUMENTS\" --format json
 ```
 
+After the default compass packet, run the advanced `lexicon -> semantic_intake -> query` path only when `compass_state`, coverage diagnostics, localization, or live evidence requires explicit concept decisions. In that escalation, use `project-cognition lexicon --mode catalog` as the alias catalog, write agent-authored `semantic_intake` and `concept_decisions`, then run `project-cognition query --query-plan "<query_plan_json>"`; include `query_plan`, `semantic_intake`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `repository_search_terms`, project-language search terms, and facet coverage; do not search only the raw user words before source search. Agent-owned semantic normalization remains mandatory: `agent_normalization` and raw lexicon ranking are bootstrap signals only; if `agent_normalization` is omitted, treat it as `required=false`; use `write_semantic_intake_from_alias_catalog` when needed. Raw lexicon ranking is only a bootstrap; CJK or mixed CJK/ASCII input still requires agent-owned normalization even when positive raw lexical matches exist. The agent still owns translation. Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`.
+
 - Prefer project cognition when it is available and fresh, but use it as navigation guidance rather than a source that can override live files or user intent.
-- When cognition reports `ready`, use the returned task-local bundle.
-- When cognition reports `review`, `needs_update`, or partial coverage, perform the returned minimal live reads and continue with explicit assumptions.
-- `needs_update`: record a planning advisory, perform the returned `minimal_live_reads`, and continue without requiring map maintenance during artifact-only specification work.
+- When compass reports `query_ready`, read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons.
+- When compass reports `review` or partial coverage, perform the returned minimal live reads, inspect `coverage_diagnostics`, and continue with explicit assumptions.
 - If freshness is `stale`, record a planning advisory, perform minimal live reads, and continue when those reads provide enough evidence.
 - If freshness is `possibly_stale`, inspect the reported changed paths and review topics, perform minimal live reads, and continue with explicit assumptions when sufficient.
 - If task-relevant coverage is insufficient, record a planning advisory and continue with minimal live reads instead of guessing.
 - For artifact-only `sp-specify` work, use the project cognition freshness helper as advisory navigation only. Freshness is `missing` when the runtime baseline is absent; freshness is `stale` when source changes may invalidate the returned map; freshness is `support_drift` when support surfaces changed; freshness is `partial_refresh` when the helper reports an incomplete refresh and a `recommended_next_action`; freshness is `possibly_stale` when changed paths overlap `must_refresh_topics` or `review_topics`.
 - The coverage-model check should identify owning surfaces and truth locations, consumer or adjacent surfaces likely to be affected, change-propagation hotspots, verification entry points, and known unknowns or stale evidence boundaries.
 - Coverage is insufficient when the touched area is named only vaguely, lacks ownership or placement guidance, or lacks workflow, constraint, integration, or regression-sensitive testing guidance.
-- When cognition reports `ambiguous`, ask the user to select the intended candidate before writing artifacts.
+- When `compass_state=needs_semantic_intake`, write `semantic_intake` from project vocabulary, rerun compass with `--semantic-intake-file`, or use the advanced `lexicon -> semantic_intake -> query` path for explicit concept decisions.
 - When cognition reports `needs_rebuild` or `blocked`, report the blocking issue and the required project-map command instead of guessing.
 - Carry material repository facts into `context.md` and `alignment.md`; do not leave planning-relevant facts only in transient tool output.
 - Cognition follow-up: if artifact-only specification work identifies future modules, workflows, integration boundaries, verification surfaces, or ownership facts that the current query-backed runtime does not yet encode, record that as an advisory in `workflow-state.md`, `alignment.md`, or `context.md`; do not mark project cognition dirty or require a refresh until actual source/runtime changes make the runtime truth out of date.
@@ -226,8 +253,9 @@ sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-
 
 When `sp-specify` starts from `sp-discussion`, do not trust only the handoff summary.
 
-- Read `handoff-to-specify.md` when supplied or discoverable.
-- Read `handoff-to-specify.json` when present and preserve compatibility fields such as `entry_source: sp-discussion`, `coverage_status`, `planning_gate_status`, `hard_unknown_count`, and `open_conflict_count`.
+- Use the `SOURCE_HANDOFF_MD`, `SOURCE_HANDOFF_JSON`, and `SOURCE_DISCUSSION_SLUG` selected by pre-feature-creation discussion handoff intake. If a handoff was supplied but intake did not run, stop and run intake before continuing.
+- Re-read `handoff-to-specify.md` and `handoff-to-specify.json` after `FEATURE_DIR` is known and preserve compatibility fields such as `entry_source: sp-discussion`, `handoff_status: handoff-ready`, `coverage_status`, `planning_gate_status`, `hard_unknown_count`, and `open_conflict_count`.
+- When `entry_source: sp-discussion` and `source_handoff` points under `.specify/discussions/<slug>/handoff-to-specify.md`, preserve that slug as the source discussion that must be marked consumed after this command successfully writes and self-reviews the feature specification package.
 - Coverage and planning readiness are separate. Use `coverage_status` for upstream signal mapping completeness and `planning_gate_status` for whether downstream planning may proceed.
 - Planning gate statuses include `ready`, `blocked_by_hard_unknowns`, `blocked_by_conflict`, `blocked_by_incomplete_coverage`, and `blocked_by_handoff_integrity`.
 - Preserve the Must-Preserve Ledger. Every `MP-*` or `MP-###` item must be mapped, deferred, dropped, superseded, or converted into a conflict blocker with source and reopen details.
@@ -280,7 +308,7 @@ When `sp-specify` starts from `sp-discussion`, do not trust only the handoff sum
 - Default to concise clarification turns. Do not restate the full current understanding after every answer. Save the full synthesis for the alignment-ready turn.
 - Do not repeat the same question unless the user's answer changes the prior premise or explicitly asks to revisit it.
 - If the runtime exposes separate progress/commentary and final reply channels, keep progress in commentary and ask the current clarification question in the final user-visible reply. The user should see the current clarification question exactly once.
-- Before generating any clarification question, confirmation, or bounded selection, check whether a native structured question tool is available. If a native structured question tool is available, you must use it.
+- Before generating any clarification question, confirmation, or bounded selection, apply the `sp-auto` Recommended Default Continuation when `auto_default_recommendation: true` is active. If that gate does not auto-resolve the question, check whether a native structured question tool is available. If a native structured question tool is available, you must use it.
 - When using a native structured question tool, map the same stage header plus topic label into the native header or title field.
 - Do not render the textual fallback block when the native tool is available. Do not self-authorize textual fallback because the question seems simple. Only fall back after the native tool is unavailable or the tool call fails.
 - Treat the shared open question block structure below as fallback-only text format guidance.
@@ -316,6 +344,7 @@ Use a simple row per term:
 
 ## Approach Comparison
 
+- When this command runs with `auto_default_recommendation: true`, apply the `sp-auto` Recommended Default Continuation before every bounded question, approach comparison, or section approval gate. If one safe recommended/default answer exists, record it and continue instead of asking; if it is not safe to assume, keep the confirmation gate and include a self-unblock recommendation.
 - Present two or three approaches before committing to the spec shape.
 - For a requirement-shaping decision, switch into decision-fork mode and present 2-3 concrete options when the choice changes behavior, boundary, compatibility, or acceptance proof.
 - Do not use this mode for implementation architecture brainstorming.
@@ -401,6 +430,7 @@ Before reporting completion, review the written artifacts, not just the chat sum
 - report the single valid next path for the current state. Do not emit a second alternative next command. Do not present multiple downstream command options.
 - Only the user review gate may decide whether the canonical next command is `/sp.plan`, `/sp.clarify`, or `/sp.deep-research`.
 - The completion state must preserve the literal `next_command` as `/sp.plan`, `/sp.clarify`, or `/sp.deep-research`.
+- After the feature package is written, self-reviewed, and `workflow-state.md` records the single next command, mark the source discussion consumed when this run came from `sp-discussion`: run `specify discussion mark-consumed <slug> --feature-dir "$FEATURE_DIR"` where `<slug>` is derived from `.specify/discussions/<slug>/handoff-to-specify.md`. This writes `handoff_consumption_status: consumed`, `consumed_by_feature_dir: $FEATURE_DIR`, `status: completed`, and `next_command: none` in the source `discussion-state.md`, preventing stale `handoff-ready` discussions from blocking future `sp-auto` routing. If the helper command is unavailable, update those same fields manually and note the fallback in the completion report. Do not mark consumed before the artifacts exist and pass self-review.
 
 ## Completion Report
 
@@ -487,7 +517,10 @@ After the completion report, check whether `.specify/extensions.yml` exists.
 
 ## Codex Structured Question Preference
 
-- If the runtime's native structured question tool is available for the current turn, you must use it.
+- If this command was routed by `sp-auto` with `auto_default_recommendation: true`, evaluate the automatic recommended/default continuation gate before any question path.
+- When that gate has one safe recommended/default answer, you must auto-resolve the question or confirmation, record the accepted recommendation in the workflow state or summary, continue the workflow, and do not invoke the native structured question tool only to ask for that approval.
+- If the automatic gate is not safe, write the blocker and self-unblock recommendation before using the normal question path.
+- If the runtime's native structured question tool is available for the current turn and the `sp-auto` automatic gate did not resolve the question, you must use it.
 - Do not render the textual fallback block when the native tool is available.
 - Do not self-authorize textual fallback because the question seems simple, short, or easy to phrase manually.
 - Treat the template's textual question format as fallback-only guidance; use it to shape the question content, but do not render the textual block unless the native tool is unavailable in the current runtime or the tool call fails.
@@ -512,7 +545,7 @@ After the completion report, check whether `.specify/extensions.yml` exists.
 - Before drafting or asking clarification questions, identify the scope boundary, key constraints, affected surface area, known unknowns, and safest next step.
 - Keep guided requirement discovery concise and avoid reviving the deprecated fixed heavy discovery lifecycle.
 - Treat `final-handoff-decision` as a compatibility readiness check name only; do not restore the legacy staged handoff flow.
-- Run project cognition planning navigation with `project-cognition lexicon --intent plan --mode catalog`, use the schema v2 `alias_index`-backed alias catalog to normalize user input and write `semantic_intake` with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`, carry `lexicon_generation_id`, write `concept_decisions` with `covered_facets`, `missing_facets`, and `match_sources`, add `repository_search_terms`, then run `project-cognition query --intent plan --query-plan`; facet coverage must drive selection, not top similarity alone. Do not search only the raw user words; use project-language search terms before broad repository search. Returned `minimal_live_reads` feeds the coverage-model check. If readiness reports schema v1 or rebuild required, run sp-map-scan -> sp-map-build for a usable brownfield schema v2 alias catalog; map points, code proves.
+- Run project cognition planning navigation with `project-cognition compass --intent plan --query="$ARGUMENTS" --format json` first. Read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons, `verification_hints`, `followup_surfaces`, and `before_fix_claim`; treat `coverage_diagnostics` as confidence and closeout signals, use `expansion_ref` only when coverage state or live evidence requires more map detail, and do not infer final edit scope from first-pass reads. Preserve the advanced `lexicon -> semantic_intake -> query` path with `project-cognition query --intent plan --query-plan` for explicit concept decisions or unresolved coverage.
 - The coverage-model check should identify truth-owning surfaces, change-propagation hotspots, verification entry points, and known unknowns relevant to the request, including module ownership, reusable components/services/hooks, integration points, and neighboring workflow constraints.
 - Read `.specify/templates/workflow-state-template.md`. Create or resume `WORKFLOW_STATE_FILE` immediately after `FEATURE_DIR` is known with `phase_mode: planning-only`. Do not implement code, edit source files, edit tests, or run implementation-oriented fix loops from `sp-specify`.
 - If the topical coverage for the touched area is missing, stale, or too broad: Run a codebase scout before clarification. Build a concise internal scout summary for the request area covering truth-owning surfaces and shared coordination surfaces, change-propagation hotspots, consumer surfaces, and neighboring surfaces likely to require review, verification entry points and regression-sensitive checks, and known unknowns, stale evidence boundaries, or observability gaps.

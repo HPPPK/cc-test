@@ -1,0 +1,70 @@
+{
+  "id": "T010",
+  "title": "Implement desktop recommended-skill visibility",
+  "story": "US2",
+  "agent": "executor",
+  "depends_on": ["T008", "T009"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/api/skills.test.ts",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowStartDialog.tsx",
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+    "desktop/src/api/skills.ts",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/**",
+    "desktop/src/api/skills.test.ts",
+    "desktop/src/__tests__/skillsSettings.test.tsx"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "server files",
+    "SkillTool files"
+  ],
+  "expected_outputs": [
+    "Provenance and status display for recommended skills",
+    "Unavailable and ambiguous labels",
+    "Relevant audit visibility",
+    "No new auto-run or install-now behavior unless already supported by existing catalog affordances"
+  ],
+  "anti_goals": [
+    "No new plugin manager",
+    "No in-app tutorial copy",
+    "No hidden mutation of skill config"
+  ],
+  "does_not_remove": [
+    "MP-005",
+    "MP-006",
+    "MP-010",
+    "CA-008"
+  ],
+  "capability_operations": [
+    "CAP-003 desktop implementation",
+    "CAP-006 runtime UI implementation"
+  ],
+  "acceptance_criteria": [
+    "T009 tests pass",
+    "Existing desktop skill settings tests remain green"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/api/skills.test.ts src/__tests__/skillsSettings.test.tsx"
+  ],
+  "handoff_format": [
+    "ui_state_summary",
+    "api_shape_summary",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

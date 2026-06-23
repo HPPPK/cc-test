@@ -1,0 +1,64 @@
+{
+  "id": "T005",
+  "title": "Implement grouped desktop authoring",
+  "story": "US1",
+  "agent": "executor",
+  "depends_on": ["T003", "T004"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/api/skills.ts",
+    "desktop/src/types/skill.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "server runtime files",
+    "SkillTool files"
+  ],
+  "expected_outputs": [
+    "Grouped phase intent, contract, evidence policy, and recommended skill controls",
+    "Old-template display compatibility",
+    "Save payload preserves unknown fields and excludes runtimeState"
+  ],
+  "anti_goals": [
+    "No card-heavy redesign",
+    "No feature tutorial text",
+    "No runtime execution controls in editor"
+  ],
+  "does_not_remove": [
+    "MP-001",
+    "MP-003",
+    "MP-010"
+  ],
+  "capability_operations": [
+    "CAP-001 desktop implementation",
+    "CAP-006 editor implementation"
+  ],
+  "acceptance_criteria": [
+    "T003 tests pass",
+    "Existing editor flows remain usable"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "payload_shape_summary",
+    "ui_grouping_summary",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

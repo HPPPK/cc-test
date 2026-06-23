@@ -193,6 +193,58 @@ describe('Settings > Skills tab', () => {
     expect(MOCK_FETCH_SKILL_DETAIL).not.toHaveBeenCalled()
   })
 
+  it('filters workflow catalog entries by status and provenance without hidden execution affordances', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'release-notifier',
+          displayName: 'Release Notifier',
+          description: 'Notify release stakeholders.',
+          source: 'plugin',
+          catalogStatus: 'plugin-disabled',
+          pluginName: 'release-tools',
+          referenceId: 'release-tools:notifier',
+          contentHash: 'sha256:notifier',
+          provenance: {
+            pluginName: 'release-tools',
+            referenceId: 'release-tools:notifier',
+            contentHash: 'sha256:notifier',
+          },
+          userInvocable: true,
+          version: '2.1.0',
+          contentLength: 280,
+          hasDirectory: false,
+        },
+        {
+          name: 'release-checklist',
+          displayName: 'Release Checklist',
+          description: 'Verify release readiness.',
+          source: 'project',
+          catalogStatus: 'available',
+          userInvocable: true,
+          version: '1.0.0',
+          contentLength: 400,
+          hasDirectory: true,
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      target: { value: 'plugin-disabled release-tools:notifier' },
+    })
+
+    expect(screen.getByText('Release Notifier')).toBeInTheDocument()
+    expect(screen.getByText(/plugin disabled/i)).toBeInTheDocument()
+    expect(screen.getByText(/release-tools:notifier/i)).toBeInTheDocument()
+    expect(screen.getByText(/sha256:notifier/i)).toBeInTheDocument()
+    expect(screen.queryByText('Release Checklist')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /run|execute|install|enable/i })).not.toBeInTheDocument()
+    expect(MOCK_FETCH_SKILL_DETAIL).not.toHaveBeenCalled()
+  })
+
   it('filters skills by search text and sorts matches by updated time', () => {
     useSkillStore.setState({
       skills: [
@@ -255,6 +307,56 @@ describe('Settings > Skills tab', () => {
       (security.compareDocumentPosition(release) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
     ).toBe(true)
     expect(screen.getByText('2 matching skills')).toBeInTheDocument()
+  })
+
+  it('keeps the selected skill sort when returning to the skills tab', () => {
+    useSkillStore.setState({
+      skills: [
+        {
+          name: 'release-checklist',
+          displayName: 'Release Checklist',
+          description: 'Verify release readiness before rollout.',
+          source: 'project',
+          userInvocable: true,
+          version: '1.0.0',
+          contentLength: 400,
+          hasDirectory: true,
+          createdAt: '2026-05-01T00:00:00.000Z',
+          updatedAt: '2026-05-02T00:00:00.000Z',
+        },
+        {
+          name: 'security-audit',
+          displayName: 'Security Audit',
+          description: 'Audit release risks and permissions.',
+          source: 'user',
+          userInvocable: true,
+          contentLength: 320,
+          hasDirectory: true,
+          createdAt: '2026-05-03T00:00:00.000Z',
+          updatedAt: '2026-05-05T00:00:00.000Z',
+        },
+      ],
+    })
+
+    render(<Settings />)
+    switchToSkillsTab()
+
+    fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      target: { value: 'release' },
+    })
+    fireEvent.change(screen.getByLabelText('Sort skills'), {
+      target: { value: 'updatedAt' },
+    })
+
+    fireEvent.click(screen.getByText('General'))
+    fireEvent.click(screen.getByText('Skills'))
+
+    expect(screen.getByLabelText('Sort skills')).toHaveValue('updatedAt')
+    const security = screen.getByText('Security Audit')
+    const release = screen.getByText('Release Checklist')
+    expect(
+      (security.compareDocumentPosition(release) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true)
   })
 
   it('sorts matching skills globally across sources', () => {

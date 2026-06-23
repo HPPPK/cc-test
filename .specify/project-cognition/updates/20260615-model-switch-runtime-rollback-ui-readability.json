@@ -1,0 +1,78 @@
+{
+  "changed_paths": [
+    "src/server/ws/handler.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/stores/chatStore.test.ts",
+    "desktop/src/components/controls/ModelSelector.tsx",
+    "desktop/src/components/controls/ModelSelector.test.tsx",
+    "desktop/src/stores/providerStore.ts",
+    "desktop/src/stores/providerStore.test.ts",
+    "desktop/src/lib/appZoom.ts",
+    "desktop/src/lib/appZoom.test.ts",
+    "desktop/src/lib/persistenceMigrations.test.ts",
+    "desktop/src/theme/globals.css",
+    "desktop/src/theme/globals.test.ts",
+    "desktop/src/__tests__/generalSettings.test.tsx",
+    ".planning/debug/model-switch-cli-startup-143-ui-squares-small.md"
+  ],
+  "behavior_surfaces": [
+    "server",
+    "desktop",
+    "provider/runtime",
+    "agent-loop"
+  ],
+  "generated_surfaces": [
+    "artifacts/quality-runs/2026-06-15T09-35-22-577Z/report.md: generated verification report, evidence only, not intended for commit",
+    "artifacts/coverage/2026-06-15T09-39-09-402Z/coverage-report.md: generated coverage report, evidence only, not intended for commit"
+  ],
+  "state_contracts": [
+    "Failed desktop provider/model runtime switches must not leave the failed override as the server control state for the next CLI startup.",
+    "Desktop runtime selection persistence is optimistic but must restore the previous selection or clear replayed selection when the server emits CLI_RESTART_FAILED.",
+    "Successful runtime restart/status idle clears pending runtime rollback state.",
+    "Persisted desktop app zoom values below the readable minimum are invalid; the minimum app zoom is 0.8.",
+    "Primary desktop font tokens must include explicit CJK system fallbacks after bundled Latin fonts."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/__tests__/websocket-handler.test.ts",
+      "result": "passed",
+      "evidence": "28 passed, 0 failed"
+    },
+    {
+      "command": "cd desktop && bun run test -- src/stores/chatStore.test.ts src/stores/providerStore.test.ts src/components/controls/ModelSelector.test.tsx src/lib/appZoom.test.ts src/theme/globals.test.ts src/lib/persistenceMigrations.test.ts src/__tests__/generalSettings.test.tsx",
+      "result": "passed",
+      "evidence": "7 files, 158 tests passed"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed",
+      "evidence": "1168 passed, 7 skipped, 0 failed"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed",
+      "evidence": "tsc --noEmit, 98 Vitest files / 872 tests, and Vite build passed"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=target/quality-native-check bun run check:native",
+      "result": "passed",
+      "evidence": "Native Tauri cargo check passed when avoiding a locked default target directory"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=target/quality-native-check bun run verify",
+      "result": "policy_blocked",
+      "evidence": "Report 2026-06-15T09-35-22-577Z: passed=9, failed=0, skipped=2; script exited 1 because dirty worktree/impact policy marked PR readiness NOT READY"
+    }
+  ],
+  "known_unknowns": [
+    "The exact local reason DeepSeek startup returned code 143 is not proven without live provider credentials and the reporter's desktop runtime state.",
+    "The user's exact square-glyph and small-window visual state still needs human verification in the desktop app.",
+    "The current repository worktree contains many unrelated dirty files, so quality gate readiness is policy-blocked even when all actual lanes pass."
+  ],
+  "confidence_notes": [
+    "Root cause is confirmed for stale runtime override control state and optimistic desktop persistence/replay after failed runtime restart.",
+    "DeepSeek static provider/model env mapping was reviewed and no obvious model ID drop was found; live upstream/provider behavior remains outside mock proof.",
+    "UI readability fix is conservative: it raises the zoom lower bound and adds system CJK fallbacks without changing persisted storage shape."
+  ]
+}

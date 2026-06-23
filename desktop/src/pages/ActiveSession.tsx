@@ -487,11 +487,7 @@ export function ActiveSession() {
   const handleWorkflowTransition = useCallback(async (command: WorkflowTransitionCommand) => {
     if (!activeTabId) return
 
-    const sendWorkflowTransition = useChatStore.getState().sendWorkflowTransition as (
-      sessionId: string,
-      command: WorkflowTransitionCommand,
-    ) => void
-    sendWorkflowTransition(activeTabId, command)
+    useChatStore.getState().sendWorkflowTransition(activeTabId, command)
   }, [activeTabId])
 
   useEffect(() => {
@@ -561,7 +557,13 @@ export function ActiveSession() {
     : undefined
   const workflowControlsDisplay = useMemo<WorkflowStatusPanelSummary | null>(() => {
     if (!workflowDisplay) return null
-    if (!workflowDisplay.blockedStatus) return workflowDisplay
+    if (
+      workflowDisplay.pendingConfirmation ||
+      workflowDisplay.status === 'pending-confirmation' ||
+      !workflowDisplay.blockedStatus
+    ) {
+      return workflowDisplay
+    }
 
     return {
       ...workflowDisplay,

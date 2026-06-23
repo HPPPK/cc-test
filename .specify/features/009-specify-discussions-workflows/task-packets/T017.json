@@ -1,0 +1,67 @@
+{
+  "id": "T017",
+  "title": "Add and implement desktop transition-control safety",
+  "story": "US4",
+  "agent": "executor",
+  "depends_on": ["T016"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-transition-submission.md",
+    ".specify/memory/learnings/learn-2026-05-28-desktop-workflow-pending-confirmation-over-running-statu-b45c8345ca.md",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/types/session.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/types/session.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "server files"
+  ],
+  "expected_outputs": [
+    "Tests and implementation for Confirm, Reject, and Retry when pending",
+    "Manual completion separated from pending confirmation",
+    "Stale running state cannot override pending state",
+    "Blocked and unable recovery controls",
+    "Explicit authority labels"
+  ],
+  "anti_goals": [
+    "No hidden auto-confirm",
+    "No duplicate ready submission button while pending",
+    "No destructive localStorage repair"
+  ],
+  "does_not_remove": [
+    "MP-008",
+    "MP-009",
+    "MP-010",
+    "CA-008"
+  ],
+  "capability_operations": [
+    "CAP-005 desktop implementation",
+    "CAP-006 transition UI implementation"
+  ],
+  "acceptance_criteria": [
+    "Desktop transition tests pass",
+    "Existing status panel evidence remains visible"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "control_state_matrix",
+    "tests_run",
+    "screenshot_path_if_browser_smoke_added"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

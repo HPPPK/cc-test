@@ -1,0 +1,183 @@
+{
+  "task_id": "T015",
+  "status": "red_missing_transition_behavior",
+  "transition_cases": {
+    "ready_submission": {
+      "covered": true,
+      "tests": [
+        "records ready completion as a pending artifact without advancing the active phase",
+        "rejects a ready completion when an unresolved pending confirmation already exists",
+        "requires stateVersion for ready completion submissions"
+      ],
+      "result": "red",
+      "red_gap": "submitPhaseCompletion accepts ready submissions without stateVersion."
+    },
+    "blocked_submission": {
+      "covered": true,
+      "tests": [
+        "records blocked completion without creating pending confirmation or advancing",
+        "persists blocked reason and evidence while keeping the active phase unchanged",
+        "requires stateVersion for blocked completion submissions"
+      ],
+      "result": "red",
+      "red_gap": "submitPhaseCompletion accepts blocked submissions without stateVersion."
+    },
+    "unable_submission": {
+      "covered": true,
+      "tests": [
+        "records unable completion without creating pending confirmation or advancing",
+        "persists unable reason and evidence while keeping the active phase unchanged",
+        "requires stateVersion for unable completion submissions"
+      ],
+      "result": "red",
+      "red_gap": "submitPhaseCompletion accepts unable submissions without stateVersion."
+    },
+    "required_fields": {
+      "covered": true,
+      "fields": [
+        "phaseId",
+        "stateVersion",
+        "status",
+        "handoff",
+        "rationale",
+        "evidence"
+      ],
+      "result": "red",
+      "red_gap": "stateVersion is typed as required by the contract but runtime validation treats it as optional."
+    },
+    "state_version_stale_rejection": {
+      "covered": true,
+      "result": "green",
+      "tests": [
+        "rejects invalid submit_phase_completion payload: stale stateVersion",
+        "rejects stale stateVersion for confirm transition without mutating state",
+        "rejects stale stateVersion for reject transition without mutating state",
+        "rejects stale stateVersion for retry transition without mutating state",
+        "rejects stale stateVersion for manual_complete transition without mutating state"
+      ]
+    },
+    "transition_id_idempotency": {
+      "covered": true,
+      "result": "red",
+      "tests": [
+        "replays duplicate transitionId without advancing or duplicating artifacts",
+        "replays duplicate completion submission transitionId without duplicating pending artifacts"
+      ],
+      "red_gap": "Duplicate submitPhaseCompletion transitionId while pending is rejected as WORKFLOW_PENDING_CONFLICT before idempotency replay is checked."
+    },
+    "confirm_reject_retry": {
+      "covered": true,
+      "result": "green",
+      "tests": [
+        "confirm accepts the pending artifact and advances exactly one phase with fresh stateVersion",
+        "reject marks the pending artifact rejected and keeps the current phase running",
+        "retry supersedes the pending artifact and returns the current phase to running"
+      ]
+    },
+    "blocked_unable_recoverable": {
+      "covered": true,
+      "result": "green",
+      "tests": [
+        "records blocked completion without creating pending confirmation or advancing",
+        "records unable completion without creating pending confirmation or advancing",
+        "persists blocked reason and evidence while keeping the active phase unchanged",
+        "persists unable reason and evidence while keeping the active phase unchanged"
+      ]
+    },
+    "final_report_completion_evidence": {
+      "covered": true,
+      "result": "green",
+      "tests": [
+        "includes accepted completion submission evidence in final report artifacts"
+      ]
+    },
+    "compact_summary_carryover": {
+      "covered": true,
+      "result": "green",
+      "tests": [
+        "carries bounded recommended skill evidence through compact summary instructions",
+        "carries pending confirmation and completed workflow state through compact summary instructions"
+      ]
+    }
+  },
+  "expected_state_snapshots": {
+    "pending_ready": {
+      "workflowStatus": "pending-confirmation",
+      "activePhaseId": "requirements",
+      "pendingConfirmation.status": "pending",
+      "artifact.lifecycleStatus": "pending"
+    },
+    "blocked": {
+      "workflowStatus": "running",
+      "activePhaseId": "requirements",
+      "pendingConfirmation": null,
+      "artifact.lifecycleStatus": "blocked",
+      "recoverable": true
+    },
+    "unable": {
+      "workflowStatus": "running",
+      "activePhaseId": "requirements",
+      "pendingConfirmation": null,
+      "artifact.lifecycleStatus": "unable",
+      "recoverable": true
+    },
+    "confirmed": {
+      "workflowStatus": "running",
+      "activePhaseId": "implementation",
+      "pendingConfirmation": null,
+      "artifact.lifecycleStatus": "accepted"
+    },
+    "rejected": {
+      "workflowStatus": "running",
+      "activePhaseId": "requirements",
+      "pendingConfirmation": null,
+      "artifact.lifecycleStatus": "rejected"
+    },
+    "retry": {
+      "workflowStatus": "running",
+      "activePhaseId": "requirements",
+      "pendingConfirmation": null,
+      "artifact.lifecycleStatus": "superseded"
+    },
+    "pending_skill_evidence_fixture": {
+      "fixture": "src/server/services/__fixtures__/workflow-sessions/pending-skill-evidence-state.json",
+      "workflowStatus": "pending-confirmation",
+      "activePhaseId": "specify",
+      "pendingConfirmation.confirmationId": "submit-ready-1",
+      "skillEvidence": [
+        "requirements-review:used",
+        "missing-audit:relevant-unavailable"
+      ]
+    }
+  },
+  "changed_files": [
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowSessionStateService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    "src/services/compact/workflowSummaryCarryover.test.ts",
+    "src/server/services/__fixtures__/workflow-sessions/pending-skill-evidence-state.json",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T015.json"
+  ],
+  "validation": {
+    "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSessionStateService.test.ts src/server/services/workflowFinalReport.test.ts src/services/compact/workflowSummaryCarryover.test.ts",
+    "result": "failed_expected_red",
+    "summary": "62 pass, 4 fail, 272 expect() calls, 66 tests across 4 files.",
+    "failing_tests": [
+      "WorkflowRuntimeService > shared completion transition contract > requires stateVersion for ready completion submissions",
+      "WorkflowRuntimeService > shared completion transition contract > requires stateVersion for blocked completion submissions",
+      "WorkflowRuntimeService > shared completion transition contract > requires stateVersion for unable completion submissions",
+      "WorkflowRuntimeService > shared completion transition contract > replays duplicate completion submission transitionId without duplicating pending artifacts"
+    ]
+  },
+  "risks": [
+    "Runtime production files already have unrelated uncommitted edits in the shared worktree; this worker did not modify production source.",
+    "The RED state is intentionally limited to missing workflow completion submission validation/idempotency behavior.",
+    "Line-ending warnings appeared for touched test files; no package/config files were edited."
+  ],
+  "notes": [
+    "Baseline before T015 edits was green: 57 pass, 0 fail for the same bounded command.",
+    "Added fixture coverage for pending confirmation plus bounded recommended skill evidence durability.",
+    "Existing tests already covered duplicate ready rejection while pending confirmation, confirm/reject/retry behavior, stale transition stateVersion rejection, and blocked/unable recoverability.",
+    "Project cognition returned review with broad coverage-gap nodes; task packet scope was used as authoritative minimal live-read and write boundary."
+  ]
+}

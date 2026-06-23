@@ -31,6 +31,9 @@ const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
 const FRONTMOST_GATE_DESC =
   "The frontmost application must be in the session allowlist at the time of this call, or this tool returns an error and does nothing.";
 
+const CODING_FALLBACK_GUARD_DESC =
+  "Do not use Computer Use as a fallback for filesystem, shell, or coding tasks: folder/file creation, source edits, dependency installs, git operations, or terminal commands must use Bash, PowerShell, Write, or Edit. If those tools are unavailable, report the missing tool surface instead of controlling a terminal, IDE, Finder, or Explorer.";
+
 /**
  * Item schema for the `actions` array in `computer_batch`, `teach_step`, and
  * `teach_batch`. All three dispatch through the same `dispatchAction` path
@@ -163,7 +166,8 @@ export function buildComputerUseTools(
         "Request user permission to control a set of applications for this session. Must be called before any other tool in this server. " +
         "The user sees a single dialog listing all requested apps and either allows the whole set or denies it. " +
         "Call this again mid-session to add more apps; previously granted apps remain granted. " +
-        "Returns the granted apps, denied apps, and screenshot filtering capability.",
+        "Returns the granted apps, denied apps, and screenshot filtering capability. " +
+        CODING_FALLBACK_GUARD_DESC,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -177,7 +181,8 @@ export function buildComputerUseTools(
           reason: {
             type: "string",
             description:
-              "One-sentence explanation shown to the user in the approval dialog. Explain the task, not the mechanism.",
+              "One-sentence explanation shown to the user in the approval dialog. Explain the task, not the mechanism. " +
+              CODING_FALLBACK_GUARD_DESC,
           },
           clipboardRead: {
             type: "boolean",
@@ -310,7 +315,7 @@ export function buildComputerUseTools(
 
     {
       name: "type",
-      description: `Type text into whatever currently has keyboard focus. ${FRONTMOST_GATE_DESC} Newlines are supported. For keyboard shortcuts use \`key\` instead.`,
+      description: `Type text into whatever currently has keyboard focus. ${FRONTMOST_GATE_DESC} Newlines are supported. For keyboard shortcuts use \`key\` instead. ${CODING_FALLBACK_GUARD_DESC}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -324,7 +329,8 @@ export function buildComputerUseTools(
       name: "key",
       description:
         `Press a key or key combination (e.g. "return", "escape", "cmd+a", "ctrl+shift+tab"). ${FRONTMOST_GATE_DESC} ` +
-        "System-level combos (quit app, switch app, lock screen) require the `systemKeyCombos` grant — without it they return an error. All other combos work.",
+        "System-level combos (quit app, switch app, lock screen) require the `systemKeyCombos` grant — without it they return an error. All other combos work. " +
+        CODING_FALLBACK_GUARD_DESC,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -462,7 +468,8 @@ export function buildComputerUseTools(
     {
       name: "write_clipboard",
       description:
-        "Write text to the clipboard. Requires the `clipboardWrite` grant.",
+        "Write text to the clipboard. Requires the `clipboardWrite` grant. " +
+        CODING_FALLBACK_GUARD_DESC,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -550,7 +557,8 @@ export function buildComputerUseTools(
         "batching a predictable sequence eliminates all but one. Use this whenever you can predict the outcome of several actions ahead — " +
         "e.g. click a field, type into it, press Return. Actions execute sequentially and stop on the first error. " +
         `${FRONTMOST_GATE_DESC} The frontmost check runs before EACH action inside the batch — if an action opens a non-allowed app, the next action's gate fires and the batch stops there. ` +
-        "Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent clicks always refer to the PRE-BATCH full-screen screenshot.",
+        "Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent clicks always refer to the PRE-BATCH full-screen screenshot. " +
+        CODING_FALLBACK_GUARD_DESC,
       inputSchema: {
         type: "object" as const,
         properties: {

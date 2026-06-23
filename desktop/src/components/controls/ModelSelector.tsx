@@ -300,11 +300,16 @@ export function ModelSelector({
     : null
 
   const handleRuntimeSelect = (selection: RuntimeSelection) => {
+    const previousSelection = runtimeKey
+      ? useSessionRuntimeStore.getState().selections[runtimeKey] ?? null
+      : null
     onRuntimeSelectionChange?.(selection)
     if (runtimeKey) {
       useSessionRuntimeStore.getState().setSelection(runtimeKey, selection)
       if (runtimeKey !== DRAFT_RUNTIME_SELECTION_KEY) {
-        useChatStore.getState().setSessionRuntime(runtimeKey, selection)
+        useChatStore.getState().setSessionRuntime(runtimeKey, selection, {
+          previousSelection,
+        })
       }
     }
     setOpen(false)

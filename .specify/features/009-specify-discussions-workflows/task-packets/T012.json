@@ -1,0 +1,65 @@
+{
+  "id": "T012",
+  "title": "Implement dependency-aware import/export API",
+  "story": "US3",
+  "agent": "api-reviewer",
+  "depends_on": ["T011"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    ".specify/features/009-specify-discussions-workflows/data-model.md"
+  ],
+  "write_scope": [
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts"
+  ],
+  "read_scope": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/workflowPhaseSkillResolver.test.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "desktop files",
+    "SkillTool files"
+  ],
+  "expected_outputs": [
+    "Export envelope with dependencyManifest",
+    "Import preview diagnostic statuses and severities",
+    "Commit guard for blocking diagnostics",
+    "No skill package serialization"
+  ],
+  "anti_goals": [
+    "No network installation",
+    "No plugin enablement flow",
+    "No silent binding deletion"
+  ],
+  "does_not_remove": [
+    "MP-007",
+    "MP-012",
+    "CA-003",
+    "CA-007"
+  ],
+  "capability_operations": [
+    "CAP-004 API implementation"
+  ],
+  "acceptance_criteria": [
+    "T011 tests pass",
+    "Existing workflow template API tests pass"
+  ],
+  "verify_commands": [
+    "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/services/workflowPhaseSkillResolver.test.ts"
+  ],
+  "handoff_format": [
+    "api_response_shape",
+    "blocked_cases",
+    "allowed_cases",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

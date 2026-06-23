@@ -21,6 +21,7 @@ import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { updateSessionSlashCommands } from '../ws/handler.js'
 import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
 import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
+import { setSessionChatState } from '../api/conversations.js'
 
 const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TEMPLATE_NOT_FOUND',
@@ -385,6 +386,63 @@ function makeWorkflowSessionMetaEntry(
     },
     timestamp: '2026-01-01T00:00:00.000Z',
   }
+}
+
+function workflowTemplatePhase(
+  id: string,
+  name: string,
+  authority: 'auto' | 'user-confirmation',
+  skillName: string,
+): Record<string, unknown> {
+  return {
+    id,
+    name,
+    instructions: `Complete the ${name} phase.`,
+    objective: `Prepare ${name} evidence.`,
+    requiredIntake: ['Use the current session context.'],
+    handoffRules: ['Summarize phase evidence and the next action.'],
+    executionRules: ['Stay within the workflow contract.'],
+    outputArtifact: {
+      id: `${id}-artifact`,
+      name: `${name} Artifact`,
+      kind: 'markdown',
+      description: `${name} phase artifact.`,
+      required: true,
+    },
+    completionCriteria: {
+      type: 'artifact-required',
+      description: `${name} phase artifact is complete.`,
+    },
+    transition: { authority },
+    skills: [{ name: skillName, mode: 'recommended', source: 'managed' }],
+  }
+}
+
+function agentDevelopmentUserWorkflowTemplate(): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    id: 'agent-development',
+    version: '1',
+    name: 'Agent Development',
+    description: 'User-owned workflow fixture for API tests.',
+    phases: [
+      workflowTemplatePhase('discussion', 'Discussion', 'user-confirmation', 'sp-discussion'),
+      workflowTemplatePhase('specify', 'Specify', 'auto', 'sp-specify'),
+      workflowTemplatePhase('plan', 'Plan', 'auto', 'sp-plan'),
+      workflowTemplatePhase('tasks', 'Tasks', 'auto', 'sp-tasks'),
+      workflowTemplatePhase('implement', 'Implement', 'auto', 'sp-implement'),
+    ],
+  }
+}
+
+async function writeWorkflowConfigTemplates(templates: Array<Record<string, unknown>>): Promise<void> {
+  const workflowConfigPath = path.join(tmpDir, 'cc-jiangxia', 'workflows.json')
+  await fs.mkdir(path.dirname(workflowConfigPath), { recursive: true })
+  await fs.writeFile(
+    workflowConfigPath,
+    JSON.stringify({ schemaVersion: 1, templates }),
+    'utf-8',
+  )
 }
 
 async function readJsonlEntries(filePath: string): Promise<Array<Record<string, unknown>>> {
@@ -2266,6 +2324,10 @@ describe('Sessions API', () => {
   })
 
   describe('Workflow Session API contract', () => {
+    beforeEach(async () => {
+      await writeWorkflowConfigTemplates([agentDevelopmentUserWorkflowTemplate()])
+    })
+
     it('POST /api/sessions should create a workflow session with additive summary and state pointer metadata', async () => {
       const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-session-'))
 
@@ -2276,7 +2338,7 @@ describe('Sessions API', () => {
           workDir,
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
         }),
@@ -2306,7 +2368,7 @@ describe('Sessions API', () => {
         mode: 'workflow',
         templateId: 'agent-development',
         templateVersion: '1',
-        templateSource: 'builtin',
+        templateSource: 'user',
         templateSnapshotId: 'agent-development-v1',
         status: 'created',
         activePhaseId: 'discussion',
@@ -2383,67 +2445,12 @@ describe('Sessions API', () => {
           }
         }
       }
-      expect(statePayload.state?.templateSnapshot?.phases?.map((phase) => ({
-        id: phase.id,
-        actionPolicy: phase.actionPolicy,
-        phasePrompt: phase.phasePrompt,
-      }))).toEqual([
-        expect.objectContaining({
-          id: 'discussion',
-          actionPolicy: expect.objectContaining({
-            allowedActions: expect.arrayContaining(['Ask clarifying questions']),
-            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
-          }),
-          phasePrompt: expect.objectContaining({
-            objective: expect.stringContaining('Clarify and freeze'),
-            outputArtifact: expect.objectContaining({
-              name: 'Requirements Brief',
-              sections: expect.arrayContaining(['Acceptance Criteria']),
-            }),
-            completionRules: expect.arrayContaining([
-              expect.stringContaining('Do not enter specify'),
-            ]),
-          }),
-        }),
-        expect.objectContaining({
-          id: 'specify',
-          actionPolicy: expect.objectContaining({
-            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
-          }),
-          phasePrompt: expect.objectContaining({
-            outputArtifact: expect.objectContaining({ name: 'Specification Brief' }),
-            handoffInput: expect.arrayContaining([
-              expect.stringContaining('discussion brief'),
-            ]),
-          }),
-        }),
-        expect.objectContaining({
-          id: 'plan',
-          actionPolicy: expect.objectContaining({
-            forbiddenActions: expect.arrayContaining(['Create, edit, or delete implementation files']),
-          }),
-          phasePrompt: expect.objectContaining({
-            outputArtifact: expect.objectContaining({ name: 'Technical Plan' }),
-          }),
-        }),
-        expect.objectContaining({
-          id: 'tasks',
-          actionPolicy: expect.objectContaining({
-            allowedActions: expect.arrayContaining(['Break the approved design into ordered implementation tasks']),
-          }),
-          phasePrompt: expect.objectContaining({
-            outputArtifact: expect.objectContaining({ name: 'Task Breakdown' }),
-          }),
-        }),
-        expect.objectContaining({
-          id: 'implement',
-          actionPolicy: expect.objectContaining({
-            allowedActions: expect.arrayContaining(['Create and edit scoped production, test, and documentation files']),
-          }),
-          phasePrompt: expect.objectContaining({
-            outputArtifact: expect.objectContaining({ name: 'Implementation Report' }),
-          }),
-        }),
+      expect(statePayload.state?.templateSnapshot?.phases?.map((phase) => phase.id)).toEqual([
+        'discussion',
+        'specify',
+        'plan',
+        'tasks',
+        'implement',
       ])
 
       expect(statePayload.state?.phaseSkillSnapshots).toContainEqual(expect.objectContaining({
@@ -2476,7 +2483,7 @@ describe('Sessions API', () => {
       const sharedCreateService = new WorkflowSessionCreateService()
       const resolvedTemplate = await sharedCreateService.resolveTemplate({
         templateId: 'agent-development',
-        templateSource: 'builtin',
+        templateSource: 'user',
         initialPhaseId: 'discussion',
       })
       expect(resolvedTemplate.id).toBe('agent-development')
@@ -2552,7 +2559,7 @@ describe('Sessions API', () => {
           mode: 'workflow',
           templateId: 'agent-development',
           templateVersion: '1',
-          templateSource: 'builtin',
+          templateSource: 'user',
           templateSnapshotId: 'agent-development-v1',
           status: 'created',
           activePhaseId: 'discussion',
@@ -2589,12 +2596,12 @@ describe('Sessions API', () => {
           template: {
             id: 'agent-development',
             version: '1',
-            source: 'builtin',
+            source: 'user',
             snapshotId: 'agent-development-v1',
           },
           templateSnapshot: {
             id: 'agent-development',
-            source: 'builtin',
+            source: 'user',
             version: '1',
           },
           link: {
@@ -2634,7 +2641,7 @@ describe('Sessions API', () => {
         const result = await createLinkService().createLinkedWorkflowSession(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -2655,7 +2662,7 @@ describe('Sessions API', () => {
         const result = await createLinkService().createLinkedWorkflowSession(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'inherit',
@@ -2704,7 +2711,7 @@ describe('Sessions API', () => {
         }).createLinkedWorkflowSession(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'summarize',
@@ -2742,7 +2749,7 @@ describe('Sessions API', () => {
         await expect(service.createLinkedWorkflowSession(workflowSourceSessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -2756,7 +2763,7 @@ describe('Sessions API', () => {
         }).createLinkedWorkflowSession(activeSource.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -2768,7 +2775,7 @@ describe('Sessions API', () => {
         await expect(createLinkService({ inheritMaxCharacters: 1 }).createLinkedWorkflowSession(inheritSource.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'inherit',
@@ -2780,7 +2787,7 @@ describe('Sessions API', () => {
         await expect(service.createLinkedWorkflowSession(summarizeSource.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'summarize',
@@ -2798,7 +2805,7 @@ describe('Sessions API', () => {
         const request = {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -2827,7 +2834,7 @@ describe('Sessions API', () => {
         const res = await startLinkedWorkflow(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -2855,7 +2862,7 @@ describe('Sessions API', () => {
         const res = await startLinkedWorkflow(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'inherit',
@@ -2887,7 +2894,7 @@ describe('Sessions API', () => {
         const res = await startLinkedWorkflow(source.sessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'summarize',
@@ -2923,7 +2930,7 @@ describe('Sessions API', () => {
         const res = await startLinkedWorkflow(sourceSessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'inherit',
@@ -2965,6 +2972,43 @@ describe('Sessions API', () => {
         expect(await fs.readFile(sourceFilePath, 'utf-8')).toBe(sourceRawBefore)
       })
 
+      it('POST /api/sessions/:id/workflow/start should allow idle prewarmed source sessions', async () => {
+        const source = await createSourceDialogueSession('clear')
+        const workflowRoot = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')
+        const sessionsMap = (conversationService as any).sessions as Map<string, { workDir: string }>
+
+        sessionsMap.set(source.sessionId, { workDir: source.workDir })
+        setSessionChatState(source.sessionId, 'idle')
+
+        try {
+          const res = await startLinkedWorkflow(source.sessionId, {
+            workflow: {
+              templateId: 'agent-development',
+              templateSource: 'user',
+              initialPhaseId: 'discussion',
+            },
+            contextStrategy: 'clear',
+            clientRequestId: 'linked-idle-prewarmed-source-0001',
+          })
+          expect(res.status).toBe(201)
+
+          const body = await res.json() as {
+            sessionId?: string
+            workDir?: string
+            workflow?: Record<string, unknown>
+            link?: Record<string, unknown>
+          }
+          await expectLinkedWorkflowCreated(body, source, 'clear', 'linked-idle-prewarmed-source-0001')
+          expect(await collectFiles(workflowRoot)).toContain(
+            path.join(workflowRoot, body.sessionId!, 'state.json'),
+          )
+          await expectSourceSessionUnchanged(source)
+        } finally {
+          sessionsMap.delete(source.sessionId)
+          setSessionChatState(source.sessionId, 'idle')
+        }
+      })
+
       it('POST /api/sessions/:id/workflow/start should reject non-completed workflow source sessions without changing their snapshot', async () => {
         const sourceSessionId = crypto.randomUUID()
         const workDir = path.join(tmpDir, 'linked-workflow-source-is-workflow')
@@ -2979,7 +3023,7 @@ describe('Sessions API', () => {
         const res = await startLinkedWorkflow(sourceSessionId, {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -3000,12 +3044,13 @@ describe('Sessions API', () => {
         const sessionsMap = (conversationService as any).sessions as Map<string, { workDir: string }>
 
         sessionsMap.set(source.sessionId, { workDir: source.workDir })
+        setSessionChatState(source.sessionId, 'thinking')
 
         try {
           const res = await startLinkedWorkflow(source.sessionId, {
             workflow: {
               templateId: 'agent-development',
-              templateSource: 'builtin',
+              templateSource: 'user',
               initialPhaseId: 'discussion',
             },
             contextStrategy: 'clear',
@@ -3019,6 +3064,7 @@ describe('Sessions API', () => {
           await expectSourceSessionUnchanged(source)
         } finally {
           sessionsMap.delete(source.sessionId)
+          setSessionChatState(source.sessionId, 'idle')
         }
       })
 
@@ -3028,7 +3074,7 @@ describe('Sessions API', () => {
         const request = {
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'clear',
@@ -3072,7 +3118,7 @@ describe('Sessions API', () => {
           workDir,
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'discussion',
           },
         }),
@@ -3126,6 +3172,65 @@ describe('Sessions API', () => {
       expect(confirmBody.state.phases.find((phase) => phase.id === 'specify')).toMatchObject({
         status: 'running',
       })
+    })
+
+    it('POST /api/sessions/:id/workflow/transition should record clear next phase context on confirmation', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-clear-'))
+
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+
+      const created = (await createRes.json()) as { sessionId: string }
+      const retryRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'retry',
+          transitionId: 'retry-clear-context-ready',
+        }),
+      })
+      expect(retryRes.status).toBe(200)
+
+      const confirmRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'confirm',
+          transitionId: 'confirm-clear-context-ready',
+          nextPhaseContextStrategy: 'clear',
+        }),
+      })
+      expect(confirmRes.status).toBe(200)
+      const confirmBody = (await confirmRes.json()) as {
+        state: {
+          activePhaseId: string
+          nextPhaseContextStrategy?: string
+          transitionHistory: Array<{
+            transitionId: string
+            nextPhaseContextStrategy?: string
+          }>
+        }
+      }
+
+      expect(confirmBody.state.activePhaseId).toBe('specify')
+      expect(confirmBody.state.nextPhaseContextStrategy).toBe('clear')
+      expect(confirmBody.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'confirm-clear-context-ready',
+        nextPhaseContextStrategy: 'clear',
+      }))
     })
 
     it.each([
@@ -3767,7 +3872,7 @@ describe('Sessions API', () => {
           name: 'initial phase is not the first phase',
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             initialPhaseId: 'specify',
           },
           code: 'WORKFLOW_TRANSITION_INVALID',
@@ -3784,7 +3889,7 @@ describe('Sessions API', () => {
           name: 'unknown workflow field',
           workflow: {
             templateId: 'agent-development',
-            templateSource: 'builtin',
+            templateSource: 'user',
             unexpected: true,
           },
           code: 'WORKFLOW_TEMPLATE_INVALID',
@@ -3813,7 +3918,7 @@ describe('Sessions API', () => {
       }
     })
 
-    it('GET /api/workflows/templates should return builtin templates and invalid user template issues', async () => {
+    it('GET /api/workflows/templates should return user templates only and invalid user template issues', async () => {
       const workflowConfigPath = path.join(tmpDir, 'cc-jiangxia', 'workflows.json')
       await fs.mkdir(path.dirname(workflowConfigPath), { recursive: true })
       await fs.writeFile(
@@ -3855,22 +3960,7 @@ describe('Sessions API', () => {
           severity: string
         }>
       }
-      expect(body.templates).toContainEqual(expect.objectContaining({
-        id: 'agent-development',
-        source: 'builtin',
-        version: '1',
-        name: 'Agent Development',
-        description: expect.any(String),
-        phaseCount: 5,
-        firstPhaseId: 'discussion',
-        phaseNames: [
-          'Discussion',
-          'Specify',
-          'Plan',
-          'Tasks',
-          'Implement',
-        ],
-      }))
+      expect(body.templates).toEqual([])
       expect(body.templates.some((template) => template.id === 'invalid-user-template')).toBe(false)
       expect(body.invalidTemplates).toContainEqual({
         source: 'user-config',

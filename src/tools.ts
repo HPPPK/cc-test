@@ -139,7 +139,10 @@ const WorkflowTool = feature('WORKFLOW_SCRIPTS')
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import type { ToolPermissionContext } from './Tool.js'
 import type { WorkflowSessionState } from './server/services/workflowTypes.js'
-import { getWorkflowScopedToolNames } from './server/services/workflowToolPolicy.js'
+import {
+  getWorkflowPhaseDisallowedTools,
+  getWorkflowScopedToolNames,
+} from './server/services/workflowToolPolicy.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
 import { isEnvTruthy } from './utils/envUtils.js'
@@ -397,18 +400,22 @@ export function assembleWorkflowToolPool(
   mcpTools: Tools,
   state: WorkflowSessionState | null | undefined,
 ): Tools {
+  const disallowedToolNames = new Set(getWorkflowPhaseDisallowedTools(state))
   const workflowTools = filterToolsByDenyRules(
     getWorkflowScopedTools(state),
     permissionContext,
-  ).filter(tool => tool.isEnabled())
+  ).filter(tool => tool.isEnabled() && !disallowedToolNames.has(tool.name))
+
+  const baseTools = assembleToolPool(permissionContext, mcpTools)
+    .filter(tool => !disallowedToolNames.has(tool.name))
 
   if (!workflowTools.length) {
-    return assembleToolPool(permissionContext, mcpTools)
+    return baseTools
   }
 
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   return uniqBy(
-    [...assembleToolPool(permissionContext, mcpTools), ...workflowTools].sort(byName),
+    [...baseTools, ...workflowTools].sort(byName),
     'name',
   )
 }

@@ -62,6 +62,7 @@ import {
   type RewindTargetSelector,
 } from '../services/sessionRewindService.js'
 import { SessionStore } from '../../../adapters/common/session-store.js'
+import { getSessionChatState } from './conversations.js'
 
 const workspaceService = new WorkspaceService(
   async (sessionId) => (
@@ -80,7 +81,7 @@ const workflowSessionCreateService = new WorkflowSessionCreateService({
 const workflowSessionLinkService = new WorkflowSessionLinkService({
   createService: workflowSessionCreateService,
   stateService: workflowSessionStateService,
-  isSourceActive: (sessionId) => conversationService.hasSession(sessionId),
+  isSourceActive: (sessionId) => getSessionChatState(sessionId) !== 'idle',
 })
 const workflowReportStore = new WorkflowReportStore()
 const workflowRuntimeService = new WorkflowRuntimeService()
@@ -540,6 +541,9 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
   if (!isSupportedWorkflowBoundaryAction(body.action)) {
     throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'Unsupported workflow transition action')
   }
+  if (!isSupportedNextPhaseContextStrategy(body.nextPhaseContextStrategy)) {
+    throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'Unsupported next phase context strategy')
+  }
 
   return await enqueueWorkflowTransition(sessionId, async () => {
     const stateRead = await workflowSessionStateService.readState(sessionId)
@@ -613,6 +617,7 @@ async function applyWorkflowBoundaryTransition(
         submission,
         requestedAt,
         transitionId: request.transitionId,
+        nextPhaseContextStrategy: request.nextPhaseContextStrategy,
       })
       : await workflowRuntimeService.submitPhaseCompletion({
         state,
@@ -659,6 +664,12 @@ function isSupportedWorkflowBoundaryAction(
 
 function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
   return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+}
+
+function isSupportedNextPhaseContextStrategy(
+  strategy: unknown,
+): strategy is WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined {
+  return strategy === undefined || strategy === 'inherit' || strategy === 'clear'
 }
 
 function toCompletionSubmission(request: WorkflowBoundaryTransitionRequest): CompletionSubmission {

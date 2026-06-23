@@ -307,7 +307,7 @@ describe('workflow template authoring service read-only operations', () => {
     })
   })
 
-  test('lists builtin and user summaries with stable user basis hashes without writing', async () => {
+  test('lists user summaries with stable basis hashes without writing', async () => {
     await writeWorkflowConfig(validWorkflowConfig([
       validTemplate({
         id: 'custom-workflow',
@@ -320,7 +320,6 @@ describe('workflow template authoring service read-only operations', () => {
       executeWorkflowTemplateAuthoringOperation({ operation: 'list' }),
     )
     const userSummary = result.templates?.find((template) => template.source === 'user') as WorkflowTemplateSummary
-    const builtinSummary = result.templates?.find((template) => template.source === 'builtin') as WorkflowTemplateSummary
 
     expect(result).toMatchObject({
       operation: 'list',
@@ -334,13 +333,7 @@ describe('workflow template authoring service read-only operations', () => {
       nextAction: 'none',
       message: 'Workflow templates listed.',
     })
-    expect(builtinSummary).toMatchObject({
-      source: 'builtin',
-      id: 'agent-development',
-      editable: false,
-      copyable: true,
-    })
-    expect(builtinSummary.basisHash).toBeUndefined()
+    expect(result.templates?.some((template) => template.source === 'builtin')).toBe(false)
     expect(userSummary).toMatchObject({
       source: 'user',
       id: 'custom-workflow',
@@ -1117,8 +1110,8 @@ describe('workflow template authoring service runtime snapshot safety', () => {
     const duplicateResult = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
-        id: 'agent-development',
+        source: 'user',
+        id: 'runtime-safe-workflow',
       },
     })
     const deleteInspectResult = await executeWorkflowTemplateAuthoringOperation({
@@ -1159,7 +1152,7 @@ describe('workflow template authoring service runtime snapshot safety', () => {
       schemaVersion: 1,
       templates: expect.arrayContaining([
         expect.objectContaining({ id: 'runtime-safe-workflow', name: 'Runtime Safe Workflow Updated' }),
-        expect.objectContaining({ id: 'agent-development-custom', source: 'user' }),
+        expect.objectContaining({ id: 'runtime-safe-workflow-copy', source: 'user' }),
       ]),
     })
     expect(finalSnapshot.workflowConfig).not.toEqual(initialSnapshot.workflowConfig)
@@ -1403,7 +1396,7 @@ describe('workflow template authoring service update operation', () => {
     await writeWorkflowConfig(validWorkflowConfig([
       validTemplate({
         id: 'skill-safe-update',
-        version: '1.0.0',
+        version: '1',
         name: 'Skill Safe Update',
       }),
     ]))
@@ -1516,19 +1509,18 @@ describe('workflow template authoring service duplicate operation', () => {
     await cleanupIsolatedClaudeConfigDir()
   })
 
-  test('duplicates builtin agent-development to the default user custom template without changing the builtin', async () => {
-    const builtinBefore = await executeWorkflowTemplateAuthoringOperation({
-      operation: 'inspect',
-      selector: {
-        source: 'builtin',
+  test('duplicates a user-owned former builtin id to the default user copy template', async () => {
+    await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
         id: 'agent-development',
-      },
-    })
+        name: 'Agent Development',
+      }),
+    ]))
 
     const result = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
       },
     })
@@ -1537,27 +1529,12 @@ describe('workflow template authoring service duplicate operation', () => {
       operation: 'duplicate',
       status: 'succeeded',
       persisted: true,
-      affectedTemplate: {
-        source: 'user',
-        id: 'agent-development-custom',
-        name: 'Agent Development Custom',
-        version: builtinBefore.affectedTemplate?.version,
-        basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-      },
       beforeSummary: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
         name: 'Agent Development',
-        editable: false,
-        copyable: true,
-      },
-      afterSummary: {
-        source: 'user',
-        id: 'agent-development-custom',
-        name: 'Agent Development Custom',
         editable: true,
         copyable: true,
-        basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       },
       validation: {
         valid: true,
@@ -1567,6 +1544,21 @@ describe('workflow template authoring service duplicate operation', () => {
       nextAction: 'none',
       message: 'Workflow template duplicated.',
     })
+    expect(result.affectedTemplate).toMatchObject({
+      source: 'user',
+      id: 'agent-development-copy',
+      name: 'Agent Development Copy',
+      version: '1',
+      basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    })
+    expect(result.afterSummary).toMatchObject({
+      source: 'user',
+      id: 'agent-development-copy',
+      name: 'Agent Development Copy',
+      editable: true,
+      copyable: true,
+      basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    })
     expect(result.afterSummary?.basisHash).toBe(result.affectedTemplate?.basisHash)
 
     const persistedConfig = await readWorkflowConfig()
@@ -1575,21 +1567,16 @@ describe('workflow template authoring service duplicate operation', () => {
       templates: [
         expect.objectContaining({
           source: 'user',
-          id: 'agent-development-custom',
-          name: 'Agent Development Custom',
+          id: 'agent-development',
+          name: 'Agent Development',
+        }),
+        expect.objectContaining({
+          source: 'user',
+          id: 'agent-development-copy',
+          name: 'Agent Development Copy',
         }),
       ],
     })
-
-    const builtinAfter = await executeWorkflowTemplateAuthoringOperation({
-      operation: 'inspect',
-      selector: {
-        source: 'builtin',
-        id: 'agent-development',
-      },
-    })
-    expect(builtinAfter.template).toEqual(builtinBefore.template)
-    expect(builtinAfter.affectedTemplate).toEqual(builtinBefore.affectedTemplate)
   })
 
   test('rejects duplicate when the source template carries unavailable recommended phase skills', async () => {
@@ -1647,57 +1634,72 @@ describe('workflow template authoring service duplicate operation', () => {
   })
 
   test('chooses incrementing default target suffixes when prior user copies exist', async () => {
+    await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
+        id: 'agent-development',
+        name: 'Agent Development',
+      }),
+    ]))
+
     const first = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
       },
     })
     const second = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
       },
     })
     const third = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
       },
     })
 
     expect(first.affectedTemplate).toMatchObject({
       source: 'user',
-      id: 'agent-development-custom',
-      name: 'Agent Development Custom',
+      id: 'agent-development-copy',
+      name: 'Agent Development Copy',
     })
     expect(second.affectedTemplate).toMatchObject({
       source: 'user',
-      id: 'agent-development-custom-2',
-      name: 'Agent Development Custom',
+      id: 'agent-development-copy-2',
+      name: 'Agent Development Copy',
     })
     expect(third.affectedTemplate).toMatchObject({
       source: 'user',
-      id: 'agent-development-custom-3',
-      name: 'Agent Development Custom',
+      id: 'agent-development-copy-3',
+      name: 'Agent Development Copy',
     })
     expect(await readWorkflowConfig()).toMatchObject({
       templates: [
-        expect.objectContaining({ id: 'agent-development-custom' }),
-        expect.objectContaining({ id: 'agent-development-custom-2' }),
-        expect.objectContaining({ id: 'agent-development-custom-3' }),
+        expect.objectContaining({ id: 'agent-development' }),
+        expect.objectContaining({ id: 'agent-development-copy' }),
+        expect.objectContaining({ id: 'agent-development-copy-2' }),
+        expect.objectContaining({ id: 'agent-development-copy-3' }),
       ],
     })
   })
 
-  test('honors requested non-conflicting target id and name for builtin copies', async () => {
+  test('honors requested non-conflicting target id and name for user copies', async () => {
+    await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
+        id: 'agent-development',
+        name: 'Agent Development',
+      }),
+    ]))
+
     const result = await executeWorkflowTemplateAuthoringOperation({
       operation: 'duplicate',
       selector: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
       },
       target: {
@@ -1710,58 +1712,45 @@ describe('workflow template authoring service duplicate operation', () => {
       operation: 'duplicate',
       status: 'succeeded',
       persisted: true,
-      affectedTemplate: {
-        source: 'user',
-        id: 'agent-development-team-edition',
-        name: 'Agent Development Team Edition',
-        basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-      },
-      afterSummary: {
-        source: 'user',
-        id: 'agent-development-team-edition',
-        name: 'Agent Development Team Edition',
-        editable: true,
-        copyable: true,
-      },
       nextAction: 'none',
     })
-    expect(await readWorkflowConfig()).toMatchObject({
-      templates: [
-        expect.objectContaining({
-          id: 'agent-development-team-edition',
-          name: 'Agent Development Team Edition',
-        }),
-      ],
+    expect(result.affectedTemplate).toMatchObject({
+      source: 'user',
+      id: 'agent-development-team-edition',
+      name: 'Agent Development Team Edition',
+      basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
+    expect(result.afterSummary).toMatchObject({
+      source: 'user',
+      id: 'agent-development-team-edition',
+      name: 'Agent Development Team Edition',
+      editable: true,
+      copyable: true,
+    })
+    expect((await readWorkflowConfig()).templates).toContainEqual(expect.objectContaining({
+      id: 'agent-development-team-edition',
+      name: 'Agent Development Team Edition',
+    }))
   })
 
-  test('rejects requested target ids that shadow builtins or conflict with existing user templates without writing', async () => {
+  test('rejects requested target ids that conflict with existing user templates without writing', async () => {
     await writeWorkflowConfig(validWorkflowConfig([
+      validTemplate({
+        id: 'source-workflow',
+        name: 'Source Workflow',
+      }),
       validTemplate({
         id: 'existing-copy',
         name: 'Existing Copy',
       }),
     ]))
 
-    const builtinShadow = await expectConfigUnchanged(() =>
-      executeWorkflowTemplateAuthoringOperation({
-        operation: 'duplicate',
-        selector: {
-          source: 'builtin',
-          id: 'agent-development',
-        },
-        target: {
-          id: 'agent-development',
-          name: 'Shadow Builtin',
-        },
-      }),
-    )
     const userConflict = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({
         operation: 'duplicate',
         selector: {
-          source: 'builtin',
-          id: 'agent-development',
+          source: 'user',
+          id: 'source-workflow',
         },
         target: {
           id: 'existing-copy',
@@ -1770,26 +1759,6 @@ describe('workflow template authoring service duplicate operation', () => {
       }),
     )
 
-    expect(builtinShadow).toMatchObject({
-      operation: 'duplicate',
-      status: 'rejected',
-      persisted: false,
-      affectedTemplate: {
-        source: 'user',
-        id: 'agent-development',
-      },
-      validation: {
-        valid: false,
-        issues: [
-          expect.objectContaining({
-            source: 'authoring',
-            templateId: 'agent-development',
-            code: 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
-          }),
-        ],
-      },
-      nextAction: 'choose-unique-target',
-    })
     expect(userConflict).toMatchObject({
       operation: 'duplicate',
       status: 'rejected',
@@ -1878,11 +1847,7 @@ describe('workflow template authoring service delete operation', () => {
       nextAction: 'none',
       message: 'Workflow template deleted.',
     })
-    expect(result.templates).toContainEqual(expect.objectContaining({
-      source: 'builtin',
-      id: 'agent-development',
-      editable: false,
-    }))
+    expect(result.templates).toEqual([])
     expect(result.templates?.some((template) => template.id === 'deletable-workflow')).toBe(false)
     expect(await readWorkflowConfig()).toEqual({
       schemaVersion: 1,

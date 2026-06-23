@@ -1,0 +1,341 @@
+{
+  "version": 2,
+  "status": "review-ready",
+  "entry_source": "sp-discussion",
+  "source_handoff": ".specify/discussions/workflows/handoff-to-specify.md",
+  "source_handoff_json": ".specify/discussions/workflows/handoff-to-specify.json",
+  "discussion_slug": "workflows",
+  "handoff_goal": "Specify workflows as phase execution contracts in cc-jiangxia, including grouped phase fields, soft-by-default constraint semantics, recommended phase skill bindings, dependency-aware sharing, lifecycle/completion status rules, and runtime/editor UI behavior.",
+  "source_files_read": [
+    ".specify/discussions/workflows/handoff-to-specify.md",
+    ".specify/discussions/workflows/handoff-to-specify.json",
+    ".specify/discussions/workflows/discussion-log.md",
+    ".specify/discussions/workflows/requirements.md",
+    ".specify/discussions/workflows/open-questions.md",
+    ".specify/discussions/workflows/technical-options.md",
+    ".specify/discussions/workflows/project-context.md",
+    ".specify/project-cognition/status.json",
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/api/skills.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/prompt.ts",
+    "desktop/src/types/skill.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/api/skills.ts",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowTemplatePicker.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
+  "source_signal_disposition": [
+    {
+      "signal": "MP-001 workflows as phase execution contracts",
+      "source": "handoff-to-specify.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#overview",
+      "user_confirmed": true,
+      "reopen_trigger": "Workflow contract semantics are reduced to cosmetic editor grouping."
+    },
+    {
+      "signal": "MP-002 unified scope",
+      "source": "OQ-018 and handoff-to-specify.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Lifecycle or UI controls are split away and lose consistency."
+    },
+    {
+      "signal": "MP-003 grouped semantics with session-owned runtimeState",
+      "source": "technical-options.md",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Runtime state becomes editable template data."
+    },
+    {
+      "signal": "MP-004 constraint strengths guidance policy evidence gate",
+      "source": "technical-options.md",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Every instruction becomes a hard machine gate."
+    },
+    {
+      "signal": "MP-005 recommended skills bind to existing skills and remain soft",
+      "source": "requirements.md, OQ-006, OQ-014",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Plugins become the primary target or recommended skills auto-run."
+    },
+    {
+      "signal": "MP-006 bounded soft audit",
+      "source": "OQ-007 and OQ-008",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Audit lists every recommended skill mechanically or records nothing."
+    },
+    {
+      "signal": "MP-007 dependency manifest sharing without default bundles",
+      "source": "OQ-015",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Import silently drops missing references or export implies bundled skills."
+    },
+    {
+      "signal": "MP-008 lifecycle status separate from completion status",
+      "source": "OQ-016",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Normal blocked/unable outcomes become terminal runtime failures."
+    },
+    {
+      "signal": "MP-009 pending confirmation Confirm Reject Retry",
+      "source": "OQ-016, OQ-017, live runtime evidence",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "Pending ready submissions can be overwritten silently."
+    },
+    {
+      "signal": "MP-010 safe runtime controls",
+      "source": "OQ-017",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#requirements",
+      "user_confirmed": true,
+      "reopen_trigger": "UI mixes manual completion with pending confirmation or uses auto-advance as a button."
+    },
+    {
+      "signal": "MP-011 compatibility-aware adapter before direct grouped persistence migration",
+      "source": "technical-options.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#decision-capture",
+      "user_confirmed": true,
+      "reopen_trigger": "Implementation requires destructive migration without fixtures."
+    },
+    {
+      "signal": "MP-012 scheduler auto-execution required gates bundles destructive migration non-goals",
+      "source": "requirements.md and technical-options.md",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "Feature expands into a scheduler or capability engine."
+    },
+    {
+      "signal": "MP-013 live evidence authoritative while cognition is partial",
+      "source": "project-context.md and project-cognition intake",
+      "disposition": "deferred",
+      "artifact_location": "context.md#project-cognition-intake",
+      "user_confirmed": true,
+      "reopen_trigger": "Restored cognition contradicts live-read assumptions."
+    },
+    {
+      "signal": "grouped phase fields",
+      "source": "technical-options.md",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#capability-decomposition",
+      "user_confirmed": true,
+      "reopen_trigger": "Grouped authoring is omitted."
+    },
+    {
+      "signal": "real usable skill capability",
+      "source": "requirements.md and discussion-log.md",
+      "disposition": "preserved",
+      "artifact_location": "spec.md#semantic-term-decisions",
+      "user_confirmed": true,
+      "reopen_trigger": "Workflow skills degrade to prompt text only."
+    },
+    {
+      "signal": "create authoring workflow",
+      "source": "UI discussion and live editor/API reads",
+      "disposition": "in_scope",
+      "artifact_location": "spec.md#scenarios-and-usage-paths",
+      "user_confirmed": true,
+      "reopen_trigger": "Authoring is reduced to manual copy-only templates."
+    },
+    {
+      "signal": "full workflow scheduler or execution engine",
+      "source": "requirements.md and handoff-to-specify.md",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#confirmed-scope",
+      "user_confirmed": true,
+      "reopen_trigger": "User explicitly asks workflows to become the central scheduler."
+    },
+    {
+      "signal": "auto-executing recommended skills",
+      "source": "requirements.md and open-questions.md",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#decision-capture",
+      "user_confirmed": true,
+      "reopen_trigger": "User explicitly requests runtime-driven skill execution."
+    },
+    {
+      "signal": "arbitrary bundled skill package export",
+      "source": "technical-options.md",
+      "disposition": "deferred",
+      "artifact_location": "spec.md#decision-capture",
+      "user_confirmed": true,
+      "reopen_trigger": "Reviewed bundle mode is requested with security review."
+    }
+  ],
+  "must_preserve": [
+    {
+      "id": "MP-001",
+      "claim": "Specify workflows as phase execution contracts, not only prose templates or phase skill hints.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-002",
+      "claim": "Unified scope includes grouped fields, constraints, phase skills, sharing, lifecycle, UI, compatibility, and validation.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-003",
+      "claim": "Use intent, contract, evidencePolicy, and session-owned runtimeState as grouped semantics.",
+      "disposition": "in_scope"
+    },
+    {
+      "id": "MP-004",
+      "claim": "Constraints are guidance, policy, evidence, and gate; hard gates stay sparse and explainable.",
+      "disposition": "in_scope"
+    },
+    {
+      "id": "MP-005",
+      "claim": "Recommended phase skills bind to existing skills, not plugins, and are soft by default.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-006",
+      "claim": "Soft audit records used or clearly relevant skipped/unavailable recommended skills only.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-007",
+      "claim": "Workflow sharing uses template plus dependency manifest by default.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-008",
+      "claim": "Lifecycle status and completion submission outcome are separate.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-009",
+      "claim": "Pending confirmation resolves only through confirm, reject, or retry and blocks duplicate ready submissions.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-010",
+      "claim": "Runtime controls distinguish pending confirmation, manual completion, blocked/unable retry, auto-advance label, and session-level cancel/resume.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-011",
+      "claim": "First scope is compatibility-aware and should adapt existing flat fields before direct grouped persistence migration.",
+      "disposition": "preserved"
+    },
+    {
+      "id": "MP-012",
+      "claim": "Do not build a full workflow execution engine, scheduler, or default auto-executing skill system in this scope.",
+      "disposition": "deferred"
+    },
+    {
+      "id": "MP-013",
+      "claim": "Live repository evidence is authoritative because project cognition was stale/unavailable.",
+      "disposition": "deferred"
+    }
+  ],
+  "coverage_status": "source_sweep_complete_with_live_repository_verification_and_cognition_advisory",
+  "planning_gate_status": "ready_for_plan_after_user_review",
+  "hard_unknown_count": 0,
+  "open_conflict_count": 0,
+  "quality_gate": {
+    "status": "user_confirmed",
+    "self_reviewed_at": "2026-06-12T10:16:09.8132850+08:00",
+    "user_review_required": true,
+    "user_confirmed_at": "2026-06-12T10:22:42.1914933+08:00",
+    "blocked_reasons": []
+  },
+  "consequence_gate": {
+    "triggered": true,
+    "trigger_reason": "Workflow contracts affect lifecycle operations, running workflow sessions, prompt behavior, SkillTool permission-sensitive behavior, shared skill/catalog state, import/export compatibility, final reports, and user-visible transition controls.",
+    "status": "mapped"
+  },
+  "consequence_obligations": [
+    {
+      "id": "CA-001",
+      "claim": "Define stable workflow skill binding identity across local, bundled, plugin, managed, and MCP sources.",
+      "status": "mapped",
+      "latest_resolve_phase": "specification"
+    },
+    {
+      "id": "CA-002",
+      "claim": "Define priority precedence without overriding system, developer, security, or explicit user safety boundaries.",
+      "status": "mapped",
+      "latest_resolve_phase": "specification"
+    },
+    {
+      "id": "CA-003",
+      "claim": "Define behavior for missing, stale, disabled, invalid, ambiguous, plugin-disabled, unsupported-source, or unavailable workflow skills.",
+      "status": "mapped",
+      "latest_resolve_phase": "specification"
+    },
+    {
+      "id": "CA-004",
+      "claim": "Preserve explicit permission handling for skill-derived tools, shell expansion, hooks, forked agents, model changes, and effort changes.",
+      "status": "mapped",
+      "latest_resolve_phase": "planning"
+    },
+    {
+      "id": "CA-005",
+      "claim": "Snapshot or otherwise preserve workflow skill provenance for running, pending, completed, resumed, stale-template, and missing-template sessions.",
+      "status": "mapped",
+      "latest_resolve_phase": "planning"
+    },
+    {
+      "id": "CA-006",
+      "claim": "Make workflow skill use and skip/unavailable decisions observable to the user and downstream artifacts.",
+      "status": "mapped",
+      "latest_resolve_phase": "specification"
+    },
+    {
+      "id": "CA-007",
+      "claim": "Validate workflow skill bindings in workflow template authoring, import/export, duplicate/update, and session start paths.",
+      "status": "mapped",
+      "latest_resolve_phase": "planning"
+    },
+    {
+      "id": "CA-008",
+      "claim": "Define UI state labels and affordances for authoring and runtime workflow contracts.",
+      "status": "mapped",
+      "latest_resolve_phase": "specification"
+    },
+    {
+      "id": "CA-009",
+      "claim": "Preserve workflow skill evidence, completion evidence, and transition provenance through compaction, resume, final reports, and imports.",
+      "status": "mapped",
+      "latest_resolve_phase": "planning"
+    },
+    {
+      "id": "CA-010",
+      "claim": "Prevent recursive or unbounded nested skill invocation.",
+      "status": "mapped",
+      "latest_resolve_phase": "planning"
+    }
+  ]
+}

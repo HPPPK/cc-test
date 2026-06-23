@@ -1,12 +1,12 @@
-# Handoff To sp-specify: Workflow Phase Skills
+# Handoff To sp-specify: Workflow Phase Execution Contracts
 
 - discussion_slug: workflows
-- drafted_at: 2026-05-29T15:35:05.2241333+08:00
-- handoff_goal: Specify workflow phase skills as recommended bindings to existing skills, including shared-catalog authoring, dependency-aware import/export, active-phase prompt behavior, and lightweight runtime evidence.
+- drafted_at: 2026-06-11T19:24:46.7549232+08:00
+- handoff_goal: Specify workflows as phase execution contracts in cc-jiangxia, including grouped phase fields, soft-by-default constraint semantics, recommended phase skill bindings, dependency-aware sharing, lifecycle/completion status rules, and runtime/editor UI behavior.
 - handoff_status: handoff-ready
-- quality_gate.status: user-confirmed
+- quality_gate.status: user_confirmed
 - user_review_required: true
-- user_confirmed_at: 2026-05-29T15:54:40.6502152+08:00
+- user_confirmed_at: 2026-06-11T19:51:05.4206521+08:00
 
 ## Context Boundary
 
@@ -25,20 +25,20 @@
   - evidence_source: current working directory and `.specify/discussions/workflows/`
   - notes: The active repository is the discussion host.
 - role: product-context
-  - scope: Overall `cc-jiangxia` workflows product and agent capability direction.
-  - evidence_source: user selected a fresh overall workflow direction.
-  - notes: Discussion is not resuming prior handoff-ready workflow discussions.
+  - scope: `cc-jiangxia` workflow product direction, workflow runtime, desktop UI, and skill/capability semantics.
+  - evidence_source: user-confirmed workflow discussion decisions and live repository reads in `project-context.md`
+  - notes: The reopened discussion refreshes an older phase-skill-only handoff into a unified workflow contract handoff.
 
 ### Target Project Roles
 
 - role: implementation-target
-  - scope: `cc-jiangxia` workflow template, runtime, import/export, skill catalog, and desktop workflow authoring surfaces.
-  - evidence_source: user direction plus live reads in `project-context.md`
-  - notes: Current project cognition was stale/blocked; live repository evidence is authoritative.
+  - scope: `cc-jiangxia` workflow template, validation, runtime, import/export, skill catalog/reference, session lifecycle, and desktop workflow UI surfaces.
+  - evidence_source: user-confirmed target boundary and live reads in `project-context.md`
+  - notes: Current project cognition is unavailable/stale for the latest pass; live repository evidence is authoritative for this draft.
 
 ## Implementation Target
 
-Target the existing workflow and skill surfaces in `F:\github\cc-jiangxia`.
+Target the existing workflow, skill, and desktop surfaces in `F:\github\cc-jiangxia`.
 
 Likely target paths to verify during specification/planning:
 
@@ -47,36 +47,43 @@ Likely target paths to verify during specification/planning:
 - `src/server/services/workflowRuntimeService.ts`
 - `src/server/services/workflowToolPolicy.ts`
 - `src/server/services/workflowTemplateRegistryService.ts`
+- `src/server/services/workflowSessionCreateService.ts`
 - `src/server/api/workflowTemplates.ts`
 - `src/server/api/skills.ts`
 - `src/skills/loadSkillsDir.ts`
 - `src/tools/SkillTool/SkillTool.ts`
 - `src/tools/SkillTool/prompt.ts`
+- `src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx`
 - `desktop/src/types/skill.ts`
 - `desktop/src/types/session.ts`
 - `desktop/src/api/skills.ts`
+- `desktop/src/api/sessions.ts`
 - `desktop/src/stores/skillStore.ts`
 - `desktop/src/components/skills/SkillList.tsx`
 - `desktop/src/components/plugins/PluginDetail.tsx`
 - `desktop/src/components/workflow/WorkflowTemplateEditor.tsx`
 - `desktop/src/components/workflow/WorkflowImportExportDialog.tsx`
 - `desktop/src/components/workflow/WorkflowTemplateManager.tsx`
+- `desktop/src/components/workflow/WorkflowTemplatePicker.tsx`
 - `desktop/src/components/workflow/WorkflowStatusPanel.tsx`
-- corresponding same-area tests under `src/server/__tests__`, `src/server/services/*.test.ts`, `desktop/src/__tests__`, and `desktop/src/components/workflow/*.test.tsx`
+- `desktop/src/components/workflow/WorkflowTransitionControls.tsx`
+- same-area tests under `src/server/services/*.test.ts`, `desktop/src/__tests__/`, and `desktop/src/components/workflow/*.test.tsx`
 
 Target paths still to verify:
 
-- Whether a new shared skill catalog service should be extracted from `src/server/api/skills.ts` and `src/skills/loadSkillsDir.ts`.
-- Whether active workflow runtime evidence belongs in session state, phase run records, final report records, or all three.
+- Whether a shared skill catalog/resolver should be extracted from `src/server/api/skills.ts` and `src/skills/loadSkillsDir.ts`.
+- Whether grouped workflow fields are persisted directly in first scope or mapped from existing flat fields through an adapter.
+- Whether active workflow runtime evidence belongs in session state, `phaseRuns`, artifacts, final report records, or a combination.
+- Whether broader managed/bundled/MCP skill sources can be aligned in first scope or should be carried as explicit dependency statuses.
 
-Current project cognition status: blocked/stale. Treat project cognition as advisory only; prove implementation facts with live code before changing behavior.
+Current project cognition status: unavailable/stale for latest runtime UI pass. Treat project cognition as advisory only; prove implementation facts with live code before changing behavior.
 
 ## Source Evidence
 
 - source_type: live-code
   - evidence_status: proved
   - source: `src/tools/SkillTool/prompt.ts`
-  - claim: Matching skills are a blocking requirement for the agent to consider before responding.
+  - claim: Matching skills are treated as important invocation requirements by the existing Skill tool prompt.
 - source_type: live-code
   - evidence_status: proved
   - source: `src/tools/SkillTool/SkillTool.ts`
@@ -88,23 +95,27 @@ Current project cognition status: blocked/stale. Treat project cognition as advi
 - source_type: live-code
   - evidence_status: proved
   - source: `src/server/services/workflowTypes.ts`
-  - claim: Current `WorkflowSkillDeclaration` is prompt guidance from templates, not an executable skill binding.
+  - claim: Workflow types already define lifecycle statuses, phase statuses, completion submission statuses, phase fields, required artifacts, completion criteria, transition authority, action policy, and phase prompt.
 - source_type: live-code
   - evidence_status: proved
   - source: `src/server/services/workflowRuntimeService.ts`
-  - claim: Runtime prompt assembly currently renders workflow skill guidance as guidance.
+  - claim: Runtime prompt assembly already includes phase instructions, phase prompt, action policy, recommended skills, required artifacts, completion criteria, prior artifacts, skill guidance, and model resolution. Ready submissions can auto-advance or enter pending confirmation; non-ready submissions remain running with blocked evidence.
 - source_type: live-code
   - evidence_status: proved
   - source: `src/server/services/workflowToolPolicy.ts`
-  - claim: Current policy explicitly says workflow skill declarations do not enable SkillTool globally.
+  - claim: `submit_phase_completion` is the workflow-scoped completion tool and requires phaseId, stateVersion, status, handoff, rationale, and evidence; current recommended phase skills do not grant tool permissions.
 - source_type: live-code
   - evidence_status: proved
   - source: `src/server/services/workflowTemplateValidation.ts`
   - claim: Current phase `skills` normalization allows objects with `name`, limited source values, optional `reason`, and unknown fields.
 - source_type: live-code
   - evidence_status: proved
+  - source: `src/server/services/workflowTemplateRegistryService.ts`
+  - claim: Unknown fields are preserved during workflow template writes, which supports compatibility-aware evolution.
+- source_type: live-code
+  - evidence_status: proved
   - source: `src/server/api/workflowTemplates.ts`
-  - claim: Current workflow export exports template JSON and does not bundle skill package contents.
+  - claim: Current workflow export emits template JSON and does not bundle external skill packages.
 - source_type: live-code
   - evidence_status: proved
   - source: `src/server/api/skills.ts`, `desktop/src/api/skills.ts`, `desktop/src/stores/skillStore.ts`
@@ -112,188 +123,270 @@ Current project cognition status: blocked/stale. Treat project cognition as advi
 - source_type: live-code
   - evidence_status: proved
   - source: `desktop/src/components/workflow/WorkflowTemplateEditor.tsx`
-  - claim: Phase skills are currently edited through an advanced freeform textarea and converted line-by-line into skill declarations.
+  - claim: Current workflow template editor exposes many phase contract fields and currently edits phase skills through an advanced freeform textarea.
+- source_type: live-code
+  - evidence_status: proved
+  - source: `desktop/src/components/workflow/WorkflowTransitionControls.tsx`
+  - claim: Current runtime controls already distinguish pending confirmation, manual completion with summary/evidence, and retry behavior.
+- source_type: live-code
+  - evidence_status: proved
+  - source: `desktop/src/components/workflow/WorkflowStatusPanel.tsx`
+  - claim: Runtime UI gives pending confirmation display priority and separates artifact/history detail from status summary.
+- source_type: live-code
+  - evidence_status: proved
+  - source: `desktop/src/pages/ActiveSession.tsx`
+  - claim: Active session UI wires workflow status and transition controls and hides controls for completed/stale/missing-template sessions.
+- source_type: live-code
+  - evidence_status: proved
+  - source: `desktop/src/components/workflow/WorkflowComponents.test.tsx`
+  - claim: Existing tests cover pending confirmation controls, state-version/idempotent transition context, manual completion evidence, pending-over-stale priority, and no unsafe advancement controls for blocked/unable states.
 - source_type: user-confirmation
   - evidence_status: confirmed
-  - source: discussion log
-  - claim: User confirmed phase skills should bind to skills, not plugins; plugin identity is provenance/dependency only.
-- source_type: user-confirmation
-  - evidence_status: confirmed
-  - source: discussion log
-  - claim: User confirmed import-with-warnings for missing recommended phase skills.
-- source_type: user-confirmation
-  - evidence_status: confirmed
-  - source: discussion log
-  - claim: User confirmed UI mainline: phase-local selector, import/export diagnostics, lightweight runtime status.
+  - source: `requirements.md`, `open-questions.md`, `discussion-log.md`
+  - claim: User confirmed the unified workflow contract handoff boundary.
+- source_type: project-cognition
+  - evidence_status: degraded
+  - source: `project-context.md`
+  - claim: Project cognition was stale/blocked earlier and unavailable during the latest runtime UI controls pass. Live repository evidence must be rechecked during specification/planning.
 
-## Must-Preserve Ledger
+## Blocking Unknowns
 
-| id | type | claim | source | downstream_requirement | blocking_level | owner | latest_resolve_phase | status | deferred_to | stop_and_reopen_condition |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MP-001 | goal | Workflow phase skills should become real recommended bindings to existing skills, not prompt-only workflow guidance. | user confirmations; `requirements.md` | Spec must define phase skill as a first-class binding concept over existing skills. | hard | downstream-contract | specification | mapped |  | Reopen if phase skills are represented only as prose guidance. |
-| MP-002 | scope | First scope targets recommended phase skills, shared-catalog authoring, dependency-aware import/export, active-phase prompt emphasis, and lightweight runtime evidence. | `requirements.md` | Keep scope unified and do not expand into full workflow engine scheduling. | hard | downstream-contract | specification | mapped |  | Reopen if scope expands to auto-execution or workflow engine orchestration by default. |
-| MP-003 | non_goal | Recommended phase skills must not auto-execute or block phase completion by default. | user confirmations | Spec must reserve blocking behavior for future required/contract mode. | hard | downstream-contract | specification | mapped |  | Reopen if recommended skills become mandatory completion gates. |
-| MP-004 | decision | Workflow phase bindings target skills, not plugins; plugin identity is provenance/dependency for plugin-provided skills. | user confirmation | Schema and UI must store skill identity first and plugin metadata second. | hard | downstream-contract | specification | mapped |  | Reopen if workflow templates bind to plugins as the primary object. |
-| MP-005 | decision | Phase skill selection comes from the shared capability catalog behind Settings > Skills and plugin capability navigation. | user confirmation; live code | Spec must define or align a shared catalog/resolver consumed by settings, workflow authoring, import/export, and runtime. | hard | downstream-contract | specification | mapped |  | Reopen if workflow authoring uses a separate skill inventory. |
-| MP-006 | decision | Skill references are names-first; source/qualified metadata is added only when ambiguity or portability requires it. | user confirmation | Schema should keep authoring simple while preserving disambiguation fields. | hard | downstream-contract | specification | mapped |  | Reopen if schema requires verbose fully-qualified references for all skills without need. |
-| MP-007 | decision | The phase binding must not duplicate skill-owned description, reason, or appliesWhen semantics. | user confirmation | New UI/schema should not copy skill instructions into workflow templates; existing `reason` must not become the canonical trigger source. | hard | downstream-contract | specification | mapped |  | Reopen if templates duplicate skill descriptions/triggers as source of truth. |
-| MP-008 | decision | Active phase prompt semantics: selected skills are for this phase; pay special attention; invoke when current task matches; do not invoke when irrelevant. | user confirmation | Runtime prompt assembly must include this behavior without overriding user/system/developer/safety rules. | hard | downstream-contract | specification | mapped |  | Reopen if prompt semantics are weaker than normal guidance or stronger than mandatory invocation. |
-| MP-009 | decision | Soft audit records used recommended skills and clearly relevant skipped/unavailable skills only. | user confirmation | Completion/report design must avoid exhaustive noisy checklists. | hard | downstream-contract | specification | mapped |  | Reopen if every recommended skill is mechanically listed as not relevant. |
-| MP-010 | decision | Workflow sharing exports template plus skill dependency manifest and does not bundle skill package contents by default. | user confirmation | Export/import spec must include dependency metadata and avoid copying arbitrary skill files. | hard | downstream-contract | specification | mapped |  | Reopen if export silently implies skills are bundled. |
-| MP-011 | decision | Missing recommended phase skills allow import with warnings; references are preserved and marked unavailable. | user confirmation | Import preview and runtime must show degraded state without blocking import by default. | hard | downstream-contract | specification | mapped |  | Reopen if missing recommended skills are silently dropped or block import. |
-| MP-012 | decision | UI first scope is a phase-local skill selector in `WorkflowTemplateEditor`. | user confirmation; live code | Desktop spec should replace or augment the advanced skills textarea with a shared-catalog selector. | hard | downstream-contract | specification | mapped |  | Reopen if authoring moves to only a workflow-level dependency page. |
-| MP-013 | decision | Import/export surfaces show dependency diagnostics as supporting UI. | user confirmation | `WorkflowImportExportDialog` spec should expose available/missing/ambiguous/unsupported/installable statuses. | hard | downstream-contract | specification | mapped |  | Reopen if imported workflows hide dependency problems. |
-| MP-014 | decision | Runtime UI should show lightweight recommended skill status/evidence only when useful. | user confirmation | Active workflow status should avoid full checklist UX. | soft | downstream-contract | specification | mapped |  | Reopen if runtime UI becomes noisy or hides unavailable relevant skills. |
-| MP-015 | non_goal | Skill-derived permissions, shell behavior, hooks, forked agents, model changes, and effort changes must not bypass existing permission/safety boundaries. | Senior Consequence Analysis | Spec and plan must keep SkillTool permission semantics explicit. | hard | downstream-contract | planning | mapped |  | Reopen if workflows can indirectly grant tools or run skill effects without normal checks. |
-| MP-016 | tradeoff | Future explicit bundle mode may exist only for reviewed project-owned skills with visible file list/security review. | discussion decision | Keep bundling out of default first scope. | soft | downstream-contract | specification | deferred | future-extension | Reopen if first scope tries to bundle user/plugin/MCP skill package contents. |
-| MP-017 | blocking_question | Exact schema fields, catalog coverage, and runtime evidence storage are unresolved implementation details, not product blockers. | assessment | Resolve during specification/planning without changing confirmed behavior. | soft | downstream-contract | planning | deferred | specification/planning | Reopen if these details require changing confirmed product semantics. |
+No hard unknown blocks specification.
 
-## Functional Requirements For sp-specify
+Soft unknowns to carry:
 
-1. Define a first-class workflow phase skill binding model over existing skills.
-2. Preserve recommended-first semantics as the default mode.
-3. Add active phase prompt emphasis for selected recommended skills.
-4. Integrate phase skill resolution with a shared skill catalog/resolver aligned with Settings > Skills.
-5. Preserve plugin identity only as provenance/dependency for plugin-provided skills.
-6. Validate phase skill references on create, update, duplicate, import preview, import commit, export, session start, and resume.
-7. Add workflow package export with skill dependency manifest.
-8. Import workflows with missing recommended phase skills using warnings and degraded state, not import failure.
-9. Keep missing skill references in templates/snapshots until resolved or explicitly removed.
-10. Record lightweight soft audit evidence for used or clearly relevant skipped/unavailable recommended phase skills.
-11. Upgrade desktop workflow template authoring to select phase skills from the shared skill catalog.
-12. Show dependency diagnostics in workflow import/export.
-13. Show only lightweight active runtime skill status/evidence.
+- owner: downstream-contract
+  - latest_resolve_phase: specification
+  - unknown: Exact stable skill reference schema across user/project/plugin/managed/bundled/MCP sources.
+  - stop_and_reopen_condition: Reopen discussion if a proposed schema cannot represent source/provenance or duplicate names without silent ambiguity.
+- owner: downstream-contract
+  - latest_resolve_phase: specification
+  - unknown: Exact adapter boundary between existing flat workflow fields and grouped `intent`/`contract`/`evidencePolicy` semantics.
+  - stop_and_reopen_condition: Reopen if the plan requires destructive template migration without old-template fixtures and migration tests.
+- owner: downstream-contract
+  - latest_resolve_phase: planning
+  - unknown: Exact storage location for runtime evidence, phase skill audit, and final report provenance.
+  - stop_and_reopen_condition: Reopen if runtime evidence can be lost across resume, compaction, or final report generation.
+- owner: downstream-contract
+  - latest_resolve_phase: specification
+  - unknown: Exact UI copy/layout for grouped editor sections and runtime authority labels.
+  - stop_and_reopen_condition: Reopen if UI exposes recommended/guidance fields as hard blockers or mixes manual completion with pending confirmation.
+- owner: evidence
+  - latest_resolve_phase: planning
+  - unknown: Project cognition runtime availability.
+  - stop_and_reopen_condition: Reopen or refresh evidence if project cognition becomes available and contradicts live-read assumptions.
 
-## Non-Goals
+## Downstream Instructions
 
-- Do not auto-execute recommended phase skills.
-- Do not make recommended phase skills hard completion gates.
-- Do not duplicate skill descriptions, triggers, or assets into workflow templates.
-- Do not bind workflow phases directly to plugins.
-- Do not bundle arbitrary skill package contents in workflow export by default.
-- Do not override system, developer, security, or explicit user safety boundaries.
-- Do not silently mutate running/resumed sessions when underlying skill definitions change.
+### Settled Decisions
+
+- Workflows should be specified as phase execution contracts.
+- Template/product semantics are grouped as `intent`, `contract`, and `evidencePolicy`; `runtimeState` remains session-owned.
+- Existing flat fields should be adapted into grouped semantics before any direct persistence migration.
+- Constraint strengths are guidance, policy, evidence, and gate.
+- Hard gates remain sparse and explainable: required artifacts, completion criteria, transition authority, and explicit user confirmation.
+- Recommended phase skills are fixed on each phase, bind to existing skills, and are soft by default.
+- Recommended phase skill audit is bounded to used or clearly relevant skipped/unavailable skills.
+- Workflow sharing uses template plus skill dependency manifest by default.
+- Missing recommended phase skills allow import with warnings and remain visible in preview/runtime.
+- Lifecycle status and completion submission status are distinct.
+- `blocked` and `unable` are completion outcomes inside recoverable `running`; `failed` is for runtime/system failure.
+- `pending-confirmation` resolves through Confirm, Reject, or Retry and blocks duplicate ready submissions.
+- Runtime UI: pending confirmation shows Confirm/Reject/Retry; manual completion is a separate user override with summary/evidence; blocked/unable shows Retry only; auto-advance is a label; cancel/resume are session-level controls.
+
+### Capability Map
+
+1. Phase contract field model.
+2. Constraint semantics and gate behavior.
+3. Recommended phase skill bindings and soft audit.
+4. Dependency-aware workflow package sharing.
+5. Lifecycle and completion submission state model.
+6. Runtime/editor UI grouping and controls.
+7. Compatibility, validation, old-template fixtures, and state-version protection.
+
+### Recommended Sequence
+
+1. Define source-compatible field/adapter contract and validation behavior.
+2. Define runtime prompt/completion/evidence semantics.
+3. Define phase skill reference/dependency manifest behavior.
+4. Specify template editor Intent/Contract/Evidence grouping and runtime status/control UI.
+5. Specify lifecycle, import/export, old-template, and UI regression coverage.
+6. Plan implementation slices only after compatibility and validation rules are explicit.
+
+### Dependencies
+
+- Existing workflow runtime and template schema.
+- Existing Skills API/store/catalog behavior.
+- Existing SkillTool invocation and permission semantics.
+- Existing workflow import/export surfaces.
+- Desktop workflow template editor, status panel, and transition controls.
+
+### Deferred Scope
+
+- Full workflow execution engine or scheduler.
+- Auto-executing recommended phase skills.
+- Default required skill hard gates.
+- Bundling arbitrary skill packages into workflow exports.
+- Direct destructive persistence migration to grouped fields.
+- Session-level cancel/resume implementation details beyond preserving their separation from phase completion controls.
+
+### Reopen Conditions
+
+- A downstream spec treats recommended skills as auto-executed or hard-gated by default.
+- A downstream spec stores runtime lifecycle data as editable template configuration.
+- A downstream spec collapses `blocked`/`unable` into terminal runtime failure.
+- A downstream spec permits duplicate ready submissions while pending confirmation exists.
+- A downstream spec silently drops missing phase skill references on import.
+- A downstream spec bypasses SkillTool permission/model/tool semantics for workflow-referenced skills.
+- A downstream spec omits old-template fixtures or persistence compatibility.
 
 ## UI Discussion
 
 - ui_discussion_status: completed
+- confirmed_ui_decisions:
+  - Template editor exposes editable Intent, Contract, and Evidence groups.
+  - Runtime/session views expose Runtime Status separately.
+  - Phase skill selection belongs at selected phase level, backed by shared skill catalog.
+  - Import/export surfaces show dependency diagnostics as supporting surfaces.
+  - Runtime status shows recommended phase skill and unavailable state only when useful.
+  - Pending confirmation is the highest-priority runtime UI state.
+  - Blocked/unable outcomes show reason/evidence and Retry, without advancement controls.
+- deferred_ui_decisions:
+  - Exact copy and layout for editor sections.
+  - Exact visual treatment for authority labels and dependency warnings.
+  - Whether runtime status uses tabs, expandable details, or compact strips in each viewport.
+- interaction_expectations:
+  - Confirm approves a pending agent/system ready submission.
+  - Reject rejects pending evidence and returns to running.
+  - Retry supersedes pending evidence or re-attempts completion without advancing.
+  - Manually complete phase is a user override and requires summary/evidence.
+  - Auto advance is a status label, not a button.
+- accessibility_expectations:
+  - Controls must have distinct accessible names.
+  - Pending confirmation, blocked, unable, and missing dependency states must be perceivable without relying on color alone.
+  - Dialogs must have clear labels and focus management.
 - ui_sketches_present: false
 - ui_sketch_summary: none
 - ui_sketch_reference: none
 
-Confirmed UI requirements:
+## Must-Preserve Ledger
 
-- Phase skill selection belongs in the selected phase area of `WorkflowTemplateEditor`.
-- The selector should use the shared skill catalog, grouped by source.
-- Selected skills should display compact chips/list items with name, source, availability, and plugin provenance when relevant.
-- Import/export should show workflow-level skill dependency diagnostics.
-- Runtime workflow status should show recommended skill status only as a concise strip or expandable evidence section.
-- UI should avoid full checklist behavior for every recommended skill.
-
-## Blocking Unknowns
-
-Hard unknowns: none.
-
-Soft unknowns:
-
-- Exact phase skill binding schema fields.
-- Exact shared catalog service/resolver boundary.
-- Whether first implementation aligns all runtime skill sources or starts with user/project/plugin plus explicit unsupported-source diagnostics.
-- Exact runtime evidence storage and report shape.
-- Future required/contract phase skill behavior.
-
-## Downstream Instructions
-
-- Treat this as one coherent feature, not separate unrelated changes.
-- Preserve current workflow template unknown-field compatibility and migration safety.
-- Prefer schema evolution that can read existing `skills` arrays.
-- Decide whether existing `reason` fields are preserved as unknown/legacy metadata, deprecated, or migrated, but do not make them the new source of skill applicability.
-- Use live code as authority because project cognition was stale/blocked.
-- Add tests proportional to affected surfaces: server validation/import/export/runtime prompt/session resume and desktop editor/import/export/status UI.
-- Include regression coverage for missing, ambiguous, unavailable, plugin-disabled, stale, and resolved skills.
-- Include permission/safety coverage for any skill-derived allowed tools, shell behavior, forked agents, model, or effort effects.
+| ID | Type | Claim | Source | Downstream Requirement | Blocking | Owner | Latest Resolve | Status | Stop And Reopen |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| MP-001 | goal | Specify workflows as phase execution contracts, not only prose templates or phase skill hints. | user confirmation and `technical-options.md` | Spec goal must center phase contracts with runtime evidence and transition authority. | hard | downstream-contract | specification | mapped | Reopen if workflow contract semantics are reduced to cosmetic editor grouping. |
+| MP-002 | scope | Unified scope includes grouped fields, constraints, phase skills, sharing, lifecycle, UI, compatibility, and validation. | OQ-018 user confirmation | Spec must keep these as one coherent feature boundary. | hard | downstream-contract | specification | mapped | Reopen if downstream splits away lifecycle or UI controls and loses consistency. |
+| MP-003 | decision | Use `intent`, `contract`, `evidencePolicy`, and session-owned `runtimeState` as grouped semantics. | `technical-options.md` | Spec must define mapping from existing flat fields and future persistence shape. | hard | downstream-contract | specification | mapped | Reopen if runtime state becomes editable template data. |
+| MP-004 | decision | Constraints are guidance, policy, evidence, and gate; hard gates stay sparse and explainable. | `technical-options.md` | Spec must distinguish soft guidance from gates and state which fields block transition. | hard | downstream-contract | specification | mapped | Reopen if every instruction becomes a hard machine gate. |
+| MP-005 | decision | Recommended phase skills bind to existing skills, not plugins, and are soft by default. | `requirements.md`, OQ-006, OQ-014 | Spec must preserve skill identity/provenance and avoid default auto-execution. | hard | downstream-contract | specification | mapped | Reopen if plugins become the primary binding target or recommended skills auto-run. |
+| MP-006 | decision | Soft audit records used or clearly relevant skipped/unavailable recommended skills only. | OQ-007, OQ-008 | Spec must define bounded evidence shape without noisy exhaustive checklisting. | hard | downstream-contract | specification | mapped | Reopen if audit lists every recommended skill mechanically or records nothing. |
+| MP-007 | decision | Workflow sharing uses template plus dependency manifest, not bundled arbitrary skill packages by default. | OQ-015 | Spec must include import preview statuses and degraded run behavior for missing dependencies. | hard | downstream-contract | specification | mapped | Reopen if import silently drops missing skill references or export implies bundled skills. |
+| MP-008 | decision | Lifecycle status and completion submission outcome are separate. | OQ-016 | Spec must preserve `ready`/`blocked`/`unable` as submission outcomes and lifecycle as session/phase state. | hard | downstream-contract | specification | mapped | Reopen if normal blocked/unable outcomes become terminal runtime failures. |
+| MP-009 | decision | Pending confirmation resolves only through confirm, reject, or retry and blocks duplicate ready submissions. | OQ-016, OQ-017, live runtime evidence | Spec must preserve stateVersion protection and pending conflict behavior. | hard | downstream-contract | specification | mapped | Reopen if pending ready submissions can be overwritten silently. |
+| MP-010 | decision | Runtime controls distinguish pending confirmation, manual completion, blocked/unable retry, auto-advance label, and session-level cancel/resume. | OQ-017 | Spec UI requirements must prevent unsafe advancement controls in blocked/unable states. | hard | downstream-contract | specification | mapped | Reopen if UI mixes manual completion with pending confirmation or uses auto-advance as a button. |
+| MP-011 | tradeoff | First scope is compatibility-aware and should adapt existing flat fields before direct grouped persistence migration. | `technical-options.md` | Planning must include old-template fixtures and migration tests before direct persistence changes. | hard | downstream-contract | planning | mapped | Reopen if implementation requires destructive migration without fixtures. |
+| MP-012 | non_goal | Do not build a full workflow execution engine, scheduler, or default auto-executing skill system in this scope. | `requirements.md`, `technical-options.md` | Spec must defer orchestration-engine behavior and required skill gates unless explicitly scoped later. | hard | downstream-contract | specification | mapped | Reopen if feature expands into general scheduler/capability engine. |
+| MP-013 | reference | Live repository evidence is authoritative because project cognition was stale/unavailable. | `project-context.md` | Spec/planning must recheck live files and rerun cognition if available before implementation. | soft | evidence | planning | deferred | Reopen if restored cognition contradicts live-read assumptions. |
 
 ## Senior Consequence Analysis
 
+### Gate Status
+
+- triggered: yes
+- trigger_reason: Workflow contracts affect prompt behavior, skill invocation semantics, tool permissions, template schema, import/export, shared catalog state, session lifecycle, pending confirmations, stale/missing templates, and desktop UI controls.
+
 ### Affected Object Map
 
-- Skill catalog entries from user, project, plugin, managed, bundled, and MCP sources.
-- Skill metadata including allowed tools, model, effort, `context=fork`, agent, hooks, shell expansion, user invocability, and disable-model-invocation.
+- Skill catalog entries and skill source metadata for user, project, plugin, managed, bundled, MCP, and unknown sources.
+- Skill metadata that can affect tools, model, effort, context fork, agents, hooks, shell expansion, user invocability, and disable-model-invocation.
 - SkillTool invocation records and context modifiers.
-- Workflow templates and phase skill declarations.
-- Workflow template validation, registry writes, unknown-field preservation, import/export wrappers, and desktop authoring APIs.
-- Workflow session state, phase runs, template snapshots, active prompts, final reports, and resume/stale/missing-template states.
-- Desktop Settings > Skills, Plugin Detail capability navigation, Workflow Template Editor, Workflow Import/Export Dialog, Workflow Manager, and Workflow Status Panel.
+- Workflow templates, phase definitions, phase prompts, action policies, required artifacts, completion criteria, transition authority, phase skill declarations/references, and unknown fields.
+- Workflow template validation and registry persistence.
+- Workflow session state, template snapshots, active phase, phase runs, pending confirmations, state versions, transition history, artifact index, final reports, stale-template and missing-template states.
+- Workflow runtime prompt assembly and phase transition behavior.
+- Workflow-scoped tool policy and `submit_phase_completion`.
+- Workflow import/export packages and dependency diagnostics.
+- Desktop workflow template editor, manager, import/export dialog, picker, status panel, transition controls, active session strip, and tests.
+- Downstream users of workflow artifacts, final reports, resumed sessions, and imported shared workflows.
 
 ### State-Behavior Matrix
 
-- created: resolve selected phase skill references and record diagnostics before phase work starts.
-- running: surface recommended skills in active phase prompt; mark unavailable skills explicitly.
-- pending-confirmation: preserve used/skipped/unavailable evidence before transition approval.
-- failed: distinguish workflow failure from skill resolution/execution failure.
-- cancelled: do not retry skill resolution/execution automatically.
-- completed: final report preserves relevant phase skill evidence.
-- resumed: use session snapshot/provenance and re-resolve carefully; do not silently change behavior from edited skill definitions.
-- stale-template: avoid replacing session skill bindings with newer template bindings without a defined policy.
-- missing-template: preserve snapshot skill bindings if available and report missing source template separately.
+| State | Required Behavior |
+| --- | --- |
+| `created` | Resolve/validate template and phase skill references before phase work begins; report unresolved dependencies as diagnostics. |
+| `running` | Active phase receives grouped contract context; blocked/unable attempts remain recoverable with reason/evidence and retry path. |
+| `pending-confirmation` | Preserve pending evidence and artifact lifecycle; expose Confirm/Reject/Retry only; block duplicate ready submissions. |
+| `completed` | Preserve accepted artifacts, phase completion evidence, final report pointers, skill audit, and transition history. |
+| `failed` | Reserve for runtime/system failure, not ordinary completion inability; recovery must be explicit. |
+| `cancelled` | Treat as terminal stop unless a separate recovery flow is specified; do not silently resume. |
+| `resumed` | Treat as an event/status marker; continue from restored lifecycle state and record provenance. |
+| `stale-template` | Session snapshot remains authoritative; show warning and do not silently replace behavior. |
+| `missing-template` | Continue from snapshot if available and report source template absence separately. |
+| imported-with-missing-skills | Import can proceed for recommended skills with warnings, preserved references, and unavailable runtime status. |
 
 ### Dependency Impact Table
 
-- `src/tools/SkillTool/SkillTool.ts`: invocation, permissions, forked behavior, model/effort context modifiers, audit.
-- `src/tools/SkillTool/prompt.ts`: matching skill invocation expectations.
-- `src/skills/loadSkillsDir.ts`: actual runtime skill sources and metadata.
-- `src/server/api/skills.ts`: current Settings skill catalog API; likely needs shared resolver extraction or alignment.
-- `src/server/services/workflowTypes.ts`: workflow schema/session/final report contracts.
-- `src/server/services/workflowTemplateValidation.ts`: template skill reference validation and normalization.
-- `src/server/services/workflowRuntimeService.ts`: active phase prompt assembly and runtime evidence.
-- `src/server/services/workflowToolPolicy.ts`: current boundary between prompt guidance and tool/SkillTool capability.
-- `src/server/api/workflowTemplates.ts`: export/import package and dependency diagnostics.
-- `desktop/src/components/workflow/WorkflowTemplateEditor.tsx`: primary authoring UI.
-- `desktop/src/components/workflow/WorkflowImportExportDialog.tsx`: dependency diagnostics UI.
-- `desktop/src/components/workflow/WorkflowStatusPanel.tsx`: active runtime status/evidence UI.
+| Dependency | Impact |
+| --- | --- |
+| `workflowTypes.ts` | Owns schema/status contracts; changes affect persistence, API shape, and UI expectations. |
+| `workflowTemplateValidation.ts` | Must validate grouped/flat compatibility, source values, dependency manifest, old templates, and unknown fields. |
+| `workflowTemplateRegistryService.ts` | Must preserve unknown fields and avoid destructive migration. |
+| `workflowRuntimeService.ts` | Must assemble grouped prompt context, completion evidence, lifecycle transitions, stateVersion checks, and skill audit. |
+| `workflowToolPolicy.ts` | Must preserve workflow-scoped tool behavior and not grant SkillTool permissions implicitly. |
+| `workflowTemplates` API | Must export/import dependency metadata and diagnostics without bundling skill contents by default. |
+| `skills` API/loaders | Must provide shared catalog/resolution behavior for workflow authoring and import/runtime validation. |
+| `SkillTool` | Existing invocation/permission/model semantics must not be bypassed by workflow references. |
+| Desktop workflow editor/status controls | Must present grouped fields and safe runtime controls that match lifecycle semantics. |
+| Tests and quality gates | Must cover schema compatibility, import/export, lifecycle transitions, UI controls, and old fixtures. |
 
 ### Recovery And Validation Contract
 
-- Add stable schema and migration/compatibility handling before changing authoring UI.
-- Validate skill references without requiring missing recommended skills to block import.
-- Preserve unresolved references in templates and session snapshots.
-- Record resolution status and soft audit evidence in durable state/report paths.
-- Keep permission prompts explicit for skill-derived tools, shell behavior, hooks, forked agents, model changes, and effort changes.
-- Provide rollback by preserving old template fields and unknown fields.
-- Verify with unit tests, server request-shape tests, desktop component tests, and targeted workflow runtime tests.
+- Define stable phase skill reference identity and source/provenance behavior.
+- Validate workflow templates on create/update/duplicate/import/session start.
+- Preserve session snapshots and unknown fields.
+- Record completion evidence, artifact refs, transition history, stateVersion, and skill audit.
+- Enforce pending confirmation conflict behavior and stale action protection.
+- Keep permission prompts and SkillTool semantics explicit.
+- Provide old-template fixtures before direct persistence migration.
+- Add server tests for runtime prompt assembly, completion submissions, transition behavior, validation, import/export, stale/missing template behavior, and final report evidence.
+- Add desktop tests for Intent/Contract/Evidence grouping, dependency diagnostics, runtime status, Confirm/Reject/Retry, manual completion, blocked/unable controls, and stateVersion/transition id submission.
+- Run relevant local gates before PR readiness: `bun run check:server`, `bun run check:desktop`, and `bun run verify` when implementation occurs.
 
 ### Coverage Gaps
 
-- Project cognition was stale/blocked; downstream must use live code reads and may refresh cognition later.
-- Current Settings skill API and runtime skill loader may not expose identical source universes.
-- Exact storage location for skill resolution/evidence is not selected.
-- Required/contract phase skill behavior is intentionally future scope.
+- Project cognition runtime unavailable/stale: carry as soft evidence gap; rerun if available before implementation planning.
+- Exact source universe for shared skill catalog requires specification.
+- Exact grouped persistence migration strategy requires planning.
+- Exact storage of runtime skill audit and evidence requires specification/planning.
+- Exact UI copy/layout requires UI implementation validation.
 
 ### Consequence Obligations
 
-- CA-001: Define stable workflow skill binding identity across local, bundled, plugin, managed, and MCP sources. Owner workflow: sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if a spec lacks source/version semantics.
-- CA-002: Define priority precedence without overriding system, developer, security, or explicit user safety boundaries. Owner workflow: sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if "higher priority" implies unsafe override.
-- CA-003: Define behavior for missing, stale, disabled, invalid, or unavailable workflow skills. Owner workflow: sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if missing skills silently degrade to plain prompt text.
-- CA-004: Preserve explicit permission handling for skill-derived tools, shell expansion, hooks, forked agents, model changes, and effort changes. Owner workflow: sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if workflow skill execution bypasses existing SkillTool permission semantics.
-- CA-005: Snapshot or preserve workflow skill provenance for running, pending, completed, resumed, stale-template, and missing-template sessions. Owner workflow: sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if source skill edits can silently change an active session.
-- CA-006: Make workflow skill execution or non-use observable to the user and downstream artifacts. Owner workflow: sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if relevant skill use/skip/unavailability is invisible.
-- CA-007: Validate workflow skill bindings in workflow template authoring and import/export paths. Owner workflow: sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if invalid references persist without diagnostics.
-- CA-008: Define UI requirements for authoring and inspecting workflow skill bindings. Owner workflow: sp-specify. Latest resolve phase: specification. Status: mapped. Stop-and-reopen: if UI state labels for missing/unavailable/used/skipped are absent.
-- CA-009: Preserve workflow skill evidence through compaction and resume. Owner workflow: sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if compaction drops evidence required for later phase decisions.
-- CA-010: Prevent recursive or unbounded nested skill invocation. Owner workflow: sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if auto-invocation or required invocation is introduced without depth, loop, or retry limits.
+- CA-001: Define stable workflow skill binding identity across local, bundled, plugin, managed, and MCP sources. Owner workflow: sp-discussion -> sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if a handoff/spec lacks source and version/provenance semantics.
+- CA-002: Define priority precedence without overriding system, developer, security, or explicit user safety boundaries. Owner workflow: sp-discussion -> sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if "higher priority" implies unsafe override.
+- CA-003: Define behavior for missing, stale, disabled, invalid, ambiguous, plugin-disabled, unsupported-source, or unavailable workflow skills. Owner workflow: sp-discussion -> sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if missing skills silently degrade to plain prompt text.
+- CA-004: Preserve explicit permission handling for skill-derived tools, shell expansion, hooks, forked agents, model changes, and effort changes. Owner workflow: sp-specify -> sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if workflow skill execution bypasses existing SkillTool permission semantics.
+- CA-005: Snapshot or otherwise preserve workflow skill provenance for running, pending, completed, resumed, stale-template, and missing-template sessions. Owner workflow: sp-specify -> sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if source skill edits can silently change an active session.
+- CA-006: Make workflow skill use and skip/unavailable decisions observable to the user and downstream artifacts. Owner workflow: sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if recommended or future required skills can run or be skipped without visible evidence.
+- CA-007: Validate workflow skill bindings in workflow template authoring, import/export, duplicate/update, and session start paths. Owner workflow: sp-specify -> sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if invalid references can persist without diagnostics.
+- CA-008: Define UI state labels and affordances for authoring and runtime workflow contracts. Owner workflow: sp-discussion -> sp-specify. Latest resolve phase: specification. Status: pending. Stop-and-reopen: if UI-facing authoring is included but required/recommended/missing/stale/executed/skipped states are unspecified.
+- CA-009: Preserve workflow skill evidence, completion evidence, and transition provenance through compaction, resume, final reports, and imports. Owner workflow: sp-specify -> sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if compaction/resume drops provenance needed for later phase decisions.
+- CA-010: Prevent recursive or unbounded nested skill invocation. Owner workflow: sp-specify -> sp-plan. Latest resolve phase: planning. Status: pending. Stop-and-reopen: if auto-invocation or required invocation is introduced without depth, loop, and retry limits.
 
 ## Quality Gate
 
-- status: user-confirmed
-- self_reviewed_at: 2026-05-29T15:35:05.2241333+08:00
+- status: user_confirmed
+- self_reviewed_at: 2026-06-11T19:24:46.7549232+08:00
 - user_review_required: true
-- user_confirmed_at: 2026-05-29T15:54:40.6502152+08:00
-- coverage_status: source-grounded-discussion; project-cognition-stale-blocked
+- user_confirmed_at: 2026-06-11T19:51:05.4206521+08:00
+- blocked_reasons: []
+- coverage_status: live-evidence-backed discussion handoff with project-cognition availability gap
 - planning_gate_status: ready-for-specify-user-confirmed
 - hard_unknown_count: 0
 - open_conflict_count: 0
-- blocked_reasons: []
 
-## Next Step
+## Handoff Self-Review
 
-This handoff is user-confirmed and handoff-ready. Use the generated integration's `sp-specify` command form with `.specify/discussions/workflows/handoff-to-specify.md` only when the user explicitly requests the next stage.
+- Markdown and JSON companions must both exist.
+- Shared handoff goal, discussion slug, context boundary, implementation target, quality gate, Must-Preserve IDs, and consequence obligations must match between Markdown and JSON.
+- No hard blockers remain.
+- User confirmation has been received; this handoff is handoff-ready for downstream `sp-specify` consumption.

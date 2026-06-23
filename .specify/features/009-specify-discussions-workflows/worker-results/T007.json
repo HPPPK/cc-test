@@ -1,0 +1,89 @@
+{
+  "task_id": "T007",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "status": "red_accepted",
+  "changed_files": [
+    "src/server/services/workflowPhaseSkillResolver.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowRuntimeService.test.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T007.json"
+  ],
+  "validation_evidence": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts",
+    "exit_code": 1,
+    "result": "RED accepted: 55 passed, 4 failed, 59 total tests across 3 files.",
+    "setup_health": "No syntax, import, dependency, or test setup failures observed.",
+    "failing_behavior_categories": [
+      "Recommended-skill priority is not surfaced as attention-only runtime guidance.",
+      "Workflow prompt/policy guidance does not explain priority as non-safety-overriding metadata.",
+      "Runtime prompt does not instruct material skill audit outcomes: used, relevant-skipped, and relevant-unavailable.",
+      "Runtime prompt does not state explicit SkillTool auto-run and nested/depth guardrails."
+    ],
+    "expected_failure_reasons": [
+      "workflowRuntimeService formatRecommendedSkillsPromptBlock currently lists status/source diagnostics but omits priority semantics.",
+      "workflowRuntimeService assemblePrompt currently returns scheduledToolCalls: [] but does not include explicit auto-run, nested invocation, or depth-limit language.",
+      "workflowRuntimeService prompt guidance does not name the bounded soft-audit outcome vocabulary.",
+      "workflowToolPolicy getWorkflowPromptToolGuidance states recommended skills do not grant permissions, but does not describe priority as attention-only metadata."
+    ],
+    "passing_coverage": [
+      "Resolver now covers stable identity/provenance for project-local, bundled, plugin, managed, and MCP recommended skill references.",
+      "Existing permission and completion tests remained intact outside the intended RED assertions."
+    ]
+  },
+  "must_preserve_evidence": {
+    "MP-005": {
+      "preserved": true,
+      "evidence": "Tests keep recommended skills soft by asserting priority is attention metadata and does not grant SkillTool access or permissions."
+    },
+    "MP-006": {
+      "preserved": true,
+      "evidence": "Runtime RED test requires bounded material audit vocabulary for used, relevant-skipped, and relevant-unavailable rather than a mechanical unused checklist."
+    },
+    "CA-004": {
+      "preserved": true,
+      "evidence": "Tool policy test asserts priority recommendations do not add SkillTool to workflow-scoped tools; existing permission tests still pass."
+    },
+    "CA-010": {
+      "preserved": true,
+      "evidence": "Runtime RED test requires explicit auto-run, nested invocation, and depth guardrail language while scheduledToolCalls remains empty."
+    }
+  },
+  "ca_evidence": {
+    "CA-001": {
+      "covered": true,
+      "evidence": "workflowPhaseSkillResolver.test.ts adds a stable identity/provenance matrix for project-local, bundled, plugin, managed, and MCP skill references."
+    },
+    "CA-002": {
+      "covered": true,
+      "evidence": "workflowToolPolicy.test.ts asserts priority must be described as attention metadata, not a safety override or permission grant."
+    },
+    "CA-003": {
+      "covered": true,
+      "evidence": "Existing resolver diagnostics for missing, ambiguous, unsupported-source, plugin-disabled, and invalid-reference remain in the targeted run and passed."
+    },
+    "CA-004": {
+      "covered": true,
+      "evidence": "Existing and new tool-policy assertions preserve SkillTool permission boundaries for recommended and priority recommendations."
+    },
+    "CA-005": {
+      "covered": true,
+      "evidence": "Existing runtime test for startPhase snapshotting recommended skill resolutions remained in the targeted run and passed."
+    },
+    "CA-006": {
+      "covered": true,
+      "evidence": "New runtime RED test requires prompt guidance for material used, relevant-skipped, and relevant-unavailable audit outcomes."
+    },
+    "CA-010": {
+      "covered": true,
+      "evidence": "New runtime RED test requires explicit recommended-skill auto-run and nested/depth guardrail language with no scheduled tool calls."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [
+    "T008 should update workflowRuntimeService recommended-skill prompt assembly to include priority labels as attention-only metadata and not as safety or permission overrides.",
+    "T008 should add bounded soft-audit guidance for material used, relevant-skipped, and relevant-unavailable skill outcomes without mechanically listing every unused recommendation.",
+    "T008 should make auto-run and recursion/depth guardrails explicit while preserving scheduledToolCalls as an empty array for recommended skills.",
+    "T008 should update workflowToolPolicy prompt guidance so priority recommendations remain advisory and do not expose SkillTool globally."
+  ]
+}

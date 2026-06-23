@@ -1,11 +1,11 @@
 {
-  "ai": "codex",
+  "ai": "claude",
   "ai_skills": true,
   "branch_numbering": "sequential",
   "constitution_profile": "product",
   "here": true,
-  "integration": "codex",
+  "integration": "claude",
   "preset": null,
   "script": "ps",
-  "speckit_version": "0.5.6"
+  "speckit_version": "0.5.12.dev0"
 }

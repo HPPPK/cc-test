@@ -1,0 +1,62 @@
+{
+  "id": "T015",
+  "title": "Add server completion transition and evidence tests",
+  "story": "US4",
+  "agent": "test-engineer",
+  "depends_on": ["T010"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-transition-submission.md",
+    ".specify/memory/learnings/learn-2026-05-28-desktop-workflow-pending-confirmation-over-running-statu-b45c8345ca.md",
+    "src/server/services/__fixtures__/workflow-sessions"
+  ],
+  "write_scope": [
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowSessionStateService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    "src/services/compact/workflowSummaryCarryover.test.ts",
+    "src/server/services/__fixtures__/workflow-sessions/pending-skill-evidence-state.json"
+  ],
+  "read_scope": [
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowSummary.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for ready, blocked, and unable submissions",
+    "Tests for stateVersion idempotency",
+    "Tests for duplicate ready rejection while pending",
+    "Tests for confirm, reject, and retry",
+    "Final report evidence and compact summary carryover tests"
+  ],
+  "anti_goals": [
+    "Do not implement runtime changes"
+  ],
+  "does_not_remove": [
+    "MP-008",
+    "MP-009",
+    "CA-005",
+    "CA-009"
+  ],
+  "capability_operations": [
+    "CAP-005 server test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail only for missing transition or evidence behavior"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSessionStateService.test.ts src/server/services/workflowFinalReport.test.ts src/services/compact/workflowSummaryCarryover.test.ts"
+  ],
+  "handoff_format": [
+    "transition_cases",
+    "expected_state_snapshots"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

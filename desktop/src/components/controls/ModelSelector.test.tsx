@@ -115,6 +115,62 @@ describe('ModelSelector', () => {
     expect(setSessionRuntime).toHaveBeenCalledWith('session-1', {
       providerId: 'provider-a',
       modelId: 'provider-fast',
+    }, {
+      previousSelection: null,
+    })
+  })
+
+  it('passes the previous runtime selection when switching provider-scoped models', async () => {
+    const setSessionRuntime = vi.fn()
+    useSettingsStore.setState({
+      locale: 'en',
+      availableModels: MODELS,
+      currentModel: MODELS[0],
+      activeProviderName: 'Provider A',
+    })
+    useProviderStore.setState({
+      providers: [{
+        id: 'provider-a',
+        presetId: 'custom',
+        name: 'Provider A',
+        apiKey: '***',
+        baseUrl: 'https://api.example.com',
+        apiFormat: 'anthropic',
+        models: {
+          main: 'provider-main',
+          haiku: 'provider-fast',
+          sonnet: 'provider-main',
+          opus: '',
+        },
+      }],
+      activeId: 'provider-a',
+      hasLoadedProviders: true,
+      isLoading: true,
+    })
+    useSessionRuntimeStore.getState().setSelection('session-1', {
+      providerId: 'provider-a',
+      modelId: 'provider-main',
+    })
+    useChatStore.setState({
+      setSessionRuntime,
+    } as Partial<ReturnType<typeof useChatStore.getState>>)
+
+    render(<ModelSelector runtimeKey="session-1" />)
+
+    await clickByRole(/provider-main/i)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /provider-fast/ }))
+      await Promise.resolve()
+    })
+
+    expect(setSessionRuntime).toHaveBeenCalledWith('session-1', {
+      providerId: 'provider-a',
+      modelId: 'provider-fast',
+    }, {
+      previousSelection: {
+        providerId: 'provider-a',
+        modelId: 'provider-main',
+      },
     })
   })
 

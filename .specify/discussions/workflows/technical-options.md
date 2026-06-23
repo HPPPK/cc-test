@@ -428,6 +428,67 @@ Recommended labels:
 
 UI rule: controls should describe the authority source, not just the action. The user should be able to tell whether the phase is waiting for agent-ready confirmation, manual user completion, auto-advance, recovery, or cancellation.
 
+## Confirmed New Handoff Boundary
+
+Decision confirmed on 2026-06-11: if the user asks to carry this discussion into `sp-specify`, the handoff should be a refreshed unified workflow contract handoff, not a narrow update to the older phase-skill-only handoff.
+
+Recommended handoff goal:
+
+> Specify workflows as phase execution contracts in cc-jiangxia, including grouped phase fields, soft-by-default constraint semantics, recommended phase skill bindings, dependency-aware sharing, lifecycle/completion status rules, and runtime/editor UI behavior.
+
+Recommended capability map:
+
+1. **Phase contract field model**
+   - Define grouped semantics: `intent`, `contract`, `evidencePolicy`, and session-owned `runtimeState`.
+   - Preserve compatibility with existing flat fields through an adapter before any direct persistence migration.
+
+2. **Constraint semantics**
+   - Use guidance, policy, evidence, and gate strengths.
+   - Keep hard gates sparse: required artifacts, completion criteria, transition authority, and explicit user confirmation.
+
+3. **Recommended phase skills**
+   - Bind phases to existing skills from the shared skill catalog.
+   - Keep recommended skills soft by default, with bounded evidence for used or clearly relevant skipped/unavailable skills.
+   - Export references plus dependency manifest, not arbitrary skill package contents.
+
+4. **Lifecycle and completion model**
+   - Separate phase/session lifecycle from completion submission outcome.
+   - Treat `ready`, `blocked`, and `unable` as submission outcomes.
+   - Keep `blocked` and `unable` recoverable inside `running`; reserve `failed` for runtime/system failure.
+
+5. **Runtime and authoring UI**
+   - Template editor groups editable fields as Intent, Contract, and Evidence.
+   - Runtime views show Status separately.
+   - Pending confirmation exposes Confirm/Reject/Retry.
+   - Manual completion is an explicit user override with summary/evidence.
+   - Blocked/unable shows Retry only.
+   - Auto-advance is a status/authority label; cancel/resume are session-level controls.
+
+6. **Validation and compatibility**
+   - Validate old templates and imported workflow packages.
+   - Preserve unknown fields and session snapshots.
+   - Add old-template fixtures before direct schema migration.
+   - Protect transition actions with `stateVersion` and transition history.
+
+Recommended deferred scope:
+
+- Full workflow execution engine or scheduler.
+- Auto-executing recommended skills.
+- Required skill hard gates except narrow future quality-gate phases.
+- Bundling arbitrary skill package contents into workflow exports.
+- Direct destructive migration from flat persisted fields to grouped persisted fields.
+- Session-level cancel/resume implementation details beyond preserving them as separate lifecycle/recovery controls.
+
+Recommended sequencing:
+
+1. Define field/adapter contract and validation behavior.
+2. Update runtime prompt/completion evidence semantics.
+3. Update template editor grouping and runtime status/control UI.
+4. Add dependency-aware import/export diagnostics for phase skills.
+5. Add lifecycle, old-template, import/export, and UI regression coverage.
+
+This should be one coherent handoff because splitting schema, runtime lifecycle, and UI controls would create drift between what a workflow author defines, what the agent sees, and what the user can approve.
+
 ## Senior Consequence Analysis
 
 ### Affected Object Map

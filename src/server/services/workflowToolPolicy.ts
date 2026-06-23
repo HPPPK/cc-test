@@ -1,6 +1,7 @@
-import type { WorkflowPhaseActionPolicy, WorkflowSessionState } from './workflowTypes.js'
+import type { WorkflowPhaseActionPolicy, WorkflowPhaseToolPolicy, WorkflowSessionState } from './workflowTypes.js'
 
 export const SUBMIT_PHASE_COMPLETION_TOOL_NAME = 'submit_phase_completion'
+export const WORKFLOW_TEMPLATE_AUTHORING_TOOL_NAME = 'workflow_template_authoring'
 
 export const WORKFLOW_PHASE_IMPLEMENTATION_TOOLS = [
   'Write',
@@ -20,7 +21,8 @@ const WORKFLOW_PHASE_FILE_EDIT_TOOLS = [
   'Agent',
 ] as const
 
-const IMPLEMENTATION_PHASE_IDS = new Set(['implementation', 'implement'])
+// User-authored SuperSpec templates can use skill-style phase ids such as "sp-implement".
+const IMPLEMENTATION_PHASE_IDS = new Set(['implementation', 'implement', 'sp-implementation', 'sp-implement'])
 const VERIFICATION_PHASE_ID = 'verification'
 
 export const WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS = [
@@ -29,6 +31,20 @@ export const WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS = [
   'list',
   'inspect',
   'validate',
+] as const
+
+export const WORKFLOW_PHASE_RUNTIME_TOOL_NAMES = [
+  ...WORKFLOW_PHASE_IMPLEMENTATION_TOOLS,
+  WORKFLOW_TEMPLATE_AUTHORING_TOOL_NAME,
+] as const
+
+export const WORKFLOW_PHASE_SCOPED_TOOL_NAMES = [
+  SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+] as const
+
+export const WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES = [
+  ...WORKFLOW_PHASE_RUNTIME_TOOL_NAMES,
+  ...WORKFLOW_PHASE_SCOPED_TOOL_NAMES,
 ] as const
 
 export const WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS = [
@@ -60,6 +76,7 @@ export type WorkflowTemplateAuthoringOperationPolicy = {
     | 'outside-active-workflow'
     | 'implementation-phase'
     | 'custom-policy-allows-workflow-template-authoring'
+    | 'phase-tool-policy-denies-workflow-template-authoring'
     | 'phase-policy-denies-workflow-template-authoring'
     | 'unknown-operation'
   phaseId?: string
@@ -89,6 +106,21 @@ function includesWorkflowTemplateAuthoringAllowance(policy: WorkflowPhaseActionP
       || normalized.includes('authoring workflow templates')
     )
   })
+}
+
+function normalizeWorkflowPhaseId(phaseId: string): string {
+  return phaseId.trim().toLowerCase().replace(/[\s_]+/g, '-')
+}
+
+function isImplementationPhaseId(phaseId: string | null | undefined): boolean {
+  return Boolean(phaseId && IMPLEMENTATION_PHASE_IDS.has(normalizeWorkflowPhaseId(phaseId)))
+}
+
+function builtinWorkflowPhaseActionPolicyFor(phaseId: string): WorkflowPhaseActionPolicy | undefined {
+  if (isImplementationPhaseId(phaseId)) {
+    return BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES.implementation
+  }
+  return BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES[normalizeWorkflowPhaseId(phaseId)]
 }
 
 export const BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES: Record<string, WorkflowPhaseActionPolicy> = {
@@ -154,13 +186,37 @@ export const BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES: Record<string, WorkflowPhas
   },
 }
 
-function activePhaseDefinition(state: WorkflowSessionState): { id: string, actionPolicy?: WorkflowPhaseActionPolicy } | null {
+function normalizePhaseToolPolicy(value: unknown): WorkflowPhaseToolPolicy | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const allowedTools = (value as { allowedTools?: unknown }).allowedTools
+  if (!Array.isArray(allowedTools)) return undefined
+  return {
+    ...(value as Record<string, unknown>),
+    allowedTools: Array.from(new Set(allowedTools.filter((tool): tool is string =>
+      typeof tool === 'string' && tool.trim().length > 0
+    ).map((tool) => tool.trim()))),
+  }
+}
+
+function activePhaseDefinition(
+  state: WorkflowSessionState,
+): { id: string, actionPolicy?: WorkflowPhaseActionPolicy, toolPolicy?: WorkflowPhaseToolPolicy } | null {
   if (!state.activePhaseId) return null
   const definition = state.templateSnapshot?.phases?.find((phase) => phase.id === state.activePhaseId)
   return {
     id: state.activePhaseId,
     actionPolicy: definition?.actionPolicy,
+    toolPolicy: normalizePhaseToolPolicy(definition?.toolPolicy ?? definition?.contract?.toolPolicy),
   }
+}
+
+function explicitAllowedToolNames(
+  state: WorkflowSessionState | null | undefined,
+): Set<string> | null {
+  if (!state || state.mode !== 'workflow') return null
+  const phase = activePhaseDefinition(state)
+  if (!phase?.toolPolicy) return null
+  return new Set(phase.toolPolicy.allowedTools)
 }
 
 export function getWorkflowPhaseActionPolicy(
@@ -169,7 +225,7 @@ export function getWorkflowPhaseActionPolicy(
   if (!state || state.mode !== 'workflow') return null
   const phase = activePhaseDefinition(state)
   if (!phase) return null
-  const policy = phase.actionPolicy ?? BUILTIN_WORKFLOW_PHASE_ACTION_POLICIES[phase.id]
+  const policy = phase.actionPolicy ?? builtinWorkflowPhaseActionPolicyFor(phase.id)
   if (!policy) return null
   return {
     phaseId: phase.id,
@@ -183,8 +239,13 @@ export function getWorkflowPhaseDisallowedTools(
 ): string[] {
   if (!state || state.mode !== 'workflow') return []
   if (!state.activePhaseId) return []
-  if (IMPLEMENTATION_PHASE_IDS.has(state.activePhaseId)) return []
-  if (state.activePhaseId === VERIFICATION_PHASE_ID) return [...WORKFLOW_PHASE_FILE_EDIT_TOOLS]
+  const explicitAllowedTools = explicitAllowedToolNames(state)
+  if (explicitAllowedTools) {
+    return WORKFLOW_PHASE_RUNTIME_TOOL_NAMES.filter((toolName) => !explicitAllowedTools.has(toolName))
+  }
+  const activePhaseId = normalizeWorkflowPhaseId(state.activePhaseId)
+  if (isImplementationPhaseId(activePhaseId)) return []
+  if (activePhaseId === VERIFICATION_PHASE_ID) return [...WORKFLOW_PHASE_FILE_EDIT_TOOLS]
   return [...WORKFLOW_PHASE_IMPLEMENTATION_TOOLS]
 }
 
@@ -213,6 +274,22 @@ export function getWorkflowTemplateAuthoringOperationPolicy(
 ): WorkflowTemplateAuthoringOperationPolicy {
   const readOnly = isWorkflowTemplateAuthoringReadOnlyOperation(operation)
   const mutating = isWorkflowTemplateAuthoringMutatingOperation(operation)
+
+  if (
+    isActiveWorkflowState(state)
+    && isWorkflowPhaseToolDenied(WORKFLOW_TEMPLATE_AUTHORING_TOOL_NAME, state)
+  ) {
+    return {
+      operation,
+      allowed: false,
+      denied: true,
+      readOnly,
+      mutating,
+      reason: 'phase-tool-policy-denies-workflow-template-authoring',
+      phaseId: state.activePhaseId,
+      message: `Workflow template authoring operation "${operation}" is denied because the active phase tool policy does not allow ${WORKFLOW_TEMPLATE_AUTHORING_TOOL_NAME}.`,
+    }
+  }
 
   if (readOnly) {
     return {
@@ -253,7 +330,7 @@ export function getWorkflowTemplateAuthoringOperationPolicy(
   const phase = activePhaseDefinition(state)
   const phaseId = phase?.id ?? state.activePhaseId
 
-  if (IMPLEMENTATION_PHASE_IDS.has(phaseId)) {
+  if (isImplementationPhaseId(phaseId)) {
     return {
       operation,
       allowed: true,
@@ -302,7 +379,11 @@ export function getWorkflowScopedToolNames(
   state: WorkflowSessionState | null | undefined,
 ): string[] {
   if (!isActiveWorkflowState(state)) return []
-  return [SUBMIT_PHASE_COMPLETION_TOOL_NAME]
+  const explicitAllowedTools = explicitAllowedToolNames(state)
+  if (explicitAllowedTools) {
+    return WORKFLOW_PHASE_SCOPED_TOOL_NAMES.filter((toolName) => explicitAllowedTools.has(toolName))
+  }
+  return [...WORKFLOW_PHASE_SCOPED_TOOL_NAMES]
 }
 
 export function getWorkflowPromptToolGuidance(
@@ -314,6 +395,8 @@ export function getWorkflowPromptToolGuidance(
     phase.id === state.activePhaseId
   )
   const skillDeclarations = phaseDefinition?.skillDeclarations ?? []
+  const scopedToolNames = getWorkflowScopedToolNames(state)
+  const hasCompletionTool = scopedToolNames.includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)
   const skillGuidance = skillDeclarations
     .map((skill) => {
       const label = skill.id ?? skill.name ?? 'workflow-skill'
@@ -323,13 +406,26 @@ export function getWorkflowPromptToolGuidance(
 
   return [
     'Workflow-only tools',
-    `Use ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} only when the active workflow phase is ready, blocked, or unable to complete.`,
-    `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} requires phaseId, stateVersion, status, handoff, rationale, and evidence.`,
-    `When the active phase is ready, present the handoff and call ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status ready in the same assistant turn.`,
-    'Do not ask the user to type continue before calling the completion tool; the tool creates the user-confirmation step.',
-    'A ready status creates a pending user confirmation and does not advance the workflow by itself.',
-    'Blocked or unable statuses record the response and keep the workflow on the current phase.',
+    hasCompletionTool
+      ? `Use ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} only when the active workflow phase is ready, blocked, or unable to complete.`
+      : `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} is disabled by this phase tool policy; do not claim you can submit phase completion through that tool.`,
+    hasCompletionTool
+      ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} requires phaseId, stateVersion, status, handoff, rationale, and evidence.`
+      : null,
+    hasCompletionTool
+      ? `When the active phase is ready, present the handoff and call ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status ready in the same assistant turn.`
+      : null,
+    hasCompletionTool
+      ? 'Do not ask the user to type continue before calling the completion tool; the tool creates the user-confirmation step.'
+      : null,
+    hasCompletionTool
+      ? 'A ready status creates a pending user confirmation and does not advance the workflow by itself.'
+      : null,
+    hasCompletionTool
+      ? 'Blocked or unable statuses record the response and keep the workflow on the current phase.'
+      : null,
     'recommended phase skills do not grant tool permissions and do not enable SkillTool globally.',
+    'A higher priority recommended skill is attention metadata only, not a safety override or permission grant, and still does not expose SkillTool globally.',
     skillGuidance
       ? `Skill declarations are prompt-level guidance only and do not enable SkillTool globally:\n${skillGuidance}`
       : null,

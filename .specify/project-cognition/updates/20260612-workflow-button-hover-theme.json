@@ -1,0 +1,59 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-hover-visual-bugfix",
+  "changed_paths": [
+    "desktop/src/theme/globals.css",
+    "desktop/src/theme/globals.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".planning/debug/workflow-editor-buttons-hover-disappear.md"
+  ],
+  "scope_paths": [
+    "desktop/src/theme/globals.css",
+    "desktop/src/theme/globals.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "behavior_surfaces": [
+    "desktop workflow settings toolbar/editor hover styling",
+    "desktop global theme token contract"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Workflow primary action buttons may use hover:bg-[var(--color-brand-hover)].",
+    "The global desktop theme must define --color-brand-hover for light, white, and dark themes.",
+    "Workflow hover background tokens used by WorkflowTemplateManager and WorkflowTemplateEditor must resolve to defined global theme tokens."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "result": "red before fix: failed because globals.css did not define --color-brand-hover"
+    },
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/theme/globals.test.ts",
+      "result": "53 pass"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "pass"
+    },
+    {
+      "command": "cd desktop; bun run build",
+      "result": "pass"
+    }
+  ],
+  "known_unknowns": [
+    "Interactive browser hover smoke was not run because Playwright is not installed in the root or desktop workspace in this environment.",
+    "Human verification in the running Tauri window is still requested for the exact screenshot interaction."
+  ],
+  "confidence_notes": [
+    "The failing regression test directly matched the missing CSS variable used by workflow primary button hover classes.",
+    "The production build output contains --color-brand-hover after the fix."
+  ],
+  "boundary": {
+    "scope": "Fix undefined hover theme token used by workflow settings primary action buttons.",
+    "excluded": [
+      "Changing workflow template API or persistence behavior",
+      "Changing delete confirmation behavior",
+      "Reintroducing builtin workflow templates"
+    ]
+  }
+}

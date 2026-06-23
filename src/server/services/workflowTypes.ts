@@ -221,6 +221,56 @@ export type WorkflowPhaseActionPolicy = {
   forbiddenActions: string[]
 }
 
+export type WorkflowPhaseToolPolicy = {
+  allowedTools: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseConstraintStrength = 'guidance' | 'policy' | 'evidence' | 'gate'
+
+export type WorkflowPhaseIntentContract = {
+  objective: string
+  role: string
+  intake: string[]
+  strength?: WorkflowPhaseConstraintStrength
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseExecutionContract = {
+  instructions: string
+  executionRules: string[]
+  actionPolicy?: WorkflowPhaseActionPolicy & {
+    strength?: WorkflowPhaseConstraintStrength
+    [key: string]: unknown
+  }
+  toolPolicy?: WorkflowPhaseToolPolicy
+  transitionAuthority: 'auto' | 'user-confirmation'
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseEvidencePolicy = {
+  outputArtifact: WorkflowRequiredArtifact & {
+    name: string
+    description: string
+    strength?: WorkflowPhaseConstraintStrength
+    [key: string]: unknown
+  }
+  requiredArtifacts: WorkflowRequiredArtifact[]
+  completionCriteria: JsonObject & {
+    type: 'manual-checklist' | 'artifact-required' | 'agent-reported'
+    description: string
+    strength?: WorkflowPhaseConstraintStrength
+  }
+  handoffRules: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseRuntimeState = {
+  status?: WorkflowPhaseStatus
+  pendingConfirmation?: boolean
+  [key: string]: unknown
+}
+
 export type WorkflowPhasePrompt = {
   objective: string
   handoffInput: string[]
@@ -242,7 +292,12 @@ export type WorkflowPhaseDefinition = {
   requiredArtifacts: WorkflowRequiredArtifact[]
   completionCriteria: string[] | JsonObject
   transitionAuthority: 'auto' | 'user-confirmation'
+  intent?: WorkflowPhaseIntentContract
+  contract?: WorkflowPhaseExecutionContract
+  evidencePolicy?: WorkflowPhaseEvidencePolicy
+  runtimeState?: WorkflowPhaseRuntimeState
   actionPolicy?: WorkflowPhaseActionPolicy
+  toolPolicy?: WorkflowPhaseToolPolicy
   phasePrompt?: WorkflowPhasePrompt
   [key: string]: unknown
 }
@@ -403,6 +458,8 @@ export type WorkflowTransitionAuthority =
   | 'cancel'
   | 'recovery'
 
+export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear'
+
 export type WorkflowTransitionRecord = {
   transitionId: string
   fromStatus?: WorkflowLifecycleStatus | WorkflowPhaseStatus
@@ -431,6 +488,7 @@ export type WorkflowTransitionRecord = {
   requestId?: string
   previousRevision?: number
   nextRevision?: number
+  nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
 }
 
 export type WorkflowSessionState = {
@@ -469,6 +527,7 @@ export type WorkflowSessionState = {
   lastResumeAt?: string
   lastRecoveryStatus?: 'ok' | 'state-missing' | 'state-corrupt' | 'report-missing' | 'metadata-only'
   pendingConfirmation?: WorkflowPendingConfirmation | null
+  nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   blockedReason?: string | JsonObject
   unknown?: JsonObject
   [key: string]: unknown
@@ -541,9 +600,10 @@ export type WorkflowPhaseArtifact = {
 
 export type WorkflowTransitionRequest = {
   phaseId: string
-  action: 'confirm' | 'reject' | 'retry'
+  action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
   transitionId?: string
   expectedStateVersion?: number
+  nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
 }
 
 export type WorkflowClientMessage = WorkflowTransitionRequest & {

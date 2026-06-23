@@ -8,6 +8,7 @@ import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
 import { getAllBaseTools, getTools } from '../../tools.js'
 import { resetWorkflowTemplateRegistryForTests } from '../../server/services/workflowTemplateRegistryService.js'
 import { toolToAPISchema } from '../../utils/api.js'
+import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js'
 
 const TOOL_NAME = 'workflow_template_authoring'
 const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -83,6 +84,21 @@ function validTemplate(id = 'conversation-workflow') {
       },
     ],
   }
+}
+
+function largeValidTemplate(id = 'large-conversation-workflow') {
+  const template = validTemplate(id)
+  template.description = `A workflow with a large authoring payload. ${'details '.repeat(8_000)}`
+  template.phases[0]!.instructions = `Draft the requested workflow output. ${'Use the gathered context carefully. '.repeat(4_000)}`
+  template.phases[0]!.requiredIntake = Array.from(
+    { length: 80 },
+    (_, index) => `Large intake item ${index + 1}: ${'context '.repeat(250)}`,
+  )
+  template.phases[0]!.handoffRules = Array.from(
+    { length: 80 },
+    (_, index) => `Large handoff rule ${index + 1}: ${'evidence '.repeat(250)}`,
+  )
+  return template
 }
 
 function contextFor(activePhaseId: string | null = null): ToolUseContext {
@@ -222,15 +238,94 @@ describe('WorkflowTemplateAuthoringTool', () => {
       agents: [],
     })
 
-    expect(schema.input_schema).toMatchObject({
-      type: 'object',
-      properties: {
-        operation: expect.objectContaining({
-          enum: ['guide', 'skill_catalog', 'skill_create', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'],
-        }),
+    const inputSchema = schema.input_schema as Record<string, unknown>
+    const properties = inputSchema.properties as Record<string, unknown>
+
+    expect(inputSchema.type).toBe('object')
+    expect(inputSchema.required).toEqual(['operation'])
+    const operation = properties.operation as Record<string, unknown>
+    const template = properties.template as Record<string, unknown>
+    expect(operation.enum).toEqual(['guide', 'skill_catalog', 'skill_create', 'list', 'inspect', 'validate', 'create', 'update', 'duplicate', 'delete'])
+    expect(template.type).toBe('object')
+    expect(template.additionalProperties).toBe(true)
+  })
+
+  test('requests eager input streaming for large template authoring payloads when supported', async () => {
+    const originalDisableExperimentalBetas = process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+    const originalAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL
+    const originalUseBedrock = process.env.CLAUDE_CODE_USE_BEDROCK
+    const originalUseVertex = process.env.CLAUDE_CODE_USE_VERTEX
+    const originalUseFoundry = process.env.CLAUDE_CODE_USE_FOUNDRY
+    const originalUseAzureOpenAI = process.env.CLAUDE_CODE_USE_AZURE_OPENAI
+
+    delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+    delete process.env.ANTHROPIC_BASE_URL
+    delete process.env.CLAUDE_CODE_USE_BEDROCK
+    delete process.env.CLAUDE_CODE_USE_VERTEX
+    delete process.env.CLAUDE_CODE_USE_FOUNDRY
+    delete process.env.CLAUDE_CODE_USE_AZURE_OPENAI
+    clearToolSchemaCache()
+
+    try {
+      const tool = await loadTool()
+      const schema = await toolToAPISchema(tool, {
+        getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+        tools: [],
+        agents: [],
+      }) as { eager_input_streaming?: boolean }
+
+      expect(schema.eager_input_streaming).toBe(true)
+    } finally {
+      if (originalDisableExperimentalBetas === undefined) delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+      else process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = originalDisableExperimentalBetas
+
+      if (originalAnthropicBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL
+      else process.env.ANTHROPIC_BASE_URL = originalAnthropicBaseUrl
+
+      if (originalUseBedrock === undefined) delete process.env.CLAUDE_CODE_USE_BEDROCK
+      else process.env.CLAUDE_CODE_USE_BEDROCK = originalUseBedrock
+
+      if (originalUseVertex === undefined) delete process.env.CLAUDE_CODE_USE_VERTEX
+      else process.env.CLAUDE_CODE_USE_VERTEX = originalUseVertex
+
+      if (originalUseFoundry === undefined) delete process.env.CLAUDE_CODE_USE_FOUNDRY
+      else process.env.CLAUDE_CODE_USE_FOUNDRY = originalUseFoundry
+
+      if (originalUseAzureOpenAI === undefined) delete process.env.CLAUDE_CODE_USE_AZURE_OPENAI
+      else process.env.CLAUDE_CODE_USE_AZURE_OPENAI = originalUseAzureOpenAI
+
+      clearToolSchemaCache()
+    }
+  })
+
+  test('accepts a large workflow template payload for validation without writing config', async () => {
+    delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    const template = largeValidTemplate()
+    expect(JSON.stringify({ operation: 'validate', template }).length).toBeGreaterThan(100_000)
+
+    const tool = await loadTool()
+    const input = { operation: 'validate' as const, template }
+
+    expect(tool.inputSchema.safeParse(input).success).toBe(true)
+
+    const result = await tool.call(
+      input,
+      contextFor(),
+      async () => ({ behavior: 'allow', updatedInput: {} }),
+      {} as never,
+    )
+
+    expect(result.data).toMatchObject({
+      operation: 'validate',
+      status: 'validated',
+      persisted: false,
+      validation: {
+        valid: true,
+        issues: [],
       },
-      required: ['operation'],
+      nextAction: 'none',
     })
+    expect(await readWorkflowConfig()).toBeUndefined()
   })
 
   test('is included in base and ordinary assembled tool pools', async () => {
@@ -356,6 +451,9 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(prompt).toContain('Use skill_catalog before assigning phases[].skills')
     expect(prompt).toContain('If the needed skill is missing, use skill_create first')
     expect(prompt).toContain('returned recommendedReference')
+    expect(prompt).toContain('phases[].skills are auxiliary attention metadata')
+    expect(prompt).toContain('not the workflow phase list or control flow')
+    expect(prompt).toContain('Omit phases[].skills when no installed or created skill fits')
   })
 
   test.each(['skill_create', 'create', 'update', 'duplicate'] as const)('marks %s as mutating and non-destructive', async (operation) => {
@@ -453,8 +551,12 @@ describe('WorkflowTemplateAuthoringTool', () => {
     })
   })
 
-  test('calls the direct authoring service path for duplicate builtin copies when desktop server URL is absent', async () => {
+  test('calls the direct authoring service path for duplicate user workflow templates when desktop server URL is absent', async () => {
     delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [{ ...validTemplate('agent-development'), name: 'Agent Development' }],
+    })
     const tool = await loadTool()
     const context = contextFor()
 
@@ -462,7 +564,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
       {
         operation: 'duplicate',
         selector: {
-          source: 'builtin',
+          source: 'user',
           id: 'agent-development',
         },
       },
@@ -476,21 +578,9 @@ describe('WorkflowTemplateAuthoringTool', () => {
       operation: 'duplicate',
       status: 'succeeded',
       persisted: true,
-      affectedTemplate: {
-        source: 'user',
-        id: 'agent-development-custom',
-        name: 'Agent Development Custom',
-        basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-      },
       beforeSummary: {
-        source: 'builtin',
-        id: 'agent-development',
-        editable: false,
-        copyable: true,
-      },
-      afterSummary: {
         source: 'user',
-        id: 'agent-development-custom',
+        id: 'agent-development',
         editable: true,
         copyable: true,
       },
@@ -500,19 +590,27 @@ describe('WorkflowTemplateAuthoringTool', () => {
       },
       nextAction: 'none',
     })
-    expect(block.content).toContain('operation=duplicate')
-    expect(block.content).toContain('affected=user:agent-development-custom')
-    expect(block.content).toContain('persisted=true')
-    expect(await readWorkflowConfig()).toEqual({
-      schemaVersion: 1,
-      templates: [
-        expect.objectContaining({
-          id: 'agent-development-custom',
-          source: 'user',
-          name: 'Agent Development Custom',
-        }),
-      ],
+    expect(result.data.affectedTemplate).toMatchObject({
+      source: 'user',
+      id: 'agent-development-copy',
+      name: 'Agent Development Copy',
+      basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
+    expect(result.data.afterSummary).toMatchObject({
+      source: 'user',
+      id: 'agent-development-copy',
+      editable: true,
+      copyable: true,
+    })
+    expect(block.content).toContain('operation=duplicate')
+    expect(block.content).toContain('affected=user:agent-development-copy')
+    expect(block.content).toContain('persisted=true')
+    const workflowConfig = await readWorkflowConfig() as { templates?: unknown[] }
+    expect(workflowConfig.templates).toContainEqual(expect.objectContaining({
+      id: 'agent-development-copy',
+      source: 'user',
+      name: 'Agent Development Copy',
+    }))
   })
 
   test('calls the direct authoring service path for delete and renders an auditable destructive result', async () => {

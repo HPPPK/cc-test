@@ -4,20 +4,20 @@
 
 - active_command: sp-discussion
 - state_surface: discussion-state
-- status: active
+- status: handoff-ready
 - slug: workflows
-- updated_at: 2026-06-11T16:50:38.3889373+08:00
+- updated_at: 2026-06-11T19:51:05.4206521+08:00
 
 ## Phase Mode
 
 - phase_mode: discussion-only
-- summary: New discussion opened to explore "workflows". The user chose to start a fresh discussion instead of resuming prior handoff-ready workflow discussions, then selected the overall direction option. The clarified direction is not to invent "workflow skills" as a separate prompt-only system. Existing skills already have passive discovery, explicit invocation, metadata, and sometimes bundled scripts/templates/assets/tools. A workflow phase skill should primarily be a fixed recommended skill set on the phase: selected when the workflow template/phase is authored, surfaced in the active phase prompt, and treated as phase-local skills the agent should pay special attention to. The phase binding should not duplicate reason/appliesWhen-style metadata because the skill itself already owns description and applicability semantics. Workflow sharing should use a workflow package model with a skill dependency manifest, not bundled skill contents by default. The discussion was reopened on 2026-06-11 to focus on option 1: workflows as an execution constraint system. Current recommendation: field design should separate phase intent from phase contract. Intent fields explain what the phase is for; contract fields constrain execution with intake, allowed/forbidden actions, required artifacts, completion criteria, transition authority, and evidence/audit expectations. This is the most effective first design rather than the theoretically strongest workflow-engine design: hard gates should stay limited to artifacts, completion criteria, and transition authority; contextual rules should remain guidance, policy, or evidence. Schema grouping recommendation: use `intent`, `contract`, and `evidencePolicy` as the product/runtime model, keep `runtimeState` session-owned, and preserve compatibility by mapping existing flat fields into grouped semantics before any direct persistence migration. UI grouping recommendation confirmed: template editor exposes editable Intent, Contract, and Evidence groups; running workflow/session views expose Runtime Status separately. Lifecycle recommendation: distinguish phase/session lifecycle from completion submission outcome. Keep `blocked` and `unable` as completion outcomes inside a recoverable `running` phase, reserve `failed` for runtime/system failure, and require `pending-confirmation` to resolve through confirm/reject/retry before advancing. Runtime control recommendation: phase transition controls cover Confirm/Reject/Retry for pending confirmation, Manually complete phase for explicit user override, and Retry for blocked/unable; auto-advance is an authority label, while cancel/resume are session-level controls.
+- summary: New discussion opened to explore "workflows". The user chose to start a fresh discussion instead of resuming prior handoff-ready workflow discussions, then selected the overall direction option. The clarified direction is not to invent "workflow skills" as a separate prompt-only system. Existing skills already have passive discovery, explicit invocation, metadata, and sometimes bundled scripts/templates/assets/tools. A workflow phase skill should primarily be a fixed recommended skill set on the phase: selected when the workflow template/phase is authored, surfaced in the active phase prompt, and treated as phase-local skills the agent should pay special attention to. The phase binding should not duplicate reason/appliesWhen-style metadata because the skill itself already owns description and applicability semantics. Workflow sharing should use a workflow package model with a skill dependency manifest, not bundled skill contents by default. The discussion was reopened on 2026-06-11 to focus on option 1: workflows as an execution constraint system. Current recommendation: field design should separate phase intent from phase contract. Intent fields explain what the phase is for; contract fields constrain execution with intake, allowed/forbidden actions, required artifacts, completion criteria, transition authority, and evidence/audit expectations. This is the most effective first design rather than the theoretically strongest workflow-engine design: hard gates should stay limited to artifacts, completion criteria, and transition authority; contextual rules should remain guidance, policy, or evidence. Schema grouping recommendation: use `intent`, `contract`, and `evidencePolicy` as the product/runtime model, keep `runtimeState` session-owned, and preserve compatibility by mapping existing flat fields into grouped semantics before any direct persistence migration. UI grouping recommendation confirmed: template editor exposes editable Intent, Contract, and Evidence groups; running workflow/session views expose Runtime Status separately. Lifecycle recommendation: distinguish phase/session lifecycle from completion submission outcome. Keep `blocked` and `unable` as completion outcomes inside a recoverable `running` phase, reserve `failed` for runtime/system failure, and require `pending-confirmation` to resolve through confirm/reject/retry before advancing. Runtime control recommendation: phase transition controls cover Confirm/Reject/Retry for pending confirmation, Manually complete phase for explicit user override, and Retry for blocked/unable; auto-advance is an authority label, while cancel/resume are session-level controls. Handoff-shape confirmed and draft handoff generated: refreshed unified workflow contract handoff covering fields, constraints, phase skills, sharing, lifecycle, UI, compatibility, and validation. Draft handoff self-review passed and the user confirmed it on 2026-06-11T19:51:05.4206521+08:00; the discussion is now handoff-ready.
 
 ## Session Routing
 
-- current_stage: technical-options
-- current_topic: workflow field design and execution constraint system
-- next_question: Decide the final handoff shape if the user wants this refined workflow contract discussion carried into sp-specify.
+- current_stage: handoff-ready
+- current_topic: refreshed workflow contract handoff ready for specify
+- next_question: none; handoff is ready for downstream /sp.specify consumption when the user chooses to continue.
 - blocker_reason: none
 - readiness_note: Previous handoff remains historical, but user reopened the discussion to refine workflow field design and constraint semantics before any new handoff.
 - ui_discussion_status: completed
@@ -42,13 +42,13 @@
   - role: product-context
     scope: Overall cc-jiangxia workflows product and agent capability direction.
     evidence_source: user selected option 1, "整体方向".
-    notes: Source-grounded implementation targets are not yet claimed.
+    notes: Source-grounded implementation targets are now captured in target_project_roles and the refreshed draft handoff.
 - target_project_root: F:\github\cc-jiangxia
 - target_project_roles:
-  - role: product-direction-target
-    scope: Define the intended role of workflows inside cc-jiangxia before selecting concrete features or implementation paths.
-    evidence_source: user selected option 1, "整体方向".
-    notes: Technical placement and affected paths remain unverified and out of scope until context-grounding.
+  - role: implementation-target
+    scope: Existing cc-jiangxia workflow template, validation, runtime, import/export, skill catalog/reference, session lifecycle, and desktop workflow UI surfaces.
+    evidence_source: refreshed handoff-to-specify.md/json and live evidence summarized in project-context.md.
+    notes: Source-grounded target surfaces are named in the refreshed draft handoff; downstream specification and planning must recheck concrete paths before implementation.
 - reference_sources:
   - prior discussion candidates: .specify/discussions/workflow-template-management/
   - prior discussion candidates: .specify/discussions/agent-workflow-authoring-tools/
@@ -114,15 +114,15 @@
 
 - handoff_assessment_status: ready-for-specify
 - handoff_assessment_path: .specify/discussions/workflows/handoff-assessment.md
-- handoff_assessment_decided_at: 2026-05-29T15:33:41.0647544+08:00
+- handoff_assessment_decided_at: 2026-06-11T19:24:46.7549232+08:00
 - handoff_scope_shape: unified
 
 ## Handoff Review
 
 - handoff_review_status: user-confirmed
-- handoff_user_confirmed_at: 2026-05-29T15:54:40.6502152+08:00
+- handoff_user_confirmed_at: 2026-06-11T19:51:05.4206521+08:00
 - handoff_blocker_reason: none
-- handoff_quality_gate: draft
+- handoff_quality_gate: user_confirmed
 
 ## Allowed Artifact Writes
 
@@ -181,15 +181,15 @@
   - CA-007
   - CA-008
   - CA-009
-- CA-010
-- latest_consequence_handoff: none
-- coverage_gap_count: 3
+  - CA-010
+- latest_consequence_handoff: .specify/discussions/workflows/handoff-to-specify.md
+- coverage_gap_count: 5
 
 ## Handoff
 
 - handoff_to_specify: .specify/discussions/workflows/handoff-to-specify.md
 - handoff_to_specify_json: .specify/discussions/workflows/handoff-to-specify.json
-- handoff_goal: Specify workflow phase skills as recommended bindings to existing skills, including shared-catalog authoring, dependency-aware import/export, active-phase prompt behavior, and lightweight runtime evidence.
-- quality_gate_status: user-confirmed
+- handoff_goal: Specify workflows as phase execution contracts in cc-jiangxia, including grouped phase fields, soft-by-default constraint semantics, recommended phase skill bindings, dependency-aware sharing, lifecycle/completion status rules, and runtime/editor UI behavior.
+- quality_gate_status: user_confirmed
 - handoff_requested_by_user: true
-- next_command: /sp.specify with .specify/discussions/workflows/handoff-to-specify.md when the user explicitly requests it
+- next_command: /sp.specify with .specify/discussions/workflows/handoff-to-specify.md when the user chooses to continue

@@ -1,0 +1,82 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+  ],
+  "scope_paths": [
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/stores/skillStore.ts"
+  ],
+  "behavior_surfaces": [
+    "workflow template authoring tool prompt",
+    "workflow template authoring guide model/skills guidance",
+    "phase recommended skill catalog-selection semantics",
+    "workflow runtime recommended skill attention-only semantics"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "phases[].skills are auxiliary attention metadata only; they do not define workflow flow, phase order, transition authority, completion criteria, tool permissions, or SkillTool auto-execution.",
+    "Workflow control flow is owned by ordered phases, transitions, handoff rules, completion criteria, and runtime/tool policy, not by recommended skill names.",
+    "Author-created phase recommended skill references must come from workflow_template_authoring skill_catalog or from skill_create's returned recommendedReference.",
+    "When no installed or newly created skill fits a phase, authoring guidance should omit phases[].skills instead of inventing or mirroring workflow step names.",
+    "Create/update authoring paths reject unavailable recommended phase skills before persistence; imported or legacy unresolved references may be preserved as visible dependency diagnostics."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/services/workflowTemplateAuthoringGuide.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "result": "red first with 2 expected guidance failures, then passed with 29 tests"
+    },
+    {
+      "command": "bun test src/server/services/workflowTemplateAuthoringService.test.ts src/server/__tests__/workflowTemplates.test.ts",
+      "result": "passed, 83 tests"
+    },
+    {
+      "command": "bun test src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts",
+      "result": "passed, 58 tests"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed; full log at C:\\Users\\11034\\AppData\\Local\\Temp\\cc-jiangxia-check-server-workflow-authoring.log"
+    },
+    {
+      "command": "git diff --check -- src/server/services/workflowTemplateAuthoringGuide.ts src/server/services/workflowTemplateAuthoringGuide.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "result": "passed with Windows LF/CRLF conversion warnings only"
+    }
+  ],
+  "known_unknowns": [
+    "The current persisted user workflow inspected during debugging did not contain phase skill references; the user-visible issue likely came from an authoring proposal or rejected draft rather than stored invalid data.",
+    "The running desktop sidecar may need rebuild/restart before its bundled server prompt/guide reflects the source edits, depending on how it was launched.",
+    "Full bun run verify was not run in this pass; server-area check and focused workflow tests passed."
+  ],
+  "confidence_notes": [
+    "Focused RED/green tests directly cover the agent-facing prompt and authoring guide wording that controls loose template authoring before validation.",
+    "Existing service/API tests prove create/update still reject missing recommended skills before persistence.",
+    "Runtime and tool-policy tests prove recommended skills remain attention metadata and do not grant permissions or auto-run SkillTool."
+  ],
+  "user_decisions": [
+    "User clarified that phase skill selections are passive/auxiliary and must not represent the workflow process.",
+    "User reported built-in workflow authoring selected non-existent skills, which should be prevented at the authoring guidance boundary and rejected before persistence."
+  ],
+  "boundary": {
+    "scope": "Clarify and test workflow template authoring semantics for phase recommended skills.",
+    "excluded": [
+      "Changing workflow runtime phase transition semantics",
+      "Making recommended skills mandatory",
+      "Auto-running SkillTool from phase recommendations",
+      "Reintroducing builtin workflow templates",
+      "Deleting unresolved imported dependency diagnostics"
+    ]
+  }
+}

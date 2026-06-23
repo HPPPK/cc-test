@@ -94,8 +94,14 @@ describe('skillStore', () => {
 
     expect(listMock).toHaveBeenCalledWith('/workspace/project')
     expect(useSkillStore.getState()).toMatchObject({
-      skills: [installedSkill],
-      catalog: [installedSkill],
+      skills: [expect.objectContaining({
+        ...installedSkill,
+        description: 'Verify release readiness. available sha256-release',
+      })],
+      catalog: [expect.objectContaining({
+        ...installedSkill,
+        description: 'Verify release readiness. available sha256-release',
+      })],
       isLoading: false,
       error: null,
     })
@@ -107,10 +113,16 @@ describe('skillStore', () => {
 
     await useSkillStore.getState().fetchCatalog('/workspace/project')
 
-    expect(catalogMock).toHaveBeenCalledWith('/workspace/project')
+    expect(catalogMock).toHaveBeenCalledWith('/workspace/project', undefined)
     expect(useSkillStore.getState()).toMatchObject({
-      skills: [installedSkill],
-      catalog: [catalogSkill],
+      skills: [expect.objectContaining({
+        ...installedSkill,
+        description: 'Verify release readiness. available sha256-release',
+      })],
+      catalog: [expect.objectContaining({
+        ...catalogSkill,
+        description: 'Plugin workflow helper. plugin-disabled telegram:access plugin disabled telegram',
+      })],
       isCatalogLoading: false,
       error: null,
     })

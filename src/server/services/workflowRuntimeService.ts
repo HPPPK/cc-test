@@ -75,6 +75,7 @@ type SubmitPhaseCompletionInput = {
   submission: CompletionSubmission
   requestedAt: string
   transitionId?: string
+  nextPhaseContextStrategy?: WorkflowTransitionRequest['nextPhaseContextStrategy']
 }
 
 type SubmitPhaseCompletionResult = {
@@ -289,6 +290,9 @@ function validateCompletionSubmission(
   if (typeof submission.phaseId !== 'string' || !submission.phaseId) {
     throw workflowError('WORKFLOW_COMPLETION_INVALID', 'Completion submission phaseId is required.')
   }
+  if (typeof submission.stateVersion !== 'number') {
+    throw workflowError('WORKFLOW_COMPLETION_INVALID', 'Completion submission stateVersion is required.')
+  }
   assertFreshStateVersion(state, submission.stateVersion)
   const phase = assertActivePhase(state, submission.phaseId)
   if (!isJsonObject(submission.handoff)) {
@@ -364,10 +368,12 @@ function recommendationLabel(resolution: WorkflowPhaseSkillResolution): string {
 function formatResolutionDetails(resolution: WorkflowPhaseSkillResolution): string {
   const provenance = resolution.resolvedSkill?.source ?? resolution.reference.source
   const plugin = resolution.resolvedSkill?.pluginName ?? resolution.reference.pluginName
+  const priority = resolution.reference.priority
   const details = [
     `status: ${resolution.status}`,
     provenance ? `source: ${provenance}` : '',
     plugin ? `plugin: ${plugin}` : '',
+    priority ? `priority: ${priority}` : '',
   ].filter(Boolean)
   const diagnostic = resolution.diagnostic?.message
   return diagnostic ? `${details.join(', ')}; ${diagnostic}` : details.join(', ')
@@ -383,7 +389,11 @@ function formatRecommendedSkillsPromptBlock(snapshot: WorkflowPhaseSkillSnapshot
   const sections = [
     'Active phase recommended skills',
     'These are advisory recommendations for the current phase. They do not grant tool permissions, change model/effort settings, open shells, fork work, install hooks, or schedule SkillTool calls.',
+    'A higher priority recommendation is attention metadata only, not a safety override or permission grant.',
     'Invoke recommended skills only when the current task matches the skill and normal SkillTool permission checks allow it.',
+    'Do not invoke SkillTool automatically for recommended skills; the runtime schedules no SkillTool calls from recommendations.',
+    'nested skill invocation must follow existing SkillTool depth guardrails and must not recurse beyond the active depth limits.',
+    'Record bounded material skill audit evidence only when relevant using outcomes: used, relevant-skipped, or relevant-unavailable.',
     available.length
       ? `Available recommendations:\n${available.map((resolution) =>
         `- ${recommendationLabel(resolution)} (${formatResolutionDetails(resolution)})`
@@ -469,6 +479,9 @@ function transitionRecord(input: {
     completionCheckId: null,
     createdAt: input.requestedAt,
     stateVersion: input.stateVersion,
+    ...(input.toPhaseId && input.request.nextPhaseContextStrategy === 'clear'
+      ? { nextPhaseContextStrategy: 'clear' as const }
+      : {}),
   }
 }
 
@@ -508,6 +521,18 @@ function artifactIndexValues(state: WorkflowSessionState): WorkflowArtifactPoint
     return Object.values(state.artifactIndex)
   }
   return []
+}
+
+function applyNextPhaseContextStrategy(
+  state: WorkflowSessionState,
+  toPhaseId: string | null,
+  strategy: WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined,
+): void {
+  if (toPhaseId && strategy === 'clear') {
+    state.nextPhaseContextStrategy = 'clear'
+    return
+  }
+  delete state.nextPhaseContextStrategy
 }
 
 function appendArtifact(state: WorkflowSessionState, artifact: WorkflowArtifactPointer): void {
@@ -758,6 +783,9 @@ export class WorkflowRuntimeService {
       input.priorArtifactSummaries?.length
         ? `Prior artifacts:\n${input.priorArtifactSummaries.join('\n')}`
         : '',
+      input.state.nextPhaseContextStrategy === 'clear'
+        ? 'Context boundary: use only accepted handoff materials and prior workflow artifacts for this phase. Do not rely on inherited transcript history unless the user provides it again.'
+        : '',
       skillProvenance.length
         ? `Skill guidance:\n${skillProvenance.map((skill) => `- ${skill.guidance}`).join('\n')}`
         : '',
@@ -867,14 +895,6 @@ export class WorkflowRuntimeService {
       throw workflowError('WORKFLOW_TOOL_UNAVAILABLE', 'Workflow completion is available only in workflow sessions.')
     }
 
-    validateCompletionSubmission(input.state, input.submission)
-    if (
-      input.submission.status === 'ready'
-      && input.state.pendingConfirmation?.status === 'pending'
-    ) {
-      throw workflowError('WORKFLOW_PENDING_CONFLICT', 'Workflow already has a pending completion.')
-    }
-
     if (hasTransition(input.state, input.transitionId)) {
       const artifact = artifactIndexValues(input.state).find((pointer) =>
         pointer.artifactId.includes(input.transitionId ?? '')
@@ -885,6 +905,14 @@ export class WorkflowRuntimeService {
         artifact: artifact as Record<string, unknown>,
         notifications: [],
       }
+    }
+
+    validateCompletionSubmission(input.state, input.submission)
+    if (
+      input.submission.status === 'ready'
+      && input.state.pendingConfirmation?.status === 'pending'
+    ) {
+      throw workflowError('WORKFLOW_PENDING_CONFLICT', 'Workflow already has a pending completion.')
     }
 
     const state = cloneState(input.state)
@@ -907,6 +935,7 @@ export class WorkflowRuntimeService {
       delete phase.blockedReason
       if (options.advanceReady) {
         this.advanceToPhase(state, phase, toPhaseId, input.requestedAt)
+        applyNextPhaseContextStrategy(state, toPhaseId, input.nextPhaseContextStrategy)
       } else {
         phase.status = 'pending-confirmation'
         state.workflowStatus = 'pending-confirmation'
@@ -932,6 +961,7 @@ export class WorkflowRuntimeService {
         phaseId: phase.id,
         action: options.requestAction,
         transitionId: input.transitionId,
+        nextPhaseContextStrategy: input.nextPhaseContextStrategy,
       } as WorkflowTransitionRequest,
       fromPhaseId: phase.id,
       toPhaseId: input.submission.status === 'ready' ? toPhaseId : phase.id,
@@ -1085,6 +1115,7 @@ export class WorkflowRuntimeService {
       'accepted',
     )
     this.advanceToPhase(state, current, pending.toPhaseId, input.requestedAt)
+    applyNextPhaseContextStrategy(state, pending.toPhaseId, input.request.nextPhaseContextStrategy)
     const nextState = touchState(state, input.requestedAt)
     const transition = transitionRecord({
       request: input.request,
@@ -1183,6 +1214,7 @@ export class WorkflowRuntimeService {
 
     const toPhaseId = nextPhaseId(state, current.id)
     this.advanceToPhase(state, current, toPhaseId, input.requestedAt)
+    applyNextPhaseContextStrategy(state, toPhaseId, input.request.nextPhaseContextStrategy)
     const nextState = touchState(state, input.requestedAt)
     const transition = transitionRecord({
       request: input.request,

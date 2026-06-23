@@ -1,0 +1,125 @@
+{
+  "task_id": "T001",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T001.json"
+  ],
+  "validation_evidence": [
+    {
+      "command": "Test-Path .specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+      "result": "True",
+      "artifact": ".specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+    },
+    {
+      "command": "Get-Content -Raw .specify/features/009-specify-discussions-workflows/worker-results/T001.json | ConvertFrom-Json",
+      "result": "Parsed successfully",
+      "artifact": ".specify/features/009-specify-discussions-workflows/worker-results/T001.json"
+    },
+    {
+      "command": "$path = '.specify/features/009-specify-discussions-workflows/implementation-matrix.md'; $text = Get-Content -Raw $path; $ids = @(); $ids += 1..30 | ForEach-Object { 'FR-{0:000}' -f $_ }; $ids += 1..6 | ForEach-Object { 'NFR-{0:000}' -f $_ }; $ids += 1..4 | ForEach-Object { 'SC-{0:000}' -f $_ }; $ids += 1..13 | ForEach-Object { 'MP-{0:000}' -f $_ }; $ids += 1..10 | ForEach-Object { 'CA-{0:000}' -f $_ }; $missing = $ids | Where-Object { $text -notmatch [regex]::Escape($_) }; [pscustomobject]@{ unmapped_literal = ($text -match 'unmapped_obligation_count`: `0`'); missing_count = $missing.Count; missing_ids = ($missing -join ', ') }",
+      "result": "unmapped_literal=True; missing_count=0",
+      "artifact": ".specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+    }
+  ],
+  "must_preserve_evidence": [
+    {
+      "id": "MP-001",
+      "evidence": "Implementation matrix keeps workflow phases mapped as execution contracts through T001, T002, T004, T005, T006, and T018; no requirement row reduces them to editor-only grouping."
+    },
+    {
+      "id": "MP-002",
+      "evidence": "The matrix covers the unified boundary across FR, NFR, SC, MP, and CA rows, with tasks spanning server, desktop, sharing, lifecycle, and verification surfaces."
+    },
+    {
+      "id": "MP-003",
+      "evidence": "FR-002, FR-017, FR-028, and T015/T016/T017 keep runtimeState session-owned and separate from template data."
+    },
+    {
+      "id": "MP-004",
+      "evidence": "FR-004 and FR-005 map to T002/T004/T015/T016 so guidance, policy, evidence, and gate strengths stay distinct."
+    },
+    {
+      "id": "MP-005",
+      "evidence": "FR-006 through FR-009 plus CA-001 and CA-002 map to T007/T008/T009/T010, preserving existing-skill bindings and advisory-only behavior."
+    },
+    {
+      "id": "MP-006",
+      "evidence": "FR-010 and FR-011 plus CA-006 map to T008/T009/T010/T015/T016, keeping soft audit bounded to used or clearly relevant skipped/unavailable skills."
+    },
+    {
+      "id": "MP-007",
+      "evidence": "FR-013 through FR-015 and T011/T012/T014 preserve template-plus-manifest sharing and exclude bundled skill contents."
+    },
+    {
+      "id": "MP-008",
+      "evidence": "FR-019 through FR-021 and T015/T016/T017 keep lifecycle state separate from completion submission outcome."
+    },
+    {
+      "id": "MP-009",
+      "evidence": "FR-022 through FR-024 and T015/T016/T017 preserve pending confirmation with Confirm/Reject/Retry and duplicate-ready blocking."
+    },
+    {
+      "id": "MP-010",
+      "evidence": "FR-025 through FR-027 and T015/T016/T017 preserve safe runtime controls and explicit authority labels."
+    },
+    {
+      "id": "MP-011",
+      "evidence": "FR-003, FR-028, SC-003, and T002/T004/T006/T011/T012 preserve compatibility-first adaptation before any destructive migration."
+    },
+    {
+      "id": "MP-012",
+      "evidence": "FR-005, FR-008, FR-013, FR-021, and T004/T008/T012/T016/T018 keep scheduler, auto-execution, bundles, and destructive migration out of scope."
+    },
+    {
+      "id": "MP-013",
+      "evidence": "T001, T006, and T018 keep live repository evidence authoritative instead of project cognition alone."
+    }
+  ],
+  "ca_evidence": [
+    {
+      "id": "CA-001",
+      "evidence": "T007, T008, T011, and T012 cover stable skill identity across local, bundled, plugin, managed, and MCP sources."
+    },
+    {
+      "id": "CA-002",
+      "evidence": "T007 and T008 keep priority semantics from overriding safety boundaries."
+    },
+    {
+      "id": "CA-003",
+      "evidence": "T007, T008, T011, T012, T013, and T014 cover visible degradation for missing, stale, disabled, invalid, ambiguous, plugin-disabled, unsupported-source, and unavailable skills."
+    },
+    {
+      "id": "CA-004",
+      "evidence": "T007 and T008 keep SkillTool permission handling explicit for skill-derived execution effects."
+    },
+    {
+      "id": "CA-005",
+      "evidence": "T008, T015, and T016 preserve skill provenance in running, pending, completed, resumed, stale-template, and missing-template session states."
+    },
+    {
+      "id": "CA-006",
+      "evidence": "T008, T009, T010, T015, and T016 keep used, skipped, and unavailable recommended skill decisions observable when relevant."
+    },
+    {
+      "id": "CA-007",
+      "evidence": "T002, T004, T011, and T012 validate workflow skill bindings across authoring, import/export, and session start paths."
+    },
+    {
+      "id": "CA-008",
+      "evidence": "T003, T005, T009, T010, T013, T014, and T017 distinguish recommended, unavailable, blocked, unable, pending, manual, auto, stale, and missing UI states."
+    },
+    {
+      "id": "CA-009",
+      "evidence": "T015, T016, and T018 preserve skill evidence, completion evidence, and transition provenance across compaction, resume, final reports, and imports."
+    },
+    {
+      "id": "CA-010",
+      "evidence": "T007 and T008 keep recursive or unbounded nested skill invocation prevented."
+    }
+  ],
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": []
+}

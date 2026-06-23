@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
 import type { BaselineCase, BaselineTarget, LaneResult } from '../types'
+import { bunCommand } from '../bunRuntime'
 
 type ServerMessage = {
   type: string
@@ -281,7 +282,7 @@ export async function executeBaselineCase(
   const transcriptPath = join(artifactDir, 'transcript.jsonl')
   const verificationPath = join(artifactDir, 'verification.log')
   const diffPath = join(artifactDir, 'diff.patch')
-  const server = Bun.spawn(['bun', 'run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)], {
+  const server = Bun.spawn(bunCommand(['run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(port)]), {
     cwd: rootDir,
     stdout: 'pipe',
     stderr: 'pipe',

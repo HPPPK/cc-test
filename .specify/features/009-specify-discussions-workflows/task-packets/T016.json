@@ -1,0 +1,66 @@
+{
+  "id": "T016",
+  "title": "Implement completion submission durability",
+  "story": "US4",
+  "agent": "executor",
+  "depends_on": ["T015"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/services/workflowSessionStateService.test.ts",
+    "src/server/services/workflowFinalReport.test.ts",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-transition-submission.md"
+  ],
+  "write_scope": [
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/services/workflowToolPolicy.ts"
+  ],
+  "read_scope": [
+    "runtime, state, report, and compact summary tests",
+    "src/server/services/__fixtures__/workflow-sessions"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "desktop files",
+    "import/export API files"
+  ],
+  "expected_outputs": [
+    "stateVersion checks",
+    "Recoverable blocked and unable outcomes",
+    "Duplicate ready rejection while pending",
+    "Confirm, reject, and retry transitions",
+    "Final report and compact summary evidence persistence"
+  ],
+  "anti_goals": [
+    "No terminal failure mapping for blocked or unable",
+    "No silent overwrite",
+    "No scheduler"
+  ],
+  "does_not_remove": [
+    "MP-008",
+    "MP-009",
+    "CA-005",
+    "CA-009"
+  ],
+  "capability_operations": [
+    "CAP-005 runtime implementation"
+  ],
+  "acceptance_criteria": [
+    "T015 tests pass",
+    "Existing workflow runtime and report tests pass"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSessionStateService.test.ts src/server/services/workflowFinalReport.test.ts src/services/compact/workflowSummaryCarryover.test.ts"
+  ],
+  "handoff_format": [
+    "transition_table",
+    "persisted_fields",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

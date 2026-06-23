@@ -1,0 +1,168 @@
+{
+  "task_id": "T012",
+  "status": "completed_already_green",
+  "changed_files": [
+    ".specify/features/009-specify-discussions-workflows/worker-results/T012.json"
+  ],
+  "api_response_shape": {
+    "export": {
+      "schemaVersion": 2,
+      "exportedAt": "ISO-8601 timestamp",
+      "templates": "workflow template data only; source/editable/copyable metadata stripped",
+      "dependencyManifest": {
+        "schemaVersion": 1,
+        "generatedAt": "same ISO-8601 timestamp as exportedAt",
+        "dependencies": [
+          {
+            "templateId": "string",
+            "phaseId": "string",
+            "reference": "preserved workflow phase skill reference",
+            "exportStatus": "available | installable | missing | ambiguous | unsupported-source | plugin-disabled | invalid-reference",
+            "resolvedSource": "optional resolver source",
+            "pluginName": "optional resolver or reference plugin provenance",
+            "contentHash": "optional resolver or reference content hash",
+            "diagnostic": "optional resolver diagnostic message"
+          }
+        ]
+      }
+    },
+    "import_preview": {
+      "schemaVersion": 1,
+      "candidates": [
+        {
+          "importId": "candidate-N",
+          "originalId": "string",
+          "proposedId": "string",
+          "name": "string",
+          "version": "string",
+          "phaseCount": "number",
+          "conflict": "none | builtin-template | user-template",
+          "defaultResolution": "add | rename",
+          "selectable": "false when validation errors or non-importable dependency diagnostics exist",
+          "issues": "template validation issues",
+          "dependencyDiagnostics": [
+            {
+              "templateId": "string",
+              "phaseId": "string",
+              "reference": "preserved workflow phase skill reference",
+              "status": "available | installable | missing | ambiguous | unsupported-source | plugin-disabled | invalid-reference",
+              "severity": "info | warning | error",
+              "message": "diagnostic text",
+              "canImport": "true except invalid-reference/error diagnostics"
+            }
+          ]
+        }
+      ],
+      "invalidTemplates": "flattened candidate validation issues",
+      "canCommit": "true when at least one candidate is selectable"
+    },
+    "import_commit": {
+      "accepted_resolutions": [
+        "add",
+        "rename"
+      ],
+      "rejected_resolutions": [
+        "overwrite"
+      ],
+      "response": "refreshed workflow template list with invalidTemplates",
+      "guard": "recomputes preview validation and dependency importability before writing"
+    }
+  },
+  "blocked_cases": [
+    {
+      "case": "invalid dependency reference",
+      "status": "invalid-reference",
+      "severity": "error",
+      "canImport": false,
+      "behavior": "candidate selectable is false; commit validation rejects without writing"
+    },
+    {
+      "case": "malformed phase skill reference in template validation",
+      "status": "invalid-reference",
+      "severity": "error",
+      "canImport": false,
+      "behavior": "WORKFLOW_PHASE_SKILL_INVALID_REFERENCE prevents save/import"
+    },
+    {
+      "case": "unsupported overwrite resolution",
+      "behavior": "commit returns conflict and does not write"
+    },
+    {
+      "case": "stale add selection now conflicts with existing user template",
+      "behavior": "commit recomputes validation and rejects atomically"
+    }
+  ],
+  "allowed_cases": [
+    {
+      "case": "available dependency",
+      "status": "available",
+      "severity": "info",
+      "canImport": true,
+      "behavior": "dependency is visible in export/import diagnostics and remains importable"
+    },
+    {
+      "case": "installable dependency",
+      "status": "installable",
+      "severity": "info",
+      "canImport": true,
+      "behavior": "dependency is reported as installable but no installation is attempted"
+    },
+    {
+      "case": "missing dependency",
+      "status": "missing",
+      "severity": "warning",
+      "canImport": true,
+      "behavior": "candidate remains selectable; unresolved recommended reference is preserved on commit"
+    },
+    {
+      "case": "ambiguous dependency",
+      "status": "ambiguous",
+      "severity": "warning",
+      "canImport": true,
+      "behavior": "candidate remains importable with disambiguation diagnostic"
+    },
+    {
+      "case": "unsupported source",
+      "status": "unsupported-source",
+      "severity": "warning",
+      "canImport": true,
+      "behavior": "candidate remains importable and reference source is not silently rewritten"
+    },
+    {
+      "case": "plugin disabled",
+      "status": "plugin-disabled",
+      "severity": "warning",
+      "canImport": true,
+      "behavior": "candidate remains importable with disabled plugin diagnostic"
+    },
+    {
+      "case": "schemaVersion 2 export without bundled skill packages",
+      "behavior": "dependencyManifest metadata is emitted, while skills, skillPackages, bundledSkills, SKILL.md content, and agents/openai.yaml are not serialized"
+    }
+  ],
+  "tests_run": [
+    {
+      "command": "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/services/workflowPhaseSkillResolver.test.ts",
+      "result": "pass",
+      "summary": "84 pass, 0 fail, 298 expect() calls across 3 files in 1.97s"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "The workspace contains many pre-existing modified files outside T012 scope.",
+      "mitigation": "No production or test files were edited for T012; only this worker result artifact was added."
+    },
+    {
+      "risk": "Import preview per-status behavior is proven through a combination of API tests and resolver tests rather than one API fixture per diagnostic status.",
+      "mitigation": "The required verification command includes resolver coverage for available, missing, ambiguous, unsupported-source, plugin-disabled, invalid-reference, and installable statuses, plus API coverage for dependency manifest export, missing warning importability, invalid-reference blocking, commit preservation, and no skill package serialization."
+    }
+  ],
+  "notes": [
+    "Read T012 packet, T011 worker evidence, dependency manifest contract, data model, and current allowed-scope production files.",
+    "Current code already exports schemaVersion 2 packages with dependencyManifest schemaVersion 1.",
+    "Current code combines manifest diagnostics with receiver-side resolver diagnostics during import preview.",
+    "Current code maps available/installable to info importable diagnostics, missing/ambiguous/unsupported-source/plugin-disabled to warning importable diagnostics, and invalid-reference to error non-importable diagnostics.",
+    "Current commit path recomputes candidate validation and rejects invalid or blocking diagnostics before writing.",
+    "No skill packages are serialized by export."
+  ]
+}

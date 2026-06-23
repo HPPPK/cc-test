@@ -3,7 +3,6 @@ import {
   workflowTemplateAuthoringGuide,
 } from './workflowTemplateAuthoringGuide.js'
 import {
-  WORKFLOW_TEMPLATE_BUILTIN_ID,
   WORKFLOW_TEMPLATE_SCHEMA_VERSION,
   validateAndNormalizeWorkflowTemplate,
 } from './workflowTemplateValidation.js'
@@ -34,7 +33,6 @@ const requiredRepairableIssueCodes = [
   'WORKFLOW_TEMPLATE_INVALID_PHASES',
   'WORKFLOW_PHASE_DUPLICATE_ID',
   'WORKFLOW_PHASE_SKILL_INVALID_REFERENCE',
-  'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
   'WORKFLOW_PHASE_OUTPUT_ARTIFACT_REQUIRED',
   'WORKFLOW_PHASE_HANDOFF_REQUIRED',
   'WORKFLOW_TEMPLATE_BRANCHING_UNSUPPORTED',
@@ -125,6 +123,9 @@ describe('workflow template authoring guide', () => {
     expect(guidance).toContain('workflow_template_authoring skill_catalog')
     expect(guidance).toContain('workflow_template_authoring skill_create')
     expect(guidance).toContain('{ name, mode: "recommended" }')
+    expect(guidance).toContain('auxiliary attention metadata only')
+    expect(guidance).toContain('not define workflow flow')
+    expect(guidance).toContain('omit phases[].skills')
     expect(guidance).toContain('Do not duplicate skill-owned descriptions')
     expect(guidance).toContain('Legacy reason fields are preserved')
     expect(guidance).not.toContain('Skills should include a name and reason')
@@ -175,7 +176,6 @@ describe('workflow template authoring guide', () => {
           validPhase({ id: 'draft', name: 'Draft Again' }),
         ],
       })),
-      ...issueCodesFor(validTemplate({ id: WORKFLOW_TEMPLATE_BUILTIN_ID })),
       ...issueCodesFor(validTemplate({
         phases: [validPhase({ skills: [{ name: 'bad-mode', mode: 'required' }] })],
       })),

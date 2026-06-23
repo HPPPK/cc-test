@@ -1,0 +1,67 @@
+{
+  "task_id": "T016",
+  "status": "completed",
+  "transition_table": {
+    "ready_new": {
+      "stateVersion": "required number; stale numeric values still return WORKFLOW_STATE_STALE",
+      "pending_behavior": "records a pending artifact and pendingConfirmation without advancing the active phase",
+      "duplicate_pending_same_transitionId": "replays the existing result before WORKFLOW_PENDING_CONFLICT and does not duplicate transition history or artifacts",
+      "duplicate_pending_different_transitionId": "continues to reject as WORKFLOW_PENDING_CONFLICT"
+    },
+    "blocked": {
+      "stateVersion": "required number; stale numeric values still return WORKFLOW_STATE_STALE",
+      "workflowStatus": "running",
+      "pendingConfirmation": "cleared",
+      "recoverable": true,
+      "result": "blocked"
+    },
+    "unable": {
+      "stateVersion": "required number; stale numeric values still return WORKFLOW_STATE_STALE",
+      "workflowStatus": "running",
+      "pendingConfirmation": "cleared",
+      "recoverable": true,
+      "result": "unable"
+    },
+    "confirm": {
+      "behavior": "unchanged; accepts pending artifact and advances with fresh stateVersion"
+    },
+    "reject": {
+      "behavior": "unchanged; rejects pending artifact and returns current phase to running"
+    },
+    "retry": {
+      "behavior": "unchanged; supersedes pending artifact and returns current phase to running"
+    }
+  },
+  "persisted_fields": [
+    "completion submission phaseId",
+    "completion submission stateVersion",
+    "completion submission status",
+    "completion submission handoff",
+    "completion submission rationale",
+    "completion submission evidence",
+    "completion artifact lifecycleStatus",
+    "pendingConfirmation original submission",
+    "transitionHistory transitionId/requestId",
+    "blocked/unable artifact evidence for final report and compact summary carryover"
+  ],
+  "tests_run": [
+    {
+      "command": "bun test src/server/services/workflowRuntimeService.test.ts src/server/services/workflowSessionStateService.test.ts src/server/services/workflowFinalReport.test.ts src/services/compact/workflowSummaryCarryover.test.ts",
+      "result": "passed",
+      "summary": "66 pass, 0 fail, 277 expect() calls across 4 files"
+    }
+  ],
+  "changed_files": [
+    "src/server/services/workflowRuntimeService.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T016.json"
+  ],
+  "risks": [
+    "Pre-existing unrelated edits were present in src/server/services/workflowRuntimeService.ts and src/server/services/workflowToolPolicy.ts before this worker started; this worker left those hunks intact.",
+    "The duplicate replay path now follows transition idempotency before completion payload validation, matching applyTransition behavior and the T015 RED expectation."
+  ],
+  "notes": [
+    "No terminal failure mapping, scheduler behavior, desktop files, tests, import/export API files, package/config files, tasks.md, or implementation-matrix.md were changed.",
+    "Blocked and unable completion submissions remain recoverable running outcomes.",
+    "Final report and compact summary evidence persistence remained green in the bounded verification command."
+  ]
+}

@@ -49,6 +49,26 @@ export type SlashCommandOption = {
   argumentHint?: string
 }
 
+export type LeadingSlashInvocation = {
+  token: string
+  name: string
+  rest: string
+}
+
+const LEADING_SLASH_INVOCATION_PATTERN = /^\/([A-Za-z][A-Za-z0-9:_.-]*)(?=\s|$)/
+
+export function findLeadingSlashInvocation(value: string): LeadingSlashInvocation | null {
+  const match = value.match(LEADING_SLASH_INVOCATION_PATTERN)
+  if (!match?.[1]) return null
+
+  const token = `/${match[1]}`
+  return {
+    token,
+    name: match[1],
+    rest: value.slice(token.length),
+  }
+}
+
 export type SlashUiAction =
   | {
       type: 'panel'

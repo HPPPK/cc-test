@@ -1,0 +1,66 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/vendor/computer-use-mcp/toolCalls.ts",
+    "src/vendor/computer-use-mcp/tools.ts",
+    "src/vendor/computer-use-mcp/toolCalls.test.ts",
+    ".planning/debug/agent-tool-surface-computer-use-fallback.md"
+  ],
+  "scope_paths": [
+    "src/vendor/computer-use-mcp"
+  ],
+  "behavior_surfaces": [
+    "computer-use MCP request_access admission",
+    "computer-use MCP model-facing tool descriptions",
+    "desktop agent tool selection guardrail"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "request_access now rejects reasons that look like filesystem, shell, or coding fallback tasks before OS permission flow or app approval dialog",
+    "computer-use tool descriptions instruct agents to use Bash, PowerShell, Write, or Edit for folder/file creation, source edits, dependency installs, git operations, and terminal commands"
+  ],
+  "verification": [
+    {
+      "command": "bun test src/vendor/computer-use-mcp/toolCalls.test.ts",
+      "result": "passed",
+      "artifact": "4 pass, 0 fail, 13 expect calls"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed",
+      "artifact": "1178 pass, 7 skip, 0 fail"
+    },
+    {
+      "command": "bun run verify",
+      "result": "failed",
+      "artifact": "8 passed, 1 failed, 2 skipped; failed lane was native-checks due to default Tauri target PermissionDenied while desktop process held build artifacts"
+    },
+    {
+      "command": "cd desktop && bun run build:sidecars && cd src-tauri && cargo check",
+      "result": "passed",
+      "artifact": "passed with isolated CARGO_TARGET_DIR under %TEMP%"
+    }
+  ],
+  "known_unknowns": [
+    "The classifier is intentionally heuristic; future real-world transcripts may require adding or removing phrases.",
+    "Existing already-granted full-tier non-terminal apps can still be used for legitimate GUI automation; this change targets coding/filesystem fallback reasons."
+  ],
+  "confidence_notes": [
+    "RED test reproduced the missing early rejection for English and Chinese folder/project creation reasons.",
+    "Regression test preserves non-coding terminal output inspection."
+  ],
+  "user_decisions": [
+    "User reported computer-use should not be triggered for simple folder creation."
+  ],
+  "boundary": {
+    "in_scope": [
+      "computer-use request_access and model-facing guidance"
+    ],
+    "out_of_scope": [
+      "global disabling of Computer Use",
+      "workflow phase tool policy changes",
+      "desktop settings UI changes"
+    ]
+  }
+}

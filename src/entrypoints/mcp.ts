@@ -13,7 +13,9 @@ import type { Command } from '../commands.js'
 import {
   findToolByName,
   getEmptyToolPermissionContext,
+  type Tool as JiangxiaTool,
   type ToolUseContext,
+  type Tools,
 } from '../Tool.js'
 import { getTools } from '../tools.js'
 import { createAbortController } from '../utils/abortController.js'
@@ -31,6 +33,43 @@ type ToolInput = Tool['inputSchema']
 type ToolOutput = Tool['outputSchema']
 
 const MCP_COMMANDS: Command[] = [review]
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+export async function toolToMCPListTool(
+  tool: JiangxiaTool,
+  toolPermissionContext = getEmptyToolPermissionContext(),
+  tools: Tools = [tool],
+): Promise<Tool> {
+  let outputSchema: ToolOutput | undefined
+  if (tool.outputSchema) {
+    const convertedSchema = zodToJsonSchema(tool.outputSchema)
+    // MCP SDK requires outputSchema to have type: "object" at root level.
+    // Skip schemas with anyOf/oneOf at root (from z.union, z.discriminatedUnion, etc.).
+    // See: https://github.com/anthropics/claude-code/issues/8014
+    if (
+      typeof convertedSchema === 'object' &&
+      convertedSchema !== null &&
+      'type' in convertedSchema &&
+      convertedSchema.type === 'object'
+    ) {
+      outputSchema = convertedSchema as ToolOutput
+    }
+  }
+
+  return {
+    ...tool,
+    description: await tool.prompt({
+      getToolPermissionContext: async () => toolPermissionContext,
+      tools,
+      agents: [],
+    }),
+    inputSchema: cloneJson(tool.inputJSONSchema ?? zodToJsonSchema(tool.inputSchema)) as ToolInput,
+    outputSchema,
+  }
+}
 
 export async function startMCPServer(
   cwd: string,
@@ -64,33 +103,7 @@ export async function startMCPServer(
       const tools = getTools(toolPermissionContext)
       return {
         tools: await Promise.all(
-          tools.map(async tool => {
-            let outputSchema: ToolOutput | undefined
-            if (tool.outputSchema) {
-              const convertedSchema = zodToJsonSchema(tool.outputSchema)
-              // MCP SDK requires outputSchema to have type: "object" at root level
-              // Skip schemas with anyOf/oneOf at root (from z.union, z.discriminatedUnion, etc.)
-              // See: https://github.com/anthropics/claude-code/issues/8014
-              if (
-                typeof convertedSchema === 'object' &&
-                convertedSchema !== null &&
-                'type' in convertedSchema &&
-                convertedSchema.type === 'object'
-              ) {
-                outputSchema = convertedSchema as ToolOutput
-              }
-            }
-            return {
-              ...tool,
-              description: await tool.prompt({
-                getToolPermissionContext: async () => toolPermissionContext,
-                tools,
-                agents: [],
-              }),
-              inputSchema: zodToJsonSchema(tool.inputSchema) as ToolInput,
-              outputSchema,
-            }
-          }),
+          tools.map(tool => toolToMCPListTool(tool, toolPermissionContext, tools)),
         ),
       }
     },

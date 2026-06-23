@@ -1,11 +1,7 @@
 {
-  "integration": "codex",
-  "version": "0.5.6",
+  "integration": "claude",
+  "version": "0.5.12.dev0",
   "scripts": {
-    "update-context": ".specify/integrations/codex/scripts/update-context.ps1"
-  },
-  "team": {
-    "surface": "sp-teams",
-    "runtime_config": ".specify/teams/runtime.json"
+    "update-context": ".specify/integrations/claude/scripts/update-context.ps1"
   }
 }

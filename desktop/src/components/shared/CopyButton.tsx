@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { copyTextToClipboard } from '../chat/clipboard'
 
 type Props = {
   text: string
   label?: string
   copiedLabel?: string
-  displayLabel?: string
-  displayCopiedLabel?: string
+  displayLabel?: ReactNode
+  displayCopiedLabel?: ReactNode
   className?: string
 }
 

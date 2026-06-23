@@ -12,9 +12,10 @@
 
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { sessionService } from '../services/sessionService.js'
+import type { ChatState } from '../ws/events.js'
 
 // In-memory conversation state per session
-const sessionStates = new Map<string, 'idle' | 'thinking' | 'tool_executing'>()
+const sessionStates = new Map<string, ChatState>()
 
 export async function handleConversationsApi(
   req: Request,
@@ -135,13 +136,13 @@ function stopChat(sessionId: string): Response {
 
 export function setSessionChatState(
   sessionId: string,
-  state: 'idle' | 'thinking' | 'tool_executing'
+  state: ChatState
 ): void {
   sessionStates.set(sessionId, state)
 }
 
 export function getSessionChatState(
   sessionId: string
-): 'idle' | 'thinking' | 'tool_executing' {
+): ChatState {
   return sessionStates.get(sessionId) || 'idle'
 }

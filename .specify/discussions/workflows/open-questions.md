@@ -152,6 +152,16 @@
 - resolution: First-scope phase transition controls should cover `confirm`, `reject`, `retry`, and `manual_complete`. Pending confirmation shows Confirm/Reject/Retry and blocks other completion controls. Running phases with user-confirmation authority can show Manually complete phase as a manual override with summary/evidence. Blocked/unable outcomes show Retry only. Auto-advance is an authority/status label, not a button. Cancel and resume are session-level lifecycle/recovery controls, not phase completion controls.
 - stop_and_reopen_condition: If later UI mixes pending confirmation with manual completion, exposes advancement controls for blocked/unable states, or treats cancel/resume as ordinary phase transitions without a lifecycle/recovery contract, return to sp-discussion.
 
+### OQ-018: Future Handoff Boundary
+
+- question: If this discussion is handed to `sp-specify`, should the handoff be a narrow phase-skill update or a refreshed unified workflow contract feature?
+- owner: user
+- latest_resolve_phase: handoff-assessment
+- blocking_level: hard
+- status: resolved
+- resolution: Refresh as one unified workflow contract handoff covering grouped fields, constraint semantics, recommended phase skills, dependency-aware sharing, lifecycle/completion rules, runtime/editor UI behavior, compatibility, and validation.
+- stop_and_reopen_condition: If downstream work only carries the old phase-skill handoff and omits field grouping, lifecycle status, completion evidence, or runtime controls, return to sp-discussion before specification.
+
 ## Soft Questions
 
 ### OQ-004: Priority Semantics

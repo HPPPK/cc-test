@@ -1,0 +1,62 @@
+{
+  "id": "T001",
+  "title": "Create the implementation matrix",
+  "story": "guardrails",
+  "agent": "quality-reviewer",
+  "depends_on": [],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/spec.md",
+    ".specify/features/009-specify-discussions-workflows/plan.md",
+    ".specify/features/009-specify-discussions-workflows/plan-contract.json",
+    ".specify/memory/project-rules.md"
+  ],
+  "write_scope": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+  ],
+  "read_scope": [
+    ".specify/features/009-specify-discussions-workflows/**",
+    ".specify/memory/project-rules.md",
+    ".specify/memory/learnings/INDEX.md"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "source files",
+    "test files",
+    "dependency manifests",
+    "runtime configuration"
+  ],
+  "expected_outputs": [
+    "Create implementation-matrix.md mapping FR-001..FR-030, NFR-001..NFR-006, SC-001..SC-004, MP-001..MP-013, and CA-001..CA-010 to tasks and verification"
+  ],
+  "anti_goals": [
+    "Do not edit production code or tests",
+    "Do not create implementation beyond evidence mapping"
+  ],
+  "does_not_remove": [
+    "MP-001",
+    "MP-002",
+    "MP-013"
+  ],
+  "capability_operations": [
+    "classification",
+    "coverage mapping",
+    "guardrail freezing"
+  ],
+  "acceptance_criteria": [
+    "All buildable FRs and success criteria map to at least one task or checkpoint",
+    "No locked MP or CA obligation is unmapped",
+    "Matrix identifies required narrow and final gates"
+  ],
+  "verify_commands": [
+    "Test-Path .specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+  ],
+  "handoff_format": [
+    "implementation_matrix_path",
+    "unmapped_obligation_count",
+    "risks"
+  ],
+  "retry_max": 1,
+  "escalation": "sp-plan"
+}

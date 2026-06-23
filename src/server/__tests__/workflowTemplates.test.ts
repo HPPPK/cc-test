@@ -189,7 +189,7 @@ describe('Workflow template API contract', () => {
     await cleanupTmpConfigDir()
   })
 
-  it('GET /api/workflows/templates remains compatible with builtin list and invalid user diagnostics', async () => {
+  it('GET /api/workflows/templates returns user templates only while reporting invalid user diagnostics', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
       templates: [
@@ -205,22 +205,7 @@ describe('Workflow template API contract', () => {
     const { res, body } = await requestJson('/api/workflows/templates')
 
     expect(res.status).toBe(200)
-    expect(body.templates).toContainEqual(expect.objectContaining({
-      id: 'agent-development',
-      source: 'builtin',
-      version: '1',
-      name: 'Agent Development',
-      description: expect.any(String),
-      phaseCount: 5,
-      firstPhaseId: 'discussion',
-      phaseNames: [
-        'Discussion',
-        'Specify',
-        'Plan',
-        'Tasks',
-        'Implement',
-      ],
-    }))
+    expect(body.templates).toEqual([])
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'invalid-user-template')).toBe(false)
     expect(body.invalidTemplates).toContainEqual(expect.objectContaining({
       source: 'user-config',
@@ -231,19 +216,11 @@ describe('Workflow template API contract', () => {
     }))
   })
 
-  it('GET /api/workflows/templates/:source/:id returns builtin detail as read-only and copyable', async () => {
+  it('GET /api/workflows/templates/:source/:id returns not found for removed builtin presets', async () => {
     const { res, body } = await requestJson('/api/workflows/templates/builtin/agent-development')
 
-    expect(res.status).toBe(200)
-    expect(body.template).toEqual(expect.objectContaining({
-      id: 'agent-development',
-      source: 'builtin',
-      version: '1',
-      name: 'Agent Development',
-      editable: false,
-      copyable: true,
-    }))
-    expect(body.invalidTemplates).toEqual([])
+    expect(res.status).toBe(404)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_NOT_FOUND')
   })
 
   it('GET /api/workflows/templates/:source/:id returns stable invalid source errors', async () => {
@@ -278,6 +255,29 @@ describe('Workflow template API contract', () => {
       source: 'request',
       code: 'WORKFLOW_PHASE_HANDOFF_REQUIRED',
       severity: 'error',
+    }))
+  })
+
+  it('POST /api/workflows/templates/validate accepts the selected existing id for edit preflight', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [{ ...validTemplate('custom-workflow'), name: 'Existing Workflow' }],
+    })
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/validate', {
+      method: 'POST',
+      body: JSON.stringify({
+        allowExistingId: 'custom-workflow',
+        template: { ...validTemplate('custom-workflow'), version: '2', name: 'Updated Workflow' },
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    expect(body.valid).toBe(true)
+    expect(body.issues).toEqual([])
+    expect(body.template).toEqual(expect.objectContaining({
+      id: 'custom-workflow',
+      name: 'Updated Workflow',
     }))
   })
 
@@ -462,20 +462,19 @@ describe('Workflow template API contract', () => {
     }))
   })
 
-  it('POST /api/workflows/templates/validate rejects builtin id shadowing without writing', async () => {
+  it('POST /api/workflows/templates/validate accepts the former builtin id as a user template id', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/validate', {
       method: 'POST',
       body: JSON.stringify({ template: validTemplate('agent-development') }),
     }))
 
     expect(res.status).toBe(200)
-    expect(body.valid).toBe(false)
-    expect(body.issues).toContainEqual(expect.objectContaining({
-      source: 'request',
-      templateId: 'agent-development',
-      code: 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
-      severity: 'error',
+    expect(body.valid).toBe(true)
+    expect(body.template).toEqual(expect.objectContaining({
+      id: 'agent-development',
+      source: 'user',
     }))
+    expect(body.issues).toEqual([])
   })
 
   it('POST /api/workflows/templates creates a user template and returns refreshed list metadata', async () => {
@@ -964,13 +963,18 @@ describe('Workflow template API contract', () => {
     })
   })
 
-  it('POST /api/workflows/templates/authoring duplicates builtin templates with default copy naming', async () => {
+  it('POST /api/workflows/templates/authoring duplicates user templates with the former builtin id', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [{ ...validTemplate('agent-development'), name: 'Agent Development' }],
+    })
+
     const { res, body } = await requestJson('/api/workflows/templates/authoring', {
       method: 'POST',
       body: JSON.stringify({
         operation: 'duplicate',
         selector: {
-          source: 'builtin',
+          source: 'user',
           id: 'agent-development',
         },
       }),
@@ -983,19 +987,19 @@ describe('Workflow template API contract', () => {
       persisted: true,
       affectedTemplate: {
         source: 'user',
-        id: 'agent-development-custom',
-        name: 'Agent Development Custom',
+        id: 'agent-development-copy',
+        name: 'Agent Development Copy',
         basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       },
       beforeSummary: {
-        source: 'builtin',
+        source: 'user',
         id: 'agent-development',
-        editable: false,
+        editable: true,
         copyable: true,
       },
       afterSummary: {
         source: 'user',
-        id: 'agent-development-custom',
+        id: 'agent-development-copy',
         editable: true,
         copyable: true,
         basisHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
@@ -1011,14 +1015,14 @@ describe('Workflow template API contract', () => {
 
     const { body: listBody } = await requestJson('/api/workflows/templates')
     expect(listBody.templates).toContainEqual(expect.objectContaining({
-      source: 'builtin',
+      source: 'user',
       id: 'agent-development',
-      editable: false,
+      editable: true,
     }))
     expect(listBody.templates).toContainEqual(expect.objectContaining({
       source: 'user',
-      id: 'agent-development-custom',
-      name: 'Agent Development Custom',
+      id: 'agent-development-copy',
+      name: 'Agent Development Copy',
       editable: true,
     }))
   })
@@ -1026,7 +1030,10 @@ describe('Workflow template API contract', () => {
   it('POST /api/workflows/templates/authoring rejects duplicate target conflicts without writing', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
-      templates: [{ ...validTemplate('existing-copy'), name: 'Existing Copy' }],
+      templates: [
+        { ...validTemplate('agent-development'), name: 'Agent Development' },
+        { ...validTemplate('existing-copy'), name: 'Existing Copy' },
+      ],
     })
 
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/authoring', {
@@ -1034,7 +1041,7 @@ describe('Workflow template API contract', () => {
       body: JSON.stringify({
         operation: 'duplicate',
         selector: {
-          source: 'builtin',
+          source: 'user',
           id: 'agent-development',
         },
         target: {
@@ -1122,11 +1129,7 @@ describe('Workflow template API contract', () => {
       nextAction: 'none',
       message: 'Workflow template deleted.',
     })
-    expect(body.templates).toContainEqual(expect.objectContaining({
-      source: 'builtin',
-      id: 'agent-development',
-      editable: false,
-    }))
+    expect(body.templates).toEqual([])
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'deletable-workflow')).toBe(false)
     expect(await readWorkflowConfig()).toEqual({
       schemaVersion: 1,
@@ -1268,14 +1271,21 @@ describe('Workflow template API contract', () => {
     })
   })
 
-  it('POST /api/workflows/templates rejects builtin id create without writing', async () => {
-    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates', {
+  it('POST /api/workflows/templates creates a user template with the former builtin id', async () => {
+    const { res, body } = await requestJson('/api/workflows/templates', {
       method: 'POST',
       body: JSON.stringify({ template: validTemplate('agent-development') }),
-    }))
+    })
 
-    expect(res.status).toBe(400)
-    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT')
+    expect(res.status).toBe(201)
+    expect(body.template).toEqual(expect.objectContaining({
+      id: 'agent-development',
+      source: 'user',
+    }))
+    expect(body.templates).toContainEqual(expect.objectContaining({
+      id: 'agent-development',
+      source: 'user',
+    }))
   })
 
   it('POST /api/workflows/templates rejects existing user id conflicts without overwriting', async () => {
@@ -1345,7 +1355,7 @@ describe('Workflow template API contract', () => {
     expectWorkflowError(body, 'METHOD_NOT_ALLOWED')
   })
 
-  it('DELETE /api/workflows/templates/user/:id deletes user templates without touching builtin availability', async () => {
+  it('DELETE /api/workflows/templates/user/:id deletes user templates without restoring default presets', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
       templates: [validTemplate('custom-workflow')],
@@ -1356,10 +1366,7 @@ describe('Workflow template API contract', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(body.templates).toContainEqual(expect.objectContaining({
-      id: 'agent-development',
-      source: 'builtin',
-    }))
+    expect(body.templates).toEqual([])
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'custom-workflow')).toBe(false)
   })
 
@@ -1372,8 +1379,8 @@ describe('Workflow template API contract', () => {
     expectWorkflowError(body, 'METHOD_NOT_ALLOWED')
   })
 
-  it('POST /api/workflows/templates/duplicate copies builtin templates to user templates with a safe target id', async () => {
-    const { res, body } = await requestJson('/api/workflows/templates/duplicate', {
+  it('POST /api/workflows/templates/duplicate returns not found for removed builtin presets', async () => {
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/duplicate', {
       method: 'POST',
       body: JSON.stringify({
         source: 'builtin',
@@ -1381,31 +1388,37 @@ describe('Workflow template API contract', () => {
         targetId: 'agent-development-copy',
         targetName: 'Agent Development Copy',
       }),
+    }))
+
+    expect(res.status).toBe(404)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_NOT_FOUND')
+  })
+
+  it('POST /api/workflows/templates/duplicate allows user copies to use the former builtin id', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [validTemplate('custom-workflow')],
+    })
+
+    const { res, body } = await requestJson('/api/workflows/templates/duplicate', {
+      method: 'POST',
+      body: JSON.stringify({
+        source: 'user',
+        id: 'custom-workflow',
+        targetId: 'agent-development',
+        targetName: 'Agent Development',
+      }),
     })
 
     expect(res.status).toBe(201)
     expect(body.template).toEqual(expect.objectContaining({
-      id: 'agent-development-copy',
+      id: 'agent-development',
       source: 'user',
-      name: 'Agent Development Copy',
+      name: 'Agent Development',
     }))
   })
 
-  it('POST /api/workflows/templates/duplicate rejects target ids that shadow builtins without writing', async () => {
-    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/duplicate', {
-      method: 'POST',
-      body: JSON.stringify({
-        source: 'builtin',
-        id: 'agent-development',
-        targetId: 'agent-development',
-      }),
-    }))
-
-    expect(res.status).toBe(400)
-    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT')
-  })
-
-  it('POST /api/workflows/templates/import/preview proposes rename for builtin conflicts and does not write', async () => {
+  it('POST /api/workflows/templates/import/preview treats the former builtin id as a normal new id', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import/preview', {
       method: 'POST',
       body: JSON.stringify({
@@ -1420,9 +1433,9 @@ describe('Workflow template API contract', () => {
     expect(body.schemaVersion).toBe(1)
     expect(body.candidates).toContainEqual(expect.objectContaining({
       originalId: 'agent-development',
-      proposedId: expect.stringMatching(/^agent-development-/),
-      conflict: 'builtin-template',
-      defaultResolution: 'rename',
+      proposedId: 'agent-development',
+      conflict: 'none',
+      defaultResolution: 'add',
       selectable: true,
     }))
     expect(body.canCommit).toBe(true)
@@ -1690,7 +1703,6 @@ describe('Workflow template API contract', () => {
       body: JSON.stringify({
         templates: [
           { source: 'user', id: 'custom-workflow' },
-          { source: 'builtin', id: 'agent-development' },
         ],
         mode: 'selected',
       }),
@@ -1701,14 +1713,11 @@ describe('Workflow template API contract', () => {
     expect(body.exportedAt).toEqual(expect.any(String))
     expect(body.templates).toEqual([
       expect.objectContaining({ id: 'custom-workflow' }),
-      expect.objectContaining({ id: 'agent-development' }),
     ])
     expect(body.templates).toEqual([
       expect.not.objectContaining({ source: expect.anything() }),
-      expect.not.objectContaining({ source: expect.anything() }),
     ])
     expect(body.templates).toEqual([
-      expect.not.objectContaining({ editable: expect.anything() }),
       expect.not.objectContaining({ editable: expect.anything() }),
     ])
     expect(JSON.stringify(body)).not.toContain('unrelatedUserState')
@@ -1835,17 +1844,26 @@ describe('Workflow template API contract', () => {
     expect(serialized).not.toContain('agents/openai.yaml')
   })
 
-  it('POST /api/workflows/templates/export returns builtin templates as reusable import payloads', async () => {
+  it('POST /api/workflows/templates/export returns former builtin ids as reusable user import payloads', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [{ ...validTemplate('agent-development'), name: 'Agent Development' }],
+    })
+
     const { res: exportRes, body: exportBody } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/export', {
       method: 'POST',
       body: JSON.stringify({
-        templates: [{ source: 'builtin', id: 'agent-development' }],
+        templates: [{ source: 'user', id: 'agent-development' }],
         mode: 'selected',
       }),
     }))
 
     expect(exportRes.status).toBe(200)
     const exportedTemplates = exportBody.templates as Array<Record<string, unknown>>
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [],
+    })
 
     const { res: previewRes, body: previewBody } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import/preview', {
       method: 'POST',
@@ -1860,8 +1878,8 @@ describe('Workflow template API contract', () => {
     expect(previewRes.status).toBe(200)
     expect(previewBody.candidates).toContainEqual(expect.objectContaining({
       originalId: 'agent-development',
-      conflict: 'builtin-template',
-      defaultResolution: 'rename',
+      conflict: 'none',
+      defaultResolution: 'add',
       selectable: true,
       issues: [],
     }))

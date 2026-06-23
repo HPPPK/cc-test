@@ -6,7 +6,7 @@ import type { SkillMeta, SkillSource } from '../../types/skill'
 
 const SOURCE_ORDER: SkillSource[] = ['user', 'project', 'plugin', 'mcp', 'bundled']
 
-type SkillSortKey =
+export type SkillSortKey =
   | 'name'
   | 'nameDesc'
   | 'updatedAt'
@@ -14,6 +14,11 @@ type SkillSortKey =
   | 'createdAt'
   | 'createdAtOldest'
   | 'tokens'
+
+type SkillListProps = {
+  sortBy: SkillSortKey
+  onSortByChange: (sortBy: SkillSortKey) => void
+}
 
 const SOURCE_ICONS: Record<SkillSource, string> = {
   user: 'person',
@@ -105,14 +110,13 @@ function sortSkills(skills: SkillMeta[], sortBy: SkillSortKey) {
   })
 }
 
-export function SkillList() {
+export function SkillList({ sortBy, onSortByChange }: SkillListProps) {
   const { skills, isLoading, error, fetchSkills, fetchSkillDetail } =
     useSkillStore()
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const t = useTranslation()
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<SkillSortKey>('name')
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const currentWorkDir = activeSession?.workDir || undefined
 
@@ -255,7 +259,7 @@ export function SkillList() {
             <select
               aria-label={t('settings.skills.sortLabel')}
               value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as SkillSortKey)}
+              onChange={(event) => onSortByChange(event.target.value as SkillSortKey)}
               className="h-10 w-full appearance-none rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-3 pr-9 text-sm text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-brand)]"
             >
               <option value="name">{t('settings.skills.sort.name')}</option>

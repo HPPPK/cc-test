@@ -48,6 +48,7 @@ import {
   LOCAL_COMMAND_STDOUT_TAG,
 } from '../../constants/xml.js'
 import { shouldCreateWorktreeForSessionLaunch } from '../services/repositoryLaunchService.js'
+import { setSessionChatState } from '../api/conversations.js'
 
 const settingsService = new SettingsService()
 const providerService = new ProviderService()
@@ -89,10 +90,12 @@ const sessionTitleState = new Map<string, {
   startedGenerationCounts: Set<number>
 }>()
 
-const runtimeOverrides = new Map<string, {
+type RuntimeOverride = {
   providerId: string | null
   modelId: string
-}>()
+}
+
+const runtimeOverrides = new Map<string, RuntimeOverride>()
 
 const runtimeTransitionPromises = new Map<string, Promise<void>>()
 const workflowTransitionPromises = new Map<string, Promise<void>>()
@@ -103,6 +106,17 @@ const prewarmPendingSessions = new Set<string>()
 const prewarmedSessions = new Set<string>()
 const prewarmIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const DEFAULT_PREWARM_IDLE_TIMEOUT_MS = 5 * 60_000
+
+function restoreRuntimeOverride(
+  sessionId: string,
+  previousOverride: RuntimeOverride | undefined,
+): void {
+  if (previousOverride) {
+    runtimeOverrides.set(sessionId, previousOverride)
+  } else {
+    runtimeOverrides.delete(sessionId)
+  }
+}
 
 async function sendRepositoryStartupStatus(
   ws: ServerWebSocket<WebSocketData>,
@@ -763,6 +777,7 @@ async function applyWorkflowBoundaryTransition(
         submission,
         requestedAt,
         transitionId: message.transitionId,
+        nextPhaseContextStrategy: message.nextPhaseContextStrategy,
       })
       : await workflowRuntimeService.submitPhaseCompletion({
         state,
@@ -792,6 +807,12 @@ function normalizeWorkflowTransitionMessage(
 
 function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
   return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+}
+
+function isSupportedNextPhaseContextStrategy(
+  strategy: unknown,
+): strategy is WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined {
+  return strategy === undefined || strategy === 'inherit' || strategy === 'clear'
 }
 
 function toCompletionSubmission(message: WorkflowBoundaryTransitionMessage): CompletionSubmission {
@@ -924,14 +945,14 @@ async function handleSetRuntimeConfig(
         ) {
           return
         }
-        await restartSessionWithRuntimeConfig(ws, sessionId)
+        await restartSessionWithRuntimeConfig(ws, sessionId, prevOverride)
       })
     }
     return
   }
 
   await enqueueRuntimeTransition(sessionId, () =>
-    restartSessionWithRuntimeConfig(ws, sessionId),
+    restartSessionWithRuntimeConfig(ws, sessionId, prevOverride),
   )
 }
 
@@ -982,6 +1003,7 @@ async function restartSessionWithPermissionMode(
 async function restartSessionWithRuntimeConfig(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
+  previousOverride: RuntimeOverride | undefined,
 ): Promise<void> {
   try {
     const workDir = conversationService.getSessionWorkDir(sessionId)
@@ -1006,12 +1028,14 @@ async function restartSessionWithRuntimeConfig(
       details: { runtimeOverride: runtimeOverrides.get(sessionId), error: err },
     })
     console.error(`[WS] Failed to restart CLI for ${sessionId} after runtime override: ${errMsg}`)
+    const diagnosticMessage = await buildSessionStartupDiagnosticMessage(
+      sessionId,
+      `Failed to switch provider/model: ${errMsg}`,
+    )
+    restoreRuntimeOverride(sessionId, previousOverride)
     sendMessage(ws, {
       type: 'error',
-      message: await buildSessionStartupDiagnosticMessage(
-        sessionId,
-        `Failed to switch provider/model: ${errMsg}`,
-      ),
+      message: diagnosticMessage,
       code: 'CLI_RESTART_FAILED',
     })
     sendMessage(ws, { type: 'status', state: 'idle' })
@@ -1065,14 +1089,14 @@ function handleStopGeneration(ws: ServerWebSocket<WebSocketData>) {
   sessionStopRequested.add(sessionId)
 
   if (conversationService.hasSession(sessionId)) {
+    const stopTarget = conversationService.getSessionProcessToken(sessionId)
     // First try graceful interrupt via SDK control message
     conversationService.sendInterrupt(sessionId)
 
     // Force-kill if still running after 3 seconds
     setTimeout(() => {
-      if (conversationService.hasSession(sessionId)) {
+      if (conversationService.stopSessionIfCurrent(sessionId, stopTarget)) {
         console.log(`[WS] Force-killing CLI subprocess for session: ${sessionId}`)
-        conversationService.stopSession(sessionId)
       }
     }, 3_000)
   }
@@ -1797,7 +1821,27 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 // Helpers
 // ============================================================================
 
+function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessage): void {
+  if (message.type === 'status') {
+    setSessionChatState(sessionId, message.state)
+    return
+  }
+
+  if (message.type === 'message_complete') {
+    setSessionChatState(sessionId, 'idle')
+    return
+  }
+
+  if (
+    message.type === 'permission_request' ||
+    message.type === 'computer_use_permission_request'
+  ) {
+    setSessionChatState(sessionId, 'permission_pending')
+  }
+}
+
 function sendMessage(ws: ServerWebSocket<WebSocketData>, message: ServerMessage) {
+  syncSessionChatStateFromMessage(ws.data.sessionId, message)
   ws.send(JSON.stringify(message))
 }
 
@@ -2523,7 +2567,8 @@ function isWorkflowTransitionRequest(message: Extract<ClientMessage, { type: 'wo
       message.action === 'ready' ||
       message.action === 'blocked' ||
       message.action === 'unable'
-    )
+    ) &&
+    isSupportedNextPhaseContextStrategy(message.nextPhaseContextStrategy)
   )
 }
 
@@ -2547,7 +2592,7 @@ export function workflowNotificationForDesktop(notification: {
 function workflowSummaryForWebSocket(state: WorkflowSessionState): WorkflowSessionSummary {
   const summary = workflowSummaryFromState(state)
   const model = getVisibleWorkflowModelResolution(state)
-  const blocked = getActiveBlockedSubmission(state)
+  const blocked = summary.pendingConfirmation ? null : getActiveBlockedSubmission(state)
   return {
     ...summary,
     ...(model ? { model } : {}),

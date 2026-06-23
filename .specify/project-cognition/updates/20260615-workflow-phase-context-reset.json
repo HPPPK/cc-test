@@ -1,0 +1,108 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowRuntimeService.test.ts",
+    "src/server/api/sessions.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/server/ws/handler.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/types/chat.ts",
+    ".planning/quick/20260615-workflow-phase-context-reset/STATUS.md",
+    ".planning/quick/20260615-workflow-phase-context-reset/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/api/sessions.ts",
+    "src/server/ws/handler.ts",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/api/sessions.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/types/chat.ts"
+  ],
+  "behavior_surfaces": [
+    "workflow phase transition request contract",
+    "workflow runtime phase advancement and prompt assembly",
+    "REST workflow transition API",
+    "WebSocket workflow transition and auto-continue prompt",
+    "desktop workflow transition confirmation controls",
+    "workflow transition audit state"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Workflow phase transitions accept optional nextPhaseContextStrategy with values inherit or clear.",
+    "Default and omitted strategy remain inherited context for backward compatibility.",
+    "The clear strategy is opt-in from confirmation-time UI and only applies when advancing to a next phase.",
+    "The clear strategy does not delete transcript history, workflow companion state, handoff artifacts, output artifacts, final reports, or audit records.",
+    "When clear is selected, the next active phase prompt includes a context boundary instructing the agent to use accepted handoff materials and prior workflow artifacts rather than inherited transcript history.",
+    "Manual completion and pending confirmation both support the same clear next-phase strategy.",
+    "Final phase confirmation does not expose a next-phase context checkbox because no next phase exists."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/services/workflowRuntimeService.test.ts",
+      "result": "passed, 47 tests"
+    },
+    {
+      "command": "bun test src/server/__tests__/sessions.test.ts -t \"workflow/transition\"",
+      "result": "passed, 16 tests, 131 filtered"
+    },
+    {
+      "command": "bun test src/server/__tests__/websocket-handler.test.ts -t \"clear-context boundary\"",
+      "result": "passed, 1 test, 26 filtered"
+    },
+    {
+      "command": "cd desktop; bun test src/components/workflow/WorkflowComponents.test.tsx -t WorkflowTransitionControls",
+      "result": "passed, 10 tests, 43 filtered"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed, tsc --noEmit"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed; log at C:\\Users\\11034\\AppData\\Local\\Temp\\cc-jiangxia-phase-context-check-server-final.log"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed; log at C:\\Users\\11034\\AppData\\Local\\Temp\\cc-jiangxia-phase-context-check-desktop-final.log"
+    },
+    {
+      "command": "git diff --check -- <touched workflow context reset paths>",
+      "result": "passed with Windows LF/CRLF conversion warnings only"
+    }
+  ],
+  "known_unknowns": [
+    "The working tree contained many workflow-related dirty changes before this quick task; this task worked with them and did not revert unrelated edits.",
+    "Full bun run verify was not run; focused tests plus check:server and check:desktop passed.",
+    "A running desktop sidecar may need rebuild/restart before bundled runtime and UI reflect the source changes.",
+    "Project cognition entry was review/partial_refresh and selected broad workflow coverage-gap concept N-030, so live code and tests are the source of truth for completion claims."
+  ],
+  "confidence_notes": [
+    "Runtime tests prove clear strategy persists a next-phase marker while preserving accepted handoff artifact refs.",
+    "REST and WebSocket tests prove transition request propagation and auto-continue prompt behavior.",
+    "Desktop component tests prove the checkbox sends clear only when checked, is absent for final phase, and works for manual completion.",
+    "No changed runtime/API/control file introduced destructive transcript or workflow artifact deletion."
+  ],
+  "user_decisions": [
+    "User chose confirmation-time placement for the clear-context option.",
+    "User accepted an unchecked default/inherit behavior and a checkbox that means the next phase starts from handoff materials rather than full prior conversation."
+  ],
+  "boundary": {
+    "scope": "Add opt-in clear next-phase context strategy at workflow transition confirmation time.",
+    "excluded": [
+      "Template-level default context strategy",
+      "Automatic summarize/compact strategy expansion",
+      "Changing phase recommended skill semantics",
+      "Reintroducing builtin workflow templates",
+      "Deleting transcript history or workflow companion artifacts"
+    ]
+  }
+}

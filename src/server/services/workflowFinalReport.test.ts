@@ -132,6 +132,54 @@ describe('buildWorkflowFinalReport', () => {
     }))
   })
 
+  test('includes accepted completion submission evidence in final report artifacts', () => {
+    const state = completedState()
+    const completionEvidence = [
+      {
+        kind: 'artifact',
+        label: 'Discussion notes',
+        ref: '.specify/features/009-specify-discussions-workflows/discussion.md',
+      },
+    ]
+    const acceptedCompletionArtifact = {
+      ...state.artifactIndex[0],
+      lifecycleStatus: 'accepted',
+      submission: {
+        phaseId: 'discussion',
+        stateVersion: 3,
+        status: 'ready',
+        handoff: {
+          summary: 'Discussion is complete.',
+          artifacts: ['discussion.md'],
+        },
+        rationale: 'Discussion artifacts and decisions are ready for final report.',
+        evidence: completionEvidence,
+      },
+    }
+
+    state.artifactIndex = [acceptedCompletionArtifact]
+    state.phases[0].artifactPointers = [acceptedCompletionArtifact]
+
+    const report = buildWorkflowFinalReport(state)
+
+    expect(report.artifactRefs).toContainEqual(expect.objectContaining({
+      artifactId: 'discussion-ready-1',
+      lifecycleStatus: 'accepted',
+      submission: expect.objectContaining({
+        status: 'ready',
+        evidence: completionEvidence,
+      }),
+    }))
+    expect(report.phaseSummaries[0].completion.artifactPointers).toContainEqual(
+      expect.objectContaining({
+        artifactId: 'discussion-ready-1',
+        submission: expect.objectContaining({
+          evidence: completionEvidence,
+        }),
+      }),
+    )
+  })
+
   test('preserves bounded recommended skill snapshots and evidence without checklist noise', () => {
     const state = completedState()
     const report = buildWorkflowFinalReport({

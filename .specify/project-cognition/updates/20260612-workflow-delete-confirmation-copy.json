@@ -1,0 +1,57 @@
+{
+  "workflow": "sp-fast",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "scope_paths": [
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop Settings > Workflows template delete confirmation copy",
+    "workflow template delete confirmation dialog i18n strings",
+    "same-area workflow component tests"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "The workflow delete confirmation title is a concise question, not a repeated delete-template label.",
+    "Chinese delete confirmation title is `是否删除工作流`.",
+    "The concrete workflow name appears in the confirmation body while the existing delete mutation still runs only after confirmation."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "result": "passed, 49 tests passed; includes Chinese delete confirmation copy assertion"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed, tsc --noEmit"
+    }
+  ],
+  "known_unknowns": [
+    "Project cognition entry readiness remained review/partial_refresh with weak concept coverage; live reads were limited to the returned workflow manager, test, and locale paths.",
+    "Manual visual browser smoke was not rerun after this copy-only adjustment."
+  ],
+  "confidence_notes": [
+    "Change is limited to dialog copy, locale strings, and same-area assertions.",
+    "No workflow delete API, template storage, registry, or workflow creation/modification semantics changed."
+  ],
+  "user_decisions": [
+    "User requested the dialog use `是否删除工作流` instead of repeating `删除 {name}`."
+  ],
+  "boundary": {
+    "scope": "Copy refinement for the desktop workflow template delete confirmation dialog.",
+    "excluded": [
+      "server delete API changes",
+      "workflow template storage changes",
+      "workflow registry or authoring tool changes",
+      "delete permission changes"
+    ]
+  }
+}

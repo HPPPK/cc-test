@@ -1,0 +1,55 @@
+{
+  "task_id": "T014",
+  "status": "completed",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T014.json"
+  ],
+  "import_export_user_states": {
+    "import_preview_diagnostics": {
+      "state": "preserved",
+      "evidence": "Existing import preview Dependency diagnostics UI continues to render non-color-only severity, status, and can import/cannot import labels."
+    },
+    "blocked_commit_affordance": {
+      "state": "preserved",
+      "evidence": "No import selection or commit logic was changed; invalid dependency candidates remain non-selectable and cannot be committed."
+    },
+    "export_json_dependency_manifest": {
+      "state": "preserved",
+      "evidence": "Export JSON generation was not changed; the focused test asserts the copyable textarea still includes dependencyManifest."
+    },
+    "skill_contents_not_bundled_copy": {
+      "state": "implemented",
+      "evidence": "Export results now show visible localized copy: \"Recommended skill references are listed for diagnostics only; skill contents are not bundled.\""
+    },
+    "bundle_or_install_behavior": {
+      "state": "not_added",
+      "evidence": "No automatic install, bundle payload, localStorage repair, server, package, or save-file fallback behavior was added."
+    }
+  },
+  "tests_run": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "result": "passed",
+      "summary": "1 test file passed; 48 tests passed."
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed",
+      "summary": "tsc --noEmit completed successfully."
+    }
+  ],
+  "risks": [
+    {
+      "risk": "desktop/src/i18n/locales/en.ts, desktop/src/i18n/locales/zh.ts, desktop/src/types/session.ts, and desktop/src/components/workflow/WorkflowComponents.test.tsx had pre-existing uncommitted edits.",
+      "mitigation": "Preserved those edits and only added the export no-bundled-skill-contents locale key plus its rendered UI copy."
+    }
+  ],
+  "notes": [
+    "Read T014 packet, T013 result, workflow skill dependency manifest contract, and desktop export save-picker fallback learning.",
+    "Kept changes inside the allowed write scope.",
+    "Did not edit tests, server files, save picker behavior, package/config files, tasks.md, or implementation-matrix.md."
+  ]
+}

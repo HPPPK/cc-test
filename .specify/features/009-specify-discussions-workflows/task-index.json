@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "feature": "Workflow Phase Execution Contracts",
+  "feature_dir": ".specify/features/009-specify-discussions-workflows",
+  "task_count": 18,
+  "common_forbidden_scope": [
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*oauth*.json",
+    "~/.claude/**",
+    ".mcp.json",
+    ".codex/config.toml",
+    ".specify/project-cognition/**",
+    ".specify/memory/**",
+    ".git/**",
+    "node_modules/**",
+    "desktop/node_modules/**",
+    "adapters/**/node_modules/**",
+    "artifacts/**",
+    "dependency lockfiles unless explicitly in write_scope",
+    "package manifests unless explicitly in write_scope",
+    "source/test files outside write_scope"
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Create implementation matrix",
+      "story": "guardrails",
+      "agent": "quality-reviewer",
+      "packet": "task-packets/T001.json",
+      "depends_on": [],
+      "parallel_safe": false,
+      "write_scope": [".specify/features/009-specify-discussions-workflows/implementation-matrix.md"],
+      "guardrails": ["G-CONTRACT", "G-COMPAT", "G-TEST"]
+    },
+    {
+      "id": "T002",
+      "title": "Add server compatibility and validation tests",
+      "story": "US1",
+      "agent": "test-engineer",
+      "packet": "task-packets/T002.json",
+      "depends_on": ["T001"],
+      "parallel_safe": true,
+      "write_scope": ["src/server/services/workflowTypes.test.ts", "src/server/services/workflowTemplateRegistryService.test.ts", "src/server/services/__fixtures__/workflow-templates/legacy-flat-phase-contract.json"],
+      "guardrails": ["G-CONTRACT", "G-STRENGTH", "G-COMPAT", "G-TEST"]
+    },
+    {
+      "id": "T003",
+      "title": "Add desktop grouped authoring tests",
+      "story": "US1",
+      "agent": "test-engineer",
+      "packet": "task-packets/T003.json",
+      "depends_on": ["T001"],
+      "parallel_safe": true,
+      "write_scope": ["desktop/src/components/workflow/WorkflowComponents.test.tsx"],
+      "guardrails": ["G-CONTRACT", "G-STATE", "G-UI", "G-TEST"]
+    },
+    {
+      "id": "T004",
+      "title": "Implement grouped server compatibility",
+      "story": "US1",
+      "agent": "executor",
+      "packet": "task-packets/T004.json",
+      "depends_on": ["T002"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/services/workflowTypes.ts", "src/server/services/workflowTemplateValidation.ts", "src/server/services/workflowTemplateRegistryService.ts"],
+      "guardrails": ["G-CONTRACT", "G-STATE", "G-STRENGTH", "G-COMPAT"]
+    },
+    {
+      "id": "T005",
+      "title": "Implement grouped desktop authoring",
+      "story": "US1",
+      "agent": "executor",
+      "packet": "task-packets/T005.json",
+      "depends_on": ["T003", "T004"],
+      "parallel_safe": false,
+      "write_scope": ["desktop/src/components/workflow/WorkflowTemplateEditor.tsx", "desktop/src/components/workflow/workflowTemplateDisplay.ts", "desktop/src/types/session.ts", "desktop/src/i18n/locales/en.ts", "desktop/src/i18n/locales/zh.ts"],
+      "guardrails": ["G-CONTRACT", "G-STATE", "G-UI", "G-COMPAT"]
+    },
+    {
+      "id": "T006",
+      "title": "Join and verify US1",
+      "story": "US1",
+      "agent": "quality-reviewer",
+      "packet": "task-packets/T006.json",
+      "depends_on": ["T004", "T005"],
+      "parallel_safe": false,
+      "write_scope": [".specify/features/009-specify-discussions-workflows/implementation-matrix.md"],
+      "guardrails": ["G-COMPAT", "G-TEST"]
+    },
+    {
+      "id": "T007",
+      "title": "Add server skill binding and boundary tests",
+      "story": "US2",
+      "agent": "test-engineer",
+      "packet": "task-packets/T007.json",
+      "depends_on": ["T006"],
+      "parallel_safe": true,
+      "write_scope": ["src/server/services/workflowPhaseSkillResolver.test.ts", "src/server/services/workflowToolPolicy.test.ts", "src/server/services/workflowRuntimeService.test.ts"],
+      "guardrails": ["G-SKILL", "G-EVIDENCE", "G-TEST"]
+    },
+    {
+      "id": "T008",
+      "title": "Implement recommended skill runtime audit",
+      "story": "US2",
+      "agent": "executor",
+      "packet": "task-packets/T008.json",
+      "depends_on": ["T007"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/services/workflowPhaseSkillResolver.ts", "src/server/services/workflowToolPolicy.ts", "src/server/services/workflowRuntimeService.ts", "src/server/services/workflowSessionCreateService.ts", "src/server/services/workflowFinalReport.ts", "src/server/services/workflowSummary.ts", "src/server/api/skills.ts", "src/skills/loadSkillsDir.ts", "src/tools/SkillTool/SkillTool.ts", "src/tools/SkillTool/prompt.ts"],
+      "guardrails": ["G-SKILL", "G-EVIDENCE", "G-SCOPE"]
+    },
+    {
+      "id": "T009",
+      "title": "Add desktop recommended-skill visibility tests",
+      "story": "US2",
+      "agent": "test-engineer",
+      "packet": "task-packets/T009.json",
+      "depends_on": ["T006"],
+      "parallel_safe": true,
+      "write_scope": ["desktop/src/components/workflow/WorkflowComponents.test.tsx", "desktop/src/api/skills.test.ts", "desktop/src/__tests__/skillsSettings.test.tsx"],
+      "guardrails": ["G-SKILL", "G-UI", "G-EVIDENCE", "G-TEST"]
+    },
+    {
+      "id": "T010",
+      "title": "Implement desktop recommended-skill visibility",
+      "story": "US2",
+      "agent": "executor",
+      "packet": "task-packets/T010.json",
+      "depends_on": ["T008", "T009"],
+      "parallel_safe": false,
+      "write_scope": ["desktop/src/components/workflow/WorkflowStatusPanel.tsx", "desktop/src/components/workflow/WorkflowStartDialog.tsx", "desktop/src/components/workflow/WorkflowTemplatePicker.tsx", "desktop/src/api/skills.ts", "desktop/src/stores/skillStore.ts", "desktop/src/types/skill.ts", "desktop/src/types/session.ts", "desktop/src/i18n/locales/en.ts", "desktop/src/i18n/locales/zh.ts"],
+      "guardrails": ["G-SKILL", "G-UI", "G-EVIDENCE"]
+    },
+    {
+      "id": "T011",
+      "title": "Add server dependency-aware import/export tests",
+      "story": "US3",
+      "agent": "test-engineer",
+      "packet": "task-packets/T011.json",
+      "depends_on": ["T010"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/__tests__/workflowTemplates.test.ts", "src/server/services/workflowTemplateRegistryService.test.ts", "src/server/services/__fixtures__/workflow-templates/export-with-dependency-manifest.json"],
+      "guardrails": ["G-SHARE", "G-SKILL", "G-TEST"]
+    },
+    {
+      "id": "T012",
+      "title": "Implement dependency-aware import/export API",
+      "story": "US3",
+      "agent": "api-reviewer",
+      "packet": "task-packets/T012.json",
+      "depends_on": ["T011"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/api/workflowTemplates.ts", "src/server/services/workflowTemplateRegistryService.ts", "src/server/services/workflowTemplateValidation.ts", "src/server/services/workflowPhaseSkillResolver.ts"],
+      "guardrails": ["G-SHARE", "G-SKILL", "G-COMPAT"]
+    },
+    {
+      "id": "T013",
+      "title": "Add desktop import/export diagnostic tests",
+      "story": "US3",
+      "agent": "test-engineer",
+      "packet": "task-packets/T013.json",
+      "depends_on": ["T010"],
+      "parallel_safe": false,
+      "write_scope": ["desktop/src/components/workflow/WorkflowComponents.test.tsx"],
+      "guardrails": ["G-SHARE", "G-UI", "G-TEST"]
+    },
+    {
+      "id": "T014",
+      "title": "Implement desktop import/export diagnostics",
+      "story": "US3",
+      "agent": "executor",
+      "packet": "task-packets/T014.json",
+      "depends_on": ["T012", "T013"],
+      "parallel_safe": false,
+      "write_scope": ["desktop/src/components/workflow/WorkflowImportExportDialog.tsx", "desktop/src/components/workflow/WorkflowTemplateManager.tsx", "desktop/src/types/session.ts", "desktop/src/i18n/locales/en.ts", "desktop/src/i18n/locales/zh.ts"],
+      "guardrails": ["G-SHARE", "G-UI", "G-SCOPE"]
+    },
+    {
+      "id": "T015",
+      "title": "Add server completion transition and evidence tests",
+      "story": "US4",
+      "agent": "test-engineer",
+      "packet": "task-packets/T015.json",
+      "depends_on": ["T010"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/services/workflowRuntimeService.test.ts", "src/server/services/workflowSessionStateService.test.ts", "src/server/services/workflowFinalReport.test.ts", "src/services/compact/workflowSummaryCarryover.test.ts", "src/server/services/__fixtures__/workflow-sessions/pending-skill-evidence-state.json"],
+      "guardrails": ["G-STATE", "G-EVIDENCE", "G-TEST"]
+    },
+    {
+      "id": "T016",
+      "title": "Implement completion submission durability",
+      "story": "US4",
+      "agent": "executor",
+      "packet": "task-packets/T016.json",
+      "depends_on": ["T015"],
+      "parallel_safe": false,
+      "write_scope": ["src/server/services/workflowRuntimeService.ts", "src/server/services/workflowSessionStateService.ts", "src/server/services/workflowFinalReport.ts", "src/server/services/workflowSummary.ts", "src/server/services/workflowToolPolicy.ts"],
+      "guardrails": ["G-STATE", "G-EVIDENCE", "G-SCOPE"]
+    },
+    {
+      "id": "T017",
+      "title": "Add and implement desktop transition-control safety",
+      "story": "US4",
+      "agent": "executor",
+      "packet": "task-packets/T017.json",
+      "depends_on": ["T016"],
+      "parallel_safe": false,
+      "write_scope": ["desktop/src/components/workflow/WorkflowComponents.test.tsx", "desktop/src/components/workflow/WorkflowTransitionControls.tsx", "desktop/src/components/workflow/WorkflowStatusPanel.tsx", "desktop/src/types/session.ts", "desktop/src/i18n/locales/en.ts", "desktop/src/i18n/locales/zh.ts"],
+      "guardrails": ["G-STATE", "G-UI", "G-EVIDENCE"]
+    },
+    {
+      "id": "T018",
+      "title": "Run final gates and record evidence",
+      "story": "verification",
+      "agent": "quality-reviewer",
+      "packet": "task-packets/T018.json",
+      "depends_on": ["T006", "T010", "T014", "T017"],
+      "parallel_safe": false,
+      "write_scope": [".specify/features/009-specify-discussions-workflows/implementation-matrix.md"],
+      "guardrails": ["G-TEST", "G-EVIDENCE"]
+    }
+  ],
+  "parallel_batches": [
+    {"id": "batch-a", "tasks": ["T002", "T003"], "after": ["T001"], "join": ["T004", "T005", "T006"]},
+    {"id": "batch-b", "tasks": ["T007", "T009"], "after": ["T006"], "join": ["T010"]}
+  ],
+  "join_points": [
+    {"id": "checkpoint-0", "tasks": ["T001"]},
+    {"id": "checkpoint-us1", "tasks": ["T006"]},
+    {"id": "checkpoint-us2", "tasks": ["T010"]},
+    {"id": "checkpoint-us3", "tasks": ["T014"]},
+    {"id": "checkpoint-us4", "tasks": ["T017"]},
+    {"id": "final-gate", "tasks": ["T018"]}
+  ]
+}

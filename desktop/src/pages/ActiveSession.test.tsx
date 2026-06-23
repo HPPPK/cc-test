@@ -10,6 +10,7 @@ const viewportMocks = vi.hoisted(() => ({
 const apiMocks = vi.hoisted(() => ({
   getMessages: vi.fn(),
   getSlashCommands: vi.fn(),
+  getWorkflowReport: vi.fn(),
   transitionWorkflow: vi.fn(),
 }))
 
@@ -21,6 +22,7 @@ vi.mock('../api/sessions', () => ({
   sessionsApi: {
     getMessages: apiMocks.getMessages,
     getSlashCommands: apiMocks.getSlashCommands,
+    getWorkflowReport: apiMocks.getWorkflowReport,
     transitionWorkflow: apiMocks.transitionWorkflow,
   },
 }))
@@ -208,6 +210,21 @@ const UNABLE_ARTIFACT = {
 beforeEach(() => {
   apiMocks.getMessages.mockResolvedValue({ messages: [] })
   apiMocks.getSlashCommands.mockResolvedValue({ commands: [] })
+  apiMocks.getWorkflowReport.mockResolvedValue({
+    pointer: {
+      kind: 'final-report',
+      sessionId: 'workflow-session',
+      artifactId: 'final',
+      schemaVersion: 1,
+      createdAt: '2026-05-20T00:10:00.000Z',
+    },
+    report: {
+      schemaVersion: 1,
+      sessionId: 'workflow-session',
+      status: 'completed',
+      conversationSummary: 'Workflow completed.',
+    },
+  })
   apiMocks.transitionWorkflow.mockResolvedValue({
     ok: true,
     workflow: WORKFLOW_SUMMARY,
@@ -408,7 +425,7 @@ describe('ActiveSession task polling', () => {
     expect(chatColumn.children[0]).toContainElement(statusPanel)
   })
 
-  it('renders completed workflows as a single compact strip with report access', () => {
+  it('renders completed workflows as a single compact strip with report access', async () => {
     const sessionId = 'workflow-completed-session'
     const workflow: WorkflowSessionSummary = {
       ...WORKFLOW_SUMMARY,
@@ -477,9 +494,21 @@ describe('ActiveSession task polling', () => {
     expect(within(strip).getByTestId('completed-workflow-strip')).toHaveTextContent(/agent development/i)
     expect(within(strip).getByTestId('completed-workflow-strip')).toHaveTextContent(/completed/i)
     expect(within(chatColumn).queryByTestId('workflow-status-panel')).not.toBeInTheDocument()
-    const reportLink = within(strip).getByRole('link', { name: /final workflow report/i })
-    expect(reportLink).toHaveAttribute('data-compact', 'true')
-    expect(reportLink).toHaveAttribute('href', 'artifact://final-report-001')
+    apiMocks.getWorkflowReport.mockResolvedValueOnce({
+      pointer: workflow.reportPointer,
+      report: {
+        schemaVersion: 1,
+        sessionId,
+        status: 'completed',
+        conversationSummary: 'Workflow completed.',
+      },
+    })
+    const reportButton = within(strip).getByRole('button', { name: /final workflow report/i })
+    expect(reportButton).toHaveAttribute('data-compact', 'true')
+    fireEvent.click(reportButton)
+    expect(apiMocks.getWorkflowReport).toHaveBeenCalledWith(sessionId)
+    expect(await screen.findByRole('dialog', { name: /final workflow report/i })).toBeInTheDocument()
+    expect(screen.getByTestId('workflow-final-report-json')).toHaveTextContent(/workflow completed/i)
     expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
     expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
   })
@@ -941,9 +970,8 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    const reportLink = screen.getByRole('link', { name: /final workflow report/i })
-    expect(reportLink).toHaveAttribute('href', 'report-001')
-    expect(reportLink).toHaveAttribute('data-compact', 'true')
+    const reportButton = screen.getByRole('button', { name: /final workflow report/i })
+    expect(reportButton).toHaveAttribute('data-compact', 'true')
     expect(screen.queryByText(/report-001/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('workflow-status-panel')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
@@ -1023,7 +1051,7 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    expect(screen.getByRole('link', { name: /final workflow report/i })).toHaveAttribute('href', 'final')
+    expect(screen.getByRole('button', { name: /final workflow report/i })).toHaveAttribute('data-compact', 'true')
     expect(screen.queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /details/i }))
@@ -1397,7 +1425,7 @@ describe('ActiveSession task polling', () => {
 
       const panel = screen.getByTestId('workflow-status-panel')
       expect(panel).toHaveTextContent(blockedReason)
-      expect(panel).not.toHaveTextContent(new RegExp(blockedStatus, 'i'))
+      expect(panel).toHaveTextContent(new RegExp(`recovery:\\s*${blockedStatus}`, 'i'))
       expect(panel).not.toHaveTextContent(evidencePattern)
 
       fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
@@ -1422,6 +1450,75 @@ describe('ActiveSession task polling', () => {
     } finally {
       useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
     }
+  })
+
+  it('keeps pending confirmation controls ahead of stale blocked recovery in active session', () => {
+    const sessionId = 'workflow-pending-stale-blocked-session'
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation',
+      pendingConfirmation: true,
+      activePhaseId: 'plan',
+      activePhaseIndex: 2,
+      blockedStatus: 'blocked',
+      blockedReason: 'Old blocked recovery reason.',
+      statePointer: {
+        ...WORKFLOW_SUMMARY.statePointer,
+        sessionId,
+      },
+    }
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Workflow Pending Confirmation Session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:08:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        workflow: workflow as unknown as WorkflowSessionSummary,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Workflow Pending Confirmation Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'workflow pending', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    expect(panel).toHaveTextContent(/waiting for confirmation/i)
+    expect(panel).not.toHaveTextContent(/old blocked recovery reason/i)
+    expect(panel).not.toHaveTextContent(/recovery:/i)
+    expect(within(panel).getByRole('button', { name: /^confirm$/i })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /reject/i })).toBeInTheDocument()
   })
 
   it('treats a persisted historical session as non-empty before messages finish loading', () => {

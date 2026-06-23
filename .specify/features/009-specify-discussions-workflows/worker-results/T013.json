@@ -1,0 +1,67 @@
+{
+  "task_id": "T013",
+  "status": "red",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T013.json"
+  ],
+  "diagnostic_states": {
+    "export_json_dependency_manifest": {
+      "state": "covered_green_before_red_failure",
+      "evidence": "The export dependency manifest test now asserts the copyable Export JSON textarea contains \"dependencyManifest\" before the intentionally failing missing-language assertion."
+    },
+    "warning_dependency_import": {
+      "state": "covered_green",
+      "evidence": "Missing recommended skill diagnostics render warning, missing, can import, reference name, enabled checked candidate checkbox, and enabled Import selected button."
+    },
+    "invalid_dependency_import": {
+      "state": "covered_green",
+      "evidence": "Invalid dependency diagnostics render error, invalid-reference, cannot import, disabled candidate checkbox, disabled Import selected button, and no commit API call."
+    },
+    "no_bundled_skill_contents_language": {
+      "state": "red",
+      "evidence": "Expected visible text /skill contents are not bundled/i is absent. Current dialog copy says only template definitions are included and privacy note excludes skills, but does not explicitly say skill contents are not bundled."
+    }
+  },
+  "expected_visible_labels": [
+    "Dependency diagnostics",
+    "warning",
+    "missing",
+    "can import",
+    "error",
+    "invalid-reference",
+    "cannot import",
+    "Export dependency diagnostics",
+    "plugin-disabled",
+    "recommended skill reference only",
+    "skill contents are not bundled"
+  ],
+  "validation": {
+    "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+    "result": "red",
+    "summary": "1 failed, 47 passed, 48 total tests. The remaining failure is WorkflowTemplateManager > renders export dependency manifest diagnostics before users reuse the exported JSON.",
+    "failure": "Unable to find an element with the text: /skill contents are not bundled/i.",
+    "non_blocking_warnings": [
+      "Existing React act(...) warnings appeared for WorkflowTemplateEditor tests and were not introduced or addressed by this task."
+    ]
+  },
+  "risks": [
+    {
+      "risk": "desktop/src/components/workflow/WorkflowComponents.test.tsx had substantial pre-existing uncommitted edits outside T013's diagnostic assertions.",
+      "mitigation": "Did not revert or rewrite those edits; only added focused assertions for import/export dependency diagnostics."
+    },
+    {
+      "risk": "The RED test expects exact visible copy that production UI does not currently provide.",
+      "mitigation": "This matches T013's failing-first objective and should be satisfied by a later production UI change, not by weakening the test."
+    }
+  ],
+  "notes": [
+    "Read the T013 packet, dependency manifest contract, quickstart, WorkflowImportExportDialog.tsx, desktop session types, T012 result, and existing WorkflowComponents.test.tsx coverage.",
+    "Existing tests already covered dependency diagnostics rendering for warning and invalid-reference states, selectable warning imports, disabled invalid imports, and export diagnostics.",
+    "Added explicit non-color-only status/importability label assertions: missing/can import and invalid-reference/cannot import.",
+    "Added blocked commit evidence by asserting commitWorkflowTemplateImport is not called for the invalid dependency preview.",
+    "Added copyable export JSON evidence by asserting the export textarea includes dependencyManifest and excludes skillContents.",
+    "Added failing-first assertion requiring visible language that skill contents are not bundled.",
+    "No production source files, server files, package/config files, tasks.md, or implementation-matrix.md were edited."
+  ]
+}

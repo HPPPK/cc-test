@@ -43,19 +43,16 @@ Required context inputs:
   Run or emulate:
 
   ```text
-  C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent research --query=\"$ARGUMENTS\" --mode catalog --format json
-  # Agent: retrieve the alias catalog, write semantic_intake with normalized_query, intent_facets, negative_constraints, and alias_interpretations; include selected_concepts, rejected_concepts, concept_decisions with covered_facets, missing_facets, match_sources, lexicon_generation_id, expanded_queries, repository_search_terms, and justified paths in <query_plan_json>. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Derive project-language search terms from the alias catalog before reading source. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, normalized_query, and expanded_queries. Use these project-language search terms before broad repository search.
-  C:\Users\11034\.specify\bin\project-cognition.exe query --intent research --query-plan \"<query_plan_json>\" --format json
+  C:\Users\11034\.specify\bin\project-cognition.exe compass --intent research --query=\"$ARGUMENTS\" --format json
   ```
+
+  After the default compass packet, run the advanced `lexicon -> semantic_intake -> query` path only when `compass_state`, coverage diagnostics, localization, or live evidence requires explicit concept decisions. In that escalation, use `project-cognition lexicon --mode catalog` as the alias catalog, write agent-authored `semantic_intake` and `concept_decisions`, then run `project-cognition query --query-plan "<query_plan_json>"`; include `query_plan`, `semantic_intake`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `repository_search_terms`, project-language search terms, and facet coverage; do not search only the raw user words before source search. Agent-owned semantic normalization remains mandatory: `agent_normalization` and raw lexicon ranking are bootstrap signals only; if `agent_normalization` is omitted, treat it as `required=false`; use `write_semantic_intake_from_alias_catalog` when needed. Raw lexicon ranking is only a bootstrap; CJK or mixed CJK/ASCII input still requires agent-owned normalization even when positive raw lexical matches exist. The agent still owns translation. Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`.
 
   Use the returned readiness:
 
-  - `ready`: continue with the returned task-local bundle.
-  - `review`: perform only the returned `minimal_live_reads` before continuing.
-  - `ambiguous`: ask the user to select the intended candidate.
-  - `needs_update`: route through `$sp-map-update`; this includes adoptable missing path-index coverage.
-  - `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build`; this is reserved for first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation path_index rows, missing or invalid alias_index, explicit_rebuild_requested, or baseline_identity_invalid.
-  - `blocked`: stop and report the blocking runtime issue.
+  - `query_ready`: read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons.
+  - `review`: perform only the returned `minimal_live_reads` before continuing and inspect `coverage_diagnostics`.
+  - `blocked`: report the blocking runtime issue and continue with live evidence only where this workflow allows degraded navigation.
 - `PROJECT-HANDBOOK.md` only when compatibility/export evidence is explicitly relevant.
 - `.specify/prd/status.json` as the stable PRD scan freshness record when present.
 - Current repository evidence from code, docs, tests, routes, UI surfaces, service surfaces, data models, integrations, configuration, and deployment surfaces.

@@ -61,7 +61,7 @@ function providerModelIds(provider: SavedProvider): Set<string> {
 function resolveRuntimeRefreshSelection(
   provider: SavedProvider,
   activeId: string | null,
-  currentSelection: RuntimeSelection | undefined,
+  currentSelection: RuntimeSelection | null | undefined,
 ): RuntimeSelection | null {
   if (currentSelection?.providerId === provider.id) {
     const modelIds = providerModelIds(provider)
@@ -92,15 +92,16 @@ function refreshConnectedSessionsForProvider(provider: SavedProvider, activeId: 
       continue
     }
 
+    const previousSelection = runtimeStore.selections[sessionId] ?? null
     const selection = resolveRuntimeRefreshSelection(
       provider,
       activeId,
-      runtimeStore.selections[sessionId],
+      previousSelection,
     )
     if (!selection) continue
 
     runtimeStore.setSelection(sessionId, selection)
-    chatStore.setSessionRuntime(sessionId, selection, { force: true })
+    chatStore.setSessionRuntime(sessionId, selection, { force: true, previousSelection })
   }
 }
 

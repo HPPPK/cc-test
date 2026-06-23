@@ -1,11 +1,13 @@
 import type {
   WorkflowPhaseActionPolicy,
+  WorkflowPhaseConstraintStrength,
   WorkflowPhasePrompt,
   WorkflowPhaseSkillSource,
+  WorkflowPhaseToolPolicy,
   WorkflowTemplateSource,
 } from './workflowTypes.js'
+import { WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES } from './workflowToolPolicy.js'
 
-export const WORKFLOW_TEMPLATE_BUILTIN_ID = 'agent-development'
 export const WORKFLOW_TEMPLATE_SCHEMA_VERSION = 1
 
 export type WorkflowTemplateValidationIssueSource =
@@ -80,7 +82,32 @@ export type WorkflowTemplateRegistryPhase = {
   requiredArtifacts: WorkflowTemplateRegistryRequiredArtifact[]
   completionCriteria: WorkflowTemplateRegistryCompletionCriteria
   transition: WorkflowTemplateRegistryTransitionPolicy
+  intent?: {
+    objective: string
+    role: string
+    intake: string[]
+    strength?: WorkflowPhaseConstraintStrength
+    [key: string]: unknown
+  }
+  contract?: {
+    instructions: string
+    executionRules: string[]
+    actionPolicy?: WorkflowPhaseActionPolicy & {
+      strength?: WorkflowPhaseConstraintStrength
+      [key: string]: unknown
+    }
+    transitionAuthority: 'auto' | 'user-confirmation'
+    [key: string]: unknown
+  }
+  evidencePolicy?: {
+    outputArtifact: WorkflowTemplateRegistryOutputArtifact
+    requiredArtifacts: WorkflowTemplateRegistryRequiredArtifact[]
+    completionCriteria: WorkflowTemplateRegistryCompletionCriteria
+    handoffRules: string[]
+    [key: string]: unknown
+  }
   actionPolicy?: WorkflowPhaseActionPolicy
+  toolPolicy?: WorkflowPhaseToolPolicy
   phasePrompt?: WorkflowPhasePrompt
   [key: string]: unknown
 }
@@ -237,6 +264,17 @@ export function normalizePhaseSkillReferences(value: unknown): {
   return { references, invalidIndexes }
 }
 
+function hasInvalidPluginProvenance(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+
+  return value.some((skill) => {
+    if (!isRecord(skill)) return false
+    if (skill.source !== 'plugin') return false
+
+    return !isNonEmptyString(skill.pluginName)
+  })
+}
+
 export function normalizeCompletionCriteria(value: unknown): WorkflowTemplateRegistryCompletionCriteria | null {
   if (!isRecord(value)) return null
   if (
@@ -278,6 +316,38 @@ export function normalizeActionPolicy(value: unknown): WorkflowPhaseActionPolicy
   return {
     allowedActions,
     forbiddenActions,
+  }
+}
+
+const CONFIGURABLE_WORKFLOW_TOOL_NAME_SET = new Set<string>(WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES)
+
+export function normalizeToolPolicy(value: unknown): {
+  policy?: WorkflowPhaseToolPolicy
+  unknownTools: string[]
+  invalidShape: boolean
+} {
+  if (!isRecord(value)) return { unknownTools: [], invalidShape: false }
+  if (!Array.isArray(value.allowedTools)) {
+    return { unknownTools: [], invalidShape: true }
+  }
+
+  const allowedTools = Array.from(new Set(
+    value.allowedTools
+      .filter(isNonEmptyString)
+      .map((tool) => tool.trim()),
+  ))
+  const unknownTools = allowedTools.filter((tool) => !CONFIGURABLE_WORKFLOW_TOOL_NAME_SET.has(tool))
+  if (unknownTools.length > 0) {
+    return { unknownTools, invalidShape: false }
+  }
+
+  return {
+    policy: {
+      ...value,
+      allowedTools,
+    },
+    unknownTools: [],
+    invalidShape: false,
   }
 }
 
@@ -416,16 +486,6 @@ export function validateAndNormalizeWorkflowTemplate(
     ))
   }
 
-  if (value.id === WORKFLOW_TEMPLATE_BUILTIN_ID) {
-    issues.push(workflowTemplateValidationIssue(
-      source,
-      `${templatePath}.id`,
-      'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
-      'User templates cannot shadow builtin template ids.',
-      templateId,
-    ))
-  }
-
   if (
     isNonEmptyString(value.id) &&
     value.id !== options.allowExistingId &&
@@ -467,8 +527,20 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
         return
       }
+      const phaseForValidation = projectPhaseForValidation(phase)
+      const groupedContract = projectGroupedPhaseContract(phase)
 
-      if (!isNonEmptyString(phase.id)) {
+      invalidStrengthIssuePaths(phase, phasePath).forEach((issuePath) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          issuePath,
+          'WORKFLOW_PHASE_CONSTRAINT_STRENGTH_INVALID',
+          'Grouped phase constraint strength does not match its contract section.',
+          templateId,
+        ))
+      })
+
+      if (!isNonEmptyString(phaseForValidation.id)) {
         issues.push(workflowTemplateValidationIssue(
           source,
           `${phasePath}.id`,
@@ -476,7 +548,7 @@ export function validateAndNormalizeWorkflowTemplate(
           'Phase requires an id.',
           templateId,
         ))
-      } else if (phaseIds.has(phase.id)) {
+      } else if (phaseIds.has(phaseForValidation.id)) {
         issues.push(workflowTemplateValidationIssue(
           source,
           `${phasePath}.id`,
@@ -485,10 +557,10 @@ export function validateAndNormalizeWorkflowTemplate(
           templateId,
         ))
       } else {
-        phaseIds.add(phase.id)
+        phaseIds.add(phaseForValidation.id)
       }
 
-      if (!isNonEmptyString(phase.name) || !isNonEmptyString(phase.instructions)) {
+      if (!isNonEmptyString(phaseForValidation.name) || !isNonEmptyString(phaseForValidation.instructions)) {
         issues.push(workflowTemplateValidationIssue(
           source,
           phasePath,
@@ -498,7 +570,7 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
-      const completionCriteria = normalizeCompletionCriteria(phase.completionCriteria)
+      const completionCriteria = normalizeCompletionCriteria(phaseForValidation.completionCriteria)
       if (!completionCriteria) {
         issues.push(workflowTemplateValidationIssue(
           source,
@@ -509,7 +581,7 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
-      const outputArtifact = normalizeOutputArtifact(phase.outputArtifact)
+      const outputArtifact = normalizeOutputArtifact(phaseForValidation.outputArtifact)
       if (!outputArtifact) {
         issues.push(workflowTemplateValidationIssue(
           source,
@@ -520,8 +592,8 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
-      const requiredIntake = normalizeStringList(phase.requiredIntake)
-      const handoffRules = normalizeStringList(phase.handoffRules)
+      const requiredIntake = normalizeStringList(phaseForValidation.requiredIntake)
+      const handoffRules = normalizeStringList(phaseForValidation.handoffRules)
       const hasHandoff = requiredIntake.length > 0 && handoffRules.length > 0
       if (!hasHandoff) {
         issues.push(workflowTemplateValidationIssue(
@@ -533,7 +605,7 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
-      const transition = normalizeTransition(phase.transition)
+      const transition = normalizeTransition(phaseForValidation.transition)
       if (!transition) {
         issues.push(workflowTemplateValidationIssue(
           source,
@@ -544,7 +616,7 @@ export function validateAndNormalizeWorkflowTemplate(
         ))
       }
 
-      const normalizedSkills = normalizePhaseSkillReferences(phase.skills)
+      const normalizedSkills = normalizePhaseSkillReferences(phaseForValidation.skills)
       normalizedSkills.invalidIndexes.forEach((skillIndex) => {
         issues.push(workflowTemplateValidationIssue(
           source,
@@ -554,33 +626,65 @@ export function validateAndNormalizeWorkflowTemplate(
           templateId,
         ))
       })
+      if (hasInvalidPluginProvenance(phaseForValidation.skills)) {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.skills`,
+          'WORKFLOW_PHASE_SKILL_INVALID_PROVENANCE',
+          'Plugin phase skill references require non-empty plugin provenance.',
+          templateId,
+        ))
+      }
 
       if (
-        isNonEmptyString(phase.id) &&
-        isNonEmptyString(phase.name) &&
-        isNonEmptyString(phase.instructions) &&
+        isNonEmptyString(phaseForValidation.id) &&
+        isNonEmptyString(phaseForValidation.name) &&
+        isNonEmptyString(phaseForValidation.instructions) &&
         outputArtifact &&
         hasHandoff &&
         completionCriteria &&
         transition
       ) {
-        const actionPolicy = normalizeActionPolicy(phase.actionPolicy)
-        const phasePrompt = normalizePhasePrompt(phase.phasePrompt)
+        const actionPolicy = normalizeActionPolicy(phaseForValidation.actionPolicy)
+        const toolPolicyResult = normalizeToolPolicy(phaseForValidation.toolPolicy)
+        if (toolPolicyResult.invalidShape) {
+          issues.push(workflowTemplateValidationIssue(
+            source,
+            `${phasePath}.toolPolicy.allowedTools`,
+            'WORKFLOW_PHASE_TOOL_POLICY_INVALID',
+            'Workflow phase tool policy requires allowedTools to be an array of known tool names.',
+            templateId,
+          ))
+        }
+        toolPolicyResult.unknownTools.forEach((toolName) => {
+          issues.push(workflowTemplateValidationIssue(
+            source,
+            `${phasePath}.toolPolicy.allowedTools`,
+            'WORKFLOW_PHASE_TOOL_POLICY_UNKNOWN_TOOL',
+            `Workflow phase tool policy contains an unknown tool: ${toolName}.`,
+            templateId,
+          ))
+        })
+        const phasePrompt = normalizePhasePrompt(phaseForValidation.phasePrompt)
         normalizedPhases.push({
-          ...phase,
-          id: phase.id,
-          name: phase.name,
-          instructions: phase.instructions,
-          ...(isNonEmptyString(phase.objective) ? { objective: phase.objective } : {}),
+          ...stripRuntimeState(phase),
+          id: phaseForValidation.id,
+          name: phaseForValidation.name,
+          instructions: phaseForValidation.instructions,
+          ...(isNonEmptyString(phaseForValidation.objective) ? { objective: phaseForValidation.objective } : {}),
           requiredIntake,
           handoffRules,
-          executionRules: normalizeStringList(phase.executionRules),
+          executionRules: normalizeExecutionRules(phaseForValidation.executionRules),
           outputArtifact,
           skills: normalizedSkills.references,
-          requiredArtifacts: normalizeRequiredArtifacts(phase.requiredArtifacts),
+          requiredArtifacts: normalizeRequiredArtifacts(phaseForValidation.requiredArtifacts),
           completionCriteria,
           transition,
+          intent: groupedContract.intent,
+          contract: groupedContract.contract,
+          evidencePolicy: groupedContract.evidencePolicy,
           ...(actionPolicy ? { actionPolicy } : {}),
+          ...(toolPolicyResult.policy ? { toolPolicy: toolPolicyResult.policy } : {}),
           ...(phasePrompt ? { phasePrompt } : {}),
         })
       }
@@ -614,6 +718,195 @@ export function validateAndNormalizeUserConfigTemplate(
     basePath: `$.templates[${index}]`,
     source: 'user-config',
   })
+}
+
+function stripRuntimeState<T>(value: T): T {
+  if (!isRecord(value)) return value
+  const { runtimeState: _runtimeState, ...rest } = value
+  return rest as T
+}
+
+function normalizeExecutionRules(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((rule) => {
+    if (isNonEmptyString(rule)) return [rule]
+    if (isRecord(rule) && isNonEmptyString(rule.text)) return [rule.text]
+    return []
+  })
+}
+
+function normalizeGroupedTransition(value: unknown): WorkflowTemplateRegistryTransitionPolicy | null {
+  if (value !== 'auto' && value !== 'user-confirmation') return null
+  return { authority: value }
+}
+
+function projectPhaseForValidation(phase: Record<string, unknown>): Record<string, unknown> {
+  const intent = isRecord(phase.intent) ? phase.intent : {}
+  const contract = isRecord(phase.contract) ? phase.contract : {}
+  const evidencePolicy = isRecord(phase.evidencePolicy) ? phase.evidencePolicy : {}
+
+  const transition = normalizeTransition(phase.transition)
+    ?? normalizeGroupedTransition(contract.transitionAuthority)
+
+  return {
+    ...stripRuntimeState(phase),
+    name: isNonEmptyString(phase.name)
+      ? phase.name
+      : isNonEmptyString(intent.role)
+        ? intent.role
+        : phase.name,
+    instructions: isNonEmptyString(phase.instructions)
+      ? phase.instructions
+      : isNonEmptyString(contract.instructions)
+        ? contract.instructions
+        : phase.instructions,
+    objective: isNonEmptyString(phase.objective)
+      ? phase.objective
+      : isNonEmptyString(intent.objective)
+        ? intent.objective
+        : phase.objective,
+    requiredIntake: normalizeStringList(phase.requiredIntake).length > 0
+      ? phase.requiredIntake
+      : normalizeStringList(intent.intake),
+    handoffRules: normalizeStringList(phase.handoffRules).length > 0
+      ? phase.handoffRules
+      : normalizeStringList(evidencePolicy.handoffRules),
+    executionRules: normalizeExecutionRules(phase.executionRules).length > 0
+      ? phase.executionRules
+      : normalizeExecutionRules(contract.executionRules),
+    actionPolicy: isRecord(phase.actionPolicy)
+      ? phase.actionPolicy
+      : isRecord(contract.actionPolicy)
+        ? contract.actionPolicy
+        : phase.actionPolicy,
+    toolPolicy: isRecord(phase.toolPolicy)
+      ? phase.toolPolicy
+      : isRecord(contract.toolPolicy)
+        ? contract.toolPolicy
+        : phase.toolPolicy,
+    outputArtifact: isRecord(phase.outputArtifact)
+      ? phase.outputArtifact
+      : isRecord(evidencePolicy.outputArtifact)
+        ? evidencePolicy.outputArtifact
+        : phase.outputArtifact,
+    requiredArtifacts: Array.isArray(phase.requiredArtifacts)
+      ? phase.requiredArtifacts
+      : Array.isArray(evidencePolicy.requiredArtifacts)
+        ? evidencePolicy.requiredArtifacts
+        : phase.requiredArtifacts,
+    completionCriteria: isRecord(phase.completionCriteria)
+      ? phase.completionCriteria
+      : isRecord(evidencePolicy.completionCriteria)
+        ? evidencePolicy.completionCriteria
+        : phase.completionCriteria,
+    transition: transition ?? phase.transition,
+  }
+}
+
+function projectGroupedPhaseContract(phase: Record<string, unknown>): {
+  intent: WorkflowTemplateRegistryPhase['intent']
+  contract: WorkflowTemplateRegistryPhase['contract']
+  evidencePolicy: WorkflowTemplateRegistryPhase['evidencePolicy']
+} {
+  const normalized = projectPhaseForValidation(phase)
+  const existingIntent = isRecord(phase.intent) ? phase.intent : {}
+  const existingContract = isRecord(phase.contract) ? phase.contract : {}
+  const existingEvidencePolicy = isRecord(phase.evidencePolicy) ? phase.evidencePolicy : {}
+  const transition = normalizeTransition(normalized.transition)
+  const outputArtifact = normalizeOutputArtifact(normalized.outputArtifact)
+  const completionCriteria = normalizeCompletionCriteria(normalized.completionCriteria)
+  const toolPolicyResult = normalizeToolPolicy(normalized.toolPolicy)
+
+  return {
+    intent: {
+      ...existingIntent,
+      objective: isNonEmptyString(existingIntent.objective)
+        ? existingIntent.objective
+        : isNonEmptyString(normalized.objective)
+          ? normalized.objective
+          : '',
+      role: isNonEmptyString(existingIntent.role)
+        ? existingIntent.role
+        : isNonEmptyString(normalized.name)
+          ? normalized.name
+          : '',
+      intake: normalizeStringList(existingIntent.intake).length > 0
+        ? normalizeStringList(existingIntent.intake)
+        : normalizeStringList(normalized.requiredIntake),
+    },
+    contract: {
+      ...existingContract,
+      instructions: isNonEmptyString(existingContract.instructions)
+        ? existingContract.instructions
+        : isNonEmptyString(normalized.instructions)
+          ? normalized.instructions
+          : '',
+      executionRules: normalizeExecutionRules(existingContract.executionRules).length > 0
+        ? normalizeExecutionRules(existingContract.executionRules)
+        : normalizeExecutionRules(normalized.executionRules),
+      ...(isRecord(existingContract.actionPolicy)
+        ? { actionPolicy: existingContract.actionPolicy as WorkflowPhaseActionPolicy & Record<string, unknown> }
+        : isRecord(normalized.actionPolicy)
+          ? { actionPolicy: normalized.actionPolicy as WorkflowPhaseActionPolicy & Record<string, unknown> }
+          : {}),
+      ...(toolPolicyResult.policy ? { toolPolicy: toolPolicyResult.policy } : {}),
+      transitionAuthority: existingContract.transitionAuthority === 'auto' ||
+        existingContract.transitionAuthority === 'user-confirmation'
+        ? existingContract.transitionAuthority
+        : transition?.authority ?? 'auto',
+    },
+    evidencePolicy: {
+      ...existingEvidencePolicy,
+      outputArtifact: isRecord(existingEvidencePolicy.outputArtifact)
+        ? normalizeOutputArtifact(existingEvidencePolicy.outputArtifact) ?? outputArtifact
+        : outputArtifact,
+      requiredArtifacts: Array.isArray(existingEvidencePolicy.requiredArtifacts)
+        ? normalizeRequiredArtifacts(existingEvidencePolicy.requiredArtifacts)
+        : normalizeRequiredArtifacts(normalized.requiredArtifacts),
+      completionCriteria: isRecord(existingEvidencePolicy.completionCriteria)
+        ? normalizeCompletionCriteria(existingEvidencePolicy.completionCriteria) ?? completionCriteria
+        : completionCriteria,
+      handoffRules: normalizeStringList(existingEvidencePolicy.handoffRules).length > 0
+        ? normalizeStringList(existingEvidencePolicy.handoffRules)
+        : normalizeStringList(normalized.handoffRules),
+    },
+  }
+}
+
+function invalidStrengthIssuePaths(phase: Record<string, unknown>, phasePath: string): string[] {
+  const issuePaths: string[] = []
+  const strengthAt = (value: unknown): unknown => isRecord(value) ? value.strength : undefined
+  const isInvalid = (actual: unknown, expected: WorkflowPhaseConstraintStrength) =>
+    actual !== undefined && actual !== expected
+  const intent = isRecord(phase.intent) ? phase.intent : {}
+  const contract = isRecord(phase.contract) ? phase.contract : {}
+  const actionPolicy = isRecord(contract.actionPolicy) ? contract.actionPolicy : undefined
+  const evidencePolicy = isRecord(phase.evidencePolicy) ? phase.evidencePolicy : {}
+
+  if (isInvalid(strengthAt(intent), 'guidance')) issuePaths.push(`${phasePath}.intent.strength`)
+  if (isInvalid(strengthAt(actionPolicy), 'policy')) issuePaths.push(`${phasePath}.contract.actionPolicy.strength`)
+  if (Array.isArray(contract.executionRules)) {
+    contract.executionRules.forEach((rule, ruleIndex) => {
+      if (isInvalid(strengthAt(rule), 'policy')) {
+        issuePaths.push(`${phasePath}.contract.executionRules[${ruleIndex}].strength`)
+      }
+    })
+  }
+  if (isInvalid(strengthAt(evidencePolicy.outputArtifact), 'evidence')) {
+    issuePaths.push(`${phasePath}.evidencePolicy.outputArtifact.strength`)
+  }
+  if (Array.isArray(evidencePolicy.requiredArtifacts)) {
+    evidencePolicy.requiredArtifacts.forEach((artifact, artifactIndex) => {
+      if (isInvalid(strengthAt(artifact), 'evidence')) {
+        issuePaths.push(`${phasePath}.evidencePolicy.requiredArtifacts[${artifactIndex}].strength`)
+      }
+    })
+  }
+  if (isInvalid(strengthAt(evidencePolicy.completionCriteria), 'gate')) {
+    issuePaths.push(`${phasePath}.evidencePolicy.completionCriteria.strength`)
+  }
+
+  return issuePaths
 }
 
 function isWorkflowPhaseSkillSource(value: unknown): value is WorkflowPhaseSkillSource {

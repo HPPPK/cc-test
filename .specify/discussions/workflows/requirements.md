@@ -24,6 +24,8 @@
 - The user accepted that workflow UI should mirror the grouped field model: Intent, Contract, Evidence, and Runtime Status. Template authoring should expose Intent, Contract, and Evidence as editable groups; Runtime Status belongs to running workflow/session views rather than persisted template fields.
 - The user continued into phase lifecycle design. Recommended state model: phase/session lifecycle uses `created`, `running`, `pending-confirmation`, `completed`, `failed`, `cancelled`, and resume/source-status markers; completion attempts use `ready`, `blocked`, and `unable`.
 - The user continued into runtime UI control design. Recommended first-scope controls: phase transition controls cover `confirm`, `reject`, `retry`, and `manual_complete`; session stop/recovery controls such as cancel/resume should remain separate.
+- The recommended future handoff boundary is a refreshed unified workflow contract handoff, not the older narrow phase-skill-only handoff.
+- The user confirmed the future handoff boundary: grouped fields, constraint semantics, recommended phase skills, dependency-aware sharing, lifecycle/completion rules, runtime/editor UI behavior, compatibility, and validation should stay together as one workflow contract feature.
 
 ## Confirmed Scope
 
@@ -57,6 +59,7 @@
 - Blocked or unable completion outcomes should show reason/evidence and a recovery-oriented `Retry`, but should not expose advancement controls such as `Confirm`, `Reject`, or `Complete phase`.
 - Auto-advance should be represented as an authority/status label, not a button, unless a future explicit override flow is designed.
 - Cancel and resume should be session-level lifecycle/recovery controls, not phase completion controls.
+- Any formal specification handoff should keep grouped fields, constraint semantics, phase skill binding, dependency-aware sharing, lifecycle rules, runtime controls, compatibility, and validation together as one coherent workflow contract capability.
 
 ## Confirmed Non-Goals
 
@@ -143,3 +146,4 @@ Settings-backed source refinement: workflow phase skill selection should reuse t
 - Confirmed field grouping direction: workflow template editor should expose editable Intent, Contract, and Evidence groups; running workflow/session surfaces should expose Runtime Status separately.
 - Confirmed lifecycle direction: runtime status UI should distinguish lifecycle state from completion attempt result. In particular, show blocked/unable as actionable completion outcomes inside a still-running phase unless the runtime itself failed or the user cancelled.
 - Confirmed runtime-control direction: use clear authority labels and controls. Pending confirmation exposes Confirm/Reject/Retry; running user-confirmation exposes Manually complete phase as an advanced/manual path; blocked/unable exposes Retry only; auto-advance, cancel, and resume are not phase-completion buttons.
+- Confirmed handoff-shape direction: a future `sp-specify` handoff should refresh the workflows discussion around workflow phase execution contracts. It should not split field model, lifecycle, phase skills, and UI controls into separate unrelated feature handoffs.

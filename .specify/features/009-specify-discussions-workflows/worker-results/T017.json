@@ -1,0 +1,69 @@
+{
+  "task_id": "T017",
+  "status": "completed",
+  "control_state_matrix": {
+    "pending_confirmation": {
+      "visible_controls": ["Confirm", "Reject", "Retry"],
+      "hidden_controls": ["Manually Complete Phase"],
+      "authority_label": "Authority: User confirmation required",
+      "command_context": ["phaseId", "transitionId", "stateVersion"],
+      "notes": "pendingConfirmation is checked before running/manual completion so stale running lifecycle state cannot show manual completion or duplicate ready submission controls."
+    },
+    "manual_completion": {
+      "visible_when": "status running, transitionAuthority user-confirmation, no pendingConfirmation, no blockedStatus, no blockedReason",
+      "visible_controls": ["Manually Complete Phase", "Confirm Completion", "Cancel"],
+      "hidden_when": ["pending_confirmation", "blocked", "unable", "failed"],
+      "authority_label": "Authority: User confirmation required",
+      "notes": "Manual completion remains a user override that submits manual_complete only after the dialog confirmation."
+    },
+    "blocked": {
+      "visible_controls": ["Retry"],
+      "hidden_controls": ["Confirm", "Reject", "Manually Complete Phase"],
+      "recovery_label": "Recovery: blocked",
+      "authority_label": "Authority: Automatic transition",
+      "notes": "blockedStatus alone is sufficient to show recovery controls even when lifecycle status remains running."
+    },
+    "unable": {
+      "visible_controls": ["Retry"],
+      "hidden_controls": ["Confirm", "Reject", "Manually Complete Phase"],
+      "recovery_label": "Recovery: unable",
+      "authority_label": "Authority: Automatic transition",
+      "notes": "unable uses the same recovery-only path and does not expose advancement controls."
+    },
+    "failed": {
+      "visible_controls": ["Retry"],
+      "hidden_controls": ["Confirm", "Manually Complete Phase"],
+      "recovery_label": "Recovery: failed",
+      "notes": "Existing failed completion-check recovery behavior is preserved."
+    },
+    "status_panel": {
+      "visible_authority_label": true,
+      "pending_priority": "pendingConfirmation displays Waiting for confirmation over stale running status",
+      "recommended_skill_evidence": "preserved in workflow details"
+    }
+  },
+  "tests_run": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "result": "passed",
+      "summary": "1 test file passed; 48 tests passed. Existing React act() warnings from WorkflowTemplateEditor tests were emitted but did not fail the run."
+    }
+  ],
+  "screenshot_path_if_browser_smoke_added": null,
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowTransitionControls.tsx",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T017.json"
+  ],
+  "risks": [
+    "Pre-existing unrelated edits were present in WorkflowComponents.test.tsx, WorkflowStatusPanel.tsx, desktop/src/types/session.ts, and locale files before this worker started; this worker did not revert them.",
+    "No browser smoke screenshot was added because the required component test command covered the requested state matrix."
+  ],
+  "notes": [
+    "No server files, package/config files, tasks.md, implementation-matrix.md, or localStorage repair paths were changed.",
+    "The pending branch remains first in WorkflowTransitionControls to prevent stale running status from overriding pendingConfirmation.",
+    "Blocked and unable states now key off blockedStatus as well as failed status and blockedReason, exposing retry-only recovery controls.",
+    "Status panel recommended skill evidence remains visible under workflow details."
+  ]
+}

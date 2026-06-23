@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "feature": "Workflow Phase Execution Contracts",
+  "branch": "009-specify-discussions-workflows",
+  "date": "2026-06-12",
+  "route": {
+    "from": "sp-specify",
+    "current": "sp-plan",
+    "next": "/sp.tasks",
+    "status": "ready"
+  },
+  "intent": "Implement workflow phases as explicit execution contracts across template authoring, runtime prompts, recommended skill bindings, dependency-aware sharing, lifecycle/completion state, desktop UI, compatibility, and validation.",
+  "complexity": {
+    "level": "cross-boundary",
+    "reason": "Touches server workflow services, APIs, SkillTool permission boundary, skill catalog/resolver, desktop workflow UI, persistence compatibility, and verification gates."
+  },
+  "execution": {
+    "execution_model": "adaptive",
+    "execution_mode": "standard",
+    "workflow_status": "ready",
+    "dispatch_shape": "leader-inline",
+    "execution_surface": "leader-inline",
+    "capability_degraded": true,
+    "blocked_reason": "none",
+    "delegated_planning_lanes": []
+  },
+  "artifacts": {
+    "plan": ".specify/features/009-specify-discussions-workflows/plan.md",
+    "research": ".specify/features/009-specify-discussions-workflows/research.md",
+    "data_model": ".specify/features/009-specify-discussions-workflows/data-model.md",
+    "quickstart": ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    "contracts": [
+      ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+      ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+      ".specify/features/009-specify-discussions-workflows/contracts/workflow-transition-submission.md"
+    ],
+    "workflow_state": ".specify/features/009-specify-discussions-workflows/workflow-state.md"
+  },
+  "source_of_truth": {
+    "spec": ".specify/features/009-specify-discussions-workflows/spec.md",
+    "alignment": ".specify/features/009-specify-discussions-workflows/alignment.md",
+    "context": ".specify/features/009-specify-discussions-workflows/context.md",
+    "references": ".specify/features/009-specify-discussions-workflows/references.md",
+    "handoff_json": ".specify/features/009-specify-discussions-workflows/brainstorming/handoff-to-specify.json",
+    "cognition_readiness": "review",
+    "cognition_recommended_next_action": "review_project_cognition_update",
+    "evidence_rule": "Live repository reads and tests prove implementation facts; project cognition is advisory navigation only."
+  },
+  "must_preserve": [
+    {
+      "id": "MP-001",
+      "claim": "Workflows are phase execution contracts, not cosmetic editor grouping or skill hints.",
+      "status": "preserved",
+      "stop_and_reopen": "Contract semantics are reduced to editor-only layout."
+    },
+    {
+      "id": "MP-002",
+      "claim": "Feature boundary remains unified across fields, constraints, skills, sharing, lifecycle, UI, compatibility, and validation.",
+      "status": "preserved",
+      "stop_and_reopen": "Lifecycle or UI controls are split away and lose consistency."
+    },
+    {
+      "id": "MP-003",
+      "claim": "Grouped intent, contract, evidencePolicy, and session-owned runtimeState are preserved.",
+      "status": "preserved",
+      "stop_and_reopen": "Runtime state becomes editable template data."
+    },
+    {
+      "id": "MP-004",
+      "claim": "Guidance, policy, evidence, and gate strengths remain distinct.",
+      "status": "preserved",
+      "stop_and_reopen": "Every instruction becomes a hard machine gate."
+    },
+    {
+      "id": "MP-005",
+      "claim": "Recommended phase skills bind to existing skills and remain soft by default.",
+      "status": "preserved",
+      "stop_and_reopen": "Plugins become primary target or recommended skills auto-run."
+    },
+    {
+      "id": "MP-006",
+      "claim": "Soft audit is bounded to used or clearly relevant skipped/unavailable skills.",
+      "status": "preserved",
+      "stop_and_reopen": "Audit lists every recommended skill mechanically or records nothing."
+    },
+    {
+      "id": "MP-007",
+      "claim": "Workflow sharing exports template plus dependency manifest, not bundled skill packages.",
+      "status": "preserved",
+      "stop_and_reopen": "Import silently drops missing references or export implies bundled skills."
+    },
+    {
+      "id": "MP-008",
+      "claim": "Lifecycle status stays separate from completion submission outcome.",
+      "status": "preserved",
+      "stop_and_reopen": "Blocked/unable outcomes become terminal failures."
+    },
+    {
+      "id": "MP-009",
+      "claim": "Pending confirmation uses Confirm, Reject, Retry and blocks duplicate ready submissions.",
+      "status": "preserved",
+      "stop_and_reopen": "Pending ready submissions can overwrite silently."
+    },
+    {
+      "id": "MP-010",
+      "claim": "Runtime controls stay safe and authority labels remain explicit.",
+      "status": "preserved",
+      "stop_and_reopen": "UI mixes manual completion with pending confirmation."
+    },
+    {
+      "id": "MP-011",
+      "claim": "Compatibility-first field adaptation comes before grouped persistence migration.",
+      "status": "preserved",
+      "stop_and_reopen": "Destructive migration lands without old-template fixtures."
+    },
+    {
+      "id": "MP-012",
+      "claim": "Scheduler, auto-execution, default required gates, skill bundle export, and destructive migration remain out of scope.",
+      "status": "preserved",
+      "stop_and_reopen": "Scope expands into execution engine or capability system."
+    },
+    {
+      "id": "MP-013",
+      "claim": "Live repository evidence remains authoritative while project cognition is partial for this area.",
+      "status": "preserved",
+      "stop_and_reopen": "Plan claims completion from project cognition alone."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-001",
+      "name": "Phase contract field model",
+      "owners": [
+        "workflowTypes.ts",
+        "workflowTemplateValidation.ts",
+        "WorkflowTemplateEditor.tsx"
+      ]
+    },
+    {
+      "id": "CAP-002",
+      "name": "Constraint semantics and gate behavior",
+      "owners": [
+        "workflowToolPolicy.ts",
+        "workflowRuntimeService.ts"
+      ]
+    },
+    {
+      "id": "CAP-003",
+      "name": "Recommended phase skill bindings and audit",
+      "owners": [
+        "workflowPhaseSkillResolver.ts",
+        "workflowTemplateRegistryService.ts",
+        "SkillTool.ts",
+        "WorkflowStatusPanel.tsx"
+      ]
+    },
+    {
+      "id": "CAP-004",
+      "name": "Dependency-aware workflow sharing",
+      "owners": [
+        "workflowTemplates.ts",
+        "WorkflowImportExportDialog.tsx"
+      ]
+    },
+    {
+      "id": "CAP-005",
+      "name": "Lifecycle and completion model",
+      "owners": [
+        "workflowRuntimeService.ts",
+        "workflowToolPolicy.ts",
+        "WorkflowTransitionControls.tsx"
+      ]
+    },
+    {
+      "id": "CAP-006",
+      "name": "Runtime and editor UI",
+      "owners": [
+        "WorkflowTemplateEditor.tsx",
+        "WorkflowStatusPanel.tsx",
+        "WorkflowTransitionControls.tsx",
+        "ActiveSession.tsx"
+      ]
+    },
+    {
+      "id": "CAP-007",
+      "name": "Compatibility and validation coverage",
+      "owners": [
+        "server tests",
+        "desktop workflow tests",
+        "old-template fixtures"
+      ]
+    }
+  ],
+  "invariants": [
+    "Templates own authorable contract fields; sessions own runtime state.",
+    "Recommended skills do not bypass SkillTool permissions or auto-execute.",
+    "Import/export carries dependency diagnostics, not skill package contents.",
+    "Blocked and unable are recoverable completion outcomes.",
+    "Pending confirmation blocks duplicate ready submissions and exposes only Confirm, Reject, and Retry.",
+    "Unknown fields are preserved unless validation rejects them.",
+    "Completion claims require same-area tests and quality gate evidence."
+  ],
+  "allowed_optimization_scope": [
+    "Reduce duplication by reusing existing helper APIs.",
+    "Add narrow compatibility projection helpers when they clarify grouped semantics.",
+    "Add focused fixtures and tests before implementation changes.",
+    "Improve UI labels/layout within existing workflow component patterns."
+  ],
+  "forbidden_scope": [
+    "Full scheduler or execution engine",
+    "Default auto-execution of recommended skills",
+    "Default required skill gates",
+    "Bundling arbitrary skill contents in exports",
+    "Direct destructive grouped persistence migration",
+    "SkillTool permission bypass",
+    "Implementation from sp-plan"
+  ],
+  "consequence_obligations": [
+    {
+      "id": "CA-001",
+      "claim": "Define stable skill binding identity across local, bundled, plugin, managed, and MCP sources.",
+      "affected_objects": [
+        "skill references",
+        "catalog",
+        "resolver",
+        "import/export"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Spec lacks source/provenance semantics."
+    },
+    {
+      "id": "CA-002",
+      "claim": "Define priority without overriding safety boundaries.",
+      "affected_objects": [
+        "prompts",
+        "SkillTool",
+        "permissions"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Priority implies unsafe override."
+    },
+    {
+      "id": "CA-003",
+      "claim": "Define degraded skill behavior.",
+      "affected_objects": [
+        "resolver",
+        "validation",
+        "import preview",
+        "runtime UI"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Missing skills silently degrade to prose."
+    },
+    {
+      "id": "CA-004",
+      "claim": "Preserve explicit SkillTool permission handling.",
+      "affected_objects": [
+        "SkillTool",
+        "workflow runtime",
+        "tool policy"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Workflow references bypass SkillTool semantics."
+    },
+    {
+      "id": "CA-005",
+      "claim": "Preserve skill provenance in session lifecycle states.",
+      "affected_objects": [
+        "sessions",
+        "snapshots",
+        "reports"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Source edits silently change active session."
+    },
+    {
+      "id": "CA-006",
+      "claim": "Make skill use, skip, and unavailable decisions observable when relevant.",
+      "affected_objects": [
+        "completion evidence",
+        "runtime UI",
+        "reports"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Skills can run or be skipped invisibly."
+    },
+    {
+      "id": "CA-007",
+      "claim": "Validate skill bindings across authoring, import, and start paths.",
+      "affected_objects": [
+        "editor",
+        "API",
+        "validation",
+        "session creation"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Invalid references persist without diagnostics."
+    },
+    {
+      "id": "CA-008",
+      "claim": "Define UI labels and affordances for contract states.",
+      "affected_objects": [
+        "editor",
+        "import/export",
+        "status panel",
+        "controls"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "UI states unspecified."
+    },
+    {
+      "id": "CA-009",
+      "claim": "Preserve evidence through compaction, resume, report, and imports.",
+      "affected_objects": [
+        "state",
+        "artifacts",
+        "reports",
+        "imports"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Evidence drops across lifecycle boundaries."
+    },
+    {
+      "id": "CA-010",
+      "claim": "Prevent recursive or unbounded nested invocation.",
+      "affected_objects": [
+        "SkillTool",
+        "future auto/required modes"
+      ],
+      "owner_workflow": "sp-plan -> sp-tasks",
+      "latest_resolve_phase": "tasks",
+      "status": "designed",
+      "stop_and_reopen": "Auto/required invocation lacks depth/loop limits."
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "gap": "Exact runtime skill audit storage and final report field mapping require implementation classification.",
+      "owner": "sp-tasks",
+      "latest_safe_phase": "task generation",
+      "routing_decision": "continue with explicit task and tests"
+    },
+    {
+      "gap": "Exact grouped editor copy/layout is implementation-level but semantics are locked.",
+      "owner": "sp-tasks",
+      "latest_safe_phase": "task generation",
+      "routing_decision": "continue within existing component patterns"
+    },
+    {
+      "gap": "Current project cognition does not fully encode workflow runtime/editor ownership.",
+      "owner": "sp-implement closeout",
+      "latest_safe_phase": "after source/runtime changes",
+      "routing_decision": "continue with live evidence during planning"
+    }
+  ],
+  "verification": {
+    "narrow_checks": [
+      "bun run check:server",
+      "bun run check:desktop"
+    ],
+    "final_gate": "bun run verify",
+    "server_evidence": [
+      "template validation tests",
+      "phase skill resolver tests",
+      "workflow import/export tests",
+      "session snapshot tests",
+      "runtime completion and transition tests",
+      "SkillTool boundary tests"
+    ],
+    "desktop_evidence": [
+      "WorkflowComponents.test.tsx grouped editor tests",
+      "recommended skill selector provenance tests",
+      "import/export diagnostics tests",
+      "status panel evidence tests",
+      "transition control safety tests"
+    ],
+    "fixtures": [
+      "old flat template",
+      "unknown fields",
+      "legacy skill reference",
+      "missing/ambiguous/invalid skill diagnostics"
+    ]
+  },
+  "task_generation": {
+    "next_command": "/sp.tasks",
+    "required_grouping": [
+      "classification and tests",
+      "contract compatibility model",
+      "skill binding and dependency diagnostics",
+      "runtime completion and evidence durability",
+      "desktop authoring/runtime UI",
+      "verification and closeout"
+    ],
+    "must_preserve_ids": true,
+    "must_preserve_consequence_ids": true
+  }
+}

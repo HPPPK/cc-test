@@ -1,0 +1,65 @@
+{
+  "id": "T007",
+  "title": "Add server skill binding and boundary tests",
+  "story": "US2",
+  "agent": "test-engineer",
+  "depends_on": ["T006"],
+  "parallel_safe": true,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/prompt.ts"
+  ],
+  "write_scope": [
+    "src/server/services/workflowPhaseSkillResolver.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowRuntimeService.test.ts"
+  ],
+  "read_scope": [
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/prompt.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for local, bundled, plugin, managed, and MCP skill identity",
+    "Tests for priority labels without permission override",
+    "Tests for unavailable and ambiguous diagnostics",
+    "Tests proving recommended skills are soft by default and do not auto-run",
+    "Recursion and auto-run guardrail tests"
+  ],
+  "anti_goals": [
+    "Do not modify runtime code",
+    "Do not modify SkillTool implementation"
+  ],
+  "does_not_remove": [
+    "MP-005",
+    "MP-006",
+    "CA-004",
+    "CA-010"
+  ],
+  "capability_operations": [
+    "CAP-002 test coverage",
+    "CAP-003 test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail for missing behavior, not setup",
+    "Existing permission tests remain intact"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts"
+  ],
+  "handoff_format": [
+    "failing_behavior_categories",
+    "expected_failure_reasons"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

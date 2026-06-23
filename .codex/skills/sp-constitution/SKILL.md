@@ -63,7 +63,7 @@ handoff mechanism; this command does not apply the follow-up work.
 
 ## Process
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command constitution --format json`
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning start --command constitution --format json`
   when available so passive learning files exist and relevant shared memory is
   visible before broader context collection.
 - Load the current constitution, then read `.specify/memory/project-rules.md`
@@ -142,12 +142,12 @@ as pending follow-up items in the Sync Impact Report instead of applying them.
 **Note**: If `.specify/memory/constitution.md` does not exist yet, it should
 have been initialized from `.specify/templates/constitution-template.md`
 during project setup. That project-local template may be the default product
-constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify init`. If it is
+constitution or a built-in profile selected during `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify init`. If it is
 missing, copy the template first.
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command constitution --format json` when
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning start --command constitution --format json` when
   available so passive learning files exist before deeper context collection.
 - Read `.specify/memory/constitution.md`,
   `.specify/memory/project-rules.md`, and
@@ -166,7 +166,7 @@ missing, copy the template first.
   chat-only discussion.
 - If `workflow-state.md` already preserves route reasons, false starts,
   hidden dependencies, or reusable constraints that would normally justify
-  `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json`,
+  `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning capture-auto --command constitution --feature-dir \"$FEATURE_DIR\" --format json`,
   report that as a learning follow-up instead of running the mutating command.
 - Do not run learning capture commands that mutate learning files unless the
   user explicitly requested learning updates in the same request.

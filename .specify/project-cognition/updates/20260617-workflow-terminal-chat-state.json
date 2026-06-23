@@ -1,0 +1,126 @@
+{
+  "workflow": "sp-debug",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/api/sessions.test.ts",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/stores/chatStore.test.ts",
+    "src/server/api/conversations.ts",
+    "src/server/api/sessions.ts",
+    "src/server/ws/handler.ts",
+    "src/server/__tests__/conversations.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    ".planning/debug/workflow-completed-session-queued-start-blocked.md"
+  ],
+  "scope_paths": [
+    "desktop/src/api/sessions.ts",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/stores/chatStore.test.ts",
+    "src/server/api/conversations.ts",
+    "src/server/api/sessions.ts",
+    "src/server/ws/handler.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop chat store websocket workflow_state handling",
+    "desktop queued prompt guide behavior after terminal workflow state",
+    "desktop workflow start busy guard recovery for terminal workflow source sessions",
+    "desktop session API chat status lookup",
+    "server workflow linked-start source-active guard",
+    "server websocket to chat-status synchronization"
+  ],
+  "generated_surfaces": [
+    "debug session artifact only"
+  ],
+  "state_contracts": [
+    "Terminal workflow summaries may settle stale busy chat observation state only when there is no active tool, permission, streaming text/input, or pending delta.",
+    "Terminal workflow settlement clears stale busy state but does not auto-submit queued outbound user prompts.",
+    "Workflow start from a terminal source session may reconcile stale local busy state only after the server chat-status endpoint reports idle.",
+    "Active source sessions and active tool execution remain blocking when the server does not confirm idle.",
+    "Linked workflow start source-active validation must use the shared chat status state, not conversationService.hasSession, because prewarmed/resumed idle SDK sessions can exist after a workflow has completed.",
+    "WebSocket status, message_complete, and permission request messages must update the shared session chat state consumed by the REST chat-status endpoint and linked workflow source guard."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test src/stores/chatStore.test.ts -t \"settles busy chat state\"",
+      "result": "RED before second fix, then passed after terminal workflow settlement stopped auto-submitting queued prompts"
+    },
+    {
+      "command": "cd desktop; bun run test src/components/chat/ChatInput.test.tsx -t \"reconciles stale active state\"",
+      "result": "RED before ChatInput reconciliation, then passed"
+    },
+    {
+      "command": "cd desktop; bun run test src/stores/chatStore.test.ts",
+      "result": "passed 77 tests"
+    },
+    {
+      "command": "cd desktop; bun run test src/components/chat/ChatInput.test.tsx",
+      "result": "passed 30 tests"
+    },
+    {
+      "command": "cd desktop; bun run test src/api/sessions.test.ts",
+      "result": "passed 21 tests"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed desktop lint, 98 test files / 887 tests, and production build"
+    },
+    {
+      "command": "$env:CARGO_TARGET_DIR='F:\\github\\cc-jiangxia\\.tmp\\cargo-target-verify-20260617'; bun run verify",
+      "result": "all executed lanes passed: passed=9 failed=0 skipped=2; PR readiness remains policy-blocked by broad dirty worktree CLI-core changes requiring maintainer override"
+    },
+    {
+      "command": "bun test src/server/__tests__/sessions.test.ts -t \"idle prewarmed\"",
+      "result": "passed; linked workflow start allows a source session that has an SDK process but shared chat status idle"
+    },
+    {
+      "command": "bun test src/server/__tests__/sessions.test.ts -t \"active source sessions\"",
+      "result": "passed; linked workflow start still rejects source sessions whose shared chat status is thinking"
+    },
+    {
+      "command": "bun test src/server/__tests__/conversations.test.ts -t \"synchronize WebSocket turn status\"",
+      "result": "passed; WebSocket status thinking and message_complete synchronize to the chat-status API"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed 1180 tests, 7 skipped, 0 failed"
+    },
+    {
+      "command": "cd desktop; bun run build",
+      "result": "passed after the server fix and before restarting Tauri dev"
+    },
+    {
+      "command": "live API probe on restarted sidecar",
+      "result": "GET /api/sessions/b33564bf-4f54-4826-806b-c44ca6439eda/chat/status returned idle; POST /workflow/start with a deliberately missing template returned WORKFLOW_TEMPLATE_NOT_FOUND instead of WORKFLOW_SOURCE_ACTIVE"
+    }
+  ],
+  "known_unknowns": [
+    "Local project-cognition database is schema v1 while current runtime expects schema v2; closeout update may be blocked until map maintenance rebuilds or migrates the cognition DB.",
+    "The user should manually retry the completed workflow session context picker in the restarted desktop app with a real workflow template."
+  ],
+  "confidence_notes": [
+    "First root cause is backed by exact desktop guard source and RED/GREEN ChatInput plus chatStore tests.",
+    "Second root cause is backed by live API evidence: the session reported chat-status idle while linked workflow start still returned WORKFLOW_SOURCE_ACTIVE before the server guard fix.",
+    "The fix is constrained to terminal workflow summaries, server-confirmed idle reconciliation, and shared chat-state source validation, preserving real active response/tool blocking."
+  ],
+  "user_decisions": [
+    "User reported the completed workflow session still showed the wait-for-current-response toast after the first terminal workflow_state fix."
+  ],
+  "boundary": {
+    "in_scope": [
+      "desktop chat state reconciliation",
+      "terminal workflow source session start guard",
+      "queued prompt guide behavior after terminal workflow state",
+      "server linked workflow active-source validation",
+      "server WebSocket chat-state synchronization"
+    ],
+    "out_of_scope": [
+      "workflow template semantics",
+      "global provider/runtime behavior"
+    ]
+  }
+}

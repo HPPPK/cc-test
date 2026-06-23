@@ -1,0 +1,5 @@
+{"type":"task_generation_checkpoint","id":"precheck","status":"accepted","note":"Prerequisites returned feature dir and available docs; extensions.yml absent."}
+{"type":"task_generation_checkpoint","id":"workflow_state_active","status":"accepted","note":"workflow-state.md updated for sp-tasks active task-generation-only mode."}
+{"type":"task_generation_checkpoint","id":"cognition_review","status":"accepted","note":"Project cognition reviewed, then narrowed to workflow server, SkillTool, desktop workflow, API, and tests."}
+{"type":"task_generation_checkpoint","id":"dispatch_decision","status":"accepted","note":"Multi-agent tool was discoverable but not invoked because the user did not explicitly request subagents/delegation/parallel agent work."}
+{"type":"task_generation_checkpoint","id":"synthesis","status":"accepted","note":"Generated 18 tasks across guardrails, four user stories, and final verification with two safe parallel batches."}

@@ -27,7 +27,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import type { AgentDefinition, AgentSource } from '../api/agents'
 import { MarkdownRenderer } from '../components/markdown/MarkdownRenderer'
 import { useSkillStore } from '../stores/skillStore'
-import { SkillList } from '../components/skills/SkillList'
+import { SkillList, type SkillSortKey } from '../components/skills/SkillList'
 import { SkillDetail } from '../components/skills/SkillDetail'
 import { usePluginStore } from '../stores/pluginStore'
 import { PluginList } from '../components/plugins/PluginList'
@@ -79,6 +79,7 @@ function buildH5LaunchUrl(baseUrl: string | null, token: string | null): string 
 
 export function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('providers')
+  const [skillsSortBy, setSkillsSortBy] = useState<SkillSortKey>('name')
   const pendingSettingsTab = useUIStore((s) => s.pendingSettingsTab)
   const t = useTranslation()
 
@@ -129,7 +130,7 @@ export function Settings() {
           {activeTab === 'environment' && <EnvironmentSettings />}
           {activeTab === 'mcp' && <McpSettings />}
           {activeTab === 'agents' && <AgentsSettings />}
-          {activeTab === 'skills' && <SkillSettings />}
+          {activeTab === 'skills' && <SkillSettings sortBy={skillsSortBy} onSortByChange={setSkillsSortBy} />}
           {activeTab === 'memory' && <MemorySettings />}
           {activeTab === 'plugins' && <PluginSettings />}
           {activeTab === 'computerUse' && <ComputerUseSettings />}
@@ -3936,7 +3937,13 @@ function DetailStat({
 }
 // ─── Skill Settings ──────────────────────────────────────
 
-function SkillSettings() {
+function SkillSettings({
+  sortBy,
+  onSortByChange,
+}: {
+  sortBy: SkillSortKey
+  onSortByChange: (sortBy: SkillSortKey) => void
+}) {
   const selectedSkill = useSkillStore((s) => s.selectedSkill)
   const t = useTranslation()
 
@@ -3956,7 +3963,7 @@ function SkillSettings() {
       <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
         {t('settings.skills.description')}
       </p>
-      <SkillList />
+      <SkillList sortBy={sortBy} onSortByChange={onSortByChange} />
     </div>
   )
 }

@@ -613,6 +613,18 @@ export class ConversationService {
     return this.sessions.has(sessionId)
   }
 
+  getSessionProcessToken(sessionId: string): object | null {
+    return this.sessions.get(sessionId)?.proc ?? null
+  }
+
+  stopSessionIfCurrent(sessionId: string, processToken: object | null): boolean {
+    if (!processToken) return false
+    const session = this.sessions.get(sessionId)
+    if (!session || session.proc !== processToken) return false
+    this.stopSession(sessionId)
+    return true
+  }
+
   getSessionWorkDir(sessionId: string): string {
     const session = this.sessions.get(sessionId)
     return session?.workDir || ''

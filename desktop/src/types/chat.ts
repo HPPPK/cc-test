@@ -11,9 +11,14 @@ export type ClientMessage =
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
       transitionId?: string
       expectedStateVersion?: number
+      stateVersion?: number
+      nextPhaseContextStrategy?: 'inherit' | 'clear'
+      handoff?: unknown
+      rationale?: string
+      evidence?: unknown[]
     }
   | {
       type: 'permission_response'
@@ -232,7 +237,7 @@ export type TaskSummaryItem = {
 }
 
 export type UIMessage =
-  | { id: string; type: 'user_text'; content: string; modelContent?: string; timestamp: number; attachments?: UIAttachment[]; pending?: boolean }
+  | { id: string; type: 'user_text'; content: string; modelContent?: string; timestamp: number; attachments?: UIAttachment[]; pending?: boolean; queued?: boolean }
   | { id: string; type: 'assistant_text'; content: string; timestamp: number; model?: string }
   | { id: string; type: 'thinking'; content: string; timestamp: number }
   | { id: string; type: 'tool_use'; toolName: string; toolUseId: string; input: unknown; timestamp: number; parentToolUseId?: string }

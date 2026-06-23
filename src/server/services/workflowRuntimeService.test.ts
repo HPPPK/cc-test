@@ -443,6 +443,56 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.scheduledToolCalls ?? []).toEqual([])
   })
 
+  test('describes recommended-skill priority as attention-only runtime guidance', async () => {
+    const service = await makeService()
+    const state = recommendedSkillRuntimeState()
+    const snapshot = state.phaseSkillSnapshots?.[0] as Record<string, unknown>
+    const resolutions = snapshot.resolutions as Array<Record<string, unknown>>
+    resolutions[0].reference = {
+      name: 'requirements-review',
+      mode: 'recommended',
+      source: 'project',
+      priority: 'high',
+      reason: 'Treat this skill as especially relevant to ambiguity checks.',
+    }
+
+    const prompt = await service.assemblePrompt({
+      state,
+      userMessage: 'Continue the requirements phase.',
+    })
+
+    expect(prompt.content).toContain('higher priority')
+    expect(prompt.content).toContain('attention')
+    expect(prompt.content).toContain('not a safety override')
+  })
+
+  test('instructs the agent to record material used, skipped, and unavailable skill audit outcomes', async () => {
+    const service = await makeService()
+
+    const prompt = await service.assemblePrompt({
+      state: recommendedSkillRuntimeState(),
+      userMessage: 'Continue the requirements phase.',
+    })
+
+    expect(prompt.content).toContain('used')
+    expect(prompt.content).toContain('relevant-skipped')
+    expect(prompt.content).toContain('relevant-unavailable')
+  })
+
+  test('states recursion and auto-run guardrails for recommended skill invocation', async () => {
+    const service = await makeService()
+
+    const prompt = await service.assemblePrompt({
+      state: recommendedSkillRuntimeState(),
+      userMessage: 'Continue the requirements phase.',
+    })
+
+    expect(prompt.content).toContain('Do not invoke SkillTool automatically')
+    expect(prompt.content).toContain('nested skill invocation')
+    expect(prompt.content).toContain('depth')
+    expect(prompt.scheduledToolCalls ?? []).toEqual([])
+  })
+
   test('injects phase action guardrails into the active workflow prompt', async () => {
     const service = await makeService()
     const prompt = await service.assemblePrompt({
@@ -985,6 +1035,16 @@ describe('WorkflowRuntimeService', () => {
 
     test.each([
       [
+        'missing phaseId',
+        { ...completionSubmission(), phaseId: undefined } as unknown as CompletionSubmission,
+        'WORKFLOW_COMPLETION_INVALID',
+      ],
+      [
+        'missing status',
+        { ...completionSubmission(), status: undefined } as unknown as CompletionSubmission,
+        'WORKFLOW_STATUS_UNSUPPORTED',
+      ],
+      [
         'stale stateVersion',
         completionSubmission({ stateVersion: 0 }),
         'WORKFLOW_STATE_STALE',
@@ -1022,6 +1082,26 @@ describe('WorkflowRuntimeService', () => {
       })
     })
 
+    test.each([
+      'ready',
+      'blocked',
+      'unable',
+    ] as const)('requires stateVersion for %s completion submissions', async (status) => {
+      const service = await makeService()
+
+      await expect(service.submitPhaseCompletion({
+        state: runningState(),
+        requestedAt: '2026-05-20T00:07:30.000Z',
+        transitionId: `missing-state-version-${status}`,
+        submission: {
+          ...completionSubmission({ status }),
+          stateVersion: undefined,
+        } as unknown as CompletionSubmission,
+      })).rejects.toMatchObject({
+        code: 'WORKFLOW_COMPLETION_INVALID',
+      })
+    })
+
     test('rejects a ready completion when an unresolved pending confirmation already exists', async () => {
       const service = await makeService()
       const pending = pendingReadyState()
@@ -1034,6 +1114,31 @@ describe('WorkflowRuntimeService', () => {
       })).rejects.toMatchObject({
         code: 'WORKFLOW_PENDING_CONFLICT',
       })
+    })
+
+    test('replays duplicate completion submission transitionId without duplicating pending artifacts', async () => {
+      const service = await makeService()
+      const first = await service.submitPhaseCompletion({
+        state: runningState(),
+        requestedAt: '2026-05-20T00:08:30.000Z',
+        transitionId: 'submit-ready-idempotent-1',
+        submission: completionSubmission(),
+      })
+
+      const second = await service.submitPhaseCompletion({
+        state: first.state,
+        requestedAt: '2026-05-20T00:08:45.000Z',
+        transitionId: 'submit-ready-idempotent-1',
+        submission: completionSubmission({ stateVersion: first.state.stateVersion }),
+      })
+
+      expect(second.state).toEqual(first.state)
+      expect(second.status).toBe('pending')
+      expect(second.state.phases[0].artifactPointers).toHaveLength(1)
+      expect(second.state.artifactIndex).toHaveLength(1)
+      expect(second.state.transitionHistory.filter((transition) =>
+        transition.transitionId === 'submit-ready-idempotent-1'
+      )).toHaveLength(1)
     })
 
     test('confirm accepts the pending artifact and advances exactly one phase with fresh stateVersion', async () => {
@@ -1069,6 +1174,68 @@ describe('WorkflowRuntimeService', () => {
         action: 'confirmed',
         result: 'accepted',
       }))
+    })
+
+    test('confirm can mark the next phase for clear context while preserving accepted handoff artifacts', async () => {
+      const service = await makeService()
+      const pending = pendingReadyState()
+
+      const result = await service.applyTransition({
+        state: pending,
+        requestedAt: '2026-05-20T00:09:30.000Z',
+        request: {
+          phaseId: 'requirements',
+          action: 'confirm',
+          stateVersion: pending.stateVersion,
+          transitionId: 'confirm-clear-context-1',
+          nextPhaseContextStrategy: 'clear',
+        } as unknown as WorkflowTransitionRequest,
+      })
+
+      expect(result.state.workflowStatus).toBe('running')
+      expect(result.state.activePhaseId).toBe('implementation')
+      expect(result.state.nextPhaseContextStrategy).toBe('clear')
+      expect(result.state.pendingConfirmation).toBeNull()
+      expect(result.state.phases[0].artifactPointers).toEqual([
+        expect.objectContaining({
+          artifactId: 'requirements-ready-1',
+          lifecycleStatus: 'accepted',
+        }),
+      ])
+      expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'confirm-clear-context-1',
+        result: 'accepted',
+        nextPhaseContextStrategy: 'clear',
+        artifactRefs: [expect.objectContaining({
+          artifactId: 'requirements-ready-1',
+          lifecycleStatus: 'accepted',
+        })],
+      }))
+    })
+
+    test('confirm defaults to inherited next phase context when no strategy is requested', async () => {
+      const service = await makeService()
+      const pending = pendingReadyState()
+
+      const result = await service.applyTransition({
+        state: pending,
+        requestedAt: '2026-05-20T00:09:45.000Z',
+        request: {
+          phaseId: 'requirements',
+          action: 'confirm',
+          stateVersion: pending.stateVersion,
+          transitionId: 'confirm-inherit-context-1',
+        } as unknown as WorkflowTransitionRequest,
+      })
+
+      expect(result.state.nextPhaseContextStrategy).toBeUndefined()
+      expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'confirm-inherit-context-1',
+        result: 'accepted',
+      }))
+      expect(result.state.transitionHistory.find((transition) =>
+        transition.transitionId === 'confirm-inherit-context-1'
+      )?.nextPhaseContextStrategy).toBeUndefined()
     })
 
     test('reject marks the pending artifact rejected and keeps the current phase running', async () => {
@@ -1165,6 +1332,46 @@ describe('WorkflowRuntimeService', () => {
       expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
         transitionId: 'manual-complete-1',
         result: 'accepted',
+      }))
+    })
+
+    test('manual completion can mark the next phase for clear context without dropping handoff artifacts', async () => {
+      const service = await makeService()
+      const state = runningState()
+
+      const result = await service.applyTransition({
+        state,
+        requestedAt: '2026-05-20T00:12:30.000Z',
+        request: {
+          phaseId: 'requirements',
+          action: 'manual_complete',
+          stateVersion: state.stateVersion,
+          transitionId: 'manual-complete-clear-context-1',
+          nextPhaseContextStrategy: 'clear',
+        } as unknown as WorkflowTransitionRequest,
+        completion: {
+          passed: true,
+          artifactPointers: [pointer('requirements-manual-clear-context')],
+        },
+      })
+
+      expect(result.state.workflowStatus).toBe('running')
+      expect(result.state.activePhaseId).toBe('implementation')
+      expect(result.state.nextPhaseContextStrategy).toBe('clear')
+      expect(result.state.phases[0].artifactPointers).toEqual([
+        expect.objectContaining({
+          artifactId: 'requirements-manual-clear-context',
+          lifecycleStatus: 'accepted',
+        }),
+      ])
+      expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'manual-complete-clear-context-1',
+        result: 'accepted',
+        nextPhaseContextStrategy: 'clear',
+        artifactRefs: [expect.objectContaining({
+          artifactId: 'requirements-manual-clear-context',
+          lifecycleStatus: 'accepted',
+        })],
       }))
     })
 

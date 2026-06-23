@@ -1,0 +1,90 @@
+{
+  "task_id": "T005",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "status": "completed_with_validation_note",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/types/session.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T005.json"
+  ],
+  "payload_shape_summary": {
+    "intent": "Saved phases now include intent.objective, intent.role, and intent.intake projected from the existing editor draft fields.",
+    "contract": "Saved phases now include contract.instructions, contract.executionRules, contract.actionPolicy, and contract.transitionAuthority while preserving existing compatibility flat fields.",
+    "evidencePolicy": "Saved phases now include evidencePolicy.outputArtifact, evidencePolicy.requiredArtifacts, evidencePolicy.completionCriteria, and evidencePolicy.handoffRules.",
+    "runtimeState": "Session-owned phase runtimeState is removed from saved template phase data before the phase object is returned."
+  },
+  "ui_grouping_summary": [
+    "WorkflowTemplateEditor renders accessible role=group sections named Intent, Contract, and Evidence Policy.",
+    "The existing Recommended Skills group remains present and keeps the existing catalog picker workflow.",
+    "No runtime execution controls, manual completion controls, auto-run affordances, or tutorial/marketing copy were added."
+  ],
+  "validation_evidence": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 0,
+      "result": "Passed. 1 test file passed, 47 tests passed.",
+      "details": [
+        "T003 RED tests now pass: grouped sections render, save payload contains grouped intent/contract/evidencePolicy objects, and runtimeState is excluded.",
+        "Existing WorkflowComponents tests in the file still pass.",
+        "Vitest emitted existing React act() warnings for WorkflowTemplateEditor async store updates; warnings did not fail the suite."
+      ]
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "exit_code": 1,
+      "result": "Nonzero due to an existing out-of-scope test type issue in desktop/src/components/workflow/WorkflowComponents.test.tsx.",
+      "details": [
+        "Only reported error after the T005 type fixes: src/components/workflow/WorkflowComponents.test.tsx(55,14): File '@testing-library/jest-dom/types/index.d.ts' is not a module.",
+        "No type errors were reported for modified T005 production or locale files.",
+        "The failing file is explicitly outside T005 write scope, so it was not edited."
+      ]
+    },
+    {
+      "command": "git diff --check -- desktop/src/components/workflow/WorkflowTemplateEditor.tsx desktop/src/types/session.ts desktop/src/i18n/locales/en.ts desktop/src/i18n/locales/zh.ts",
+      "exit_code": 0,
+      "result": "Passed with Git line-ending warnings only.",
+      "details": [
+        "No whitespace errors were reported."
+      ]
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-001": {
+      "preserved": true,
+      "evidence": "The editor now authors and saves structured phase execution contract objects rather than cosmetic-only labels: intent, contract, evidencePolicy, actionPolicy, transitionAuthority, completionCriteria, and handoffRules are material payload fields."
+    },
+    "MP-003": {
+      "preserved": true,
+      "evidence": "Template-owned intent/contract/evidencePolicy are authored separately from session-owned runtimeState, and runtimeState is stripped from saved phase data."
+    },
+    "MP-010": {
+      "preserved": true,
+      "evidence": "The patch did not add runtime controls to WorkflowTemplateEditor; it only reorganized authoring fields and preserved the existing Recommended Skills selector."
+    }
+  },
+  "ca_evidence": {
+    "CA-008": {
+      "preserved": true,
+      "evidence": "Testing Library assertions now pass for accessible editor groups named Intent, Contract, Evidence Policy, and Recommended skills for Plan phase, and the save payload distinguishes grouped authoring state from runtime-owned state."
+    }
+  },
+  "blockers": [
+    {
+      "type": "out_of_scope_lint_failure",
+      "owner": "maintainer",
+      "summary": "Full desktop lint is blocked by an existing test-file type import issue outside T005 write scope.",
+      "evidence": "cd desktop; bun run lint exits 1 with only WorkflowComponents.test.tsx(55,14): '@testing-library/jest-dom/types/index.d.ts' is not a module.",
+      "unblock_criteria": "Fix the out-of-scope test import/type setup in a task that allows editing WorkflowComponents.test.tsx, then rerun cd desktop; bun run lint."
+    }
+  ],
+  "failed_assumptions": [
+    "Desktop lint would be clean after fixing T005 production type errors; it is still blocked by an existing out-of-scope test type error."
+  ],
+  "recovery_guidance": [
+    "Proceed to T006 with the required T005 validation command green.",
+    "If full desktop typecheck is required at the join point, resolve the existing WorkflowComponents.test.tsx jest-dom type import issue in an allowed task before rerunning cd desktop; bun run lint.",
+    "Keep future editor changes preserving grouped payload objects and stripping runtimeState from template saves."
+  ]
+}

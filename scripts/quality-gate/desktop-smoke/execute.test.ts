@@ -32,7 +32,7 @@ describe('desktop smoke runtime selection', () => {
 })
 
 describe('desktop smoke Vite launcher', () => {
-  test('uses the package script instead of platform-specific node_modules shims', () => {
-    expect(desktopViteCommand()).toEqual(['bun', 'run', 'dev'])
+  test('uses the current Bun runtime and package script instead of platform-specific node_modules shims', () => {
+    expect(desktopViteCommand()).toEqual([process.execPath, 'run', 'dev'])
   })
 })

@@ -79,6 +79,49 @@ describe('skillsApi', () => {
     )
   })
 
+  it('requests workflow-safe catalog filtering without loading skill contents', async () => {
+    const response: SkillsCatalogResponse = {
+      skills: [{
+        name: 'release-notifier',
+        displayName: 'Release Notifier',
+        description: 'Notify release stakeholders.',
+        source: 'plugin',
+        catalogStatus: 'plugin-disabled',
+        userInvocable: true,
+        version: '2.1.0',
+        hasDirectory: true,
+        pluginName: 'release-tools',
+        referenceId: 'release-tools:notifier',
+        provenance: {
+          pluginName: 'release-tools',
+          referenceId: 'release-tools:notifier',
+          version: '2.1.0',
+          contentHash: 'sha256:notifier',
+        },
+      }],
+    }
+    getMock.mockResolvedValue(response)
+
+    const catalog = skillsApi.catalog as (
+      cwd?: string,
+      options?: { workflowOnly?: boolean },
+    ) => Promise<SkillsCatalogResponse>
+    const result = await catalog('/workspace/project', { workflowOnly: true })
+
+    expect(getMock).toHaveBeenCalledWith(
+      '/api/skills?cwd=%2Fworkspace%2Fproject&catalogOnly=true&workflowOnly=true',
+      { timeout: 120_000 },
+    )
+    expect(result.skills[0]).toMatchObject({
+      catalogStatus: 'plugin-disabled',
+      pluginName: 'release-tools',
+      referenceId: 'release-tools:notifier',
+      provenance: expect.objectContaining({
+        contentHash: 'sha256:notifier',
+      }),
+    })
+  })
+
   it('retrieves detail with encoded skill identity and workspace query', async () => {
     const response = {
       detail: {

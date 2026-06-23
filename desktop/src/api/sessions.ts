@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AgentTaskNotification } from '../types/chat'
+import type { AgentTaskNotification, ChatState } from '../types/chat'
 import type {
   SessionListItem,
   LinkedWorkflowSessionCreateRequest,
@@ -36,6 +36,9 @@ type SessionsResponse = { sessions: SessionListItem[]; total: number }
 type MessagesResponse = {
   messages: MessageEntry[]
   taskNotifications?: AgentTaskNotification[]
+}
+export type SessionChatStatusResponse = {
+  state: ChatState
 }
 type CreateSessionResponse = {
   sessionId: string
@@ -106,6 +109,7 @@ export type WorkflowTransitionRequest = {
   stateVersion?: number
   action: WorkflowTransitionAction
   transitionId?: string
+  nextPhaseContextStrategy?: 'inherit' | 'clear'
   handoff?: WorkflowTransitionHandoff
   rationale?: string
   evidence?: unknown[]
@@ -375,6 +379,10 @@ export const sessionsApi = {
 
   getMessages(sessionId: string) {
     return api.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`)
+  },
+
+  getChatStatus(sessionId: string) {
+    return api.get<SessionChatStatusResponse>(`/api/sessions/${sessionId}/chat/status`)
   },
 
   create(input?: string | CreateSessionRequest) {

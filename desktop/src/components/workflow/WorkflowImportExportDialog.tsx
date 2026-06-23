@@ -304,6 +304,9 @@ export function WorkflowImportExportDialog({
               {exportText && (
                 <div className="space-y-3">
                   <ExportDependencyDiagnostics manifest={exportDependencyManifest} />
+                  <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
+                    {t('settings.workflows.export.skillContentsNotBundled')}
+                  </p>
                   <label className="block">
                     <span className="text-xs font-medium text-[var(--color-text-secondary)]">
                       {t('settings.workflows.export.jsonLabel')}

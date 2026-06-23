@@ -1,0 +1,53 @@
+{
+  "id": "T013",
+  "title": "Add desktop import/export diagnostic tests",
+  "story": "US3",
+  "agent": "test-engineer",
+  "depends_on": ["T010"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/types/session.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for copyable export JSON",
+    "Tests for dependency diagnostics table",
+    "Tests for blocked import commit and non-blocking warnings",
+    "Tests for explicit no-bundled-skills language"
+  ],
+  "anti_goals": [
+    "Do not implement UI changes"
+  ],
+  "does_not_remove": [
+    "MP-007",
+    "CA-008"
+  ],
+  "capability_operations": [
+    "CAP-004 desktop test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail because import/export diagnostics are absent or incomplete"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "diagnostic_states",
+    "expected_visible_labels"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

@@ -8,10 +8,13 @@ import type {
   WorkflowTemplateCompletionCriteria,
   WorkflowTemplateDetail,
   WorkflowTemplateDraft,
+  WorkflowTemplatePhaseActionPolicy,
+  WorkflowTemplateRequiredArtifact,
   WorkflowTemplateSource,
   WorkflowTemplateOutputArtifact,
   WorkflowTemplatePhase,
   WorkflowTemplateSkillDeclaration,
+  WorkflowTemplatePhaseToolPolicy,
   WorkflowTemplateTransitionPolicy,
   WorkflowTemplateValidationIssue,
 } from '../../types/session'
@@ -44,6 +47,8 @@ type PhaseDraft = {
   transitionAuthority: 'auto' | 'user-confirmation'
   requestedModel: string
   skillReferences: WorkflowTemplateSkillDeclaration[]
+  allowedTools: string[]
+  hasCustomToolPolicy: boolean
 }
 
 type TemplateEditorDraft = {
@@ -79,7 +84,38 @@ const DEFAULT_PHASE: PhaseDraft = {
   transitionAuthority: 'user-confirmation',
   requestedModel: '',
   skillReferences: [],
+  allowedTools: [
+    'workflow_template_authoring',
+    'submit_phase_completion',
+  ],
+  hasCustomToolPolicy: false,
 }
+
+const WORKFLOW_TOOL_OPTIONS = [
+  { name: 'Write', labelKey: 'settings.workflows.editor.tool.write', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'Edit', labelKey: 'settings.workflows.editor.tool.edit', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'MultiEdit', labelKey: 'settings.workflows.editor.tool.multiEdit', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'NotebookEdit', labelKey: 'settings.workflows.editor.tool.notebookEdit', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'Bash', labelKey: 'settings.workflows.editor.tool.bash', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'PowerShell', labelKey: 'settings.workflows.editor.tool.powerShell', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'Agent', labelKey: 'settings.workflows.editor.tool.agent', groupKey: 'settings.workflows.editor.runtimeTools' },
+  { name: 'workflow_template_authoring', labelKey: 'settings.workflows.editor.tool.workflowTemplateAuthoring', groupKey: 'settings.workflows.editor.workflowTools' },
+  { name: 'submit_phase_completion', labelKey: 'settings.workflows.editor.tool.submitPhaseCompletion', groupKey: 'settings.workflows.editor.workflowTools' },
+] as const
+
+const WORKFLOW_TOOL_NAMES = WORKFLOW_TOOL_OPTIONS.map((tool) => tool.name)
+const WORKFLOW_TOOL_NAME_SET = new Set<string>(WORKFLOW_TOOL_NAMES)
+const DEFAULT_NON_IMPLEMENTATION_ALLOWED_TOOLS = [
+  'workflow_template_authoring',
+  'submit_phase_completion',
+]
+const DEFAULT_IMPLEMENTATION_ALLOWED_TOOLS = [...WORKFLOW_TOOL_NAMES]
+const DEFAULT_VERIFICATION_ALLOWED_TOOLS = [
+  'Bash',
+  'PowerShell',
+  'workflow_template_authoring',
+  'submit_phase_completion',
+]
 
 export function WorkflowTemplateEditor({
   template,
@@ -156,6 +192,23 @@ export function WorkflowTemplateEditor({
     updatePhaseSkillReferences(() => references)
   }
 
+  const togglePhaseTool = (toolName: string) => {
+    setDraft((current) => ({
+      ...current,
+      phases: current.phases.map((phase, index) => {
+        if (index !== selectedPhaseIndex) return phase
+        const allowedTools = new Set(phase.allowedTools)
+        if (allowedTools.has(toolName)) allowedTools.delete(toolName)
+        else allowedTools.add(toolName)
+        return {
+          ...phase,
+          allowedTools: WORKFLOW_TOOL_NAMES.filter((name) => allowedTools.has(name)),
+          hasCustomToolPolicy: true,
+        }
+      }),
+    }))
+  }
+
   const addPhase = () => {
     setDraft((current) => {
       const nextIndex = current.phases.length + 1
@@ -199,7 +252,10 @@ export function WorkflowTemplateEditor({
 
     setSaving(true)
     try {
-      const validation = await sessionsApi.validateWorkflowTemplate({ template: templateDraft })
+      const validation = await sessionsApi.validateWorkflowTemplate({
+        template: templateDraft,
+        ...(editorMode === 'edit' && template?.id ? { allowExistingId: template.id } : {}),
+      })
       if (!validation.valid || validation.issues.some((issue) => issue.severity === 'error')) {
         setErrors(validationIssuesToErrors(validation.issues))
         return
@@ -352,14 +408,61 @@ export function WorkflowTemplateEditor({
           <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
             <TextField id="workflow-phase-id" label={t('settings.workflows.editor.phaseId')} value={selectedPhase.id} onChange={(value) => updatePhase('id', value)} mono />
             <TextField id="workflow-phase-name" label={t('settings.workflows.editor.phaseName')} value={selectedPhase.name} onChange={(value) => updatePhase('name', value)} />
-            <TextField id="workflow-phase-role" label={t('settings.workflows.editor.role')} value={selectedPhase.role} onChange={(value) => updatePhase('role', value)} />
-            <TextField id="workflow-phase-objective" label={t('settings.workflows.editor.objective')} value={selectedPhase.objective} onChange={(value) => updatePhase('objective', value)} />
           </div>
 
-          <div className="mt-3 grid min-w-0 gap-3">
-            <TextArea id="workflow-phase-instructions" label={t('settings.workflows.editor.instructions')} value={selectedPhase.instructions} onChange={(value) => updatePhase('instructions', value)} rows={4} />
-            <TextArea id="workflow-phase-intake" label={t('settings.workflows.editor.intake')} value={selectedPhase.intake} onChange={(value) => updatePhase('intake', value)} rows={2} />
-          </div>
+          <section
+            role="group"
+            aria-label={t('settings.workflows.editor.intentGroup')}
+            className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+          >
+            <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+              {t('settings.workflows.editor.intentGroup')}
+            </h5>
+            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
+              <TextField id="workflow-phase-role" label={t('settings.workflows.editor.role')} value={selectedPhase.role} onChange={(value) => updatePhase('role', value)} />
+              <TextField id="workflow-phase-objective" label={t('settings.workflows.editor.objective')} value={selectedPhase.objective} onChange={(value) => updatePhase('objective', value)} />
+            </div>
+            <div className="mt-3 grid min-w-0 gap-3">
+              <TextArea id="workflow-phase-intake" label={t('settings.workflows.editor.intake')} value={selectedPhase.intake} onChange={(value) => updatePhase('intake', value)} rows={2} />
+            </div>
+          </section>
+
+          <section
+            role="group"
+            aria-label={t('settings.workflows.editor.contractGroup')}
+            className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+          >
+            <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+              {t('settings.workflows.editor.contractGroup')}
+            </h5>
+            <div className="mt-3 grid min-w-0 gap-3">
+              <TextArea id="workflow-phase-instructions" label={t('settings.workflows.editor.instructions')} value={selectedPhase.instructions} onChange={(value) => updatePhase('instructions', value)} rows={4} />
+              <TextArea id="workflow-phase-execution-rules" label={t('settings.workflows.editor.executionRules')} value={selectedPhase.executionRules} onChange={(value) => updatePhase('executionRules', value)} rows={2} />
+              <SelectField id="workflow-phase-transition-authority" label={t('settings.workflows.editor.transitionAuthority')} value={selectedPhase.transitionAuthority} onChange={(value) => updatePhase('transitionAuthority', value)} options={[
+                { value: 'user-confirmation', label: t('settings.workflows.editor.transitionAuthority.user') },
+                { value: 'auto', label: t('settings.workflows.editor.transitionAuthority.auto') },
+              ]} />
+            </div>
+          </section>
+
+          <section
+            role="group"
+            aria-label={t('settings.workflows.editor.evidencePolicyGroup')}
+            className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+          >
+            <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+              {t('settings.workflows.editor.evidencePolicyGroup')}
+            </h5>
+            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
+              <TextField id="workflow-output-artifact-name" label={t('settings.workflows.editor.outputArtifactName')} value={selectedPhase.outputArtifactName} onChange={(value) => updatePhase('outputArtifactName', value)} />
+              <TextField id="workflow-output-artifact-kind" label={t('settings.workflows.editor.outputArtifactKind')} value={selectedPhase.outputArtifactKind} onChange={(value) => updatePhase('outputArtifactKind', value)} />
+            </div>
+            <div className="mt-3 grid min-w-0 gap-3">
+              <TextArea id="workflow-output-artifact-description" label={t('settings.workflows.editor.outputArtifactDescription')} value={selectedPhase.outputArtifactDescription} onChange={(value) => updatePhase('outputArtifactDescription', value)} rows={2} />
+              <TextArea id="workflow-phase-handoff" label={t('settings.workflows.editor.handoff')} value={selectedPhase.handoff} onChange={(value) => updatePhase('handoff', value)} rows={3} />
+              <TextArea id="workflow-phase-completion-criteria" label={t('settings.workflows.editor.completionCriteria')} value={selectedPhase.completionCriteriaDescription} onChange={(value) => updatePhase('completionCriteriaDescription', value)} rows={2} />
+            </div>
+          </section>
 
           <RecommendedSkillsSelector
             phaseName={selectedPhase.name || selectedPhase.id || t('settings.workflows.editor.untitledPhase')}
@@ -370,23 +473,11 @@ export function WorkflowTemplateEditor({
             onChange={replaceRecommendedSkills}
           />
 
-          <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
-            <TextField id="workflow-output-artifact-name" label={t('settings.workflows.editor.outputArtifactName')} value={selectedPhase.outputArtifactName} onChange={(value) => updatePhase('outputArtifactName', value)} />
-            <TextField id="workflow-output-artifact-kind" label={t('settings.workflows.editor.outputArtifactKind')} value={selectedPhase.outputArtifactKind} onChange={(value) => updatePhase('outputArtifactKind', value)} />
-          </div>
-          <div className="mt-3">
-            <TextArea id="workflow-output-artifact-description" label={t('settings.workflows.editor.outputArtifactDescription')} value={selectedPhase.outputArtifactDescription} onChange={(value) => updatePhase('outputArtifactDescription', value)} rows={2} />
-          </div>
-
-          <div className="mt-3 grid min-w-0 gap-3">
-            <TextArea id="workflow-phase-handoff" label={t('settings.workflows.editor.handoff')} value={selectedPhase.handoff} onChange={(value) => updatePhase('handoff', value)} rows={3} />
-            <TextArea id="workflow-phase-execution-rules" label={t('settings.workflows.editor.executionRules')} value={selectedPhase.executionRules} onChange={(value) => updatePhase('executionRules', value)} rows={2} />
-            <TextArea id="workflow-phase-completion-criteria" label={t('settings.workflows.editor.completionCriteria')} value={selectedPhase.completionCriteriaDescription} onChange={(value) => updatePhase('completionCriteriaDescription', value)} rows={2} />
-            <SelectField id="workflow-phase-transition-authority" label={t('settings.workflows.editor.transitionAuthority')} value={selectedPhase.transitionAuthority} onChange={(value) => updatePhase('transitionAuthority', value)} options={[
-              { value: 'user-confirmation', label: t('settings.workflows.editor.transitionAuthority.user') },
-              { value: 'auto', label: t('settings.workflows.editor.transitionAuthority.auto') },
-            ]} />
-          </div>
+          <PhaseToolAccessEditor
+            phaseName={selectedPhase.name || selectedPhase.id || t('settings.workflows.editor.untitledPhase')}
+            allowedTools={selectedPhase.allowedTools}
+            onToggle={togglePhaseTool}
+          />
 
           <div className="mt-3 border-t border-[var(--color-border)] pt-3">
             <button
@@ -435,30 +526,53 @@ function toEditorDraft(template?: WorkflowTemplateDraft | null): TemplateEditorD
 }
 
 function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
-  const outputArtifact = phase.outputArtifact
-  const firstRequiredArtifact = phase.requiredArtifacts?.find((artifact) => artifact.required) ?? phase.requiredArtifacts?.[0]
+  const intent: Record<string, unknown> = isRecord(phase.intent) ? phase.intent : {}
+  const contract: Record<string, unknown> = isRecord(phase.contract) ? phase.contract : {}
+  const evidencePolicy: Record<string, unknown> = isRecord(phase.evidencePolicy) ? phase.evidencePolicy : {}
+  const evidenceOutputArtifact = isOutputArtifact(evidencePolicy.outputArtifact) ? evidencePolicy.outputArtifact : undefined
+  const evidenceRequiredArtifacts = Array.isArray(evidencePolicy.requiredArtifacts)
+    ? evidencePolicy.requiredArtifacts.filter(isRequiredArtifact)
+    : undefined
+  const evidenceCompletionCriteria = isCompletionCriteria(evidencePolicy.completionCriteria) ? evidencePolicy.completionCriteria : undefined
+  const outputArtifact = evidenceOutputArtifact ?? phase.outputArtifact
+  const requiredArtifacts = evidenceRequiredArtifacts ?? phase.requiredArtifacts
+  const firstRequiredArtifact = requiredArtifacts?.find((artifact) => artifact.required) ?? requiredArtifacts?.[0]
   const artifactId = outputArtifact?.id ?? firstRequiredArtifact?.id ?? ''
   const artifactName = outputArtifact?.name ?? firstRequiredArtifact?.name ?? artifactId
   const skillReferences = Array.isArray(phase.skills) ? phase.skills : []
+  const toolPolicy = isToolPolicy(phase.toolPolicy)
+    ? phase.toolPolicy
+    : isRecord(contract.toolPolicy) && Array.isArray(contract.toolPolicy.allowedTools)
+      ? contract.toolPolicy as WorkflowTemplatePhaseToolPolicy
+      : undefined
+  const allowedTools = toolPolicy
+    ? normalizeToolNames(toolPolicy.allowedTools)
+    : defaultAllowedToolsForPhase(phase.id)
+  const hasCustomToolPolicy = Boolean(toolPolicy)
+  const transitionAuthority = contract.transitionAuthority === 'auto' || contract.transitionAuthority === 'user-confirmation'
+    ? contract.transitionAuthority
+    : phase.transition?.authority ?? 'user-confirmation'
 
   return {
     id: phase.id,
     name: phase.name,
-    role: typeof phase.role === 'string' ? phase.role : '',
-    instructions: phase.instructions,
-    objective: phase.objective ?? '',
-    intake: toLinesText(phase.requiredIntake),
+    role: typeof intent.role === 'string' ? intent.role : typeof phase.role === 'string' ? phase.role : '',
+    instructions: typeof contract.instructions === 'string' ? contract.instructions : phase.instructions,
+    objective: typeof intent.objective === 'string' ? intent.objective : phase.objective ?? '',
+    intake: toLinesText(Array.isArray(intent.intake) ? intent.intake.filter(isString) : phase.requiredIntake),
     outputArtifactId: artifactId,
     outputArtifactName: artifactName,
     outputArtifactKind: outputArtifact?.kind ?? 'markdown',
     outputArtifactDescription: outputArtifact?.description ?? firstRequiredArtifact?.description ?? '',
-    handoff: toLinesText(phase.handoffRules),
-    executionRules: toLinesText(phase.executionRules),
-    completionCriteriaType: phase.completionCriteria?.type ?? 'artifact-required',
-    completionCriteriaDescription: phase.completionCriteria?.description ?? '',
-    transitionAuthority: phase.transition?.authority ?? 'user-confirmation',
+    handoff: toLinesText(Array.isArray(evidencePolicy.handoffRules) ? evidencePolicy.handoffRules.filter(isString) : phase.handoffRules),
+    executionRules: toLinesText(Array.isArray(contract.executionRules) ? contract.executionRules.filter(isString) : phase.executionRules),
+    completionCriteriaType: evidenceCompletionCriteria?.type ?? phase.completionCriteria?.type ?? 'artifact-required',
+    completionCriteriaDescription: evidenceCompletionCriteria?.description ?? phase.completionCriteria?.description ?? '',
+    transitionAuthority,
     requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : '',
     skillReferences,
+    allowedTools,
+    hasCustomToolPolicy,
   }
 }
 
@@ -475,6 +589,15 @@ function toTemplateDraft(original: WorkflowTemplateDraft | null | undefined, dra
 }
 
 function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: PhaseDraft): WorkflowTemplatePhase {
+  const {
+    runtimeState: _runtimeState,
+    intent: originalIntent,
+    contract: originalContract,
+    evidencePolicy: originalEvidencePolicy,
+    actionPolicy: originalActionPolicy,
+    toolPolicy: originalToolPolicy,
+    ...originalWithoutRuntimeState
+  } = original ?? {}
   const outputArtifactId = draft.outputArtifactId.trim() || slugFromText(draft.outputArtifactName) || `${draft.id.trim()}-artifact`
   const outputArtifact: WorkflowTemplateOutputArtifact = {
     ...(original?.outputArtifact ?? {}),
@@ -493,9 +616,62 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     ...(original?.transition ?? {}),
     authority: draft.transitionAuthority,
   }
+  const requiredArtifacts = [
+    {
+      ...(original?.requiredArtifacts?.[0] ?? {}),
+      id: outputArtifact.id,
+      name: outputArtifact.name,
+      description: outputArtifact.description,
+      required: true,
+    },
+  ]
+  const intent = {
+    ...(isRecord(originalIntent) ? originalIntent : {}),
+    objective: draft.objective.trim(),
+    role: draft.role.trim(),
+    intake: toLines(draft.intake),
+  }
+  const actionPolicy: WorkflowTemplatePhaseActionPolicy = {
+    ...(isRecord(originalActionPolicy) ? originalActionPolicy : {}),
+    ...(isRecord(originalContract) && isRecord(originalContract.actionPolicy) ? originalContract.actionPolicy : {}),
+    allowedActions: normalizeStringArray(
+      isRecord(originalContract) && isRecord(originalContract.actionPolicy)
+        ? originalContract.actionPolicy.allowedActions
+        : isRecord(originalActionPolicy)
+          ? originalActionPolicy.allowedActions
+          : undefined,
+    ),
+    forbiddenActions: toLines(draft.executionRules),
+  }
+  const baseContract: Record<string, unknown> = isRecord(originalContract) ? { ...originalContract } : {}
+  if (!draft.hasCustomToolPolicy) {
+    delete baseContract.toolPolicy
+  }
+  const toolPolicy: WorkflowTemplatePhaseToolPolicy | undefined = draft.hasCustomToolPolicy
+    ? {
+        ...(isRecord(originalToolPolicy) ? originalToolPolicy : {}),
+        ...(isRecord(originalContract) && isRecord(originalContract.toolPolicy) ? originalContract.toolPolicy : {}),
+        allowedTools: normalizeToolNames(draft.allowedTools),
+      }
+    : undefined
+  const contract = {
+    ...baseContract,
+    instructions: draft.instructions.trim(),
+    executionRules: toLines(draft.executionRules),
+    actionPolicy,
+    ...(toolPolicy ? { toolPolicy } : {}),
+    transitionAuthority: draft.transitionAuthority,
+  }
+  const evidencePolicy = {
+    ...(isRecord(originalEvidencePolicy) ? originalEvidencePolicy : {}),
+    outputArtifact,
+    requiredArtifacts,
+    completionCriteria,
+    handoffRules: toLines(draft.handoff),
+  }
 
   return {
-    ...(original ?? {}),
+    ...originalWithoutRuntimeState,
     id: draft.id.trim(),
     name: draft.name.trim(),
     role: draft.role.trim() || undefined,
@@ -505,20 +681,46 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     handoffRules: toLines(draft.handoff),
     executionRules: toLines(draft.executionRules),
     outputArtifact,
-    requiredArtifacts: [
-      {
-        ...(original?.requiredArtifacts?.[0] ?? {}),
-        id: outputArtifact.id,
-        name: outputArtifact.name,
-        description: outputArtifact.description,
-        required: true,
-      },
-    ],
+    requiredArtifacts,
     completionCriteria,
     transition,
+    intent,
+    contract,
+    evidencePolicy,
+    actionPolicy,
+    ...(toolPolicy ? { toolPolicy } : {}),
     requestedModel: draft.requestedModel.trim() || undefined,
     skills: draft.skillReferences.length > 0 ? draft.skillReferences : undefined,
   }
+}
+
+function defaultAllowedToolsForPhase(phaseId: string): string[] {
+  const normalized = phaseId.trim().toLowerCase().replace(/[\s_]+/g, '-')
+  if (normalized === 'verification') return [...DEFAULT_VERIFICATION_ALLOWED_TOOLS]
+  if (
+    normalized === 'implementation' ||
+    normalized === 'implement' ||
+    normalized === 'sp-implementation' ||
+    normalized === 'sp-implement'
+  ) {
+    return [...DEFAULT_IMPLEMENTATION_ALLOWED_TOOLS]
+  }
+  return [...DEFAULT_NON_IMPLEMENTATION_ALLOWED_TOOLS]
+}
+
+function normalizeToolNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const selected = new Set(
+    value
+      .filter((tool): tool is string => typeof tool === 'string')
+      .map((tool) => tool.trim())
+      .filter((tool) => WORKFLOW_TOOL_NAME_SET.has(tool)),
+  )
+  return WORKFLOW_TOOL_NAMES.filter((tool) => selected.has(tool))
+}
+
+function isToolPolicy(value: unknown): value is WorkflowTemplatePhaseToolPolicy {
+  return isRecord(value) && Array.isArray(value.allowedTools)
 }
 
 function validateDraft(draft: TemplateEditorDraft, t: ReturnType<typeof useTranslation>) {
@@ -643,6 +845,100 @@ function SelectField({
         ))}
       </select>
     </label>
+  )
+}
+
+function PhaseToolAccessEditor({
+  phaseName,
+  allowedTools,
+  onToggle,
+}: {
+  phaseName: string
+  allowedTools: string[]
+  onToggle: (toolName: string) => void
+}) {
+  const t = useTranslation()
+  const allowedToolSet = new Set(allowedTools)
+  const runtimeTools = WORKFLOW_TOOL_OPTIONS.filter((tool) =>
+    tool.groupKey === 'settings.workflows.editor.runtimeTools'
+  )
+  const workflowTools = WORKFLOW_TOOL_OPTIONS.filter((tool) =>
+    tool.groupKey === 'settings.workflows.editor.workflowTools'
+  )
+  const completionToolDisabled = !allowedToolSet.has('submit_phase_completion')
+
+  return (
+    <section
+      role="group"
+      aria-label={t('settings.workflows.editor.toolAccessLabel', { phase: phaseName })}
+      className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
+    >
+      <div className="min-w-0">
+        <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+          {t('settings.workflows.editor.toolAccess')}
+        </h5>
+        <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-text-tertiary)]">
+          {t('settings.workflows.editor.toolAccessHint')}
+        </p>
+      </div>
+      <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
+        <ToolCheckboxGroup
+          title={t('settings.workflows.editor.runtimeTools')}
+          tools={runtimeTools}
+          allowedToolSet={allowedToolSet}
+          onToggle={onToggle}
+        />
+        <ToolCheckboxGroup
+          title={t('settings.workflows.editor.workflowTools')}
+          tools={workflowTools}
+          allowedToolSet={allowedToolSet}
+          onToggle={onToggle}
+        />
+      </div>
+      {completionToolDisabled && (
+        <p className="mt-3 rounded-[7px] border border-[var(--color-warning)]/35 bg-[var(--color-warning)]/10 px-2.5 py-2 text-xs leading-5 text-[var(--color-warning)]">
+          {t('settings.workflows.editor.submitCompletionDisabledWarning')}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function ToolCheckboxGroup({
+  title,
+  tools,
+  allowedToolSet,
+  onToggle,
+}: {
+  title: string
+  tools: typeof WORKFLOW_TOOL_OPTIONS[number][]
+  allowedToolSet: Set<string>
+  onToggle: (toolName: string) => void
+}) {
+  const t = useTranslation()
+
+  return (
+    <div className="min-w-0 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
+      <h6 className="text-[11px] font-semibold uppercase text-[var(--color-text-tertiary)]">
+        {title}
+      </h6>
+      <div className="mt-2 grid min-w-0 gap-1.5">
+        {tools.map((tool) => (
+          <label
+            key={tool.name}
+            className="flex min-w-0 items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+          >
+            <input
+              type="checkbox"
+              checked={allowedToolSet.has(tool.name)}
+              onChange={() => onToggle(tool.name)}
+              className="h-3.5 w-3.5 shrink-0 accent-[var(--color-brand)]"
+            />
+            <span className="min-w-0 truncate">{t(tool.labelKey)}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -984,6 +1280,36 @@ function toLines(value: string) {
 
 function toLinesText(value?: string[]) {
   return Array.isArray(value) ? value.join('\n') : ''
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
+}
+
+function isOutputArtifact(value: unknown): value is WorkflowTemplateOutputArtifact {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.kind === 'string' &&
+    typeof value.description === 'string'
+}
+
+function isRequiredArtifact(value: unknown): value is WorkflowTemplateRequiredArtifact {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.required === 'boolean'
+}
+
+function isCompletionCriteria(value: unknown): value is WorkflowTemplateCompletionCriteria {
+  return isRecord(value) && typeof value.description === 'string'
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter(isString) : []
 }
 
 function skillToRecommendedReference(skill: SkillCatalogItem): WorkflowTemplateSkillDeclaration {

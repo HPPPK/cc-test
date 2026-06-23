@@ -1,0 +1,76 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/UserMessage.test.tsx",
+    ".planning/quick/20260617-skill-invocation-inline-box/STATUS.md"
+  ],
+  "scope_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/UserMessage.tsx",
+    "desktop/src/components/chat/composerUtils.ts",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/UserMessage.test.tsx",
+    "desktop/src/components/chat/composerUtils.test.ts"
+  ],
+  "behavior_surfaces": [
+    "desktop chat composer inline skill invocation display",
+    "desktop sent user message skill invocation display",
+    "desktop slash command selection rendering",
+    "desktop chat component tests"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "No persistence schema or skill execution semantics changed.",
+    "Textarea remains the editable and submitted value owner; overlay layer is display-only."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop && bun run test --run src/components/chat/ChatInput.test.tsx -t \"shows a distinct inline composer marker\"",
+      "result": "passed",
+      "artifact": "Focused ChatInput inline composer marker regression."
+    },
+    {
+      "command": "cd desktop && bun run test --run src/components/chat/ChatInput.test.tsx src/components/chat/UserMessage.test.tsx src/components/chat/composerUtils.test.ts",
+      "result": "passed",
+      "artifact": "48 same-area chat/composer tests passed."
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed",
+      "artifact": "98 desktop test files / 890 tests, TypeScript no-emit, and Vite build passed."
+    },
+    {
+      "command": "git diff --check -- desktop/src/components/chat/ChatInput.tsx desktop/src/components/chat/ChatInput.test.tsx desktop/src/components/chat/UserMessage.test.tsx .planning/quick/20260617-skill-invocation-inline-box/STATUS.md",
+      "result": "passed_with_line_ending_warnings",
+      "artifact": "No whitespace errors; Git reported existing LF-to-CRLF working-copy warnings."
+    }
+  ],
+  "known_unknowns": [
+    "Browser screenshot was not captured because the current runtime did not expose the in-app browser tool and the project does not include Playwright.",
+    "Several touched desktop chat files already contained unrelated working-tree changes; this update records the inline skill marker delta only."
+  ],
+  "confidence_notes": [
+    "Inline composer marker is implemented as a display-only overlay synchronized with the textarea scroll position.",
+    "The marker uses the existing color treatment from the prior skill invocation badge instead of a new red style."
+  ],
+  "user_decisions": [
+    "User clarified the screenshot red box was only an annotation; keep the current marker colors.",
+    "User confirmed the corrected quick checkpoint before implementation."
+  ],
+  "boundary": {
+    "included": [
+      "desktop chat composer display",
+      "sent user message display",
+      "same-area desktop tests"
+    ],
+    "excluded": [
+      "skill execution semantics",
+      "server routing",
+      "provider/model routing",
+      "message persistence schema"
+    ]
+  }
+}

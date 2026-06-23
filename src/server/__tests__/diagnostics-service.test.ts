@@ -178,6 +178,29 @@ describe('DiagnosticsService', () => {
       await server.exited.catch(() => undefined)
     }
   })
+
+  test('keeps error messages visible when runtime stacks omit them', () => {
+    const writes: string[] = []
+    const originalWrite = process.stderr.write
+    const error = new Error('Failed to start server. Is port 5678 in use?')
+    error.stack = 'Error\n    at startServer (src/server/index.ts:374:15)'
+
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      ;(diagnosticsService as unknown as {
+        writeProcessFailureToStderr(label: string, reason: unknown): void
+      }).writeProcessFailureToStderr('Uncaught exception', error)
+    } finally {
+      process.stderr.write = originalWrite
+    }
+
+    expect(writes.join('')).toContain('Error: Failed to start server. Is port 5678 in use?')
+    expect(writes.join('')).toContain('at startServer')
+  })
 })
 
 describe('diagnostics API', () => {

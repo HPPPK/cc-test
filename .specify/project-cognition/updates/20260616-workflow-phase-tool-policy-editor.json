@@ -1,0 +1,107 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/tools.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "scope_paths": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/tools.ts",
+    "src/server/__tests__/websocket-handler.test.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "behavior_surfaces": [
+    "workflow template phase schema now supports explicit per-phase toolPolicy.allowedTools",
+    "workflow template validation normalizes and rejects invalid or unknown per-phase tool policy values",
+    "workflow runtime phase tool gating uses explicit allowedTools when present and preserves built-in defaults when absent",
+    "workflow built-in tools exposed to agents, including submit_phase_completion and workflow_template_authoring, can be allowed or denied per phase",
+    "in-process workflow tool pool assembly filters both base tools and workflow-scoped tools by active phase policy",
+    "WebSocket workflow session startup passes custom phase policy through CLI disallowedTools",
+    "desktop workflow template editor exposes runtime and workflow built-in tool access controls per phase",
+    "desktop workflow editor warns when submit_phase_completion is disabled and avoids writing default toolPolicy into legacy templates unless the policy is user-edited or already exists"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Templates without toolPolicy retain existing phase-derived tool defaults.",
+    "Templates with explicit toolPolicy compute disallowedTools from the known configurable tool list.",
+    "Unknown tool names in toolPolicy are rejected at template validation.",
+    "submit_phase_completion is no longer unconditionally exposed when explicit phase tool policy omits it.",
+    "workflow_template_authoring operations are denied when the active explicit phase tool policy omits workflow_template_authoring.",
+    "Existing already-running agent sessions keep their already-launched tool set; the new policy applies on restart, retry, or a new session launch.",
+    "Desktop saves root-level phase.toolPolicy and contract.toolPolicy for custom policies while preserving old templates without an explicit policy."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/services/workflowToolPolicy.test.ts src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/websocket-handler.test.ts src/tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.test.ts src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+      "result": "passed; covered phase policy, template validation, scoped workflow tools, WebSocket disallowedTools, and related workflow tools"
+    },
+    {
+      "command": "cd desktop; bun test src/components/workflow/WorkflowComponents.test.tsx -t \"per-phase runtime\"",
+      "result": "passed; covered editor viewing and persisting per-phase runtime and workflow built-in tool access"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed"
+    },
+    {
+      "command": "bun run check:native",
+      "result": "passed after stopping exact repo sidecar PIDs 64536, 32172, and 11908 that locked desktop/src-tauri/target/debug/claude-sidecar.exe"
+    },
+    {
+      "command": "bun run verify",
+      "result": "all executed lanes passed on rerun in artifacts/quality-runs/2026-06-16T10-10-14-960Z/report.md with passed=9 failed=0 skipped=2; process exited 1 because the broader dirty worktree is policy-blocked by CLI-core/provider changes and live-provider escalation"
+    }
+  ],
+  "known_unknowns": [
+    "Full PR readiness remains blocked by broader dirty-worktree policy requirements outside this quick task.",
+    "Live provider smoke was not run because the default PR gate is non-live and the broader worktree requires maintainer-controlled live provider checks.",
+    "Project cognition entry and closeout may be blocked by local DB schema mismatch, previously reported as project-cognition.db metadata schema_version 1 expected 2."
+  ],
+  "confidence_notes": [
+    "Server tests prove explicit phase tool policy overrides default restrictions and controls workflow scoped tools.",
+    "Template validation tests prove policies round-trip from both flat and grouped phase shapes and reject unknown tools.",
+    "WebSocket test proves launch options reflect custom allowedTools by denying all other managed and workflow built-in tools.",
+    "Desktop test proves Settings editor can view, edit, warn, and persist per-phase tool choices.",
+    "Compatibility-preserving editor save logic avoids adding default toolPolicy to templates that did not have an explicit policy."
+  ],
+  "user_decisions": [
+    "Expose workflow phase tool access in Settings workflow editor.",
+    "Let users decide which tools each phase can use.",
+    "Include workflow built-in tools exposed to agents in the same configurable surface.",
+    "Keep first implementation bounded to known managed tools and known workflow built-in tools."
+  ],
+  "boundary": {
+    "included": [
+      "Known managed runtime tools: Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Agent",
+      "Known workflow built-in tools: workflow_template_authoring and submit_phase_completion",
+      "Workflow template validation, runtime gating, WebSocket launch options, and desktop editor controls"
+    ],
+    "excluded": [
+      "Arbitrary MCP/plugin/native dynamic tool discovery",
+      "Role-specific or user-specific workflow permissions",
+      "Changing live provider policy or release smoke requirements",
+      "Retroactive mutation of already-running agent sessions"
+    ]
+  }
+}

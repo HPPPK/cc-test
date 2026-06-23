@@ -1,0 +1,79 @@
+{
+  "task_id": "T003",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "status": "completed_with_validation_blocker",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T003.json"
+  ],
+  "test_names": [
+    "WorkflowTemplateEditor > renders grouped authoring sections for phase intent contract evidence policy and recommended skills",
+    "WorkflowTemplateEditor > saves phase authoring fields into grouped intent contract and evidence policy payloads",
+    "WorkflowTemplateEditor > excludes session-owned runtime state from saved template phase data"
+  ],
+  "expected_failure_reasons": [
+    "Grouped Intent, Contract, and Evidence Policy editor sections are not present as accessible authoring groups; only the existing flat Phase contract fields and Recommended skills group render.",
+    "The editor save payload still writes flat phase fields such as role, instructions, outputArtifact, requiredIntake, handoffRules, completionCriteria, transition, and skills instead of grouped intent, contract, and evidencePolicy objects.",
+    "Session-owned runtimeState is preserved by the current spread-based template save path instead of being excluded from template-owned phase data."
+  ],
+  "validation_evidence": [
+    {
+      "command": "cd desktop; bun test src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 1,
+      "result": "Nonzero. This exact packet command is not acceptable as sole RED evidence because the Bun test runner still reports additional existing runner/Testing Library/Vitest compatibility failures outside T003 after reaching the suite.",
+      "details": [
+        "Initial run failed before behavior assertions with vi.mocked missing and document unavailable.",
+        "Added in-file jsdom bootstrap and vi.mocked compatibility inside the allowed test file.",
+        "Rerun reached tests but still produced non-T003 failures under Bun's direct runner, including existing WorkflowTemplateManager assertions and import preview lookup failures."
+      ]
+    },
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 1,
+      "result": "Acceptable RED behavior evidence under the repository's configured Vitest runner: 47 tests run, 44 passed, 3 failed.",
+      "details": [
+        "The only Vitest failures are the three T003 RED tests.",
+        "Failures are caused by missing grouped editor controls, missing grouped save payload mapping, and runtimeState being retained in saved template phase data.",
+        "No syntax, import, or setup failures occurred under the configured desktop test runner."
+      ]
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-001": {
+      "preserved": true,
+      "evidence": "Tests assert phase contracts as structured execution contract payloads with intent, contract, evidencePolicy, actionPolicy, transitionAuthority, completionCriteria, and handoffRules rather than cosmetic text grouping."
+    },
+    "MP-003": {
+      "preserved": true,
+      "evidence": "Added a RED test proving session-owned runtimeState must not be editable or persisted as template phase data."
+    },
+    "MP-010": {
+      "preserved": true,
+      "evidence": "Tests are limited to the desktop editor authoring surface and do not add runtime controls, manual completion controls, or pending-confirmation UI into the template editor."
+    }
+  },
+  "ca_evidence": {
+    "CA-008": {
+      "preserved": true,
+      "evidence": "Testing Library assertions cover the desktop editor's user-visible grouped states and save behavior: accessible groups for Intent, Contract, Evidence Policy, Recommended Skills, plus template/runtime ownership separation."
+    }
+  },
+  "blockers": [
+    {
+      "type": "validation_command_runner",
+      "owner": "maintainer",
+      "summary": "The packet's literal `bun test src/components/workflow/WorkflowComponents.test.tsx` command invokes Bun's direct runner against a Vitest/Testing Library suite and still produces unrelated existing failures outside T003.",
+      "evidence": "Direct Bun run exits 1 with non-T003 failures; configured `bun run test ...` exits 1 only for the three intended T003 RED tests.",
+      "unblock_criteria": "Use the configured Vitest entrypoint for this suite, or update the direct Bun-runner compatibility for the full existing WorkflowComponents test file."
+    }
+  ],
+  "failed_assumptions": [
+    "The packet's literal `bun test` command would execute this Vitest/jsdom component suite equivalently to the desktop package `test` script."
+  ],
+  "recovery_guidance": [
+    "T005 should implement accessible grouped editor sections for Intent, Contract, and Evidence Policy while preserving the existing Recommended Skills group.",
+    "T005 should map saved phase payloads into grouped `intent`, `contract`, and `evidencePolicy` objects and keep compatibility fields only if the server contract requires them.",
+    "T005 should strip session-owned `runtimeState` before saving template phase data.",
+    "For validation, prefer `cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx` unless the task packet command is corrected to invoke Vitest."
+  ]
+}

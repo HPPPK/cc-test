@@ -38,6 +38,104 @@ describe('workflow phase skill resolver', () => {
     })
   })
 
+  test('returns stable identity and provenance for local, bundled, plugin, managed, and mcp skills', async () => {
+    const result = await resolveWorkflowPhaseSkills({
+      checkedAt,
+      references: [
+        { name: 'project-tdd', source: 'project', referenceId: 'project:project-tdd' },
+        { name: 'bundled-review', source: 'bundled', contentHash: 'sha256:bundled-review' },
+        { name: 'plugin-audit', source: 'plugin', pluginName: 'quality-pack', namespace: 'quality' },
+        { name: 'managed-release', source: 'managed', version: '2.1.0' },
+        { name: 'mcp-context', source: 'mcp', referenceId: 'mcp:context7:prompt/context' },
+      ],
+      catalog: [
+        {
+          name: 'project-tdd',
+          displayName: 'Project TDD',
+          source: 'project',
+          referenceId: 'project:project-tdd',
+          sourcePath: '.agents/skills/project-tdd/SKILL.md',
+        },
+        {
+          name: 'bundled-review',
+          displayName: 'Bundled Review',
+          source: 'bundled',
+          contentHash: 'sha256:bundled-review',
+          sourcePath: 'openai-bundled/review/SKILL.md',
+        },
+        {
+          name: 'plugin-audit',
+          displayName: 'Plugin Audit',
+          source: 'plugin',
+          pluginName: 'quality-pack',
+          namespace: 'quality',
+          sourcePath: 'plugins/quality-pack/audit/SKILL.md',
+        },
+        {
+          name: 'managed-release',
+          displayName: 'Managed Release',
+          source: 'managed',
+          version: '2.1.0',
+          referenceId: 'managed:release',
+        },
+        {
+          name: 'mcp-context',
+          displayName: 'Context MCP',
+          source: 'mcp',
+          referenceId: 'mcp:context7:prompt/context',
+          namespace: 'context7',
+        },
+      ],
+    })
+
+    expect(result.resolutions).toEqual([
+      expect.objectContaining({
+        status: 'available',
+        resolvedSkill: expect.objectContaining({ name: 'project-tdd', source: 'project' }),
+        provenance: expect.objectContaining({
+          referenceId: 'project:project-tdd',
+          sourcePath: '.agents/skills/project-tdd/SKILL.md',
+        }),
+      }),
+      expect.objectContaining({
+        status: 'available',
+        resolvedSkill: expect.objectContaining({ name: 'bundled-review', source: 'bundled' }),
+        provenance: expect.objectContaining({
+          contentHash: 'sha256:bundled-review',
+          sourcePath: 'openai-bundled/review/SKILL.md',
+        }),
+      }),
+      expect.objectContaining({
+        status: 'available',
+        resolvedSkill: expect.objectContaining({
+          name: 'plugin-audit',
+          source: 'plugin',
+          pluginName: 'quality-pack',
+        }),
+        provenance: expect.objectContaining({
+          namespace: 'quality',
+          sourcePath: 'plugins/quality-pack/audit/SKILL.md',
+        }),
+      }),
+      expect.objectContaining({
+        status: 'available',
+        resolvedSkill: expect.objectContaining({ name: 'managed-release', source: 'managed' }),
+        provenance: expect.objectContaining({
+          version: '2.1.0',
+          referenceId: 'managed:release',
+        }),
+      }),
+      expect.objectContaining({
+        status: 'available',
+        resolvedSkill: expect.objectContaining({ name: 'mcp-context', source: 'mcp' }),
+        provenance: expect.objectContaining({
+          namespace: 'context7',
+          referenceId: 'mcp:context7:prompt/context',
+        }),
+      }),
+    ])
+  })
+
   test('returns missing warning when no catalog skill matches a recommended reference', async () => {
     const result = await resolveWorkflowPhaseSkills({
       checkedAt,

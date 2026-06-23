@@ -1,0 +1,55 @@
+{
+  "id": "T006",
+  "title": "Join and verify US1",
+  "story": "US1",
+  "agent": "quality-reviewer",
+  "depends_on": ["T004", "T005"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    "src/server/services/workflowTypes.test.ts",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "write_scope": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+  ],
+  "read_scope": [
+    "T002-T005 handoff output",
+    "server and desktop test output"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "source files",
+    "test files"
+  ],
+  "expected_outputs": [
+    "Update implementation matrix with US1 evidence and unresolved compatibility notes"
+  ],
+  "anti_goals": [
+    "Do not patch implementation during join validation"
+  ],
+  "does_not_remove": [
+    "MP-011",
+    "MP-013"
+  ],
+  "capability_operations": [
+    "US1 join validation",
+    "SC-001 and SC-002 evidence update"
+  ],
+  "acceptance_criteria": [
+    "Server and desktop US1 tests pass",
+    "No old-template fixture behavior is unaccounted for"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "pass_fail_commands",
+    "matrix_update_summary"
+  ],
+  "retry_max": 1,
+  "escalation": "debugger"
+}

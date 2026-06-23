@@ -342,6 +342,111 @@ const TIER_ANTI_SUBVERSION =
   "System Events, shell commands, or any other method to send clicks or " +
   "keystrokes to this app.";
 
+const CODING_FALLBACK_DENIAL =
+  "Computer Use is not available for filesystem, shell, or coding fallback tasks. " +
+  "Use Bash, PowerShell, Write, or Edit for folder/file creation, source edits, " +
+  "dependency installs, git operations, and terminal commands. If those tools " +
+  "are unavailable in this session, report the missing tool surface instead of " +
+  "controlling a terminal, IDE, Finder, or Explorer.";
+
+const CODING_FALLBACK_ENGLISH_ACTIONS = [
+  "build",
+  "compile",
+  "copy",
+  "create",
+  "delete",
+  "edit",
+  "execute",
+  "generate",
+  "initialize",
+  "install",
+  "make",
+  "mkdir",
+  "modify",
+  "move",
+  "rename",
+  "run",
+  "save",
+  "scaffold",
+  "touch",
+  "type",
+  "write",
+] as const;
+
+const CODING_FALLBACK_ENGLISH_OBJECTS = [
+  "bash",
+  "code",
+  "command",
+  "dependency",
+  "dependencies",
+  "directory",
+  "file",
+  "filesystem",
+  "folder",
+  "git",
+  "package",
+  "powershell",
+  "project",
+  "repo",
+  "repository",
+  "shell",
+  "terminal",
+] as const;
+
+const CODING_FALLBACK_CHINESE_ACTIONS = [
+  "创建",
+  "新建",
+  "写入",
+  "编辑",
+  "修改",
+  "删除",
+  "复制",
+  "移动",
+  "重命名",
+  "运行",
+  "执行",
+  "初始化",
+  "安装",
+  "生成",
+  "编译",
+] as const;
+
+const CODING_FALLBACK_CHINESE_OBJECTS = [
+  "文件夹",
+  "目录",
+  "文件",
+  "代码",
+  "命令",
+  "终端",
+  "项目",
+  "依赖",
+  "仓库",
+] as const;
+
+function includesAny(text: string, needles: readonly string[]): boolean {
+  return needles.some((needle) => text.includes(needle));
+}
+
+function looksLikeCodingFallbackReason(reason: string): boolean {
+  const normalized = reason.toLowerCase();
+  if (/\b(mkdir|touch|npm|pnpm|yarn|bun|git|powershell|bash)\b/.test(normalized)) {
+    return true;
+  }
+  const hasEnglishAction = includesAny(
+    normalized,
+    CODING_FALLBACK_ENGLISH_ACTIONS,
+  );
+  const hasEnglishObject = includesAny(
+    normalized,
+    CODING_FALLBACK_ENGLISH_OBJECTS,
+  );
+  if (hasEnglishAction && hasEnglishObject) return true;
+
+  const hasChineseAction = includesAny(reason, CODING_FALLBACK_CHINESE_ACTIONS);
+  const hasChineseObject = includesAny(reason, CODING_FALLBACK_CHINESE_OBJECTS);
+  return hasChineseAction && hasChineseObject;
+}
+
 // ---------------------------------------------------------------------------
 // Clipboard guard — stash+clear while a click-tier app is frontmost
 // ---------------------------------------------------------------------------
@@ -845,6 +950,10 @@ async function handleRequestAccess(
 
   const reason = requireString(args, "reason");
   if (reason instanceof Error) return errorResult(reason.message, "bad_args");
+
+  if (looksLikeCodingFallbackReason(reason)) {
+    return errorResult(CODING_FALLBACK_DENIAL, "feature_unavailable");
+  }
 
   // TCC-ungranted branch. The renderer shows a toggle panel INSTEAD OF the
   // app list when `tccState` is present on the request, so we skip app

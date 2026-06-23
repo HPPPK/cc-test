@@ -1,0 +1,62 @@
+{
+  "id": "T014",
+  "title": "Implement desktop import/export diagnostics",
+  "story": "US3",
+  "agent": "executor",
+  "depends_on": ["T012", "T013"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    ".specify/memory/learnings/learn-2026-06-10-desktop-export-save-picker-fallback-a8f3c2d1.md"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowImportExportDialog.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx",
+    "desktop/src/types/session.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/components/workflow/WorkflowTemplateManager.tsx"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "server files",
+    "filesystem write picker code unless already owned by dialog"
+  ],
+  "expected_outputs": [
+    "Import preview diagnostics UI",
+    "Blocked and non-blocking commit affordances",
+    "Copyable export JSON with dependencyManifest",
+    "Visible statement that skill contents are not bundled"
+  ],
+  "anti_goals": [
+    "No automatic install",
+    "No hidden localStorage repair",
+    "No new save-file fallback behavior"
+  ],
+  "does_not_remove": [
+    "MP-007",
+    "MP-012",
+    "CA-008"
+  ],
+  "capability_operations": [
+    "CAP-004 desktop implementation"
+  ],
+  "acceptance_criteria": [
+    "T013 tests pass",
+    "Existing import/export tests still pass"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "import_export_user_states",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

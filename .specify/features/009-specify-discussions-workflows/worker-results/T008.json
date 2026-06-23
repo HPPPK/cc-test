@@ -1,0 +1,128 @@
+{
+  "task_id": "T008",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T008.json"
+  ],
+  "validation_evidence": {
+    "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/skills.test.ts",
+    "exit_code": 0,
+    "result": "69 pass, 0 fail, 389 expect() calls across 6 files.",
+    "notes": [
+      "Runtime prompt now describes priority as attention-only metadata and not a safety override or permission grant.",
+      "Runtime prompt preserves scheduledToolCalls as an empty array for recommended skills.",
+      "Workflow tool policy guidance preserves that recommended phase skills do not expose SkillTool globally."
+    ]
+  },
+  "binding_identity_fields": {
+    "preserved_fields": [
+      "reference.name",
+      "reference.mode",
+      "reference.source",
+      "reference.pluginName",
+      "reference.namespace",
+      "reference.version",
+      "reference.contentHash",
+      "reference.referenceId",
+      "reference.priority",
+      "reference.reason",
+      "resolvedSkill.name",
+      "resolvedSkill.displayName",
+      "resolvedSkill.source",
+      "resolvedSkill.pluginName",
+      "provenance.sourcePath",
+      "provenance.version",
+      "provenance.contentHash",
+      "provenance.namespace",
+      "provenance.referenceId"
+    ],
+    "runtime_prompt_fields": [
+      "status",
+      "source",
+      "plugin",
+      "priority",
+      "diagnostic.message"
+    ],
+    "implementation_summary": "Existing resolver identity/provenance behavior was preserved; T008 added prompt surfacing for priority while keeping priority advisory."
+  },
+  "audit_persistence_summary": {
+    "runtime_prompt_audit_vocabulary": [
+      "used",
+      "relevant-skipped",
+      "relevant-unavailable"
+    ],
+    "bounded_behavior": "Prompt instructs agents to record only bounded material skill audit evidence when relevant, not a mechanical unused recommendation checklist.",
+    "snapshot_behavior": "Existing phaseSkillSnapshots remain the source for persisted recommended-skill status and provenance.",
+    "no_auto_run": "Recommended skills do not create scheduled SkillTool calls; runtime assemblePrompt still returns scheduledToolCalls: [].",
+    "guardrails": "Prompt states SkillTool is not auto-invoked and nested skill invocation must follow depth guardrails."
+  },
+  "tests_run": [
+    {
+      "command": "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/skills.test.ts",
+      "exit_code": 0,
+      "result": "69 pass, 0 fail, 389 expect() calls"
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-005": {
+      "preserved": true,
+      "evidence": "Recommended skills remain advisory, bind through existing snapshots/resolver output, and do not grant permissions or schedule SkillTool calls."
+    },
+    "MP-006": {
+      "preserved": true,
+      "evidence": "Runtime prompt now names the bounded material outcomes used, relevant-skipped, and relevant-unavailable and avoids checklist language."
+    },
+    "CA-001": {
+      "preserved": true,
+      "evidence": "Resolver identity/provenance code was not changed; required resolver tests for local, bundled, plugin, managed, and MCP sources passed."
+    },
+    "CA-004": {
+      "preserved": true,
+      "evidence": "Workflow scoped tools still expose only submit_phase_completion; policy tests confirm SkillTool is not enabled globally."
+    },
+    "CA-010": {
+      "preserved": true,
+      "evidence": "Runtime prompt states no automatic SkillTool invocation and nested skill invocation must follow depth guardrails; scheduledToolCalls remains empty."
+    }
+  },
+  "ca_evidence": {
+    "CA-001": {
+      "covered": true,
+      "evidence": "workflowPhaseSkillResolver.test.ts passed stable identity and provenance assertions for local, bundled, plugin, managed, and MCP skills."
+    },
+    "CA-002": {
+      "covered": true,
+      "evidence": "workflowRuntimeService.ts and workflowToolPolicy.ts now explicitly state higher priority is attention metadata, not a safety override or permission grant; matching tests passed."
+    },
+    "CA-003": {
+      "covered": true,
+      "evidence": "Existing resolver diagnostics for missing, ambiguous, unsupported-source, plugin-disabled, and invalid-reference remained green in the targeted run."
+    },
+    "CA-004": {
+      "covered": true,
+      "evidence": "Policy guidance preserves that recommended phase skills do not grant permissions or expose SkillTool globally; scoped tool tests passed."
+    },
+    "CA-005": {
+      "covered": true,
+      "evidence": "Runtime snapshot tests for active phase recommended skill resolutions passed, preserving resume-stable prompt behavior."
+    },
+    "CA-006": {
+      "covered": true,
+      "evidence": "Runtime prompt test passed for material audit outcomes used, relevant-skipped, and relevant-unavailable."
+    },
+    "CA-010": {
+      "covered": true,
+      "evidence": "Runtime guardrail test passed for no automatic SkillTool invocation, nested skill invocation, depth language, and empty scheduledToolCalls."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [],
+  "execution_notes": {
+    "subagent_dispatch": "Native spawn_agent/wait_agent/close_agent tools were not exposed in this runtime, so execution proceeded inline against the validated T008 packet.",
+    "scope": "No desktop, test, dependency, config, secret, scheduler, installer, bundled export, or hidden permission bypass changes were made."
+  }
+}

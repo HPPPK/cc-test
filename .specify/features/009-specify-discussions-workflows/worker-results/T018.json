@@ -1,0 +1,73 @@
+{
+  "task_id": "T018",
+  "agent": "quality-reviewer",
+  "status": "completed_with_external_policy_blocker",
+  "summary": "Final local gates were executed. Required local lanes passed, coverage passed, and final verify produced 9 passed, 0 failed, 2 skipped, but exited 1 because PR readiness is blocked by CLI core change governance requiring maintainer approval.",
+  "changed_artifacts": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+    ".specify/features/009-specify-discussions-workflows/tasks.md",
+    "src/server/services/diagnosticsService.ts",
+    "src/server/__tests__/diagnostics-service.test.ts"
+  ],
+  "verification": [
+    {
+      "command": "bun run check:server",
+      "status": "passed",
+      "evidence": ".specify/features/009-specify-discussions-workflows/validation-logs/t018-check-server.log",
+      "summary": "101 files, 1160 pass, 7 skip, 0 fail"
+    },
+    {
+      "command": "bun run check:desktop",
+      "status": "passed_after_recovery",
+      "evidence": ".specify/features/009-specify-discussions-workflows/validation-logs/t018-check-desktop-rerun.log",
+      "summary": "98 files, 860 tests, 0 fail, production build passed"
+    },
+    {
+      "command": "bun test src/server/__tests__/diagnostics-service.test.ts",
+      "status": "passed",
+      "evidence": ".specify/features/009-specify-discussions-workflows/validation-logs/t018-diagnostics-direct-coverage.log",
+      "summary": "5 pass, 0 fail"
+    },
+    {
+      "command": "bun run check:coverage --changed",
+      "status": "passed",
+      "evidence": "F:\\github\\cc-jiangxia\\artifacts\\coverage\\2026-06-12T07-02-49-587Z\\coverage-report.md",
+      "summary": "5 suites passed, 0 failures, changed-line coverage 95.33% (531/557)"
+    },
+    {
+      "command": "bun run verify",
+      "status": "nonzero_policy_blocker",
+      "evidence": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-06-12T07-06-45-734Z\\report.md",
+      "summary": "9 passed, 0 failed, 2 skipped; exit 1 because CLI core changes require allow-cli-core-change label and maintainer approval"
+    },
+    {
+      "command": "project-cognition update",
+      "status": "partial_refresh",
+      "evidence": ".specify/features/009-specify-discussions-workflows/validation-logs/t018-project-cognition-update.log",
+      "summary": "update id upd-20260612T071641.981574600Z; status stale, readiness review, recommended_next_action review_project_cognition_update"
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-001": "Final gates cover workflow phase contracts across server and desktop surfaces.",
+    "MP-002": "Server, runtime, desktop, import/export, lifecycle, and validation evidence paths are recorded in implementation-matrix.md.",
+    "MP-012": "No scheduler, auto-execution, required default gates, skill bundle export, or destructive migration was added.",
+    "MP-013": "Final evidence uses live repository checks and quality reports rather than project-cognition assumptions."
+  },
+  "actionable_blocker_resolution": {
+    "blocker": "PR readiness policy block from impact report",
+    "classification": "maintainer_policy",
+    "owner": "maintainer",
+    "evidence": "F:\\github\\cc-jiangxia\\artifacts\\quality-runs\\2026-06-12T07-06-45-734Z\\logs\\impact-report.log",
+    "exact_next_action": "Apply maintainer approval with allow-cli-core-change label, then rerun bun run verify or the PR quality gate.",
+    "approval_question": "Can a maintainer approve the CLI core scope for this PR?",
+    "unblock_criteria": "Final quality report sets readyForMerge true or no longer marks impact.blocked for CLI core governance.",
+    "implementation_can_continue": false,
+    "completion_impact": "Local implementation and required local checks are complete; PR-ready/merge-ready status remains blocked until approval."
+  },
+  "remaining_risk": [
+    "Live provider/model smoke was not run; final PR-mode gate records live-provider-checks as maintainer-controlled escalation.",
+    "The worktree includes many pre-existing unrelated dirty files, so impact scope reports 660 changed files.",
+    "Legacy target coverage gaps remain for agent-tools, agent-utils, and desktop function coverage, but there are no coverage failures.",
+    "Project cognition closeout was recorded as partial_refresh, so clean cognition freshness requires review_project_cognition_update."
+  ]
+}

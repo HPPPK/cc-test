@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "ownerDefinedTopLevel": {
+    "keep": true
+  },
+  "templates": [
+    {
+      "schemaVersion": 1,
+      "id": "legacy-flat-phase-contract",
+      "version": "2026.06.12",
+      "name": "Legacy Flat Phase Contract",
+      "description": "Legacy flat fields that should project into grouped phase contract semantics.",
+      "ownerDefinedTemplateField": "keep-template",
+      "phases": [
+        {
+          "id": "specify",
+          "name": "Specify",
+          "instructions": "Convert the discussion brief into explicit requirements.",
+          "objective": "Produce a planning-ready specification.",
+          "requiredIntake": [
+            "Use the accepted discussion brief."
+          ],
+          "handoffRules": [
+            "Summarize requirements, acceptance criteria, and open questions."
+          ],
+          "executionRules": [
+            "Do not design implementation architecture."
+          ],
+          "actionPolicy": {
+            "allowedActions": [
+              "read discussion artifacts"
+            ],
+            "forbiddenActions": [
+              "edit production source"
+            ],
+            "ownerDefinedActionPolicyField": "keep-action-policy"
+          },
+          "outputArtifact": {
+            "id": "specification-brief",
+            "name": "Specification Brief",
+            "kind": "markdown",
+            "description": "Planning-ready requirements and acceptance criteria.",
+            "required": true,
+            "ownerDefinedOutputField": "keep-output"
+          },
+          "requiredArtifacts": [
+            {
+              "id": "discussion-brief",
+              "name": "Discussion Brief",
+              "required": true,
+              "ownerDefinedArtifactField": "keep-artifact"
+            }
+          ],
+          "completionCriteria": {
+            "type": "manual-checklist",
+            "description": "Requirements are explicit, testable, and ready for planning.",
+            "ownerDefinedCriteriaField": "keep-criteria"
+          },
+          "transition": {
+            "authority": "user-confirmation",
+            "ownerDefinedTransitionField": "keep-transition"
+          },
+          "ownerDefinedPhaseField": {
+            "keep": true
+          }
+        }
+      ]
+    }
+  ]
+}

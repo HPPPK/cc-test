@@ -1,5 +1,4 @@
 import {
-  WORKFLOW_TEMPLATE_BUILTIN_ID,
   WORKFLOW_TEMPLATE_SCHEMA_VERSION,
 } from './workflowTemplateValidation.js'
 
@@ -34,7 +33,6 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
       guidance: [
         `Use schemaVersion ${WORKFLOW_TEMPLATE_SCHEMA_VERSION}; authored templates are saved with source user.`,
         'Use stable slug ids without slash or backslash path separators.',
-        `Do not use ${WORKFLOW_TEMPLATE_BUILTIN_ID}; user templates must not shadow builtin ids.`,
         'Names and descriptions should make the workflow easy to choose from a template list.',
       ],
       examples: [
@@ -149,6 +147,8 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
         'Use workflow_template_authoring skill_catalog before create or update when assigning recommended phase skills.',
         'If the needed skill is missing, use workflow_template_authoring skill_create to create a user skill first, then reference the returned recommendedReference.',
         'phases[].skills should contain references to installed skills such as { name, mode: "recommended" }; add source, pluginName, namespace, version, contentHash, or referenceId only when needed for provenance or ambiguity.',
+        'Recommended phase skills are auxiliary attention metadata only; they do not define workflow flow, phase order, transition authority, completion criteria, or tool permissions.',
+        'Do not use phases[].skills to name the workflow step itself, mirror command phases, or compensate for missing phase instructions; omit phases[].skills when no installed or newly created skill fits.',
         'Do not duplicate skill-owned descriptions, applicability, reason, appliesWhen, assets, scripts, tools, model, or effort settings into workflow templates.',
         'Legacy reason fields are preserved if already present, but new workflow templates should rely on the skill catalog and the skill package itself for applicability.',
       ],
@@ -198,10 +198,6 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
     ],
     WORKFLOW_PHASE_DUPLICATE_ID: [
       'Rename duplicate phase ids so every phase id is unique within the template.',
-    ],
-    WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT: [
-      `Choose a user template id other than ${WORKFLOW_TEMPLATE_BUILTIN_ID}.`,
-      'To modify builtin behavior, duplicate the builtin template to a non-conflicting user id first.',
     ],
     WORKFLOW_TEMPLATE_CONFLICT: [
       'Choose a unique user template id or inspect the existing user template before updating it.',

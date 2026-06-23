@@ -1,0 +1,47 @@
+{
+  "task_id": "T006",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+    ".specify/features/009-specify-discussions-workflows/validation-logs/t006-server.log",
+    ".specify/features/009-specify-discussions-workflows/validation-logs/t006-desktop.log",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T006.json"
+  ],
+  "validation_evidence": [
+    {
+      "command": "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+      "exit_code": 0,
+      "result": "PASS: 36 pass, 0 fail, 103 expect() calls across 2 files.",
+      "details": [
+        "Legacy flat phase projection passed.",
+        "Grouped-only authoring passed without duplicate flat fields.",
+        "Invalid grouped strength/provenance rejection passed.",
+        "Session-owned runtimeState stripping passed."
+      ]
+    },
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx",
+      "exit_code": 0,
+      "result": "PASS: 47 tests passed.",
+      "details": [
+        "Grouped authoring sections render and remain accessible.",
+        "Save payload maps to grouped intent, contract, and evidencePolicy data.",
+        "runtimeState is excluded from template saves.",
+        "Existing act(...) warnings were present but non-fatal."
+      ]
+    }
+  ],
+  "old_template_fixture_evidence": {
+    "fixture_path": "src/server/services/__fixtures__/workflow-templates/legacy-flat-phase-contract.json",
+    "covered_by": "workflow template registry service > projects legacy flat phase fields into grouped phase contract sections when listing templates",
+    "status": "accounted_for",
+    "evidence": "The focused server verification passed with the legacy flat projection test green, so the old-template compatibility path remains covered and unaccounted fixture behavior was not left behind."
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [
+    "Keep the legacy flat phase fixture in the server registry test suite as the compatibility sentinel for future join validation.",
+    "If the desktop act(...) warnings become flaky, tighten the async test wrapping without changing the verified payload semantics."
+  ]
+}

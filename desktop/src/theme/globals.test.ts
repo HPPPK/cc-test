@@ -57,6 +57,7 @@ describe('desktop theme tokens', () => {
     '--color-goal-icon-bg',
     '--color-goal-chip-bg',
     '--color-goal-chip-border',
+    '--color-brand-hover',
     '--color-text-secondary-a72',
     '--color-text-secondary-a68',
     '--color-text-primary-a88',
@@ -90,5 +91,13 @@ describe('desktop theme tokens', () => {
     expect(normalizedCss).toContain('--settings-zoom-thumb-bg: var(--color-surface-bright);')
     expect(normalizedCss).toContain('--settings-zoom-thumb-border: rgba(255, 181, 159, 0.78);')
     expect(normalizedCss).toContain('box-shadow: var(--settings-zoom-thumb-shadow);')
+  })
+
+  it('keeps explicit CJK system fallbacks in the primary font tokens', () => {
+    expect(normalizedCss).toContain('--font-cjk:')
+    expect(normalizedCss).toContain('Microsoft YaHei')
+    expect(normalizedCss).toContain('PingFang SC')
+    expect(normalizedCss).toContain("--font-body: 'Inter', var(--font-cjk);")
+    expect(normalizedCss).toContain("--font-headline: 'Manrope', var(--font-cjk);")
   })
 })

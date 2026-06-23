@@ -1,0 +1,72 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/skills/SkillList.tsx",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    ".planning/quick/20260615-settings-skills-sort-persistence/STATUS.md",
+    ".planning/quick/20260615-settings-skills-sort-persistence/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "desktop/src/components/skills",
+    "desktop/src/pages/Settings.tsx",
+    "desktop/src/__tests__/skillsSettings.test.tsx"
+  ],
+  "behavior_surfaces": [
+    "desktop Settings skills list sort state",
+    "desktop Settings tab navigation return behavior",
+    "same-area skills settings regression tests"
+  ],
+  "generated_surfaces": [
+    ".planning/quick/20260615-settings-skills-sort-persistence/STATUS.md",
+    ".planning/quick/20260615-settings-skills-sort-persistence/SUMMARY.md"
+  ],
+  "state_contracts": [
+    "Skills sort selection is retained by the Settings component while the Settings page remains mounted.",
+    "This change does not persist the sort selection across application restart or unrelated Settings page remounts."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test -- src/__tests__/skillsSettings.test.tsx -t \"keeps the selected skill sort\"",
+      "result": "RED before fix: failed because sort returned to name; GREEN after fix: passed"
+    },
+    {
+      "command": "cd desktop; bun run test -- src/__tests__/skillsSettings.test.tsx",
+      "result": "passed 10 tests"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop; bun run build",
+      "result": "passed"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "failed outside this change because desktop/src/theme/globals.css contains color-mix( in the existing running-stop-button animation change"
+    }
+  ],
+  "known_unknowns": [
+    "Whether the product should persist the Skills sort selection across app restarts was intentionally left out of scope because the confirmed quick task targeted returning to the Skills page.",
+    "Full desktop gate remains blocked by an unrelated CSS compatibility failure in desktop/src/theme/globals.css."
+  ],
+  "confidence_notes": [
+    "The RED regression reproduced the reported reset: the sort select returned to name after switching tabs.",
+    "The fix is limited to lifting sort state from SkillList to Settings and passing it back as controlled props.",
+    "Same-area tests, lint, and production build passed."
+  ],
+  "user_decisions": [
+    "User confirmed the quick-task understanding and did not expand scope to cross-app-restart persistence."
+  ],
+  "boundary": {
+    "scope": "desktop Settings skills list sort state",
+    "non_goals": [
+      "Do not change skill backend.",
+      "Do not change skill schema.",
+      "Do not change workflow skill definitions.",
+      "Do not change unrelated settings navigation behavior."
+    ]
+  }
+}

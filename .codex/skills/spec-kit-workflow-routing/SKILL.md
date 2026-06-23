@@ -63,7 +63,7 @@ standalone branch-creation command.
 
 ## Recommendation Rules
 
-- The default generated path is `sp-specify -> sp-plan -> sp-tasks -> sp-implement`. `sp-checklist` and `sp-analyze` remain visible optional diagnostics, but they are not default quality nets for clean workflow progress.
+- The default generated path is `sp-specify -> sp-plan -> sp-tasks -> sp-implement`. `sp-checklist` and `sp-analyze` remain visible optional diagnostics, but they are not default quality nets for clean workflow progress. There is no visible separate review route between `sp-tasks` and `sp-implement`; implementation review is embedded in `sp-implement`.
 - Use `sp-fast` for trivial, local, low-risk fixes that touch at most 3 files and do
   not cross a shared surface.
 - Use `sp-quick` for bounded work that is still small, but no longer trivial.
@@ -73,11 +73,15 @@ standalone branch-creation command.
   delegation, or validation commands continue.
 - Use `sp-auto` when repository state already records the recommended next step
   and the user wants to continue without naming the exact workflow manually.
+- In `sp-auto` routed mode, safe bounded questions and confirmations with one
+  recommended/default answer should auto-accept that answer and continue; if the
+  answer is not safe to assume, report the blocker and a self-unblock
+  recommendation instead of waiting silently.
 - Use `sp-discussion` before `sp-specify` when the request is a rough idea, not-yet-ready requirement, unsettled product direction, or depends on unclear project boundaries. `sp-discussion` is the senior product-engineering advisor route: it performs a Truth Pass before project-specific technical advice, gives decision-ready judgment with evidence and risk, maintains a Discussion Compass for long conversations, and applies proactive implication mapping so adjacent implications are surfaced without one-point-at-a-time follow-up loops.
 - `sp-discussion` must run the Context Boundary Gate before project-specific technical options, affected-file claims, or handoff generation.
 - For cross-project or transfer requests, lock the target project root before technicalizing.
 - Do not route to `sp-split`; broad directions either become one unified handoff with capability map, sequence, dependencies, deferred scope, and reopen conditions, or stay in `sp-discussion`.
-- A valid explicit handoff from discussion is one pair: `handoff-to-specify.md` and `handoff-to-specify.json`, with self-review and user confirmation.
+- A valid explicit handoff from discussion is one pair: `handoff-to-specify.md` and `handoff-to-specify.json`, with self-review and user confirmation. Route that pair to `sp-specify` by passing the handoff Markdown path, JSON path, or discussion slug; when exactly one unconsumed `handoff-ready` discussion exists, `sp-specify` may consume it directly. `sp-specify` must validate ready planning status, user-confirmed quality gate status, zero hard unknowns, zero open conflicts, and Markdown/JSON agreement before feature creation.
 - Use `sp-specify` for new capability, behavior, or requirement changes that are
   ready for an aligned spec package before implementation.
 - Use `sp-prd-scan -> sp-prd-build` when an existing repository needs a current-state PRD suite reverse-extracted from code, docs, tests, routes, UI/API surfaces, and project cognition evidence. Treat that pair as the canonical heavy reconstruction PRD lane, a peer workflow path to `sp-specify`, not as a pre-plan requirement, and do not automatically hand off to planning.
@@ -99,7 +103,7 @@ standalone branch-creation command.
   `sp-research` artifacts or workflow state.
 - Use `sp-plan` only after a valid spec package exists.
 - Use `sp-tasks` only after planning artifacts are ready.
-- Use `sp-implement` after `sp-tasks` produces a clean task package and records `/sp.implement`.
+- Use `sp-implement` after `sp-tasks` produces a clean task package and records `/sp.implement`. `sp-implement` owns the embedded pre-implement review, join-point drift review, bounded sequential review windows, and safe task-layer repair loop. Safe repairs may update remaining tasks, packets, handoff state, tracker state, and implementation-review audit records; product goal, scope, architecture, required evidence, `MP-*`, `CA-###`, and feasibility conflicts route back to their upstream owner.
 - Use `sp-debug` for regressions, bugs, broken behavior, or incident-style recovery.
 - `sp-debug` is complexity-based: small focused investigations may stay
   leader-inline, while broad, independent, or parallel evidence lanes use
@@ -126,37 +130,20 @@ standalone branch-creation command.
 - For brownfield debug or extension work, the selected workflow must consume the
   project cognition runtime and capability truth layer when a capability or
   symptom route exists; do not jump straight to broad repository search.
-- Use the direct `project-cognition` query planning flow required by the
-  selected workflow contract to retrieve the task-local project cognition
-  bundle. Retrieve the project alias catalog with `project-cognition lexicon --mode catalog`,
-  write explicit `semantic_intake` from the raw prompt plus project vocabulary,
-  including `normalized_query`, `intent_facets`, `negative_constraints`,
-  `alias_interpretations`, and open semantic questions, then translate that into
-  a `query_plan` using returned graph-backed project concept candidates,
-  `concept_decisions`, and `lexicon_generation_id` before running
-  `project-cognition query --query-plan`.
-  Candidate selection must satisfy facet coverage through `covered_facets`,
-  `missing_facets`, and `match_sources`; do not trust top similarity alone,
-  whether lexical or vector-based.
-  Before source search, write project-language search terms derived from the
-  alias catalog, `semantic_intake`, selected candidates, and route metadata.
-  Write them as `repository_search_terms`; include component names, state names,
-  file names, command names, UI labels, and route names when present. Do not
-  search only the raw user words. Use these project-language search terms before
-  broad repository search.
-  Use the alias-first project cognition flow: read the schema v2
-  `alias_index`-backed alias catalog, normalize user input into project
-  vocabulary, record `alias_interpretations`, and only then call
-  `project-cognition query --query-plan`. If the runtime reports schema v1 or
-  rebuild-required readiness, do not query through the old DB; continue with
-  live repository evidence and recommend `sp-map-scan -> sp-map-build` when a
-  usable brownfield baseline is needed. Map points, code proves: the alias
-  catalog is route vocabulary, not evidence by itself.
-  If the query command reports query-plan diagnostics, preserve its `warnings`,
-  `repair_hints`, normalized `query_plan`, structured `errors`, and
-  `expected_shape` so the owning workflow can repair the plan instead of ending
-  on a raw parser exception.
-  Treat raw graph JSON artifacts as obsolete runtime surfaces.
+- Default project cognition intake is `project-cognition compass --intent <intent> --query="$ARGUMENTS" --format json`.
+  Consume the packet in this order:
+  1. Read top-level `minimal_live_reads` first and use those files as the bounded first live evidence route.
+  2. Then use lane-level `first_pass_paths` for reasons, evidence hints, verification hints, follow-up surfaces, and `before_fix_claim` checks.
+  3. Treat `coverage_diagnostics` as confidence and closeout signals, never as route candidates.
+  4. Treat `expansion_ref` as a normal continuation path. Run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail.
+  5. Do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`.
+  Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`. Compass-specific advice is in `compass_state` and `recommended_next_action`.
+  When `compass_state=needs_semantic_intake`, the agent writes `semantic_intake` from project vocabulary and reruns compass with `--semantic-intake-file`, or uses the advanced `lexicon -> semantic_intake -> query` path when explicit concept decisions are needed.
+  Advanced routing remains available as `project-cognition lexicon --mode catalog`, agent-authored `semantic_intake` and `concept_decisions`, then `project-cognition query --query-plan`. Use it when the first compass packet is too draft-like, a workflow needs explicit concept decisions, or coverage cannot be resolved from the default packet.
+  The advanced path still requires `normalized_query`, `intent_facets`, `negative_constraints`, `alias_interpretations`, `selected_concepts`, `rejected_concepts`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `expanded_queries`, `repository_search_terms`, and facet coverage; do not trust top similarity alone.
+  If the query command reports query-plan diagnostics, preserve its `warnings`, `repair_hints`, normalized `query_plan`, structured `errors`, and `expected_shape` so the workflow can repair the plan instead of ending on a raw parser exception.
+  Agent-owned semantic normalization is mandatory for the advanced path. The raw lexicon ranking and `agent_normalization` are only bootstrap signals for retrieving the alias catalog and candidate universe; they are not route decisions. Raw lexicon ranking is only a bootstrap. Treat `agent_normalization.required=true` as a non-intelligent CLI reminder to write `semantic_intake` from the alias catalog (action: write_semantic_intake_from_alias_catalog). If `agent_normalization` is omitted, `omitted => required=false`: treat it as `required=false`; omission does not make raw lexical ranking authoritative. If raw `concept_candidates` are all `score=0`, or the prompt is localized, mixed-language, CJK, colloquial, symptom-first, or mixed-language or CJK text, do not stop at the raw score. CJK or mixed CJK/ASCII input still requires agent normalization even when positive raw lexical matches exist because embedded project tokens do not translate the surrounding user language. Extract embedded project terms such as command names, UI labels, file stems, state names, adapter names, and skill or package identifiers from the user's wording and the alias catalog. The agent still owns translation; `agent_normalization` is advisory guidance, not a route decision. Put those translated terms into `normalized_query`, `alias_interpretations`, `intent_facets`, `expanded_queries`, and `repository_search_terms`, then select or reject concepts by facet coverage.
+  Before source search, write project-language search terms derived from the alias catalog, `semantic_intake`, selected candidates, and route metadata. Write them as `repository_search_terms`; include component names, state names, file names, command names, UI labels, and route names when present. Do not search only the raw user words. Use these project-language search terms before broad repository search.
 
 ## Consequence-Aware Routing
 

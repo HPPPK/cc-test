@@ -1,0 +1,71 @@
+{
+  "id": "T018",
+  "title": "Run final gates and record evidence",
+  "story": "verification",
+  "agent": "quality-reviewer",
+  "depends_on": ["T006", "T010", "T014", "T017"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "AGENTS.md",
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md"
+  ],
+  "write_scope": [
+    ".specify/features/009-specify-discussions-workflows/implementation-matrix.md"
+  ],
+  "read_scope": [
+    "git diff",
+    "test output",
+    "artifacts/quality-runs/latest report",
+    "artifacts/coverage/latest report"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "source files",
+    "test files",
+    "generated artifacts edits",
+    "coverage threshold reductions"
+  ],
+  "expected_outputs": [
+    "Final evidence section with changed files",
+    "Same-area tests added",
+    "Coverage report path",
+    "Quality report path",
+    "E2E or live evidence, or explicit blocker",
+    "Remaining risk"
+  ],
+  "anti_goals": [
+    "Do not patch implementation during closeout",
+    "Do not lower coverage thresholds",
+    "Do not claim release readiness without required evidence"
+  ],
+  "does_not_remove": [
+    "SC-001",
+    "SC-002",
+    "SC-003",
+    "SC-004"
+  ],
+  "capability_operations": [
+    "final verification",
+    "quality evidence recording"
+  ],
+  "acceptance_criteria": [
+    "bun run check:server result is recorded",
+    "bun run check:desktop result is recorded",
+    "bun run verify result and report path are recorded, or exact blockers are named"
+  ],
+  "verify_commands": [
+    "bun run check:server",
+    "bun run check:desktop",
+    "bun run verify"
+  ],
+  "handoff_format": [
+    "quality_report_paths",
+    "coverage_report_paths",
+    "pass_fail_skip_counts",
+    "remaining_risk"
+  ],
+  "retry_max": 1,
+  "escalation": "build-fixer"
+}

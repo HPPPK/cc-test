@@ -123,23 +123,6 @@ import { useUIStore } from '../stores/uiStore'
 import { usePluginStore } from '../stores/pluginStore'
 import type { RepositoryContextResult } from '../api/sessions'
 
-const BUILTIN_WORKFLOW_TEMPLATE = {
-  id: 'agent-development',
-  source: 'builtin' as const,
-  version: '1',
-  name: 'Agent Development',
-  description: 'Discussion to implementation workflow.',
-  phaseCount: 5,
-  firstPhaseId: 'discussion',
-  phaseNames: [
-    'Discussion',
-    'Specify',
-    'Plan',
-    'Tasks',
-    'Implement',
-  ],
-}
-
 const USER_WORKFLOW_TEMPLATE = {
   id: 'user-linear-template',
   source: 'user' as const,
@@ -249,7 +232,7 @@ describe('EmptySession', () => {
     mocks.getMessages.mockResolvedValue({ messages: [] })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
     mocks.listWorkflowTemplates.mockResolvedValue({
-      templates: [BUILTIN_WORKFLOW_TEMPLATE],
+      templates: [USER_WORKFLOW_TEMPLATE],
       invalidTemplates: [],
     })
     mocks.listSkills.mockResolvedValue({ skills: [] })
@@ -497,23 +480,20 @@ describe('EmptySession', () => {
 
     const dialog = await screen.findByTestId('workflow-start-dialog')
     expect(within(dialog).getByRole('heading', { name: 'Start workflow' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /agent development/i })).toBeInTheDocument()
-    expect(screen.getByText(/^Discussion$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Specify$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^plan$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^tasks$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Implement$/i)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /user linear template/i })).toBeInTheDocument()
+    expect(screen.getByText(/^Discover$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Deliver$/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /agent development/i }))
+    fireEvent.click(screen.getByRole('button', { name: /user linear template/i }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({
         workflow: {
-          templateId: 'agent-development',
-          templateSource: 'builtin',
-          initialPhaseId: 'discussion',
+          templateId: 'user-linear-template',
+          templateSource: 'user',
+          initialPhaseId: 'discover',
         },
       })
     })
@@ -549,7 +529,7 @@ describe('EmptySession', () => {
 
   it('shows invalid user workflow template issues in the start dialog without making them selectable', async () => {
     mocks.listWorkflowTemplates.mockResolvedValueOnce({
-      templates: [BUILTIN_WORKFLOW_TEMPLATE, USER_WORKFLOW_TEMPLATE],
+      templates: [USER_WORKFLOW_TEMPLATE],
       invalidTemplates: [
         {
           source: 'user-config',
@@ -613,19 +593,10 @@ describe('EmptySession', () => {
     expect(mocks.createSession).not.toHaveBeenCalled()
   })
 
-  it('surfaces builtin-id conflicts while keeping the builtin preset startable', async () => {
+  it('shows an empty workflow state when no templates are configured', async () => {
     mocks.listWorkflowTemplates.mockResolvedValueOnce({
-      templates: [BUILTIN_WORKFLOW_TEMPLATE],
-      invalidTemplates: [
-        {
-          source: 'user-config',
-          templateId: 'agent-development',
-          path: '$.templates[0].id',
-          code: 'WORKFLOW_TEMPLATE_BUILTIN_ID_CONFLICT',
-          message: 'User templates cannot shadow builtin template ids.',
-          severity: 'error',
-        },
-      ],
+      templates: [],
+      invalidTemplates: [],
     })
 
     render(<EmptySession />)
@@ -633,24 +604,10 @@ describe('EmptySession', () => {
     fireEvent.click(screen.getByLabelText('Open composer tools'))
     fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
 
-    expect(await screen.findByText('User templates cannot shadow builtin template ids.')).toBeInTheDocument()
-    const builtinButtons = screen.getAllByRole('button', { name: /agent development/i })
-    expect(builtinButtons).toHaveLength(1)
-    const builtinButton = builtinButtons[0]
-    expect(builtinButton).toBeDefined()
-
-    fireEvent.click(builtinButton!)
+    const dialog = await screen.findByTestId('workflow-start-dialog')
+    expect(within(dialog).getByText('No workflow templates are available.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
-
-    await waitFor(() => {
-      expect(mocks.createSession).toHaveBeenCalledWith({
-        workflow: {
-          templateId: 'agent-development',
-          templateSource: 'builtin',
-          initialPhaseId: 'discussion',
-        },
-      })
-    })
+    expect(mocks.createSession).not.toHaveBeenCalled()
   })
 
   it('uses native desktop file paths for draft attachments', async () => {

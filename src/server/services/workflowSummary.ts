@@ -46,6 +46,7 @@ export function stateToWorkflowMetadata(
   const template = state.templateIdentity
   const model = visibleModelResolution(state)
   const recommendedSkillStatus = recommendedSkillStatusFromState(state)
+  const pendingConfirmation = Boolean(state.pendingConfirmation)
   return {
     mode: 'workflow',
     schemaVersion: 1,
@@ -65,13 +66,13 @@ export function stateToWorkflowMetadata(
     updatedAt: state.updatedAt,
     activePhaseIndex: activePhaseIndex(state),
     phaseCount: state.phaseRuns.length || state.phases.length,
-    pendingConfirmation: Boolean(state.pendingConfirmation),
+    pendingConfirmation,
     ...(activePhaseTransitionAuthority(state)
       ? { transitionAuthority: activePhaseTransitionAuthority(state) }
       : {}),
     ...(model ? { model } : {}),
     ...(recommendedSkillStatus ? { recommendedSkillStatus } : {}),
-    ...(typeof state.blockedReason === 'string' ? { blockedReason: state.blockedReason } : {}),
+    ...(!pendingConfirmation && typeof state.blockedReason === 'string' ? { blockedReason: state.blockedReason } : {}),
   }
 }
 
@@ -83,6 +84,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     ? metadata.phaseCount
     : 0
 
+  const pendingConfirmation = Boolean(metadata.pendingConfirmation)
   const summary: WorkflowSessionSummary = {
     mode: 'workflow',
     templateId: metadata.templateId,
@@ -93,7 +95,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     activePhaseId: metadata.activePhaseId,
     activePhaseIndex: activeIndex,
     phaseCount,
-    pendingConfirmation: Boolean(metadata.pendingConfirmation),
+    pendingConfirmation,
     ...(metadata.transitionAuthority === 'auto' || metadata.transitionAuthority === 'user-confirmation'
       ? { transitionAuthority: metadata.transitionAuthority }
       : {}),
@@ -101,7 +103,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     ...(isWorkflowRecommendedSkillStatusSummary(metadata.recommendedSkillStatus)
       ? { recommendedSkillStatus: metadata.recommendedSkillStatus }
       : {}),
-    ...(typeof metadata.blockedReason === 'string' ? { blockedReason: metadata.blockedReason } : {}),
+    ...(!pendingConfirmation && typeof metadata.blockedReason === 'string' ? { blockedReason: metadata.blockedReason } : {}),
     statePointer: metadata.statePointer,
     ...(metadata.reportPointer ? { reportPointer: metadata.reportPointer } : {}),
   } as WorkflowSessionSummary

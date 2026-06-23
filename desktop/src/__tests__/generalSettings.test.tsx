@@ -626,7 +626,7 @@ describe('Settings > General tab', () => {
     expect(slider).toHaveValue('1.25')
     expect(slider).toHaveClass('settings-zoom-range')
     expect(slider.closest('.settings-zoom-control')).toHaveClass('is-dragging')
-    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '50%' })
+    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '37.5%' })
 
     await act(async () => {
       fireEvent.pointerUp(slider, { pointerId: 1 })
@@ -655,7 +655,7 @@ describe('Settings > General tab', () => {
 
     expect(slider).toHaveValue('1.1')
     expect(screen.getAllByText('110%')).toHaveLength(2)
-    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '40%' })
+    expect(slider.closest('.settings-zoom-control')).toHaveStyle({ '--settings-zoom-range-progress': '25%' })
   })
 
   it('opens the Token usage tab from Settings navigation above Diagnostics', () => {

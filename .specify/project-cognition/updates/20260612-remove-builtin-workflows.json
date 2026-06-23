@@ -1,0 +1,103 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.test.ts",
+    "src/server/services/workflowTemplateAuthoringService.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "scripts/quality-gate/workflow-session-mode-smoke.ts",
+    "scripts/quality-gate/workflow-session-mode-smoke.test.ts",
+    "desktop/src/pages/EmptySession.test.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "scope_paths": [
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateAuthoringGuide.ts",
+    "src/server/services/workflowTemplateAuthoringService.ts",
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/__tests__/sessions.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "scripts/quality-gate/workflow-session-mode-smoke.ts",
+    "desktop/src/pages/EmptySession.test.tsx",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "behavior_surfaces": [
+    "server workflow template registry default list behavior",
+    "workflow template CRUD and import-preview API",
+    "workflow template validation and reserved-id handling",
+    "workflow authoring guide and tool duplicate-template behavior",
+    "workflow session mode smoke setup",
+    "desktop workflow template list/start tests"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "No builtin workflow template is registered or exposed by default.",
+    "User-created and imported workflow templates remain the supported creation/start path.",
+    "The former builtin id agent-development is no longer reserved and may be used by user/imported templates.",
+    "Legacy builtin source recognition remains for compatibility with older persisted session metadata.",
+    "Import preview only reports a conflict for agent-development when a user template with that id already exists."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/server/services/workflowTemplateRegistryService.test.ts src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateAuthoringGuide.test.ts src/server/services/workflowTemplateAuthoringService.test.ts scripts/quality-gate/workflow-session-mode-smoke.test.ts",
+      "result": "118 pass"
+    },
+    {
+      "command": "bun test src/server/__tests__/sessions.test.ts",
+      "result": "146 pass"
+    },
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/pages/EmptySession.test.tsx src/api/sessions.test.ts",
+      "result": "90 pass across 3 files"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "pass"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "1161 pass, 7 skip"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "98 files passed, 861 tests passed, typecheck and Vite build pass"
+    },
+    {
+      "command": "git diff --check -- <touched workflow files>",
+      "result": "no whitespace errors; Windows LF/CRLF conversion warnings only"
+    }
+  ],
+  "known_unknowns": [
+    "Full bun run verify was not run in this pass; the narrower server and desktop gates covering the touched surfaces passed.",
+    "Manual browser smoke was not run; desktop build and same-area component tests passed.",
+    "Project cognition entry readiness was review/partial_refresh, so live reads and tests are the source of truth for implementation claims."
+  ],
+  "confidence_notes": [
+    "The change removes default builtin registration instead of deleting user/imported template persistence.",
+    "Compatibility source enums retain builtin handling so older persisted session metadata can still be read.",
+    "Quality smoke now provisions its own user workflow template rather than depending on a default builtin preset."
+  ],
+  "user_decisions": [
+    "User requested removing builtin workflow templates because builtin workflows are hard to customize.",
+    "User wants workflows to be created by the user or imported from others."
+  ],
+  "boundary": {
+    "scope": "Remove builtin workflow template availability and builtin id reservation from active registry/API/authoring/smoke/test surfaces.",
+    "excluded": [
+      "Removing legacy builtin source type compatibility",
+      "Deleting or migrating user workflow templates",
+      "Removing create/import/export/editor capabilities",
+      "Changing workflow runtime phase semantics"
+    ]
+  }
+}

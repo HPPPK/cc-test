@@ -416,3 +416,95 @@
   - added and resolved OQ-017 for runtime UI controls and authority labels.
   - next decision: final handoff shape if user wants the refined workflow contract discussion carried to sp-specify.
 - semantic_checkpoint_required: yes
+
+## 2026-06-11T18:37:56.4916020+08:00
+
+- event_kind: proposed-handoff-boundary
+- user_input_summary: User asked to continue after runtime control model refinement.
+- agent_conclusion: Proposed that any future `sp-specify` handoff should refresh the older phase-skill-focused handoff into one unified workflow contract handoff. The scope should include grouped phase fields, constraint semantics, recommended phase skills, dependency-aware sharing, lifecycle/completion rules, runtime/editor UI behavior, compatibility, and validation. No draft handoff artifacts were generated because the user has not explicitly requested handoff.
+- evidence_used:
+  - `.specify/discussions/workflows/discussion-state.md`
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/requirements.md`
+  - `.specify/discussions/workflows/open-questions.md`
+- open_question_delta:
+  - added OQ-018 as proposed handoff boundary.
+  - explicit user handoff request required before refreshing `handoff-to-specify.md` and `.json`.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T19:03:53.3394180+08:00
+
+- event_kind: handoff-boundary-confirmed
+- user_input_summary: User confirmed the proposed unified handoff boundary.
+- agent_conclusion: OQ-018 resolved. A future `sp-specify` handoff should be a refreshed unified workflow contract feature, not the older phase-skill-only handoff. No draft handoff artifacts were generated because the user has not explicitly requested handoff generation.
+- evidence_used:
+  - user confirmation
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/open-questions.md`
+- open_question_delta:
+  - OQ-018 moved from proposed to resolved.
+  - explicit user handoff request remains required before refreshing `handoff-to-specify.md` and `.json`.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T19:24:46.7549232+08:00
+
+- event_kind: refreshed-draft-handoff-written
+- user_input_summary: User explicitly requested handoff generation.
+- agent_conclusion: Refreshed `handoff-assessment.md` as ready-for-specify and wrote one unified draft handoff pair for workflow phase execution contracts. The draft pair supersedes the older phase-skill-only handoff and includes grouped fields, constraint semantics, recommended phase skills, dependency-aware sharing, lifecycle/completion rules, runtime/editor UI behavior, compatibility, validation, Must-Preserve ledger MP-001 through MP-013, and consequence obligations CA-001 through CA-010. Handoff self-review passed and user confirmation is required before marking handoff-ready.
+- evidence_used:
+  - `.specify/discussions/workflows/requirements.md`
+  - `.specify/discussions/workflows/technical-options.md`
+  - `.specify/discussions/workflows/project-context.md`
+  - `.specify/discussions/workflows/open-questions.md`
+  - `.specify/discussions/workflows/handoff-assessment.md`
+  - `.specify/discussions/workflows/handoff-to-specify.md`
+  - `.specify/discussions/workflows/handoff-to-specify.json`
+- open_question_delta:
+  - no hard blockers remain.
+  - user confirmation required before handoff-ready.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T19:51:05.4206521+08:00
+
+- event_kind: handoff-user-confirmed
+- user_input_summary: User explicitly confirmed marking the refreshed workflow contract handoff as handoff-ready.
+- agent_conclusion: Updated `handoff-to-specify.md`, `handoff-to-specify.json`, and `discussion-state.md` from self-reviewed draft to user-confirmed handoff-ready. The handoff is ready for downstream `/sp.specify` consumption, but no downstream workflow was invoked automatically.
+- evidence_used:
+  - user confirmation
+  - `.specify/discussions/workflows/handoff-to-specify.md`
+  - `.specify/discussions/workflows/handoff-to-specify.json`
+  - `.specify/discussions/workflows/discussion-state.md`
+- open_question_delta:
+  - no hard blockers remain.
+  - user confirmation received.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T19:47:49.9951606+08:00
+
+- event_kind: handoff-review-followup-applied
+- user_input_summary: User confirmed the remaining mismatch between Markdown and JSON quality gate status and noted a stale implementation-target note.
+- agent_conclusion: Changed Markdown quality gate status values to `self_review_passed` to match JSON exactly, kept `discussion-state.md` `handoff_review_status: self-review-passed` per state template, aligned `quality_gate_status` with the template's `self_review_passed` value, and updated the stale product-context note. Handoff remains draft pending user confirmation.
+- evidence_used:
+  - `.specify/discussions/workflows/handoff-to-specify.md`
+  - `.specify/discussions/workflows/handoff-to-specify.json`
+  - `.specify/discussions/workflows/discussion-state.md`
+- open_question_delta:
+  - no hard blockers remain.
+  - user confirmation required before handoff-ready.
+- semantic_checkpoint_required: yes
+
+## 2026-06-11T19:39:27.6652335+08:00
+
+- event_kind: handoff-review-fixes-applied
+- user_input_summary: User reviewed the draft handoff and requested fixes before any handoff-ready confirmation.
+- agent_conclusion: Kept the handoff as draft/pending user confirmation. Added top-level downstream fidelity gate fields to the JSON companion, normalized self-review status to template enums, moved discussion resume state to handoff-user-review, updated the target role to implementation-target, and expanded JSON source evidence to match the Markdown evidence list more closely.
+- evidence_used:
+  - `.specify/templates/command-partials/discussion/shell.md`
+  - `.specify/templates/discussion-state-template.md`
+  - `.specify/discussions/workflows/handoff-to-specify.md`
+  - `.specify/discussions/workflows/handoff-to-specify.json`
+  - `.specify/discussions/workflows/discussion-state.md`
+- open_question_delta:
+  - no hard blockers remain.
+  - user confirmation required before handoff-ready.
+- semantic_checkpoint_required: yes

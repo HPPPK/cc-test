@@ -7,6 +7,7 @@ import type {
   WorkflowTemplateSelector,
   WorkflowTemplatesResponse,
 } from '../../types/session'
+import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { WorkflowImportExportDialog } from './WorkflowImportExportDialog'
 import { WorkflowTemplateEditor } from './WorkflowTemplateEditor'
 import { localizeWorkflowTemplateDisplay, workflowTemplateSourceLabel } from './workflowTemplateDisplay'
@@ -38,6 +39,7 @@ export function WorkflowTemplateManager({
   const [editorOpen, setEditorOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'import' | 'export' | null>(null)
   const [exportSelection, setExportSelection] = useState<WorkflowTemplateSelector[]>([])
+  const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState<WorkflowTemplateListItem | null>(null)
 
   const applyTemplateList = (response: WorkflowTemplatesResponse) => {
     setTemplates(response.templates)
@@ -109,7 +111,7 @@ export function WorkflowTemplateManager({
   }
 
   const handleDeleteTemplate = async (template: WorkflowTemplateListItem) => {
-    if (template.source !== 'user' || template.editable === false) return
+    if (template.source !== 'user' || template.editable === false) return false
 
     setActionError(null)
     setBusyTemplateKey(templateKey(template))
@@ -121,10 +123,28 @@ export function WorkflowTemplateManager({
         setEditorOpen(false)
       }
       onDeleteTemplate?.(template)
+      return true
     } catch (deleteError) {
       setActionError(errorMessage(deleteError))
+      return false
     } finally {
       setBusyTemplateKey(null)
+    }
+  }
+
+  const requestDeleteTemplate = (template: WorkflowTemplateListItem) => {
+    if (template.source !== 'user' || template.editable === false) return
+
+    setActionError(null)
+    setPendingDeleteTemplate(template)
+  }
+
+  const confirmDeleteTemplate = async () => {
+    if (!pendingDeleteTemplate) return
+
+    const deleted = await handleDeleteTemplate(pendingDeleteTemplate)
+    if (deleted) {
+      setPendingDeleteTemplate(null)
     }
   }
 
@@ -226,6 +246,21 @@ export function WorkflowTemplateManager({
         />
       )}
 
+      {pendingDeleteTemplate && (
+        <ConfirmDialog
+          open
+          title={t('settings.workflows.manager.deleteConfirmTitle')}
+          body={t('settings.workflows.manager.deleteConfirmBody', {
+            name: localizeWorkflowTemplateDisplay(pendingDeleteTemplate, t).name,
+          })}
+          confirmLabel={t('settings.workflows.manager.delete')}
+          cancelLabel={t('common.cancel')}
+          loading={busyTemplateKey === templateKey(pendingDeleteTemplate)}
+          onClose={() => setPendingDeleteTemplate(null)}
+          onConfirm={confirmDeleteTemplate}
+        />
+      )}
+
       {actionError && (
         <div className="rounded-[8px] border border-[var(--color-error)]/30 bg-[var(--color-error)]/8 px-3 py-2 text-xs text-[var(--color-error)]">
           {actionError}
@@ -278,7 +313,7 @@ export function WorkflowTemplateManager({
                     displayTemplate={localizeWorkflowTemplateDisplay(template, t)}
                     onCopyTemplate={handleCopyTemplate}
                     onEditTemplate={handleEditTemplate}
-                    onDeleteTemplate={handleDeleteTemplate}
+                    onDeleteTemplate={requestDeleteTemplate}
                     onExportTemplate={(template) => {
                       openExportDialog([{ source: template.source, id: template.id }])
                       onExportTemplate?.(template)

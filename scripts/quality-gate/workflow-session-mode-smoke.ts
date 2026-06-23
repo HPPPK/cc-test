@@ -156,6 +156,49 @@ function completionTransition(
   }
 }
 
+function smokeWorkflowTemplate(): JsonRecord {
+  const phase = (
+    id: string,
+    name: string,
+    authority: 'auto' | 'user-confirmation',
+  ): JsonRecord => ({
+    id,
+    name,
+    instructions: `Complete the ${name} smoke phase.`,
+    objective: `Exercise ${name} workflow runtime behavior.`,
+    requiredIntake: ['Synthetic smoke input.'],
+    handoffRules: ['Return synthetic smoke evidence.'],
+    executionRules: ['Stay within the non-live smoke workflow.'],
+    outputArtifact: {
+      id: `${id}-artifact`,
+      name: `${name} Artifact`,
+      kind: 'markdown',
+      description: `Synthetic ${name} artifact.`,
+      required: true,
+    },
+    completionCriteria: {
+      type: 'artifact-required',
+      description: `${name} smoke artifact is complete.`,
+    },
+    transition: { authority },
+  })
+
+  return {
+    schemaVersion: 1,
+    id: 'quality-smoke-workflow',
+    version: '1',
+    name: 'Quality Smoke Workflow',
+    description: 'User workflow template created by the non-live quality smoke.',
+    phases: [
+      phase('discussion', 'Discussion', 'user-confirmation'),
+      phase('specify', 'Specify', 'auto'),
+      phase('plan', 'Plan', 'auto'),
+      phase('tasks', 'Tasks', 'auto'),
+      phase('implement', 'Implement', 'auto'),
+    ],
+  }
+}
+
 function stateVersion(value: JsonRecord): number {
   const version = value.stateVersion
   if (typeof version !== 'number') {
@@ -243,21 +286,26 @@ export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promis
       const port = await getPort()
       started = await startSmokeServer(port)
 
+      await fetchJson(`${started.baseUrl}/api/workflows/templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template: smokeWorkflowTemplate() }),
+      })
       const templates = await fetchJson<{
         templates: Array<{ id: string; source: string; phaseCount: number; firstPhaseId: string }>
       }>(`${started.baseUrl}/api/workflows/templates`)
-      const builtin = templates.templates.find((template) =>
-        template.id === 'agent-development' &&
-        template.source === 'builtin'
+      const smokeTemplate = templates.templates.find((template) =>
+        template.id === 'quality-smoke-workflow' &&
+        template.source === 'user'
       )
-      if (!builtin || builtin.phaseCount !== 5 || builtin.firstPhaseId !== 'discussion') {
-        throw new Error('Agent Development workflow template is not startable with the expected five-phase shape')
+      if (!smokeTemplate || smokeTemplate.phaseCount !== 5 || smokeTemplate.firstPhaseId !== 'discussion') {
+        throw new Error('Quality smoke workflow template is not startable with the expected five-phase shape')
       }
 
       const workflowCreated = await createSession(
         started.baseUrl,
         workDir,
-        { templateId: 'agent-development', templateSource: 'builtin' },
+        { templateId: 'quality-smoke-workflow', templateSource: 'user' },
       )
       if (!workflowCreated.workflow || workflowCreated.workflow.mode !== 'workflow') {
         throw new Error('Workflow session did not include workflow metadata')

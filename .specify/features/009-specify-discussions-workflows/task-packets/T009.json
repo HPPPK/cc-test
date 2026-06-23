@@ -1,0 +1,60 @@
+{
+  "id": "T009",
+  "title": "Add desktop recommended-skill visibility tests",
+  "story": "US2",
+  "agent": "test-engineer",
+  "depends_on": ["T006"],
+  "parallel_safe": true,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    ".specify/features/009-specify-discussions-workflows/data-model.md",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/api/skills.test.ts",
+    "desktop/src/__tests__/skillsSettings.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/api/skills.ts",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/types/skill.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for provenance labels",
+    "Tests for unavailable and skipped statuses",
+    "Tests for relevant audit visibility",
+    "Catalog filtering tests without hidden auto-run affordances"
+  ],
+  "anti_goals": [
+    "Do not implement desktop UI or API client changes"
+  ],
+  "does_not_remove": [
+    "MP-005",
+    "MP-006",
+    "CA-006",
+    "CA-008"
+  ],
+  "capability_operations": [
+    "CAP-003 desktop test coverage",
+    "CAP-006 runtime UI test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail only for missing UI/API behavior"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/api/skills.test.ts src/__tests__/skillsSettings.test.tsx"
+  ],
+  "handoff_format": [
+    "expected_status_labels",
+    "missing_controls"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

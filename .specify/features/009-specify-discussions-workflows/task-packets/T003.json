@@ -1,0 +1,56 @@
+{
+  "id": "T003",
+  "title": "Add desktop grouped authoring tests",
+  "story": "US1",
+  "agent": "test-engineer",
+  "depends_on": ["T001"],
+  "parallel_safe": true,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "write_scope": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "read_scope": [
+    "desktop/src/components/workflow/WorkflowTemplateEditor.tsx",
+    "desktop/src/components/workflow/workflowTemplateDisplay.ts",
+    "desktop/src/types/session.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first editor tests for Intent, Contract, Evidence Policy, and Recommended Skills groups",
+    "Tests proving session-owned runtimeState is not editable template data"
+  ],
+  "anti_goals": [
+    "Do not implement UI in this task",
+    "Do not add tutorial or marketing copy"
+  ],
+  "does_not_remove": [
+    "MP-001",
+    "MP-003",
+    "MP-010"
+  ],
+  "capability_operations": [
+    "CAP-001 desktop test coverage",
+    "CAP-006 editor test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail only because grouped controls or payload mapping are missing",
+    "Existing WorkflowComponents tests remain meaningful"
+  ],
+  "verify_commands": [
+    "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx"
+  ],
+  "handoff_format": [
+    "test_names",
+    "expected_failure_reasons"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

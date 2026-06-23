@@ -1,0 +1,66 @@
+{
+  "task_id": "T002",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "status": "completed_red",
+  "changed_files": [
+    "src/server/services/workflowTypes.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/__fixtures__/workflow-templates/legacy-flat-phase-contract.json",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T002.json"
+  ],
+  "test_names": [
+    "workflow domain types > grouped phase contracts keep guidance, policy, evidence, and runtime state distinct",
+    "workflow template registry service > projects legacy flat phase fields into grouped phase contract sections when listing templates",
+    "workflow template registry service > accepts grouped-only phase contracts without requiring duplicate flat authoring fields",
+    "workflow template registry service > rejects grouped phase contracts with invalid constraint strengths and skill provenance",
+    "workflow template registry service > strips session-owned runtime state while preserving unknown template fields when writing templates"
+  ],
+  "expected_failure_reasons": [
+    "Legacy flat template phases currently list only flat fields and do not project intent, contract, and evidencePolicy grouped sections.",
+    "Grouped-only phase contracts currently fail legacy flat-field validation for name, instructions, completionCriteria, outputArtifact, handoff fields, and transition.",
+    "Invalid grouped constraint strengths and plugin provenance currently remain startable because grouped strength/provenance validation is not implemented.",
+    "Template writes currently persist session-owned runtimeState instead of stripping it while preserving unknown template fields."
+  ],
+  "fixture_path": "src/server/services/__fixtures__/workflow-templates/legacy-flat-phase-contract.json",
+  "validation_evidence": [
+    {
+      "command": "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts",
+      "exit_code": 1,
+      "result": "RED accepted for T002: 32 pass, 4 fail, 101 expect() calls, 36 tests across 2 files. Failures are behavior assertions for missing grouped-contract implementation, not syntax/setup/import failures.",
+      "failing_tests": [
+        "projects legacy flat phase fields into grouped phase contract sections when listing templates",
+        "accepts grouped-only phase contracts without requiring duplicate flat authoring fields",
+        "rejects grouped phase contracts with invalid constraint strengths and skill provenance",
+        "strips session-owned runtime state while preserving unknown template fields when writing templates"
+      ]
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-003": {
+      "preserved": true,
+      "evidence": "Added grouped phase contract executable documentation and registry tests that keep intent, contract, evidencePolicy, and session-owned runtimeState distinct; runtimeState is expected to be stripped from template persistence."
+    },
+    "MP-004": {
+      "preserved": true,
+      "evidence": "Added tests for guidance, policy, evidence, and gate strength distinctions plus rejection of invalid grouped strength assignments."
+    },
+    "MP-011": {
+      "preserved": true,
+      "evidence": "Added legacy-flat-phase-contract.json and a RED registry test requiring flat fields to project into grouped contract sections before any destructive grouped persistence migration."
+    }
+  },
+  "ca_evidence": {
+    "CA-007": {
+      "preserved": true,
+      "evidence": "Added registry validation tests for grouped phase contracts and skill provenance diagnostics, covering authoring/update/list validation behavior required before import/export/session-start consumers rely on the contract."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [
+    "T004 should implement compatibility projection from legacy flat fields to intent, contract, and evidencePolicy while preserving original/unknown fields.",
+    "T004 should normalize grouped-only contracts into the existing startable registry shape without requiring duplicate flat authoring fields.",
+    "T004 should reject invalid grouped constraint strengths with WORKFLOW_PHASE_CONSTRAINT_STRENGTH_INVALID and invalid plugin provenance with WORKFLOW_PHASE_SKILL_INVALID_PROVENANCE.",
+    "T004 should strip session-owned runtimeState from persisted templates while retaining unknown template, phase, artifact, criteria, and transition fields."
+  ]
+}

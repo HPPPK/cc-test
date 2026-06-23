@@ -1,0 +1,74 @@
+{
+  "id": "T008",
+  "title": "Implement recommended skill runtime audit",
+  "story": "US2",
+  "agent": "executor",
+  "depends_on": ["T007"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    "src/server/services/workflowPhaseSkillResolver.test.ts",
+    "src/server/services/workflowToolPolicy.test.ts",
+    "src/server/services/workflowRuntimeService.test.ts",
+    ".specify/features/009-specify-discussions-workflows/data-model.md"
+  ],
+  "write_scope": [
+    "src/server/services/workflowPhaseSkillResolver.ts",
+    "src/server/services/workflowToolPolicy.ts",
+    "src/server/services/workflowRuntimeService.ts",
+    "src/server/services/workflowSessionCreateService.ts",
+    "src/server/services/workflowFinalReport.ts",
+    "src/server/services/workflowSummary.ts",
+    "src/server/api/skills.ts",
+    "src/skills/loadSkillsDir.ts",
+    "src/tools/SkillTool/SkillTool.ts",
+    "src/tools/SkillTool/prompt.ts"
+  ],
+  "read_scope": [
+    "same-area server tests",
+    "src/server/__tests__/skills.test.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "desktop files",
+    "import/export UI files"
+  ],
+  "expected_outputs": [
+    "Stable skill identity and provenance",
+    "Recommended-skill status snapshots",
+    "Relevant used, skipped, and unavailable audit",
+    "Permission-safe SkillTool invocation language",
+    "No auto-run path",
+    "Bounded recursion or depth guard"
+  ],
+  "anti_goals": [
+    "No plugin installer",
+    "No bundled skill export",
+    "No required/default gate executor"
+  ],
+  "does_not_remove": [
+    "MP-005",
+    "MP-006",
+    "CA-001",
+    "CA-004",
+    "CA-010"
+  ],
+  "capability_operations": [
+    "CAP-002 implementation",
+    "CAP-003 implementation"
+  ],
+  "acceptance_criteria": [
+    "T007 tests pass",
+    "Existing server workflow and skills tests pass"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowPhaseSkillResolver.test.ts src/server/services/workflowToolPolicy.test.ts src/server/services/workflowRuntimeService.test.ts src/server/services/workflowFinalReport.test.ts src/server/services/workflowSummary.test.ts src/server/__tests__/skills.test.ts"
+  ],
+  "handoff_format": [
+    "binding_identity_fields",
+    "audit_persistence_summary",
+    "tests_run"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

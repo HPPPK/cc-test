@@ -1,0 +1,61 @@
+{
+  "id": "T011",
+  "title": "Add server dependency-aware import/export tests",
+  "story": "US3",
+  "agent": "test-engineer",
+  "depends_on": ["T010"],
+  "parallel_safe": false,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    ".specify/features/009-specify-discussions-workflows/spec.md",
+    "src/server/__tests__/workflowTemplates.test.ts"
+  ],
+  "write_scope": [
+    "src/server/__tests__/workflowTemplates.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/__fixtures__/workflow-templates/export-with-dependency-manifest.json"
+  ],
+  "read_scope": [
+    "src/server/api/workflowTemplates.ts",
+    "src/server/services/workflowTemplateRegistryService.ts",
+    "src/server/services/workflowPhaseSkillResolver.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for schemaVersion 2 export",
+    "Tests for dependency manifest source and provenance metadata",
+    "Tests proving skill contents are not bundled",
+    "Import preview diagnostics for missing, ambiguous, invalid, unsupported, disabled, and installable dependencies",
+    "Blocked commit tests for invalid bindings"
+  ],
+  "anti_goals": [
+    "Do not implement API changes",
+    "Do not bundle skill packages"
+  ],
+  "does_not_remove": [
+    "MP-007",
+    "MP-011",
+    "CA-003",
+    "CA-007"
+  ],
+  "capability_operations": [
+    "CAP-004 server test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail for missing manifest or diagnostic behavior only"
+  ],
+  "verify_commands": [
+    "bun test src/server/__tests__/workflowTemplates.test.ts src/server/services/workflowTemplateRegistryService.test.ts"
+  ],
+  "handoff_format": [
+    "diagnostic_matrix",
+    "fixture_path",
+    "expected_failure_reasons"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

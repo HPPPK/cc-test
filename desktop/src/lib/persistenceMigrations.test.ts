@@ -124,6 +124,13 @@ describe('desktop persistence migrations', () => {
 
     expect(invalidReport.migratedKeys).toContain('cc-jiangxia-app-zoom')
     expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBeNull()
+
+    window.localStorage.setItem('cc-jiangxia-app-zoom', '0.5')
+
+    const tinyReport = runDesktopPersistenceMigrations()
+
+    expect(tinyReport.migratedKeys).toContain('cc-jiangxia-app-zoom')
+    expect(window.localStorage.getItem('cc-jiangxia-app-zoom')).toBeNull()
   })
 
   test('migrates the legacy UI zoom key into app zoom storage', () => {

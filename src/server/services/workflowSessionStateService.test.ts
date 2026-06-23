@@ -249,6 +249,63 @@ describe('WorkflowSessionStateService', () => {
     expect(result.state?.workflowStatus).toBe('running')
   })
 
+  test('restores pending completion submission and bounded recommended skill evidence', async () => {
+    const service = new WorkflowSessionStateService()
+    await copyStateFixture('pending-skill-evidence-state.json')
+
+    const result = await service.readState('fixture-session')
+    const state = result.state as unknown as Record<string, unknown>
+    const pendingConfirmation = state.pendingConfirmation as Record<string, unknown>
+    const submission = pendingConfirmation.submission as Record<string, unknown>
+    const skillEvidence = state.phaseSkillEvidence as Array<Record<string, unknown>>
+    const skillSnapshots = state.phaseSkillSnapshots as Array<Record<string, unknown>>
+    const artifactIndex = state.artifactIndex as Record<string, Record<string, unknown>>
+
+    expect(result.recoveryStatus).toBe('ok')
+    expect(state.workflowStatus).toBe('pending-confirmation')
+    expect(state.activePhaseId).toBe('specify')
+    expect(pendingConfirmation).toMatchObject({
+      confirmationId: 'submit-ready-1',
+      phaseId: 'specify',
+      toPhaseId: 'plan',
+      status: 'pending',
+    })
+    expect(submission).toMatchObject({
+      phaseId: 'specify',
+      stateVersion: 2,
+      status: 'ready',
+      rationale: 'Required artifacts were produced.',
+    })
+    expect(submission.evidence).toEqual([
+      expect.objectContaining({
+        kind: 'artifact',
+        ref: '.specify/features/009-specify-discussions-workflows/spec.md',
+      }),
+    ])
+    expect(skillEvidence).toEqual([
+      expect.objectContaining({
+        name: 'requirements-review',
+        outcome: 'used',
+      }),
+      expect.objectContaining({
+        name: 'missing-audit',
+        outcome: 'relevant-unavailable',
+      }),
+    ])
+    expect(skillSnapshots[0]).toMatchObject({
+      phaseId: 'specify',
+      references: expect.arrayContaining([
+        expect.objectContaining({ name: 'requirements-review' }),
+        expect.objectContaining({ name: 'missing-audit' }),
+        expect.objectContaining({ name: 'irrelevant-style' }),
+      ]),
+    })
+    expect(artifactIndex['phase-specify-ready-1'].submission).toMatchObject({
+      status: 'ready',
+      evidence: submission.evidence,
+    })
+  })
+
   test.each([
     ['resume-stale-template-state.json', 'stale-template', 'implementation', ['requirements-summary', 'design-summary']],
     ['resume-missing-template-state.json', 'missing-template', 'implementation', ['plan-summary']],

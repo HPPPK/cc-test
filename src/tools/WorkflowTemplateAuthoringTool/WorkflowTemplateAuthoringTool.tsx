@@ -340,12 +340,13 @@ export const WorkflowTemplateAuthoringTool = buildTool({
   name: 'workflow_template_authoring',
   searchHint: 'workflow template authoring and validation',
   maxResultSizeChars: 200_000,
+  eagerInputStreaming: true,
   inputJSONSchema: workflowTemplateAuthoringInputJSONSchema,
   async description() {
     return 'Guide, list, inspect, validate, create, update, duplicate, delete workflow templates, and create missing user skills for workflow phases'
   },
   async prompt() {
-    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Use skill_catalog before assigning phases[].skills so recommended phase skills reference installed skills instead of guessed names or copied skill instructions. If the needed skill is missing, use skill_create first to create a user skill under the installed skills directory, then reference the returned recommendedReference. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
+    return 'Use workflow_template_authoring to guide, list, inspect, validate, create, update, duplicate, or delete workflow templates. Use skill_catalog before assigning phases[].skills so recommended phase skills reference installed skills instead of guessed names or copied skill instructions. If the needed skill is missing, use skill_create first to create a user skill under the installed skills directory, then reference the returned recommendedReference. phases[].skills are auxiliary attention metadata, not the workflow phase list or control flow; define flow through ordered phases, transitions, completion criteria, handoff rules, and instructions. Omit phases[].skills when no installed or created skill fits. Validate candidates before mutating. Read-only operations remain available in workflow phases; mutating operations are phase-policy gated.'
   },
   get inputSchema(): InputSchema {
     return inputSchema()

@@ -1,0 +1,71 @@
+{
+  "task_id": "T010",
+  "reported_status": "DONE",
+  "status": "completed",
+  "changed_files": [
+    "desktop/src/api/skills.ts",
+    "desktop/src/components/workflow/WorkflowStatusPanel.tsx",
+    "desktop/src/stores/skillStore.ts",
+    "desktop/src/types/session.ts",
+    "desktop/src/types/skill.ts",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T010.json"
+  ],
+  "validation_evidence": {
+    "required_command": {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/api/skills.test.ts src/__tests__/skillsSettings.test.tsx",
+      "exit_code": 0,
+      "summary": "3 test files passed; 62 tests passed. Existing WorkflowTemplateEditor React act warnings were emitted but did not fail the run."
+    },
+    "typecheck": {
+      "command": "cd desktop; bun run lint",
+      "exit_code": 0,
+      "summary": "tsc --noEmit completed successfully."
+    }
+  },
+  "ui_state_summary": {
+    "workflow_status_panel": "Recommended skill status now shows visible name, status, source, pluginName, namespace, referenceId, contentHash, and relevant evidence for used, relevant-skipped, and relevant-unavailable outcomes, including rationale, toolUseId, and artifactRef where present.",
+    "settings_skill_catalog": "Skill settings catalog metadata is preserved in store state and made searchable/visible through existing skill card text without adding run, execute, install, enable, or auto-run controls.",
+    "filtering": "Unused available bundled recommendations remain hidden from concise workflow status while degraded, unavailable, missing, plugin-disabled, unsupported-source, and evidence-backed items remain visible."
+  },
+  "api_shape_summary": {
+    "skillsApi.catalog": "Accepts optional options as { workflowOnly?: boolean } and emits catalogOnly=true plus workflowOnly=true when requested, preserving cwd query encoding and long timeout.",
+    "skillStore.fetchCatalog": "Accepts the same workflowOnly option and stores metadata-only catalog entries without fetching skill detail bodies.",
+    "types": "SkillCatalogStatus now preserves the full WorkflowPhaseSkillResolutionStatus union; workflow recommended skill summary items include namespace, referenceId, and contentHash."
+  },
+  "tests_run": [
+    {
+      "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/api/skills.test.ts src/__tests__/skillsSettings.test.tsx",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "3 files, 62 tests passed"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "TypeScript no-emit passed"
+    }
+  ],
+  "must_preserve_evidence": {
+    "MP-005": "No execution, install, enable, run, or auto-run affordances were added; passing tests assert these controls are absent in WorkflowStatusPanel and Skills settings.",
+    "MP-006": "Same-name/provenance-sensitive catalog data is preserved through source, pluginName, namespace, referenceId, contentHash, and provenance metadata without collapsing identities.",
+    "MP-010": "Recommended-skill visibility stays read-only and does not alter pending-confirmation priority or workflow transition authority.",
+    "CA-008": "Desktop now exposes explicit workflow-safe catalog filtering and visible status/provenance/evidence states instead of aggregate-only recommendation counts."
+  },
+  "ca_evidence": {
+    "CA-006": {
+      "status": "satisfied",
+      "evidence": "WorkflowStatusPanel renders used, relevant-skipped, and relevant-unavailable evidence with rationale plus toolUseId/artifactRef when available, and hides unused evidence."
+    },
+    "CA-008": {
+      "status": "satisfied",
+      "evidence": "skillsApi.catalog sends workflowOnly=true without detail loading, and desktop UI/state surfaces missing, plugin-disabled, unsupported-source, source, pluginName, referenceId, and contentHash metadata."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [
+    "Repository has unrelated pre-existing dirty files outside T010 scope; do not revert or attribute them to this worker.",
+    "WorkflowStartDialog.tsx, WorkflowTemplatePicker.tsx, and locale files were allowed but not needed for the T009 RED-to-green behavior."
+  ]
+}

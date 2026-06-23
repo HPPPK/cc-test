@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fixture-session",
+  "mode": "workflow",
+  "template": {
+    "id": "agent-development",
+    "version": "1",
+    "source": "builtin",
+    "snapshotId": "agent-development-v1",
+    "sourceState": "current"
+  },
+  "templateSnapshot": {
+    "schemaVersion": 1,
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1",
+    "displayName": "Agent Development",
+    "description": "Pending skill evidence fixture",
+    "phases": [
+      {
+        "id": "specify",
+        "label": "Specify",
+        "instructions": "Create the specification.",
+        "skills": [
+          {
+            "name": "requirements-review",
+            "mode": "recommended",
+            "source": "project",
+            "reason": "Use for requirements ambiguity checks."
+          },
+          {
+            "name": "missing-audit",
+            "mode": "recommended",
+            "source": "user",
+            "reason": "Use if unavailable audit help would be relevant."
+          },
+          {
+            "name": "irrelevant-style",
+            "mode": "recommended",
+            "source": "plugin",
+            "reason": "Not materially relevant to this phase."
+          }
+        ],
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      },
+      {
+        "id": "plan",
+        "label": "Plan",
+        "instructions": "Create the plan.",
+        "skillDeclarations": [],
+        "requiredArtifacts": [],
+        "completionCriteria": [],
+        "transitionAuthority": "user-confirmation"
+      }
+    ]
+  },
+  "templateIdentity": {
+    "id": "agent-development",
+    "source": "builtin",
+    "version": "1",
+    "registryKey": "builtin:agent-development",
+    "contentHash": "fixture-hash"
+  },
+  "sourceTemplateStatus": "current",
+  "status": "pending-confirmation",
+  "workflowStatus": "pending-confirmation",
+  "activePhaseId": "specify",
+  "phases": [
+    {
+      "id": "specify",
+      "index": 0,
+      "status": "pending-confirmation",
+      "artifactPointers": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "phase-specify-ready-1",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-21T00:01:00.000Z",
+          "updatedAt": "2026-05-21T00:01:00.000Z",
+          "label": "Specify phase completion",
+          "lifecycleStatus": "pending",
+          "submission": {
+            "phaseId": "specify",
+            "stateVersion": 2,
+            "status": "ready",
+            "handoff": {
+              "summary": "Specification is ready for review.",
+              "artifacts": [
+                "spec.md"
+              ]
+            },
+            "rationale": "Required artifacts were produced.",
+            "evidence": [
+              {
+                "kind": "artifact",
+                "label": "Spec",
+                "ref": ".specify/features/009-specify-discussions-workflows/spec.md"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "index": 1,
+      "status": "created",
+      "artifactPointers": []
+    }
+  ],
+  "phaseRuns": [],
+  "phaseSkillSnapshots": [
+    {
+      "phaseId": "specify",
+      "references": [
+        {
+          "name": "requirements-review",
+          "mode": "recommended",
+          "source": "project"
+        },
+        {
+          "name": "missing-audit",
+          "mode": "recommended",
+          "source": "user"
+        },
+        {
+          "name": "irrelevant-style",
+          "mode": "recommended",
+          "source": "plugin"
+        }
+      ],
+      "resolutions": [
+        {
+          "reference": {
+            "name": "requirements-review",
+            "mode": "recommended",
+            "source": "project"
+          },
+          "status": "available",
+          "checkedAt": "2026-05-21T00:00:30.000Z",
+          "resolvedSkill": {
+            "name": "requirements-review",
+            "displayName": "Requirements Review",
+            "source": "project"
+          }
+        },
+        {
+          "reference": {
+            "name": "missing-audit",
+            "mode": "recommended",
+            "source": "user"
+          },
+          "status": "missing",
+          "checkedAt": "2026-05-21T00:00:30.000Z",
+          "diagnostic": {
+            "code": "skill-not-found",
+            "severity": "warning",
+            "message": "missing-audit is not installed."
+          }
+        },
+        {
+          "reference": {
+            "name": "irrelevant-style",
+            "mode": "recommended",
+            "source": "plugin"
+          },
+          "status": "available",
+          "checkedAt": "2026-05-21T00:00:30.000Z",
+          "resolvedSkill": {
+            "name": "irrelevant-style",
+            "source": "plugin"
+          }
+        }
+      ],
+      "snapshottedAt": "2026-05-21T00:00:30.000Z",
+      "templateContentHash": "fixture-hash",
+      "resolverVersion": "test-resolver-v1"
+    }
+  ],
+  "phaseSkillEvidence": [
+    {
+      "phaseId": "specify",
+      "name": "requirements-review",
+      "outcome": "used",
+      "rationale": "Applied ambiguity checklist to the specification handoff.",
+      "recordedAt": "2026-05-21T00:00:45.000Z",
+      "source": "project",
+      "resolutionStatus": "available",
+      "toolUseId": "toolu_requirements_review"
+    },
+    {
+      "phaseId": "specify",
+      "name": "missing-audit",
+      "outcome": "relevant-unavailable",
+      "rationale": "Audit was relevant but the skill was unavailable.",
+      "recordedAt": "2026-05-21T00:00:50.000Z",
+      "source": "user",
+      "resolutionStatus": "missing"
+    }
+  ],
+  "transitionHistory": [
+    {
+      "transitionId": "submit-ready-1",
+      "fromPhaseId": "specify",
+      "toPhaseId": "plan",
+      "authority": "user-confirmation",
+      "action": "confirmation-requested",
+      "result": "accepted",
+      "completionCheckId": "submit-ready-1",
+      "artifactRefs": [
+        {
+          "kind": "phase-artifact",
+          "sessionId": "fixture-session",
+          "artifactId": "phase-specify-ready-1",
+          "schemaVersion": 1,
+          "createdAt": "2026-05-21T00:01:00.000Z",
+          "updatedAt": "2026-05-21T00:01:00.000Z",
+          "label": "Specify phase completion",
+          "lifecycleStatus": "pending"
+        }
+      ],
+      "createdAt": "2026-05-21T00:01:00.000Z",
+      "stateVersion": 3
+    }
+  ],
+  "artifactIndex": {
+    "phase-specify-ready-1": {
+      "kind": "phase-artifact",
+      "sessionId": "fixture-session",
+      "artifactId": "phase-specify-ready-1",
+      "schemaVersion": 1,
+      "phaseId": "specify",
+      "createdAt": "2026-05-21T00:01:00.000Z",
+      "updatedAt": "2026-05-21T00:01:00.000Z",
+      "label": "Specify phase completion",
+      "title": "Specify phase completion",
+      "lifecycleStatus": "pending",
+      "submission": {
+        "phaseId": "specify",
+        "stateVersion": 2,
+        "status": "ready",
+        "handoff": {
+          "summary": "Specification is ready for review.",
+          "artifacts": [
+            "spec.md"
+          ]
+        },
+        "rationale": "Required artifacts were produced.",
+        "evidence": [
+          {
+            "kind": "artifact",
+            "label": "Spec",
+            "ref": ".specify/features/009-specify-discussions-workflows/spec.md"
+          }
+        ]
+      }
+    }
+  },
+  "pendingConfirmation": {
+    "confirmationId": "submit-ready-1",
+    "phaseId": "specify",
+    "fromPhaseId": "specify",
+    "toPhaseId": "plan",
+    "completionCheckId": "submit-ready-1",
+    "artifactRefs": [
+      {
+        "kind": "phase-artifact",
+        "sessionId": "fixture-session",
+        "artifactId": "phase-specify-ready-1",
+        "schemaVersion": 1,
+        "createdAt": "2026-05-21T00:01:00.000Z",
+        "updatedAt": "2026-05-21T00:01:00.000Z",
+        "label": "Specify phase completion",
+        "lifecycleStatus": "pending"
+      }
+    ],
+    "createdAt": "2026-05-21T00:01:00.000Z",
+    "status": "pending",
+    "submission": {
+      "phaseId": "specify",
+      "stateVersion": 2,
+      "status": "ready",
+      "handoff": {
+        "summary": "Specification is ready for review.",
+        "artifacts": [
+          "spec.md"
+        ]
+      },
+      "rationale": "Required artifacts were produced.",
+      "evidence": [
+        {
+          "kind": "artifact",
+          "label": "Spec",
+          "ref": ".specify/features/009-specify-discussions-workflows/spec.md"
+        }
+      ]
+    }
+  },
+  "finalReportRef": null,
+  "stateVersion": 3,
+  "revision": 3,
+  "createdAt": "2026-05-21T00:00:00.000Z",
+  "updatedAt": "2026-05-21T00:01:00.000Z"
+}

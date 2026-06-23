@@ -222,6 +222,66 @@ context. Open only the linked detail documents whose `applies_to` or
     "last_seen": "2026-06-10T12:03:00Z",
     "occurrence_count": 1,
     "signal_strength": "medium"
+  },
+  {
+    "id": "learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7",
+    "problem": "Runtime provider/model switch failures must roll back both server override state and desktop optimistic persistence; Windows native checks can be blocked by a locked default Tauri target.",
+    "lesson": "A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted.",
+    "learning_type": "recovery_path",
+    "source_command": "sp-debug",
+    "recurrence_key": "runtime-switch-rollback-and-locked-native-target",
+    "applies_to": [
+      "sp-debug",
+      "sp-implement",
+      "desktop runtime",
+      "server websocket",
+      "native verification"
+    ],
+    "trigger_signals": [
+      "Failed to switch provider/model",
+      "CLI exited during startup with code 143",
+      "runtimeOverride.providerId",
+      "desktop runtime selection replay",
+      "Stop then switch provider/model",
+      "Force-killing CLI subprocess after runtime override restart",
+      "check:native PermissionDenied",
+      "tauri-build sidecar copy",
+      "high",
+      "recovery_path"
+    ],
+    "detail": "./learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md",
+    "first_seen": "2026-06-15T09:45:00Z",
+    "last_seen": "2026-06-17T15:45:00+08:00",
+    "occurrence_count": 2,
+    "signal_strength": "high"
+  },
+  {
+    "id": "learn-2026-06-16-workflow-implement-phase-tool-gating-alias-4d8a2c1b",
+    "problem": "Custom workflow implementation phase ids can hide Write/Edit/Bash when tool gating only recognizes builtin phase names.",
+    "lesson": "The SuperSpec template used activePhaseId sp-implement, but workflow tool policy only treated implementation/implement as implementation phases. The server therefore launched the CLI with mutating tools disallowed in phase 5. Normalize phase ids and cover skill-style implementation aliases with server and WebSocket launch regressions.",
+    "learning_type": "recovery_path",
+    "source_command": "sp-debug",
+    "recurrence_key": "workflow-implement-phase-tool-gating-alias",
+    "applies_to": [
+      "sp-debug",
+      "sp-implement",
+      "server workflow runtime",
+      "workflow tool policy"
+    ],
+    "trigger_signals": [
+      "Sp Implement phase 5",
+      "Write/Edit/Bash unavailable",
+      "disallowedTools",
+      "sp-implement",
+      "workflow tool policy",
+      "high",
+      "recovery_path"
+    ],
+    "detail": "./learn-2026-06-16-workflow-implement-phase-tool-gating-alias-4d8a2c1b.md",
+    "first_seen": "2026-06-16T08:55:00Z",
+    "last_seen": "2026-06-16T08:55:00Z",
+    "occurrence_count": 1,
+    "signal_strength": "high"
   }
 ]
 <!-- SPECKIT_LEARNING_DATA_END -->
@@ -404,3 +464,43 @@ Observed auto-capture evidence from implement-tracker.md
 #### Lesson
 
 Provider export modals need copyable JSON plus a save-file path. Tauri dialog save permission alone is not enough without a file write API; use an available browser File System Access picker when present and keep a download fallback, with same-area tests for the picker branch.
+
+
+---
+
+### learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7 - Runtime provider/model switch failures must roll back both server override state and desktop optimistic persistence; Windows native checks can be blocked by a locked default Tauri target.
+
+- Type: `recovery_path`
+- Source Command: `sp-debug`
+- Recurrence Key: `runtime-switch-rollback-and-locked-native-target`
+- Applies To: sp-debug, sp-implement, desktop runtime, server websocket, native verification
+- Trigger Signals: Failed to switch provider/model, CLI exited during startup with code 143, runtimeOverride.providerId, desktop runtime selection replay, Stop then switch provider/model, Force-killing CLI subprocess after runtime override restart, check:native PermissionDenied, tauri-build sidecar copy, high, recovery_path
+- Signal: `high`
+- Occurrence Count: 2
+- First Seen: `2026-06-15T09:45:00Z`
+- Last Seen: `2026-06-17T15:45:00+08:00`
+- Detail: `./learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md`
+
+#### Lesson
+
+A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted.
+
+
+---
+
+### learn-2026-06-16-workflow-implement-phase-tool-gating-alias-4d8a2c1b - Custom workflow implementation phase ids can hide Write/Edit/Bash when tool gating only recognizes builtin phase names.
+
+- Type: `recovery_path`
+- Source Command: `sp-debug`
+- Recurrence Key: `workflow-implement-phase-tool-gating-alias`
+- Applies To: sp-debug, sp-implement, server workflow runtime, workflow tool policy
+- Trigger Signals: Sp Implement phase 5, Write/Edit/Bash unavailable, disallowedTools, sp-implement, workflow tool policy, high, recovery_path
+- Signal: `high`
+- Occurrence Count: 1
+- First Seen: `2026-06-16T08:55:00Z`
+- Last Seen: `2026-06-16T08:55:00Z`
+- Detail: `./learn-2026-06-16-workflow-implement-phase-tool-gating-alias-4d8a2c1b.md`
+
+#### Lesson
+
+The SuperSpec template used activePhaseId sp-implement, but workflow tool policy only treated implementation/implement as implementation phases. The server therefore launched the CLI with mutating tools disallowed in phase 5. Normalize phase ids and cover skill-style implementation aliases with server and WebSocket launch regressions.

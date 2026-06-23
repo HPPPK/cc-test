@@ -144,10 +144,12 @@ export async function toolToAPISchema(
   // call — name-only keying returned a stale schema (5.4% → 51% err rate, see
   // PR#25424). MCP tools also set inputJSONSchema but each has a stable schema,
   // so including it preserves their GB-flip cache stability.
+  const eagerInputStreamingCacheKey =
+    tool.eagerInputStreaming === true ? ':eager-input-streaming' : ''
   const cacheKey =
     'inputJSONSchema' in tool && tool.inputJSONSchema
-      ? `${tool.name}:${jsonStringify(tool.inputJSONSchema)}`
-      : tool.name
+      ? `${tool.name}:${jsonStringify(tool.inputJSONSchema)}${eagerInputStreamingCacheKey}`
+      : `${tool.name}${eagerInputStreamingCacheKey}`
   const cache = getToolSchemaCache()
   let base = cache.get(cacheKey)
   if (!base) {
@@ -196,11 +198,15 @@ export async function toolToAPISchema(
     // input_json_delta events, causing multi-minute hangs on large tool inputs.
     // Gated to direct api.anthropic.com: proxies (LiteLLM etc.) and Bedrock/Vertex
     // with Claude 4.5 reject this field with 400. See GH#32742, PR #21729.
+    const shouldRequestEagerInputStreaming =
+      tool.eagerInputStreaming === true ||
+      getFeatureValue_CACHED_MAY_BE_STALE('tengu_fgts', false) ||
+      isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING)
+
     if (
       getAPIProvider() === 'firstParty' &&
       isFirstPartyAnthropicBaseUrl() &&
-      (getFeatureValue_CACHED_MAY_BE_STALE('tengu_fgts', false) ||
-        isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING))
+      shouldRequestEagerInputStreaming
     ) {
       base.eager_input_streaming = true
     }

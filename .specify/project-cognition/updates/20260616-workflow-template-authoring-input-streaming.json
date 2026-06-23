@@ -1,0 +1,68 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "src/Tool.ts",
+    "src/utils/api.ts",
+    "src/entrypoints/mcp.ts",
+    "src/entrypoints/mcp.test.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts"
+  ],
+  "scope_paths": [
+    "src/Tool.ts",
+    "src/utils/api.ts",
+    "src/entrypoints/mcp.ts",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.tsx",
+    "src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts",
+    "src/utils/toolSchemaCache.ts"
+  ],
+  "behavior_surfaces": [
+    "workflow_template_authoring tool input contract",
+    "large workflow template tool-call payload streaming",
+    "API tool schema publication",
+    "MCP list-tools schema publication"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Tools may opt into eagerInputStreaming when they commonly receive large JSON inputs.",
+    "toolToAPISchema forwards eager_input_streaming only to first-party Anthropic API endpoints that accept the beta field.",
+    "workflow_template_authoring opts into eager input streaming so large template payloads are streamed instead of relying on global fine-grained tool streaming flags.",
+    "MCP list-tools publication must prefer a tool's explicit inputJSONSchema over Zod conversion when the explicit schema exists.",
+    "MCP list-tools publication returns a cloned schema so external consumers cannot mutate the tool-owned schema object."
+  ],
+  "verification": [
+    {
+      "command": "bun test src/tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.test.ts src/entrypoints/mcp.test.ts",
+      "result": "passed; 26 tests"
+    },
+    {
+      "command": "bun run check:server",
+      "result": "passed; 1170 pass, 7 skip, 0 fail"
+    }
+  ],
+  "known_unknowns": [
+    "This does not remove provider hard request-size limits; it makes this large-input tool use the existing first-party eager input streaming path where supported.",
+    "Third-party Anthropic-compatible proxies, Bedrock, Vertex, Foundry, and Azure OpenAI still do not receive eager_input_streaming because those paths can reject the beta field.",
+    "The running desktop sidecar may need rebuild/restart before source edits are reflected, depending on how it was launched."
+  ],
+  "confidence_notes": [
+    "Focused tests prove the tool advertises eager input streaming, accepts a template payload larger than 100000 serialized characters for validation, and keeps the API-bound schema object-root contract.",
+    "MCP coverage proves workflow_template_authoring publishes its explicit template object schema instead of the discriminated-union oneOf Zod fallback.",
+    "Full server-area check passed after the focused tests."
+  ],
+  "user_decisions": [
+    "User clarified the issue is the workflow_template_authoring template tool-call input size, not workflow phase policy or workflows.json persistence size.",
+    "User asked to make that input allowance larger."
+  ],
+  "boundary": {
+    "scope": "Increase workflow_template_authoring large template input handling through tool schema/streaming paths.",
+    "excluded": [
+      "Changing workflow template semantic validation",
+      "Mutating the user's live workflows.json",
+      "Changing workflow phase tool policy",
+      "Globally enabling eager input streaming for all tools",
+      "Forwarding unsupported beta fields to non-first-party providers"
+    ]
+  }
+}

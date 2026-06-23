@@ -1,0 +1,62 @@
+{
+  "id": "T002",
+  "title": "Add server compatibility and validation tests",
+  "story": "US1",
+  "agent": "test-engineer",
+  "depends_on": ["T001"],
+  "parallel_safe": true,
+  "target_root": "F:/github/cc-jiangxia",
+  "context_navigation": [
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+    ".specify/features/009-specify-discussions-workflows/data-model.md",
+    ".specify/features/009-specify-discussions-workflows/spec.md",
+    "src/server/services/__fixtures__/workflow-templates"
+  ],
+  "write_scope": [
+    "src/server/services/workflowTypes.test.ts",
+    "src/server/services/workflowTemplateRegistryService.test.ts",
+    "src/server/services/__fixtures__/workflow-templates/legacy-flat-phase-contract.json"
+  ],
+  "read_scope": [
+    "src/server/services/workflowTypes.ts",
+    "src/server/services/workflowTemplateValidation.ts",
+    "src/server/services/workflowTemplateRegistryService.ts"
+  ],
+  "forbidden": [
+    "Common Forbidden Scope from tasks.md",
+    "production source files"
+  ],
+  "expected_outputs": [
+    "Failing-first tests for flat-to-grouped projection",
+    "Validation tests for constraint strength and provenance fields",
+    "Fixture for legacy flat template compatibility",
+    "Tests proving runtimeState is not template-persisted and unknown fields are preserved"
+  ],
+  "anti_goals": [
+    "Do not implement server production behavior",
+    "Do not delete existing fixtures or assertions"
+  ],
+  "does_not_remove": [
+    "MP-003",
+    "MP-004",
+    "MP-011"
+  ],
+  "capability_operations": [
+    "CAP-001 test coverage",
+    "CAP-007 test coverage"
+  ],
+  "acceptance_criteria": [
+    "Tests fail for missing grouped contract behavior before T004",
+    "Tests pass after T004 without weakening existing validation coverage"
+  ],
+  "verify_commands": [
+    "bun test src/server/services/workflowTypes.test.ts src/server/services/workflowTemplateRegistryService.test.ts"
+  ],
+  "handoff_format": [
+    "test_names",
+    "expected_failure_reasons",
+    "fixture_path"
+  ],
+  "retry_max": 2,
+  "escalation": "debugger"
+}

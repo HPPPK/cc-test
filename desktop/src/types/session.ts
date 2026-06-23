@@ -204,6 +204,9 @@ export type WorkflowRecommendedSkillStatusSummary = {
     status: WorkflowPhaseSkillResolutionStatus
     source?: WorkflowPhaseSkillSource
     pluginName?: string
+    namespace?: string
+    referenceId?: string
+    contentHash?: string
   }>
 }
 
@@ -251,6 +254,41 @@ export type WorkflowTemplateTransitionPolicy = {
   [key: string]: unknown
 }
 
+export type WorkflowTemplatePhaseActionPolicy = {
+  allowedActions: string[]
+  forbiddenActions: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowTemplatePhaseToolPolicy = {
+  allowedTools: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowTemplatePhaseIntent = {
+  objective: string
+  role: string
+  intake: string[]
+  [key: string]: unknown
+}
+
+export type WorkflowTemplatePhaseContract = {
+  instructions: string
+  executionRules: string[]
+  actionPolicy?: WorkflowTemplatePhaseActionPolicy
+  toolPolicy?: WorkflowTemplatePhaseToolPolicy
+  transitionAuthority: 'auto' | 'user-confirmation'
+  [key: string]: unknown
+}
+
+export type WorkflowTemplatePhaseEvidencePolicy = {
+  outputArtifact?: WorkflowTemplateOutputArtifact
+  requiredArtifacts?: WorkflowTemplateRequiredArtifact[]
+  completionCriteria?: WorkflowTemplateCompletionCriteria
+  handoffRules?: string[]
+  [key: string]: unknown
+}
+
 export type WorkflowTemplatePhase = {
   id: string
   name: string
@@ -265,6 +303,12 @@ export type WorkflowTemplatePhase = {
   requiredArtifacts?: WorkflowTemplateRequiredArtifact[]
   completionCriteria?: WorkflowTemplateCompletionCriteria
   transition?: WorkflowTemplateTransitionPolicy
+  intent?: WorkflowTemplatePhaseIntent
+  contract?: WorkflowTemplatePhaseContract
+  evidencePolicy?: WorkflowTemplatePhaseEvidencePolicy
+  actionPolicy?: WorkflowTemplatePhaseActionPolicy
+  toolPolicy?: WorkflowTemplatePhaseToolPolicy
+  runtimeState?: unknown
   [key: string]: unknown
 }
 
@@ -313,6 +357,7 @@ export type WorkflowTemplateDetailResponse = {
 
 export type WorkflowTemplateValidateRequest = {
   template: WorkflowTemplateDraft
+  allowExistingId?: string
 }
 
 export type WorkflowTemplateValidateResponse = {
@@ -488,6 +533,7 @@ export type WorkflowSessionStateResponse = {
 }
 
 export type WorkflowTransitionAction = 'confirm' | 'reject' | 'retry' | 'manual_complete'
+export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear'
 
 export type WorkflowTransitionHandoff = {
   summary: string
@@ -499,6 +545,7 @@ export type WorkflowTransitionRequest = {
   stateVersion?: number
   action: WorkflowTransitionAction
   transitionId?: string
+  nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   handoff?: WorkflowTransitionHandoff
   rationale?: string
   evidence?: unknown[]

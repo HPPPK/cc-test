@@ -472,6 +472,13 @@ export type Tool<
   readonly strict?: boolean
 
   /**
+   * Requests fine-grained input streaming for tools that commonly receive large
+   * JSON inputs. toolToAPISchema only forwards this to first-party Anthropic
+   * endpoints that accept the beta field.
+   */
+  readonly eagerInputStreaming?: boolean
+
+  /**
    * Called on copies of tool_use input before observers see it (SDK stream,
    * transcript, canUseTool, PreToolUse/PostToolUse hooks). Mutate in place
    * to add legacy/derived fields. Must be idempotent. The original API-bound

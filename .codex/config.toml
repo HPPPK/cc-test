@@ -1,1 +1,1 @@
-notify = ["uvx", "--from", "git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf", "specify", "sp-teams", "notify-hook"]
+notify = ["uvx", "--from", "git+https://github.com/chenziyang110/spec-kit-plus.git@3f003d2bd26e4b4e73b77950c148ccb010ece90c", "specify", "sp-teams", "notify-hook"]

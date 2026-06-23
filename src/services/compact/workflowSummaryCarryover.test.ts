@@ -141,6 +141,42 @@ describe('generateWorkflowSummaryCarryover', () => {
     expect(result.content).toContain('missing-audit relevant-unavailable')
     expect(result.content).not.toContain('irrelevant-style')
   })
+
+  test('carries pending confirmation and completed workflow state through compact summary instructions', async () => {
+    const messages: Message[] = [
+      createUserMessage({
+        content: [
+          'Workflow state: pending-confirmation for phase specify, confirmationId submit-ready-1.',
+          'Completion submission status ready includes evidence spec.md.',
+          'Final workflow state after confirm should be completed with accepted completion evidence.',
+        ].join(' '),
+      }),
+    ]
+    let requestedPrompt = ''
+
+    const result = await generateWorkflowSummaryCarryover({
+      messages,
+      context: createContext(),
+      summaryInstructions: [
+        'Preserve workflow status, active phase, pending confirmation id, completion status, and accepted evidence references.',
+        'Distinguish pending-confirmation from completed state; do not flatten either state to running.',
+      ].join('\n'),
+      summaryRunner: async input => {
+        requestedPrompt = input.summaryRequest.message.content
+        return createAssistantMessage({
+          content: '<summary>Workflow state: pending-confirmation phase specify confirmationId submit-ready-1; completion status ready evidence spec.md; after confirm completed with accepted completion evidence.</summary>',
+        })
+      },
+    })
+
+    expect(requestedPrompt).toContain('Preserve workflow status')
+    expect(requestedPrompt).toContain('Distinguish pending-confirmation from completed')
+    expect(result.content).toContain('pending-confirmation phase specify')
+    expect(result.content).toContain('confirmationId submit-ready-1')
+    expect(result.content).toContain('completion status ready evidence spec.md')
+    expect(result.content).toContain('completed with accepted completion evidence')
+    expect(result.content).not.toContain('flatten')
+  })
 })
 
 function createContext(): ToolUseContext {

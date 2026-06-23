@@ -27,11 +27,13 @@ import type {
   MemoryEventFile,
   UIAttachment,
   UIMessage,
+  ClientMessage,
   ServerMessage,
   TokenUsage,
 } from '../types/chat'
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+type WorkflowTransitionCommand = Omit<Extract<ClientMessage, { type: 'workflow_transition' }>, 'type'>
 
 export type ComposerDraftState = {
   input: string
@@ -120,6 +122,8 @@ type ChatStore = {
     attachments?: AttachmentRef[],
     options?: { displayContent?: string; displayAttachments?: AttachmentRef[] },
   ) => void
+  guideQueuedMessage: (sessionId: string, messageId: string) => void
+  deleteQueuedMessage: (sessionId: string, messageId: string) => void
   respondToPermission: (
     sessionId: string,
     requestId: string,
@@ -136,22 +140,18 @@ type ChatStore = {
   ) => void
   sendWorkflowTransition: (
     sessionId: string,
-    command: {
-      phaseId: string
-      action: 'confirm' | 'reject' | 'retry'
-      transitionId?: string
-      expectedStateVersion?: number
-    },
+    command: WorkflowTransitionCommand,
   ) => void
   setSessionRuntime: (
     sessionId: string,
     selection: RuntimeSelection,
-    options?: { force?: boolean },
+    options?: { force?: boolean; previousSelection?: RuntimeSelection | null },
   ) => void
   setSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void
   stopGeneration: (sessionId: string) => void
   loadHistory: (sessionId: string) => Promise<void>
   reloadHistory: (sessionId: string) => Promise<void>
+  settleSessionIdle: (sessionId: string) => void
   queueComposerPrefill: (
     sessionId: string,
     prefill: { text: string; attachments?: UIAttachment[] },
@@ -163,8 +163,48 @@ type ChatStore = {
 }
 
 const TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TodoWrite'])
+const TERMINAL_WORKFLOW_STATUSES = new Set<WorkflowSessionSummary['status']>([
+  'completed',
+  'failed',
+  'cancelled',
+])
 const pendingTaskToolUseIdsBySession = new Map<string, Set<string>>()
 const pendingToolParentUseIdsBySession = new Map<string, Map<string, string>>()
+type QueuedOutboundUserMessage = {
+  id: string
+  content: string
+  attachments?: AttachmentRef[]
+}
+const queuedOutboundUserMessagesBySession = new Map<string, QueuedOutboundUserMessage[]>()
+const pendingRuntimeRollbacksBySession = new Map<string, {
+  previousSelection: RuntimeSelection | null
+}>()
+
+function rememberRuntimeRollback(
+  sessionId: string,
+  previousSelection: RuntimeSelection | null | undefined,
+): void {
+  pendingRuntimeRollbacksBySession.set(sessionId, {
+    previousSelection: previousSelection ?? null,
+  })
+}
+
+function clearRuntimeRollback(sessionId: string): void {
+  pendingRuntimeRollbacksBySession.delete(sessionId)
+}
+
+function restoreRuntimeSelectionAfterFailure(sessionId: string): void {
+  const rollback = pendingRuntimeRollbacksBySession.get(sessionId)
+  if (!rollback) return
+  pendingRuntimeRollbacksBySession.delete(sessionId)
+
+  const runtimeStore = useSessionRuntimeStore.getState()
+  if (rollback.previousSelection) {
+    runtimeStore.setSelection(sessionId, rollback.previousSelection)
+  } else {
+    runtimeStore.clearSelection(sessionId)
+  }
+}
 
 function addPendingTaskToolUseId(sessionId: string, toolUseId: string): void {
   const ids = pendingTaskToolUseIdsBySession.get(sessionId) ?? new Set<string>()
@@ -211,6 +251,91 @@ function consumePendingToolParentUseId(sessionId: string, toolUseId: string): st
 function clearPendingToolParentUseIds(sessionId: string): void {
   pendingToolParentUseIdsBySession.delete(sessionId)
 }
+
+function enqueueQueuedOutboundUserMessage(
+  sessionId: string,
+  message: QueuedOutboundUserMessage,
+): void {
+  const queue = queuedOutboundUserMessagesBySession.get(sessionId) ?? []
+  queue.push(message)
+  queuedOutboundUserMessagesBySession.set(sessionId, queue)
+}
+
+function peekQueuedOutboundUserMessage(sessionId: string): QueuedOutboundUserMessage | undefined {
+  return queuedOutboundUserMessagesBySession.get(sessionId)?.[0]
+}
+
+function shiftQueuedOutboundUserMessage(sessionId: string): QueuedOutboundUserMessage | undefined {
+  const queue = queuedOutboundUserMessagesBySession.get(sessionId)
+  if (!queue || queue.length === 0) return undefined
+  const [message] = queue.splice(0, 1)
+  if (queue.length === 0) {
+    queuedOutboundUserMessagesBySession.delete(sessionId)
+  }
+  return message
+}
+
+function promoteQueuedOutboundUserMessage(sessionId: string, messageId: string): boolean {
+  const queue = queuedOutboundUserMessagesBySession.get(sessionId)
+  if (!queue || queue.length < 2) return false
+  const index = queue.findIndex((message) => message.id === messageId)
+  if (index <= 0) return false
+  const [message] = queue.splice(index, 1)
+  queue.unshift(message!)
+  return true
+}
+
+function removeQueuedOutboundUserMessage(sessionId: string, messageId: string): boolean {
+  const queue = queuedOutboundUserMessagesBySession.get(sessionId)
+  if (!queue || queue.length === 0) return false
+  const index = queue.findIndex((message) => message.id === messageId)
+  if (index < 0) return false
+  queue.splice(index, 1)
+  if (queue.length === 0) {
+    queuedOutboundUserMessagesBySession.delete(sessionId)
+  }
+  return true
+}
+
+function clearQueuedOutboundUserMessages(sessionId: string): void {
+  queuedOutboundUserMessagesBySession.delete(sessionId)
+}
+
+function isSessionBusyForUserQueue(session: PerSessionState): boolean {
+  return session.chatState !== 'idle'
+}
+
+function markQueuedUserMessageSubmitted(
+  message: UIMessage,
+  queuedMessageId: string,
+): UIMessage {
+  if (message.type !== 'user_text' || message.id !== queuedMessageId) return message
+  const { pending: _pending, queued: _queued, ...submitted } = message
+  return submitted
+}
+
+function promoteQueuedUserMessage(messages: UIMessage[], messageId: string): UIMessage[] {
+  const currentIndex = messages.findIndex(
+    (message) => message.type === 'user_text' && message.id === messageId && message.queued,
+  )
+  const firstQueuedIndex = messages.findIndex(
+    (message) => message.type === 'user_text' && message.queued,
+  )
+  if (currentIndex < 0 || firstQueuedIndex < 0 || currentIndex === firstQueuedIndex) return messages
+
+  const promotedMessage = messages[currentIndex]!
+  const withoutPromoted = messages.filter((_, index) => index !== currentIndex)
+  const insertionIndex = withoutPromoted.findIndex(
+    (message) => message.type === 'user_text' && message.queued,
+  )
+  if (insertionIndex < 0) return withoutPromoted.concat(promotedMessage)
+  return [
+    ...withoutPromoted.slice(0, insertionIndex),
+    promotedMessage,
+    ...withoutPromoted.slice(insertionIndex),
+  ]
+}
+
 const AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS = 160
 
 function isLocallyStopped(session: PerSessionState | undefined): boolean {
@@ -247,6 +372,25 @@ function isWorkflowSummary(value: unknown): value is WorkflowSessionSummary {
     typeof record.activePhaseIndex === 'number' &&
     typeof record.phaseCount === 'number' &&
     typeof record.pendingConfirmation === 'boolean'
+  )
+}
+
+function isTerminalWorkflowSummary(value: WorkflowSessionSummary): boolean {
+  return TERMINAL_WORKFLOW_STATUSES.has(value.status)
+}
+
+function canSettleChatFromTerminalWorkflow(
+  sessionId: string,
+  session: PerSessionState,
+): boolean {
+  const pendingText = `${session.streamingText}${pendingDeltaBySession.get(sessionId) ?? ''}`
+  return (
+    !pendingText.trim() &&
+    !session.streamingToolInput.trim() &&
+    !session.activeToolUseId &&
+    !session.activeToolName &&
+    !session.pendingPermission &&
+    !session.pendingComputerUsePermission
   )
 }
 
@@ -496,7 +640,66 @@ async function fetchAndMapSessionHistory(sessionId: string) {
   }
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
+export const useChatStore = create<ChatStore>((set, get) => {
+  const submitNextQueuedMessage = (sessionId: string): boolean => {
+    const queued = peekQueuedOutboundUserMessage(sessionId)
+    const session = get().sessions[sessionId]
+    if (!queued || !session || session.chatState !== 'idle') return false
+
+    const submitted = shiftQueuedOutboundUserMessage(sessionId)
+    if (!submitted) return false
+
+    if (session.elapsedTimer) clearInterval(session.elapsedTimer)
+    const timer = setInterval(() => {
+      set((st) => ({ sessions: updateSessionIn(st.sessions, sessionId, (sess) => ({ elapsedSeconds: sess.elapsedSeconds + 1 })) }))
+    }, 1000)
+
+    set((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, (sess) => ({
+        messages: sess.messages.map((message) => markQueuedUserMessageSubmitted(message, submitted.id)),
+        chatState: 'thinking',
+        localStopNonce: null,
+        undoableSubmittedMessage: { id: submitted.id, submittedAt: Date.now() },
+        elapsedSeconds: 0,
+        statusVerb: randomSpinnerVerb(),
+        elapsedTimer: timer,
+      })),
+    }))
+
+    wsManager.send(sessionId, {
+      type: 'user_message',
+      content: submitted.content,
+      attachments: submitted.attachments,
+    })
+    return true
+  }
+
+  const settleSessionIdle = (sessionId: string): void => {
+    const session = get().sessions[sessionId]
+    if (!session) return
+    if (session.elapsedTimer) clearInterval(session.elapsedTimer)
+    clearPendingDelta(sessionId)
+
+    set((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, () => ({
+        chatState: 'idle',
+        activeThinkingId: null,
+        activeToolUseId: null,
+        activeToolName: null,
+        streamingText: '',
+        streamingToolInput: '',
+        pendingPermission: null,
+        pendingComputerUsePermission: null,
+        elapsedTimer: null,
+        statusVerb: '',
+        localStopNonce: null,
+        undoableSubmittedMessage: null,
+      })),
+    }))
+    useTabStore.getState().updateTabStatus(sessionId, 'idle')
+  }
+
+  return {
   sessions: {},
 
   getSession: (sessionId) => get().sessions[sessionId] ?? createDefaultSessionState(),
@@ -531,6 +734,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const runtimeSelection = useSessionRuntimeStore.getState().selections[sessionId]
     if (runtimeSelection) {
+      rememberRuntimeRollback(sessionId, null)
       wsManager.send(sessionId, { type: 'set_runtime_config', ...runtimeSelection })
     }
     if (!sessionId.startsWith('__') && !useTeamStore.getState().getMemberBySessionId(sessionId)) {
@@ -560,6 +764,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     clearPendingTaskToolUseIds(sessionId)
     clearPendingToolParentUseIds(sessionId)
+    clearQueuedOutboundUserMessages(sessionId)
     wsManager.disconnect(sessionId)
     set((s) => {
       const { [sessionId]: _, ...rest } = s.sessions
@@ -571,7 +776,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const userFacingContent =
       options?.displayContent?.trim() || content.trim()
     const modelFacingContent = buildModelContent(content, attachments)
+    const existingSession = get().sessions[sessionId] ?? createDefaultSessionState()
     const isMemberSession = !!useTeamStore.getState().getMemberBySessionId(sessionId)
+    const shouldQueueLocally =
+      !isMemberSession && isSessionBusyForUserQueue(existingSession)
     const visibleAttachments = options?.displayAttachments ?? attachments
     const uiAttachments: UIAttachment[] | undefined =
       visibleAttachments && visibleAttachments.length > 0
@@ -603,15 +811,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       updateOptimisticSessionTitle(sessionId, userFacingContent)
     }
 
+    let queuedOutboundMessage: QueuedOutboundUserMessage | null = null
+
     set((s) => {
       const session = s.sessions[sessionId] ?? createDefaultSessionState()
-      const bufferedDelta = consumePendingDelta(sessionId)
+      const bufferedDelta = shouldQueueLocally ? '' : consumePendingDelta(sessionId)
       const pendingAssistantText = `${session.streamingText}${bufferedDelta}`
 
-      const newMessages = pendingAssistantText.trim()
+      const newMessages = !shouldQueueLocally && pendingAssistantText.trim()
         ? appendAssistantTextMessage(session.messages, pendingAssistantText, Date.now())
         : [...session.messages]
-      if (!isMemberSession && allTasksDone) {
+      if (!shouldQueueLocally && !isMemberSession && allTasksDone) {
         newMessages.push({
           id: nextId(),
           type: 'task_summary',
@@ -626,9 +836,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ...(userFacingContent !== modelFacingContent ? { modelContent: modelFacingContent } : {}),
         attachments: isMemberSession ? undefined : uiAttachments,
         timestamp: Date.now(),
-        ...(isMemberSession ? { pending: true } : {}),
+        ...(isMemberSession || shouldQueueLocally ? { pending: true } : {}),
+        ...(shouldQueueLocally ? { queued: true } : {}),
       }
       newMessages.push(submittedMessage)
+
+      if (shouldQueueLocally) {
+        queuedOutboundMessage = {
+          id: submittedMessage.id,
+          content,
+          attachments,
+        }
+        return {
+          sessions: {
+            ...s.sessions,
+            [sessionId]: {
+              ...session,
+              messages: newMessages,
+              connectionState: session.connectionState,
+            },
+          },
+        }
+      }
 
       if (!isMemberSession && session.elapsedTimer) clearInterval(session.elapsedTimer)
 
@@ -659,6 +888,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
+    if (queuedOutboundMessage) {
+      enqueueQueuedOutboundUserMessage(sessionId, queuedOutboundMessage)
+      return
+    }
+
     if (isMemberSession) {
       void useTeamStore.getState().sendMessageToMember(sessionId, userFacingContent)
         .catch((err) => {
@@ -682,6 +916,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     wsManager.send(sessionId, { type: 'user_message', content, attachments })
+  },
+
+  guideQueuedMessage: (sessionId, messageId) => {
+    promoteQueuedOutboundUserMessage(sessionId, messageId)
+    set((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+        messages: promoteQueuedUserMessage(session.messages, messageId),
+      })),
+    }))
+    const session = get().sessions[sessionId]
+    if (session?.chatState === 'idle' && !isLocallyStopped(session)) {
+      submitNextQueuedMessage(sessionId)
+    }
+  },
+
+  deleteQueuedMessage: (sessionId, messageId) => {
+    const removedQueuedOutbound = removeQueuedOutboundUserMessage(sessionId, messageId)
+    set((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+        messages: session.messages.filter(
+          (message) => !(message.type === 'user_text' && message.id === messageId && message.queued),
+        ),
+      })),
+    }))
+    const session = get().sessions[sessionId]
+    if (removedQueuedOutbound && session?.chatState === 'idle') {
+      submitNextQueuedMessage(sessionId)
+    }
   },
 
   respondToPermission: (sessionId, requestId, allowed, options) => {
@@ -717,6 +979,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setSessionRuntime: (sessionId, selection, options) => {
+    rememberRuntimeRollback(sessionId, options?.previousSelection ?? null)
     wsManager.send(sessionId, {
       type: 'set_runtime_config',
       ...selection,
@@ -873,6 +1136,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  settleSessionIdle,
+
   queueComposerPrefill: (sessionId, prefill) => {
     set((state) => ({
       sessions: updateSessionIn(state.sessions, sessionId, () => ({
@@ -911,6 +1176,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   clearMessages: (sessionId) => {
     clearPendingTaskToolUseIds(sessionId)
     clearPendingToolParentUseIds(sessionId)
+    clearQueuedOutboundUserMessages(sessionId)
     set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle', localStopNonce: null, undoableSubmittedMessage: null })) }))
   },
 
@@ -954,6 +1220,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         })
         if (msg.state === 'idle') {
+          clearRuntimeRollback(sessionId)
           const session = get().sessions[sessionId]
           if (session?.elapsedTimer) {
             clearInterval(session.elapsedTimer)
@@ -964,6 +1231,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
         // Sync tab status
         useTabStore.getState().updateTabStatus(sessionId, msg.state === 'idle' ? 'idle' : 'running')
+        if (msg.state === 'idle') {
+          submitNextQueuedMessage(sessionId)
+        }
         break
 
       case 'content_start': {
@@ -1184,10 +1454,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             target: { type: 'session', sessionId },
           })
         }
+        submitNextQueuedMessage(sessionId)
         break
       }
 
       case 'error':
+        if (msg.code === 'CLI_RESTART_FAILED') {
+          restoreRuntimeSelectionAfterFailure(sessionId)
+        }
         update((s) => {
           const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
           let newMessages = s.messages
@@ -1241,6 +1515,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 : item,
             ),
           }))
+          const session = get().sessions[sessionId]
+          if (
+            session &&
+            session.chatState !== 'idle' &&
+            isTerminalWorkflowSummary(workflow) &&
+            canSettleChatFromTerminalWorkflow(sessionId, session)
+          ) {
+            settleSessionIdle(sessionId)
+          }
         }
         if (msg.subtype === 'slash_commands' && Array.isArray(msg.data)) {
           const incomingCommands = normalizeSlashCommandList(msg.data)
@@ -1285,6 +1568,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           clearPendingDelta(sessionId)
           clearPendingTaskToolUseIds(sessionId)
           clearPendingToolParentUseIds(sessionId)
+          clearQueuedOutboundUserMessages(sessionId)
           useCLITaskStore.getState().clearTasks(sessionId)
           useSessionStore.getState().updateSessionTitle(sessionId, 'New Session')
           useTabStore.getState().updateTabTitle(sessionId, 'New Session')
@@ -1408,7 +1692,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
     }
   },
-}))
+  }
+})
+
+useChatStore.subscribe((state) => {
+  for (const sessionId of queuedOutboundUserMessagesBySession.keys()) {
+    if (!state.sessions[sessionId]) {
+      clearQueuedOutboundUserMessages(sessionId)
+    }
+  }
+})
 
 function updateOptimisticSessionTitle(sessionId: string, content: string): void {
   const title = deriveSessionTitle(content)

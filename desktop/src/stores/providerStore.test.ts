@@ -145,7 +145,7 @@ describe('providerStore runtime refresh', () => {
     expect(setSessionRuntimeMock).toHaveBeenCalledWith('session-a', {
       providerId: provider.id,
       modelId: 'model-main',
-    }, { force: true })
+    }, { force: true, previousSelection: null })
   })
 
   it('keeps an explicit provider model selection when the model still exists', async () => {
@@ -165,7 +165,13 @@ describe('providerStore runtime refresh', () => {
     expect(setSessionRuntimeMock).toHaveBeenCalledWith('session-a', {
       providerId: provider.id,
       modelId: 'model-opus',
-    }, { force: true })
+    }, {
+      force: true,
+      previousSelection: {
+        providerId: provider.id,
+        modelId: 'model-opus',
+      },
+    })
   })
 
   it('does not restart busy sessions while a provider update is saved', async () => {

@@ -1,0 +1,119 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/stores/chatStore.test.ts",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/UserMessage.tsx",
+    "desktop/src/components/chat/UserMessage.test.tsx",
+    "desktop/src/components/chat/MessageList.tsx",
+    "desktop/src/components/chat/MessageList.test.tsx",
+    "desktop/src/types/chat.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "scope_paths": [
+    "desktop/src/stores/chatStore.ts",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/UserMessage.tsx",
+    "desktop/src/components/chat/MessageList.tsx",
+    "desktop/src/components/chat/MessageList.test.tsx",
+    "desktop/src/types/chat.ts",
+    "desktop/src/i18n/locales/en.ts",
+    "desktop/src/i18n/locales/zh.ts"
+  ],
+  "behavior_surfaces": [
+    "Desktop chat user messages submitted while a session is active are queued locally instead of being sent immediately.",
+    "Desktop composer primary action shows Stop only when the active session is running and the composer has no payload; typing a new payload switches the action to Run for queued submission.",
+    "Queued desktop user messages are marked pending/queued in UI state and submitted on the next message_complete boundary.",
+    "Queued messages render in a dedicated ChatInput composer queue instead of the MessageList transcript.",
+    "Queued message Guide action promotes the selected queued message to the front of the local queue without interrupting the active turn.",
+    "Queued message Delete action removes the selected queued message from both visible UI state and the outbound queue.",
+    "A stopped session's status-idle acknowledgement drains exactly the next queued message, honoring Guide priority."
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Idle non-team sessions still send user_message over WebSocket immediately.",
+    "Non-idle non-team sessions keep the active turn state intact and enqueue the outbound payload until message_complete sets the session idle.",
+    "Guide only changes local queued message priority; it does not call wsManager.send while the session is busy.",
+    "Guide during local stop-pending state still only changes queue priority; the next queued prompt waits for the server status-idle acknowledgement before sending.",
+    "Delete removes only queued pending user_text messages and never mutates already-submitted transcript turns.",
+    "When chatState is non-idle and the composer has text or non-team attachments/context, the primary action calls handleSubmit instead of stopGeneration.",
+    "Queued outbound payloads are cleared when the session disconnects, is cleared, or is removed from the chat store."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test -- src/stores/chatStore.test.ts src/components/chat/UserMessage.test.tsx",
+      "result": "red: initial failures captured immediate send, missing guide action, and missing queued UI"
+    },
+    {
+      "command": "cd desktop; bun run test -- src/components/chat/ChatInput.test.tsx src/stores/chatStore.test.ts src/components/chat/MessageList.test.tsx src/components/chat/UserMessage.test.tsx",
+      "result": "passed: 162 tests, including running composer Run-vs-Stop split, composer queued-message guide/delete actions, and queued messages excluded from the transcript"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed: desktop lint, 98 Vitest files / 879 tests, and production build"
+    },
+    {
+      "command": "cd desktop; bun run test -- src/stores/chatStore.test.ts src/components/chat/ChatInput.test.tsx src/components/chat/MessageList.test.tsx",
+      "result": "passed: 161 tests, including Stop/status-idle draining the guided queued message while leaving later queued messages pending"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed after stop/status-idle bugfix: desktop lint, 98 Vitest files / 880 tests, and production build"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed with line-ending warnings only"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=%TEMP%\\cc-jiangxia-codex-cargo-target-session-message-queue bun run check:native",
+      "result": "passed; default native target was blocked by a running local Tauri dev process"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=%TEMP%\\cc-jiangxia-codex-cargo-target-session-message-queue bun run verify",
+      "result": "earlier pre-follow-up report artifacts/quality-runs/2026-06-16T06-29-33-653Z/report.md: all executed lanes passed, 9 passed, 0 failed, 2 skipped; process exit remained 1 because the broader dirty worktree is policy-blocked and not PR-ready"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=%TEMP%\\cc-jiangxia-codex-cargo-target-session-message-queue bun run verify",
+      "result": "follow-up attempt after composer queue/delete changes timed out after 15 minutes in artifacts/quality-runs/2026-06-16T07-34-35-081Z; no report.md was written, server-checks.log only contained the command line, and exact verify-chain PIDs were stopped after timeout"
+    }
+  ],
+  "known_unknowns": [
+    "Full PR readiness is blocked by the broader dirty worktree, not by the queue change.",
+    "Follow-up full verify did not complete because the server-checks lane timed out before producing a report; desktop-scoped validation passed.",
+    "Live provider smoke was not run; the behavior is covered with mock WebSocket/store tests and non-live quality gates."
+  ],
+  "confidence_notes": [
+    "Live source reads confirmed desktop sendMessage previously sent user_message immediately even while chatState was non-idle.",
+    "Server and CLI code already serialize or queue downstream work; this change keeps the desktop UI and outbound WebSocket timing aligned with that behavior.",
+    "Tests prove Guide promotion does not send immediately and drains only at message_complete.",
+    "Tests prove Delete removes the queued outbound payload before the next message_complete drain.",
+    "Tests prove Stop/status-idle drains the guided queued prompt only after the server idle acknowledgement.",
+    "ChatInput test proves a running session with typed composer content shows Run, does not stop generation, and appends a queued user_text message.",
+    "MessageList excludes queued user messages from the transcript, while ChatInput owns the dedicated composer queue UI."
+  ],
+  "user_decisions": [
+    "Do not use computer-use for implementation.",
+    "Guide must not interrupt the current turn; it should insert/promote for processing after the active tool/turn reaches a safe boundary.",
+    "Follow Codex App-style queued message behavior."
+  ],
+  "boundary": {
+    "included": [
+      "Desktop chat store queue state",
+      "Desktop ChatInput running primary action state",
+      "Desktop queued user message composer rendering",
+      "Composer Guide and Delete action wiring",
+      "Same-area desktop store/component tests"
+    ],
+    "excluded": [
+      "Backend queue architecture changes",
+      "Workflow phase semantics",
+      "Stop/cancel queued-message semantics beyond existing stop behavior",
+      "Live provider release smoke"
+    ]
+  }
+}

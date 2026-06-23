@@ -35,8 +35,8 @@ describe('workflow session mode smoke', () => {
       expect(result.dialogueSessionId).toMatch(/^[0-9a-f-]{36}$/)
       expect(result.workflowSummary).toMatchObject({
         mode: 'workflow',
-        templateId: 'agent-development',
-        templateSource: 'builtin',
+        templateId: 'quality-smoke-workflow',
+        templateSource: 'user',
         status: 'completed',
         activePhaseId: null,
         pendingConfirmation: false,

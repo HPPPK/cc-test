@@ -1,0 +1,82 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/theme/globals.css"
+  ],
+  "scope_paths": [
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/theme/globals.css"
+  ],
+  "behavior_surfaces": [
+    "desktop chat composer Stop action whole-button running visual state"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "Stop behavior remains driven by chatState !== 'idle' and active non-member sessions; change adds only a whole-button visual running animation."
+  ],
+  "verification": [
+    {
+      "command": "cd desktop; bun run test src/components/chat/ChatInput.test.tsx -t \"running\"",
+      "result": "passed: 1 test passed, 26 skipped"
+    },
+    {
+      "command": "cd desktop; bun run test vite-config.test.ts",
+      "result": "passed: 2 tests passed"
+    },
+    {
+      "command": "cd desktop; bun run lint",
+      "result": "passed: tsc --noEmit"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed: desktop lint, full desktop Vitest suite, and production build"
+    },
+    {
+      "command": "natural-light follow-up: cd desktop; bun run test src/components/chat/ChatInput.test.tsx -t \"running\"",
+      "result": "passed: 1 test passed, 26 skipped"
+    },
+    {
+      "command": "natural-light follow-up: cd desktop; bun run test vite-config.test.ts",
+      "result": "passed: 2 tests passed"
+    },
+    {
+      "command": "natural-light follow-up: cd desktop; bun run lint",
+      "result": "passed: tsc --noEmit"
+    },
+    {
+      "command": "natural-light follow-up: bun run check:desktop",
+      "result": "passed: desktop lint, full desktop Vitest suite, and production build"
+    }
+  ],
+  "known_unknowns": [
+    "Raw `bun test` does not run this Vitest suite because `vi.hoisted` is unavailable in Bun's native runner."
+  ],
+  "confidence_notes": [
+    "Live code evidence confirms the action button switches to Stop when chatState is non-idle; the running animation class is applied only on that branch.",
+    "The animation uses fixed-size edge and surface highlight movement rather than scaling or outward shadow expansion.",
+    "The final visual revision uses multiple asynchronous highlight layers with varied durations, offsets, opacity, and non-linear keyframes so the running state feels less mechanically fixed."
+  ],
+  "user_decisions": [
+    "Keep scope to ChatInput and its focused test; do not change lifecycle, APIs, stores, model selector, context usage indicator, or layout dimensions."
+  ],
+  "boundary": {
+    "included": [
+      "ChatInput active Stop button whole-button running animation",
+      "same-area focused component test",
+      "reduced-motion CSS handling"
+    ],
+    "excluded": [
+      "backend APIs",
+      "session lifecycle",
+      "persistence",
+      "stores",
+      "model selector",
+      "context usage indicator",
+      "global theme redesign"
+    ]
+  }
+}

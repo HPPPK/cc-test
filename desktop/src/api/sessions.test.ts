@@ -145,6 +145,16 @@ describe('sessionsApi workflow contract', () => {
     expect(result).toBe(response)
   })
 
+  it('retrieves chat status for source-session workflow start reconciliation', async () => {
+    const response = { state: 'idle' as const }
+    getMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.getChatStatus('source-session-id')
+
+    expect(getMock).toHaveBeenCalledWith('/api/sessions/source-session-id/chat/status')
+    expect(result).toBe(response)
+  })
+
   it('retrieves workflow template detail by source and id', async () => {
     const response = {
       template: {

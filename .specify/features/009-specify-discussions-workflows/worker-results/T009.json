@@ -1,0 +1,68 @@
+{
+  "task_id": "T009",
+  "reported_status": "DONE_WITH_CONCERNS",
+  "status": "red_expected",
+  "changed_files": [
+    "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+    "desktop/src/api/skills.test.ts",
+    "desktop/src/__tests__/skillsSettings.test.tsx",
+    ".specify/features/009-specify-discussions-workflows/worker-results/T009.json"
+  ],
+  "validation_evidence": {
+    "command": "cd desktop; bun run test src/components/workflow/WorkflowComponents.test.tsx src/api/skills.test.ts src/__tests__/skillsSettings.test.tsx",
+    "exit_code": 1,
+    "summary": "3 test files collected and executed: 62 tests total, 59 passed, 3 failed. Failures are expected RED behavior assertions, not syntax/setup/import failures.",
+    "expected_red_failures": [
+      {
+        "file": "desktop/src/api/skills.test.ts",
+        "test": "skillsApi > requests workflow-safe catalog filtering without loading skill contents",
+        "reason": "skillsApi.catalog ignores the workflowOnly option and omits workflowOnly=true from the catalog query."
+      },
+      {
+        "file": "desktop/src/components/workflow/WorkflowComponents.test.tsx",
+        "test": "WorkflowStatusPanel > shows recommended skill status labels provenance and relevant evidence details",
+        "reason": "WorkflowStatusPanel shows recommended skill names and aggregate counts but not visible source/provenance/status labels or used/skipped/unavailable evidence details."
+      },
+      {
+        "file": "desktop/src/__tests__/skillsSettings.test.tsx",
+        "test": "Settings > Skills tab > filters workflow catalog entries by status and provenance without hidden execution affordances",
+        "reason": "Skills settings search does not include catalogStatus/provenance identity and the list does not surface plugin-disabled/reference/content-hash metadata."
+      }
+    ],
+    "non_blocking_warnings": [
+      "Existing WorkflowTemplateEditor tests emit React act warnings unrelated to the T009 RED assertions."
+    ]
+  },
+  "must_preserve_evidence": {
+    "MP-005": "Tests keep recommended skills as references/status metadata and assert no run, execute, install, or enable controls are exposed from recommendation visibility.",
+    "MP-006": "Tests require source/provenance identity for same-name/catalog entries, including pluginName, referenceId, contentHash, and visible source labels.",
+    "MP-010": "Status panel tests preserve authority separation by checking recommended-skill visibility does not add execution controls and by leaving pending confirmation priority coverage intact.",
+    "CA-008": "Desktop UI tests require explicit visible status/provenance/evidence states instead of misleading aggregate-only UI."
+  },
+  "ca_evidence": {
+    "CA-006": {
+      "coverage_added": [
+        "used evidence with rationale, toolUseId, and artifactRef",
+        "relevant-skipped evidence with rationale",
+        "relevant-unavailable evidence with plugin-disabled status",
+        "unavailable/degraded status labels for missing, plugin-disabled, and unsupported-source"
+      ],
+      "red_result": "The current status panel omits these details, proving skills can still be run/skipped/unavailable invisibly beyond aggregate counts."
+    },
+    "CA-008": {
+      "coverage_added": [
+        "visible provenance/status labels in WorkflowStatusPanel",
+        "workflow catalog query flag in skillsApi",
+        "settings catalog filtering by status/provenance metadata without hidden auto-run affordances"
+      ],
+      "red_result": "The current UI/API shape is underspecified for workflow-safe catalog filtering and explicit recommended-skill status visibility."
+    }
+  },
+  "blockers": [],
+  "failed_assumptions": [],
+  "recovery_guidance": [
+    "T010 should add a workflowOnly catalog option to desktop/src/api/skills.ts and preserve catalogStatus/provenance fields without requesting skill detail bodies.",
+    "T010 should render recommended skill source, status, plugin/provenance, and relevant evidence details in WorkflowStatusPanel while continuing to filter irrelevant unused recommendations.",
+    "T010 should make Skills settings search/display include workflow catalog status and provenance metadata without adding run/install/enable controls."
+  ]
+}

@@ -4,10 +4,7 @@ import type {
 } from './session'
 
 export type SkillSource = Extract<WorkflowPhaseSkillSource, 'user' | 'project' | 'plugin' | 'mcp' | 'bundled'>
-export type SkillCatalogStatus = Extract<
-  WorkflowPhaseSkillResolutionStatus,
-  'available' | 'missing' | 'plugin-disabled' | 'unsupported-source'
->
+export type SkillCatalogStatus = WorkflowPhaseSkillResolutionStatus
 
 export type SkillCatalogProvenance = {
   sourcePath?: string

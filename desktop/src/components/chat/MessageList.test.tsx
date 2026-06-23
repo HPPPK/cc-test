@@ -571,6 +571,32 @@ describe('MessageList nested tool calls', () => {
     expect(container.querySelectorAll('[data-message-shell="assistant"]')).toHaveLength(0)
   })
 
+  it('keeps queued user messages out of the transcript while streaming continues', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'streaming',
+          streamingText: 'current response is still streaming',
+          messages: [{
+            id: 'queued-user',
+            type: 'user_text',
+            content: 'follow up after current turn',
+            timestamp: 2,
+            pending: true,
+            queued: true,
+          }],
+        }),
+      },
+    })
+
+    const { container } = render(<MessageList />)
+    const renderedText = container.textContent ?? ''
+
+    expect(renderedText).toContain('current response is still streaming')
+    expect(renderedText).not.toContain('follow up after current turn')
+    expect(screen.queryByText('Queued')).toBeNull()
+  })
+
   it('renders saved memory events with an entrypoint to memory settings', () => {
     useChatStore.setState({
       sessions: {

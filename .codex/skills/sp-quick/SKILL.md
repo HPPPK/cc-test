@@ -16,7 +16,7 @@ metadata:
 
 ## Workflow Contract Summary
 
-- **When to use**: The task is too large or risky for `sp-fast` but does not justify the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify -> plan -> tasks -> implement` flow.
+- **When to use**: The task is too large or risky for `sp-fast` but does not justify the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify -> plan -> tasks -> implement` flow.
 - **Primary objective**: Keep the task resumable and tracked while applying only the minimum planning, research, and validation depth it needs.
 - **Primary outputs**: `.planning/quick/<id>-<slug>/STATUS.md`, quick-task summary artifacts, and the scoped implementation changes for the task.
 - **Default handoff**: Resume the quick task until resolved, or escalate to /sp.specify if the scope grows into multi-capability or acceptance-criteria-heavy work.
@@ -54,7 +54,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance.
+Project cognition readiness provides routing advice. If readiness is `query_ready`, read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing and treat `coverage_diagnostics` as confidence and closeout signals. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If readiness is `unsupported_runtime`, continue with live evidence and record that compass intake was unavailable. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance and ordinary existing-baseline gaps.
 
 Required output when the gate triggers:
 
@@ -119,39 +119,41 @@ risks, verification routes, and minimal live reads. Do not treat map output as
 evidence by itself. Technical claims must be backed by live code, tests,
 scripts, configuration, or authoritative docs.
 
-### Required Project Cognition Query
+### Required Project Cognition Compass
 
-Use the launcher-backed project cognition query planning flow required by this
-command's workflow contract to retrieve the task-local project cognition bundle:
-When project cognition is available, run `project-cognition lexicon --mode catalog`
-to retrieve the alias catalog before relying on a narrowed candidate window.
-Use the project alias catalog plus the raw user prompt to write an explicit
-`semantic_intake` object with `workflow_intent`, `normalized_query`,
-`intent_facets`, `negative_constraints`, `alias_interpretations`, and
-`open_semantic_questions`. The runtime can still use raw query terms, but the
-agent must search from normalized project language and stated intent facets.
+Default project cognition intake is `project-cognition compass --intent <intent> --query="$ARGUMENTS" --format json`.
 
-Use the alias-first project cognition flow. Run `project-cognition lexicon
---mode catalog` first, read the schema v2 `alias_index`-backed alias catalog,
-normalize user input into project vocabulary, record `alias_interpretations`,
-and only then call `project-cognition query --query-plan`. If the runtime
-reports schema v1 or rebuild-required readiness, do not query through the old
-DB; continue with live repository evidence and recommend `sp-map-scan ->
-sp-map-build` when a usable brownfield baseline is needed.
-When writing the recommendation in plain text, use: run sp-map-scan -> sp-map-build.
+Consume the packet in this order:
 
-Inspect `concept_candidates`, select task-relevant existing project concepts in
-`selected_concepts`, record non-selected or unsafe candidates in
-`rejected_concepts`, and write per-concept rationale in `concept_decisions`.
+1. Read top-level `minimal_live_reads` first and use those files as the bounded first live evidence route.
+2. Then use lane-level `first_pass_paths` for reasons, evidence hints, verification hints, follow-up surfaces, and `before_fix_claim` checks.
+3. Treat `coverage_diagnostics` as confidence and closeout signals, never as route candidates.
+4. Treat `expansion_ref` as a normal continuation path. Run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail.
+5. Do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`.
 
-Carry `lexicon_generation_id` into the `query_plan` so `project-cognition query`
-can detect generation drift. The `query_plan` should include
-`semantic_intake`, `selected_concepts`, `rejected_concepts`,
-`concept_decisions`, `expanded_queries`, and justified `paths`, then be sent to
-`project-cognition query --query-plan`. Treat raw graph JSON artifacts as obsolete runtime surfaces.
+Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`. Compass-specific advice is in `compass_state` and `recommended_next_action`.
 
-Use this canonical query-plan skeleton when shaping `<query_plan_json>`. Keep
-`alias_interpretations` as an array of objects, not strings:
+- `query_ready`: read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons before expanding.
+- `review`: inspect the returned `minimal_live_reads` before expanding and carry review notes from `coverage_diagnostics`.
+- `needs_rebuild`: reserve `$sp-map-scan -> $sp-map-build` for documented brownfield rebuild triggers.
+- `blocked`: report the runtime state clearly; continue with live evidence only when this workflow allows degraded advisory navigation.
+- `unsupported_runtime`: continue with live evidence and record that compass intake was unavailable.
+
+When `compass_state=needs_semantic_intake`, the agent writes `semantic_intake` from project vocabulary and reruns compass with `--semantic-intake-file`, or uses the advanced `lexicon -> semantic_intake -> query` path when explicit concept decisions are needed.
+
+### Advanced Routing
+
+Advanced routing remains available as `project-cognition lexicon --mode catalog`, agent-authored `semantic_intake` and `concept_decisions`, then `project-cognition query --query-plan`. Use it when the first compass packet is too draft-like, a workflow needs explicit concept decisions, or coverage cannot be resolved from the default packet.
+
+The advanced `lexicon -> semantic_intake -> query` path retrieves the schema v2 `alias_index`-backed alias catalog, helps agents normalize user input into project vocabulary, records `alias_interpretations`, selects task-relevant `selected_concepts`, records unsafe or irrelevant `rejected_concepts`, writes per-concept `concept_decisions`, carries `lexicon_generation_id`, and then runs `project-cognition query --query-plan`. If the runtime reports schema v1 or rebuild-required readiness, do not query through the old DB; continue with live repository evidence and recommend `sp-map-scan -> sp-map-build` when a usable brownfield baseline is needed. When writing the recommendation in plain text, use: run sp-map-scan -> sp-map-build.
+
+If `project-cognition query` reports query-plan diagnostics, carry forward its `warnings`, `repair_hints`, normalized `query_plan`, structured `errors`, and `expected_shape` instead of reducing them to a raw parser exception.
+
+### Agent-Owned Semantic Normalization
+
+Agent-owned semantic normalization is mandatory for the advanced path. The raw lexicon ranking and `agent_normalization` are only bootstrap signals for retrieving the alias catalog and candidate universe; they are not route decisions. Raw lexicon ranking is only a bootstrap. Treat `agent_normalization.required=true` as a non-intelligent CLI reminder to write `semantic_intake` from the alias catalog (action: write_semantic_intake_from_alias_catalog). If `agent_normalization` is omitted, `omitted => required=false`: treat it as `required=false`; omission does not make raw lexical ranking authoritative. If raw `concept_candidates` are all `score=0`, or the prompt is localized, mixed-language, CJK, colloquial, symptom-first, or mixed-language or CJK text, do not stop at the raw score. CJK or mixed CJK/ASCII input still requires agent normalization even when positive raw lexical matches exist because embedded project tokens do not translate the surrounding user language. Extract embedded project terms such as command names, UI labels, file stems, state names, adapter names, and skill or package identifiers from the user's wording and the alias catalog. The agent still owns translation; `agent_normalization` is advisory guidance, not a route decision. Put those translated terms into `normalized_query`, `alias_interpretations`, `intent_facets`, `expanded_queries`, and `repository_search_terms`, then select or reject concepts by facet coverage.
+
+Use this canonical query-plan skeleton when shaping `<query_plan_json>`. Keep `alias_interpretations` as an array of objects, not strings:
 
 ```json
 {
@@ -187,78 +189,27 @@ Use this canonical query-plan skeleton when shaping `<query_plan_json>`. Keep
 }
 ```
 
-If `project-cognition query` reports query-plan diagnostics, carry forward its
-`warnings`, `repair_hints`, normalized `query_plan`, structured `errors`, and
-`expected_shape` instead of reducing them to a raw parser exception.
-
 ### Project-Language Search Terms
 
-Before any source search, turn the user's wording into project-language search
-terms derived from the alias catalog, `semantic_intake`, selected candidates,
-and returned route metadata. Write these as `repository_search_terms` in the
-query plan or workflow notes. Include component names, state names, file names,
-command names, UI labels, and route names when the lexicon or candidate payload
-exposes them.
+Before any source search, turn the user's wording into project-language search terms derived from the alias catalog, `semantic_intake`, selected candidates, and returned route metadata. Write these as `repository_search_terms` in the query plan or workflow notes. Include component names, state names, file names, command names, UI labels, and route names when the lexicon or candidate payload exposes them.
 
-Do not search only the raw user words. If the user's phrase has no direct code
-match, use `normalized_query`, `alias_interpretations`, candidate titles,
-candidate aliases, `matched_terms`, `colloquial_matches`, returned paths, and
-`expanded_queries` to form the first search set. Use these project-language
-search terms before broad repository search; only widen after the translated
-terms and returned `minimal_live_reads` fail to identify the owner.
-
-### Readiness Routing
-
-- `ready`: continue with the returned task-local bundle.
-- `review`: inspect the returned `minimal_live_reads` before expanding.
-- `ambiguous`: ask a bounded clarification question.
-- `needs_update`: use `$sp-map-update` only when updated runtime
-  coverage is needed; otherwise carry the stale or weak coverage gap and prove
-  claims from live evidence.
-- `needs_rebuild`: reserve `$sp-map-scan -> $sp-map-build` for
-  documented brownfield rebuild triggers.
-- `blocked`: report the runtime state clearly; continue with live evidence only
-  when this workflow allows degraded advisory navigation.
+Do not search only the raw user words. If the user's phrase has no direct code match, use `normalized_query`, `alias_interpretations`, candidate titles, candidate aliases, `matched_terms`, `colloquial_matches`, returned paths, and `expanded_queries` to form the first search set. Use these project-language search terms before broad repository search; only widen after the translated terms and returned `minimal_live_reads` fail to identify the owner.
 
 ### Concept Selection
 
-`concept_candidates` are not a flat keyword list. Treat them as structured
-project concept candidates with ownership, route, alias, `matched_terms`,
-`colloquial_matches`, domain, disambiguation, and confidence signals.
-Select concepts that match the user's intent and the workflow objective, reject
-concepts that are unrelated or unsafe to assume, and preserve the
-`selection_reason` and `concept_decisions` so downstream artifacts can
-understand why the query was bounded that way.
-Each `concept_decisions` entry should record `covered_facets`,
-`missing_facets`, `match_sources`, confidence, and risk. Candidate selection
-must satisfy facet coverage for the active workflow; do not trust top similarity alone,
-whether the match came from lexical overlap, vector similarity, aliases, paths,
-or graph-neighbor expansion.
+`concept_candidates` are not a flat keyword list. Treat them as structured project concept candidates with ownership, route, alias, `matched_terms`, `colloquial_matches`, domain, disambiguation, and confidence signals. Select concepts that match the user's intent and the workflow objective, reject concepts that are unrelated or unsafe to assume, and preserve the `selection_reason` and `concept_decisions` so downstream artifacts can understand why the query was bounded that way. Each `concept_decisions` entry should record `covered_facets`, `missing_facets`, `match_sources`, confidence, and risk. Candidate selection must satisfy facet coverage for the active workflow; do not trust top similarity alone, whether the match came from lexical overlap, vector similarity, aliases, paths, or graph-neighbor expansion.
 
-When candidate concepts conflict, are too broad, or remain unknown, follow the
-returned readiness state instead of guessing. Do not bypass `route_pack` or
-`minimal_live_reads` by expanding into broad repository reads merely because a
-candidate concept looks interesting.
+When candidate concepts conflict, are too broad, or remain unknown, follow the returned compass state instead of guessing. Do not bypass `route_pack`, `minimal_live_reads`, or `first_pass_paths` by expanding into broad repository reads merely because a candidate concept looks interesting.
 
 ### Fixed Bundle Consumption
 
-Every workflow must consume the readiness and task-local bundle returned by the
-project cognition query explicitly required by its command contract.
-Do not replace bundle consumption with broad freeform repository rereads when the runtime already covers the touched area.
+Every workflow must consume the readiness and task-local bundle returned by the project cognition compass packet explicitly required by its command contract. Treat the compass packet as the task-local project navigation bundle. Treat raw graph JSON artifacts as obsolete runtime surfaces. Do not replace bundle consumption with broad freeform repository rereads when the runtime already covers the touched area.
 
 ### Query Completion
 
-A project-cognition query is not complete when it returns JSON. It is complete
-only when readiness drives routing, minimal_live_reads constrains inspection,
-and relevant facts are carried into the next workflow artifact or execution state.
+A project-cognition compass intake is not complete when it returns JSON. It is complete only when readiness drives routing, minimal_live_reads constrains inspection, lane-level `first_pass_paths` reasons are considered, and relevant facts are carried into the next workflow artifact or execution state.
 
-Extract and carry forward the selected concepts, rejected concepts,
-`selection_reason`, `semantic_intake`, `normalized_query`, `intent_facets`,
-`negative_constraints`, `concept_decisions`, `covered_facets`,
-`missing_facets`, `match_sources`, `lexicon_generation_id`, matched
-capability or symptom, affected nodes and subgraph, `route_pack`,
-`minimal_live_reads`, missing coverage, evidence traces, verification routes,
-ambiguity, conflicts, and weak coverage.
+Extract and carry forward the selected concepts, rejected concepts, `selection_reason`, `semantic_intake`, `normalized_query`, `intent_facets`, `negative_constraints`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, matched capability or symptom, affected nodes and subgraph, `route_pack`, `minimal_live_reads`, `first_pass_paths`, `coverage_diagnostics`, missing coverage, evidence traces, verification routes, ambiguity, conflicts, and weak coverage.
 
 ### Command Tier Depth
 
@@ -348,20 +299,18 @@ repository reads.
 Run or emulate:
 
 ```text
-C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --mode catalog --format json
-# Agent: retrieve the alias catalog, write semantic_intake with normalized_query, intent_facets, negative_constraints, and alias_interpretations; include selected_concepts, rejected_concepts, concept_decisions with covered_facets, missing_facets, match_sources, lexicon_generation_id, expanded_queries, repository_search_terms, and justified paths in <query_plan_json>. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Derive project-language search terms from the alias catalog before reading source. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, normalized_query, and expanded_queries. Use these project-language search terms before broad repository search.
-C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json
+C:\Users\11034\.specify\bin\project-cognition.exe compass --intent implement --query=\"$ARGUMENTS\" --format json
 ```
+
+After the default compass packet, run the advanced `lexicon -> semantic_intake -> query` path only when `compass_state`, coverage diagnostics, localization, or live evidence requires explicit concept decisions. In that escalation, use `project-cognition lexicon --mode catalog` as the alias catalog, write agent-authored `semantic_intake` and `concept_decisions`, then run `project-cognition query --query-plan "<query_plan_json>"`; include `query_plan`, `semantic_intake`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `repository_search_terms`, project-language search terms, and facet coverage; do not search only the raw user words before source search. Agent-owned semantic normalization remains mandatory: `agent_normalization` and raw lexicon ranking are bootstrap signals only; if `agent_normalization` is omitted, treat it as `required=false`; use `write_semantic_intake_from_alias_catalog` when needed. Raw lexicon ranking is only a bootstrap; CJK or mixed CJK/ASCII input still requires agent-owned normalization even when positive raw lexical matches exist. The agent still owns translation. Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`.
 
 Use the returned readiness only to prepare the Understanding Checkpoint and
 write early quick-task state:
 
-- `ready`: continue with the returned task-local bundle.
-- `review`: perform only the returned `minimal_live_reads` before continuing.
-- `ambiguous`: ask the user to select the intended candidate.
-- `needs_update`: record that `$sp-map-update` is required after the Understanding Checkpoint is confirmed; this includes adoptable missing path-index coverage.
-- `needs_rebuild`: record that `$sp-map-scan`, then `$sp-map-build`, is required after the Understanding Checkpoint is confirmed; this is reserved for first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation path_index rows, missing or invalid alias_index, explicit_rebuild_requested, or baseline_identity_invalid.
-- `blocked`: stop and report the blocking runtime issue.
+- `query_ready`: read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons.
+- `review`: perform only the returned `minimal_live_reads` before continuing and inspect `coverage_diagnostics`.
+- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build` only for documented brownfield rebuild triggers: first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation path_index rows, missing or invalid alias_index, explicit_rebuild_requested, or baseline_identity_invalid.
+- `blocked`: report the blocking runtime issue and continue with live evidence only where this workflow allows degraded navigation.
 - **CARRY FORWARD**: Write the selected capability, minimal reads, validation route,
   and known risk into quick-task `STATUS.md` before implementation
   proceeds.
@@ -374,13 +323,23 @@ choosing the quick-task lane shape.
 
 `sp-quick` has one default understanding checkpoint before substantive execution. This is not a full spec, not a `sp-plan` substitute, and not a detailed task-plan approval. It exists so the user can confirm that the quick-task direction is correct before the workflow runs to completion.
 
-After the constitution gate, quick workspace initialization, project cognition query, and any bounded `minimal_live_reads`, present one concise checkpoint:
+After the constitution gate, quick workspace initialization, project cognition query, and any bounded `minimal_live_reads`, present one concise user-facing checkpoint card. Use the user's language for the card content and confirmation prompt when practical. Keep it compact, but do not omit important specifics: include concrete files, commands, workflows, constraints, validation evidence, and known uncertainty when they are already known. If a row is genuinely unknown, write `Unknown: [why it matters]` instead of leaving it vague.
 
-- `Problem understood`: what you believe the user wants solved.
-- `Planned outcome`: what result you intend to deliver.
-- `Scope boundary`: what you will not do in this quick task.
-- `Execution approach`: how you expect to proceed.
-- `Validation`: what evidence will prove the quick task is complete.
+Use this shape:
+
+```markdown
+## Quick Checkpoint
+
+| Item | Current understanding |
+| --- | --- |
+| Issue | [the specific problem or request in the user's terms] |
+| Target outcome | [the concrete result this quick task should deliver] |
+| Scope | Include: [specific areas]. Exclude: [specific non-goals]. Escalate if: [condition that no longer fits quick]. |
+| Next action | [the first implementation, delegation, or preparation action after confirmation] |
+| Completion evidence | [tests, commands, manual checks, or other evidence required before closeout] |
+
+Reply with `confirm`/`确认` to continue, or `revise: ...`/`修改：...` with corrections.
+```
 
 Wait for user confirmation before code edits, broad repository analysis, delegation, implementation commands, or validation commands. If the user corrects the understanding, revise the checkpoint once with the corrected direction and ask for confirmation again.
 
@@ -402,7 +361,7 @@ Use `sp-quick` when all of these are true:
 - The task is bounded and clearly described.
 - The work is small but non-trivial.
 - A lightweight plan is useful, but a full spec package would be overhead.
-- Use this path when you want to skip the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify -> plan -> tasks -> implement` workflow for a bounded task.
+- Use this path when you want to skip the full `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify -> plan -> tasks -> implement` workflow for a bounded task.
 - The task does not require a new long-lived feature spec under `.specify/features/<feature>/`.
 
 If the task is trivial and local:
@@ -465,7 +424,7 @@ The following flags are available and composable:
 - Use `.specify/templates/worker-prompts/quick-worker.md` as the default contract for quick-task subagents so the subagent returns enough state for the leader to keep `STATUS.md` accurate.
 - Prefer structured subagent results compatible with the shared `WorkerTaskResult` contract when the current runtime supports them.
 - If the current integration exposes a runtime-managed result channel, use that channel. Otherwise write the normalized subagent result envelope to `.planning/quick/<id>-<slug>/worker-results/<lane-id>.json`
-- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify result submit` to normalize and write the subagent result envelope.
+- When the local CLI is available and no runtime-managed result channel exists, prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify result path` to compute the canonical handoff target and `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify result submit` to normalize and write the subagent result envelope.
 - Preserve `reported_status` when normalizing subagent language such as `DONE_WITH_CONCERNS` or `NEEDS_CONTEXT` into canonical orchestration state.
 - Idle subagent is not an accepted result.
 - The leader must wait for and consume the structured handoff before closing the join point, declaring completion, requesting shutdown, or interrupting subagent execution.
@@ -540,14 +499,18 @@ cognition_facts:
 ## Understanding Checkpoint
 <!-- OVERWRITE/REFINE before substantive execution starts -->
 
-confirmed_problem: [what the user confirmed the quick task should solve]
-confirmed_outcome: [the result the user confirmed]
-confirmed_scope_boundary:
-  - [explicit non-goals, excluded files, excluded workflows, or escalation boundaries]
-confirmed_execution_approach:
-  - [the confirmed execution path]
-confirmed_validation:
-  - [the confirmed evidence required before closeout]
+checkpoint:
+  issue: [the specific problem or request the user confirmed]
+  expected_or_target: [the concrete result the user confirmed]
+  in_scope:
+    - [specific area, workflow, file family, behavior, or command included in this quick task]
+  out_of_scope:
+    - [explicit non-goal, excluded file family, excluded workflow, or escalation boundary]
+  next_action: [the confirmed implementation, delegation, or preparation action after confirmation]
+  done_or_progress_signal:
+    - [test, command, manual check, or evidence required before closeout]
+  user_corrections:
+    - [user correction, ambiguity, or confirmation timestamp]
 
 ## Execution
 <!-- OVERWRITE/REFINE as the lane or batch changes -->
@@ -744,11 +707,11 @@ sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-
 
 ## Passive Project Learning Layer
 
-- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning start --command quick --format json` when available so passive learning files exist and the current quick task sees relevant shared project memory.
+- Run `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning start --command quick --format json` when available so passive learning files exist and the current quick task sees relevant shared project memory.
 - Read `.specify/memory/constitution.md`, `.specify/memory/project-rules.md`, and `.specify/memory/learnings/INDEX.md` in that order before broader quick-task context.
 - Open only learning detail docs linked from quick-task-relevant index entries.
 - Learning Reflex: before final closeout, ask whether a future senior engineer would benefit from seeing this lesson before related work. If yes, update `.specify/memory/learnings/INDEX.md` and the linked detail document without asking for routine permission.
-- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@c3838f49a4564cf80ba96a8b04dab8ee9acdf5cf specify learning capture-auto --command quick --format json` when `STATUS.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
+- Prefer `uvx --from git+https://github.com/chenziyang110/spec-kit-plus.git@684d82cdec709d03bf5dfc07c9da71ea7cec93f8 specify learning capture-auto --command quick --format json` when `STATUS.md` already preserves route reasons, false starts, hidden dependencies, validation gaps, or reusable constraints.
 - When durable state does not capture the reusable lesson cleanly, update `.specify/memory/learnings/INDEX.md` and a linked detail document with the command, type, summary, and evidence.
 - Treat this as passive shared memory, not as a separate user-visible quick-task command.
 
@@ -757,10 +720,10 @@ sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-
 
 ## Codex Project Cognition Advisory Gate
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the schema v2 `alias_index`-backed alias catalog and map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --mode catalog --format json`, normalize user input and write `semantic_intake` with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`, select relevant existing concepts, record rejected concepts, write `concept_decisions` with `covered_facets`, `missing_facets`, and `match_sources`, carry `lexicon_generation_id`, add `repository_search_terms`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Do not search only the raw user words; use project-language search terms before broad repository search. Use the returned readiness, task-local bundle, and `minimal_live_reads`. If readiness reports schema v1 or rebuild required, run sp-map-scan -> sp-map-build for a usable brownfield schema v2 alias catalog; map points, code proves.
-- Interpret returned readiness: `ready` continues with the task-local bundle; `review` permits only returned `minimal_live_reads`; `ambiguous` asks the user to choose; `needs_update` uses `{{invoke:map-update}}` when updated runtime coverage is required for the touched area, otherwise continues with live repository evidence and carries the stale coverage gap forward; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside a `greenfield_empty` baseline, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements instead of treating absent graph paths as `needs_rebuild`. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
+**Crucial First Step**: You MUST use project cognition compass first: run `C:\Users\11034\.specify\bin\project-cognition.exe compass --intent implement --query=\"$ARGUMENTS\" --format json` before repository analysis or implementation. Read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons, `verification_hints`, `followup_surfaces`, and `before_fix_claim`; treat `coverage_diagnostics` as confidence and closeout signals, never as route candidates. Treat `expansion_ref` as a normal continuation path and run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail. Do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`. Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`. When `compass_state=needs_semantic_intake`, write `semantic_intake` from project vocabulary and rerun compass with `--semantic-intake-file`, or use the advanced `lexicon -> semantic_intake -> query` path when explicit concept decisions are needed. Preserve advanced routing through `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` for precision cases.
+- Interpret returned readiness: `query_ready` reads top-level `minimal_live_reads` first and then lane-level `first_pass_paths`; `review` permits only returned `minimal_live_reads` plus `coverage_diagnostics`; `needs_rebuild` treats map output as advisory, continues with live repository evidence, and recommends `{{invoke:map-scan}}`, then `{{invoke:map-build}}` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside a `greenfield_empty` baseline, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`; `blocked` reports the runtime issue as advisory map state and continues with live repository evidence; `unsupported_runtime` continues with live evidence and records that compass intake was unavailable. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements instead of treating absent graph paths as `needs_rebuild`. If the user's actual request is to fix cognition runtime state, report the blocked state and follow the same map-update-first routing policy.
 - Use `map-update` for ordinary existing-baseline gaps. If `baseline_kind=greenfield_empty`, do not recommend map-scan -> map-build solely because the graph has no paths; continue with workflow artifacts and live requirements. Use `map-scan -> map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`.
-- Treat the project cognition query bundle as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when query-backed runtime coverage should guide the route.
+- Treat the project cognition compass packet as advisory navigation for brownfield context; do not fall back to chat memory or ad hoc repository instincts when compass-backed runtime coverage should guide the route.
 - Treat this as advisory navigation, not a hard gate; continue with live repository evidence when the bundle is weak, stale, or missing, and use map maintenance only when it is actually useful.
 - Mutation closeout is separate from entry routing: entry stale may continue, but workflow-owned mutation closeout is not an external map-maintenance handoff. If the workflow changes source/runtime truth-owning surfaces, shared surfaces, command/route/contract boundaries, verification entry points, runtime assumptions, or other project-related behavior surfaces, final state must run inline project cognition update from changed paths, affected surfaces, and verification evidence.
 - Inline project cognition update uses `project-cognition delta append` followed by `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists, or `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json` when no delta session exists.
@@ -768,7 +731,7 @@ sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-
 - clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone. Treat `ready` and `no_op` as clean, `partial_refresh` as recorded but not fully clean, `needs_rebuild` as a map-scan/map-build route, `blocked` as blocked, and `recorded` as legacy recorded-only output that is never clean completion.
 - Use `project-cognition mark-dirty --reason "<reason>" --format json` only when inline update cannot complete. Dirty only when inline update cannot complete.
 - `sp-map-update` is for manual/external maintenance and follow-up repair after user edits, interrupted workflows, or explicit operator map-maintenance requests. It is not routine cleanup for changes this workflow just made.
-- A project-cognition query is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, and relevant facts are carried into the next workflow artifact or execution state.
+- A project-cognition compass intake is not complete when it returns JSON. It is complete only when readiness drives routing, `minimal_live_reads` constrains inspection, lane-level `first_pass_paths` reasons are considered, and relevant facts are carried into the next workflow artifact or execution state.
 - Carry forward the selected capability, minimal reads, validation route, and known risk into quick-task `STATUS.md` before implementation proceeds.
 
 
@@ -776,13 +739,13 @@ sp-map-update is for manual/external maintenance and follow-up repair. `$sp-map-
 
 When running `sp-quick` in Codex, you are the **leader**, not the concrete implementer.
 
-**Crucial First Step**: You MUST use agent-assisted project cognition query planning first: retrieve the schema v2 `alias_index`-backed alias catalog and map lexicon with `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent implement --query=\"$ARGUMENTS\" --mode catalog --format json`, normalize user input and write `semantic_intake` with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`, select relevant existing concepts, record rejected concepts, write `concept_decisions` with `covered_facets`, `missing_facets`, and `match_sources`, carry `lexicon_generation_id`, add `repository_search_terms`, then run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` before repository analysis or implementation. Candidate selection must satisfy facet coverage; do not trust top similarity alone. Do not search only the raw user words; use project-language search terms before broad repository search. Use the returned readiness, task-local bundle, and `minimal_live_reads`. If readiness reports schema v1 or rebuild required, run sp-map-scan -> sp-map-build for a usable brownfield schema v2 alias catalog; map points, code proves.
+**Crucial First Step**: You MUST use project cognition compass first: run `C:\Users\11034\.specify\bin\project-cognition.exe compass --intent implement --query=\"$ARGUMENTS\" --format json` before repository analysis or implementation. Read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons, `verification_hints`, `followup_surfaces`, and `before_fix_claim`; treat `coverage_diagnostics` as confidence and closeout signals, never as route candidates. Treat `expansion_ref` as a normal continuation path and run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail. Do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`. Readiness values are `query_ready`, `review`, `needs_rebuild`, `blocked`, and `unsupported_runtime`. When `compass_state=needs_semantic_intake`, write `semantic_intake` from project vocabulary and rerun compass with `--semantic-intake-file`, or use the advanced `lexicon -> semantic_intake -> query` path when explicit concept decisions are needed. Preserve advanced routing through `C:\Users\11034\.specify\bin\project-cognition.exe query --intent implement --query-plan \"<query_plan_json>\" --format json` for precision cases.
 
 Before code edits, test edits, or implementation commands:
 - Read `.specify/memory/constitution.md` first if it exists.
 - Read `STATUS.md` for the active quick-task workspace, or create it if this quick task is new.
 - If `understanding_confirmed` is not `true`, present the Understanding Checkpoint and wait for user confirmation before implementation work.
-- The checkpoint must cover `Problem understood`, `Planned outcome`, `Scope boundary`, `Execution approach`, and `Validation`.
+- The user-facing checkpoint must use the Quick Checkpoint card and cover `Issue`, `Target outcome`, `Scope`, `Next action`, and `Completion evidence` with concrete details.
 - Do not proceed to code edits, broad repository analysis, delegation, or validation commands until `understanding_confirmed: true` is recorded in `STATUS.md`.
 - Before choosing the next lane, read `STATUS.md` and any quick-task summary artifacts so resume truth comes from durable state instead of chat narration.
 - After understanding is confirmed, define the smallest safe delegated lane or ready batch, and choose the dispatch shape for that batch.
@@ -915,7 +878,10 @@ When running `sp-quick` in Codex, do not start execution routing until `STATUS.m
 
 ## Codex Structured Question Preference
 
-- If the runtime's native structured question tool is available for the current turn, you must use it.
+- If this command was routed by `sp-auto` with `auto_default_recommendation: true`, evaluate the automatic recommended/default continuation gate before any question path.
+- When that gate has one safe recommended/default answer, you must auto-resolve the question or confirmation, record the accepted recommendation in the workflow state or summary, continue the workflow, and do not invoke the native structured question tool only to ask for that approval.
+- If the automatic gate is not safe, write the blocker and self-unblock recommendation before using the normal question path.
+- If the runtime's native structured question tool is available for the current turn and the `sp-auto` automatic gate did not resolve the question, you must use it.
 - Do not render the textual fallback block when the native tool is available.
 - Do not self-authorize textual fallback because the question seems simple, short, or easy to phrase manually.
 - Treat the template's textual question format as fallback-only guidance; use it to shape the question content, but do not render the textual block unless the native tool is unavailable in the current runtime or the tool call fails.

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   listWorkflowTemplates: vi.fn(),
   getMessages: vi.fn(),
+  getChatStatus: vi.fn(),
   getGitInfo: vi.fn(),
   getSlashCommands: vi.fn(),
   getRepositoryContext: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../../api/sessions', () => ({
     list: mocks.list,
     listWorkflowTemplates: mocks.listWorkflowTemplates,
     getMessages: mocks.getMessages,
+    getChatStatus: mocks.getChatStatus,
     getGitInfo: mocks.getGitInfo,
     getSlashCommands: mocks.getSlashCommands,
     getRepositoryContext: mocks.getRepositoryContext,
@@ -253,6 +255,7 @@ describe('ChatInput file mentions', () => {
       invalidTemplates: [],
     })
     mocks.getMessages.mockResolvedValue({ messages: [] })
+    mocks.getChatStatus.mockResolvedValue({ state: 'idle' })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
   })
 
@@ -430,6 +433,38 @@ describe('ChatInput file mentions', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('textbox')).toHaveValue('keep this prompt while I inspect another tab')
+    })
+  })
+
+  it('resizes the composer immediately when a large text block is pasted', async () => {
+    render(<ChatInput compact />)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    Object.defineProperty(input, 'scrollHeight', {
+      configurable: true,
+      get: () => 40 + Math.max(1, input.value.split('\n').length) * 24,
+    })
+
+    fireEvent.change(input, {
+      target: { value: 'before after', selectionStart: 7, selectionEnd: 7 },
+    })
+    input.setSelectionRange(7, 7)
+
+    const pastedText = Array.from({ length: 12 }, (_, index) => `pasted line ${index + 1}`).join('\n')
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: (type: string) => type === 'text/plain' ? pastedText : '',
+        items: [],
+      },
+    })
+
+    const expectedValue = `before ${pastedText}after`
+    await waitFor(() => {
+      expect(input.value).toBe(expectedValue)
+      expect(input.style.height).toBe('200px')
+      expect(input.style.overflowY).toBe('auto')
+      expect(input).toHaveClass('mb-14')
+      expect(input).not.toHaveClass('pb-14')
     })
   })
 
@@ -817,6 +852,60 @@ describe('ChatInput file mentions', () => {
     })
   })
 
+  it('reconciles stale active state before starting a workflow from a completed source session', async () => {
+    useSessionStore.setState({
+      sessions: [{
+        ...useSessionStore.getState().sessions[0]!,
+        workflow: {
+          ...LINKED_WORKFLOW_SUMMARY,
+          status: 'completed' as const,
+          activePhaseId: 'verification',
+          activePhaseIndex: 4,
+        },
+      }],
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'thinking',
+          activeToolUseId: 'stale-tool-use',
+          activeToolName: 'Bash',
+          statusVerb: 'Thinking',
+        },
+      },
+    })
+    mocks.getChatStatus.mockResolvedValueOnce({ state: 'idle' })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    const workflowsButton = screen.getByRole('button', { name: /Workflows/ })
+    expect(workflowsButton).not.toBeDisabled()
+    fireEvent.click(workflowsButton)
+
+    await waitFor(() => {
+      expect(mocks.getChatStatus).toHaveBeenCalledWith(sessionId)
+    })
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start clean/ }))
+
+    await waitFor(() => {
+      expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
+        contextStrategy: 'clear',
+      }))
+    })
+    expect(useChatStore.getState().sessions[sessionId]).toMatchObject({
+      chatState: 'idle',
+      activeToolUseId: null,
+      activeToolName: null,
+    })
+  })
+
   it.each([
     ['clear' as const, /Start clean/, undefined],
     ['inherit' as const, /Inherit visible context/, undefined],
@@ -923,6 +1012,134 @@ describe('ChatInput file mentions', () => {
     })
     expect(useChatStore.getState().sessions[sessionId]?.chatState).toBe('idle')
     expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, { type: 'stop_generation' })
+  })
+
+  it('shows Run instead of Stop while running when the composer has content', async () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'streaming',
+          streamingText: 'current answer is still streaming',
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: 'queue this after the active turn', selectionStart: 32 },
+    })
+
+    const runButton = screen.getByRole('button', { name: 'Run' })
+    expect(runButton).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+
+    fireEvent.click(runButton)
+
+    expect(mocks.wsSend).not.toHaveBeenCalledWith(sessionId, { type: 'stop_generation' })
+    expect(mocks.wsSend).not.toHaveBeenCalledWith(sessionId, {
+      type: 'user_message',
+      content: 'queue this after the active turn',
+      attachments: undefined,
+    })
+    const messages = useChatStore.getState().sessions[sessionId]?.messages ?? []
+    expect(messages[messages.length - 1]).toMatchObject({
+      type: 'user_text',
+      content: 'queue this after the active turn',
+      pending: true,
+      queued: true,
+    })
+  })
+
+  it('shows a composer queue with guide and delete actions while the session is running', () => {
+    vi.useFakeTimers()
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'streaming',
+          streamingText: 'current answer is still streaming',
+        },
+      },
+    })
+
+    useChatStore.getState().sendMessage(sessionId, 'delete this queued message')
+    useChatStore.getState().sendMessage(sessionId, 'first queued message')
+    useChatStore.getState().sendMessage(sessionId, 'guided queued message')
+    mocks.wsSend.mockClear()
+
+    render(<ChatInput compact />)
+
+    const queue = screen.getByTestId('queued-composer-messages')
+    expect(within(queue).getByText('delete this queued message')).toBeInTheDocument()
+    expect(within(queue).getByText('first queued message')).toBeInTheDocument()
+    expect(within(queue).getByText('guided queued message')).toBeInTheDocument()
+
+    const deleteButtons = within(queue).getAllByRole('button', { name: 'Delete queued message' })
+    fireEvent.click(deleteButtons[0]!)
+    expect(within(queue).queryByText('delete this queued message')).not.toBeInTheDocument()
+
+    const guideButtons = within(queue).getAllByRole('button', { name: 'Guide queued message' })
+    fireEvent.click(guideButtons[1]!)
+    expect(mocks.wsSend).not.toHaveBeenCalled()
+
+    const reorderedQueueText = screen.getByTestId('queued-composer-messages').textContent ?? ''
+    expect(reorderedQueueText.indexOf('guided queued message')).toBeLessThan(
+      reorderedQueueText.indexOf('first queued message'),
+    )
+
+    act(() => {
+      useChatStore.getState().handleServerMessage(sessionId, {
+        type: 'message_complete',
+        usage: { input_tokens: 2, output_tokens: 4 },
+      })
+    })
+
+    expect(mocks.wsSend).toHaveBeenCalledTimes(1)
+    expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, {
+      type: 'user_message',
+      content: 'guided queued message',
+      attachments: undefined,
+    })
+
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
+  })
+
+  it('animates the whole Stop button only while running', async () => {
+    render(<ChatInput compact />)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: 'run with visible activity', selectionStart: 25 },
+    })
+
+    const runButton = screen.getByRole('button', { name: 'Run' })
+    expect(runButton).toBeInTheDocument()
+    expect(runButton).not.toHaveClass('chat-input-stop-running')
+
+    fireEvent.change(input, {
+      target: { value: '', selectionStart: 0 },
+    })
+
+    act(() => {
+      useChatStore.setState({
+        sessions: {
+          [sessionId]: {
+            ...useChatStore.getState().sessions[sessionId]!,
+            chatState: 'streaming',
+          },
+        },
+      })
+    })
+
+    const stopButton = await screen.findByRole('button', { name: 'Stop' })
+    expect(stopButton).toHaveClass('chat-input-stop-running')
+    expect(screen.queryByTestId('chat-input-running-stop-indicator')).not.toBeInTheDocument()
   })
 
   it('keeps the source chat unchanged and shows an actionable error when linked workflow start fails', async () => {
@@ -1386,5 +1603,41 @@ describe('ChatInput file mentions', () => {
         .filter((button) => button.textContent?.startsWith('/'))
       expect(commandButtons[0]).toHaveTextContent('/superpowers:brainstorming')
     })
+  })
+
+  it('shows a distinct inline composer marker after selecting a skill slash command', async () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          slashCommands: [
+            {
+              name: 'update-config',
+              description: 'Update runtime configuration.',
+            },
+          ],
+        },
+      },
+    })
+
+    render(<ChatInput />)
+
+    await waitFor(() => {
+      expect(mocks.getGitInfo).toHaveBeenCalledWith(sessionId)
+    })
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, {
+      target: { value: '/update', selectionStart: 7 },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: /\/update-config/i }))
+
+    const editor = screen.getByTestId('chat-input-editor')
+    const marker = within(editor).getByTestId('chat-input-inline-skill-invocation')
+    expect(input.value).toBe('/update-config ')
+    expect(marker).toHaveTextContent('/update-config')
+    expect(marker).toHaveClass('font-mono')
+    expect(screen.queryByTestId('chat-input-skill-invocation')).not.toBeInTheDocument()
   })
 })

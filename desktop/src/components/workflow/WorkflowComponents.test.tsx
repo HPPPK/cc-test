@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import '@testing-library/jest-dom'
+// @vitest-environment jsdom
 
+// @ts-expect-error jsdom is installed in this workspace without local type declarations
+import { JSDOM } from 'jsdom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import globalsCssRaw from '../../theme/globals.css?raw'
 import {
   WorkflowReportLink,
   WorkflowStatusPanel,
@@ -10,17 +13,55 @@ import {
 } from './WorkflowComponents'
 import { WorkflowStartDialog } from './WorkflowStartDialog'
 import { WorkflowTemplateEditor } from './WorkflowTemplateEditor'
+import workflowTemplateEditorSource from './WorkflowTemplateEditor.tsx?raw'
 import { WorkflowTemplateManager } from './WorkflowTemplateManager'
+import workflowTemplateManagerSource from './WorkflowTemplateManager.tsx?raw'
 import { sessionsApi } from '../../api/sessions'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useSkillStore } from '../../stores/skillStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import type { WorkflowTemplateDetail, WorkflowTemplateDraft } from '../../types/session'
 
+if (typeof document === 'undefined') {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    url: 'http://localhost/',
+  })
+  const { window } = dom
+
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    localStorage: window.localStorage,
+    HTMLElement: window.HTMLElement,
+    HTMLButtonElement: window.HTMLButtonElement,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
+    HTMLSelectElement: window.HTMLSelectElement,
+    MutationObserver: window.MutationObserver,
+    Node: window.Node,
+    Event: window.Event,
+    MouseEvent: window.MouseEvent,
+    KeyboardEvent: window.KeyboardEvent,
+    getComputedStyle: window.getComputedStyle.bind(window),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+}
+
+if (!('mocked' in vi)) {
+  Object.assign(vi, {
+    mocked: <T,>(item: T) => item,
+  })
+}
+
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
+await import('@testing-library/jest-dom/vitest')
+
 vi.mock('../../api/sessions', () => ({
   sessionsApi: {
     listWorkflowTemplates: vi.fn(),
     getWorkflowTemplate: vi.fn(),
+    getWorkflowReport: vi.fn(),
     validateWorkflowTemplate: vi.fn(),
     createWorkflowTemplate: vi.fn(),
     updateWorkflowTemplate: vi.fn(),
@@ -35,10 +76,14 @@ vi.mock('../../api/sessions', () => ({
 useSettingsStore.setState({ locale: 'en' })
 
 type WorkflowArtifactPointer = {
-  id: string
+  id?: string
   kind: 'state' | 'report' | 'artifact'
-  label: string
-  uri: string
+  sessionId?: string
+  artifactId?: string
+  schemaVersion?: number
+  createdAt?: string
+  label?: string
+  uri?: string
 }
 
 type WorkflowTemplateListItem = {
@@ -319,15 +364,35 @@ afterEach(() => {
   })
 })
 
+describe('workflow button theme tokens', () => {
+  it('defines every hover background token used by workflow action buttons', () => {
+    const workflowSources = [workflowTemplateManagerSource, workflowTemplateEditorSource]
+
+    const hoverTokens = Array.from(
+      new Set(
+        workflowSources.flatMap((source) =>
+          Array.from(source.matchAll(/hover:bg-\[var\((--[\w-]+)\)\]/g), ([, token]) => token),
+        ),
+      ),
+    )
+
+    expect(hoverTokens).toContain('--color-brand-hover')
+
+    for (const token of hoverTokens) {
+      expect(globalsCssRaw).toContain(`${token}:`)
+    }
+  })
+})
+
 describe('WorkflowTemplateManager', () => {
-  it('loads server templates and renders builtin templates as read-only and copyable', async () => {
+  it('loads user templates and copies them through the desktop API', async () => {
     const onCopyTemplate = vi.fn()
     vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
       templates: [
         {
-          ...BUILTIN_TEMPLATE,
+          ...LONG_TEMPLATE,
           startable: true,
-          editable: false,
+          editable: true,
           copyable: true,
         },
       ],
@@ -337,36 +402,35 @@ describe('WorkflowTemplateManager', () => {
     render(<WorkflowTemplateManager onCopyTemplate={onCopyTemplate} />)
 
     const manager = await screen.findByTestId('workflow-template-manager')
-    const row = within(manager).getByTestId('workflow-template-row-builtin-agent-development')
+    const row = within(manager).getByTestId('workflow-template-row-user-long-linear-workflow')
     expect(sessionsApi.listWorkflowTemplates).toHaveBeenCalledTimes(1)
-    expect(within(row).getByText('Agent Development')).toBeInTheDocument()
-    expect(within(row).getByText('Builtin')).toBeInTheDocument()
-    expect(within(row).getByText('agent-development')).toBeInTheDocument()
-    expect(row).toHaveTextContent(/Version\s*1/i)
-    expect(within(row).getByText(/5 phases/i)).toBeInTheDocument()
+    expect(within(row).getByText('Long Linear Workflow')).toBeInTheDocument()
+    expect(within(row).getByText('User')).toBeInTheDocument()
+    expect(within(row).getByText('long-linear-workflow')).toBeInTheDocument()
+    expect(row).toHaveTextContent(/Version\s*2026\.05\.21/i)
+    expect(within(row).getByText(/7 phases/i)).toBeInTheDocument()
     expect(within(row).getByText(/startable/i)).toBeInTheDocument()
-    expect(within(row).getByText(/read-only/i)).toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /edit long linear workflow/i })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /delete long linear workflow/i })).toBeInTheDocument()
 
     vi.mocked(sessionsApi.duplicateWorkflowTemplate).mockResolvedValue({
       template: {
         ...EDITABLE_TEMPLATE_DETAIL,
-        id: 'agent-development-copy',
-        name: 'Agent Development Copy',
+        id: 'long-linear-workflow-copy',
+        name: 'Long Linear Workflow Copy',
       },
       templates: [
         {
-          ...BUILTIN_TEMPLATE,
+          ...LONG_TEMPLATE,
           startable: true,
-          editable: false,
+          editable: true,
           copyable: true,
         },
         {
-          id: 'agent-development-copy',
+          id: 'long-linear-workflow-copy',
           source: 'user',
           version: '1',
-          name: 'Agent Development Copy',
+          name: 'Long Linear Workflow Copy',
           phaseCount: 1,
           firstPhaseId: 'plan',
           editable: true,
@@ -376,31 +440,31 @@ describe('WorkflowTemplateManager', () => {
       invalidTemplates: [],
     })
 
-    fireEvent.click(within(row).getByRole('button', { name: /copy agent development/i }))
+    fireEvent.click(within(row).getByRole('button', { name: /copy long linear workflow/i }))
 
     await waitFor(() => {
       expect(sessionsApi.duplicateWorkflowTemplate).toHaveBeenCalledWith({
-        source: 'builtin',
-        id: 'agent-development',
-        targetId: 'agent-development-copy',
-        targetName: 'Agent Development Copy',
+        source: 'user',
+        id: 'long-linear-workflow',
+        targetId: 'long-linear-workflow-copy',
+        targetName: 'Long Linear Workflow Copy',
       })
     })
-    expect(await screen.findByText('Agent Development Copy')).toBeInTheDocument()
+    expect(await screen.findByText('Long Linear Workflow Copy')).toBeInTheDocument()
     expect(onCopyTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'agent-development',
-      source: 'builtin',
+      id: 'long-linear-workflow',
+      source: 'user',
     }))
   })
 
-  it('localizes builtin template display and editor labels in Chinese locale', async () => {
+  it('localizes user template source and editor labels in Chinese locale', async () => {
     useSettingsStore.setState({ locale: 'zh' })
     vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
       templates: [
         {
-          ...BUILTIN_TEMPLATE,
+          ...LONG_TEMPLATE,
           startable: true,
-          editable: false,
+          editable: true,
           copyable: true,
         },
       ],
@@ -409,12 +473,10 @@ describe('WorkflowTemplateManager', () => {
 
     render(<WorkflowTemplateManager />)
 
-    const row = await screen.findByTestId('workflow-template-row-builtin-agent-development')
-    expect(within(row).getByText('智能体开发')).toBeInTheDocument()
-    expect(within(row).getByText('内置')).toBeInTheDocument()
-    expect(within(row).getByText('从讨论到实现的工作流。')).toBeInTheDocument()
-    expect(within(row).queryByText('Agent Development')).not.toBeInTheDocument()
-    expect(within(row).queryByText('builtin')).not.toBeInTheDocument()
+    const row = await screen.findByTestId('workflow-template-row-user-long-linear-workflow')
+    expect(within(row).getByText('Long Linear Workflow')).toBeInTheDocument()
+    expect(within(row).getByText('用户')).toBeInTheDocument()
+    expect(within(row).queryByText('user')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /新建/ }))
 
@@ -429,14 +491,7 @@ describe('WorkflowTemplateManager', () => {
 
   it('keeps invalid templates visible with actionable diagnostics', async () => {
     vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
-      templates: [
-        {
-          ...BUILTIN_TEMPLATE,
-          startable: true,
-          editable: false,
-          copyable: true,
-        },
-      ],
+      templates: [],
       invalidTemplates: [
         {
           source: 'user-config',
@@ -458,7 +513,7 @@ describe('WorkflowTemplateManager', () => {
     expect(within(diagnostics).getByText(/\$\.templates\[0\]\.phases/i)).toBeInTheDocument()
     expect(within(diagnostics).getByText(/template phases must be a non-empty ordered array/i)).toBeInTheDocument()
     expect(within(diagnostics).getByText(/fix the template JSON, then refresh this list/i)).toBeInTheDocument()
-    expect(screen.getByTestId('workflow-template-row-builtin-agent-development')).toBeInTheDocument()
+    expect(screen.getByText(/no workflow templates are available/i)).toBeInTheDocument()
   })
 
   it('renders user template edit delete export affordances without mutating storage directly', async () => {
@@ -496,6 +551,23 @@ describe('WorkflowTemplateManager', () => {
 
     fireEvent.click(within(row).getByRole('button', { name: /delete long linear workflow/i }))
 
+    const cancelDialog = await screen.findByRole('dialog', { name: /delete workflow/i })
+    expect(cancelDialog).toHaveTextContent(/delete workflow "long linear workflow"/i)
+    expect(sessionsApi.deleteWorkflowTemplate).not.toHaveBeenCalled()
+
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: /cancel/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /delete workflow/i })).not.toBeInTheDocument()
+    })
+    expect(screen.getByTestId('workflow-template-row-user-long-linear-workflow')).toBeInTheDocument()
+    expect(sessionsApi.deleteWorkflowTemplate).not.toHaveBeenCalled()
+
+    fireEvent.click(within(row).getByRole('button', { name: /delete long linear workflow/i }))
+
+    const confirmDialog = await screen.findByRole('dialog', { name: /delete workflow/i })
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: /^delete$/i }))
+
     await waitFor(() => {
       expect(sessionsApi.deleteWorkflowTemplate).toHaveBeenCalledWith('long-linear-workflow')
     })
@@ -520,6 +592,30 @@ describe('WorkflowTemplateManager', () => {
     expect(onExportTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: 'long-linear-workflow', source: 'user' }))
     expect(onCopyTemplate).not.toHaveBeenCalled()
     expect(sessionsApi.listWorkflowTemplates).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses concise Chinese copy for the workflow delete confirmation dialog', async () => {
+    useSettingsStore.setState({ locale: 'zh' })
+    vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
+      templates: [
+        {
+          ...LONG_TEMPLATE,
+          startable: false,
+          editable: true,
+          copyable: true,
+        },
+      ],
+      invalidTemplates: [],
+    })
+
+    render(<WorkflowTemplateManager />)
+
+    const row = await screen.findByTestId('workflow-template-row-user-long-linear-workflow')
+    fireEvent.click(within(row).getByRole('button', { name: /删除 long linear workflow/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /是否删除工作流/i })
+    expect(dialog).toHaveTextContent(/将删除工作流“Long Linear Workflow”。此操作无法撤销。/)
+    expect(sessionsApi.deleteWorkflowTemplate).not.toHaveBeenCalled()
   })
 
   it('loads user template detail for editing and refreshes after a server-backed update', async () => {
@@ -590,6 +686,7 @@ describe('WorkflowTemplateManager', () => {
 
     await waitFor(() => {
       expect(sessionsApi.validateWorkflowTemplate).toHaveBeenCalledWith({
+        allowExistingId: EDITABLE_TEMPLATE_DETAIL.id,
         template: expect.objectContaining({
           id: EDITABLE_TEMPLATE_DETAIL.id,
           name: 'Release Workflow Updated',
@@ -612,12 +709,6 @@ describe('WorkflowTemplateManager', () => {
     vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
       templates: [
         {
-          ...BUILTIN_TEMPLATE,
-          startable: true,
-          editable: false,
-          copyable: true,
-        },
-        {
           ...LONG_TEMPLATE,
           startable: true,
           editable: true,
@@ -631,14 +722,14 @@ describe('WorkflowTemplateManager', () => {
       canCommit: true,
       candidates: [
         {
-          importId: 'candidate-built-in',
+          importId: 'candidate-former-builtin-id',
           originalId: 'agent-development',
-          proposedId: 'agent-development-imported',
+          proposedId: 'agent-development',
           name: 'Agent Development',
           version: '1',
           phaseCount: 5,
-          conflict: 'builtin-template',
-          defaultResolution: 'rename',
+          conflict: 'none',
+          defaultResolution: 'add',
           selectable: true,
           issues: [],
         },
@@ -699,14 +790,14 @@ describe('WorkflowTemplateManager', () => {
     vi.mocked(sessionsApi.commitWorkflowTemplateImport).mockResolvedValue({
       imported: [
         {
-          importId: 'candidate-built-in',
-          id: 'agent-development-imported',
-          resolution: 'rename',
+          importId: 'candidate-former-builtin-id',
+          id: 'agent-development',
+          resolution: 'add',
         },
       ],
       templates: [
         {
-          id: 'agent-development-imported',
+          id: 'agent-development',
           source: 'user',
           version: '1',
           name: 'Agent Development',
@@ -748,12 +839,12 @@ describe('WorkflowTemplateManager', () => {
     expect(within(preview).getByText(/1 invalid/i)).toBeInTheDocument()
     expect(within(preview).getByText(/malformed-template/i)).toBeInTheDocument()
 
-    const builtinCandidate = within(preview).getByTestId('workflow-import-candidate-candidate-built-in')
-    const builtinResolution = builtinCandidate.querySelector('select')
-    expect(builtinResolution).not.toBeNull()
-    expect(builtinResolution).toHaveValue('rename')
-    expect(within(builtinResolution as HTMLSelectElement).queryByRole('option', { name: 'overwrite' })).not.toBeInTheDocument()
-    expect(within(builtinCandidate).getByLabelText(/target id/i)).toHaveValue('agent-development-imported')
+    const formerBuiltinIdCandidate = within(preview).getByTestId('workflow-import-candidate-candidate-former-builtin-id')
+    const formerBuiltinIdResolution = formerBuiltinIdCandidate.querySelector('select')
+    expect(formerBuiltinIdResolution).not.toBeNull()
+    expect(formerBuiltinIdResolution).toHaveValue('add')
+    expect(within(formerBuiltinIdResolution as HTMLSelectElement).queryByRole('option', { name: 'overwrite' })).not.toBeInTheDocument()
+    expect(within(formerBuiltinIdCandidate).getByLabelText(/target id/i)).toHaveValue('agent-development')
 
     const userCandidate = within(preview).getByTestId('workflow-import-candidate-candidate-user')
     expect(userCandidate.querySelector('select')).toHaveValue('rename')
@@ -771,15 +862,15 @@ describe('WorkflowTemplateManager', () => {
         payload,
         selections: [
           {
-            importId: 'candidate-built-in',
-            resolution: 'rename',
-            targetId: 'agent-development-imported',
+            importId: 'candidate-former-builtin-id',
+            resolution: 'add',
+            targetId: 'agent-development',
           },
         ],
       })
     })
     expect(await screen.findByText(/imported 1 workflow templates/i)).toBeInTheDocument()
-    expect(await screen.findByTestId('workflow-template-row-user-agent-development-imported')).toBeInTheDocument()
+    expect(await screen.findByTestId('workflow-template-row-user-agent-development')).toBeInTheDocument()
   })
 
   it('renders missing recommended skill diagnostics as import warnings without blocking selection', async () => {
@@ -865,6 +956,8 @@ describe('WorkflowTemplateManager', () => {
     const candidate = await screen.findByTestId('workflow-import-candidate-candidate-missing-recommended-skill')
     expect(within(candidate).getByText(/dependency diagnostics/i)).toBeInTheDocument()
     expect(within(candidate).getByText(/warning/i)).toBeInTheDocument()
+    expect(within(candidate).getByText(/^missing$/i)).toBeInTheDocument()
+    expect(within(candidate).getByText(/can import/i)).toBeInTheDocument()
     expect(within(candidate).getByText(/release-checklist/i)).toBeInTheDocument()
     expect(within(candidate).getByRole('checkbox')).toBeEnabled()
     expect(within(candidate).getByRole('checkbox')).toBeChecked()
@@ -952,20 +1045,17 @@ describe('WorkflowTemplateManager', () => {
     const candidate = await screen.findByTestId('workflow-import-candidate-candidate-invalid-dependency')
     expect(within(candidate).getByText(/dependency diagnostics/i)).toBeInTheDocument()
     expect(within(candidate).getByText(/error/i)).toBeInTheDocument()
+    expect(within(candidate).getByText(/invalid-reference/i)).toBeInTheDocument()
+    expect(within(candidate).getByText(/cannot import/i)).toBeInTheDocument()
     expect(within(candidate).getByText(/skill references require a non-empty name/i)).toBeInTheDocument()
     expect(within(candidate).getByRole('checkbox')).toBeDisabled()
     expect(within(dialog).getByRole('button', { name: /import selected/i })).toBeDisabled()
+    expect(sessionsApi.commitWorkflowTemplateImport).not.toHaveBeenCalled()
   })
 
   it('exports only selected templates through the desktop API and renders reusable JSON', async () => {
     vi.mocked(sessionsApi.listWorkflowTemplates).mockResolvedValue({
       templates: [
-        {
-          ...BUILTIN_TEMPLATE,
-          startable: true,
-          editable: false,
-          copyable: true,
-        },
         {
           ...LONG_TEMPLATE,
           startable: true,
@@ -988,7 +1078,7 @@ describe('WorkflowTemplateManager', () => {
 
     const dialog = screen.getByRole('dialog', { name: /export workflow templates/i })
     expect(within(dialog).getByText(/excludes chat transcripts/i)).toBeInTheDocument()
-    expect(within(dialog).getByLabelText(/Agent Development/i)).not.toBeChecked()
+    expect(within(dialog).queryByLabelText(/Agent Development/i)).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText(/Long Linear Workflow/i)).toBeChecked()
 
     fireEvent.click(within(dialog).getByRole('button', { name: /generate export json/i }))
@@ -1071,17 +1161,170 @@ describe('WorkflowTemplateManager', () => {
     expect(within(dialog).getByText(/release-checklist/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/plugin-disabled/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/recommended skill reference only/i)).toBeInTheDocument()
+    const exportJson = within(dialog).getByLabelText(/export json/i) as HTMLTextAreaElement
+    expect(exportJson.value).toContain('"dependencyManifest"')
+    expect(exportJson.value).not.toContain('skillContents')
+    expect(within(dialog).getByText(/skill contents are not bundled/i)).toBeInTheDocument()
     expect(within(dialog).queryByText(/bundled skill contents/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/auto-exec/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/default gates/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/plugin-primary/i)).not.toBeInTheDocument()
-    const exportJson = within(dialog).getByLabelText(/export json/i) as HTMLTextAreaElement
-    expect(exportJson.value).not.toContain('skillContents')
   })
 })
 
 describe('WorkflowTemplateEditor', () => {
   const EDITABLE_TEMPLATE: WorkflowTemplateDraft = EDITABLE_TEMPLATE_DETAIL
+
+  it('renders grouped authoring sections for phase intent contract evidence policy and recommended skills', () => {
+    render(
+      <WorkflowTemplateEditor
+        template={EDITABLE_TEMPLATE}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const editor = screen.getByTestId('workflow-template-editor')
+    expect(within(editor).getByRole('group', { name: /intent/i })).toBeInTheDocument()
+    expect(within(editor).getByRole('group', { name: /^contract$/i })).toBeInTheDocument()
+    expect(within(editor).getByRole('group', { name: /evidence policy/i })).toBeInTheDocument()
+    expect(within(editor).getByRole('group', { name: /recommended skills for plan phase/i })).toBeInTheDocument()
+  })
+
+  it('saves phase authoring fields into grouped intent contract and evidence policy payloads', () => {
+    const onSave = vi.fn()
+    render(
+      <WorkflowTemplateEditor
+        template={EDITABLE_TEMPLATE}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      phases: [
+        expect.objectContaining({
+          id: 'plan',
+          intent: expect.objectContaining({
+            objective: 'Confirm release scope.',
+            role: 'release coordinator',
+            intake: ['Release issue'],
+          }),
+          contract: expect.objectContaining({
+            instructions: 'Prepare the release plan.',
+            executionRules: ['Do not publish without approval.'],
+            actionPolicy: expect.objectContaining({
+              forbiddenActions: ['Do not publish without approval.'],
+            }),
+            transitionAuthority: 'user-confirmation',
+          }),
+          evidencePolicy: expect.objectContaining({
+            outputArtifact: expect.objectContaining({
+              id: 'release-plan',
+              name: 'Release plan',
+              kind: 'markdown',
+              required: true,
+            }),
+            completionCriteria: expect.objectContaining({
+              type: 'artifact-required',
+              description: 'Release plan artifact is ready.',
+            }),
+            handoffRules: ['Summarize release risks for validation.'],
+          }),
+        }),
+      ],
+    }))
+  })
+
+  it('lets authors edit per-phase runtime and workflow built-in tool access', () => {
+    const onSave = vi.fn()
+    render(
+      <WorkflowTemplateEditor
+        template={{
+          ...EDITABLE_TEMPLATE,
+          phases: [
+            {
+              ...EDITABLE_TEMPLATE_PHASE,
+              toolPolicy: {
+                allowedTools: ['Bash', 'submit_phase_completion'],
+              },
+            },
+          ],
+        }}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const editor = screen.getByTestId('workflow-template-editor')
+    const toolAccess = within(editor).getByRole('group', {
+      name: /tool access for plan phase/i,
+    })
+    expect(within(toolAccess).getByRole('checkbox', { name: /bash/i })).toBeChecked()
+    expect(within(toolAccess).getByRole('checkbox', { name: /write/i })).not.toBeChecked()
+    expect(within(toolAccess).getByRole('checkbox', { name: /submit phase completion/i })).toBeChecked()
+    expect(within(toolAccess).getByRole('checkbox', { name: /workflow template authoring/i })).not.toBeChecked()
+
+    fireEvent.click(within(toolAccess).getByRole('checkbox', { name: /write/i }))
+    fireEvent.click(within(toolAccess).getByRole('checkbox', { name: /workflow template authoring/i }))
+    fireEvent.click(within(toolAccess).getByRole('checkbox', { name: /submit phase completion/i }))
+    expect(within(toolAccess).getByText(/phase completion tool is disabled/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      phases: [
+        expect.objectContaining({
+          id: 'plan',
+          toolPolicy: expect.objectContaining({
+            allowedTools: expect.arrayContaining(['Bash', 'Write', 'workflow_template_authoring']),
+          }),
+          contract: expect.objectContaining({
+            toolPolicy: expect.objectContaining({
+              allowedTools: expect.arrayContaining(['Bash', 'Write', 'workflow_template_authoring']),
+            }),
+          }),
+        }),
+      ],
+    }))
+    const savedPhase = onSave.mock.calls[0]?.[0]?.phases?.[0]
+    expect(savedPhase.toolPolicy.allowedTools).not.toContain('submit_phase_completion')
+  })
+
+  it('excludes session-owned runtime state from saved template phase data', () => {
+    const onSave = vi.fn()
+    render(
+      <WorkflowTemplateEditor
+        template={{
+          ...EDITABLE_TEMPLATE,
+          phases: [
+            {
+              ...EDITABLE_TEMPLATE_PHASE,
+              runtimeState: {
+                status: 'running',
+                pendingConfirmation: true,
+                activeTransitionId: 'transition-session-owned',
+              },
+            },
+          ],
+        }}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      phases: [
+        expect.not.objectContaining({
+          runtimeState: expect.anything(),
+        }),
+      ],
+    }))
+  })
 
   it('lets authors select recommended skills per phase from the shared skill catalog', () => {
     const onSave = vi.fn()
@@ -1533,12 +1776,12 @@ describe('WorkflowTemplateEditor', () => {
 })
 
 describe('WorkflowTemplatePicker', () => {
-  it('lists startable templates and exposes the Agent Development preset phases', () => {
+  it('lists startable user templates and exposes their phases', () => {
     const onSelect = vi.fn()
 
     render(
       <WorkflowTemplatePicker
-        templates={[BUILTIN_TEMPLATE]}
+        templates={[LONG_TEMPLATE]}
         invalidTemplates={[
           {
             id: 'bad-template',
@@ -1546,19 +1789,18 @@ describe('WorkflowTemplatePicker', () => {
             message: 'Phase ids must be unique.',
           },
         ]}
-        selectedTemplateId={BUILTIN_TEMPLATE.id}
+        selectedTemplateId={LONG_TEMPLATE.id}
         onSelect={onSelect}
       />,
     )
 
     const picker = screen.getByTestId('workflow-template-picker')
-    expect(within(picker).getByRole('button', { name: /agent development/i })).toBeInTheDocument()
-    expect(within(picker).getByText(/5 phases/i)).toBeInTheDocument()
-    expect(within(picker).getByText(/^Discussion$/i)).toBeInTheDocument()
+    expect(within(picker).getByRole('button', { name: /long linear workflow/i })).toBeInTheDocument()
+    expect(within(picker).getByText(/7 phases/i)).toBeInTheDocument()
+    expect(within(picker).getByText(/^Discover$/i)).toBeInTheDocument()
+    expect(within(picker).getByText(/^Shape$/i)).toBeInTheDocument()
     expect(within(picker).getByText(/^Specify$/i)).toBeInTheDocument()
-    expect(within(picker).getByText(/^plan$/i)).toBeInTheDocument()
-    expect(within(picker).getByText(/^tasks$/i)).toBeInTheDocument()
-    expect(within(picker).getByText(/^Implement$/i)).toBeInTheDocument()
+    expect(within(picker).getByText(/^Release$/i)).toBeInTheDocument()
     expect(within(picker).queryByRole('button', { name: /bad-template/i })).not.toBeInTheDocument()
     expect(within(picker).getByText(/phase ids must be unique/i)).toBeInTheDocument()
   })
@@ -1591,7 +1833,7 @@ describe('WorkflowTemplatePicker', () => {
 
     render(
       <WorkflowTemplatePicker
-        templates={[BUILTIN_TEMPLATE]}
+        templates={[LONG_TEMPLATE]}
         selectedTemplateId={null}
         onSelect={onSelect}
       />,
@@ -1599,11 +1841,11 @@ describe('WorkflowTemplatePicker', () => {
 
     expect(screen.getByTestId('workflow-template-picker')).toHaveAttribute('data-workflow-selected', 'false')
 
-    fireEvent.click(screen.getByRole('button', { name: /agent development/i }))
+    fireEvent.click(screen.getByRole('button', { name: /long linear workflow/i }))
 
     expect(onSelect).toHaveBeenCalledWith({
-      templateId: BUILTIN_TEMPLATE.id,
-      templateSource: 'builtin',
+      templateId: LONG_TEMPLATE.id,
+      templateSource: 'user',
     })
   })
 })
@@ -1617,7 +1859,7 @@ describe('WorkflowStartDialog', () => {
     render(
       <WorkflowStartDialog
         open
-        templates={[BUILTIN_TEMPLATE, LONG_TEMPLATE]}
+        templates={[LONG_TEMPLATE]}
         invalidTemplates={[
           {
             source: 'user-config',
@@ -1628,7 +1870,7 @@ describe('WorkflowStartDialog', () => {
             severity: 'error',
           },
         ]}
-        selectedTemplateId={BUILTIN_TEMPLATE.id}
+        selectedTemplateId={LONG_TEMPLATE.id}
         onSelect={onSelect}
         onStart={onStart}
         onClose={onClose}
@@ -1636,13 +1878,13 @@ describe('WorkflowStartDialog', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: /start workflow/i })
-    const selectedButton = within(dialog).getByRole('button', { name: /agent development/i })
+    const selectedButton = within(dialog).getByRole('button', { name: /long linear workflow/i })
     expect(selectedButton).toBeInTheDocument()
-    expect(within(screen.getByTestId('workflow-start-dialog-details')).getByText('Agent Development')).toBeInTheDocument()
-    expect(within(dialog).getAllByText(/builtin/i).length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByText(/5 phases/i).length).toBeGreaterThan(0)
-    expect(within(selectedButton).getByText(/^Discussion$/i)).toBeInTheDocument()
-    expect(within(selectedButton).getByText(/^Implement$/i)).toBeInTheDocument()
+    expect(within(screen.getByTestId('workflow-start-dialog-details')).getByText('Long Linear Workflow')).toBeInTheDocument()
+    expect(within(dialog).getAllByText(/user/i).length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText(/7 phases/i).length).toBeGreaterThan(0)
+    expect(within(selectedButton).getByText(/^Discover$/i)).toBeInTheDocument()
+    expect(within(selectedButton).getByText(/^Release$/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/invalid workflow templates/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/broken-template/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/template phases must be a non-empty ordered array/i)).toBeInTheDocument()
@@ -1650,9 +1892,9 @@ describe('WorkflowStartDialog', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /^start$/i }))
 
     expect(onStart).toHaveBeenCalledWith({
-      templateId: BUILTIN_TEMPLATE.id,
-      templateSource: 'builtin',
-      initialPhaseId: BUILTIN_TEMPLATE.firstPhaseId,
+      templateId: LONG_TEMPLATE.id,
+      templateSource: 'user',
+      initialPhaseId: LONG_TEMPLATE.firstPhaseId,
     })
   })
 
@@ -1702,7 +1944,7 @@ describe('WorkflowStartDialog', () => {
     render(
       <WorkflowStartDialog
         open
-        templates={[BUILTIN_TEMPLATE]}
+        templates={[LONG_TEMPLATE]}
         selectedTemplateId={null}
         onSelect={vi.fn()}
         onStart={vi.fn()}
@@ -1744,7 +1986,7 @@ describe('WorkflowStatusPanel', () => {
 
     expect(within(panel).getByRole('button', { name: /hide workflow details/i })).toHaveAttribute('aria-expanded', 'true')
     expect(within(panel).getByTestId('workflow-status-details')).toBeInTheDocument()
-    expect(within(panel).getByText(/auto/i)).toBeInTheDocument()
+    expect(within(panel).getByText(/^auto$/i)).toBeInTheDocument()
     expect(within(panel).getByText(/claude-opus-4/i)).toBeInTheDocument()
     expect(within(panel).getByText(/claude-sonnet-4/i)).toBeInTheDocument()
     expect(panel).toHaveTextContent(/provider/i)
@@ -1808,6 +2050,97 @@ describe('WorkflowStatusPanel', () => {
     expect(within(panel).queryByRole('button', { name: /run|execute|install|enable/i })).not.toBeInTheDocument()
   })
 
+  it('shows recommended skill status labels provenance and relevant evidence details', () => {
+    render(
+      <WorkflowStatusPanel
+        workflow={({
+          ...WORKFLOW_SUMMARY,
+          recommendedSkillStatus: {
+            total: 5,
+            available: 2,
+            unavailable: 1,
+            degraded: 2,
+            evidenceCount: 3,
+            activePhaseItems: [
+              { name: 'sp-specify', status: 'available', source: 'project' },
+              { name: 'security-review', status: 'missing', source: 'user' },
+              { name: 'plugin-helper', status: 'plugin-disabled', source: 'plugin', pluginName: 'release-tools' },
+              { name: 'managed-policy', status: 'unsupported-source', source: 'managed' },
+              { name: 'unused-style-pass', status: 'available', source: 'bundled' },
+            ],
+          },
+          recommendedSkillEvidence: [
+            {
+              phaseId: 'specify',
+              name: 'sp-specify',
+              outcome: 'used',
+              rationale: 'Used to align the specification.',
+              recordedAt: '2026-05-20T00:01:00.000Z',
+              source: 'project',
+              resolutionStatus: 'available',
+              toolUseId: 'toolu-specify-001',
+              artifactRef: 'artifact://skill-evidence/specify',
+            },
+            {
+              phaseId: 'specify',
+              name: 'security-review',
+              outcome: 'relevant-skipped',
+              rationale: 'Relevant but skipped until implementation code exists.',
+              recordedAt: '2026-05-20T00:02:00.000Z',
+              source: 'user',
+              resolutionStatus: 'missing',
+            },
+            {
+              phaseId: 'specify',
+              name: 'plugin-helper',
+              outcome: 'relevant-unavailable',
+              rationale: 'Plugin was disabled in the receiver catalog.',
+              recordedAt: '2026-05-20T00:03:00.000Z',
+              source: 'plugin',
+              resolutionStatus: 'plugin-disabled',
+            },
+            {
+              phaseId: 'specify',
+              name: 'unused-style-pass',
+              outcome: 'unused',
+              rationale: 'Not relevant to this phase.',
+              recordedAt: '2026-05-20T00:04:00.000Z',
+              source: 'bundled',
+              resolutionStatus: 'available',
+            },
+          ],
+        } as unknown as typeof WORKFLOW_SUMMARY)}
+      />,
+    )
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+
+    const skillStatus = within(panel).getByTestId('workflow-recommended-skill-status')
+    expect(skillStatus).toHaveTextContent(/sp-specify/i)
+    expect(skillStatus).toHaveTextContent(/available/i)
+    expect(skillStatus).toHaveTextContent(/project/i)
+    expect(skillStatus).toHaveTextContent(/security-review/i)
+    expect(skillStatus).toHaveTextContent(/missing/i)
+    expect(skillStatus).toHaveTextContent(/user/i)
+    expect(skillStatus).toHaveTextContent(/plugin-helper/i)
+    expect(skillStatus).toHaveTextContent(/plugin-disabled/i)
+    expect(skillStatus).toHaveTextContent(/release-tools/i)
+    expect(skillStatus).toHaveTextContent(/managed-policy/i)
+    expect(skillStatus).toHaveTextContent(/unsupported-source/i)
+    expect(skillStatus).toHaveTextContent(/used/i)
+    expect(skillStatus).toHaveTextContent(/used to align the specification/i)
+    expect(skillStatus).toHaveTextContent(/toolu-specify-001/i)
+    expect(skillStatus).toHaveTextContent(/artifact:\/\/skill-evidence\/specify/i)
+    expect(skillStatus).toHaveTextContent(/relevant-skipped/i)
+    expect(skillStatus).toHaveTextContent(/skipped until implementation code exists/i)
+    expect(skillStatus).toHaveTextContent(/relevant-unavailable/i)
+    expect(skillStatus).toHaveTextContent(/plugin was disabled/i)
+    expect(skillStatus).not.toHaveTextContent(/unused-style-pass/i)
+    expect(skillStatus).not.toHaveTextContent(/not relevant to this phase/i)
+    expect(within(skillStatus).queryByRole('button', { name: /run|execute|install|enable/i })).not.toBeInTheDocument()
+  })
+
   it('keeps pending confirmation status higher priority when recommended skill status is present', () => {
     render(
       <WorkflowStatusPanel
@@ -1847,6 +2180,7 @@ describe('WorkflowStatusPanel', () => {
 
     const panel = screen.getByTestId('workflow-status-panel')
     expect(within(panel).getByText(/waiting for confirmation/i)).toBeInTheDocument()
+    expect(within(panel).getByText(/authority:\s*automatic transition/i)).toBeInTheDocument()
     expect(within(panel).queryByText(/^running$/i)).not.toBeInTheDocument()
     expect(within(panel).queryByTestId('workflow-recommended-skill-status')).not.toBeInTheDocument()
 
@@ -1999,6 +2333,42 @@ describe('WorkflowStatusPanel', () => {
     expect(within(panel).queryByRole('button', { name: /confirm|complete phase/i })).not.toBeInTheDocument()
     expect(within(panel).queryByRole('textbox')).not.toBeInTheDocument()
   })
+
+  it('does not surface stale blocked recovery while pending confirmation is active', () => {
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation',
+      activePhaseId: 'plan',
+      activePhaseIndex: 2,
+      pendingConfirmation: true,
+      blockedStatus: 'blocked',
+      blockedReason: 'Old blocked recovery reason.',
+    } as typeof WORKFLOW_SUMMARY & { blockedStatus: 'blocked' }
+
+    render(
+      <WorkflowStatusPanel
+        workflow={workflow}
+        actions={(
+          <WorkflowTransitionControls
+            workflow={workflow}
+            stateVersion={11}
+            transitionId="pending-after-blocked-011"
+            embedded
+            onConfirm={vi.fn()}
+            onReject={vi.fn()}
+            onRetry={vi.fn()}
+          />
+        )}
+      />,
+    )
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    expect(panel).toHaveTextContent(/waiting for confirmation/i)
+    expect(panel).not.toHaveTextContent(/old blocked recovery reason/i)
+    expect(panel).not.toHaveTextContent(/recovery:/i)
+    expect(within(panel).getByRole('button', { name: /^confirm$/i })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /reject/i })).toBeInTheDocument()
+  })
 })
 
 describe('WorkflowTransitionControls', () => {
@@ -2037,6 +2407,9 @@ describe('WorkflowTransitionControls', () => {
       />,
     )
 
+    expect(screen.getByText(/authority:\s*user confirmation required/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
     fireEvent.click(screen.getByRole('button', { name: /reject/i }))
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
@@ -2061,6 +2434,78 @@ describe('WorkflowTransitionControls', () => {
     })
   })
 
+  it('sends clear next phase context only when the pending confirmation checkbox is checked', () => {
+    const onConfirm = vi.fn()
+
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'specify',
+          activePhaseIndex: 0,
+          phaseCount: 2,
+          pendingConfirmation: true,
+          transitionAuthority: 'user-confirmation',
+        }}
+        stateVersion={7}
+        transitionId="transition-clear-007"
+        onConfirm={onConfirm}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /use only handoff materials for next phase/i,
+    })
+    expect(checkbox).not.toBeChecked()
+    expect(screen.getByText(/does not delete history/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
+    expect(onConfirm).toHaveBeenLastCalledWith({
+      phaseId: 'specify',
+      action: 'confirm',
+      transitionId: 'transition-clear-007',
+      stateVersion: 7,
+    })
+
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
+    expect(onConfirm).toHaveBeenLastCalledWith({
+      phaseId: 'specify',
+      action: 'confirm',
+      transitionId: 'transition-clear-007',
+      stateVersion: 7,
+      nextPhaseContextStrategy: 'clear',
+    })
+  })
+
+  it('does not show the clear-context checkbox for final phase confirmation', () => {
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'verify',
+          activePhaseIndex: 1,
+          phaseCount: 2,
+          pendingConfirmation: true,
+          transitionAuthority: 'user-confirmation',
+        }}
+        stateVersion={8}
+        transitionId="transition-final-008"
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('checkbox', {
+      name: /use only handoff materials for next phase/i,
+    })).not.toBeInTheDocument()
+  })
+
   it('prioritizes pending confirmation controls when lifecycle status is stale', () => {
     render(
       <WorkflowTransitionControls
@@ -2080,6 +2525,7 @@ describe('WorkflowTransitionControls', () => {
     )
 
     expect(screen.getByText(/waiting for confirmation/i)).toBeInTheDocument()
+    expect(screen.getByText(/authority:\s*user confirmation required/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^confirm$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
@@ -2109,6 +2555,7 @@ describe('WorkflowTransitionControls', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /complete phase/i }))
 
+    expect(screen.getByText(/authority:\s*user confirmation required/i)).toBeInTheDocument()
     expect(onRetry).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog', { name: /complete discussion phase/i })).toBeInTheDocument()
 
@@ -2140,6 +2587,50 @@ describe('WorkflowTransitionControls', () => {
     })
   })
 
+  it('manual completion sends clear next phase context when checked', () => {
+    const onRetry = vi.fn()
+
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'running',
+          activePhaseId: 'discussion',
+          activePhaseIndex: 0,
+          phaseCount: 2,
+          pendingConfirmation: false,
+          transitionAuthority: 'user-confirmation',
+        }}
+        stateVersion={4}
+        transitionId="complete-clear-004"
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={onRetry}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /complete phase/i }))
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /use only handoff materials for next phase/i,
+    }))
+    fireEvent.change(screen.getByLabelText(/summary/i), {
+      target: { value: 'Discussion handoff is enough for implementation.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /confirm completion/i }))
+
+    expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({
+      phaseId: 'discussion',
+      action: 'manual_complete',
+      transitionId: 'complete-clear-004',
+      stateVersion: 4,
+      nextPhaseContextStrategy: 'clear',
+      handoff: {
+        summary: 'Discussion handoff is enough for implementation.',
+        artifacts: [],
+      },
+    }))
+  })
+
   it('shows blocked retry controls without advancing the phase', () => {
     const onRetry = vi.fn()
 
@@ -2160,6 +2651,9 @@ describe('WorkflowTransitionControls', () => {
     )
 
     expect(screen.getByText(/completion checklist is still missing/i)).toBeInTheDocument()
+    expect(screen.getByText(/recovery:\s*failed/i)).toBeInTheDocument()
+    expect(screen.getByText(/authority:\s*automatic transition/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /confirm|complete phase/i })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
 
@@ -2174,7 +2668,9 @@ describe('WorkflowTransitionControls', () => {
   it.each([
     ['blocked', 'Waiting for the user to select an OAuth account.'],
     ['unable', 'The phase cannot continue because implementation notes are unavailable.'],
-  ] as const)('does not expose unsafe advancement actions for %s workflow status', (blockedStatus, blockedReason) => {
+  ] as const)('exposes only recovery actions for %s workflow status', (blockedStatus, blockedReason) => {
+    const onRetry = vi.fn()
+
     render(
       <WorkflowTransitionControls
         workflow={{
@@ -2189,13 +2685,24 @@ describe('WorkflowTransitionControls', () => {
         transitionId={`${blockedStatus}-010`}
         onConfirm={vi.fn()}
         onReject={vi.fn()}
-        onRetry={vi.fn()}
+        onRetry={onRetry}
       />,
     )
 
+    expect(screen.getByText(new RegExp(`recovery:\\s*${blockedStatus}`, 'i'))).toBeInTheDocument()
+    expect(screen.getByText(/authority:\s*automatic transition/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+
+    expect(onRetry).toHaveBeenCalledWith({
+      phaseId: 'plan',
+      action: 'retry',
+      transitionId: `${blockedStatus}-010`,
+      stateVersion: 10,
+    })
   })
 })
 
@@ -2206,7 +2713,24 @@ describe('WorkflowReportLink', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('shows the durable final report pointer for completed workflow sessions', () => {
+  it('opens the durable final report from the workflow report API', async () => {
+    vi.mocked(sessionsApi.getWorkflowReport).mockResolvedValue({
+      pointer: {
+        kind: 'final-report',
+        sessionId: 'session-001',
+        artifactId: 'final',
+        schemaVersion: 1,
+        createdAt: '2026-05-20T00:10:00.000Z',
+        label: 'Final workflow report',
+      },
+      report: {
+        schemaVersion: 1,
+        sessionId: 'session-001',
+        status: 'completed',
+        conversationSummary: 'Workflow completed.',
+      },
+    })
+
     render(
       <WorkflowReportLink
         workflow={{
@@ -2217,6 +2741,10 @@ describe('WorkflowReportLink', () => {
           reportPointer: {
             id: 'report-001',
             kind: 'report',
+            sessionId: 'session-001',
+            artifactId: 'final',
+            schemaVersion: 1,
+            createdAt: '2026-05-20T00:10:00.000Z',
             label: 'Final workflow report',
             uri: 'workflow-sessions/session-001/report.json',
           },
@@ -2224,8 +2752,13 @@ describe('WorkflowReportLink', () => {
       />,
     )
 
-    const link = screen.getByRole('link', { name: /final workflow report/i })
-    expect(link).toHaveAttribute('href', 'workflow-sessions/session-001/report.json')
+    const button = screen.getByRole('button', { name: /final workflow report/i })
+    fireEvent.click(button)
+
+    expect(sessionsApi.getWorkflowReport).toHaveBeenCalledWith('session-001')
+    const dialog = await screen.findByRole('dialog', { name: /final workflow report/i })
+    expect(within(dialog).getByTestId('workflow-final-report-json')).toHaveTextContent(/workflow completed/i)
+    expect(within(dialog).getAllByText(/session-001/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/workflow-sessions\/session-001\/report\.json/i)).toBeInTheDocument()
   })
 })

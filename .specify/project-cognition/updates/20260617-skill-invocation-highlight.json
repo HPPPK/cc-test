@@ -1,0 +1,63 @@
+{
+  "workflow": "sp-quick",
+  "reason": "workflow-finalize",
+  "changed_paths": [
+    "desktop/src/components/chat/composerUtils.ts",
+    "desktop/src/components/chat/ChatInput.tsx",
+    "desktop/src/components/chat/ChatInput.test.tsx",
+    "desktop/src/components/chat/UserMessage.tsx",
+    "desktop/src/components/chat/UserMessage.test.tsx",
+    ".planning/quick/20260617-skill-invocation-highlight/STATUS.md",
+    ".planning/quick/20260617-skill-invocation-highlight/SUMMARY.md"
+  ],
+  "scope_paths": [
+    "desktop/src/components/chat"
+  ],
+  "behavior_surfaces": [
+    "desktop chat session composer slash skill invocation marker",
+    "desktop user message rendering for leading slash skill invocation",
+    "desktop slash command parsing helper"
+  ],
+  "generated_surfaces": [],
+  "state_contracts": [
+    "No persistence format change; slash skill invocation highlighting is derived from displayed composer/message text.",
+    "No skill execution semantics, provider routing, server workflow policy, or prompt content change."
+  ],
+  "verification": [
+    {
+      "command": "bun run test --run src/components/chat/UserMessage.test.tsx -t \"highlights a leading skill invocation\"",
+      "result": "passed after initial RED failure"
+    },
+    {
+      "command": "bun run test --run src/components/chat/ChatInput.test.tsx -t \"shows a distinct composer marker\"",
+      "result": "passed after initial RED failure"
+    },
+    {
+      "command": "bun run test --run src/components/chat/UserMessage.test.tsx src/components/chat/ChatInput.test.tsx src/components/chat/composerUtils.test.ts",
+      "result": "passed; 3 files, 48 tests"
+    },
+    {
+      "command": "bun run check:desktop",
+      "result": "passed; 98 test files, 890 tests, TypeScript, and Vite build"
+    },
+    {
+      "command": "fetch http://localhost:1420",
+      "result": "passed; status 200, app root present"
+    }
+  ],
+  "known_unknowns": [
+    "Project cognition runtime is blocked by schema v1/v2 mismatch, so entry routing and closeout update may fail until the cognition baseline is rebuilt or migrated.",
+    "No full visual browser screenshot was captured because Playwright is not installed in this workspace; component tests cover the DOM marker and badge."
+  ],
+  "confidence_notes": [
+    "Implementation is display-only and scoped to desktop chat components.",
+    "The leading slash parser intentionally matches only command-like leading /tokens followed by whitespace or end-of-string to avoid highlighting paths like /Users/name."
+  ],
+  "user_decisions": [
+    "User confirmed the quick-task understanding checkpoint."
+  ],
+  "boundary": [
+    "Do not change skill invocation semantics.",
+    "Do not replace textarea with overlay/contenteditable in this quick task."
+  ]
+}

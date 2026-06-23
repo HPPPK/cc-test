@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { changedFiles, writeDiffPatch } from '../baseline/execute'
 import type { BaselineTarget, LaneResult } from '../types'
+import { bunCommand } from '../bunRuntime'
 
 const FIXTURE = 'scripts/quality-gate/desktop-smoke/fixtures/chat-edit'
 const PROMPT = [
@@ -25,7 +26,7 @@ export function resolveDesktopSmokeRuntimeSelection(target: BaselineTarget | und
 }
 
 export function desktopViteCommand() {
-  return ['bun', 'run', 'dev']
+  return bunCommand(['run', 'dev'])
 }
 
 async function getPort(): Promise<number> {
@@ -199,7 +200,7 @@ async function verifyProject(originalDir: string, projectDir: string, artifactDi
     throw new Error('desktop smoke implementation is missing the expected marker text')
   }
 
-  const proc = Bun.spawn(['bun', 'test'], {
+  const proc = Bun.spawn(bunCommand(['test']), {
     cwd: projectDir,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -243,7 +244,7 @@ export async function executeDesktopSmoke(
     AGENT_BROWSER_PROFILE: browserProfileDir,
   }
 
-  const server = Bun.spawn(['bun', 'run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(serverPort)], {
+  const server = Bun.spawn(bunCommand(['run', 'src/server/index.ts', '--host', '127.0.0.1', '--port', String(serverPort)]), {
     cwd: rootDir,
     stdout: 'pipe',
     stderr: 'pipe',

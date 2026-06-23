@@ -69,7 +69,7 @@ Drive a resumable product and technical discussion that locks context boundaries
 ## Output Contract
 
 - Maintain the independent discussion state and artifacts under `.specify/discussions/<slug>/`.
-- Treat `handoff-ready` as resumable until the user confirms the handoff has been consumed or the topic should be dropped; close as `completed` or `abandoned` before archiving.
+- Treat `handoff-ready` as resumable until `sp-specify` consumes it or the user confirms the topic should be dropped; after consumption, mark it with `specify discussion mark-consumed <slug> --feature-dir <feature-dir>` before archiving.
 - Provide 2-3 project-grounded technical options only after the relevant boundary is locked.
 - Report unresolved questions honestly instead of forcing planning readiness.
 - Distinguish verified project facts from open assumptions before presenting technical options.
@@ -95,7 +95,7 @@ Run this gate whenever the request, artifact set, defect, or planned change can 
 
 Project cognition first. Use the project cognition runtime to identify ownership, consumers, state surfaces, change-propagation facts, verification routes, conflicts, known unknowns, and coverage gaps. Senior consequence analysis second. Turn those facts into explicit product and implementation obligations instead of treating the graph as the decision-maker.
 
-Project cognition readiness provides routing advice. If readiness is `ready`, continue with the returned task-local bundle. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing. If readiness is `ambiguous`, ask the user to choose. If readiness is `needs_update`, use `$sp-map-update` when the workflow needs updated runtime coverage for the touched area; otherwise continue with live repository evidence and carry the stale coverage gap forward. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance.
+Project cognition readiness provides routing advice. If readiness is `query_ready`, read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons. If readiness is `review`, inspect the returned `minimal_live_reads` before continuing and treat `coverage_diagnostics` as confidence and closeout signals. If readiness is `needs_rebuild`, continue with live repository evidence and recommend `$sp-map-scan -> $sp-map-build` only for brownfield first/missing/unusable baseline, schema failure, schema v1 or old broad-schema rebuild-required readiness, zero active-generation `path_index` rows outside `greenfield_empty`, missing or invalid `alias_index`, `explicit_rebuild_requested`, or `baseline_identity_invalid`. If readiness is `blocked`, report the blocked state and continue with live repository evidence unless the user's actual request is to fix cognition runtime state. If readiness is `unsupported_runtime`, continue with live evidence and record that compass intake was unavailable. If `baseline_kind=greenfield_empty`, continue with workflow artifacts and live requirements; do not recommend map-scan -> map-build solely because the graph has no paths. Carry relevant project cognition facts, returned `minimal_live_reads`, inference notes, and coverage gaps into the workflow's artifacts or durable state, but back consequence claims with live code, tests, scripts, configuration, or authoritative docs. Mutation closeout is separate from entry routing: entry stale may continue, but that does not allow source/runtime mutation workflows to defer closeout. Workflow-owned mutation closeout is not an external map-maintenance handoff; after changing project-related files or behavior, the workflow must run inline project cognition update from its changed paths, affected surfaces, and verification evidence, with `project-cognition mark-dirty` only as fallback when inline update cannot complete. `sp-map-update` is for manual/external maintenance and follow-up repair; it is external map maintenance, not routine closeout for this workflow's own changes. In shared routing summaries, sp-map-update is for manual/external maintenance and ordinary existing-baseline gaps.
 
 Required output when the gate triggers:
 
@@ -164,8 +164,9 @@ Use `.specify/templates/discussion-state-template.md` when initializing `discuss
 - If a generated slug collides, append a date or short numeric suffix.
 - Valid statuses are `active | blocked | handoff-ready | completed | abandoned`.
 - Incomplete statuses are `active`, `blocked`, and `handoff-ready`.
-- `handoff-ready` is intentionally still resumable. It means the handoff can be consumed by `sp-specify`; it does not mean the discussion is archived or hidden from default resume selection.
-- To remove a no-longer-needed discussion from default resume candidates, close it as `completed` or `abandoned` after the user confirms the handoff was consumed or the topic should be dropped, then archive it. Use `specify discussion close <slug> --status completed|abandoned` followed by `specify discussion archive <slug>` when the generated project has the Specify CLI helper surface available.
+- `handoff-ready` is intentionally still resumable until consumed. It means the handoff can be consumed by `sp-specify`; it does not mean the discussion is archived or hidden from default resume selection.
+- After `sp-specify` consumes the handoff into a feature workspace, mark the source discussion consumed/completed so future `sp-auto` runs do not treat stale handoff-ready state as a live candidate. Use `specify discussion mark-consumed <slug> --feature-dir <feature-dir>` when the generated project has the Specify CLI helper surface available.
+- To remove a no-longer-needed discussion from default resume candidates without consumption, close it as `completed` or `abandoned` after the user confirms the topic should be dropped, then archive it. Use `specify discussion close <slug> --status completed|abandoned` followed by `specify discussion archive <slug>` when the generated project has the Specify CLI helper surface available.
 - Do not archive `active`, `blocked`, or `handoff-ready` discussions directly.
 - If the user specifies a slug, resume or create that slug according to the user's wording.
 - If no slug is specified and exactly one incomplete discussion exists, resume it.
@@ -410,11 +411,10 @@ Bounded source-code reads are allowed during the Truth Pass when they are needed
 Before `context-grounding`, `technical-options`, affected-surface analysis, or source-grounded recommendations, use project cognition only when current-project facts matter:
 
 1. Read `.specify/project-cognition/status.json` for advisory freshness and runtime metadata when present.
-2. Run `C:\Users\11034\.specify\bin\project-cognition.exe lexicon --intent discussion --query=\"$ARGUMENTS\" --mode catalog --format json`.
-3. Write `semantic_intake` from the alias catalog with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`; select from the returned graph-backed project concept candidates by facet coverage and create a bounded `query_plan` with `semantic_intake`, `selected_concepts`, `rejected_concepts`, `concept_decisions` containing `covered_facets`, `missing_facets`, and `match_sources`, `lexicon_generation_id`, `expanded_queries`, `repository_search_terms`, justified `paths`, and `selection_reason`. Derive project-language search terms from the alias catalog before source search. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, `normalized_query`, and `expanded_queries`. Use these project-language search terms before broad repository search. Do not trust top similarity alone.
-4. Run `C:\Users\11034\.specify\bin\project-cognition.exe query --intent discussion --query-plan \"<query_plan_json>\" --format json`.
-5. Use the returned readiness, route_pack, subgraph, missing coverage, and `minimal_live_reads` only as advisory navigation.
-6. Read the returned `minimal_live_reads` before making project-specific technical claims.
+2. Run `C:\Users\11034\.specify\bin\project-cognition.exe compass --intent discussion --query=\"$ARGUMENTS\" --format json`. Read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons and `coverage_diagnostics`. Preserve the advanced `lexicon -> semantic_intake -> query` flow as a conditional escalation for explicit concept decisions.
+3. Run the advanced path only when `compass_state`, coverage diagnostics, localization, or live evidence requires explicit concept decisions. In that escalation, write `semantic_intake` from the alias catalog with `normalized_query`, `intent_facets`, `negative_constraints`, and `alias_interpretations`; select from the returned graph-backed project concept candidates by facet coverage and create a bounded `query_plan` with `semantic_intake`, `selected_concepts`, `rejected_concepts`, `concept_decisions` containing `covered_facets`, `missing_facets`, and `match_sources`, `lexicon_generation_id`, `expanded_queries`, `repository_search_terms`, justified `paths`, and `selection_reason`. Agent-owned semantic normalization is mandatory: raw lexicon ranking and `agent_normalization` are only bootstrap signals, not route decisions. If `agent_normalization.required=true`, every raw candidate is `score=0`, or the prompt is localized, mixed-language, CJK, colloquial, or symptom-first, extract embedded project terms and write `semantic_intake` from the alias catalog before selecting or rejecting concepts. If `agent_normalization` is omitted, treat it as `required=false`; CJK or mixed CJK/ASCII input still requires agent normalization even when positive raw lexical matches exist because embedded project tokens do not translate the surrounding user language. The agent still owns translation; `agent_normalization` is advisory guidance, not a route decision. This includes mixed-language or CJK text. (raw lexicon ranking is only a bootstrap; action: write_semantic_intake_from_alias_catalog) Derive project-language search terms from the alias catalog before source search. Do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched_terms, colloquial_matches, returned paths, `normalized_query`, and `expanded_queries`. Use these project-language search terms before broad repository search. Do not trust top similarity alone.
+4. In that escalation, run `project-cognition query --query-plan "<query_plan_json>"` and use the returned readiness, route_pack, subgraph, missing coverage, and `minimal_live_reads` only as advisory navigation.
+5. Read the returned `minimal_live_reads` before making project-specific technical claims.
 
 ### Cognition Advisory, Code Authority
 
@@ -422,11 +422,9 @@ Treat project cognition as advisory navigation and coverage metadata. Use it to 
 
 Readiness handling:
 
-- `ready`: read `minimal_live_reads`, then make claims only from live evidence.
-- `review`: read `minimal_live_reads`, carry confidence labels, and ask only if live reads still leave the fact unresolved.
-- `ambiguous`: present the likely candidates and ask the user to choose the intended target.
-- `needs_update`: treat as map-quality advisory for ordinary discussion; use live reads and record the cognition gap. Recommend `$sp-map-update` only when map maintenance becomes relevant or before a handoff needs stronger coverage.
-- `needs_rebuild`: continue product framing if possible, but do not make project-specific technical claims until live evidence proves them or the user accepts an explicit assumption. Recommend `$sp-map-scan -> $sp-map-build` only when the user asks for map maintenance or handoff needs evidence that live reads cannot provide.
+- `query_ready`: read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons.
+- `review`: perform only the returned `minimal_live_reads` before continuing and inspect `coverage_diagnostics`.
+- `needs_rebuild`: route through `$sp-map-scan`, then `$sp-map-build` only for documented brownfield rebuild triggers.
 - `readiness=blocked`: report project cognition as unavailable or degraded, continue with product framing or bounded live evidence when safe, and recommend a map maintenance workflow only when the user asks for map maintenance or handoff needs evidence that live reads cannot provide.
 
 If the idea is clearly greenfield or does not depend on existing project structure, record the stand-down reason in `project-context.md` and avoid existing-code placement claims.
@@ -575,7 +573,22 @@ The handoff must include:
 - `downstream_instructions`: settled decisions, assumptions to preserve, conflicts requiring return to `sp-discussion`, capability map, recommended sequence, dependencies, deferred scope, and reopen conditions
 - `ui_discussion`: `ui_discussion_status`, confirmed UI decisions, deferred UI decisions, interaction expectations, state requirements, accessibility expectations, and whether ASCII sketches are present
 - `ui_sketch_reference`: Markdown section reference for ASCII sketches when `ui_sketches_present` is true
+- `handoff_reviewer_guide`: a human-facing Markdown section named `Handoff Reviewer Guide` that tells an experienced product or engineering reviewer what decision they are being asked to make, what to review first, when to approve, and when to request changes. Write it for someone who does not know Spec Kit internals.
 - `quality_gate`: `status`, `self_reviewed_at`, `user_review_required`, `user_confirmed_at`, and `blocked_reasons`
+
+## Handoff Reviewer Guide
+
+Every draft `handoff-to-specify.md` must include a concise `Handoff Reviewer Guide` before the detailed contract sections or immediately after the Quality Gate. The guide is for an experienced reviewer who understands product and engineering trade-offs but does not know this workflow's internal rules.
+
+The guide must tell the reviewer:
+
+- Decision to make: confirm whether this draft accurately captures the intended product direction and is safe to mark `handoff-ready`, or request changes before the next stage.
+- Review order: `Handoff Goal`, `Context Boundary`, `Implementation Target`, `Source Evidence`, `Blocking Unknowns`, `Downstream Instructions`, `Must-Preserve Ledger`, and any `CA-###` consequence obligations.
+- Approve only if: the goal matches the user's intent, the target project and reference roles are correct, hard unknowns are absent, soft unknowns are safe to resolve later, non-goals/deferred scope are acceptable, and the Must-Preserve and consequence obligations cover the decisions that would cause drift if lost.
+- Request changes if: the target or evidence boundary is wrong, a hard decision is hidden as a soft unknown, a non-goal or reopen condition is missing, the handoff asks downstream workflows to prove or enforce facts outside the target project's authority, or Markdown and JSON disagree on protected IDs or quality-gate status.
+- What not to over-review: exact implementation filenames, UI copy/layout, or final field names may remain downstream soft unknowns unless the handoff claims them as verified or they are necessary to keep the scope coherent.
+
+After writing the draft pair, ask the user to review it with this guide and reply with either approval to mark `handoff-ready` or the concrete changes needed. Do not ask for a bare yes/no confirmation without review criteria.
 
 ## Must-Preserve Ledger
 
@@ -627,6 +640,7 @@ The handoff quality gate is mandatory. `sp-discussion` must not mark a handoff r
 - hard unknowns remain open
 - soft unknowns lack owner, latest resolve phase, or stop-and-reopen condition
 - Must-Preserve Ledger omits goal, scope, non-goals, key decisions, acceptance signals, path constraints, or blocking questions
+- Markdown handoff lacks a `Handoff Reviewer Guide` with approval and change-request criteria for a reviewer who does not know Spec Kit internals
 - quality gate lacks self-review status
 - user has not reviewed and confirmed the handoff
 
@@ -650,11 +664,14 @@ Do not mark the discussion `handoff-ready` until every confirmed or critical ite
 
 When the Senior Consequence Analysis Gate triggers, also write or refresh `handoff-to-specify.json` as a mandatory machine-readable mirror of triggered gate status, consequence analysis, `CA-###` obligations, coverage gaps, and stop-and-reopen conditions. Markdown and JSON handoffs must agree on obligation IDs, claims, blocking level, owner, latest resolve phase, status, and stop-and-reopen condition before the discussion can become `handoff-ready`.
 
-After writing a draft handoff, ask the user to review it. Tell the user to invoke the generated integration's `sp-specify` command form with the handoff path only after the handoff self-review passes and `quality_gate.status` records user confirmation. Do not invoke it yourself.
+After writing a draft handoff, ask the user to review it using the `Handoff Reviewer Guide`. Tell the user to invoke the generated integration's `sp-specify` command form with the handoff path only after the handoff self-review passes and `quality_gate.status` records user confirmation. Do not invoke it yourself.
 
 ## Codex Structured Question Preference
 
-- If the runtime's native structured question tool is available for the current turn, you must use it.
+- If this command was routed by `sp-auto` with `auto_default_recommendation: true`, evaluate the automatic recommended/default continuation gate before any question path.
+- When that gate has one safe recommended/default answer, you must auto-resolve the question or confirmation, record the accepted recommendation in the workflow state or summary, continue the workflow, and do not invoke the native structured question tool only to ask for that approval.
+- If the automatic gate is not safe, write the blocker and self-unblock recommendation before using the normal question path.
+- If the runtime's native structured question tool is available for the current turn and the `sp-auto` automatic gate did not resolve the question, you must use it.
 - Do not render the textual fallback block when the native tool is available.
 - Do not self-authorize textual fallback because the question seems simple, short, or easy to phrase manually.
 - Treat the template's textual question format as fallback-only guidance; use it to shape the question content, but do not render the textual block unless the native tool is unavailable in the current runtime or the tool call fails.

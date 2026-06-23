@@ -930,6 +930,87 @@ describe('WebSocket Chat Integration', () => {
     expect(statusMsgs[0].state).toBe('thinking')
   })
 
+  it('should synchronize WebSocket turn status to the chat status API', async () => {
+    await withMockStreamDelay(150, async () => {
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDir: process.cwd() }),
+      })
+      expect(createRes.status).toBe(201)
+      const { sessionId } = await createRes.json() as { sessionId: string }
+      const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
+
+      let resolveThinking: (() => void) | null = null
+      let rejectThinking: ((error: Error) => void) | null = null
+      let resolveComplete: (() => void) | null = null
+      let rejectComplete: ((error: Error) => void) | null = null
+
+      const thinkingPromise = new Promise<void>((resolve, reject) => {
+        resolveThinking = resolve
+        rejectThinking = reject
+      })
+      const completePromise = new Promise<void>((resolve, reject) => {
+        resolveComplete = resolve
+        rejectComplete = reject
+      })
+
+      const thinkingTimeout = setTimeout(() => {
+        rejectThinking?.(new Error(`Timed out waiting for thinking status for session ${sessionId}`))
+      }, 5000)
+      const completeTimeout = setTimeout(() => {
+        rejectComplete?.(new Error(`Timed out waiting for completion for session ${sessionId}`))
+      }, 5000)
+
+      try {
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data as string)
+          if (msg.type === 'connected') {
+            ws.send(JSON.stringify({ type: 'user_message', content: 'status sync' }))
+            return
+          }
+          if (msg.type === 'status' && msg.state === 'thinking') {
+            clearTimeout(thinkingTimeout)
+            resolveThinking?.()
+          }
+          if (msg.type === 'message_complete') {
+            clearTimeout(completeTimeout)
+            resolveComplete?.()
+          }
+          if (msg.type === 'error') {
+            const error = new Error(msg.message)
+            clearTimeout(thinkingTimeout)
+            clearTimeout(completeTimeout)
+            rejectThinking?.(error)
+            rejectComplete?.(error)
+          }
+        }
+        ws.onerror = () => {
+          const error = new Error(`WebSocket error for status sync session ${sessionId}`)
+          clearTimeout(thinkingTimeout)
+          clearTimeout(completeTimeout)
+          rejectThinking?.(error)
+          rejectComplete?.(error)
+        }
+
+        await thinkingPromise
+        let statusRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/status`)
+        expect(statusRes.status).toBe(200)
+        expect(await statusRes.json()).toMatchObject({ state: 'thinking' })
+
+        await completePromise
+        statusRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/status`)
+        expect(statusRes.status).toBe(200)
+        expect(await statusRes.json()).toMatchObject({ state: 'idle' })
+      } finally {
+        clearTimeout(thinkingTimeout)
+        clearTimeout(completeTimeout)
+        ws.close()
+        conversationService.stopSession(sessionId)
+      }
+    })
+  })
+
   it('emits a worktree startup status before launching a repository session', async () => {
     const repoDir = await createCleanGitRepo()
     const { sessionId } = await sessionService.createSession(repoDir, {

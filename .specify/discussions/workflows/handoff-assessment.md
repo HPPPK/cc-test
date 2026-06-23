@@ -1,26 +1,30 @@
 # Handoff Assessment: Workflows
 
-- assessed_at: 2026-05-29T15:33:41.0647544+08:00
+- assessed_at: 2026-06-11T19:24:46.7549232+08:00
 - discussion_slug: workflows
 - decision_status: ready-for-specify
 - required_next_action: write-unified-handoff
 
 ## Rationale
 
-The discussion has one coherent feature boundary: make workflow phase skills real recommended bindings to existing skills, rather than prompt-only workflow skill guidance.
+The reopened discussion now has one coherent feature boundary: specify workflows as phase execution contracts in `cc-jiangxia`.
+
+This supersedes the older phase-skill-only handoff. The confirmed direction now includes grouped phase fields, execution constraints, recommended phase skill bindings, dependency-aware sharing, lifecycle/completion semantics, runtime/editor UI behavior, compatibility, and validation.
 
 Confirmed decisions are sufficient for specification:
 
-- Workflow phases bind to skills, not plugins.
-- Phase skills are fixed on the phase and recommended-first by default.
-- The active phase prompt should make the agent pay special attention to selected phase skills when relevant.
-- The agent decides whether each phase skill applies; recommended skills are not auto-executed and do not block phase completion by default.
-- Soft audit records used recommended skills and clearly relevant skipped/unavailable skills only.
-- Skill references are names-first, with source/qualified reference when needed for ambiguity or portability.
-- Phase skill selection comes from the same shared capability catalog behind Settings > Skills and plugin capability navigation.
-- Workflow sharing uses a workflow package: template plus skill dependency manifest, not bundled skill package contents by default.
-- Missing recommended phase skills allow import with warnings, preserve references, mark unavailable at preview/runtime, and can appear in soft audit when relevant.
-- UI first scope is phase-local skill selection in `WorkflowTemplateEditor`, with workflow-level dependency diagnostics in import/export and lightweight runtime status.
+- Workflow phases should be treated as execution contracts, not only prose templates.
+- Phase field semantics should be grouped as `intent`, `contract`, `evidencePolicy`, and session-owned `runtimeState`.
+- Constraints are soft by default unless they are clear gates such as required artifacts, completion criteria, transition authority, or user confirmation.
+- Phase skills bind to existing skills, not plugins; plugin identity is provenance/dependency only.
+- Recommended phase skills are fixed on the phase and elevated in active-phase context, but are not auto-executed or completion-blocking by default.
+- Recommended phase skill audit is bounded: record used skills and clearly relevant skipped/unavailable skills only.
+- Workflow sharing should use workflow template plus skill dependency manifest, not bundled skill packages by default.
+- Missing recommended phase skills allow import with warnings, preserve references, and remain visible in preview/runtime.
+- Runtime state stays session-owned and should not be stored as editable template configuration.
+- Lifecycle status and completion submission status are distinct. `ready`, `blocked`, and `unable` are completion outcomes; `blocked` and `unable` remain recoverable inside `running`.
+- Pending confirmation is a real blocking state and resolves through confirm, reject, or retry.
+- Runtime phase controls cover Confirm/Reject/Retry, manual completion as a user override, and Retry for blocked/unable. Auto-advance is an authority label; cancel/resume are session-level controls.
 
 ## Assessment Dimensions
 
@@ -31,28 +35,42 @@ Confirmed decisions are sufficient for specification:
 - planning_shape: pass
 - validation_shape: pass
 - risk_profile: pass-with-consequence-obligations
+- hard_unknown_count: 0
+- open_conflict_count: 0
 
 ## Boundary Evidence
 
 - current_project_root: `F:\github\cc-jiangxia`
 - target_project_root: `F:\github\cc-jiangxia`
-- target boundary: current product codebase, workflow template/runtime/desktop surfaces.
+- target boundary: current product codebase, workflow template/runtime/import-export/desktop surfaces.
+- path_status: user-confirmed
 - source evidence: `requirements.md`, `technical-options.md`, `project-context.md`, `open-questions.md`, and live reads cited there.
 
 ## Remaining Unknowns
 
-No hard unknown blocks handoff.
+No hard unknown blocks draft handoff.
 
 Soft unknowns to carry into specification:
 
-- Exact stable skill reference schema fields.
-- Whether the shared catalog must include managed/MCP/bundled sources in the first implementation slice or only align user/project/plugin first.
-- Exact UI copy and layout details.
-- Exact runtime storage shape for skill resolution status and soft audit evidence.
-- Future required/contract phase skill behavior.
+- Exact stable skill reference schema fields across user/project/plugin/managed/bundled/MCP sources.
+- Whether the first implementation aligns all skill sources immediately or starts with the current Settings-backed user/project/plugin set and leaves broader source alignment explicit.
+- Exact adapter boundaries between current flat persistence fields and grouped product/runtime semantics.
+- Exact UI copy and layout for Intent/Contract/Evidence editor grouping and runtime status controls.
+- Exact storage location for skill audit evidence across session state, phase run records, artifacts, and final reports.
+- Future required/contract phase skill behavior beyond recommended-first defaults.
+- Project cognition runtime was unavailable during the latest runtime UI pass; live file evidence is current, but restored cognition should be rerun before implementation planning if available.
 
 ## Consequence Gate
 
-Senior Consequence Analysis remains triggered because this feature affects workflow template schema, runtime prompt behavior, import/export, settings/catalog surfaces, session resume, and agent skill invocation semantics.
+Senior Consequence Analysis remains triggered because this feature affects workflow template schema, runtime prompt behavior, workflow-scoped completion tools, skill catalog/reference semantics, import/export, session lifecycle, stale/missing template behavior, and desktop workflow UI.
 
-The handoff must preserve CA-001 through CA-010 and must not let downstream work silently weaken permission boundaries, source/provenance tracking, missing skill diagnostics, or resume behavior.
+The handoff must preserve CA-001 through CA-010 and must not let downstream work silently weaken permission boundaries, source/provenance tracking, missing skill diagnostics, state-version protection, pending-confirmation behavior, or resume/snapshot behavior.
+
+## Assessment Result
+
+Proceed with one refreshed unified draft handoff pair:
+
+- `.specify/discussions/workflows/handoff-to-specify.md`
+- `.specify/discussions/workflows/handoff-to-specify.json`
+
+The draft pair is not handoff-ready until self-review passes and the user confirms the generated handoff.

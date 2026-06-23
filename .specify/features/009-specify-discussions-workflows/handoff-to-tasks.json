@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "feature": "Workflow Phase Execution Contracts",
+  "feature_dir": ".specify/features/009-specify-discussions-workflows",
+  "branch": "009-specify-discussions-workflows",
+  "generated_by": "sp-tasks",
+  "status": "ready_for_implementation",
+  "next_command": "/sp.implement",
+  "task_count": 18,
+  "parallel_task_count": 4,
+  "adaptive_dispatch": {
+    "mode": "standard",
+    "leader": "leader-inline",
+    "capability_degraded": true,
+    "reason": "Multi-agent tooling was discoverable, but its contract allows spawning only when the user explicitly asks for subagents, delegation, or parallel agent work.",
+    "delegated_lanes": []
+  },
+  "artifacts": {
+    "tasks": ".specify/features/009-specify-discussions-workflows/tasks.md",
+    "task_index": ".specify/features/009-specify-discussions-workflows/task-index.json",
+    "task_packets_dir": ".specify/features/009-specify-discussions-workflows/task-packets",
+    "evidence_index": ".specify/features/009-specify-discussions-workflows/task-generation/evidence-index.json",
+    "checkpoints": ".specify/features/009-specify-discussions-workflows/task-generation/checkpoints.ndjson"
+  },
+  "source_of_truth": [
+    ".specify/features/009-specify-discussions-workflows/spec.md",
+    ".specify/features/009-specify-discussions-workflows/plan.md",
+    ".specify/features/009-specify-discussions-workflows/alignment.md",
+    ".specify/features/009-specify-discussions-workflows/context.md",
+    ".specify/features/009-specify-discussions-workflows/research.md",
+    ".specify/features/009-specify-discussions-workflows/data-model.md",
+    ".specify/features/009-specify-discussions-workflows/quickstart.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-phase-contract.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-skill-dependency-manifest.md",
+    ".specify/features/009-specify-discussions-workflows/contracts/workflow-transition-submission.md",
+    ".specify/features/009-specify-discussions-workflows/plan-contract.json"
+  ],
+  "required_grouping": [
+    "classification and tests",
+    "contract compatibility model",
+    "skill binding and dependency diagnostics",
+    "runtime completion and evidence durability",
+    "desktop authoring/runtime UI",
+    "verification and closeout"
+  ],
+  "parallel_batches": [
+    {
+      "id": "batch-a",
+      "after": ["T001"],
+      "tasks": ["T002", "T003"],
+      "join": ["T004", "T005", "T006"]
+    },
+    {
+      "id": "batch-b",
+      "after": ["T006"],
+      "tasks": ["T007", "T009"],
+      "join": ["T010"]
+    }
+  ],
+  "join_points": [
+    {
+      "id": "checkpoint-0",
+      "after": ["T001"],
+      "condition": "implementation matrix maps all FR/NFR/SC/MP/CA obligations before source edits"
+    },
+    {
+      "id": "checkpoint-us1",
+      "after": ["T004", "T005"],
+      "task": "T006",
+      "condition": "server compatibility and desktop grouped authoring tests pass"
+    },
+    {
+      "id": "checkpoint-us2",
+      "after": ["T008", "T010"],
+      "condition": "recommended skill binding, SkillTool boundary, and runtime visibility tests pass"
+    },
+    {
+      "id": "checkpoint-us3",
+      "after": ["T012", "T014"],
+      "condition": "dependency manifest import/export API and desktop diagnostics pass"
+    },
+    {
+      "id": "checkpoint-us4",
+      "after": ["T016", "T017"],
+      "condition": "completion transition, evidence durability, and desktop controls pass"
+    },
+    {
+      "id": "final-gate",
+      "after": ["T018"],
+      "condition": "check:server, check:desktop, and verify results recorded with report paths or blockers"
+    }
+  ],
+  "guardrails": [
+    "G-CONTRACT",
+    "G-STATE",
+    "G-STRENGTH",
+    "G-SKILL",
+    "G-SHARE",
+    "G-UI",
+    "G-COMPAT",
+    "G-SCOPE",
+    "G-EVIDENCE",
+    "G-TEST"
+  ],
+  "must_preserve": [
+    "MP-001",
+    "MP-002",
+    "MP-003",
+    "MP-004",
+    "MP-005",
+    "MP-006",
+    "MP-007",
+    "MP-008",
+    "MP-009",
+    "MP-010",
+    "MP-011",
+    "MP-012",
+    "MP-013"
+  ],
+  "consequence_obligations": [
+    "CA-001",
+    "CA-002",
+    "CA-003",
+    "CA-004",
+    "CA-005",
+    "CA-006",
+    "CA-007",
+    "CA-008",
+    "CA-009",
+    "CA-010"
+  ],
+  "required_verification": {
+    "narrow_checks": [
+      "bun run check:server",
+      "bun run check:desktop"
+    ],
+    "final_gate": "bun run verify",
+    "live_gate_note": "Run live baseline only if provider access is configured; otherwise record the exact blocker."
+  },
+  "scope_limits": {
+    "forbidden": [
+      "scheduler",
+      "auto-execution",
+      "default required gates",
+      "skill bundle export",
+      "plugin installer",
+      "destructive migration",
+      "coverage threshold reduction",
+      "secret or credential changes"
+    ],
+    "allowed": [
+      "same-area tests",
+      "workflow server services and APIs named in task write scopes",
+      "desktop workflow components and API clients named in task write scopes",
+      "SkillTool prompt/permission boundary named in task write scopes",
+      "feature evidence artifacts"
+    ]
+  }
+}
