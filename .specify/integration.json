@@ -1,7 +1,7 @@
 {
   "integration": "claude",
-  "version": "0.5.12.dev0",
+  "version": "0.5.18.dev0",
   "scripts": {
-    "update-context": ".specify/integrations/claude/scripts/update-context.ps1"
+    "update-context": ".specify/integrations/claude/scripts/update-context.sh"
   }
 }

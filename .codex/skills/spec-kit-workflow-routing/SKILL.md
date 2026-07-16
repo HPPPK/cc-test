@@ -48,7 +48,9 @@ Do not invent, paraphrase, or "normalize" unsupported CLI names such as
 Feature creation must stay on `$sp-specify` plus the generated
 create-feature script at `.specify/scripts/bash/create-new-feature.sh` or
 `.specify/scripts/powershell/create-new-feature.ps1`, not an imagined
-standalone branch-creation command.
+standalone branch-creation command. Default feature workspace names use
+`YYYY-MM-DD-<slug>`; numeric prefixes are legacy and require the script's
+explicit numeric option.
 
 ## Complementary Passive Skills
 
@@ -60,6 +62,11 @@ standalone branch-creation command.
   Once the active workflow is selected, that complementary skill defines the
   workflow-specific learning-start and learning-capture behavior instead of leaving
   those triggers implicit.
+- `spec-kit-discussion-handoff-review` owns review discipline for
+  `sp-discussion` handoff packages. Use it when checking whether
+  `handoff-to-specify.md` plus `handoff-to-specify.json` can become or remain
+  `handoff-ready`, or when a ready closeout summary needs review-quality
+  context instead of only file paths and counters.
 
 ## Recommendation Rules
 
@@ -68,8 +75,9 @@ standalone branch-creation command.
   not cross a shared surface.
 - Use `sp-quick` for bounded work that is still small, but no longer trivial.
 - `sp-quick` performs one Understanding Checkpoint before substantive execution:
-  confirm the understood problem, intended outcome, scope boundary, execution
-  approach, and validation evidence before code edits, broad repo analysis,
+  confirm the understood problem, intended outcome, boundaries, known facts and
+  assumptions, affected surfaces, concrete implementation plan, validation
+  evidence, and stop condition before code edits, broad repo analysis,
   delegation, or validation commands continue.
 - Use `sp-auto` when repository state already records the recommended next step
   and the user wants to continue without naming the exact workflow manually.
@@ -77,11 +85,24 @@ standalone branch-creation command.
   recommended/default answer should auto-accept that answer and continue; if the
   answer is not safe to assume, report the blocker and a self-unblock
   recommendation instead of waiting silently.
-- Use `sp-discussion` before `sp-specify` when the request is a rough idea, not-yet-ready requirement, unsettled product direction, or depends on unclear project boundaries. `sp-discussion` is the senior product-engineering advisor route: it performs a Truth Pass before project-specific technical advice, gives decision-ready judgment with evidence and risk, maintains a Discussion Compass for long conversations, and applies proactive implication mapping so adjacent implications are surfaced without one-point-at-a-time follow-up loops.
+- Use `sp-ask` before `sp-discussion` when the user wants a read-only project
+  question answered with evidence from live files, templates, docs, generated
+  state, memory, or project cognition before choosing an action workflow.
+  `sp-ask` reads project evidence and answers; it does not write state, create
+  handoffs, run tests, run builds, or edit files. Same-topic follow-ups should
+  reuse the prior evidence set when it still applies, normalize localized or
+  project-slang terms into project vocabulary, and separate proven facts from
+  evidence-derived inferences.
+- Use `sp-discussion` before `sp-specify` when the request is a rough idea, not-yet-ready requirement, unsettled product direction, or depends on unclear project boundaries. `sp-discussion` is the high-throughput senior product-engineering advisor route: the visible conversation gives the recommended direction, plain-language reason, usable draft or next design step, default next step, and override path, while frontstage / backstage separation keeps state accounting backstage. It uses checkpoint persistence, does not persist every turn, continues by default, does not ask for continuation when a safe default exists, performs a Truth Pass before project-specific technical advice, maintains a Discussion Compass, and applies proactive implication mapping so adjacent implications are surfaced without one-point-at-a-time follow-up loops.
 - `sp-discussion` must run the Context Boundary Gate before project-specific technical options, affected-file claims, or handoff generation.
 - For cross-project or transfer requests, lock the target project root before technicalizing.
 - Do not route to `sp-split`; broad directions either become one unified handoff with capability map, sequence, dependencies, deferred scope, and reopen conditions, or stay in `sp-discussion`.
 - A valid explicit handoff from discussion is one pair: `handoff-to-specify.md` and `handoff-to-specify.json`, with self-review and user confirmation. Route that pair to `sp-specify` by passing the handoff Markdown path, JSON path, or discussion slug; when exactly one unconsumed `handoff-ready` discussion exists, `sp-specify` may consume it directly. `sp-specify` must validate ready planning status, user-confirmed quality gate status, zero hard unknowns, zero open conflicts, and Markdown/JSON agreement before feature creation.
+- When asked to review a discussion handoff, apply
+  `spec-kit-discussion-handoff-review`: return `approve-handoff-ready`,
+  `request-changes`, or `block-handoff`, apply the ready summary quality check,
+  and keep final closeout as a concise handoff card rather than a minimal
+  "files updated, next command" summary.
 - Use `sp-specify` for new capability, behavior, or requirement changes that are
   ready for an aligned spec package before implementation.
 - Use `sp-prd-scan -> sp-prd-build` when an existing repository needs a current-state PRD suite reverse-extracted from code, docs, tests, routes, UI/API surfaces, and project cognition evidence. Treat that pair as the canonical heavy reconstruction PRD lane, a peer workflow path to `sp-specify`, not as a pre-plan requirement, and do not automatically hand off to planning.
@@ -122,8 +143,11 @@ standalone branch-creation command.
   broad-schema baselines must rebuild through `sp-map-scan -> sp-map-build`
   before their alias catalog is usable navigation.
 - `sp-map-update` is for manual/external maintenance as the external/manual maintenance entrypoint for user edits, interrupted workflow repair, explicit map maintenance, and follow-up repair. A source-changing `sp-*` workflow does not hand off its own verified changes to `sp-map-update`; it runs inline project cognition update during closeout from its workflow-owned changed paths, affected surfaces, and verification evidence. In shared routing summaries, sp-map-update is for manual/external maintenance.
-- Inline update is map-update-equivalent for workflow-owned changes. Use `project-cognition update --delta-session "$DELTA_SESSION_ID" --reason workflow-finalize --format json` when a delta session exists. Without a delta session, write `.specify/project-cognition/updates/<update-id>.json` and run `project-cognition update --payload-file ".specify/project-cognition/updates/<update-id>.json" --reason workflow-finalize --format json`. Payload files accept `verification` plus the compatibility alias `verification_evidence`, and `generated_surfaces` plus the compatibility alias `generated_surface_notes`; failed verification evidence cannot produce a clean `ready` closeout. Clean closeout keys on `result_state`, not `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output.
-- Workflow-owned mutation closeout is not external map maintenance. Dirty state is fallback-only after inline update cannot complete.
+- Workflow-owned mutation closeout is not an external map-maintenance handoff. If the active workflow changed project-related source, runtime, templates, generated assets, config, tests, state contracts, or behavior-bearing docs, closeout must run `project-cognition closeout-plan --workflow "$ACTIVE_WORKFLOW" --format json` before recording inline project cognition update data.
+- When `DELTA_SESSION_ID` exists, pass `--delta-session "$DELTA_SESSION_ID"` to `closeout-plan`. Fill fields listed in `required_agent_fields` from live evidence; optional payload/delta fields such as `known_unknowns` and `boundary` are populated only when evidence supports them. Follow `update_mode=delta_session` by completing `delta_append_draft.argv_prefix` with evidence placeholders, appending the workflow closeout delta event, then running structured `update_argv`. Follow `update_mode=payload_file` by writing the completed `payload_draft`, then running structured `update_argv`. The display-only `update_command` and display-only `delta_append_command` placeholders are not execution strings.
+- Use `known_unknowns` only for blockers that make the cognition update unsafe to trust. If the working tree contains unrelated dirty/untracked paths and the workflow uses explicit workflow-owned paths, record that as `confidence_notes` or `boundary.initial_dirty_paths`, not as a blocking `known_unknowns` item.
+- Before update recording, resolve `unknown_path_dispositions` by setting `agent_disposition` to `adoptable`, `review_only`, `ignored`, or `blocking_known_unknown`. Verified `adoptable` paths do not become blocking `known_unknowns`. Only `blocking_known_unknown` dispositions become payload or delta known unknowns.
+- Clean closeout keys on `result_state`, not `status=ok`, `update_id`, `last_update_id`, or freshness alone; `recorded` is legacy recorded-only partial/blocked output. Use `project-cognition mark-dirty --reason "workflow-closeout-failed" --format json` only when planner/update is unavailable, fails before recording useful update data, cannot safely identify workflow-owned scope, is blocked by runtime state, or verification/workflow completion is not trustworthy. Workflow-owned mutation closeout is not external map maintenance. Dirty state is fallback-only after inline update cannot complete.
 - Use `sp-analyze` only for optional diagnostics, explicit user requests, or persisted legacy `/sp.analyze` state.
 - Use `sp-explain` when the user needs a plain-language explanation of current
   artifacts or runtime state.
@@ -156,6 +180,7 @@ state, or artifact handoffs. Use projected invocation placeholders when telling 
 user what to type:
 
 - New capability alignment: `$sp-specify`
+- Read-only project Q&A: `$sp-ask`
 - Pre-spec discussion: `$sp-discussion`
 - Existing-project PRD extraction: `$sp-prd-scan -> $sp-prd-build`
 - Planning handoff: `$sp-plan`
