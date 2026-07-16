@@ -36,7 +36,11 @@ artifacts/
 # Desktop build output
 desktop/dist/
 desktop/build-artifacts/
-desktop/src-tauri/binaries/
+desktop/src-tauri/binaries/*
+!desktop/src-tauri/binaries/packs/
+desktop/src-tauri/binaries/packs/*
+!desktop/src-tauri/binaries/packs/workflows/
+!desktop/src-tauri/binaries/packs/workflows/*.zip
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/package-lock.json
@@ -80,3 +84,23 @@ runtime/__pycache__
 
 # Codex logs
 .codex-logs/
+.aider*
+
+# Local development and agent runtime state (never commit)
+.codex/config.toml
+.specify/project-cognition/project-cognition.db
+.specify/project-cognition/status.json
+.specify/project-cognition/updates/
+.specify/runtime/
+.specify/teams/
+.continue/
+.workflow/intake/
+.workflow/runs/
+.workflow/project-context.md
+.workflow/run-report.md
+.workflow/work-order.md
+test/.workflow/
+desktop/.*.bun-build
+tmp-empty-session.json
+undefined/
+Users/
