@@ -1177,6 +1177,7 @@ export const en = {
   'settings.tab.about': 'About',
   'settings.about.version': 'Version',
   'settings.about.changelog': 'Release Notes',
+  'settings.about.testUpdateChannel': 'Test update channel: cc-test',
   'settings.about.repo': 'GitHub Repository',
   'settings.about.starHint': 'If this project helps you, consider giving it a Star',
   'settings.about.feedback': 'Report an Issue',

@@ -4153,16 +4153,21 @@ function AboutSettings() {
       <img src="/app-icon.png" alt="Claude Code Jiangxia" className="w-20 h-20 mb-4" />
       <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Claude Code Jiangxia</h1>
       {version && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-          <span>{t('settings.about.version')} {version}</span>
-          <span className="text-[var(--color-border)]">路</span>
-          <button
-            onClick={() => openUrl(GITHUB_RELEASES)}
-            className="rounded-[var(--radius-sm)] text-[var(--color-text-accent)] transition-colors hover:text-[var(--color-brand)] focus:outline-none focus:shadow-[var(--shadow-focus-ring)]"
-          >
-            {t('settings.about.changelog')}
-          </button>
-        </div>
+        <>
+          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
+            <span>{t('settings.about.version')} {version}</span>
+            <span className="text-[var(--color-border)]">路</span>
+            <button
+              onClick={() => openUrl(GITHUB_RELEASES)}
+              className="rounded-[var(--radius-sm)] text-[var(--color-text-accent)] transition-colors hover:text-[var(--color-brand)] focus:outline-none focus:shadow-[var(--shadow-focus-ring)]"
+            >
+              {t('settings.about.changelog')}
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+            {t('settings.about.testUpdateChannel')}
+          </div>
+        </>
       )}
 
       {/* GitHub Repo */}

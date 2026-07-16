@@ -1179,6 +1179,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.tab.about': '关于',
   'settings.about.version': '版本',
   'settings.about.changelog': '更新日志',
+  'settings.about.testUpdateChannel': '测试更新通道：cc-test',
   'settings.about.repo': 'GitHub 仓库',
   'settings.about.starHint': '如果这个项目对你有帮助，欢迎给个 Star',
   'settings.about.feedback': '反馈问题',

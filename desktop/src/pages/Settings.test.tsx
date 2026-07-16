@@ -105,19 +105,23 @@ vi.mock('../components/plugins/PluginDetail', () => ({
 }))
 
 vi.mock('../stores/updateStore', () => ({
-  useUpdateStore: () => ({
-    status: 'idle',
-    availableVersion: null,
-    releaseNotes: null,
-    progressPercent: 0,
-    downloadedBytes: 0,
-    totalBytes: null,
-    error: null,
-    checkedAt: null,
-    initialize: vi.fn(),
-    checkForUpdates: vi.fn(),
-    installUpdate: vi.fn(),
-  }),
+  useUpdateStore: (selector?: (state: any) => any) => {
+    const state = {
+      status: 'idle' as const,
+      availableVersion: null,
+      releaseNotes: null,
+      progressPercent: 0,
+      downloadedBytes: 0,
+      totalBytes: null,
+      error: null,
+      checkedAt: null,
+      initialize: vi.fn(),
+      checkForUpdates: vi.fn(),
+      installUpdate: vi.fn(),
+    }
+
+    return selector ? selector(state) : state
+  },
 }))
 
 vi.mock('qrcode', () => ({
@@ -176,6 +180,14 @@ describe('Settings Workflows tab', () => {
 
     expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument()
     expect(useUIStore.getState().pendingSettingsTab).toBeNull()
+  })
+
+  it('shows the cc-test update channel marker in About', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /About/ }))
+
+    expect(await screen.findByText('Test update channel: cc-test')).toBeInTheDocument()
   })
 
   it('uses localized Chinese labels for the Workflows and Experts tabs', () => {
