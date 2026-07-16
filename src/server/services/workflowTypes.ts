@@ -504,6 +504,12 @@ export type WorkflowSessionSummary = {
   activePhaseIndex: number
   phaseCount: number
   pendingConfirmation: boolean
+  pendingRoute?: WorkflowPendingRoute | null
+  pendingTargetPhaseId?: string | null
+  pendingTargetPhaseIndex?: number
+  pendingTargetPhaseLabel?: string
+  routeReason?: string
+  requiresConfirmation?: boolean
   runStatus?: WorkflowRunStatus
   labels?: WorkflowLabel[]
   secondaryLabels?: WorkflowLabel[]
@@ -560,6 +566,12 @@ export type WorkflowSessionMetadata = {
   preview?: WorkflowPreviewState
   skillBindingStatus?: WorkflowSkillBindingResolution[]
   phaseNames?: string[]
+  pendingRoute?: WorkflowPendingRoute | null
+  pendingTargetPhaseId?: string | null
+  pendingTargetPhaseIndex?: number
+  pendingTargetPhaseLabel?: string
+  routeReason?: string
+  requiresConfirmation?: boolean
   [key: string]: unknown
 }
 
@@ -604,6 +616,44 @@ export type WorkflowPendingConfirmation = {
   createdAt: string
   status: WorkflowArtifactLifecycleStatus | 'approved'
   submission?: CompletionSubmission
+}
+
+export const WORKFLOW_ROUTE_INTENTS = [
+  'advance',
+  'rework_current_phase',
+  'jump_to_phase',
+  'route_to_workflow',
+  'pause',
+  'resume',
+  'finish',
+] as const
+
+export type WorkflowRouteIntent = (typeof WORKFLOW_ROUTE_INTENTS)[number]
+
+export type WorkflowRouteRequest = {
+  phaseId?: string
+  stateVersion?: number
+  intent: WorkflowRouteIntent
+  targetPhaseId?: string
+  targetWorkflowId?: string
+  rationale: string
+  evidence: Array<JsonObject>
+  requireUserConfirmation?: boolean
+}
+
+export type WorkflowPendingRoute = {
+  routeId: string
+  phaseId: string
+  fromPhaseId: string
+  targetPhaseId: string | null
+  targetWorkflowId?: string
+  intent: WorkflowRouteIntent
+  rationale: string
+  evidence: Array<JsonObject>
+  createdAt: string
+  requiresConfirmation: boolean
+  approvedTargetPhaseId: string | null
+  status: 'pending' | 'approved' | 'rejected'
 }
 
 export type WorkflowPhaseRun = {
@@ -680,7 +730,7 @@ export type WorkflowTransitionRecord = {
     | 'stopped'
     | 'stale-template'
     | 'missing-template'
-  action?: 'auto-advance' | 'confirmation-requested' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
+  action?: 'auto-advance' | 'confirmation-requested' | 'route-requested' | 'route-confirmed' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
   result?: 'accepted' | 'rejected' | 'superseded' | 'blocked' | 'unable' | 'noop'
   completionCheckId: string | null
   artifactRefs?: WorkflowArtifactPointer[]
@@ -745,6 +795,8 @@ export type WorkflowSessionState = {
   lastResumeAt?: string
   lastRecoveryStatus?: 'ok' | 'state-missing' | 'state-corrupt' | 'report-missing' | 'metadata-only'
   pendingConfirmation?: WorkflowPendingConfirmation | null
+  pendingRoute?: WorkflowPendingRoute | null
+  workflowLanguage?: 'zh' | 'en'
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   blockedReason?: string | JsonObject
   unknown?: JsonObject
@@ -892,10 +944,17 @@ export type WorkflowPhaseArtifact = {
 
 export type WorkflowTransitionRequest = {
   phaseId: string
-  action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'cancelled'
+  action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'cancelled' | 'route'
   transitionId?: string
   expectedStateVersion?: number
+  stateVersion?: number
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
+  routeIntent?: WorkflowRouteIntent
+  targetPhaseId?: string
+  targetWorkflowId?: string
+  rationale?: string
+  evidence?: Array<JsonObject>
+  requireUserConfirmation?: boolean
 }
 
 export type WorkflowClientMessage = WorkflowTransitionRequest & {

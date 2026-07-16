@@ -40,3 +40,36 @@ describe('AskUserQuestionTool workflow contract', () => {
     }).success).toBe(true)
   })
 })
+
+
+test('requires stable IDs and valid structured targets for workflow route options', async () => {
+  const tool = await loadTool()
+  const base = {
+    questions: [{
+      prompt: 'Route workflow?',
+      choices: [
+        {
+          id: 'return-to-stage-4',
+          label: 'Return to Stage 4',
+          action: { kind: 'workflow-route', intent: 'jump_to_phase', targetPhaseId: 'delegate-implement' },
+        },
+        { id: 'continue', label: 'Continue' },
+      ],
+    }],
+  }
+  expect(tool.inputSchema.safeParse(base).success).toBe(true)
+  expect(tool.inputSchema.safeParse({
+    ...base,
+    questions: [{
+      ...base.questions[0],
+      choices: [{ label: 'Broken', action: 'jump_to_phase', targetPhaseId: 'delegate-implement' }, base.questions[0].choices[1]],
+    }],
+  }).success).toBe(false)
+  expect(tool.inputSchema.safeParse({
+    ...base,
+    questions: [{
+      ...base.questions[0],
+      choices: [{ id: 'broken', label: 'Broken', action: { kind: 'workflow-route', intent: 'jump_to_phase' } }, base.questions[0].choices[1]],
+    }],
+  }).success).toBe(false)
+})

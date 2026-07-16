@@ -49,7 +49,10 @@ export function WorkflowTransitionControls({
 
   if (!phaseId || (!pending && !blocked)) return null
 
-  const hasNextPhase = workflow.activePhaseIndex >= 0 && workflow.phaseCount > workflow.activePhaseIndex + 1
+  const routeTarget = workflowRouteTarget(workflow, t)
+  const hasNextPhase = Boolean(routeTarget) || (workflow.activePhaseIndex >= 0 && workflow.phaseCount > workflow.activePhaseIndex + 1)
+  const nextStep = routeTarget ?? nextPhaseLabel(workflow, t)
+  const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
   const commandBase = {
     phaseId,
     transitionId,
@@ -108,7 +111,7 @@ export function WorkflowTransitionControls({
         <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
           <li>{t('workflows.transition.currentPhase', { phase: formatWorkflowPhaseSummary(workflow) })}</li>
           <li>{t('workflows.transition.keyResult')}</li>
-          <li>{t('workflows.transition.nextStep', { step: hasNextPhase ? nextPhaseLabel(workflow, t) : t('workflows.transition.finishWorkflow') })}</li>
+          <li>{t('workflows.transition.nextStep', { step: hasNextPhase ? nextStep : t('workflows.transition.finishWorkflow') })}</li>
         </ul>
       </div>
 
@@ -116,7 +119,13 @@ export function WorkflowTransitionControls({
         <OptionButton
           icon="thumb_up"
           title={t('workflows.transition.continueTitle')}
-          description={hasNextPhase ? t('workflows.transition.moveToNext', { step: nextPhaseLabel(workflow, t) }) : t('workflows.transition.finishWorkflow')}
+          description={
+            hasNextPhase
+              ? isJumpRoute
+                ? t('workflows.transition.moveToRouteTarget', { step: nextStep })
+                : t('workflows.transition.moveToNext', { step: nextStep })
+              : t('workflows.transition.finishWorkflow')
+          }
           onClick={() => onConfirm({ ...commandBase, action: 'confirm' })}
         />
         <OptionButton
@@ -193,4 +202,30 @@ function nextPhaseLabel(workflow: WorkflowStatusPanelSummary, translate: ReturnT
     return translate('workflows.transition.nextStepWithName', { step: nextIndex + 1, name: nextName })
   }
   return translate('workflows.transition.nextStepNumber', { step: nextIndex + 1 })
+}
+
+
+function isNonLinearRouteTarget(workflow: WorkflowStatusPanelSummary): boolean {
+  return workflow.pendingRoute?.intent === 'jump_to_phase'
+    || (
+      typeof workflow.pendingTargetPhaseIndex === 'number'
+      && workflow.pendingTargetPhaseIndex !== workflow.activePhaseIndex + 1
+    )
+}
+
+function workflowRouteTarget(
+  workflow: WorkflowStatusPanelSummary,
+  translate: ReturnType<typeof useTranslation>,
+): string | null {
+  if (typeof workflow.pendingTargetPhaseIndex === 'number') {
+    const label = workflow.pendingTargetPhaseLabel
+      ?? workflow.phaseNames?.[workflow.pendingTargetPhaseIndex]
+      ?? workflow.pendingTargetPhaseId
+    if (!label) return translate('workflows.transition.nextStepNumber', { step: workflow.pendingTargetPhaseIndex + 1 })
+    return isNonLinearRouteTarget(workflow)
+      ? translate('workflows.transition.routeTargetWithName', { step: workflow.pendingTargetPhaseIndex + 1, name: label })
+      : translate('workflows.transition.nextStepWithName', { step: workflow.pendingTargetPhaseIndex + 1, name: label })
+  }
+  if (workflow.pendingTargetPhaseLabel) return workflow.pendingTargetPhaseLabel
+  return null
 }

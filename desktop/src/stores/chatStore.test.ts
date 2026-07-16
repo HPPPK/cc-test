@@ -1183,6 +1183,29 @@ Phase instructions: collect inputs
     })
   })
 
+  it('sends the UI language only for active workflow sessions', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 0,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      workflow: { mode: 'workflow' } as WorkflowSessionSummary,
+    }]
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, '继续当前工作流')
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: '继续当前工作流',
+      attachments: undefined,
+      workflowLanguage: 'zh',
+    })
+  })
+
   it('settles busy chat state without auto-submitting queued prompts when workflow_state reaches completed', () => {
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,
@@ -1260,6 +1283,7 @@ Phase instructions: collect inputs
       type: 'user_message',
       content: 'start a follow-up workflow',
       attachments: undefined,
+      workflowLanguage: 'zh',
     })
   })
 

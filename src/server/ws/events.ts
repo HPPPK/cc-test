@@ -10,11 +10,11 @@
 
 export type ClientMessage =
   | { type: 'prewarm_session' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[] }
+  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; workflowLanguage?: 'zh' | 'en' }
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'route' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
       stateVersion?: number
       expectedStateVersion?: number
@@ -22,6 +22,10 @@ export type ClientMessage =
       handoff?: Record<string, unknown>
       rationale?: string
       evidence?: Array<Record<string, unknown>>
+      routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      targetPhaseId?: string
+      targetWorkflowId?: string
+      requireUserConfirmation?: boolean
     }
   | {
       type: 'permission_response'

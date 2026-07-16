@@ -5,11 +5,18 @@ import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
 import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 
+type WorkflowRouteOptionAction = {
+  kind: 'workflow-route'
+  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+  targetPhaseId?: string
+  targetWorkflowId?: string
+}
+
 type QuestionOption = {
   id?: string
   label: string
   description?: string
-  action?: string
+  action?: string | WorkflowRouteOptionAction
   targetPhaseId?: string
   metadata?: Record<string, unknown>
 }
@@ -85,7 +92,10 @@ function questionOptions(question: Question): QuestionOption[] {
 
 function getSelectedAnswer(question: Question, selected: string[] | undefined) {
   if (!selected || selected.length === 0) return ''
-  return question.multiSelect ? selected.join(', ') : selected[0] ?? ''
+  const labels = selected.map((optionKey) =>
+    questionOptions(question).find((option) => (option.id ?? option.label) === optionKey)?.label ?? optionKey,
+  )
+  return question.multiSelect ? labels.join(', ') : labels[0] ?? ''
 }
 
 function textSuggestsPermissionSetup(value: string): boolean {
@@ -226,24 +236,26 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
     )
   }
 
-  const handleSelect = (qIndex: number, label: string) => {
+  const handleSelect = (qIndex: number, optionKey: string) => {
     if (submitted) return
     const question = questions[qIndex]
-    const option = question ? questionOptions(question).find((candidate) => candidate.label === label) : undefined
+    const option = question
+      ? questionOptions(question).find((candidate) => (candidate.id ?? candidate.label) === optionKey)
+      : undefined
     if (showPermissionControl && option && optionIsFakePermissionGrant(option)) return
     const selected = selections[qIndex] ?? []
     const shouldAdvance =
       question &&
       !question.multiSelect &&
-      selected[0] !== label &&
+      selected[0] !== optionKey &&
       qIndex < questions.length - 1
 
     setSelections((prev) => {
       const currentSelected = prev[qIndex] ?? []
       if (question?.multiSelect) {
-        const nextSelected = currentSelected.includes(label)
-          ? currentSelected.filter((value) => value !== label)
-          : [...currentSelected, label]
+        const nextSelected = currentSelected.includes(optionKey)
+          ? currentSelected.filter((value) => value !== optionKey)
+          : [...currentSelected, optionKey]
         const next = { ...prev }
         if (nextSelected.length > 0) {
           next[qIndex] = nextSelected
@@ -252,12 +264,12 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         }
         return next
       }
-      if (currentSelected[0] === label) {
+      if (currentSelected[0] === optionKey) {
         const next = { ...prev }
         delete next[qIndex]
         return next
       }
-      return { ...prev, [qIndex]: [label] }
+      return { ...prev, [qIndex]: [optionKey] }
     })
     setFreeTexts((prev) => {
       if (!prev[qIndex]) return prev
@@ -318,13 +330,13 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
     const workflowChoiceActions = questions.flatMap((question, index) => {
       const selected = selections[index] ?? []
       return questionOptions(question)
-        .filter((option) => selected.includes(option.label) && option.action)
+        .filter((option) => selected.includes(option.id ?? option.label) && option.action)
         .map((option) => ({
           questionId: question.id ?? questionKey(question),
           choiceId: option.id ?? option.label,
-          action: option.action,
-          targetPhaseId: option.targetPhaseId,
-          metadata: option.metadata,
+          action: option.action!,
+          ...(option.targetPhaseId ? { targetPhaseId: option.targetPhaseId } : {}),
+          ...(option.metadata ? { metadata: option.metadata } : {}),
         }))
     })
 
@@ -436,7 +448,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
               return (
                 <button
                   key={optIndex}
-                  onClick={() => handleSelect(safeActiveTab, opt.label)}
+                  onClick={() => handleSelect(safeActiveTab, opt.id ?? opt.label)}
                   disabled={submitted || fakePermissionGrant}
                   aria-disabled={fakePermissionGrant || undefined}
                   className={`w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer ${

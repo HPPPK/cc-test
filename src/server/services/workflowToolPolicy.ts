@@ -4,6 +4,7 @@ import { getRipgrepStatus } from '../../utils/ripgrep.js'
 type WorkflowRipgrepStatus = ReturnType<typeof getRipgrepStatus>
 
 export const SUBMIT_PHASE_COMPLETION_TOOL_NAME = 'submit_phase_completion'
+export const REQUEST_WORKFLOW_ROUTE_TOOL_NAME = 'request_workflow_route'
 export const WORKFLOW_TEMPLATE_AUTHORING_TOOL_NAME = 'workflow_template_authoring'
 
 export const WORKFLOW_PHASE_IMPLEMENTATION_TOOLS = [
@@ -45,6 +46,7 @@ export const WORKFLOW_PHASE_RUNTIME_TOOL_NAMES = [
 
 export const WORKFLOW_PHASE_SCOPED_TOOL_NAMES = [
   SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+  REQUEST_WORKFLOW_ROUTE_TOOL_NAME,
 ] as const
 
 export const WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES = [
@@ -271,6 +273,7 @@ export function getWorkflowPhaseDisallowedTools(
   if (allowed.size > 0) {
     const alwaysAvailable = new Set([
       SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+      REQUEST_WORKFLOW_ROUTE_TOOL_NAME,
       'AskUserQuestion',
       'TodoWrite',
     ])
@@ -385,6 +388,7 @@ export function getWorkflowPromptToolGuidance(
   const skillDeclarations = phaseDefinition?.skillDeclarations ?? []
   const scopedToolNames = getWorkflowScopedToolNames(state)
   const hasCompletionTool = scopedToolNames.includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)
+  const hasRouteTool = scopedToolNames.includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)
   const unavailableSearchTools = getWorkflowUnavailableSearchToolNames()
   const skillGuidance = skillDeclarations
     .map((skill) => {

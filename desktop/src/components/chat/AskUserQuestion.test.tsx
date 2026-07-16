@@ -149,6 +149,51 @@ describe('AskUserQuestion', () => {
     }))
   })
 
+  it('serializes a structured jump route by stable option id and preserves the route action', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{
+            id: 'route_after_validation',
+            prompt: '发现问题后要怎么做？',
+            choices: [
+              {
+                id: 'return-to-stage-4',
+                label: '返回 Stage 4 修复该问题',
+                action: {
+                  kind: 'workflow-route',
+                  intent: 'jump_to_phase',
+                  targetPhaseId: 'delegate-implement',
+                },
+              },
+              { id: 'continue-stage-7', label: '继续下一阶段' },
+            ],
+          }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^返回 Stage 4 修复该问题$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
+      type: 'permission_response',
+      updatedInput: expect.objectContaining({
+        answers: { '发现问题后要怎么做？': '返回 Stage 4 修复该问题' },
+        workflowChoiceActions: [{
+          questionId: 'route_after_validation',
+          choiceId: 'return-to-stage-4',
+          action: {
+            kind: 'workflow-route',
+            intent: 'jump_to_phase',
+            targetPhaseId: 'delegate-implement',
+          },
+        }],
+      }),
+    }))
+  })
+
   it('shows the real permission mode control when a workflow asks for tool access', () => {
     render(
       <AskUserQuestion

@@ -1,7 +1,7 @@
 {
     "$schema":  "https://raw.githubusercontent.com/nicegui/nicegui/main/nicegui/static/tauri-schema-v2.json",
     "productName":  "Claude Code Jiangxia",
-    "version": "0.2.14",
+    "version": "0.2.15",
     "identifier":  "com.claude-code-jiangxia.desktop",
     "build":  {
                   "frontendDist":  "../dist",

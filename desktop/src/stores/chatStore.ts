@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { wsManager } from '../api/websocket'
 import { sessionsApi } from '../api/sessions'
 import { useTeamStore } from './teamStore'
+import { useSettingsStore } from './settingsStore'
 import { useSessionStore } from './sessionStore'
 import { useCLITaskStore } from './cliTaskStore'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
@@ -623,6 +624,12 @@ function mergeSlashCommandUpdates(
   return [...merged.values()]
 }
 
+function workflowLanguageForSession(sessionId: string): { workflowLanguage?: 'zh' | 'en' } {
+  const session = useSessionStore.getState().sessions.find((candidate) => candidate.id === sessionId)
+  if (session?.workflow?.mode !== 'workflow') return {}
+  return { workflowLanguage: useSettingsStore.getState().locale === 'zh' ? 'zh' : 'en' }
+}
+
 async function fetchAndMapSessionHistory(sessionId: string) {
   const { messages, taskNotifications } = await sessionsApi.getMessages(sessionId)
   const uiMessages = mapHistoryMessagesToUiMessages(messages)
@@ -671,6 +678,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       type: 'user_message',
       content: submitted.content,
       attachments: submitted.attachments,
+      ...workflowLanguageForSession(sessionId),
     })
     return true
   }
@@ -916,7 +924,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       return
     }
 
-    wsManager.send(sessionId, { type: 'user_message', content, attachments })
+    wsManager.send(sessionId, {
+      type: 'user_message',
+      content,
+      attachments,
+      ...workflowLanguageForSession(sessionId),
+    })
   },
 
   guideQueuedMessage: (sessionId, messageId) => {

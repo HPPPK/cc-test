@@ -11,14 +11,40 @@ import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
+const workflowRouteActionSchema = z.strictObject({
+  kind: z.literal('workflow-route'),
+  intent: z.enum(['advance', 'rework_current_phase', 'jump_to_phase', 'route_to_workflow', 'pause', 'resume', 'finish']),
+  targetPhaseId: z.string().min(1).optional(),
+  targetWorkflowId: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.intent === 'jump_to_phase' && !value.targetPhaseId) {
+    ctx.addIssue({ code: 'custom', path: ['targetPhaseId'], message: 'jump_to_phase requires targetPhaseId.' })
+  }
+  if (value.intent === 'route_to_workflow' && !value.targetWorkflowId) {
+    ctx.addIssue({ code: 'custom', path: ['targetWorkflowId'], message: 'route_to_workflow requires targetWorkflowId.' })
+  }
+})
+
 const questionOptionSchema = lazySchema(() => z.object({
   id: z.string().min(1).optional().describe('Stable option ID. Required for workflow action choices when supplied by the workflow runtime.'),
   label: z.string().describe('The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.'),
   description: z.string().optional().describe('Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.'),
-  action: z.string().min(1).optional().describe('Optional workflow runtime action, such as advance_phase, pause_workflow, return_to_phase, view_report, or route_workflow. This is not ordinary chat text.'),
-  targetPhaseId: z.string().min(1).optional().describe('Optional target workflow phase ID used by workflow runtime actions.'),
+  action: z.union([
+    z.enum(['advance_phase', 'return_to_phase', 'rework_current_phase', 'jump_to_phase', 'workflow_route', 'pause_workflow']),
+    workflowRouteActionSchema,
+  ]).optional().describe('Structured workflow action. A workflow-route action is handled by runtime, never by label text.'),
+  targetPhaseId: z.string().min(1).optional().describe('Optional target workflow phase ID used by legacy flat workflow runtime actions.'),
   metadata: z.record(z.string(), z.unknown()).optional().describe('Optional structured metadata consumed by the workflow runtime; never render it as ordinary user text.'),
   preview: z.string().optional().describe('Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.')
+}).superRefine((value, ctx) => {
+  if (value.action && !value.id) {
+    ctx.addIssue({ code: 'custom', path: ['id'], message: 'Workflow action choices require a stable id.' })
+  }
+  const intent = typeof value.action === 'object' && value.action ? value.action.intent : value.action
+  const target = typeof value.action === 'object' && value.action ? value.action.targetPhaseId : value.targetPhaseId
+  if ((intent === 'jump_to_phase' || value.action === 'jump_to_phase') && !target) {
+    ctx.addIssue({ code: 'custom', path: ['targetPhaseId'], message: 'jump_to_phase requires targetPhaseId.' })
+  }
 }));
 const questionSchema = lazySchema(() => z.object({
   id: z.string().min(1).optional().describe('Stable question ID. Use this for workflow questions so a structured reply can be matched without relying on display text.'),

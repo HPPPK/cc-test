@@ -129,6 +129,22 @@ export type WorkflowStatusPanelSummary = {
   activePhaseIndex: number
   phaseCount: number
   pendingConfirmation: boolean
+  pendingRoute?: {
+    routeId: string
+    phaseId: string
+    fromPhaseId: string
+    targetPhaseId: string | null
+    intent: string
+    rationale: string
+    requiresConfirmation: boolean
+    approvedTargetPhaseId: string | null
+    status: 'pending' | 'approved' | 'rejected'
+  } | null
+  pendingTargetPhaseId?: string | null
+  pendingTargetPhaseIndex?: number
+  pendingTargetPhaseLabel?: string
+  routeReason?: string
+  requiresConfirmation?: boolean
   runStatus?: 'draft' | 'active' | 'waiting_for_user' | 'paused' | 'completed' | 'cancelled' | 'stopped' | 'blocked'
   labels?: string[]
   secondaryLabels?: string[]

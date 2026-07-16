@@ -1328,6 +1328,7 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
       ok: true,
       state: result.state,
       workflow: workflowSummaryFromState(result.state),
+      ...(result.route ? { route: result.route } : {}),
     })
   })
 }
@@ -1359,13 +1360,51 @@ type WorkflowBoundaryTransitionRequest = Omit<WorkflowTransitionRequest, 'action
   evidence?: unknown
 }
 
-type WorkflowBoundaryTransitionResult = Awaited<ReturnType<WorkflowRuntimeService['applyTransition']>>
+type WorkflowBoundaryTransitionResult = {
+  state: WorkflowSessionState
+  notifications: Array<Record<string, unknown>>
+  route?: {
+    approvedTargetPhaseId: string | null
+    routeReason: string
+    requiresConfirmation: boolean
+  }
+}
 
 async function applyWorkflowBoundaryTransition(
   state: WorkflowSessionState,
   request: WorkflowBoundaryTransitionRequest,
   requestedAt: string,
 ): Promise<WorkflowBoundaryTransitionResult> {
+  if (request.action === 'route') {
+    if (!request.routeIntent || typeof request.rationale !== 'string' || !Array.isArray(request.evidence)) {
+      throw workflowError(400, 'WORKFLOW_ROUTE_INVALID', 'Workflow route requires routeIntent, rationale, and evidence.')
+    }
+    const result = await workflowRuntimeService.requestWorkflowRoute({
+      state,
+      requestedAt,
+      transitionId: request.transitionId,
+      request: {
+        phaseId: request.phaseId,
+        stateVersion: request.stateVersion,
+        intent: request.routeIntent,
+        targetPhaseId: request.targetPhaseId,
+        targetWorkflowId: request.targetWorkflowId,
+        rationale: request.rationale,
+        evidence: request.evidence as Array<Record<string, unknown>>,
+        requireUserConfirmation: request.requireUserConfirmation,
+      },
+    })
+    return {
+      state: result.state,
+      notifications: result.notifications,
+      route: {
+        approvedTargetPhaseId: result.approvedTargetPhaseId,
+        routeReason: result.routeReason,
+        requiresConfirmation: result.requiresConfirmation,
+      },
+    }
+  }
+
   if (isCompletionSubmissionAction(request.action)) {
     const submission = toCompletionSubmission(request)
     const result = request.action === 'manual_complete'
@@ -1410,6 +1449,7 @@ function isSupportedWorkflowBoundaryAction(
 ): action is WorkflowBoundaryTransitionRequest['action'] {
   return (
     action === 'confirm' ||
+    action === 'route' ||
     action === 'reject' ||
     action === 'retry' ||
     action === 'manual_complete' ||

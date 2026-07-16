@@ -7,11 +7,11 @@ import type { RuntimeSelection } from './runtime'
 
 export type ClientMessage =
   | { type: 'prewarm_session' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[] }
+  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; workflowLanguage?: 'zh' | 'en' }
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'route' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
       expectedStateVersion?: number
       stateVersion?: number
@@ -19,6 +19,10 @@ export type ClientMessage =
       handoff?: unknown
       rationale?: string
       evidence?: unknown[]
+      routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      targetPhaseId?: string
+      targetWorkflowId?: string
+      requireUserConfirmation?: boolean
     }
   | {
       type: 'permission_response'

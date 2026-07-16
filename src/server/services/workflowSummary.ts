@@ -50,6 +50,17 @@ export function stateToWorkflowMetadata(
   const model = visibleModelResolution(state)
   const recommendedSkillStatus = recommendedSkillStatusFromState(state)
   const pendingConfirmation = Boolean(state.pendingConfirmation)
+  const pendingRoute = state.pendingRoute?.status === 'pending' ? state.pendingRoute : null
+  const pendingTarget = pendingRoute?.approvedTargetPhaseId
+    ? state.phases.find((phase) => phase.id === pendingRoute.approvedTargetPhaseId) ?? null
+    : null
+  const embeddedTemplate = state.templateSnapshot
+    ?? ('phases' in state.template ? state.template : undefined)
+  const pendingTargetLabel = pendingTarget
+    ? pendingTarget.label
+      ?? embeddedTemplate?.phases.find((phase) => phase.id === pendingTarget.id)?.label
+      ?? pendingTarget.id
+    : undefined
   return {
     mode: 'workflow',
     schemaVersion: 1,
@@ -72,6 +83,16 @@ export function stateToWorkflowMetadata(
     phaseCount: state.phaseRuns.length || state.phases.length,
     phaseNames: state.phases.map((phase) => phase.label ?? phase.id),
     pendingConfirmation,
+    ...(pendingRoute ? {
+      pendingRoute,
+      pendingTargetPhaseId: pendingRoute.approvedTargetPhaseId,
+      ...(pendingTarget ? {
+        pendingTargetPhaseIndex: pendingTarget.index,
+        pendingTargetPhaseLabel: pendingTargetLabel!,
+      } : {}),
+      routeReason: pendingRoute.rationale,
+      requiresConfirmation: pendingRoute.requiresConfirmation,
+    } : {}),
     ...(Array.isArray(state.labels) ? { labels: state.labels } : {}),
     ...(Array.isArray(state.secondaryLabels) ? { secondaryLabels: state.secondaryLabels } : {}),
     ...(typeof state.effort === 'string' ? { effort: state.effort } : {}),
@@ -116,6 +137,14 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     phaseCount,
     ...(Array.isArray(metadata.phaseNames) ? { phaseNames: metadata.phaseNames.filter((name): name is string => typeof name === 'string') } : {}),
     pendingConfirmation,
+    ...(metadata.pendingRoute && typeof metadata.pendingRoute === 'object' ? { pendingRoute: metadata.pendingRoute } : {}),
+    ...(typeof metadata.pendingTargetPhaseId === 'string' || metadata.pendingTargetPhaseId === null
+      ? { pendingTargetPhaseId: metadata.pendingTargetPhaseId }
+      : {}),
+    ...(typeof metadata.pendingTargetPhaseIndex === 'number' ? { pendingTargetPhaseIndex: metadata.pendingTargetPhaseIndex } : {}),
+    ...(typeof metadata.pendingTargetPhaseLabel === 'string' ? { pendingTargetPhaseLabel: metadata.pendingTargetPhaseLabel } : {}),
+    ...(typeof metadata.routeReason === 'string' ? { routeReason: metadata.routeReason } : {}),
+    ...(typeof metadata.requiresConfirmation === 'boolean' ? { requiresConfirmation: metadata.requiresConfirmation } : {}),
     ...(Array.isArray(metadata.labels) ? { labels: metadata.labels as WorkflowSessionSummary['labels'] } : {}),
     ...(Array.isArray(metadata.secondaryLabels) ? { secondaryLabels: metadata.secondaryLabels as WorkflowSessionSummary['secondaryLabels'] } : {}),
     ...(typeof metadata.effort === 'string' ? { effort: metadata.effort as WorkflowSessionSummary['effort'] } : {}),

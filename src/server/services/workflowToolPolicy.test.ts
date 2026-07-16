@@ -426,7 +426,7 @@ describe('workflowToolPolicy', () => {
     expect(isWorkflowPhaseToolDenied(SUBMIT_PHASE_COMPLETION_TOOL_NAME, state)).toBe(false)
     expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
     expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(true)
-    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME, 'request_workflow_route'])
   })
   test('enforces runtimeContract toolAccess aliases as a concrete allow-list', () => {
     const state = workflowStateWithRuntimeContractToolAccess('route-context', [
@@ -632,7 +632,7 @@ describe('workflowToolPolicy', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const state = workflowStateWithRecommendedPhaseSkills()
 
-    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME, 'request_workflow_route'])
     expect(getToolNames(state)).not.toContain('SkillTool')
     expect(getToolNames(state)).not.toContain('skill')
     const disallowedTools = getWorkflowPhaseDisallowedTools(state)

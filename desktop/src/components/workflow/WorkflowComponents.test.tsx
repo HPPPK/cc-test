@@ -3201,3 +3201,69 @@ describe('WorkflowReportLink', () => {
     expect(screen.getByText(/workflow-sessions\/session-001\/report\.json/i)).toBeInTheDocument()
   })
 })
+
+
+describe('WorkflowTransitionControls route targets', () => {
+  it('renders the server-approved Stage 4 route target instead of inferring Stage 7', () => {
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          activePhaseId: 'validate',
+          activePhaseIndex: 5,
+          phaseCount: 7,
+          pendingConfirmation: true,
+          phaseNames: ['Discover', 'Shape', 'Specify', '分批实现与审查', 'Build', 'Validate', 'Release'],
+          pendingTargetPhaseId: 'delegate-implement',
+          pendingTargetPhaseIndex: 3,
+          pendingTargetPhaseLabel: '分批实现与审查',
+        } as typeof WORKFLOW_SUMMARY & {
+          pendingTargetPhaseId: string
+          pendingTargetPhaseIndex: number
+          pendingTargetPhaseLabel: string
+        }}
+        stateVersion={12}
+        transitionId="route-to-stage-4"
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText(/Stage 4: 分批实现与审查/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Stage 7: Release/i)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('WorkflowTransitionControls Chinese route cards', () => {
+  it('uses Chinese confirmation text and the server-provided Stage 4 target in Chinese UI', () => {
+    useSettingsStore.setState({ locale: 'zh' })
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          activePhaseId: 'validate',
+          activePhaseIndex: 5,
+          phaseCount: 7,
+          pendingConfirmation: true,
+          pendingRoute: {
+            routeId: 'route-stage-4', phaseId: 'validate', fromPhaseId: 'validate',
+            targetPhaseId: 'delegate-implement', approvedTargetPhaseId: 'delegate-implement',
+            intent: 'jump_to_phase', rationale: '需要返回修复。', requiresConfirmation: true, status: 'pending',
+          },
+          pendingTargetPhaseIndex: 3,
+          pendingTargetPhaseLabel: '分批实现与审查',
+        } as any}
+        stateVersion={12}
+        transitionId="route-zh"
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('当前阶段结果已准备好，请确认是否进入下一阶段。')).toBeInTheDocument()
+    expect(screen.getAllByText(/返回 Stage 4：分批实现与审查/).length).toBeGreaterThan(0)
+  })
+})

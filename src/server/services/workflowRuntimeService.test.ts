@@ -64,6 +64,27 @@ type WorkflowRuntimeServiceContract = {
     artifact: Record<string, unknown>
     notifications: Array<Record<string, unknown>>
   }>
+  requestWorkflowRoute(input: {
+    state: WorkflowSessionState
+    request: {
+      phaseId?: string
+      stateVersion?: number
+      intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      targetPhaseId?: string
+      targetWorkflowId?: string
+      rationale: string
+      evidence: Array<Record<string, unknown>>
+      requireUserConfirmation?: boolean
+    }
+    requestedAt: string
+    transitionId?: string
+  }): Promise<{
+    state: WorkflowSessionState
+    notifications: Array<Record<string, unknown>>
+    approvedTargetPhaseId: string | null
+    routeReason: string
+    requiresConfirmation: boolean
+  }>
 }
 
 async function makeService(input: {
@@ -921,6 +942,17 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('AskUserQuestion 的 prompt、choice label、阶段摘要')
   })
 
+  test('keeps Chinese workflow language for an English continue message when the UI locale is Chinese', async () => {
+    const service = await makeService()
+    const prompt = await service.assemblePrompt({
+      state: makeState({ workflowStatus: 'running', status: 'running', workflowLanguage: 'zh' }),
+      userMessage: 'continue',
+    })
+
+    expect(prompt.content).toContain('当前 UI 使用中文')
+    expect(prompt.content).not.toContain('current UI language is English')
+  })
+
   test('injects phase action guardrails into the active workflow prompt', async () => {
     const service = await makeService()
     const prompt = await service.assemblePrompt({
@@ -1179,6 +1211,245 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.activePhaseId).toBe('implementation')
     expect(confirmed.state.phases[0].status).toBe('completed')
     expect(confirmed.state.phases[1].status).toBe('running')
+  })
+
+  test('routes a confirmed Stage 6 completion back to Stage 4 instead of advancing linearly to Stage 7', async () => {
+    const service = await makeService()
+    const phases = [
+      ['discover', 'Stage 1'],
+      ['shape', 'Stage 2'],
+      ['specify', 'Stage 3'],
+      ['delegate-implement', 'Stage 4: 分批实现与审查'],
+      ['build', 'Stage 5'],
+      ['validate', 'Stage 6'],
+      ['release', 'Stage 7'],
+    ] as const
+    const template = makeTemplate({
+      phases: phases.map(([id, label]) => ({
+        ...makeTemplate().phases[0],
+        id,
+        label,
+        transitionAuthority: 'user-confirmation',
+      })),
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      template: {
+        id: template.id,
+        version: String(template.version),
+        source: template.source,
+        snapshotId: 'snapshot-1',
+        sourceState: 'current',
+      },
+      activePhaseId: 'validate',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: phases.map(([id], index) => ({
+        id,
+        index,
+        status: id === 'validate' ? 'pending-confirmation' : index < 5 ? 'completed' : 'created',
+        artifactPointers: [],
+      })),
+      pendingConfirmation: {
+        confirmationId: 'validate-completion',
+        phaseId: 'validate',
+        fromPhaseId: 'validate',
+        toPhaseId: 'release',
+        completionCheckId: 'validate-completion',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const routed = await service.requestWorkflowRoute({
+      state,
+      requestedAt: '2026-05-20T00:04:00.000Z',
+      transitionId: 'route-back-to-stage-4',
+      request: {
+        phaseId: 'validate',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        rationale: 'Validation found a defect that must be fixed in implementation.',
+        evidence: [{ kind: 'validation-failure', test: 'route regression' }],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(routed.state.pendingRoute).toMatchObject({
+      intent: 'jump_to_phase',
+      targetPhaseId: 'delegate-implement',
+      approvedTargetPhaseId: 'delegate-implement',
+    })
+
+    const confirmed = await service.applyTransition({
+      state: routed.state,
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      request: {
+        phaseId: 'validate',
+        action: 'confirm',
+        transitionId: 'confirm-route-back-to-stage-4',
+        expectedStateVersion: routed.state.stateVersion,
+      },
+    })
+
+    expect(confirmed.state.activePhaseId).toBe('delegate-implement')
+    expect(confirmed.state.phases[3].status).toBe('running')
+    expect(confirmed.state.phases[6].status).not.toBe('running')
+  })
+
+  test('supports advance and rework_current_phase route intents after a pending completion', async () => {
+    const service = await makeService()
+    const pendingState = () => makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'requirements-ready',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'requirements-ready',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const advanceState = pendingState()
+    const advanceRoute = await service.requestWorkflowRoute({
+      state: advanceState,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: advanceState.stateVersion,
+        intent: 'advance', rationale: 'Proceed to implementation.', evidence: [],
+      },
+    })
+    const advanced = await service.applyTransition({
+      state: advanceRoute.state,
+      requestedAt: NOW,
+      request: { phaseId: 'requirements', action: 'confirm', stateVersion: advanceRoute.state.stateVersion },
+    })
+    expect(advanced.state.activePhaseId).toBe('implementation')
+
+    const reworkState = pendingState()
+    const reworkRoute = await service.requestWorkflowRoute({
+      state: reworkState,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: reworkState.stateVersion,
+        intent: 'rework_current_phase', rationale: 'Revise the current phase.', evidence: [],
+      },
+    })
+    const reworked = await service.applyTransition({
+      state: reworkRoute.state,
+      requestedAt: NOW,
+      request: { phaseId: 'requirements', action: 'confirm', stateVersion: reworkRoute.state.stateVersion },
+    })
+    expect(reworked.state.activePhaseId).toBe('requirements')
+    expect(reworked.state.phases[0]?.status).toBe('running')
+    expect(reworked.state.pendingConfirmation).toBeNull()
+  })
+
+  test('rejects route_to_workflow instead of interpreting it as finish', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation', status: 'pending-confirmation', runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'requirements-ready', phaseId: 'requirements', fromPhaseId: 'requirements',
+        toPhaseId: 'implementation', completionCheckId: 'requirements-ready', artifactRefs: [], createdAt: NOW, status: 'pending',
+      },
+    })
+    await expect(service.requestWorkflowRoute({
+      state, requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: state.stateVersion, intent: 'route_to_workflow',
+        targetWorkflowId: 'debug-repair-workflow-v8', rationale: 'This needs a dedicated debug workflow.', evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_UNSUPPORTED' })
+    expect(state.activePhaseId).toBe('requirements')
+  })
+
+  test('rejects a stale workflow route request without mutating the pending completion', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'pending-requirements',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'pending-requirements',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion - 1,
+        intent: 'advance',
+        rationale: 'Advance after confirmation.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_STATE_STALE' })
+    expect(state.pendingRoute).toBeUndefined()
+    expect(state.pendingConfirmation?.status).toBe('pending')
+  })
+
+  test('rejects a route target that is not in the workflow template', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'pending-requirements',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'pending-requirements',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'does-not-exist',
+        rationale: 'Need a valid target.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_TARGET_INVALID' })
   })
 
   test('keeps retry transitions idempotent without duplicating artifacts or skipping phases', async () => {

@@ -6,6 +6,9 @@ import type {
   WorkflowCompletionResult,
   WorkflowArtifactLifecycleStatus,
   WorkflowPendingConfirmation,
+  WorkflowPendingRoute,
+  WorkflowRouteIntent,
+  WorkflowRouteRequest,
   WorkflowPhaseDefinition,
   WorkflowPhaseSkillResolution,
   WorkflowPhaseSkillResolutionStatus,
@@ -100,6 +103,19 @@ type SubmitPhaseCompletionResult = {
   state: WorkflowSessionState
   artifact: Record<string, unknown>
   notifications: WorkflowNotification[]
+}
+
+type RequestWorkflowRouteInput = {
+  state: WorkflowSessionState
+  request: WorkflowRouteRequest
+  requestedAt: string
+  transitionId?: string
+}
+
+type RequestWorkflowRouteResult = RuntimeResult & {
+  approvedTargetPhaseId: string | null
+  routeReason: string
+  requiresConfirmation: boolean
 }
 
 type RecordCompletionSubmissionOptions = {
@@ -399,6 +415,52 @@ function assertActivePhase(state: WorkflowSessionState, phaseId: string): Workfl
   return phase
 }
 
+function isRouteAllowedForCurrentPhase(
+  state: WorkflowSessionState,
+  template: WorkflowTemplate,
+  intent: WorkflowRouteIntent,
+): void {
+  const policy = getWorkflowPhaseActionPolicy(state, template)
+  if (!policy) return
+  const tokens = [
+    'route',
+    'workflow route',
+    'jump',
+    'jump to phase',
+    'advance',
+    'rework',
+    intent.replace(/_/g, ' '),
+  ]
+  const normalizedForbidden = policy.forbiddenActions.map((action) => action.toLowerCase())
+  if (normalizedForbidden.some((action) => tokens.some((token) => action.includes(token)))) {
+    throw workflowError('WORKFLOW_ROUTE_FORBIDDEN', `Workflow route intent "${intent}" is forbidden for the active phase.`)
+  }
+  const normalizedAllowed = policy.allowedActions.map((action) => action.toLowerCase())
+  const hasRouteSpecificAllowList = normalizedAllowed.some((action) =>
+    /(?:workflow )?route|jump|rework|advance/.test(action),
+  )
+  if (hasRouteSpecificAllowList && !normalizedAllowed.some((action) => tokens.some((token) => action.includes(token)))) {
+    throw workflowError('WORKFLOW_ROUTE_FORBIDDEN', `Workflow route intent "${intent}" is not allowed for the active phase.`)
+  }
+}
+
+function routeTargetForRequest(
+  state: WorkflowSessionState,
+  current: WorkflowPhaseState,
+  request: WorkflowRouteRequest,
+): string | null {
+  if (request.intent === 'advance') return nextPhaseId(state, current.id)
+  if (request.intent === 'rework_current_phase') return current.id
+  if (request.intent === 'jump_to_phase') {
+    if (!request.targetPhaseId?.trim()) {
+      throw workflowError('WORKFLOW_ROUTE_TARGET_REQUIRED', 'jump_to_phase requires targetPhaseId.')
+    }
+    return request.targetPhaseId
+  }
+  if (request.intent === 'finish') return null
+  return request.targetPhaseId?.trim() || null
+}
+
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -498,10 +560,16 @@ function formatPhasePrompt(definition: WorkflowPhaseDefinition | null | undefine
   return sections.join('\n')
 }
 
-function workflowLanguagePolicy(userMessage: string): string {
+function workflowLanguagePolicy(userMessage: string, explicitLanguage?: 'zh' | 'en'): string {
+  if (explicitLanguage === 'zh') {
+    return '工作流语言策略：当前 UI 使用中文。所有用户可见回复、AskUserQuestion 的 prompt、choice label、阶段摘要和交接说明必须使用中文。仅代码标识符、JSON key、tool name、文件路径、原始命令输出和原始错误信息可保留原文。若草稿不是中文，请在发送前改写为中文。'
+  }
+  if (explicitLanguage === 'en') {
+    return 'Workflow language policy: the current UI language is English. Write all user-visible replies, AskUserQuestion prompts and choices, phase summaries, and handoffs in English. Keep code identifiers, JSON keys, tool names, file paths, raw command output, and raw errors verbatim.'
+  }
   const chinese = /[\u3400-\u9fff]/.test(userMessage)
   if (!chinese) {
-    return "Workflow language policy: respond in the user\'s most recent primary language. Keep structured AskUserQuestion prompts, labels, and phase summaries in that language; preserve code identifiers, JSON keys, tool names, paths, commands, and raw errors verbatim."
+    return "Workflow language policy: respond in the user's most recent primary language. Keep structured AskUserQuestion prompts, labels, and phase summaries in that language; preserve code identifiers, JSON keys, tool names, paths, commands, and raw errors verbatim."
   }
   return '工作流语言策略：当前用户主要使用中文。所有用户可见回复、AskUserQuestion 的 prompt、choice label、阶段摘要和交接说明必须使用中文。仅代码标识符、JSON key、tool name、文件路径、原始命令输出和原始错误信息可保留原文。若草稿不是中文，请在发送前改写为中文。'
 }
@@ -1069,7 +1137,7 @@ export class WorkflowRuntimeService {
     const phasePrompt = formatPhasePrompt(definition)
     const recommendedSkills = formatRecommendedSkillsPromptBlock(activePhaseSkillSnapshot(input.state))
     const questionPolicy = formatWorkflowQuestionPolicy()
-    const languagePolicy = workflowLanguagePolicy(input.userMessage)
+    const languagePolicy = workflowLanguagePolicy(input.userMessage, input.state.workflowLanguage)
     const skillCatalog = await this.loadSkillCatalog()
     const resolvedSkillAvailability = definition
       ? resolveWorkflowSkillBindings(effectiveSkillBindings(definition, input.state), {
@@ -1200,6 +1268,135 @@ export class WorkflowRuntimeService {
       readyAction: 'confirmed',
       requestAction: 'manual_complete',
     })
+  }
+
+  async requestWorkflowRoute(input: RequestWorkflowRouteInput): Promise<RequestWorkflowRouteResult> {
+    if (!isWorkflowState(input.state)) {
+      throw workflowError('WORKFLOW_TOOL_UNAVAILABLE', 'Workflow routing is available only in workflow sessions.')
+    }
+    assertFreshStateVersion(input.state, input.request.stateVersion)
+    if (!input.request.rationale?.trim()) {
+      throw workflowError('WORKFLOW_ROUTE_INVALID', 'Workflow route rationale is required.')
+    }
+    if (!Array.isArray(input.request.evidence)) {
+      throw workflowError('WORKFLOW_ROUTE_INVALID', 'Workflow route evidence must be an array.')
+    }
+
+    const state = cloneState(input.state)
+    const template = await this.loadWorkflowTemplate(state)
+    if (!template) {
+      const missing = this.missingTemplateResult(state, input.requestedAt)
+      return {
+        ...missing,
+        approvedTargetPhaseId: null,
+        routeReason: 'Workflow template is unavailable.',
+        requiresConfirmation: true,
+      }
+    }
+    const phaseId = input.request.phaseId ?? state.activePhaseId
+    if (!phaseId) throw workflowError('WORKFLOW_PHASE_MISMATCH', 'Workflow has no active phase to route from.')
+    const current = assertActivePhase(state, phaseId)
+    isRouteAllowedForCurrentPhase(state, template, input.request.intent)
+
+    if (input.request.intent === 'route_to_workflow' && !input.request.targetWorkflowId?.trim()) {
+      throw workflowError('WORKFLOW_ROUTE_TARGET_REQUIRED', 'route_to_workflow requires targetWorkflowId.')
+    }
+    if (input.request.intent === 'route_to_workflow') {
+      throw workflowError('WORKFLOW_ROUTE_UNSUPPORTED', 'route_to_workflow is not available in this runtime; keep the current workflow active and select a workflow explicitly.')
+    }
+    if (input.request.intent === 'pause' || input.request.intent === 'resume') {
+      const result = input.request.intent === 'pause'
+        ? await this.pauseTransition(state, {
+          requestedAt: input.requestedAt,
+          request: { phaseId: current.id, action: 'pause', transitionId: input.transitionId },
+        }, current)
+        : await this.resumeTransition(state, {
+          requestedAt: input.requestedAt,
+          request: { phaseId: current.id, action: 'resume', transitionId: input.transitionId },
+        }, current)
+      return {
+        ...result,
+        approvedTargetPhaseId: current.id,
+        routeReason: input.request.rationale,
+        requiresConfirmation: false,
+      }
+    }
+
+    if (!state.pendingConfirmation || state.pendingConfirmation.phaseId !== current.id || state.pendingConfirmation.status !== 'pending') {
+      throw workflowError(
+        'WORKFLOW_ROUTE_COMPLETION_REQUIRED',
+        'Submit the current phase completion before requesting a workflow route.',
+      )
+    }
+    if (state.pendingRoute?.status === 'pending') {
+      throw workflowError('WORKFLOW_PENDING_CONFLICT', 'Workflow already has a pending route.')
+    }
+
+    const targetPhaseId = routeTargetForRequest(state, current, input.request)
+    if (targetPhaseId && !template.phases.some((phase) => phase.id === targetPhaseId)) {
+      throw workflowError('WORKFLOW_ROUTE_TARGET_INVALID', `Workflow route target "${targetPhaseId}" does not exist in the current template.`)
+    }
+
+    const requiresConfirmation = input.request.requireUserConfirmation !== false
+    state.pendingRoute = {
+      routeId: input.transitionId ?? `workflow-route-${Date.now()}`,
+      phaseId: current.id,
+      fromPhaseId: current.id,
+      targetPhaseId,
+      ...(input.request.targetWorkflowId ? { targetWorkflowId: input.request.targetWorkflowId } : {}),
+      intent: input.request.intent,
+      rationale: input.request.rationale.trim(),
+      evidence: input.request.evidence,
+      createdAt: input.requestedAt,
+      requiresConfirmation,
+      approvedTargetPhaseId: targetPhaseId,
+      status: 'pending',
+    }
+    state.workflowStatus = 'pending-confirmation'
+    state.status = 'pending-confirmation'
+    state.runStatus = 'waiting_for_user'
+    const nextState = touchState(state, input.requestedAt)
+    const transition = transitionRecord({
+      request: {
+        phaseId: current.id,
+        action: 'route',
+        transitionId: input.transitionId,
+      } as WorkflowTransitionRequest,
+      fromPhaseId: current.id,
+      toPhaseId: targetPhaseId,
+      authority: 'user-choice',
+      action: 'route-requested',
+      result: 'accepted',
+      requestedAt: input.requestedAt,
+      stateVersion: nextState.stateVersion,
+    })
+    nextState.transitionHistory.push(transition)
+
+    if (!requiresConfirmation) {
+      const confirmed = await this.confirmTransition(nextState, {
+        requestedAt: input.requestedAt,
+        request: {
+          phaseId: current.id,
+          action: 'confirm',
+          transitionId: `${input.transitionId ?? 'workflow-route'}-approved`,
+          expectedStateVersion: nextState.stateVersion,
+        },
+      }, current)
+      return {
+        ...confirmed,
+        approvedTargetPhaseId: targetPhaseId,
+        routeReason: input.request.rationale.trim(),
+        requiresConfirmation: false,
+      }
+    }
+
+    return {
+      state: nextState,
+      notifications: [transitionNotification(transition), stateNotification(nextState)],
+      approvedTargetPhaseId: targetPhaseId,
+      routeReason: input.request.rationale.trim(),
+      requiresConfirmation: true,
+    }
   }
 
   private async ensurePhaseSkillSnapshot(
@@ -1503,21 +1700,40 @@ export class WorkflowRuntimeService {
     }
 
     pending.status = 'approved'
+    const route = state.pendingRoute?.phaseId === current.id && state.pendingRoute.status === 'pending'
+      ? state.pendingRoute
+      : null
+    const targetPhaseId = route?.approvedTargetPhaseId ?? pending.toPhaseId
     const acceptedArtifacts = markArtifacts(
       state,
       current,
       pending.artifactRefs.map((artifact) => artifact.artifactId),
-      'accepted',
+      route?.intent === 'rework_current_phase' ? 'superseded' : 'accepted',
     )
-    this.advanceToPhase(state, current, pending.toPhaseId, input.requestedAt)
-    applyNextPhaseContextStrategy(state, pending.toPhaseId, input.request.nextPhaseContextStrategy)
+    if (route?.intent === 'rework_current_phase') {
+      route.status = 'approved'
+      current.status = 'running'
+      current.completedAt = undefined
+      state.activePhaseId = current.id
+      state.workflowStatus = 'running'
+      state.status = 'running'
+      state.runStatus = 'active'
+      state.pendingConfirmation = null
+      state.pendingRoute = null
+      updateActiveWorkflowRun(state, input.requestedAt, { status: 'active', currentPhaseId: current.id })
+    } else {
+      if (route) route.status = 'approved'
+      this.advanceToPhase(state, current, targetPhaseId, input.requestedAt)
+      state.pendingRoute = null
+      applyNextPhaseContextStrategy(state, targetPhaseId, input.request.nextPhaseContextStrategy)
+    }
     const nextState = touchState(state, input.requestedAt)
     const transition = transitionRecord({
       request: input.request,
       fromPhaseId: current.id,
-      toPhaseId: pending.toPhaseId,
-      authority: 'user-confirmation',
-      action: 'confirmed',
+      toPhaseId: targetPhaseId,
+      authority: route ? 'user-choice' : 'user-confirmation',
+      action: route ? 'route-confirmed' : 'confirmed',
       result: 'accepted',
       requestedAt: input.requestedAt,
       stateVersion: nextState.stateVersion,
@@ -1643,6 +1859,7 @@ export class WorkflowRuntimeService {
     state.status = 'running'
     state.runStatus = 'active'
     state.pendingConfirmation = null
+    state.pendingRoute = null
     updateActiveWorkflowRun(state, input.requestedAt, {
       status: 'active',
       currentPhaseId: current.id,

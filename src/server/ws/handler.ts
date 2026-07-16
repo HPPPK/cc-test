@@ -454,7 +454,7 @@ async function handleUserMessage(
     },
   })
 
-  const resolvedMessage = await resolveSessionRuntimeUserMessage(ws, sessionId, message.content)
+  const resolvedMessage = await resolveSessionRuntimeUserMessage(ws, sessionId, message.content, message.workflowLanguage)
   if (resolvedMessage === null) {
     sendMessage(ws, { type: 'status', state: 'idle' })
     return
@@ -596,10 +596,11 @@ async function resolveSessionRuntimeUserMessage(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
   content: string,
+  workflowLanguage?: 'zh' | 'en',
 ): Promise<string | null> {
   const workflow = await getWorkflowMetadata(sessionId)
   if (workflow) {
-    return resolveWorkflowUserMessage(ws, sessionId, content)
+    return resolveWorkflowUserMessage(ws, sessionId, content, workflowLanguage)
   }
 
   const session = await sessionService.getSession(sessionId).catch(() => null)
@@ -623,6 +624,7 @@ async function resolveWorkflowUserMessage(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
   content: string,
+  workflowLanguage?: 'zh' | 'en',
 ): Promise<string | null> {
   const workflow = await getWorkflowMetadata(sessionId)
   if (!workflow) return content
@@ -631,6 +633,7 @@ async function resolveWorkflowUserMessage(
   if (!state) return content
   if (state.workflowStatus === 'cancelled' || state.status === 'cancelled') return content
   const defaultModel = await resolveWorkflowDefaultModel(sessionId)
+  if (workflowLanguage) state.workflowLanguage = workflowLanguage
 
   const started = await workflowRuntimeService.startPhase({
     state,
@@ -762,10 +765,17 @@ async function handlePermissionResponse(
   console.log(`[WS] Permission response for ${message.requestId}: ${message.allowed}`)
 }
 
+type WorkflowRouteChoiceAction = {
+  kind: 'workflow-route'
+  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+  targetPhaseId?: string
+  targetWorkflowId?: string
+}
+
 type WorkflowChoiceAction = {
   questionId: string
   choiceId: string
-  action: 'advance_phase' | 'return_to_phase' | 'pause_workflow'
+  action: 'advance_phase' | 'return_to_phase' | 'rework_current_phase' | 'jump_to_phase' | 'workflow_route' | 'pause_workflow' | WorkflowRouteChoiceAction
   targetPhaseId?: string
   metadata?: Record<string, unknown>
 }
@@ -774,23 +784,44 @@ function workflowChoiceActionFromInput(input: unknown): WorkflowChoiceAction | n
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const actions = (input as Record<string, unknown>).workflowChoiceActions
   if (!Array.isArray(actions) || actions.length !== 1) return null
-  const action = actions[0]
-  if (!action || typeof action !== 'object' || Array.isArray(action)) return null
-  const record = action as Record<string, unknown>
-  if (
-    typeof record.questionId !== 'string'
-    || typeof record.choiceId !== 'string'
-    || (record.action !== 'advance_phase' && record.action !== 'return_to_phase' && record.action !== 'pause_workflow')
-  ) return null
+  const candidate = actions[0]
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null
+  const record = candidate as Record<string, unknown>
+  if (typeof record.questionId !== 'string' || typeof record.choiceId !== 'string') return null
+  const action = record.action
+  const legacy = action === 'advance_phase'
+    || action === 'return_to_phase'
+    || action === 'rework_current_phase'
+    || action === 'jump_to_phase'
+    || action === 'workflow_route'
+    || action === 'pause_workflow'
+  const structured = action && typeof action === 'object' && !Array.isArray(action)
+    && (action as Record<string, unknown>).kind === 'workflow-route'
+    && typeof (action as Record<string, unknown>).intent === 'string'
+  if (!legacy && !structured) return null
+  const targetPhaseId = typeof record.targetPhaseId === 'string'
+    ? record.targetPhaseId
+    : structured && typeof (action as Record<string, unknown>).targetPhaseId === 'string'
+      ? (action as Record<string, unknown>).targetPhaseId as string
+      : undefined
+  if ((action === 'jump_to_phase' || (structured && (action as Record<string, unknown>).intent === 'jump_to_phase')) && !targetPhaseId) return null
   return {
     questionId: record.questionId,
     choiceId: record.choiceId,
-    action: record.action,
-    ...(typeof record.targetPhaseId === 'string' ? { targetPhaseId: record.targetPhaseId } : {}),
+    action: action as WorkflowChoiceAction['action'],
+    ...(targetPhaseId ? { targetPhaseId } : {}),
     ...(record.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
       ? { metadata: record.metadata as Record<string, unknown> }
       : {}),
   }
+}
+
+function routeIntentForChoice(choice: WorkflowChoiceAction): WorkflowRouteChoiceAction['intent'] | null {
+  if (typeof choice.action === 'object') return choice.action.intent
+  if (choice.action === 'advance_phase') return 'advance'
+  if (choice.action === 'return_to_phase' || choice.action === 'rework_current_phase') return 'rework_current_phase'
+  if (choice.action === 'jump_to_phase') return 'jump_to_phase'
+  return null
 }
 
 async function handleWorkflowChoiceAction(
@@ -807,36 +838,35 @@ async function handleWorkflowChoiceAction(
     })
     return
   }
-
-  const action = choice.action === 'advance_phase'
-    ? 'confirm'
-    : choice.action === 'return_to_phase'
-      ? 'reject'
-      : 'pause'
-  const pending = state.pendingConfirmation
-  if (action !== 'pause') {
-    if (!pending || pending.status !== 'pending') {
+  const routeIntent = routeIntentForChoice(choice)
+  if (routeIntent) {
+    if (!state.pendingConfirmation || state.pendingConfirmation.status !== 'pending') {
       sendMessage(ws, {
         type: 'error',
         code: 'WORKFLOW_COMPLETION_REQUIRED',
-        message: 'This workflow choice cannot advance a phase until submit_phase_completion creates a pending completion gate.',
+        message: 'This workflow choice requires a pending completion from submit_phase_completion.',
       })
       return
     }
-    if (choice.targetPhaseId && action === 'confirm' && pending.toPhaseId !== choice.targetPhaseId) {
-      sendMessage(ws, {
-        type: 'error',
-        code: 'WORKFLOW_CHOICE_PHASE_MISMATCH',
-        message: 'The selected workflow choice does not match the pending target phase.',
-      })
-      return
-    }
+    await applyWorkflowTransitionMessage(ws, {
+      type: 'workflow_transition',
+      phaseId: state.activePhaseId ?? state.pendingConfirmation.phaseId,
+      action: 'route',
+      routeIntent,
+      targetPhaseId: choice.targetPhaseId,
+      rationale: typeof choice.metadata?.rationale === 'string' ? choice.metadata.rationale : `User selected workflow route ${routeIntent}.`,
+      evidence: [],
+      requireUserConfirmation: false,
+      stateVersion: state.stateVersion,
+      transitionId: `ask-user-question:${choice.questionId}:${choice.choiceId}:${state.stateVersion}`,
+    } as WorkflowBoundaryTransitionMessage)
+    return
   }
-
+  if (choice.action !== 'pause_workflow') return
   await applyWorkflowTransitionMessage(ws, {
     type: 'workflow_transition',
-    phaseId: state.activePhaseId ?? pending?.phaseId ?? 'workflow',
-    action,
+    phaseId: state.activePhaseId ?? 'workflow',
+    action: 'pause',
     stateVersion: state.stateVersion,
     transitionId: `ask-user-question:${choice.questionId}:${choice.choiceId}:${state.stateVersion}`,
   } as WorkflowBoundaryTransitionMessage)
@@ -968,13 +998,38 @@ type WorkflowBoundaryTransitionMessage = Extract<ClientMessage, { type: 'workflo
   evidence?: unknown
 }
 
-type WorkflowBoundaryTransitionResult = Awaited<ReturnType<WorkflowRuntimeService['applyTransition']>>
+type WorkflowBoundaryTransitionResult = {
+  state: WorkflowSessionState
+  notifications: Array<Record<string, unknown>>
+}
 
 async function applyWorkflowBoundaryTransition(
   state: WorkflowSessionState,
   message: WorkflowBoundaryTransitionMessage,
   requestedAt: string,
 ): Promise<WorkflowBoundaryTransitionResult> {
+  if (message.action === 'route') {
+    if (!message.routeIntent || typeof message.rationale !== 'string' || !Array.isArray(message.evidence)) {
+      throw new ApiError(400, 'Workflow route requires routeIntent, rationale, and evidence.', 'WORKFLOW_ROUTE_INVALID')
+    }
+    const result = await workflowRuntimeService.requestWorkflowRoute({
+      state,
+      requestedAt,
+      transitionId: message.transitionId,
+      request: {
+        phaseId: message.phaseId,
+        stateVersion: message.stateVersion,
+        intent: message.routeIntent,
+        targetPhaseId: message.targetPhaseId,
+        targetWorkflowId: message.targetWorkflowId,
+        rationale: message.rationale,
+        evidence: message.evidence,
+        requireUserConfirmation: message.requireUserConfirmation,
+      },
+    })
+    return { state: result.state, notifications: result.notifications }
+  }
+
   if (isCompletionSubmissionAction(message.action)) {
     const submission = toCompletionSubmission(message)
     const result = message.action === 'manual_complete'
@@ -1062,6 +1117,16 @@ function getWorkflowResumeInstructionAfterTransition(
     && !nextState.pendingConfirmation
   ) {
     return `Continue automatically with the newly confirmed workflow phase: ${phaseId}.`
+  }
+
+  if (
+    message.action === 'route'
+    && nextState.workflowStatus === 'running'
+    && Boolean(phaseId)
+    && !nextState.pendingConfirmation
+    && !nextState.pendingRoute
+  ) {
+    return `Continue automatically with the workflow route target phase: ${phaseId}.`
   }
 
   if (
@@ -2792,6 +2857,7 @@ function isWorkflowTransitionRequest(message: Extract<ClientMessage, { type: 'wo
       message.action === 'pause' ||
       message.action === 'resume' ||
       message.action === 'stop' ||
+      message.action === 'route' ||
       message.action === 'ready' ||
       message.action === 'needs_user' ||
       message.action === 'completed' ||

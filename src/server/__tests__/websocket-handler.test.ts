@@ -1392,6 +1392,62 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(respondToPermission).not.toHaveBeenCalled()
   })
 
+  it('routes and resumes from an AskUserQuestion jump_to_phase choice without typed continue', async () => {
+    const sessionId = `workflow-choice-route-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+
+    const state = makePendingWorkflowState(sessionId)
+    state.templateSnapshot.phases.push({
+      ...state.templateSnapshot.phases[0]!,
+      id: 'delegate-implement',
+      label: '分批实现与审查',
+      instructions: 'Implement the approved changes.',
+    })
+    state.phases.push({ id: 'delegate-implement', index: 2, status: 'created', artifactPointers: [] })
+    await stateService.writeState(sessionId, state)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'ask-user-route-gate',
+      allowed: true,
+      updatedInput: {
+        questions: [{ id: 'route_after_validation' }],
+        answers: { route_after_validation: '返回 Stage 4 修复该问题' },
+        workflowChoiceActions: [{
+          questionId: 'route_after_validation',
+          choiceId: 'return-to-stage-4',
+          action: {
+            kind: 'workflow-route',
+            intent: 'jump_to_phase',
+            targetPhaseId: 'delegate-implement',
+          },
+        }],
+      },
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('Active phase: delegate-implement')
+    ))
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activePhaseId).toBe('delegate-implement')
+    expect(persisted.state?.pendingRoute).toBeNull()
+    expect(parseSentMessages(ws).filter((message) => message.type === 'error')).toEqual([])
+  })
+
   it('auto-resumes the next phase after a completed auto-transition submission without typed continue', async () => {
     const sessionId = `workflow-completed-auto-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)

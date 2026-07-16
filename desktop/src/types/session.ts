@@ -165,6 +165,22 @@ export type WorkflowSessionSummary = {
   phaseCount: number
   stateVersion?: number
   pendingConfirmation: boolean
+  pendingRoute?: {
+    routeId: string
+    phaseId: string
+    fromPhaseId: string
+    targetPhaseId: string | null
+    intent: string
+    rationale: string
+    requiresConfirmation: boolean
+    approvedTargetPhaseId: string | null
+    status: 'pending' | 'approved' | 'rejected'
+  } | null
+  pendingTargetPhaseId?: string | null
+  pendingTargetPhaseIndex?: number
+  pendingTargetPhaseLabel?: string
+  routeReason?: string
+  requiresConfirmation?: boolean
   runStatus?: WorkflowRunStatus
   labels?: WorkflowLabel[]
   secondaryLabels?: WorkflowLabel[]
