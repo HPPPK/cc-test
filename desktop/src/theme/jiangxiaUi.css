@@ -1,0 +1,147 @@
+/* ─── Jiangxia command deck polish ──────────────────────────────── */
+.jiangxia-ui-shell {
+  --jx-ember: rgba(255, 116, 74, 0.18);
+  --jx-cyan: rgba(0, 218, 243, 0.12);
+  --jx-ink: rgba(27, 28, 26, 0.08);
+  background:
+    radial-gradient(circle at 18% 14%, var(--jx-ember), transparent 32%),
+    radial-gradient(circle at 84% 10%, var(--jx-cyan), transparent 26%),
+    linear-gradient(135deg, var(--color-surface), var(--color-surface-container-lowest));
+}
+
+.jiangxia-ui-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.38;
+  background-image:
+    linear-gradient(var(--jx-ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--jx-ink) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(110deg, rgba(0, 0, 0, 0.58), transparent 72%);
+}
+
+.jiangxia-ui-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme="dark"] .jiangxia-ui-shell {
+  --jx-ember: rgba(255, 110, 64, 0.16);
+  --jx-cyan: rgba(0, 218, 243, 0.1);
+  --jx-ink: rgba(255, 255, 255, 0.035);
+}
+
+.jiangxia-ui-shell .sidebar-panel {
+  border-right-color: rgba(143, 72, 47, 0.18);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08), 20px 0 80px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .jiangxia-ui-shell .sidebar-panel {
+  border-right-color: rgba(255, 181, 159, 0.16);
+}
+
+.jiangxia-empty-stage {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 181, 159, 0.18), transparent 28%),
+    radial-gradient(circle at 32% 52%, rgba(45, 98, 143, 0.1), transparent 24%);
+}
+
+.jiangxia-empty-stage::before,
+.jiangxia-empty-stage::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.jiangxia-empty-stage::before {
+  width: min(58vw, 620px);
+  height: min(58vw, 620px);
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(143, 72, 47, 0.11);
+  border-radius: 42% 58% 54% 46%;
+  background: radial-gradient(circle at 42% 35%, rgba(255, 255, 255, 0.54), transparent 38%);
+  filter: blur(0.2px);
+  animation: jiangxia-orbit-breathe 9s ease-in-out infinite;
+}
+
+.jiangxia-empty-stage::after {
+  inset: 10% 8% auto auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 218, 243, 0.12), transparent 68%);
+}
+
+.jiangxia-empty-hero {
+  position: relative;
+  z-index: 1;
+  animation: jiangxia-rise-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.jiangxia-empty-hero img {
+  filter: drop-shadow(0 22px 38px rgba(143, 72, 47, 0.18));
+}
+
+.jiangxia-empty-hero h1 {
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+
+.jiangxia-empty-composer {
+  animation: jiangxia-rise-in 620ms 90ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.jiangxia-empty-composer .glass-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.54)),
+    var(--color-surface-glass);
+  border-color: rgba(143, 72, 47, 0.18);
+  box-shadow:
+    0 24px 80px rgba(76, 50, 39, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.72) inset;
+}
+
+[data-theme="dark"] .jiangxia-empty-composer .glass-panel {
+  background:
+    linear-gradient(135deg, rgba(32, 31, 31, 0.9), rgba(20, 19, 19, 0.72)),
+    var(--color-surface-glass);
+  border-color: rgba(255, 181, 159, 0.18);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.48),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+@keyframes jiangxia-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes jiangxia-orbit-breathe {
+  0%, 100% {
+    transform: translate(-50%, -50%) rotate(-2deg) scale(0.98);
+  }
+  50% {
+    transform: translate(-50%, -50%) rotate(3deg) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jiangxia-empty-stage::before,
+  .jiangxia-empty-hero,
+  .jiangxia-empty-composer {
+    animation: none;
+  }
+}

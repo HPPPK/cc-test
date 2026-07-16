@@ -511,6 +511,12 @@ function BashPathSettings({ isTauri }: { isTauri: boolean }) {
   const [invalid, setInvalid] = useState(false)
 
   useEffect(() => {
+    if (!saved) return
+    const timer = window.setTimeout(() => setSaved(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [saved])
+
+  useEffect(() => {
     if (!isTauri) return
     void terminalApi.getBashPath().then((path) => setBashPath(path)).catch(() => {})
   }, [isTauri])
@@ -524,7 +530,6 @@ function BashPathSettings({ isTauri }: { isTauri: boolean }) {
       await terminalApi.setBashPath(trimmed)
       setBashPath(trimmed)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
     } catch {
       setInvalid(true)
     } finally {
@@ -540,7 +545,6 @@ function BashPathSettings({ isTauri }: { isTauri: boolean }) {
       await terminalApi.setBashPath(null)
       setBashPath(null)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
     } catch {
       // ignore
     } finally {

@@ -179,6 +179,13 @@ function okRepositoryContext(overrides: Partial<RepositoryContextResult> = {}): 
   }
 }
 
+async function clickRunWhenEnabled() {
+  const runButton = screen.getByRole('button', { name: /Run/i })
+  await waitFor(() => {
+    expect(runButton).not.toBeDisabled()
+  })
+  fireEvent.click(runButton)
+}
 function notGitRepositoryContext(): RepositoryContextResult {
   return {
     state: 'not_git_repo',
@@ -427,7 +434,7 @@ describe('EmptySession', () => {
       target: { value: 'draft question', selectionStart: 14 },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({})
@@ -457,7 +464,7 @@ describe('EmptySession', () => {
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: 'Say hello in one sentence', selectionStart: 25 },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({})
@@ -484,18 +491,31 @@ describe('EmptySession', () => {
     expect(screen.getByText(/^Discover$/i)).toBeInTheDocument()
     expect(screen.getByText(/^Deliver$/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /user linear template/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /user linear template/i }))
+    const projectPicker = within(dialog).getByRole('button', { name: /pick project/i })
+    fireEvent.click(projectPicker)
+    await waitFor(() => {
+      expect(projectPicker).toHaveAttribute('data-value', '/workspace/project')
+    })
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Start' })).not.toBeDisabled()
+    })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
-      expect(mocks.createSession).toHaveBeenCalledWith({
-        workflow: {
+      expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({
+        workDir: '/workspace/project',
+        repository: { branch: 'main', worktree: false },
+        workflow: expect.objectContaining({
           templateId: 'user-linear-template',
           templateSource: 'user',
           initialPhaseId: 'discover',
-        },
-      })
+          request: '',
+          labels: ['new-product'],
+          effort: 'standard',
+        }),
+      }))
     })
     expect(mocks.wsSend).not.toHaveBeenCalledWith('draft-session', expect.objectContaining({
       type: 'user_message',
@@ -503,7 +523,7 @@ describe('EmptySession', () => {
   })
 
   it('previews a valid workflow with more than five phases in the start dialog', async () => {
-    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+    mocks.listWorkflowTemplates.mockResolvedValue({
       templates: [LONG_WORKFLOW_TEMPLATE],
       invalidTemplates: [],
     })
@@ -515,8 +535,6 @@ describe('EmptySession', () => {
 
     const dialog = await screen.findByTestId('workflow-start-dialog')
     const templateButton = within(dialog).getByRole('button', { name: /long linear template/i })
-    expect(within(templateButton).getByText(/7 phases/i)).toBeInTheDocument()
-
     for (const phaseName of LONG_WORKFLOW_TEMPLATE.phaseNames) {
       expect(within(templateButton).getByText(phaseName)).toBeInTheDocument()
     }
@@ -528,7 +546,7 @@ describe('EmptySession', () => {
   })
 
   it('shows invalid user workflow template issues in the start dialog without making them selectable', async () => {
-    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+    mocks.listWorkflowTemplates.mockResolvedValue({
       templates: [USER_WORKFLOW_TEMPLATE],
       invalidTemplates: [
         {
@@ -552,21 +570,35 @@ describe('EmptySession', () => {
     expect(screen.queryByRole('button', { name: /broken-local-template/i })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /user linear template/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    const dialog = await screen.findByTestId('workflow-start-dialog')
+    const projectPicker = within(dialog).getByRole('button', { name: /pick project/i })
+    fireEvent.click(projectPicker)
+    await waitFor(() => {
+      expect(projectPicker).toHaveAttribute('data-value', '/workspace/project')
+    })
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Start' })).not.toBeDisabled()
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start' }))
 
     await waitFor(() => {
-      expect(mocks.createSession).toHaveBeenCalledWith({
-        workflow: {
+      expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({
+        workDir: '/workspace/project',
+        repository: { branch: 'main', worktree: false },
+        workflow: expect.objectContaining({
           templateId: 'user-linear-template',
           templateSource: 'user',
           initialPhaseId: 'discover',
-        },
-      })
+          request: '',
+          labels: ['new-product'],
+          effort: 'standard',
+        }),
+      }))
     })
   })
 
   it('does not start templates that have no first phase', async () => {
-    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+    mocks.listWorkflowTemplates.mockResolvedValue({
       templates: [{
         ...USER_WORKFLOW_TEMPLATE,
         id: 'not-startable',
@@ -594,7 +626,7 @@ describe('EmptySession', () => {
   })
 
   it('shows an empty workflow state when no templates are configured', async () => {
-    mocks.listWorkflowTemplates.mockResolvedValueOnce({
+    mocks.listWorkflowTemplates.mockResolvedValue({
       templates: [],
       invalidTemplates: [],
     })
@@ -628,7 +660,7 @@ describe('EmptySession', () => {
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: 'check these files', selectionStart: 'check these files'.length },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({})
@@ -680,7 +712,7 @@ describe('EmptySession', () => {
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: 'use this context', selectionStart: 'use this context'.length },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({})
@@ -753,7 +785,7 @@ describe('EmptySession', () => {
     expect(screen.queryByRole('button', { name: /Select branch:/ })).not.toBeInTheDocument()
     expect(screen.queryByText('Current worktree')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({
@@ -779,7 +811,7 @@ describe('EmptySession', () => {
       expect(screen.getByText('main')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       const toasts = useUIStore.getState().toasts
@@ -857,7 +889,7 @@ describe('EmptySession', () => {
 
     expect(screen.queryByText('worktree-desktop-feature-a-12345678')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({
@@ -948,7 +980,7 @@ describe('EmptySession', () => {
     fireEvent.click(screen.getByRole('button', { name: /Select worktree mode: Current worktree/ }))
     expect(await screen.findByRole('option', { name: 'Current worktree' })).not.toBeDisabled()
 
-    fireEvent.click(screen.getByRole('button', { name: /Run/i }))
+    await clickRunWhenEnabled()
 
     await waitFor(() => {
       expect(mocks.createSession).toHaveBeenCalledWith({

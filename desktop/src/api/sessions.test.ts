@@ -10,6 +10,8 @@ import type {
   WorkflowTemplateImportCommitRequest,
   WorkflowTemplateImportPreviewRequest,
   WorkflowTemplateImportPreviewResponse,
+  WorkflowPreviewStartRequest,
+  WorkflowPreviewStopRequest,
   WorkflowTemplateUpdateRequest,
   WorkflowTemplateValidateRequest,
   WorkflowTransitionRequest,
@@ -121,7 +123,7 @@ describe('sessionsApi workflow contract', () => {
     const response = {
       templates: [{
         id: 'requirements-to-implementation',
-        source: 'builtin',
+        source: 'user',
         version: '1',
         name: 'Requirements to Implementation',
         description: 'Guide a request from requirements to verification.',
@@ -160,10 +162,10 @@ describe('sessionsApi workflow contract', () => {
       template: {
         schemaVersion: 1,
         id: 'requirements-to-implementation',
-        source: 'builtin',
+        source: 'user',
         version: '1',
         name: 'Requirements to Implementation',
-        editable: false,
+        editable: true,
         copyable: true,
         phases: [{
           id: 'requirements-clarification',
@@ -184,7 +186,7 @@ describe('sessionsApi workflow contract', () => {
         }],
       },
       issues: [{
-        source: 'builtin',
+        source: 'user-config',
         templateId: 'requirements-to-implementation',
         path: '$.phases[0].handoffRules',
         code: 'WORKFLOW_TEMPLATE_HANDOFF_WARNING',
@@ -327,9 +329,9 @@ describe('sessionsApi workflow contract', () => {
     expect(result).toBe(response)
   })
 
-  it('duplicates built-in templates into user templates instead of editing the source', async () => {
+  it('duplicates user templates into new user templates', async () => {
     const request: WorkflowTemplateDuplicateRequest = {
-      source: 'builtin',
+      source: 'user',
       id: 'agent-development',
       targetId: 'agent-development-copy',
       targetName: 'Agent Development Copy',
@@ -370,7 +372,7 @@ describe('sessionsApi workflow contract', () => {
         name: 'Agent Development',
         version: '1',
         phaseCount: 5,
-        conflict: 'builtin-template',
+        conflict: 'user-template',
         defaultResolution: 'rename',
         selectable: true,
         issues: [],
@@ -491,7 +493,7 @@ describe('sessionsApi workflow contract', () => {
     const request: WorkflowTemplateExportRequest = {
       templates: [
         { source: 'user', id: 'release-readiness' },
-        { source: 'builtin', id: 'agent-development' },
+        { source: 'user', id: 'agent-development' },
       ],
       mode: 'selected',
     }
@@ -602,6 +604,23 @@ describe('sessionsApi workflow contract', () => {
     expect(result).toBe(response)
   })
 
+  it('previews a linked workflow context summary before creating a new session', async () => {
+    const request = { summaryInstructions: 'Preserve decisions and open questions.' }
+    const response = {
+      content: 'Summary of the current conversation.',
+      sourceMessageCount: 12,
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.previewLinkedWorkflowContext('source-session-id', request)
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/api/sessions/source-session-id/workflow/context-summary',
+      request,
+    )
+    expect(result).toBe(response)
+  })
+
   it('starts linked workflow sessions with explicit source-preserving context strategy', async () => {
     const request: LinkedWorkflowSessionCreateRequest = {
       workflow: {
@@ -647,6 +666,179 @@ describe('sessionsApi workflow contract', () => {
       summaryInstructions: 'Preserve decisions and unresolved implementation constraints.',
       clientRequestId: 'ui-20260526-0001',
     })
+    expect(result).toBe(response)
+  })
+
+  it('starts same-session workflow follow-up runs', async () => {
+    const request = {
+      request: '刚才学生新增保存 500',
+      templateId: 'debug-repair-workflow-v8',
+      templateSource: 'user' as const,
+      initialPhaseId: 'debug-memory-intake',
+      errors: 'POST /students returned 500',
+      selectedFiles: ['desktop/src/pages/Students.tsx'],
+    }
+    const response = {
+      ok: true,
+      state: {
+        sessionId: 'workflow-session-id',
+        workflowRuns: [
+          { id: 'run-dev', status: 'completed' },
+          { id: 'run-debug', status: 'active', primaryLabel: 'bug' },
+        ],
+      },
+      workflow: {
+        ...workflowSummary,
+        activeWorkflowRunId: 'run-debug',
+      },
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.startWorkflowFollowUpRun('workflow-session-id', request)
+
+    expect(postMock).toHaveBeenCalledWith('/api/sessions/workflow-session-id/workflow/follow-up', request)
+    expect(result).toBe(response)
+  })
+
+  it('starts and stops workflow local previews', async () => {
+    const startRequest: WorkflowPreviewStartRequest = {
+      command: 'bun run dev',
+      detectedUrl: 'http://127.0.0.1:5173',
+      detectedPort: 5173,
+    }
+    const stopRequest: WorkflowPreviewStopRequest = {
+      reason: 'User stopped local preview.',
+    }
+    const response = {
+      ok: true,
+      workflow: {
+        ...workflowSummary,
+        preview: {
+          status: 'running',
+          command: 'bun run dev',
+          updatedAt: '2026-07-02T00:00:00.000Z',
+        },
+      },
+      preview: {
+        status: 'running',
+        command: 'bun run dev',
+        updatedAt: '2026-07-02T00:00:00.000Z',
+      },
+    }
+    postMock.mockResolvedValue(response)
+
+    const started = await sessionsApi.startWorkflowPreview('workflow-session-id', startRequest)
+    const stopped = await sessionsApi.stopWorkflowPreview('workflow-session-id', stopRequest)
+    const exited = await sessionsApi.exitWorkflow('workflow-session-id')
+
+    expect(postMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/sessions/workflow-session-id/workflow/preview/start',
+      startRequest,
+    )
+    expect(postMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/sessions/workflow-session-id/workflow/preview/stop',
+      stopRequest,
+    )
+    expect(postMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/sessions/workflow-session-id/workflow/exit',
+      {},
+    )
+    expect(started).toBe(response)
+    expect(stopped).toBe(response)
+    expect(exited).toBe(response)
+  })
+
+  it('lists workflow git checkpoints for a workflow session', async () => {
+    const response = {
+      enabled: true,
+      latestVersion: 2,
+      checkpoints: [
+        {
+          id: 'v2',
+          ref: 'refs/cc-jiangxia/workflow/session-session-workflow-id/v2',
+          version: 2,
+          commit: 'abc123',
+          phaseId: 'implementation',
+          phaseIndex: 1,
+          label: 'Implementation save',
+          createdAt: '2026-07-03T00:00:00.000Z',
+          message: 'cc-jiangxia workflow checkpoint v2 - Implementation save',
+        },
+      ],
+    }
+    getMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.listWorkflowGitCheckpoints('session-workflow-id')
+
+    expect(getMock).toHaveBeenCalledWith('/api/sessions/session-workflow-id/workflow/checkpoints')
+    expect(result).toBe(response)
+  })
+
+  it('creates workflow git checkpoints with phase metadata', async () => {
+    const request = {
+      phaseId: 'implementation',
+      phaseIndex: 1,
+      label: 'Implementation save',
+    }
+    const response = {
+      ok: true,
+      latestVersion: 1,
+      checkpoint: {
+        id: 'v1',
+        ref: 'refs/cc-jiangxia/workflow/session-session-workflow-id/v1',
+        version: 1,
+        commit: 'abc123',
+        phaseId: 'implementation',
+        phaseIndex: 1,
+        label: 'Implementation save',
+        createdAt: '2026-07-03T00:00:00.000Z',
+        message: 'cc-jiangxia workflow checkpoint v1 - Implementation save',
+      },
+      checkpoints: [],
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.createWorkflowGitCheckpoint('session-workflow-id', request)
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/api/sessions/session-workflow-id/workflow/checkpoints',
+      request,
+      { timeout: 120_000 },
+    )
+    expect(result).toBe(response)
+  })
+
+  it('restores workflow git checkpoints by version id', async () => {
+    const response = {
+      ok: true,
+      checkpoint: {
+        id: 'v1',
+        ref: 'refs/cc-jiangxia/workflow/session-session-workflow-id/v1',
+        version: 1,
+        commit: 'abc123',
+        phaseId: null,
+        phaseIndex: null,
+        label: 'manual save',
+        createdAt: '2026-07-03T00:00:00.000Z',
+        message: 'cc-jiangxia workflow checkpoint v1 - manual save',
+      },
+      workflowStateRestored: true,
+      removedFiles: ['generated-after-save.txt'],
+    }
+    postMock.mockResolvedValue(response)
+
+    const result = await sessionsApi.restoreWorkflowGitCheckpoint('session-workflow-id', { checkpointId: 'v1' })
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/api/sessions/session-workflow-id/workflow/checkpoints/restore',
+      {
+        checkpointId: 'v1',
+      },
+      { timeout: 120_000 },
+    )
     expect(result).toBe(response)
   })
 

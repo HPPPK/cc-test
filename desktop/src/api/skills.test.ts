@@ -45,18 +45,20 @@ describe('skillsApi', () => {
   it('requests the metadata-only catalog without a workspace when cwd is omitted', async () => {
     const response: SkillsCatalogResponse = {
       skills: [{
-        name: 'telegram:access',
-        displayName: 'Telegram Access',
-        description: 'Plugin workflow helper.',
-        source: 'plugin',
-        catalogStatus: 'plugin-disabled',
+        name: 'superpowers:verification-before-completion',
+        displayName: 'Verification Before Completion',
+        description: 'Installed Superpowers workflow helper.',
+        source: 'superpowers',
+        catalogStatus: 'available',
+        nativeProvider: 'skill-tool',
         userInvocable: true,
         version: '2.1.0',
         hasDirectory: true,
-        pluginName: 'telegram',
+        namespace: 'superpowers',
+        referenceId: 'superpowers:verification-before-completion',
         provenance: {
-          pluginName: 'telegram',
-          referenceId: 'telegram:access',
+          namespace: 'superpowers',
+          referenceId: 'superpowers:verification-before-completion',
         },
       }],
     }

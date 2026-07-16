@@ -11,7 +11,7 @@ export type ClientMessage =
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
       expectedStateVersion?: number
       stateVersion?: number
@@ -183,6 +183,8 @@ export type AgentTaskNotification = {
   result?: string
   outputFile?: string
   usage?: BackgroundAgentTaskUsage
+  worktreePath?: string
+  worktreeBranch?: string
   timestamp?: string
 }
 
@@ -195,7 +197,7 @@ export type BackgroundAgentTaskUsage = {
 export type BackgroundAgentTask = {
   taskId: string
   toolUseId?: string
-  status: 'running' | 'completed' | 'failed' | 'stopped'
+  status: 'queued' | 'running' | 'blocked' | 'completed' | 'failed' | 'stopped'
   description?: string
   taskType?: string
   workflowName?: string
@@ -204,6 +206,13 @@ export type BackgroundAgentTask = {
   lastToolName?: string
   outputFile?: string
   usage?: BackgroundAgentTaskUsage
+  workflowTaskId?: string
+  executionMode?: 'read' | 'write'
+  writeScopes?: string[]
+  blockedReason?: string
+  worktreeIsolation?: boolean
+  worktreePath?: string
+  worktreeBranch?: string
   startedAt: number
   updatedAt: number
 }

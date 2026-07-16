@@ -40,6 +40,7 @@ import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
 import { MemorySettings } from './MemorySettings'
 import { WorkflowTemplateManager } from '../components/workflow/WorkflowTemplateManager'
+import { ExpertPackManager } from '../components/experts/ExpertPackManager'
 import { useUIStore, type SettingsTab } from '../stores/uiStore'
 import { ClaudeOfficialLogin } from '../components/settings/ClaudeOfficialLogin'
 import { useUpdateStore } from '../stores/updateStore'
@@ -100,6 +101,7 @@ export function Settings() {
             <TabButton icon="tune" label={t('settings.tab.general')} active={activeTab === 'general'} onClick={() => setActiveTab('general')} />
             <TabButton icon="qr_code_2" label={t('settings.tab.h5Access')} active={activeTab === 'h5Access'} onClick={() => setActiveTab('h5Access')} />
             <TabButton icon="account_tree" label={t('settings.tab.workflows')} active={activeTab === 'workflows'} onClick={() => setActiveTab('workflows')} />
+            <TabButton icon="person_search" label={t('settings.tab.experts')} active={activeTab === 'experts'} onClick={() => setActiveTab('experts')} />
             <TabButton icon="chat" label={t('settings.tab.adapters')} active={activeTab === 'adapters'} onClick={() => setActiveTab('adapters')} />
             <TabButton icon="terminal" label={t('settings.tab.terminal')} active={activeTab === 'terminal'} onClick={() => setActiveTab('terminal')} />
             <TabButton icon="deployed_code" label={t('settings.tab.environment')} active={activeTab === 'environment'} onClick={() => setActiveTab('environment')} />
@@ -125,6 +127,7 @@ export function Settings() {
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'h5Access' && <H5AccessSettings />}
           {activeTab === 'workflows' && <WorkflowsSettings />}
+          {activeTab === 'experts' && <ExpertsSettings />}
           {activeTab === 'adapters' && <AdapterSettings />}
           {activeTab === 'terminal' && <TerminalSettings showPreferences />}
           {activeTab === 'environment' && <EnvironmentSettings />}
@@ -158,6 +161,21 @@ function WorkflowsSettings() {
   )
 }
 
+function ExpertsSettings() {
+  const t = useTranslation()
+  return (
+    <div className="w-full min-w-0">
+      <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">
+        {t('settings.experts.title')}
+      </h2>
+      <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
+        {t('settings.experts.description')}
+      </p>
+      <ExpertPackManager />
+    </div>
+  )
+}
+
 function TabButton({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -174,7 +192,7 @@ function TabButton({ icon, label, active, onClick }: { icon: string; label: stri
   )
 }
 
-// ─── Provider Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ Provider Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function ProviderSettings() {
   const {
@@ -559,7 +577,7 @@ function ProviderSettings() {
         </div>
       </Modal>
 
-      {/* Official provider — always visible at top */}
+      {/* Official provider 鈥?always visible at top */}
       <div
         className={`relative flex flex-col rounded-xl border transition-all mb-2 ${
           isOfficialActive
@@ -662,7 +680,7 @@ function ProviderSettings() {
         </div>
       )}
 
-      {/* Create Modal — conditionally rendered so state resets on close */}
+      {/* Create Modal 鈥?conditionally rendered so state resets on close */}
       {showCreateModal && (
         <ProviderFormModal open={true} onClose={() => setShowCreateModal(false)} mode="create" presets={presets} />
       )}
@@ -1289,7 +1307,7 @@ function downloadTextFile(contents: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-// ─── Provider Form Modal ──────────────────────────────────────
+// 鈹€鈹€鈹€ Provider Form Modal 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 type ProviderFormProps = {
   open: boolean
@@ -1736,7 +1754,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
     })
     : t('settings.providers.contextFallbackAuto')
   const contextSummary = configuredContextSummary.length > 0
-    ? [...configuredContextSummary, fallbackContextSummary].join(' · ')
+    ? [...configuredContextSummary, fallbackContextSummary].join(' 路 ')
     : t('settings.providers.contextSummaryAuto')
   const shouldShowContextFields = showContextSettings || modelContextWindowErrorSlots.length > 0 || !!autoCompactWindowErrorKey
   const handleAutoCompactWindowChange = (value: string) => {
@@ -2157,7 +2175,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
           )}
         </div>
 
-        {/* Settings JSON — editable, shown for all presets including official */}
+        {/* Settings JSON 鈥?editable, shown for all presets including official */}
         <div>
           <label className="text-sm font-medium text-[var(--color-text-primary)] mb-2 block">{t('settings.providers.settingsJson')}</label>
           <textarea
@@ -2255,7 +2273,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
 }
 
 
-// ─── Permission Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ Permission Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function PermissionSettings() {
   const { permissionMode, setPermissionMode } = useSettingsStore()
@@ -2304,7 +2322,7 @@ function PermissionSettings() {
   )
 }
 
-// ─── General Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ General Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function GeneralSettings() {
   const {
@@ -2389,29 +2407,29 @@ function GeneralSettings() {
 
   const LANGUAGES: Array<{ value: Locale; label: string }> = [
     { value: 'en', label: 'English' },
-    { value: 'zh', label: '中文' },
+    { value: 'zh', label: '涓枃' },
   ]
 
   const RESPONSE_LANGUAGES: Array<{ value: string; label: string }> = [
     { value: '', label: t('settings.general.responseLangDefault') },
     { value: 'english', label: 'English' },
     { value: 'chinese', label: '中文 (Chinese)' },
-    { value: 'japanese', label: '日本語 (Japanese)' },
-    { value: 'korean', label: '한국어 (Korean)' },
-    { value: 'spanish', label: 'Español (Spanish)' },
-    { value: 'french', label: 'Français (French)' },
+    { value: 'japanese', label: '鏃ユ湰瑾?(Japanese)' },
+    { value: 'korean', label: '頃滉淡鞏?(Korean)' },
+    { value: 'spanish', label: 'Espa帽ol (Spanish)' },
+    { value: 'french', label: 'Fran莽ais (French)' },
     { value: 'german', label: 'Deutsch (German)' },
-    { value: 'portuguese', label: 'Português (Portuguese)' },
+    { value: 'portuguese', label: 'Portugu锚s (Portuguese)' },
     { value: 'italian', label: 'Italiano (Italian)' },
-    { value: 'russian', label: 'Русский (Russian)' },
+    { value: 'russian', label: '袪褍褋褋泻懈泄 (Russian)' },
     { value: 'dutch', label: 'Nederlands (Dutch)' },
     { value: 'polish', label: 'Polski (Polish)' },
-    { value: 'turkish', label: 'Türkçe (Turkish)' },
-    { value: 'hindi', label: 'हिन्दी (Hindi)' },
+    { value: 'turkish', label: 'T眉rk莽e (Turkish)' },
+    { value: 'hindi', label: '啶灌た啶ㄠ啶︵ (Hindi)' },
     { value: 'indonesian', label: 'Bahasa Indonesia' },
-    { value: 'ukrainian', label: 'Українська (Ukrainian)' },
-    { value: 'greek', label: 'Ελληνικά (Greek)' },
-    { value: 'czech', label: 'Čeština (Czech)' },
+    { value: 'ukrainian', label: '校泻褉邪褩薪褋褜泻邪 (Ukrainian)' },
+    { value: 'greek', label: '螘位位畏谓喂魏维 (Greek)' },
+    { value: 'czech', label: '膶e拧tina (Czech)' },
     { value: 'danish', label: 'Dansk (Danish)' },
     { value: 'swedish', label: 'Svenska (Swedish)' },
     { value: 'norwegian', label: 'Norsk (Norwegian)' },
@@ -3091,7 +3109,7 @@ function GeneralSettings() {
   )
 }
 
-// ─── H5 Access Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ H5 Access Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function H5AccessSettings() {
   const {
@@ -3451,7 +3469,7 @@ function SettingsCheckboxMark({ checked, disabled = false }: { checked: boolean;
   )
 }
 
-// ─── Agents Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ Agents Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const AGENT_COLORS: Record<string, string> = {
   red: '#ef4444',
@@ -3935,7 +3953,7 @@ function DetailStat({
     </div>
   )
 }
-// ─── Skill Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ Skill Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function SkillSettings({
   sortBy,
@@ -3993,18 +4011,11 @@ function PluginSettings() {
   )
 }
 
-// ─── About Settings ──────────────────────────────────────
+// 鈹€鈹€鈹€ About Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-const GITHUB_REPO = 'https://github.com/NanmiCoder/cc-jiangxia'
+const GITHUB_REPO = 'https://github.com/NanmiCoder/cc-haha'
 const GITHUB_ISSUES = `${GITHUB_REPO}/issues`
 const GITHUB_RELEASES = `${GITHUB_REPO}/releases`
-const AUTHOR_GITHUB = 'https://github.com/NanmiCoder'
-const SOCIAL_LINKS = [
-  { name: 'Bilibili', icon: '/icons/bilibili.svg', url: 'https://space.bilibili.com/434377496', label: '程序员阿江-Relakkes' },
-  { name: 'Douyin', icon: '/icons/douyin.svg', url: 'https://www.douyin.com/user/MS4wLjABAAAATJPY7LAlaa5X-c8uNdWkvz0jUGgpw4eeXIwu_8BhvqE', label: '程序员阿江-Relakkes' },
-  { name: 'Xiaohongshu', icon: '/icons/xiaohongshu.svg', url: 'https://www.xiaohongshu.com/user/profile/5f58bd990000000001003753', label: '程序员阿江-Relakkes' },
-] as const
-
 function isValidUpdateProxyUrl(value: string) {
   try {
     const url = new URL(value)
@@ -4144,7 +4155,7 @@ function AboutSettings() {
       {version && (
         <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
           <span>{t('settings.about.version')} {version}</span>
-          <span className="text-[var(--color-border)]">·</span>
+          <span className="text-[var(--color-border)]">路</span>
           <button
             onClick={() => openUrl(GITHUB_RELEASES)}
             className="rounded-[var(--radius-sm)] text-[var(--color-text-accent)] transition-colors hover:text-[var(--color-brand)] focus:outline-none focus:shadow-[var(--shadow-focus-ring)]"
@@ -4162,7 +4173,7 @@ function AboutSettings() {
         >
           <img src="/icons/github.svg" alt="GitHub" className="w-5 h-5 opacity-70" />
           <div className="flex-1 text-left">
-            <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/cc-jiangxia</div>
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/cc-haha</div>
             <div className="text-xs text-[var(--color-text-tertiary)]">{t('settings.about.starHint')}</div>
           </div>
         </button>
@@ -4347,40 +4358,6 @@ function AboutSettings() {
               </Button>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Divider */}
-      <div className="w-full border-t border-[var(--color-border)]/40 my-6" />
-
-      {/* Author */}
-      <div className="w-full">
-        <h3 className="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider mb-3">{t('settings.about.author')}</h3>
-        <button
-          onClick={() => openUrl(AUTHOR_GITHUB)}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
-        >
-          <img src="/icons/github.svg" alt="GitHub" className="w-4 h-4 opacity-60" />
-          <span className="text-sm text-[var(--color-text-primary)]">程序员阿江-Relakkes</span>
-          <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">GitHub</span>
-        </button>
-      </div>
-
-      {/* Social Media */}
-      <div className="w-full mt-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider mb-3">{t('settings.about.socialMedia')}</h3>
-        <div className="flex flex-col gap-0.5">
-          {SOCIAL_LINKS.map((link) => (
-            <button
-              key={link.name}
-              onClick={() => openUrl(link.url)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
-            >
-              <img src={link.icon} alt={link.name} className="w-4 h-4 opacity-60" />
-              <span className="text-sm text-[var(--color-text-primary)]">{link.label}</span>
-              <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">{link.name}</span>
-            </button>
-          ))}
         </div>
       </div>
 

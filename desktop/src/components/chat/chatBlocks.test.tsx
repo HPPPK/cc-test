@@ -77,6 +77,23 @@ describe('chat blocks', () => {
     expect(container.textContent).toContain('fatal: unrecognized argument: --no-stat')
   })
 
+  it('shows read-before-write recovery as a non-fatal tool status', () => {
+    const { container } = render(
+      <ToolCallBlock
+        toolName="Write"
+        input={{ file_path: '/tmp/project-context.md', content: 'updated' }}
+        result={{
+          content: '<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>',
+          isError: true,
+        }}
+      />,
+    )
+
+    expect(container.textContent).toContain('Recovered by reading the file before applying the edit')
+    expect(container.textContent).not.toContain('File has not been read yet')
+    expect(container.querySelector('.text-\\[var\\(--color-error\\)\\]')).toBeNull()
+  })
+
   it('expands tool errors so full Computer Use gate messages are readable', () => {
     const { container } = render(
       <ToolCallBlock

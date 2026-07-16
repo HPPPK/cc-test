@@ -1,5 +1,5 @@
 import { Copy, RefreshCw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
 import { DoctorPanel } from '../doctor/DoctorPanel'
@@ -34,13 +34,26 @@ export function StartupErrorView({ error }: StartupErrorViewProps) {
   const t = useTranslation()
   const { message, logs, diagnostics } = useMemo(() => splitStartupError(error), [error])
   const [copied, setCopied] = useState(false)
+  const copyResetTimeout = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (copyResetTimeout.current !== null) {
+      window.clearTimeout(copyResetTimeout.current)
+    }
+  }, [])
 
   const handleCopy = async () => {
     const ok = await copyTextToClipboard(diagnostics)
     if (!ok) return
 
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
+    if (copyResetTimeout.current !== null) {
+      window.clearTimeout(copyResetTimeout.current)
+    }
+    copyResetTimeout.current = window.setTimeout(() => {
+      copyResetTimeout.current = null
+      setCopied(false)
+    }, 1600)
   }
 
   return (

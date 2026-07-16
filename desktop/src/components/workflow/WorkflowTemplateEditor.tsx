@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { sessionsApi } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
 import { Modal } from '../shared/Modal'
 import { useSessionStore } from '../../stores/sessionStore'
+import { useUIStore } from '../../stores/uiStore'
 import { useSkillStore } from '../../stores/skillStore'
 import type {
   WorkflowTemplateCompletionCriteria,
@@ -14,9 +15,10 @@ import type {
   WorkflowTemplateOutputArtifact,
   WorkflowTemplatePhase,
   WorkflowTemplateSkillDeclaration,
-  WorkflowTemplatePhaseToolPolicy,
   WorkflowTemplateTransitionPolicy,
   WorkflowTemplateValidationIssue,
+  WorkflowLabel,
+  WorkflowEffortMode,
 } from '../../types/session'
 import type { SkillCatalogItem } from '../../types/skill'
 
@@ -44,11 +46,18 @@ type PhaseDraft = {
   executionRules: string
   completionCriteriaType: string
   completionCriteriaDescription: string
-  transitionAuthority: 'auto' | 'user-confirmation'
+  transitionAuthority: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
   requestedModel: string
+  appliesTo: string
+  skipLabels: string
+  skipEfforts: string
+  modePolicyLight: string
+  modePolicyStandard: string
+  modePolicyHeavy: string
+  skillBindings: string
+  runtimeContract: string
+  outputArtifacts: string
   skillReferences: WorkflowTemplateSkillDeclaration[]
-  allowedTools: string[]
-  hasCustomToolPolicy: boolean
 }
 
 type TemplateEditorDraft = {
@@ -56,6 +65,9 @@ type TemplateEditorDraft = {
   version: string
   name: string
   description: string
+  labels: string
+  routingPolicy: string
+  stopConditions: string
   phases: PhaseDraft[]
 }
 
@@ -83,54 +95,33 @@ const DEFAULT_PHASE: PhaseDraft = {
   completionCriteriaDescription: '',
   transitionAuthority: 'user-confirmation',
   requestedModel: '',
+  appliesTo: '',
+  skipLabels: '',
+  skipEfforts: '',
+  modePolicyLight: '',
+  modePolicyStandard: '',
+  modePolicyHeavy: '',
+  skillBindings: '',
+  runtimeContract: '',
+  outputArtifacts: '',
   skillReferences: [],
-  allowedTools: [
-    'workflow_template_authoring',
-    'submit_phase_completion',
-  ],
-  hasCustomToolPolicy: false,
 }
-
-const WORKFLOW_TOOL_OPTIONS = [
-  { name: 'Write', labelKey: 'settings.workflows.editor.tool.write', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'Edit', labelKey: 'settings.workflows.editor.tool.edit', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'MultiEdit', labelKey: 'settings.workflows.editor.tool.multiEdit', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'NotebookEdit', labelKey: 'settings.workflows.editor.tool.notebookEdit', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'Bash', labelKey: 'settings.workflows.editor.tool.bash', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'PowerShell', labelKey: 'settings.workflows.editor.tool.powerShell', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'Agent', labelKey: 'settings.workflows.editor.tool.agent', groupKey: 'settings.workflows.editor.runtimeTools' },
-  { name: 'workflow_template_authoring', labelKey: 'settings.workflows.editor.tool.workflowTemplateAuthoring', groupKey: 'settings.workflows.editor.workflowTools' },
-  { name: 'submit_phase_completion', labelKey: 'settings.workflows.editor.tool.submitPhaseCompletion', groupKey: 'settings.workflows.editor.workflowTools' },
-] as const
-
-const WORKFLOW_TOOL_NAMES = WORKFLOW_TOOL_OPTIONS.map((tool) => tool.name)
-const WORKFLOW_TOOL_NAME_SET = new Set<string>(WORKFLOW_TOOL_NAMES)
-const DEFAULT_NON_IMPLEMENTATION_ALLOWED_TOOLS = [
-  'workflow_template_authoring',
-  'submit_phase_completion',
-]
-const DEFAULT_IMPLEMENTATION_ALLOWED_TOOLS = [...WORKFLOW_TOOL_NAMES]
-const DEFAULT_VERIFICATION_ALLOWED_TOOLS = [
-  'Bash',
-  'PowerShell',
-  'workflow_template_authoring',
-  'submit_phase_completion',
-]
 
 export function WorkflowTemplateEditor({
   template,
   mode,
-  source,
   onSave,
   onSaved,
   onCancel,
 }: WorkflowTemplateEditorProps) {
   const t = useTranslation()
+  const addToast = useUIStore((state) => state.addToast)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(0)
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<TemplateEditorDraft>(() => toEditorDraft(template))
+  const templateIdentityRef = useRef(templateIdentity(template))
   const {
     catalog,
     skills: skillList,
@@ -146,10 +137,12 @@ export function WorkflowTemplateEditor({
   const selectedPhase = draft.phases[selectedPhaseIndex] ?? draft.phases[0] ?? DEFAULT_PHASE
   const skillCatalog = catalog.length > 0 ? catalog : skillList
   const editorMode = mode ?? (template?.source === 'user' ? 'edit' : 'create')
-  const originalSource = source ?? template?.source
-  const canEditTemplate = originalSource !== 'builtin'
+  const canEditTemplate = true
 
   useEffect(() => {
+    const nextIdentity = templateIdentity(template)
+    if (templateIdentityRef.current === nextIdentity) return
+    templateIdentityRef.current = nextIdentity
     setDraft(toEditorDraft(template))
     setErrors([])
     setSelectedPhaseIndex(0)
@@ -166,9 +159,17 @@ export function WorkflowTemplateEditor({
   const updatePhase = (field: keyof PhaseDraft, value: string) => {
     setDraft((current) => ({
       ...current,
-      phases: current.phases.map((phase, index) => (
-        index === selectedPhaseIndex ? { ...phase, [field]: value } : phase
-      )),
+      phases: current.phases.map((phase, index) => {
+        if (index !== selectedPhaseIndex) return phase
+        if (field === 'skillBindings') {
+          return {
+            ...phase,
+            skillBindings: value,
+            skillReferences: skillReferencesFromSkillBindingsText(value, phase.skillReferences),
+          }
+        }
+        return { ...phase, [field]: value }
+      }),
     }))
   }
 
@@ -183,31 +184,16 @@ export function WorkflowTemplateEditor({
         return {
           ...phase,
           skillReferences,
+          skillBindings: JSON.stringify(skillBindingsFromReferences(skillReferences, phase.skillBindings), null, 2),
         }
       }),
     }))
   }
 
-  const replaceRecommendedSkills = (references: WorkflowTemplateSkillDeclaration[]) => {
+  const replacePhaseSkillBindings = (references: WorkflowTemplateSkillDeclaration[]) => {
     updatePhaseSkillReferences(() => references)
   }
 
-  const togglePhaseTool = (toolName: string) => {
-    setDraft((current) => ({
-      ...current,
-      phases: current.phases.map((phase, index) => {
-        if (index !== selectedPhaseIndex) return phase
-        const allowedTools = new Set(phase.allowedTools)
-        if (allowedTools.has(toolName)) allowedTools.delete(toolName)
-        else allowedTools.add(toolName)
-        return {
-          ...phase,
-          allowedTools: WORKFLOW_TOOL_NAMES.filter((name) => allowedTools.has(name)),
-          hasCustomToolPolicy: true,
-        }
-      }),
-    }))
-  }
 
   const addPhase = () => {
     setDraft((current) => {
@@ -239,11 +225,15 @@ export function WorkflowTemplateEditor({
 
   const handleSave = async () => {
     if (!canEditTemplate || saving) return
-    const nextErrors = validateDraft(draft, t)
+    const liveDraft = mergeLiveEditorValues(draft, selectedPhaseIndex)
+    const nextErrors = validateDraft(liveDraft, t)
     setErrors(nextErrors)
-    if (nextErrors.length > 0) return
+    if (nextErrors.length > 0) {
+      addToast({ type: 'error', message: t('settings.workflows.editor.validationTitle') })
+      return
+    }
 
-    const templateDraft = toTemplateDraft(template, draft)
+    const templateDraft = toTemplateDraft(template, liveDraft)
 
     if (onSave) {
       await onSave(templateDraft)
@@ -258,6 +248,7 @@ export function WorkflowTemplateEditor({
       })
       if (!validation.valid || validation.issues.some((issue) => issue.severity === 'error')) {
         setErrors(validationIssuesToErrors(validation.issues))
+        addToast({ type: 'error', message: t('settings.workflows.editor.validationTitle') })
         return
       }
 
@@ -266,9 +257,16 @@ export function WorkflowTemplateEditor({
         ? await sessionsApi.updateWorkflowTemplate(templateDraft.id, { template: requestTemplate })
         : await sessionsApi.createWorkflowTemplate({ template: requestTemplate })
       setErrors([])
+      addToast({
+        type: 'success',
+        message: t('settings.workflows.editor.saveSuccess', { name: response.template.name }),
+      })
+
       onSaved?.(response.template)
     } catch (error) {
-      setErrors([errorToValidationError(error)])
+      const validationError = errorToValidationError(error)
+      setErrors([validationError])
+      addToast({ type: 'error', message: validationError.message })
     } finally {
       setSaving(false)
     }
@@ -441,6 +439,8 @@ export function WorkflowTemplateEditor({
               <SelectField id="workflow-phase-transition-authority" label={t('settings.workflows.editor.transitionAuthority')} value={selectedPhase.transitionAuthority} onChange={(value) => updatePhase('transitionAuthority', value)} options={[
                 { value: 'user-confirmation', label: t('settings.workflows.editor.transitionAuthority.user') },
                 { value: 'auto', label: t('settings.workflows.editor.transitionAuthority.auto') },
+                { value: 'artifact-gate', label: 'Artifact gate' },
+                { value: 'user-choice', label: 'User choice' },
               ]} />
             </div>
           </section>
@@ -464,20 +464,15 @@ export function WorkflowTemplateEditor({
             </div>
           </section>
 
-          <RecommendedSkillsSelector
+          <PhaseSkillBindingsSelector
             phaseName={selectedPhase.name || selectedPhase.id || t('settings.workflows.editor.untitledPhase')}
             catalog={skillCatalog}
             selectedReferences={selectedPhase.skillReferences}
             loading={isCatalogLoading || isSkillListLoading}
             error={skillCatalogError}
-            onChange={replaceRecommendedSkills}
+            onChange={replacePhaseSkillBindings}
           />
 
-          <PhaseToolAccessEditor
-            phaseName={selectedPhase.name || selectedPhase.id || t('settings.workflows.editor.untitledPhase')}
-            allowedTools={selectedPhase.allowedTools}
-            onToggle={togglePhaseTool}
-          />
 
           <div className="mt-3 border-t border-[var(--color-border)] pt-3">
             <button
@@ -495,7 +490,19 @@ export function WorkflowTemplateEditor({
             {advancedOpen && (
               <div className="mt-3 grid min-w-0 gap-3">
                 <TextArea id="workflow-template-description" label={t('settings.workflows.editor.templateDescription')} value={draft.description} onChange={(value) => updateTemplate('description', value)} rows={2} />
+                <TextField id="workflow-template-labels" label="Workflow labels" value={draft.labels} onChange={(value) => updateTemplate('labels', value)} />
+                <TextArea id="workflow-template-routing-policy" label="Routing policy JSON" value={draft.routingPolicy} onChange={(value) => updateTemplate('routingPolicy', value)} rows={3} />
+                <TextArea id="workflow-template-stop-conditions" label="Stop conditions" value={draft.stopConditions} onChange={(value) => updateTemplate('stopConditions', value)} rows={2} />
                 <TextField id="workflow-phase-requested-model" label={t('settings.workflows.editor.requestedModel')} value={selectedPhase.requestedModel} onChange={(value) => updatePhase('requestedModel', value)} />
+                <TextField id="workflow-phase-applies-to" label="Phase applies to labels" value={selectedPhase.appliesTo} onChange={(value) => updatePhase('appliesTo', value)} />
+                <TextField id="workflow-phase-skip-labels" label="Skip when labels" value={selectedPhase.skipLabels} onChange={(value) => updatePhase('skipLabels', value)} />
+                <TextField id="workflow-phase-skip-efforts" label="Skip when efforts" value={selectedPhase.skipEfforts} onChange={(value) => updatePhase('skipEfforts', value)} />
+                <TextArea id="workflow-phase-mode-policy-light" label="Light mode policy" value={selectedPhase.modePolicyLight} onChange={(value) => updatePhase('modePolicyLight', value)} rows={2} />
+                <TextArea id="workflow-phase-mode-policy-standard" label="Standard mode policy" value={selectedPhase.modePolicyStandard} onChange={(value) => updatePhase('modePolicyStandard', value)} rows={2} />
+                <TextArea id="workflow-phase-mode-policy-heavy" label="Heavy mode policy" value={selectedPhase.modePolicyHeavy} onChange={(value) => updatePhase('modePolicyHeavy', value)} rows={2} />
+                <TextArea id="workflow-phase-skill-bindings" label="Skill bindings JSON" value={selectedPhase.skillBindings} onChange={(value) => updatePhase('skillBindings', value)} rows={3} />
+                <TextArea id="workflow-phase-runtime-contract" label="Runtime contract JSON" value={selectedPhase.runtimeContract} onChange={(value) => updatePhase('runtimeContract', value)} rows={4} />
+                <TextArea id="workflow-phase-output-artifacts" label="Output artifacts JSON" value={selectedPhase.outputArtifacts} onChange={(value) => updatePhase('outputArtifacts', value)} rows={4} />
               </div>
             )}
           </div>
@@ -519,10 +526,74 @@ function toEditorDraft(template?: WorkflowTemplateDraft | null): TemplateEditorD
     version: source.version || '1',
     name: source.name,
     description: source.description ?? '',
+    labels: toCommaText(source.labels),
+    routingPolicy: source.routingPolicy ? JSON.stringify(source.routingPolicy, null, 2) : '',
+    stopConditions: toLinesText(source.stopConditions),
     phases: source.phases.length > 0
       ? source.phases.map(toPhaseDraft)
       : [DEFAULT_PHASE],
   }
+}
+
+function templateIdentity(template?: WorkflowTemplateDraft | null): string {
+  if (!template) return 'new'
+  return `${template.source ?? 'user'}:${template.id}:${template.version}`
+}
+
+function mergeLiveEditorValues(draft: TemplateEditorDraft, selectedPhaseIndex: number): TemplateEditorDraft {
+  const phases = draft.phases.map((phase, index) => {
+    if (index !== selectedPhaseIndex) return phase
+    return {
+      ...phase,
+      id: liveFieldValue('workflow-phase-id', phase.id),
+      name: liveFieldValue('workflow-phase-name', phase.name),
+      role: liveFieldValue('workflow-phase-role', phase.role),
+      objective: liveFieldValue('workflow-phase-objective', phase.objective),
+      intake: liveFieldValue('workflow-phase-intake', phase.intake),
+      instructions: liveFieldValue('workflow-phase-instructions', phase.instructions),
+      executionRules: liveFieldValue('workflow-phase-execution-rules', phase.executionRules),
+      transitionAuthority: liveFieldValue('workflow-phase-transition-authority', phase.transitionAuthority) as PhaseDraft['transitionAuthority'],
+      outputArtifactName: liveFieldValue('workflow-output-artifact-name', phase.outputArtifactName),
+      outputArtifactKind: liveFieldValue('workflow-output-artifact-kind', phase.outputArtifactKind),
+      outputArtifactDescription: liveFieldValue('workflow-output-artifact-description', phase.outputArtifactDescription),
+      handoff: liveFieldValue('workflow-phase-handoff', phase.handoff),
+      completionCriteriaDescription: liveFieldValue('workflow-phase-completion-criteria', phase.completionCriteriaDescription),
+      requestedModel: liveFieldValue('workflow-phase-requested-model', phase.requestedModel),
+      appliesTo: liveFieldValue('workflow-phase-applies-to', phase.appliesTo),
+      skipLabels: liveFieldValue('workflow-phase-skip-labels', phase.skipLabels),
+      skipEfforts: liveFieldValue('workflow-phase-skip-efforts', phase.skipEfforts),
+      modePolicyLight: liveFieldValue('workflow-phase-mode-policy-light', phase.modePolicyLight),
+      modePolicyStandard: liveFieldValue('workflow-phase-mode-policy-standard', phase.modePolicyStandard),
+      modePolicyHeavy: liveFieldValue('workflow-phase-mode-policy-heavy', phase.modePolicyHeavy),
+      skillBindings: liveFieldValue('workflow-phase-skill-bindings', phase.skillBindings),
+      runtimeContract: liveFieldValue('workflow-phase-runtime-contract', phase.runtimeContract),
+      outputArtifacts: liveFieldValue('workflow-phase-output-artifacts', phase.outputArtifacts),
+    }
+  })
+
+  return {
+    ...draft,
+    id: liveFieldValue('workflow-template-id', draft.id),
+    name: liveFieldValue('workflow-template-name', draft.name),
+    description: liveFieldValue('workflow-template-description', draft.description),
+    labels: liveFieldValue('workflow-template-labels', draft.labels),
+    routingPolicy: liveFieldValue('workflow-template-routing-policy', draft.routingPolicy),
+    stopConditions: liveFieldValue('workflow-template-stop-conditions', draft.stopConditions),
+    phases,
+  }
+}
+
+function liveFieldValue(id: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const element = document.getElementById(id)
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    return element.value
+  }
+  return fallback
 }
 
 function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
@@ -539,17 +610,14 @@ function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
   const firstRequiredArtifact = requiredArtifacts?.find((artifact) => artifact.required) ?? requiredArtifacts?.[0]
   const artifactId = outputArtifact?.id ?? firstRequiredArtifact?.id ?? ''
   const artifactName = outputArtifact?.name ?? firstRequiredArtifact?.name ?? artifactId
-  const skillReferences = Array.isArray(phase.skills) ? phase.skills : []
-  const toolPolicy = isToolPolicy(phase.toolPolicy)
-    ? phase.toolPolicy
-    : isRecord(contract.toolPolicy) && Array.isArray(contract.toolPolicy.allowedTools)
-      ? contract.toolPolicy as WorkflowTemplatePhaseToolPolicy
-      : undefined
-  const allowedTools = toolPolicy
-    ? normalizeToolNames(toolPolicy.allowedTools)
-    : defaultAllowedToolsForPhase(phase.id)
-  const hasCustomToolPolicy = Boolean(toolPolicy)
-  const transitionAuthority = contract.transitionAuthority === 'auto' || contract.transitionAuthority === 'user-confirmation'
+  const skillReferences = phaseSkillReferences(phase)
+  const skillBindings = Array.isArray(phase.skillBindings)
+    ? phase.skillBindings
+    : skillBindingsFromReferences(skillReferences, '')
+  const transitionAuthority = contract.transitionAuthority === 'auto' ||
+    contract.transitionAuthority === 'user-confirmation' ||
+    contract.transitionAuthority === 'artifact-gate' ||
+    contract.transitionAuthority === 'user-choice'
     ? contract.transitionAuthority
     : phase.transition?.authority ?? 'user-confirmation'
 
@@ -570,20 +638,30 @@ function toPhaseDraft(phase: WorkflowTemplatePhase): PhaseDraft {
     completionCriteriaDescription: evidenceCompletionCriteria?.description ?? phase.completionCriteria?.description ?? '',
     transitionAuthority,
     requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : '',
+    appliesTo: toCommaText(phase.appliesTo),
+    skipLabels: toCommaText(phase.skipWhen?.labels),
+    skipEfforts: toCommaText(phase.skipWhen?.efforts),
+    modePolicyLight: phase.modePolicy?.light ?? '',
+    modePolicyStandard: phase.modePolicy?.standard ?? '',
+    modePolicyHeavy: phase.modePolicy?.heavy ?? '',
+    skillBindings: skillBindings.length > 0 ? JSON.stringify(skillBindings, null, 2) : '',
+    runtimeContract: phase.runtimeContract ? JSON.stringify(phase.runtimeContract, null, 2) : '',
+    outputArtifacts: phase.outputArtifacts ? JSON.stringify(phase.outputArtifacts, null, 2) : '',
     skillReferences,
-    allowedTools,
-    hasCustomToolPolicy,
   }
 }
 
 function toTemplateDraft(original: WorkflowTemplateDraft | null | undefined, draft: TemplateEditorDraft): WorkflowTemplateDraft {
   return {
     ...(original ?? {}),
-    schemaVersion: 1,
+    schemaVersion: original?.schemaVersion === 2 ? 2 : 1,
     id: draft.id.trim(),
     version: draft.version.trim() || '1',
     name: draft.name.trim(),
     description: draft.description.trim() || undefined,
+    labels: normalizeWorkflowLabelsFromText(draft.labels),
+    routingPolicy: parseJsonObject(draft.routingPolicy),
+    stopConditions: toLines(draft.stopConditions),
     phases: draft.phases.map((phase, index) => toWorkflowPhase(original?.phases[index], phase)),
   }
 }
@@ -595,7 +673,6 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     contract: originalContract,
     evidencePolicy: originalEvidencePolicy,
     actionPolicy: originalActionPolicy,
-    toolPolicy: originalToolPolicy,
     ...originalWithoutRuntimeState
   } = original ?? {}
   const outputArtifactId = draft.outputArtifactId.trim() || slugFromText(draft.outputArtifactName) || `${draft.id.trim()}-artifact`
@@ -643,23 +720,14 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     ),
     forbiddenActions: toLines(draft.executionRules),
   }
+  // Legacy tool policies remain in the template unchanged for import/export compatibility.
+  // Workflow tool availability is no longer configurable or hard-enforced by phase.
   const baseContract: Record<string, unknown> = isRecord(originalContract) ? { ...originalContract } : {}
-  if (!draft.hasCustomToolPolicy) {
-    delete baseContract.toolPolicy
-  }
-  const toolPolicy: WorkflowTemplatePhaseToolPolicy | undefined = draft.hasCustomToolPolicy
-    ? {
-        ...(isRecord(originalToolPolicy) ? originalToolPolicy : {}),
-        ...(isRecord(originalContract) && isRecord(originalContract.toolPolicy) ? originalContract.toolPolicy : {}),
-        allowedTools: normalizeToolNames(draft.allowedTools),
-      }
-    : undefined
   const contract = {
     ...baseContract,
     instructions: draft.instructions.trim(),
     executionRules: toLines(draft.executionRules),
     actionPolicy,
-    ...(toolPolicy ? { toolPolicy } : {}),
     transitionAuthority: draft.transitionAuthority,
   }
   const evidencePolicy = {
@@ -688,39 +756,15 @@ function toWorkflowPhase(original: WorkflowTemplatePhase | undefined, draft: Pha
     contract,
     evidencePolicy,
     actionPolicy,
-    ...(toolPolicy ? { toolPolicy } : {}),
+    appliesTo: normalizeWorkflowLabelsFromText(draft.appliesTo),
+    skipWhen: normalizeSkipWhenDraft(draft),
+    modePolicy: normalizeModePolicyDraft(draft),
+    skillBindings: parseJsonArray(draft.skillBindings) as WorkflowTemplatePhase['skillBindings'],
+    runtimeContract: parseJsonObject(draft.runtimeContract),
+    outputArtifacts: parseJsonArray(draft.outputArtifacts) as WorkflowTemplatePhase['outputArtifacts'],
     requestedModel: draft.requestedModel.trim() || undefined,
-    skills: draft.skillReferences.length > 0 ? draft.skillReferences : undefined,
+    skills: undefined,
   }
-}
-
-function defaultAllowedToolsForPhase(phaseId: string): string[] {
-  const normalized = phaseId.trim().toLowerCase().replace(/[\s_]+/g, '-')
-  if (normalized === 'verification') return [...DEFAULT_VERIFICATION_ALLOWED_TOOLS]
-  if (
-    normalized === 'implementation' ||
-    normalized === 'implement' ||
-    normalized === 'sp-implementation' ||
-    normalized === 'sp-implement'
-  ) {
-    return [...DEFAULT_IMPLEMENTATION_ALLOWED_TOOLS]
-  }
-  return [...DEFAULT_NON_IMPLEMENTATION_ALLOWED_TOOLS]
-}
-
-function normalizeToolNames(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  const selected = new Set(
-    value
-      .filter((tool): tool is string => typeof tool === 'string')
-      .map((tool) => tool.trim())
-      .filter((tool) => WORKFLOW_TOOL_NAME_SET.has(tool)),
-  )
-  return WORKFLOW_TOOL_NAMES.filter((tool) => selected.has(tool))
-}
-
-function isToolPolicy(value: unknown): value is WorkflowTemplatePhaseToolPolicy {
-  return isRecord(value) && Array.isArray(value.allowedTools)
 }
 
 function validateDraft(draft: TemplateEditorDraft, t: ReturnType<typeof useTranslation>) {
@@ -828,8 +872,8 @@ function SelectField({
   id: string
   label: string
   value: string
-  onChange: (value: 'auto' | 'user-confirmation') => void
-  options: Array<{ value: 'auto' | 'user-confirmation'; label: string }>
+  onChange: (value: PhaseDraft['transitionAuthority']) => void
+  options: Array<{ value: PhaseDraft['transitionAuthority']; label: string }>
 }) {
   return (
     <label className="block min-w-0 text-xs font-medium text-[var(--color-text-secondary)]" htmlFor={id}>
@@ -837,7 +881,7 @@ function SelectField({
       <select
         id={id}
         value={value}
-        onChange={(event) => onChange(event.target.value as 'auto' | 'user-confirmation')}
+        onChange={(event) => onChange(event.target.value as PhaseDraft['transitionAuthority'])}
         className="mt-1 h-9 w-full min-w-0 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2.5 text-sm text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20"
       >
         {options.map((option) => (
@@ -848,101 +892,7 @@ function SelectField({
   )
 }
 
-function PhaseToolAccessEditor({
-  phaseName,
-  allowedTools,
-  onToggle,
-}: {
-  phaseName: string
-  allowedTools: string[]
-  onToggle: (toolName: string) => void
-}) {
-  const t = useTranslation()
-  const allowedToolSet = new Set(allowedTools)
-  const runtimeTools = WORKFLOW_TOOL_OPTIONS.filter((tool) =>
-    tool.groupKey === 'settings.workflows.editor.runtimeTools'
-  )
-  const workflowTools = WORKFLOW_TOOL_OPTIONS.filter((tool) =>
-    tool.groupKey === 'settings.workflows.editor.workflowTools'
-  )
-  const completionToolDisabled = !allowedToolSet.has('submit_phase_completion')
-
-  return (
-    <section
-      role="group"
-      aria-label={t('settings.workflows.editor.toolAccessLabel', { phase: phaseName })}
-      className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
-    >
-      <div className="min-w-0">
-        <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
-          {t('settings.workflows.editor.toolAccess')}
-        </h5>
-        <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-text-tertiary)]">
-          {t('settings.workflows.editor.toolAccessHint')}
-        </p>
-      </div>
-      <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
-        <ToolCheckboxGroup
-          title={t('settings.workflows.editor.runtimeTools')}
-          tools={runtimeTools}
-          allowedToolSet={allowedToolSet}
-          onToggle={onToggle}
-        />
-        <ToolCheckboxGroup
-          title={t('settings.workflows.editor.workflowTools')}
-          tools={workflowTools}
-          allowedToolSet={allowedToolSet}
-          onToggle={onToggle}
-        />
-      </div>
-      {completionToolDisabled && (
-        <p className="mt-3 rounded-[7px] border border-[var(--color-warning)]/35 bg-[var(--color-warning)]/10 px-2.5 py-2 text-xs leading-5 text-[var(--color-warning)]">
-          {t('settings.workflows.editor.submitCompletionDisabledWarning')}
-        </p>
-      )}
-    </section>
-  )
-}
-
-function ToolCheckboxGroup({
-  title,
-  tools,
-  allowedToolSet,
-  onToggle,
-}: {
-  title: string
-  tools: typeof WORKFLOW_TOOL_OPTIONS[number][]
-  allowedToolSet: Set<string>
-  onToggle: (toolName: string) => void
-}) {
-  const t = useTranslation()
-
-  return (
-    <div className="min-w-0 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
-      <h6 className="text-[11px] font-semibold uppercase text-[var(--color-text-tertiary)]">
-        {title}
-      </h6>
-      <div className="mt-2 grid min-w-0 gap-1.5">
-        {tools.map((tool) => (
-          <label
-            key={tool.name}
-            className="flex min-w-0 items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
-          >
-            <input
-              type="checkbox"
-              checked={allowedToolSet.has(tool.name)}
-              onChange={() => onToggle(tool.name)}
-              className="h-3.5 w-3.5 shrink-0 accent-[var(--color-brand)]"
-            />
-            <span className="min-w-0 truncate">{t(tool.labelKey)}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function RecommendedSkillsSelector({
+function PhaseSkillBindingsSelector({
   phaseName,
   catalog,
   selectedReferences,
@@ -964,7 +914,7 @@ function RecommendedSkillsSelector({
     const catalogItem = catalog.find((skill) => skillMatchesReference(skill, reference))
     return {
       reference,
-      displayName: catalogItem?.displayName ?? displayNameFromSkillName(reference.name),
+      displayName: catalogItem?.displayName ?? reference.name,
       source: reference.source ?? catalogItem?.source ?? 'unknown',
     }
   })
@@ -972,16 +922,16 @@ function RecommendedSkillsSelector({
   return (
     <section
       role="group"
-      aria-label={t('settings.workflows.editor.recommendedSkillsLabel', { phase: phaseName })}
+      aria-label={t('settings.workflows.editor.phaseSkillBindingsLabel', { phase: phaseName })}
       className="mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3"
     >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
-            {t('settings.workflows.editor.recommendedSkills')}
+            {t('settings.workflows.editor.phaseSkillBindings')}
           </h5>
           <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-text-tertiary)]">
-            {t('settings.workflows.editor.recommendedSkillsHint')}
+            {t('settings.workflows.editor.phaseSkillBindingsHint')}
           </p>
         </div>
         {loading && (
@@ -1014,13 +964,13 @@ function RecommendedSkillsSelector({
             </div>
           ) : (
             <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
-              {t('settings.workflows.editor.noRecommendedSkills')}
+              {t('settings.workflows.editor.noPhaseSkillBindings')}
             </p>
           )}
         </div>
         <button
           type="button"
-          aria-label={t('settings.workflows.editor.chooseRecommendedSkillsLabel', { phase: phaseName })}
+          aria-label={t('settings.workflows.editor.choosePhaseSkillBindingsLabel', { phase: phaseName })}
           onClick={() => setPickerOpen(true)}
           className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
         >
@@ -1060,6 +1010,7 @@ function SkillPickerModal({
   onApply: (references: WorkflowTemplateSkillDeclaration[]) => void
 }) {
   const t = useTranslation()
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [query, setQuery] = useState('')
   const [draftKeys, setDraftKeys] = useState<Set<string>>(() => (
     new Set(selectedReferences.map((reference) => skillReferenceSelectionKey(reference, catalog)))
@@ -1070,6 +1021,20 @@ function SkillPickerModal({
     setQuery('')
     setDraftKeys(new Set(selectedReferences.map((reference) => skillReferenceSelectionKey(reference, catalog))))
   }, [catalog, open, selectedReferences])
+
+  useEffect(() => {
+    if (!open) return
+    const input = searchInputRef.current
+    if (!input) return
+
+    const syncQuery = () => setQuery(input.value)
+    input.addEventListener('change', syncQuery)
+    input.addEventListener('input', syncQuery)
+    return () => {
+      input.removeEventListener('change', syncQuery)
+      input.removeEventListener('input', syncQuery)
+    }
+  }, [open])
 
   const normalizedQuery = query.trim().toLowerCase()
   const visibleSkills = normalizedQuery
@@ -1093,7 +1058,7 @@ function SkillPickerModal({
       return {
         key,
         name,
-        displayName: catalogItem?.displayName ?? displayNameFromSkillName(name),
+        displayName: catalogItem?.displayName ?? name,
         source: catalogItem?.source ?? existingReference?.source ?? 'unknown',
         pluginName: catalogItem?.pluginName ?? existingReference?.pluginName,
         unavailable: !catalogItem,
@@ -1135,7 +1100,7 @@ function SkillPickerModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={t('settings.workflows.editor.chooseRecommendedSkillsLabel', { phase: phaseName })}
+      title={t('settings.workflows.editor.choosePhaseSkillBindingsLabel', { phase: phaseName })}
       width={760}
       footer={(
         <>
@@ -1163,7 +1128,9 @@ function SkillPickerModal({
             <span className="material-symbols-outlined text-[16px] text-[var(--color-text-tertiary)]" aria-hidden="true">search</span>
             <input
               id="workflow-skill-picker-search"
-              type="search"
+              ref={searchInputRef}
+              type="text"
+              role="searchbox"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-[var(--color-text-primary)] outline-none"
@@ -1214,7 +1181,7 @@ function SkillPickerModal({
             </div>
           ) : (
             <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
-              {t('settings.workflows.editor.noRecommendedSkills')}
+              {t('settings.workflows.editor.noPhaseSkillBindings')}
             </p>
           )}
         </div>
@@ -1282,6 +1249,68 @@ function toLinesText(value?: string[]) {
   return Array.isArray(value) ? value.join('\n') : ''
 }
 
+function toCommaText(value?: string[]) {
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+
+function toCommaList(value: string) {
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function normalizeWorkflowLabelsFromText(value: string): WorkflowLabel[] | undefined {
+  const labels = toCommaList(value) as WorkflowLabel[]
+  return labels.length ? labels : undefined
+}
+
+function normalizeEffortsFromText(value: string): WorkflowEffortMode[] | undefined {
+  const efforts = toCommaList(value) as WorkflowEffortMode[]
+  return efforts.length ? efforts : undefined
+}
+
+function normalizeSkipWhenDraft(draft: PhaseDraft): WorkflowTemplatePhase['skipWhen'] | undefined {
+  const labels = normalizeWorkflowLabelsFromText(draft.skipLabels)
+  const efforts = normalizeEffortsFromText(draft.skipEfforts)
+  if (!labels?.length && !efforts?.length) return undefined
+  return {
+    ...(labels?.length ? { labels } : {}),
+    ...(efforts?.length ? { efforts } : {}),
+  }
+}
+
+function normalizeModePolicyDraft(draft: PhaseDraft): WorkflowTemplatePhase['modePolicy'] | undefined {
+  const policy = {
+    ...(draft.modePolicyLight.trim() ? { light: draft.modePolicyLight.trim() } : {}),
+    ...(draft.modePolicyStandard.trim() ? { standard: draft.modePolicyStandard.trim() } : {}),
+    ...(draft.modePolicyHeavy.trim() ? { heavy: draft.modePolicyHeavy.trim() } : {}),
+  }
+  return Object.keys(policy).length ? policy : undefined
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    return isRecord(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function parseJsonArray(value: string): unknown[] | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    return Array.isArray(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -1312,16 +1341,121 @@ function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter(isString) : []
 }
 
+
+function phaseSkillReferences(phase: WorkflowTemplatePhase): WorkflowTemplateSkillDeclaration[] {
+  const bindingReferences = skillBindingReferencesFromBindings(phase.skillBindings)
+  if (bindingReferences.length > 0 || (Array.isArray(phase.skillBindings) && phase.skillBindings.length === 0)) {
+    return bindingReferences
+  }
+  return Array.isArray(phase.skills) ? phase.skills : []
+}
+
+function skillReferencesFromSkillBindingsText(
+  value: string,
+  fallback: WorkflowTemplateSkillDeclaration[],
+): WorkflowTemplateSkillDeclaration[] {
+  if (!value.trim()) return []
+  const parsed = parseJsonArray(value)
+  if (!parsed) return fallback
+  return skillBindingReferencesFromBindings(parsed as WorkflowTemplatePhase['skillBindings'])
+}
+
+function skillBindingReferencesFromBindings(
+  bindings: WorkflowTemplatePhase['skillBindings'] | unknown,
+): WorkflowTemplateSkillDeclaration[] {
+  if (!Array.isArray(bindings)) return []
+  const references: WorkflowTemplateSkillDeclaration[] = []
+  for (const binding of bindings) {
+    const id = skillBindingId(binding)
+    if (!id) continue
+    const source = skillSourceFromBindingId(id)
+    references.push({
+      name: id,
+      ...(source ? { source } : {}),
+      referenceId: id,
+    })
+  }
+  return references
+}
+
+function skillBindingsFromReferences(
+  references: WorkflowTemplateSkillDeclaration[],
+  existingBindingsText: string,
+): NonNullable<WorkflowTemplatePhase['skillBindings']> {
+  const existingBindings = parseJsonArray(existingBindingsText) ?? []
+  const existingById = new Map<string, string | { id: string; mode?: 'native-if-installed' | 'fallback-contract' | 'native-if-installed-else-fallback-contract' | 'disabled' }>()
+  for (const binding of existingBindings) {
+    const id = skillBindingId(binding)
+    if (id && (typeof binding === 'string' || isSkillBindingObject(binding))) {
+      existingById.set(id, binding)
+    }
+  }
+  return references
+    .map((reference) => {
+      const id = skillBindingIdFromReference(reference)
+      if (!id) return null
+      return existingById.get(id) ?? id
+    })
+    .filter((binding): binding is NonNullable<WorkflowTemplatePhase['skillBindings']>[number] => binding !== null)
+}
+
+function skillBindingId(binding: unknown): string | null {
+  if (typeof binding === 'string') return binding.trim() || null
+  if (isSkillBindingObject(binding)) return binding.id.trim() || null
+  return null
+}
+
+function isSkillBindingObject(value: unknown): value is { id: string; mode?: 'native-if-installed' | 'fallback-contract' | 'native-if-installed-else-fallback-contract' | 'disabled' } {
+  return isRecord(value) && typeof value.id === 'string'
+}
+
+function skillBindingIdFromReference(reference: WorkflowTemplateSkillDeclaration): string {
+  const referenceId = typeof reference.referenceId === 'string' ? reference.referenceId.trim() : ''
+  if (referenceId) return referenceId
+  const name = reference.name.trim()
+  if (!name) return ''
+  if (name.includes(':')) return name
+  return reference.source ? `${reference.source}:${name}` : name
+}
+
+function skillBindingIdFromCatalog(skill: SkillCatalogItem): string {
+  const referenceId = skill.referenceId?.trim() || skill.provenance?.referenceId?.trim()
+  if (referenceId) return referenceId
+  if (skill.name.includes(':')) return skill.name
+  return `${skill.source}:${skill.name}`
+}
+
+function skillSourceFromBindingId(id: string): WorkflowTemplateSkillDeclaration['source'] | undefined {
+  const source = id.split(':', 1)[0]
+  if (
+    source === 'workflow' ||
+    source === 'fallback' ||
+    source === 'superpowers' ||
+    source === 'spec-kit-plus' ||
+    source === 'codex' ||
+    source === 'claude-code' ||
+    source === 'user' ||
+    source === 'project' ||
+    source === 'plugin' ||
+    source === 'mcp' ||
+    source === 'bundled'
+  ) {
+    return source
+  }
+  return undefined
+}
+
 function skillToRecommendedReference(skill: SkillCatalogItem): WorkflowTemplateSkillDeclaration {
+  const bindingId = skillBindingIdFromCatalog(skill)
   return {
-    name: skill.name,
+    name: bindingId,
     mode: 'recommended',
     source: skill.source,
     ...(skill.pluginName ? { pluginName: skill.pluginName } : {}),
     ...(skill.namespace ? { namespace: skill.namespace } : {}),
     ...(skill.version ? { version: skill.version } : {}),
     ...(skill.contentHash ? { contentHash: skill.contentHash } : {}),
-    ...(skill.referenceId ? { referenceId: skill.referenceId } : {}),
+    referenceId: bindingId,
   }
 }
 
@@ -1347,13 +1481,18 @@ function skillReferenceIdentity(reference: WorkflowTemplateSkillDeclaration) {
 }
 
 function skillMatchesReference(skill: SkillCatalogItem, reference: WorkflowTemplateSkillDeclaration) {
-  return skill.name === reference.name &&
+  const bindingId = skillBindingIdFromReference(reference)
+  return (
+    skill.name === reference.name ||
+    skill.referenceId === reference.referenceId ||
+    skill.provenance?.referenceId === reference.referenceId ||
+    skillBindingIdFromCatalog(skill) === bindingId
+  ) &&
     (!reference.source || skill.source === reference.source) &&
     (!reference.pluginName || skill.pluginName === reference.pluginName) &&
     (!reference.namespace || skill.namespace === reference.namespace) &&
     (!reference.version || skill.version === reference.version) &&
-    (!reference.contentHash || skill.contentHash === reference.contentHash) &&
-    (!reference.referenceId || skill.referenceId === reference.referenceId)
+    (!reference.contentHash || skill.contentHash === reference.contentHash)
 }
 
 function isRecommendedSkillReference(reference: WorkflowTemplateSkillDeclaration) {

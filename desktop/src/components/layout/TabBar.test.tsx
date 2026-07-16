@@ -125,7 +125,6 @@ describe('TabBar', () => {
     scrollIntoViewMock.mockClear()
     openProjectMenuMock.paths = []
     windowControlsMock.show = true
-    vi.resetModules()
   })
 
   afterEach(async () => {

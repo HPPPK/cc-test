@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { ApiError } from '../../api/client'
 import { sessionsApi } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
 import type {
@@ -7,6 +8,7 @@ import type {
   WorkflowSkillDependencyManifest,
   WorkflowTemplateImportCandidate,
   WorkflowTemplateImportPayload,
+  WorkflowTemplateZipExportResponse,
   WorkflowTemplateImportResolution,
   WorkflowTemplateListItem,
   WorkflowTemplateSelector,
@@ -24,6 +26,15 @@ type WorkflowImportExportDialogProps = {
 }
 
 const EMPTY_TEMPLATE_SELECTION: WorkflowTemplateSelector[] = []
+const IMPORT_JSON_TEXTAREA_ID = 'workflow-import-json'
+const EXPORT_JSON_MIME_TYPE = 'application/json'
+const EXPORT_ZIP_MIME_TYPE = 'application/zip'
+
+type ExportedWorkflowFile = {
+  fileName: string
+  contentType: string
+  dataBase64: string
+}
 
 type SelectionState = {
   selected: boolean
@@ -42,10 +53,13 @@ export function WorkflowImportExportDialog({
   const t = useTranslation()
   const [importText, setImportText] = useState('')
   const [payload, setPayload] = useState<WorkflowTemplateImportPayload | null>(null)
+  const [importFilePayload, setImportFilePayload] = useState<WorkflowTemplateImportPayload | null>(null)
+  const [importFileName, setImportFileName] = useState('')
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof sessionsApi.previewWorkflowTemplateImport>> | null>(null)
   const [candidateSelections, setCandidateSelections] = useState<Record<string, SelectionState>>({})
   const [selectedExportKeys, setSelectedExportKeys] = useState<Set<string>>(new Set())
   const [exportText, setExportText] = useState('')
+  const [exportFile, setExportFile] = useState<ExportedWorkflowFile | null>(null)
   const [exportDependencyManifest, setExportDependencyManifest] = useState<WorkflowSkillDependencyManifest | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,9 +70,12 @@ export function WorkflowImportExportDialog({
 
     setImportText('')
     setPayload(null)
+    setImportFilePayload(null)
+    setImportFileName('')
     setPreview(null)
     setCandidateSelections({})
     setExportText('')
+    setExportFile(null)
     setExportDependencyManifest(null)
     setBusy(false)
     setError(null)
@@ -85,7 +102,7 @@ export function WorkflowImportExportDialog({
     setSuccess(null)
 
     try {
-      const parsedPayload = parseImportPayload(importText)
+      const parsedPayload = importFilePayload ?? parseImportPayload(liveTextAreaValue(IMPORT_JSON_TEXTAREA_ID, importText))
       const response = await sessionsApi.previewWorkflowTemplateImport({ payload: parsedPayload })
       setPayload(parsedPayload)
       setPreview(response)
@@ -101,47 +118,99 @@ export function WorkflowImportExportDialog({
       ))
     } catch (previewError) {
       setPayload(null)
+      setImportFilePayload(null)
       setPreview(null)
       setCandidateSelections({})
-      setError(previewError instanceof Error ? previewError.message : t('settings.workflows.import.invalidJson'))
+      setError(errorMessage(previewError) || t('settings.workflows.import.invalidJson'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setBusy(true)
+    setError(null)
+    setSuccess(null)
+    setPreview(null)
+    setCandidateSelections({})
+
+    try {
+      if (isZipFile(file)) {
+        const dataBase64 = arrayBufferToBase64(await file.arrayBuffer())
+        setImportFilePayload({ format: 'zip-pack', dataBase64, fileName: file.name })
+        setImportFileName(file.name)
+        setImportText('')
+        return
+      }
+
+      const text = await file.text()
+      setImportFilePayload(null)
+      setImportFileName(file.name)
+      setImportText(text)
+    } catch (readError) {
+      setImportFilePayload(null)
+      setImportFileName('')
+      setImportText('')
+      setError(errorMessage(readError))
     } finally {
       setBusy(false)
     }
   }
 
   const handleCommitImport = async () => {
-    if (!payload || !preview) return
-
-    const selections = preview.candidates
-      .filter((candidate) => candidateSelections[candidate.importId]?.selected)
-      .map((candidate) => {
-        const selection = candidateSelections[candidate.importId] ?? {
-          selected: false,
-          resolution: defaultResolution(candidate),
-          targetId: candidate.proposedId,
-        }
-        return {
-          importId: candidate.importId,
-          resolution: selection.resolution,
-          targetId: selection.targetId,
-        }
-      })
-
-    if (selections.length === 0) {
-      setError(t('settings.workflows.import.error.noSelection'))
-      return
-    }
-
     setBusy(true)
     setError(null)
     setSuccess(null)
 
     try {
-      const response = await sessionsApi.commitWorkflowTemplateImport({ payload, selections })
+      const commitPayload = payload ?? importFilePayload ?? parseImportPayload(liveTextAreaValue(IMPORT_JSON_TEXTAREA_ID, importText))
+      const commitPreview = preview ?? await sessionsApi.previewWorkflowTemplateImport({ payload: commitPayload })
+      const commitSelections = preview ? candidateSelections : Object.fromEntries(
+        commitPreview.candidates.map((candidate) => [
+          candidate.importId,
+          {
+            selected: candidate.selectable,
+            resolution: defaultResolution(candidate),
+            targetId: candidate.proposedId,
+          },
+        ]),
+      )
+
+      if (!preview) {
+        setPayload(commitPayload)
+        setPreview(commitPreview)
+        setCandidateSelections(commitSelections)
+      }
+
+      const selections = commitPreview.candidates
+        .filter((candidate) => commitSelections[candidate.importId]?.selected)
+        .map((candidate) => {
+          const selection = commitSelections[candidate.importId] ?? {
+            selected: false,
+            resolution: defaultResolution(candidate),
+            targetId: candidate.proposedId,
+          }
+          return {
+            importId: candidate.importId,
+            resolution: selection.resolution,
+            targetId: selection.targetId,
+          }
+        })
+
+      if (selections.length === 0) {
+        setError(t('settings.workflows.import.error.noSelection'))
+        return
+      }
+
+      const response = await sessionsApi.commitWorkflowTemplateImport({ payload: commitPayload, selections })
       onImported?.(response)
       setSuccess(t('settings.workflows.import.success', { count: response.imported?.length ?? selections.length }))
     } catch (commitError) {
-      setError(errorMessage(commitError))
+      setError(errorMessage(commitError) || t('settings.workflows.import.invalidJson'))
     } finally {
       setBusy(false)
     }
@@ -160,14 +229,48 @@ export function WorkflowImportExportDialog({
     try {
       const response = await sessionsApi.exportWorkflowTemplates({
         mode: 'selected',
+        format: 'zip-pack',
         templates: selectedExportTemplates.map(({ source, id }) => ({ source, id })),
       })
-      setExportText(JSON.stringify(response, null, 2))
-      setExportDependencyManifest(response.dependencyManifest ?? null)
-      setSuccess(t('settings.workflows.export.success', { count: response.templates.length }))
+      if (isZipExportResponse(response)) {
+        setExportFile({
+          fileName: response.fileName,
+          contentType: response.contentType,
+          dataBase64: response.dataBase64,
+        })
+        setExportText('')
+        setExportDependencyManifest(null)
+      } else {
+        setExportFile(null)
+        setExportText(JSON.stringify(response, null, 2))
+        setExportDependencyManifest(response.dependencyManifest ?? null)
+      }
+      setSuccess(t('settings.workflows.export.success', { count: selectedExportTemplates.length }))
     } catch (exportError) {
       setExportDependencyManifest(null)
+      setExportFile(null)
       setError(errorMessage(exportError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSaveExport = async () => {
+    if (!exportText && !exportFile) return
+    setBusy(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const result = exportFile
+        ? await saveExportFile(base64ToUint8Array(exportFile.dataBase64), exportFile.fileName, exportFile.contentType)
+        : await saveExportJson(exportText, exportFileName(selectedExportTemplates))
+      if (result === 'cancelled') return
+      setSuccess(t(result === 'saved'
+        ? 'settings.workflows.export.saveSuccess'
+        : 'settings.workflows.export.downloadSuccess'))
+    } catch (saveError) {
+      setError(errorMessage(saveError))
     } finally {
       setBusy(false)
     }
@@ -178,7 +281,7 @@ export function WorkflowImportExportDialog({
       role="dialog"
       aria-modal="true"
       aria-label={mode === 'import' ? t('settings.workflows.import.title') : t('settings.workflows.export.title')}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+      className="workflow-content-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/35 py-4"
     >
       <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
         <header className="flex min-w-0 items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
@@ -214,9 +317,25 @@ export function WorkflowImportExportDialog({
                 <span className="text-xs font-medium text-[var(--color-text-secondary)]">
                   {t('settings.workflows.import.jsonLabel')}
                 </span>
+                <input
+                  type="file"
+                  accept=".json,.zip,application/json,application/zip"
+                  onChange={handleImportFileChange}
+                  className="mt-1 block w-full text-xs text-[var(--color-text-secondary)] file:mr-3 file:rounded-[7px] file:border file:border-[var(--color-border)] file:bg-[var(--color-surface-container)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[var(--color-text-primary)]"
+                />
+                {importFileName && (
+                  <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+                    {t('settings.workflows.import.selectedFile', { fileName: importFileName })}
+                  </p>
+                )}
                 <textarea
+                  id={IMPORT_JSON_TEXTAREA_ID}
                   value={importText}
-                  onChange={(event) => setImportText(event.target.value)}
+                  onChange={(event) => {
+                    setImportText(event.target.value)
+                    setImportFilePayload(null)
+                    setImportFileName('')
+                  }}
                   placeholder={t('settings.workflows.import.jsonPlaceholder')}
                   className="mt-1 min-h-[150px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
                 />
@@ -225,7 +344,7 @@ export function WorkflowImportExportDialog({
               <button
                 type="button"
                 onClick={handlePreview}
-                disabled={busy || importText.trim().length === 0}
+                disabled={busy}
                 className="inline-flex h-8 items-center gap-1.5 rounded-[7px] bg-[var(--color-brand)] px-3 text-xs font-medium text-white transition-colors hover:bg-[var(--color-brand-hover)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="material-symbols-outlined text-[16px]" aria-hidden="true">plagiarism</span>
@@ -234,6 +353,7 @@ export function WorkflowImportExportDialog({
 
               {preview && (
                 <ImportPreview
+                  preview={preview}
                   candidates={previewCandidates}
                   invalidTemplates={invalidTemplates}
                   selections={candidateSelections}
@@ -301,22 +421,35 @@ export function WorkflowImportExportDialog({
                 {t('settings.workflows.export.generate')}
               </button>
 
-              {exportText && (
+              {(exportText || exportFile) && (
                 <div className="space-y-3">
                   <ExportDependencyDiagnostics manifest={exportDependencyManifest} />
                   <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
-                    {t('settings.workflows.export.skillContentsNotBundled')}
+                    {exportFile
+                      ? t('settings.workflows.export.zipReady', { fileName: exportFile.fileName })
+                      : t('settings.workflows.export.skillContentsNotBundled')}
                   </p>
-                  <label className="block">
-                    <span className="text-xs font-medium text-[var(--color-text-secondary)]">
-                      {t('settings.workflows.export.jsonLabel')}
-                    </span>
-                    <textarea
-                      readOnly
-                      value={exportText}
-                      className="mt-1 min-h-[220px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)]"
-                    />
-                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSaveExport}
+                    disabled={busy}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-brand)]/45 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="material-symbols-outlined text-[16px]" aria-hidden="true">save</span>
+                    {t('settings.workflows.export.saveFile')}
+                  </button>
+                  {exportText && (
+                    <label className="block">
+                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        {t('settings.workflows.export.jsonLabel')}
+                      </span>
+                      <textarea
+                        readOnly
+                        value={exportText}
+                        className="mt-1 min-h-[220px] w-full resize-y rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2 font-mono text-xs leading-5 text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                  )}
                 </div>
               )}
             </div>
@@ -341,7 +474,7 @@ export function WorkflowImportExportDialog({
               <button
                 type="button"
                 onClick={handleCommitImport}
-                disabled={busy || !preview?.canCommit || selectedImportCount === 0}
+                disabled={busy || (preview !== null && (!preview.canCommit || selectedImportCount === 0))}
                 className="inline-flex h-8 items-center gap-1.5 rounded-[7px] bg-[var(--color-brand)] px-3 text-xs font-medium text-white transition-colors hover:bg-[var(--color-brand-hover)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="material-symbols-outlined text-[16px]" aria-hidden="true">download_done</span>
@@ -356,11 +489,13 @@ export function WorkflowImportExportDialog({
 }
 
 function ImportPreview({
+  preview,
   candidates,
   invalidTemplates,
   selections,
   onSelectionChange,
 }: {
+  preview: Awaited<ReturnType<typeof sessionsApi.previewWorkflowTemplateImport>>
   candidates: WorkflowTemplateImportCandidate[]
   invalidTemplates: Awaited<ReturnType<typeof sessionsApi.previewWorkflowTemplateImport>>['invalidTemplates']
   selections: Record<string, SelectionState>
@@ -378,6 +513,10 @@ function ImportPreview({
         <StatusChip>{t('settings.workflows.import.invalidCount', { count: invalidTemplates.length })}</StatusChip>
       </div>
 
+      {preview.format === 'zip-pack' && (
+        <ImportPackSummary preview={preview} />
+      )}
+
       {invalidTemplates.length > 0 && (
         <IssueList title={t('settings.workflows.import.invalidTitle')} issues={invalidTemplates} />
       )}
@@ -389,17 +528,15 @@ function ImportPreview({
             resolution: defaultResolution(candidate),
             targetId: candidate.proposedId,
           }
-          const resolutionOptions = candidate.conflict === 'builtin-template'
-            ? ['rename'] as const
-            : candidate.conflict === 'user-template'
-              ? ['rename', 'overwrite'] as const
-              : ['add', 'rename'] as const
+          const resolutionOptions = candidate.conflict === 'user-template'
+            ? ['rename', 'overwrite'] as const
+            : ['add', 'rename'] as const
 
           return (
             <article
               key={candidate.importId}
               data-testid={`workflow-import-candidate-${candidate.importId}`}
-              className="grid min-w-0 gap-3 border-b border-[var(--color-border)] px-3 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_260px]"
+              className={`grid min-w-0 gap-3 border-b border-[var(--color-border)] px-3 py-3 last:border-b-0 ${preview.commitMode === 'pack' ? '' : 'md:grid-cols-[minmax(0,1fr)_260px]'}`}
             >
               <div className="min-w-0">
                 <label className="flex min-w-0 items-start gap-3">
@@ -441,40 +578,48 @@ function ImportPreview({
               </div>
 
               <div className="space-y-2">
-                <label className="block">
-                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-                    {t('settings.workflows.import.resolution')}
-                  </span>
-                  <select
-                    value={selection.resolution}
-                    disabled={!candidate.selectable || !selection.selected}
-                    onChange={(event) => {
-                      const resolution = event.target.value as WorkflowTemplateImportResolution
-                      onSelectionChange(candidate.importId, {
-                        resolution,
-                        targetId: resolution === 'overwrite' ? candidate.originalId : candidate.proposedId,
-                      })
-                    }}
-                    className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
-                  >
-                    {resolutionOptions.map((resolution) => (
-                      <option key={resolution} value={resolution}>
-                        {resolution}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-                    {t('settings.workflows.import.targetId')}
-                  </span>
-                  <input
-                    value={selection.targetId}
-                    disabled={!candidate.selectable || !selection.selected || selection.resolution === 'overwrite'}
-                    onChange={(event) => onSelectionChange(candidate.importId, { targetId: event.target.value })}
-                    className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-xs text-[var(--color-text-primary)]"
-                  />
-                </label>
+                {preview.commitMode === 'pack' ? (
+                  <div className="rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-2.5 py-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+                    {t('settings.workflows.import.packCommitMode')}
+                  </div>
+                ) : (
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                      {t('settings.workflows.import.resolution')}
+                    </span>
+                    <select
+                      value={selection.resolution}
+                      disabled={!candidate.selectable || !selection.selected}
+                      onChange={(event) => {
+                        const resolution = event.target.value as WorkflowTemplateImportResolution
+                        onSelectionChange(candidate.importId, {
+                          resolution,
+                          targetId: resolution === 'overwrite' ? candidate.originalId : candidate.proposedId,
+                        })
+                      }}
+                      className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
+                    >
+                      {resolutionOptions.map((resolution) => (
+                        <option key={resolution} value={resolution}>
+                          {resolution}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {preview.commitMode !== 'pack' && (
+                  <label className="block">
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                      {t('settings.workflows.import.targetId')}
+                    </span>
+                    <input
+                      value={selection.targetId}
+                      disabled={!candidate.selectable || !selection.selected || selection.resolution === 'overwrite'}
+                      onChange={(event) => onSelectionChange(candidate.importId, { targetId: event.target.value })}
+                      className="mt-1 h-8 w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-xs text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                )}
               </div>
             </article>
           )
@@ -484,6 +629,49 @@ function ImportPreview({
           </div>
         )}
       </div>
+    </section>
+  )
+}
+
+
+function ImportPackSummary({ preview }: { preview: Awaited<ReturnType<typeof sessionsApi.previewWorkflowTemplateImport>> }) {
+  const t = useTranslation()
+  const packagedSkills = preview.packagedSkills ?? []
+  const skillInstallPlan = preview.skillInstallPlan ?? []
+  const requiredHostTools = preview.requiredHostTools ?? []
+  const unsupportedTools = requiredHostTools.filter((tool) => !tool.supported)
+  const conflicts = skillInstallPlan.filter((item) => item.status === 'conflict')
+
+  return (
+    <section className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <h5 className="text-xs font-semibold text-[var(--color-text-primary)]">
+          {preview.pack?.name ?? t('settings.workflows.import.packSummary')}
+        </h5>
+        {preview.pack?.packId && <StatusChip>{preview.pack.packId}</StatusChip>}
+        {preview.pack?.version && <StatusChip>v{preview.pack.version}</StatusChip>}
+        {preview.pack?.legacy && <StatusChip>{t('settings.workflows.import.packLegacy')}</StatusChip>}
+      </div>
+      <div className="mt-2 grid gap-2 text-xs leading-5 text-[var(--color-text-secondary)] md:grid-cols-3">
+        <div>
+          <span className="font-medium text-[var(--color-text-primary)]">{t('settings.workflows.import.packagedSkills')}</span>
+          <div>{t('settings.workflows.import.count', { count: packagedSkills.length })}</div>
+        </div>
+        <div>
+          <span className="font-medium text-[var(--color-text-primary)]">{t('settings.workflows.import.skillInstallPlan')}</span>
+          <div>{skillInstallPlan.map((item) => `${item.identity}: ${item.status}`).join(', ') || t('common.none')}</div>
+        </div>
+        <div>
+          <span className="font-medium text-[var(--color-text-primary)]">{t('settings.workflows.import.requiredHostTools')}</span>
+          <div>{requiredHostTools.map((tool) => `${tool.name}${tool.supported ? '' : '!'}`).join(', ') || t('common.none')}</div>
+        </div>
+      </div>
+      {(conflicts.length > 0 || unsupportedTools.length > 0) && (
+        <div className="mt-2 rounded-[7px] border border-[var(--color-error)]/30 bg-[var(--color-error)]/8 px-2.5 py-2 text-xs leading-5 text-[var(--color-error)]">
+          {conflicts.length > 0 && <div>{t('settings.workflows.import.skillConflicts', { count: conflicts.length })}</div>}
+          {unsupportedTools.length > 0 && <div>{t('settings.workflows.import.unsupportedTools', { tools: unsupportedTools.map((tool) => tool.name).join(', ') })}</div>}
+        </div>
+      )}
     </section>
   )
 }
@@ -749,6 +937,155 @@ function parseImportPayload(value: string): WorkflowTemplateImportPayload {
   }
 }
 
+function liveTextAreaValue(id: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const element = document.getElementById(id)
+  return element instanceof HTMLTextAreaElement ? element.value : fallback
+}
+
+function isZipFile(file: File): boolean {
+  return file.type === EXPORT_ZIP_MIME_TYPE || file.name.toLowerCase().endsWith('.zip')
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
+}
+
+function base64ToUint8Array(value: string): Uint8Array {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function isZipExportResponse(response: unknown): response is WorkflowTemplateZipExportResponse {
+  return !!response &&
+    typeof response === 'object' &&
+    (response as { format?: unknown }).format === 'zip-pack' &&
+    typeof (response as { dataBase64?: unknown }).dataBase64 === 'string'
+}
+
+type SaveFilePickerHandle = {
+  createWritable: () => Promise<{
+    write: (contents: Blob | string | Uint8Array) => Promise<void> | void
+    close: () => Promise<void> | void
+  }>
+}
+
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName: string
+    types: Array<{
+      description: string
+      accept: Record<string, string[]>
+    }>
+  }) => Promise<SaveFilePickerHandle>
+}
+
+async function saveExportJson(contents: string, suggestedName: string): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+  if (picker) {
+    try {
+      const handle = await picker({
+        suggestedName,
+        types: [
+          {
+            description: 'JSON',
+            accept: { [EXPORT_JSON_MIME_TYPE]: ['.json'] },
+          },
+        ],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(contents)
+      await writable.close()
+      return 'saved'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+      throw error
+    }
+  }
+
+  downloadExportJson(contents, suggestedName)
+  return 'downloaded'
+}
+
+function downloadExportJson(contents: string, filename: string) {
+  const blob = new Blob([contents], { type: EXPORT_JSON_MIME_TYPE })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+async function saveExportFile(contents: Uint8Array, suggestedName: string, contentType: string): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+  const blob = new Blob([contents.buffer.slice(contents.byteOffset, contents.byteOffset + contents.byteLength) as ArrayBuffer], { type: contentType })
+  if (picker) {
+    try {
+      const handle = await picker({
+        suggestedName,
+        types: [
+          {
+            description: 'Workflow Pack ZIP',
+            accept: { [contentType || EXPORT_ZIP_MIME_TYPE]: ['.zip'] },
+          },
+        ],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      return 'saved'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+      throw error
+    }
+  }
+
+  downloadExportFile(blob, suggestedName)
+  return 'downloaded'
+}
+
+function downloadExportFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function exportFileName(templates: WorkflowTemplateListItem[]): string {
+  const template = templates[0]
+  if (templates.length === 1 && template) {
+    return `workflow-export-${slugifyFileName(template.id || template.name)}.json`
+  }
+  return `workflow-export-${templates.length}-templates.json`
+}
+
+function slugifyFileName(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'workflow-template'
+}
+
 function defaultResolution(candidate: WorkflowTemplateImportCandidate): WorkflowTemplateImportResolution {
   if (candidate.conflict === 'none') return candidate.defaultResolution
   return 'rename'
@@ -770,5 +1107,21 @@ function templateKey(template: WorkflowTemplateSelector) {
 }
 
 function errorMessage(error: unknown) {
+  if (error instanceof ApiError && error.body && typeof error.body === 'object') {
+    const body = error.body as { message?: unknown; blockers?: unknown }
+    const message = typeof body.message === 'string' ? body.message : error.message
+    if (Array.isArray(body.blockers) && body.blockers.length > 0) {
+      const details = body.blockers
+        .slice(0, 5)
+        .map((blocker) => {
+          if (!blocker || typeof blocker !== 'object') return String(blocker)
+          const item = blocker as { workflowId?: unknown; phaseId?: unknown; reference?: unknown; reason?: unknown }
+          return [item.workflowId, item.phaseId, item.reference, item.reason].filter(Boolean).join(' / ')
+        })
+        .join('; ')
+      return `${message}: ${details}`
+    }
+    return message
+  }
   return error instanceof Error ? error.message : String(error)
 }

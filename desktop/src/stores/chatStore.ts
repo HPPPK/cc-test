@@ -501,7 +501,8 @@ function mergeBackgroundTaskMessages(
   return [...merged].sort((a, b) => a.timestamp - b.timestamp)
 }
 
-function isAgentBackgroundTask(task: Pick<BackgroundAgentTask, 'taskType' | 'summary'>): boolean {
+function isAgentBackgroundTask(task: Pick<BackgroundAgentTask, 'taskType' | 'summary' | 'workflowTaskId'>): boolean {
+  if (task.workflowTaskId) return false
   if (task.taskType === 'local_agent' || task.taskType === 'remote_agent') {
     return true
   }
@@ -1574,7 +1575,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           useTabStore.getState().updateTabTitle(sessionId, 'New Session')
           useTabStore.getState().updateTabStatus(sessionId, 'idle')
         }
-        if (msg.subtype === 'compact_boundary') {
+        if (msg.subtype === 'compact_boundary' || msg.subtype === 'workflow_welcome') {
           update((session) => ({
             messages: [
               ...session.messages,
@@ -1583,7 +1584,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 type: 'system',
                 content: typeof msg.message === 'string' && msg.message.trim()
                   ? msg.message
-                  : 'Context compacted',
+                  : msg.subtype === 'workflow_welcome'
+                    ? 'Workflow is ready. Tell me what you want to do to start the first phase.'
+                    : 'Context compacted',
                 timestamp: Date.now(),
               },
             ],
@@ -1679,6 +1682,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
                           result: taskResult,
                           outputFile: taskEvent.outputFile,
                           usage: taskEvent.usage,
+                          worktreePath: taskEvent.worktreePath,
+                          worktreeBranch: taskEvent.worktreeBranch,
                         },
                       }
                     : {}),
@@ -1802,6 +1807,18 @@ function normalizeBackgroundTaskUsage(value: unknown): BackgroundAgentTaskUsage 
   return Object.keys(usage).length > 0 ? usage : undefined
 }
 
+function readStringArray(record: Record<string, unknown>, ...keys: string[]): string[] | undefined {
+  for (const key of keys) {
+    const value = record[key]
+    if (Array.isArray(value)) {
+      const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim())
+      if (items.length > 0) return items
+    }
+  }
+  return undefined
+}
+
 function normalizeBackgroundAgentTaskEvent(
   data: unknown,
   subtype: string,
@@ -1814,7 +1831,7 @@ function normalizeBackgroundAgentTaskEvent(
   if (!id) return null
 
   const rawStatus = readNonEmptyString(record, 'status')
-  const status = rawStatus === 'completed' || rawStatus === 'failed' || rawStatus === 'stopped'
+  const status = rawStatus === 'queued' || rawStatus === 'running' || rawStatus === 'blocked' || rawStatus === 'completed' || rawStatus === 'failed' || rawStatus === 'stopped'
     ? rawStatus
     : rawStatus === 'killed'
       ? 'stopped'
@@ -1834,6 +1851,17 @@ function normalizeBackgroundAgentTaskEvent(
     lastToolName: readNonEmptyString(record, 'last_tool_name', 'lastToolName'),
     outputFile: readNonEmptyString(record, 'output_file', 'outputFile'),
     usage: normalizeBackgroundTaskUsage(record.usage),
+    workflowTaskId: readNonEmptyString(record, 'workflow_task_id', 'workflowTaskId'),
+    executionMode: readNonEmptyString(record, 'execution_mode', 'executionMode') === 'write' ? 'write' : readNonEmptyString(record, 'execution_mode', 'executionMode') === 'read' ? 'read' : undefined,
+    writeScopes: readStringArray(record, 'write_scopes', 'writeScopes'),
+    blockedReason: readNonEmptyString(record, 'blocked_reason', 'blockedReason'),
+    worktreeIsolation: typeof record.worktree_isolation === 'boolean'
+      ? record.worktree_isolation
+      : typeof record.worktreeIsolation === 'boolean'
+        ? record.worktreeIsolation
+        : undefined,
+    worktreePath: readNonEmptyString(record, 'worktree_path', 'worktreePath'),
+    worktreeBranch: readNonEmptyString(record, 'worktree_branch', 'worktreeBranch'),
   }
 }
 
@@ -1853,12 +1881,15 @@ function upsertBackgroundAgentTask(
   if (existingKey && existingKey !== event.taskId) {
     delete next[existingKey]
   }
+  const status = existing?.status === 'blocked' && event.status === 'failed'
+    ? 'blocked'
+    : event.status
   return {
     ...next,
     [event.taskId]: {
       taskId: event.taskId,
       toolUseId: event.toolUseId ?? existing?.toolUseId,
-      status: event.status,
+      status,
       description: event.description ?? existing?.description,
       taskType: event.taskType ?? existing?.taskType,
       workflowName: event.workflowName ?? existing?.workflowName,
@@ -1867,6 +1898,13 @@ function upsertBackgroundAgentTask(
       lastToolName: event.lastToolName ?? existing?.lastToolName,
       outputFile: event.outputFile ?? existing?.outputFile,
       usage: event.usage ?? existing?.usage,
+      workflowTaskId: event.workflowTaskId ?? existing?.workflowTaskId,
+      executionMode: event.executionMode ?? existing?.executionMode,
+      writeScopes: event.writeScopes ?? existing?.writeScopes,
+      blockedReason: event.blockedReason ?? existing?.blockedReason,
+      worktreeIsolation: event.worktreeIsolation ?? existing?.worktreeIsolation,
+      worktreePath: event.worktreePath ?? existing?.worktreePath,
+      worktreeBranch: event.worktreeBranch ?? existing?.worktreeBranch,
       startedAt: existing?.startedAt ?? now,
       updatedAt: now,
     },
@@ -2106,6 +2144,80 @@ type HistoryMappingOptions = {
   includeTeammateMessages?: boolean
 }
 
+const WORKFLOW_PROMPT_TAIL_SECTION_HEADINGS = [
+  'Workflow model provenance',
+  'Workflow-only tools',
+]
+
+const WORKFLOW_PROMPT_GENERATED_SECTION_PREFIXES = [
+  'Workflow mode',
+  'Active phase:',
+  'Phase instructions:',
+  'Workflow runtime contract',
+  'Workflow-generated question policy',
+  'Phase prompt',
+  'Phase action policy',
+  'Recommended phase skills',
+  'Required artifacts:',
+  'completion criteria:',
+  'Prior artifacts:',
+  'Context boundary:',
+  'Skill guidance:',
+  'Requested model:',
+  'Actual model:',
+  'Model fallback:',
+]
+
+function isWorkflowAutoContinuePrompt(text: string): boolean {
+  return /^Continue automatically with the newly confirmed workflow phase:/i.test(text.trim())
+}
+
+function isGeneratedWorkflowPromptSection(section: string): boolean {
+  const trimmed = section.trimStart()
+  return WORKFLOW_PROMPT_GENERATED_SECTION_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+}
+
+function stripWorkflowInternalPrompt(content: string): string | null {
+  const normalized = content.replace(/\r\n/g, '\n')
+  if (!normalized.startsWith('Workflow mode\n\n') || !normalized.includes('\n\nActive phase:')) {
+    return content
+  }
+
+  let visibleRegion = normalized
+  for (const heading of WORKFLOW_PROMPT_TAIL_SECTION_HEADINGS) {
+    const marker = `\n\n${heading}\n`
+    const index = visibleRegion.indexOf(marker)
+    if (index >= 0) visibleRegion = visibleRegion.slice(0, index)
+  }
+
+  const sections = visibleRegion.split(/\n{2,}/)
+  let lastGeneratedIndex = -1
+  sections.forEach((section, index) => {
+    if (isGeneratedWorkflowPromptSection(section)) lastGeneratedIndex = index
+  })
+
+  const visible = sections.slice(lastGeneratedIndex + 1).join('\n\n').trim()
+  if (!visible || isWorkflowAutoContinuePrompt(visible)) return null
+  return visible
+}
+
+function stripReferenceContextPrompt(content: string): string | null {
+  const normalized = content.replace(/\r\n/g, '\n').trim()
+  const isWorkspaceReferencePrompt = normalized.startsWith('Referenced workspace context:\n')
+    && normalized.includes('\nLocation: ')
+  const isChatReferencePrompt = normalized.startsWith('Referenced chat context:\n')
+    && (normalized.includes('\nAssistant message:') || normalized.includes('\nUser message:'))
+
+  if (isWorkspaceReferencePrompt || isChatReferencePrompt) return null
+  return content
+}
+
+function stripInternalUserPrompt(content: string): string | null {
+  const visibleContent = stripWorkflowInternalPrompt(content)
+  if (visibleContent === null) return null
+  return stripReferenceContextPrompt(visibleContent)
+}
+
 function buildModelContent(content: string, attachments?: AttachmentRef[]): string {
   const paths = attachments
     ?.map((attachment) => attachment.path)
@@ -2302,7 +2414,9 @@ export function mapHistoryMessagesToUiMessages(
         })
         continue
       }
-      const parsed = extractLeadingFileReferences(msg.content)
+      const visibleContent = stripInternalUserPrompt(msg.content)
+      if (visibleContent === null) continue
+      const parsed = extractLeadingFileReferences(visibleContent)
       uiMessages.push({
         id: msg.id || nextId(),
         type: 'user_text',
@@ -2334,7 +2448,8 @@ export function mapHistoryMessagesToUiMessages(
           if (!includeTeammateMessages) continue
           textParts.push(...extractVisibleTeammateMessageContents(block.text))
         } else if (block.type === 'text' && block.text) {
-          textParts.push(block.text)
+          const visibleText = msg.type === 'user' ? stripInternalUserPrompt(block.text) : block.text
+          if (visibleText !== null) textParts.push(visibleText)
         }
         else if (block.type === 'image') attachments.push({ type: 'image', name: block.name || 'image', data: block.source?.data, mimeType: block.mimeType || block.media_type })
         else if (block.type === 'file') attachments.push({ type: 'file', name: block.name || 'file' })

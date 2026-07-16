@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './theme/globals.css'
+import './theme/jiangxiaUi.css'
 import { initializeAppZoom } from './lib/appZoom'
 import { runDesktopPersistenceMigrations } from './lib/persistenceMigrations'
 

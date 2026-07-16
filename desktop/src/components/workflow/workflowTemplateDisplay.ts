@@ -9,17 +9,17 @@ export function localizeWorkflowTemplateDisplay(
   template: WorkflowTemplateListItem,
   translate: Translate = translateCurrent,
 ): WorkflowTemplateDisplay {
-  if (template.source !== 'builtin') return template
+  const prefixes = workflowTemplateTranslationPrefixes(template)
+  if (prefixes.length === 0) return template
 
-  const prefix = `workflows.builtinTemplates.${template.id}`
   return {
     ...template,
-    name: translateWithFallback(translate, `${prefix}.name`, template.name),
+    name: translateWorkflowTemplateField(translate, prefixes, 'name', template.name),
     description: template.description
-      ? translateWithFallback(translate, `${prefix}.description`, template.description)
+      ? translateWorkflowTemplateField(translate, prefixes, 'description', template.description)
       : template.description,
-    phaseNames: template.phaseNames?.map((phaseName) => (
-      translateWithFallback(translate, `${prefix}.phase.${slugFromText(phaseName)}`, phaseName)
+    phaseNames: template.phaseNames?.map((phaseName, index) => (
+      translateWorkflowTemplatePhaseName(translate, prefixes, phaseName, index)
     )),
   }
 }
@@ -28,7 +28,44 @@ export function workflowTemplateSourceLabel(
   source: WorkflowTemplateSource,
   translate: Translate = translateCurrent,
 ) {
-  return translate(`workflows.templateSource.${source}`)
+  return translate(`workflows.templateSource.${source}` as TranslationKey)
+}
+
+function workflowTemplateTranslationPrefixes(template: WorkflowTemplateListItem) {
+  const prefixes = [`workflows.templates.${template.id}`]
+  if (template.source === 'builtin') prefixes.push(`workflows.builtinTemplates.${template.id}`)
+  return prefixes
+}
+
+function translateWorkflowTemplateField(
+  translate: Translate,
+  prefixes: string[],
+  field: 'name' | 'description',
+  fallback: string,
+) {
+  for (const prefix of prefixes) {
+    const translated = translateWithFallback(translate, `${prefix}.${field}`, fallback)
+    if (translated !== fallback) return translated
+  }
+  return fallback
+}
+
+function translateWorkflowTemplatePhaseName(
+  translate: Translate,
+  prefixes: string[],
+  phaseName: string,
+  index: number,
+) {
+  const slug = slugFromText(phaseName)
+  const phaseKeys = slug ? [`phase.${slug}`, `phase.${index + 1}`] : [`phase.${index + 1}`]
+
+  for (const prefix of prefixes) {
+    for (const phaseKey of phaseKeys) {
+      const translated = translateWithFallback(translate, `${prefix}.${phaseKey}`, phaseName)
+      if (translated !== phaseName) return translated
+    }
+  }
+  return phaseName
 }
 
 function translateWithFallback(translate: Translate, key: string, fallback: string) {

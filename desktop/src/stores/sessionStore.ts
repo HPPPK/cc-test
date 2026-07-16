@@ -183,13 +183,28 @@ function preserveLocalSessionState(
   incoming: SessionListItem,
 ): SessionListItem {
   if (!current) return incoming
-  const merged = shouldKeepCurrentWorkflow(current, incoming)
+  let merged = shouldKeepCurrentWorkflow(current, incoming)
     ? { ...incoming, workflow: current.workflow }
     : incoming
+  if (shouldKeepCurrentExpert(current, incoming)) {
+    merged = { ...merged, expert: current.expert }
+  }
   if (isPlaceholderSessionTitle(merged.title) && !isPlaceholderSessionTitle(current.title)) {
     return { ...merged, title: current.title }
   }
   return merged
+}
+
+function shouldKeepCurrentExpert(
+  current: SessionListItem,
+  incoming: SessionListItem,
+): boolean {
+  if (!current.expert) return false
+  if (!incoming.expert) return true
+
+  const currentUpdatedAt = current.expert.updatedAt ?? current.modifiedAt
+  const incomingUpdatedAt = incoming.expert.updatedAt ?? incoming.modifiedAt
+  return new Date(currentUpdatedAt) > new Date(incomingUpdatedAt)
 }
 
 function shouldKeepCurrentWorkflow(

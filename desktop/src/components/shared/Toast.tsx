@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+
 import { useUIStore, type Toast as ToastType } from '../../stores/uiStore'
 
 const typeStyles: Record<ToastType['type'], string> = {
@@ -13,6 +15,7 @@ function ToastItem({ toast }: { toast: ToastType }) {
   return (
     <div
       className={`
+        pointer-events-auto w-full max-w-sm
         bg-[var(--color-surface)] rounded-[var(--radius-md)] shadow-[var(--shadow-dropdown)]
         px-4 py-3 text-sm text-[var(--color-text-primary)]
         ${typeStyles[toast.type]}
@@ -37,11 +40,15 @@ export function ToastContainer() {
 
   if (toasts.length === 0) return null
 
-  return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+  const toastLayer = (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1000] flex flex-col items-end gap-2 px-4 sm:px-6">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} />
       ))}
     </div>
   )
+
+  if (typeof document === 'undefined') return toastLayer
+
+  return createPortal(toastLayer, document.body)
 }

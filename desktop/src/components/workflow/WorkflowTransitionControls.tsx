@@ -1,9 +1,10 @@
+﻿import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
-import { useRef, useState } from 'react'
+import { formatWorkflowPhaseSummary } from './workflowPhaseDisplay'
 
 export type WorkflowTransitionCommand = {
   phaseId: string
-  action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
+  action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop'
   transitionId?: string
   stateVersion?: number
   nextPhaseContextStrategy?: 'inherit' | 'clear'
@@ -38,228 +39,158 @@ export function WorkflowTransitionControls({
   onReject,
   onRetry,
 }: WorkflowTransitionControlsProps) {
-  const [manualDialogOpen, setManualDialogOpen] = useState(false)
-  const [manualSummary, setManualSummary] = useState('')
-  const [manualEvidence, setManualEvidence] = useState('')
-  const [clearNextPhaseContext, setClearNextPhaseContext] = useState(false)
-  const manualSummaryRef = useRef<HTMLTextAreaElement>(null)
-  const manualEvidenceRef = useRef<HTMLTextAreaElement>(null)
+  const t = useTranslation()
 
   if (!workflow) return null
 
   const phaseId = workflow.activePhaseId
   const pending = workflow.status === 'pending-confirmation' || workflow.pendingConfirmation
   const blocked = workflow.status === 'failed' || Boolean(workflow.blockedStatus) || Boolean(workflow.blockedReason)
-  const canRequestConfirmation = workflow.status === 'running' && workflow.transitionAuthority === 'user-confirmation'
 
-  if (!phaseId || (!pending && !blocked && !canRequestConfirmation)) return null
+  if (!phaseId || (!pending && !blocked)) return null
 
-  const authorityLabel = authorityText(workflow.transitionAuthority)
   const hasNextPhase = workflow.activePhaseIndex >= 0 && workflow.phaseCount > workflow.activePhaseIndex + 1
   const commandBase = {
     phaseId,
     transitionId,
     stateVersion,
   }
-  const contextStrategyCommand = clearNextPhaseContext && hasNextPhase
-    ? { nextPhaseContextStrategy: 'clear' as const }
-    : {}
-
-  if (pending) {
+  if (blocked && !pending) {
     return (
-      <section className={embedded
-        ? 'rounded-[8px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container)] px-3 py-2'
-        : 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3'}
+      <section
+        data-testid="workflow-phase-confirmation-card"
+        className={cardClassName(embedded, true)}
       >
-        <div className="mb-2 text-[12px] font-medium text-[var(--color-text-primary)]">
-          Waiting for confirmation
-        </div>
-        <div className="mb-2 text-[11px] text-[var(--color-text-tertiary)]">
-          Authority: {authorityLabel}
-        </div>
-        {hasNextPhase ? (
-          <ContextStrategyCheckbox
-            checked={clearNextPhaseContext}
-            onChange={setClearNextPhaseContext}
-          />
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onConfirm({ ...commandBase, ...contextStrategyCommand, action: 'confirm' })}
-            className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onClick={() => onReject({ ...commandBase, action: 'reject' })}
-            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Reject
-          </button>
-          <button
-            type="button"
-            onClick={() => onRetry({ ...commandBase, action: 'retry' })}
-            className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-          >
-            Retry
-          </button>
-        </div>
-      </section>
-    )
-  }
-
-  if (canRequestConfirmation) {
-    const phaseLabel = phaseId.replace(/[-_]+/g, ' ')
-
-    return (
-      <section className={embedded
-        ? 'flex flex-wrap items-center gap-2'
-        : 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3'}
-      >
-        <button
-          type="button"
-          onClick={() => setManualDialogOpen(true)}
-          className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-        >
-          Manually Complete Phase
-        </button>
-        <span className="inline-flex h-8 items-center text-[11px] text-[var(--color-text-tertiary)]">
-          Authority: {authorityLabel}
-        </span>
-        {manualDialogOpen ? (
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Complete ${phaseLabel} phase`}
-            className={`${embedded ? 'basis-full' : ''} mt-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3`}
-          >
-            <label className="block text-[12px] font-semibold text-[var(--color-text-primary)]">
-              Summary
-              <textarea
-                ref={manualSummaryRef}
-                name="summary"
-                value={manualSummary}
-                onChange={(event) => setManualSummary(event.target.value)}
-                className="mt-1 min-h-[72px] w-full resize-y rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2 py-1.5 text-[12px] font-normal text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand)]"
-              />
-            </label>
-            <label className="mt-3 block text-[12px] font-semibold text-[var(--color-text-primary)]">
-              Evidence
-              <textarea
-                ref={manualEvidenceRef}
-                name="evidence"
-                value={manualEvidence}
-                onChange={(event) => setManualEvidence(event.target.value)}
-                className="mt-1 min-h-[56px] w-full resize-y rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-2 py-1.5 text-[12px] font-normal text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand)]"
-              />
-            </label>
-            {hasNextPhase ? (
-              <ContextStrategyCheckbox
-                checked={clearNextPhaseContext}
-                onChange={setClearNextPhaseContext}
-                className="mt-3"
-              />
+        <div className="flex items-start gap-3">
+          <Icon tone="error" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.attentionTitle')}</h2>
+            {workflow.blockedReason ? (
+              <p className="mt-1 text-xs leading-5 text-[var(--color-error)]">{workflow.blockedReason}</p>
             ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const summaryValue = (manualSummaryRef.current?.value ?? manualSummary).trim()
-                  const evidenceValue = (manualEvidenceRef.current?.value ?? manualEvidence).trim()
-                  onRetry({
-                    ...commandBase,
-                    ...contextStrategyCommand,
-                    action: 'manual_complete',
-                    handoff: {
-                      summary: summaryValue,
-                      artifacts: [],
-                    },
-                    rationale: 'User manually confirmed this phase is complete.',
-                    evidence: evidenceValue
-                      ? [{
-                        kind: 'manual',
-                        label: 'Manual completion evidence',
-                        ref: evidenceValue,
-                      }]
-                      : [],
-                  })
-                  setManualDialogOpen(false)
-                }}
-                className="inline-flex h-8 items-center rounded-[7px] bg-[var(--color-brand)] px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-              >
-                Confirm Completion
-              </button>
-              <button
-                type="button"
-                onClick={() => setManualDialogOpen(false)}
-                className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        ) : null}
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <OptionButton
+            icon="refresh"
+            title={t('workflows.transition.retryTitle')}
+            description={t('workflows.transition.retryDescription')}
+            onClick={() => onRetry({ ...commandBase, action: 'retry' })}
+          />
+          <OptionButton
+            icon="pause_circle"
+            title={t('workflows.transition.pauseTitle')}
+            description={t('workflows.transition.pauseDescription')}
+            onClick={() => onRetry({ ...commandBase, action: 'pause' })}
+          />
+        </div>
       </section>
     )
   }
 
   return (
-    <section className={embedded
-      ? 'flex flex-wrap gap-2'
-      : 'rounded-[var(--radius-lg)] border border-[var(--color-error)]/20 bg-[var(--color-error)]/6 p-3'}
+    <section
+      data-testid="workflow-phase-confirmation-card"
+      className={cardClassName(embedded)}
     >
-      {!embedded && workflow.blockedReason && (
-        <p className="mb-2 text-[12px] leading-5 text-[var(--color-error)]">
-          {workflow.blockedReason}
-        </p>
-      )}
-      <div className={`${embedded ? 'basis-full' : 'mb-2'} text-[11px] text-[var(--color-text-tertiary)]`}>
-        Recovery: {workflow.blockedStatus ?? 'failed'} · Authority: {authorityLabel}
+      <div className="flex items-start gap-3">
+        <Icon />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.confirmTitle')}</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t('workflows.transition.confirmDescription')}
+          </p>
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={() => onRetry({ ...commandBase, action: 'retry' })}
-        className="inline-flex h-8 items-center rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
-      >
-        Retry
-      </button>
+
+      <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/30 bg-[var(--color-surface)] px-3 py-2">
+        <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.summaryTitle')}</div>
+        <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+          <li>{t('workflows.transition.currentPhase', { phase: formatWorkflowPhaseSummary(workflow) })}</li>
+          <li>{t('workflows.transition.keyResult')}</li>
+          <li>{t('workflows.transition.nextStep', { step: hasNextPhase ? nextPhaseLabel(workflow, t) : t('workflows.transition.finishWorkflow') })}</li>
+        </ul>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <OptionButton
+          icon="thumb_up"
+          title={t('workflows.transition.continueTitle')}
+          description={hasNextPhase ? t('workflows.transition.moveToNext', { step: nextPhaseLabel(workflow, t) }) : t('workflows.transition.finishWorkflow')}
+          onClick={() => onConfirm({ ...commandBase, action: 'confirm' })}
+        />
+        <OptionButton
+          icon="edit"
+          title={t('workflows.transition.adjustTitle')}
+          description={t('workflows.transition.adjustDescription')}
+          onClick={() => onReject({ ...commandBase, action: 'reject' })}
+        />
+        <OptionButton
+          icon="pause_circle"
+          title={t('workflows.transition.pauseTitle')}
+          description={t('workflows.transition.pauseDescription')}
+          onClick={() => onRetry({ ...commandBase, action: 'pause' })}
+        />
+      </div>
     </section>
   )
 }
 
-function authorityText(authority?: string) {
-  if (authority === 'user-confirmation') return 'User confirmation required'
-  if (authority === 'auto') return 'Automatic transition'
-  return authority ?? 'Automatic transition'
+function cardClassName(embedded: boolean, error = false) {
+  return [
+    'mx-auto mb-4 w-full max-w-[860px] overflow-hidden rounded-[18px] border px-5 py-4 shadow-sm',
+    embedded ? 'bg-[var(--color-surface-container-lowest)]' : 'bg-[var(--color-surface-container-lowest)]',
+    error ? 'border-[var(--color-error)]/25' : 'border-[var(--color-brand)]/30',
+  ].join(' ')
 }
 
-function ContextStrategyCheckbox({
-  checked,
-  onChange,
-  className = 'mb-3',
+function Icon({ tone = 'normal' }: { tone?: 'normal' | 'error' }) {
+  return (
+    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] ${tone === 'error' ? 'bg-[var(--color-error)]/10' : 'bg-[var(--color-brand)]/10'}`}>
+      <span className={`material-symbols-outlined text-[18px] ${tone === 'error' ? 'text-[var(--color-error)]' : 'text-[var(--color-brand)]'}`} aria-hidden="true">
+        {tone === 'error' ? 'priority_high' : 'fact_check'}
+      </span>
+    </div>
+  )
+}
+
+function OptionButton({
+  icon,
+  title,
+  description,
+  onClick,
 }: {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  className?: string
+  icon: string
+  title: string
+  description: string
+  onClick: () => void
 }) {
   return (
-    <label className={`flex max-w-full items-start gap-2 rounded-[7px] border border-[var(--color-border)]/70 bg-[var(--color-surface-container-lowest)] px-2.5 py-2 ${className}`}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-brand)]"
-      />
-      <span className="min-w-0 text-[11px] leading-4">
-        <span className="block font-medium text-[var(--color-text-secondary)]">
-          Use only handoff materials for next phase
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[88px] w-full items-center gap-3 rounded-[12px] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-4 py-3 text-left transition-all duration-150 hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]"
+    >
+      <span className="material-symbols-outlined shrink-0 text-[24px] text-[var(--color-text-primary)]" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-[var(--color-text-primary)]">
+          {title}
         </span>
-        <span className="block text-[var(--color-text-tertiary)]">
-          Starts the next phase from accepted handoff and prior artifacts. It does not delete history.
+        <span className="mt-0.5 block text-xs leading-5 text-[var(--color-text-secondary)]">
+          {description}
         </span>
       </span>
-    </label>
+    </button>
   )
+}
+
+function nextPhaseLabel(workflow: WorkflowStatusPanelSummary, translate: ReturnType<typeof useTranslation>) {
+  const nextIndex = workflow.activePhaseIndex + 1
+  const nextName = workflow.phaseNames?.[nextIndex]
+  if (nextName) {
+    return translate('workflows.transition.nextStepWithName', { step: nextIndex + 1, name: nextName })
+  }
+  return translate('workflows.transition.nextStepNumber', { step: nextIndex + 1 })
 }

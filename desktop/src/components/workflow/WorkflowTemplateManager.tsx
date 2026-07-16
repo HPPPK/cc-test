@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sessionsApi } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
+import { useUIStore } from '../../stores/uiStore'
 import type {
   WorkflowTemplateDetail,
   WorkflowTemplateListItem,
@@ -11,6 +12,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { WorkflowImportExportDialog } from './WorkflowImportExportDialog'
 import { WorkflowTemplateEditor } from './WorkflowTemplateEditor'
 import { localizeWorkflowTemplateDisplay, workflowTemplateSourceLabel } from './workflowTemplateDisplay'
+import { formatTaskCategory, taskCategoryForTemplate } from './workflowTaskCategories'
 
 type WorkflowTemplateManagerProps = {
   onCopyTemplate?: (template: WorkflowTemplateListItem) => void
@@ -28,6 +30,7 @@ export function WorkflowTemplateManager({
   onExportTemplate,
 }: WorkflowTemplateManagerProps) {
   const t = useTranslation()
+  const addToast = useUIStore((state) => state.addToast)
   const [templates, setTemplates] = useState<WorkflowTemplateListItem[]>([])
   const [invalidTemplates, setInvalidTemplates] = useState<TemplateIssue[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,7 +70,6 @@ export function WorkflowTemplateManager({
 
   const sortedTemplates = useMemo(
     () => [...templates].sort((a, b) => {
-      if (a.source !== b.source) return a.source === 'builtin' ? -1 : 1
       return a.name.localeCompare(b.name)
     }),
     [templates],
@@ -165,9 +167,15 @@ export function WorkflowTemplateManager({
       setEditorTemplate(response.template)
       setEditorMode('edit')
       setEditorOpen(true)
+      addToast({
+        type: 'success',
+        message: t('settings.workflows.manager.copySuccess', { name: response.template.name }),
+      })
       onCopyTemplate?.(template)
     } catch (copyError) {
-      setActionError(errorMessage(copyError))
+      const message = errorMessage(copyError)
+      setActionError(message)
+      addToast({ type: 'error', message })
     } finally {
       setBusyTemplateKey(null)
     }
@@ -353,7 +361,7 @@ function WorkflowTemplateRow({
 }) {
   const t = useTranslation()
   const startable = template.startable ?? (template.phaseCount > 0 && Boolean(template.firstPhaseId))
-  const editable = template.source === 'user' && template.editable !== false
+  const editable = template.editable !== false
   const copyable = template.copyable !== false
   const display = displayTemplate ?? template
 
@@ -367,13 +375,16 @@ function WorkflowTemplateRow({
           <h4 className="min-w-0 max-w-full truncate text-sm font-semibold text-[var(--color-text-primary)]">
             {display.name}
           </h4>
-          <StatusChip tone={template.source === 'builtin' ? 'neutral' : 'accent'}>
+          <StatusChip tone="accent">
             {workflowTemplateSourceLabel(template.source, t)}
           </StatusChip>
           <StatusChip tone={startable ? 'success' : 'warning'}>
             {startable
               ? t('settings.workflows.manager.startable')
               : t('settings.workflows.manager.notStartable')}
+          </StatusChip>
+          <StatusChip tone="accent">
+            {formatTaskCategory(taskCategoryForTemplate(template))}
           </StatusChip>
           {!editable && (
             <StatusChip tone="neutral">

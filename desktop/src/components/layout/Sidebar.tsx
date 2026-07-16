@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Clock, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pin, PinOff, RefreshCw, RotateCcw, SquarePen, X } from 'lucide-react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -62,7 +63,7 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
   const closeTab = useTabStore((s) => s.closeTab)
   const disconnectSession = useChatStore((s) => s.disconnectSession)
   const [searchQuery, setSearchQuery] = useState('')
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number; title: string } | null>(null)
   const [projectContextMenu, setProjectContextMenu] = useState<{ key: string; x: number; y: number } | null>(null)
   const [projectHeaderMenu, setProjectHeaderMenu] = useState<{ type: SidebarHeaderMenuType; x: number; y: number } | null>(null)
   const [projectHeaderSubmenu, setProjectHeaderSubmenu] = useState<{ type: 'organize' | 'sort'; x: number; y: number } | null>(null)
@@ -203,8 +204,10 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
   const handleContextMenu = useCallback((e: React.MouseEvent, id: string) => {
     e.preventDefault()
     if (isBatchMode) return
-    setContextMenu({ id, x: e.clientX, y: e.clientY })
-  }, [isBatchMode])
+    const session = sessions.find((item) => item.id === id)
+    const position = positionSessionMenu(e.clientX, e.clientY)
+    setContextMenu({ id, title: session?.title || 'Untitled', ...position })
+  }, [isBatchMode, sessions])
 
   const handleProjectDragStart = useCallback((event: React.DragEvent, projectKey: string) => {
     if (isBatchMode) {
@@ -617,17 +620,6 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
             </span>
           </div>
           <div className={`flex items-center ${expanded ? 'gap-1.5' : 'flex-col gap-2'}`}>
-            <a
-              href="https://github.com/NanmiCoder/cc-jiangxia"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`sidebar-copy ${expanded ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} inline-flex items-center justify-center rounded-md p-1 text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)]`}
-              title="GitHub"
-              tabIndex={expanded ? undefined : -1}
-              aria-hidden={!expanded}
-            >
-              <GitHubIcon />
-            </a>
             {isMobile ? (
               <button
                 type="button"
@@ -977,7 +969,7 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
                                         )}
                                       </span>
                                     ) : null}
-                                    <span className="min-w-0 flex-1 truncate font-medium tracking-normal">{session.title || 'Untitled'}</span>
+                                    <span className="min-w-0 flex-1 truncate font-medium tracking-normal">{session.expert ? `[专家] ${session.expert.expertName} - ${session.title || 'Untitled'}` : session.title || 'Untitled'}</span>
                                     {!session.workDirExists && (
                                       <span
                                         className="flex-shrink-0 text-[10px] text-[var(--color-warning)]"
@@ -1050,12 +1042,17 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
         </div>
       )}
 
-      {contextMenu && (
+      {contextMenu && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed z-50 min-w-[140px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1"
+          role="menu"
+          aria-label={t('sidebar.sessionActions', { session: contextMenu.title })}
+          className="fixed z-[9999] min-w-[140px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1"
           style={{ left: contextMenu.x, top: contextMenu.y, boxShadow: 'var(--shadow-dropdown)' }}
+          onClick={(event) => event.stopPropagation()}
         >
           <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               const session = sessions.find((s) => s.id === contextMenu.id)
               handleStartRename(contextMenu.id, session?.title || '')
@@ -1065,12 +1062,15 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
             {t('common.rename')}
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleDelete(contextMenu.id)}
             className="w-full px-3 py-1.5 text-left text-xs text-[var(--color-error)] transition-colors hover:bg-[var(--color-surface-hover)]"
           >
             {t('common.delete')}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {projectContextMenu && (() => {
@@ -1750,6 +1750,19 @@ function domSafeProjectKey(projectKey: string): string {
   return projectKey.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
 }
 
+function positionSessionMenu(clientX: number, clientY: number): { x: number; y: number } {
+  if (typeof window === 'undefined') return { x: clientX, y: clientY }
+
+  const width = 140
+  const height = 72
+  const padding = 8
+
+  return {
+    x: Math.max(padding, Math.min(clientX, window.innerWidth - width - padding)),
+    y: Math.max(padding, Math.min(clientY, window.innerHeight - height - padding)),
+  }
+}
+
 function positionProjectMenu(clientX: number, clientY: number): React.CSSProperties {
   if (typeof window === 'undefined') return { left: clientX, top: clientY }
   const width = 230
@@ -1844,14 +1857,6 @@ function formatRelativeTime(dateStr: string): string {
   const day = Math.floor(hr / 24)
   if (day < 30) return `${day}d`
   return `${Math.floor(day / 30)}mo`
-}
-
-function GitHubIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-    </svg>
-  )
 }
 
 function PlusIcon() {

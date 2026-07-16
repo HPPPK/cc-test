@@ -12,6 +12,7 @@ vi.mock('./lib/persistenceMigrations', () => ({
 }))
 
 vi.mock('./theme/globals.css', () => ({}))
+vi.mock('./theme/jiangxiaUi.css', () => ({}))
 
 vi.mock('./App', () => ({
   App: () => <div>Auto boot app</div>,

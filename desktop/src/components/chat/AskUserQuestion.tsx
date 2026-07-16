@@ -3,15 +3,23 @@ import { useChatStore } from '../../stores/chatStore'
 import { useTabStore } from '../../stores/tabStore'
 import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
+import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 
 type QuestionOption = {
+  id?: string
   label: string
   description?: string
+  action?: string
+  targetPhaseId?: string
+  metadata?: Record<string, unknown>
 }
 
 type Question = {
-  question: string
+  id?: string
+  prompt?: string
+  question?: string
   header?: string
+  choices?: QuestionOption[]
   options?: QuestionOption[]
   multiSelect?: boolean
 }
@@ -19,7 +27,9 @@ type Question = {
 type AskUserInput = {
   questions?: Question[]
   question?: string
+  prompt?: string
   header?: string
+  choices?: QuestionOption[]
   options?: QuestionOption[]
   multiSelect?: boolean
 }
@@ -46,8 +56,10 @@ function parseInput(input: unknown): Question[] {
   // Shape 2: { question: "...", options: [...] }
   if (typeof obj.question === 'string') {
     return [{
-      question: obj.question,
+      question: obj.question ?? obj.prompt,
+      prompt: obj.prompt,
       header: obj.header,
+      choices: obj.choices,
       options: obj.options,
       multiSelect: obj.multiSelect,
     }]
@@ -59,9 +71,40 @@ function parseInput(input: unknown): Question[] {
 type QuestionSelections = Record<number, string[]>
 type QuestionFreeTexts = Record<number, string>
 
+function questionText(question: Question): string {
+  return question.prompt ?? question.question ?? question.id ?? ''
+}
+
+function questionKey(question: Question): string {
+  return question.question ?? question.prompt ?? question.id ?? ''
+}
+
+function questionOptions(question: Question): QuestionOption[] {
+  return question.choices ?? question.options ?? []
+}
+
 function getSelectedAnswer(question: Question, selected: string[] | undefined) {
   if (!selected || selected.length === 0) return ''
   return question.multiSelect ? selected.join(', ') : selected[0] ?? ''
+}
+
+function textSuggestsPermissionSetup(value: string): boolean {
+  return /权限|授权|终端访问|工具访问|tool permission|permission|terminal access|write tools|bash/i.test(value)
+}
+
+function textSuggestsFakePermissionGrantOption(value: string): boolean {
+  return /授予|授权|开启.*权限|允许.*权限|grant|authorize|allow.*permission|allow.*terminal|allow.*shell|allow.*bash|allow.*write|enable.*permission|enable.*terminal|enable.*shell|enable.*bash|enable.*write/i.test(value)
+}
+
+function optionIsFakePermissionGrant(option: QuestionOption): boolean {
+  return textSuggestsFakePermissionGrantOption(`${option.label}\n${option.description ?? ''}`)
+}
+
+function questionNeedsPermissionControl(question: Question): boolean {
+  if (textSuggestsPermissionSetup(questionText(question))) return true
+  return questionOptions(question).some((option) =>
+    textSuggestsPermissionSetup(option.label) || textSuggestsPermissionSetup(option.description ?? '')
+  )
 }
 
 function resultContentToText(result: unknown): string | null {
@@ -108,14 +151,14 @@ function parsePersistedResultAnswers(result: unknown, questions: Question[]): Re
   const answers: Record<string, string> = {}
 
   for (const question of questions) {
-    const marker = `"${question.question}"="`
+    const marker = `"${questionKey(question)}"="`
     const answerStart = body.indexOf(marker)
     if (answerStart === -1) continue
 
     const valueStart = answerStart + marker.length
     const valueEnd = body.indexOf('"', valueStart)
     const value = body.slice(valueStart, valueEnd === -1 ? undefined : valueEnd).trim()
-    if (value) answers[question.question] = value
+    if (value) answers[questionKey(question)] = value
   }
 
   return answers
@@ -156,7 +199,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   const answeredText = useMemo(() => {
     if (hasStructuredAnswers) {
       return questions
-        .map((question) => resultAnswers[question.question])
+        .map((question) => resultAnswers[questionKey(question)])
         .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
         .join(', ')
     }
@@ -168,6 +211,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   }, [freeTexts, hasStructuredAnswers, questions, resultAnswers, resultText, selections])
   const submitted = hasTerminalResult || hasSubmitted
   const terminalWithoutAnswers = submitted && !hasStructuredAnswers && resultText.length > 0
+  const showPermissionControl = !submitted && !!activeQuestion && questionNeedsPermissionControl(activeQuestion)
 
   if (hasStructuredAnswers) {
     return (
@@ -185,6 +229,8 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   const handleSelect = (qIndex: number, label: string) => {
     if (submitted) return
     const question = questions[qIndex]
+    const option = question ? questionOptions(question).find((candidate) => candidate.label === label) : undefined
+    if (showPermissionControl && option && optionIsFakePermissionGrant(option)) return
     const selected = selections[qIndex] ?? []
     const shouldAdvance =
       question &&
@@ -261,25 +307,39 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
     const answers = questions.reduce<Record<string, string>>((acc, question, index) => {
       const freeText = freeTexts[index]?.trim()
       if (freeText) {
-        acc[question.question] = freeText
+        acc[questionKey(question)] = freeText
       } else {
         const selected = getSelectedAnswer(question, selections[index])
-        if (selected) acc[question.question] = selected
+        if (selected) acc[questionKey(question)] = selected
       }
       return acc
     }, {})
+
+    const workflowChoiceActions = questions.flatMap((question, index) => {
+      const selected = selections[index] ?? []
+      return questionOptions(question)
+        .filter((option) => selected.includes(option.label) && option.action)
+        .map((option) => ({
+          questionId: question.id ?? questionKey(question),
+          choiceId: option.id ?? option.label,
+          action: option.action,
+          targetPhaseId: option.targetPhaseId,
+          metadata: option.metadata,
+        }))
+    })
 
     setHasSubmitted(true)
     respondToPermission(targetSessionId, pendingRequest.requestId, true, {
       updatedInput: {
         ...inputObject,
         answers,
+        ...(workflowChoiceActions.length > 0 ? { workflowChoiceActions } : {}),
       },
     })
   }
 
-  // All questions must be answered (via selection or free text) to enable submit
-  const allAnswered = questions.every((_, i) =>
+  // A response to any question is enough to continue; unanswered question tabs remain optional.
+  const hasAnswer = questions.some((_, i) =>
     Boolean(freeTexts[i]?.trim()) || (selections[i]?.length ?? 0) > 0,
   )
 
@@ -289,7 +349,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
     <div className={`mb-4 rounded-[var(--radius-lg)] border overflow-hidden ${
       submitted
         ? 'border-[var(--color-outline-variant)]/40 bg-[var(--color-surface-container-low)] opacity-70'
-        : 'border-[var(--color-secondary)] bg-[var(--color-surface-container-lowest)]'
+        : 'border-[var(--color-brand)] bg-[var(--color-surface-container-lowest)]'
     }`}>
       {/* Header */}
       <div className={`flex items-center gap-3 px-4 py-3 ${
@@ -297,8 +357,8 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
           ? 'bg-[var(--color-surface-container-low)]'
           : 'bg-[var(--color-surface-container)]'
       }`}>
-        <div className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-secondary)]/10">
-          <span className="material-symbols-outlined text-[18px] text-[var(--color-secondary)]">
+        <div className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-brand)]/10">
+          <span className="material-symbols-outlined text-[18px] text-[var(--color-brand)]">
             help
           </span>
         </div>
@@ -327,7 +387,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
                 onClick={() => setActiveTab(i)}
                 className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors ${
                   isActive
-                    ? 'text-[var(--color-secondary)]'
+                      ? 'text-[var(--color-brand)]'
                     : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
                 }`}
               >
@@ -336,7 +396,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
                 )}
                 {tabLabel}
                 {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--color-secondary)] rounded-t" />
+                  <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--color-brand)] rounded-t" />
                 )}
               </button>
             )
@@ -347,31 +407,49 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
       {/* Active question content */}
       <div className="px-4 py-3">
         <p className="text-sm font-medium text-[var(--color-text-primary)] mb-3">
-          {activeQuestion.question}
+          {questionText(activeQuestion)}
         </p>
 
+        {showPermissionControl ? (
+          <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/8 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-[var(--color-text-primary)]">
+                  {t('question.permissionControlTitle')}
+                </div>
+                <p className="mt-0.5 text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {t('question.permissionControlDescription')}
+                </p>
+              </div>
+              <PermissionModeSelector compact />
+            </div>
+          </div>
+        ) : null}
+
         {/* Option cards */}
-        {activeQuestion.options && activeQuestion.options.length > 0 && (
+        {questionOptions(activeQuestion).length > 0 && (
           <div className="space-y-2 mb-3">
-            {activeQuestion.options.map((opt, optIndex) => {
+            {questionOptions(activeQuestion).map((opt, optIndex) => {
               const isSelected = selections[safeActiveTab]?.includes(opt.label) ?? false
               const isMultiSelect = activeQuestion.multiSelect === true
+              const fakePermissionGrant = showPermissionControl && optionIsFakePermissionGrant(opt)
               return (
                 <button
                   key={optIndex}
                   onClick={() => handleSelect(safeActiveTab, opt.label)}
-                  disabled={submitted}
+                  disabled={submitted || fakePermissionGrant}
+                  aria-disabled={fakePermissionGrant || undefined}
                   className={`w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer ${
                     isSelected
-                      ? 'border-[var(--color-secondary)] bg-[var(--color-secondary)]/8 ring-1 ring-[var(--color-secondary)]/30'
+                      ? 'border-[var(--color-brand)] bg-[var(--color-primary-fixed)]/35 ring-1 ring-[var(--color-brand)]/25'
                       : 'border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]'
-                  } ${submitted ? 'cursor-default' : ''}`}
+                  } ${submitted || fakePermissionGrant ? 'cursor-not-allowed opacity-60 hover:border-[var(--color-outline-variant)]/40 hover:bg-[var(--color-surface)]' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Selection indicator */}
                     <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
                       isSelected
-                        ? 'border-[var(--color-secondary)] bg-[var(--color-secondary)]'
+                        ? 'border-[var(--color-brand)] bg-[var(--color-brand)]'
                         : 'border-[var(--color-outline)]'
                     } ${isMultiSelect ? 'rounded-[var(--radius-xs)]' : 'rounded-full'}`}>
                       {isSelected && (
@@ -383,7 +461,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
                     <div className="flex-1 min-w-0">
                       <span className={`text-sm font-medium ${
                         isSelected
-                          ? 'text-[var(--color-secondary)]'
+                          ? 'text-[var(--color-brand)]'
                           : 'text-[var(--color-text-primary)]'
                       }`}>
                         {opt.label}
@@ -391,6 +469,11 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
                       {opt.description && (
                         <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
                           {opt.description}
+                        </p>
+                      )}
+                      {fakePermissionGrant && (
+                        <p className="mt-1 text-xs font-medium text-[var(--color-warning)]">
+                          {t('question.permissionOptionDisabled')}
                         </p>
                       )}
                     </div>
@@ -414,7 +497,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
               onCompositionEnd={() => { composingRef.current = false }}
               onKeyDown={(e) => {
                 if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && allAnswered) {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && hasAnswer) {
                   e.preventDefault()
                   handleSubmit()
                 }
@@ -422,7 +505,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
               placeholder={t('question.typePlaceholder')}
               rows={3}
               wrap="soft"
-              className="max-h-48 min-h-[84px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-secondary)]/30"
+              className="max-h-48 min-h-[84px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand)]/30"
             />
           </div>
         )}
@@ -444,7 +527,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
           <Button
             variant="primary"
             size="sm"
-            disabled={!allAnswered || !pendingRequest}
+            disabled={!hasAnswer || !pendingRequest}
             onClick={handleSubmit}
             icon={
               <span className="material-symbols-outlined text-[14px]">send</span>
