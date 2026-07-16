@@ -31,4 +31,21 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(externalModules).not.toContain('grammy')
     expect(externalModules).not.toContain('dingtalk-stream')
   })
+
+  it('copies workflow packs next to the compiled sidecar', () => {
+    const source = readBuildScript()
+
+    expect(source).toContain('copyBundledWorkflowPacks')
+    expect(source).toContain("path.join(repoRoot, 'src', 'server', 'packs')")
+    expect(source).toContain("path.join(binariesDir, 'packs')")
+  })
+
+  it('copies bundled skill resources next to the compiled sidecar', () => {
+    const source = readBuildScript()
+
+    expect(source).toContain('copyBundledSkills')
+    expect(source).toContain("path.join(repoRoot, 'src', 'skills', 'bundled')")
+    expect(source).toContain("path.join(binariesDir, 'skills', 'bundled')")
+  })
+
 })

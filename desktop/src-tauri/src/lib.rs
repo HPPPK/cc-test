@@ -4,7 +4,7 @@ use std::{
     io::{Error as IoError, ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
-    process::{Command as StdCommand, Stdio},
+    process::{Child as StdChild, Command as StdCommand, Stdio},
     str,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -366,7 +366,35 @@ struct ServerState(Mutex<ServerStatus>);
 
 struct ServerRuntime {
     url: String,
-    child: CommandChild,
+    child: ManagedSidecarChild,
+}
+
+enum ManagedSidecarChild {
+    Shell(Arc<Mutex<Option<CommandChild>>>),
+    Std(Arc<Mutex<StdChild>>),
+}
+
+impl ManagedSidecarChild {
+    fn from_shell(child: CommandChild) -> Self {
+        ManagedSidecarChild::Shell(Arc::new(Mutex::new(Some(child))))
+    }
+
+    fn kill(&self) {
+        match self {
+            ManagedSidecarChild::Shell(child) => {
+                if let Ok(mut child) = child.lock() {
+                    if let Some(child) = child.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+            ManagedSidecarChild::Std(child) => {
+                if let Ok(mut child) = child.lock() {
+                    let _ = child.kill();
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -396,7 +424,7 @@ struct StoredWindowState {
 /// 而且需要支持运行时热重启 —— 用户在设置页保存 IM 凭据后，
 /// 前端会通过 invoke('restart_adapters_sidecar') 来重启它，让新凭据生效。
 #[derive(Default)]
-struct AdapterState(Mutex<Vec<CommandChild>>);
+struct AdapterState(Mutex<Vec<ManagedSidecarChild>>);
 
 #[derive(Default)]
 struct TerminalState {
@@ -1556,6 +1584,91 @@ fn resolve_h5_dist_dir(app: &AppHandle, app_root: &Path) -> PathBuf {
     select_h5_dist_dir(resource_dir.as_deref(), app_root)
 }
 
+
+fn is_application_control_block(error: &str) -> bool {
+    error.contains("Application Control")
+        || error.contains("应用程序控制策略")
+        || error.contains("os error 4551")
+}
+
+fn resolve_dev_sidecar_script(app_root: &Path) -> Option<PathBuf> {
+    let mut current = Some(app_root);
+    while let Some(dir) = current {
+        let candidate = dir.join("sidecars").join("claude-sidecar.ts");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        let candidate = dir.join("desktop").join("sidecars").join("claude-sidecar.ts");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        current = dir.parent();
+    }
+    None
+}
+
+fn base_sidecar_environment(app_root: &Path, extra: &[(&str, String)]) -> Vec<(String, String)> {
+    let mut envs = terminal_environment(&default_shell(None));
+    if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
+        let cache_dir = PathBuf::from(&config_dir).join("Cache");
+        if let Err(e) = fs::create_dir_all(&cache_dir) {
+            eprintln!("[desktop] failed to create Cache dir: {e}");
+        }
+        envs.insert("CLAUDE_CONFIG_DIR".to_string(), config_dir);
+        envs.insert("XDG_CACHE_HOME".to_string(), cache_dir.to_string_lossy().to_string());
+    }
+    envs.insert("CLAUDE_APP_ROOT".to_string(), app_root.to_string_lossy().to_string());
+    for (key, value) in extra {
+        envs.insert((*key).to_string(), value.clone());
+    }
+    envs.into_iter().collect()
+}
+
+fn spawn_std_sidecar_fallback(
+    app_root: &Path,
+    args: &[String],
+    envs: Vec<(String, String)>,
+    label: String,
+    startup_logs: Option<Arc<Mutex<VecDeque<String>>>>,
+) -> Result<ManagedSidecarChild, String> {
+    let script = resolve_dev_sidecar_script(app_root)
+        .ok_or_else(|| "development sidecar script not found for fallback launch".to_string())?;
+    let mut command = StdCommand::new("bun");
+    command.arg(&script);
+    command.args(args);
+    command.envs(envs);
+    command.current_dir(script.parent().and_then(|p| p.parent()).unwrap_or(app_root));
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|err| format!("spawn {label} bun sidecar fallback: {err}"))?;
+    if let Some(stdout) = child.stdout.take() {
+        let label = label.clone();
+        let logs = startup_logs.clone();
+        thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                println!("[{label}] {line}");
+                if let Some(logs) = &logs {
+                    push_server_startup_log(logs, format!("[stdout:fallback] {line}"));
+                }
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let label = label.clone();
+        let logs = startup_logs;
+        thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                eprintln!("[{label}] {line}");
+                if let Some(logs) = &logs {
+                    push_server_startup_log(logs, format!("[stderr:fallback] {line}"));
+                }
+            }
+        });
+    }
+    Ok(ManagedSidecarChild::Std(Arc::new(Mutex::new(child))))
+}
+
 fn start_server_sidecar(app: &AppHandle) -> Result<ServerRuntime, String> {
     let bind_host = SERVER_BIND_HOST;
     let control_host = SERVER_CONTROL_HOST;
@@ -1567,80 +1680,88 @@ fn start_server_sidecar(app: &AppHandle) -> Result<ServerRuntime, String> {
         .to_string_lossy()
         .to_string();
 
-    // 单一合并 sidecar：第一个参数选 server / cli / adapters 模式。
-    let mut sidecar = app
-        .shell()
-        .sidecar("claude-sidecar")
-        .map_err(|err| format!("resolve sidecar: {err}"))?;
-    for (key, value) in terminal_environment(&default_shell(None)) {
-        sidecar = sidecar.env(key, value);
-    }
-    // Pass through CLAUDE_CONFIG_DIR so the sidecar (Node.js) uses the same
-    // portable config directory. Also set XDG_CACHE_HOME to redirect the
-    // env-paths cache from %LOCALAPPDATA%\claude-cli-nodejs\ to alongside
-    // the portable config dir.
-    if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-        let cache_dir = PathBuf::from(&config_dir).join("Cache");
-        if let Err(e) = fs::create_dir_all(&cache_dir) {
-            eprintln!("[desktop] failed to create Cache dir: {e}");
-        }
-        sidecar = sidecar
-            .env("CLAUDE_CONFIG_DIR", &config_dir)
-            .env("XDG_CACHE_HOME", cache_dir.to_string_lossy().to_string())
-            .env("CLAUDE_H5_AUTO_PUBLIC_URL", "1")
-            .env("CLAUDE_H5_DIST_DIR", h5_dist_dir);
-    } else {
-        sidecar = sidecar
-            .env("CLAUDE_H5_AUTO_PUBLIC_URL", "1")
-            .env("CLAUDE_H5_DIST_DIR", h5_dist_dir);
-    }
-    let sidecar = sidecar.args([
-        "server",
-        "--app-root",
-        &app_root_arg,
-        "--host",
-        bind_host,
-        "--port",
-        &port.to_string(),
-    ]);
+    let sidecar_args = vec![
+        "server".to_string(),
+        "--app-root".to_string(),
+        app_root_arg,
+        "--host".to_string(),
+        bind_host.to_string(),
+        "--port".to_string(),
+        port.to_string(),
+    ];
+    let envs = base_sidecar_environment(
+        &app_root,
+        &[
+            ("CLAUDE_H5_AUTO_PUBLIC_URL", "1".to_string()),
+            ("CLAUDE_H5_DIST_DIR", h5_dist_dir),
+        ],
+    );
 
     let startup_logs = Arc::new(Mutex::new(VecDeque::new()));
     let logs_for_task = Arc::clone(&startup_logs);
 
-    let (mut rx, child) = sidecar
-        .spawn()
-        .map_err(|err| format!("spawn server sidecar: {err}"))?;
+    let mut sidecar = app
+        .shell()
+        .sidecar("claude-sidecar")
+        .map_err(|err| format!("resolve sidecar: {err}"))?;
+    for (key, value) in &envs {
+        sidecar = sidecar.env(key, value);
+    }
+    let sidecar = sidecar.args(sidecar_args.clone());
 
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let line = String::from_utf8_lossy(&line);
-                    let line = line.trim_end();
-                    println!("[claude-server] {line}");
-                    push_server_startup_log(&logs_for_task, format!("[stdout] {line}"));
+    let child = match sidecar.spawn() {
+        Ok((mut rx, child)) => {
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    match event {
+                        CommandEvent::Stdout(line) => {
+                            let line = String::from_utf8_lossy(&line);
+                            let line = line.trim_end();
+                            println!("[claude-server] {line}");
+                            push_server_startup_log(&logs_for_task, format!("[stdout] {line}"));
+                        }
+                        CommandEvent::Stderr(line) => {
+                            let line = String::from_utf8_lossy(&line);
+                            let line = line.trim_end();
+                            eprintln!("[claude-server] {line}");
+                            push_server_startup_log(&logs_for_task, format!("[stderr] {line}"));
+                        }
+                        CommandEvent::Terminated(payload) => {
+                            let line = format!(
+                                "sidecar exited (code={:?}, signal={:?})",
+                                payload.code, payload.signal
+                            );
+                            eprintln!("[claude-server] {line}");
+                            push_server_startup_log(&logs_for_task, format!("[exit] {line}"));
+                        }
+                        _ => {}
+                    }
                 }
-                CommandEvent::Stderr(line) => {
-                    let line = String::from_utf8_lossy(&line);
-                    let line = line.trim_end();
-                    eprintln!("[claude-server] {line}");
-                    push_server_startup_log(&logs_for_task, format!("[stderr] {line}"));
-                }
-                CommandEvent::Terminated(payload) => {
-                    let line = format!(
-                        "sidecar exited (code={:?}, signal={:?})",
-                        payload.code, payload.signal
-                    );
-                    eprintln!("[claude-server] {line}");
-                    push_server_startup_log(&logs_for_task, format!("[exit] {line}"));
-                }
-                _ => {}
-            }
+            });
+            ManagedSidecarChild::from_shell(child)
         }
-    });
+        Err(err) => {
+            let err_text = format!("spawn server sidecar: {err}");
+            if !is_application_control_block(&err_text) {
+                return Err(err_text);
+            }
+            eprintln!("[desktop] {err_text}; falling back to bun sidecar script");
+            push_server_startup_log(
+                &startup_logs,
+                format!("[fallback] {err_text}; launching bun sidecar script"),
+            );
+            spawn_std_sidecar_fallback(
+                &app_root,
+                &sidecar_args,
+                envs,
+                "claude-server:fallback".to_string(),
+                Some(Arc::clone(&startup_logs)),
+            )?
+        }
+    };
 
     if let Err(err) = wait_for_server(control_host, port) {
-        let _ = child.kill();
+        child.kill();
         return Err(format_server_startup_error(&err, &startup_logs));
     }
 
@@ -1657,26 +1778,20 @@ fn stop_server_sidecar(app: &AppHandle) {
     };
 
     if let Some(runtime) = guard.runtime.take() {
-        let _ = runtime.child.kill();
+        runtime.child.kill();
     }
 }
 
 /// 启动 adapter sidecars。每个平台单独一个进程，避免某个平台的 SDK / long polling
 /// 影响其它平台（Telegram 尤其要求同一个 Bot Token 只有一个活跃 consumer）。
-fn start_adapters_sidecars(app: &AppHandle) -> Result<Vec<CommandChild>, String> {
+fn start_adapters_sidecars(app: &AppHandle) -> Result<Vec<ManagedSidecarChild>, String> {
     #[cfg(unix)]
     kill_stale_unix_adapter_sidecars();
 
     let app_root = resolve_app_root(app)?;
     let app_root_arg = app_root.to_string_lossy().to_string();
 
-    // adapter 内部的 WsBridge 默认连 ws://127.0.0.1:3456，但桌面端的 server
-    // 用的是 reserve_local_port() 拿到的动态端口。这里把实际端口通过
-    // ADAPTER_SERVER_URL env var 传过去 —— adapters/common/config.ts 的
-    // loadConfig() 会读它。
-    //
-    // 如果 server 还没起来 / 没拿到 URL，回退到 3456 作为最后兜底（adapter
-    // 自己有重连逻辑，等 server 上线就能连上）。
+    // Adapter WsBridge needs the dynamic desktop server URL, not the default 3456.
     let server_http_url = app
         .try_state::<ServerState>()
         .and_then(|state| {
@@ -1687,8 +1802,6 @@ fn start_adapters_sidecars(app: &AppHandle) -> Result<Vec<CommandChild>, String>
                 .and_then(|guard| guard.runtime.as_ref().map(|r| r.url.clone()))
         })
         .unwrap_or_else(|| "http://127.0.0.1:3456".to_string());
-    // WsBridge 直接 `new WebSocket('${serverUrl}/ws/...')`，必须传 ws://；
-    // 不会自动从 http 转。
     let server_ws_url = if let Some(rest) = server_http_url.strip_prefix("http://") {
         format!("ws://{rest}")
     } else if let Some(rest) = server_http_url.strip_prefix("https://") {
@@ -1697,6 +1810,11 @@ fn start_adapters_sidecars(app: &AppHandle) -> Result<Vec<CommandChild>, String>
         server_http_url.clone()
     };
 
+    let envs = base_sidecar_environment(
+        &app_root,
+        &[("ADAPTER_SERVER_URL", server_ws_url)],
+    );
+
     let mut children = Vec::new();
     for (label, flag) in [
         ("feishu", "--feishu"),
@@ -1704,56 +1822,63 @@ fn start_adapters_sidecars(app: &AppHandle) -> Result<Vec<CommandChild>, String>
         ("wechat", "--wechat"),
         ("dingtalk", "--dingtalk"),
     ] {
+        let sidecar_args = vec![
+            "adapters".to_string(),
+            "--app-root".to_string(),
+            app_root_arg.clone(),
+            flag.to_string(),
+        ];
         let mut sidecar = app
             .shell()
             .sidecar("claude-sidecar")
             .map_err(|err| format!("resolve {label} adapter sidecar: {err}"))?;
-        for (key, value) in terminal_environment(&default_shell(None)) {
+        for (key, value) in &envs {
             sidecar = sidecar.env(key, value);
         }
-        // Pass through CLAUDE_CONFIG_DIR for portable installs
-        let mut sidecar_final = sidecar.env("ADAPTER_SERVER_URL", &server_ws_url);
-        if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-            let cache_dir = PathBuf::from(&config_dir).join("Cache");
-            sidecar_final = sidecar_final
-                .env("CLAUDE_CONFIG_DIR", &config_dir)
-                .env("XDG_CACHE_HOME", cache_dir.to_string_lossy().to_string());
-        }
-        let sidecar = sidecar_final.args(["adapters", "--app-root", &app_root_arg, flag]);
+        let sidecar = sidecar.args(sidecar_args.clone());
 
-        let (mut rx, child) = sidecar
-            .spawn()
-            .map_err(|err| format!("spawn {label} adapter sidecar: {err}"))?;
-        let label = label.to_string();
-
-        // 用一个 async task 把 sidecar 的 stdout/stderr 转发出来。它退出时
-        // 整个 task 也会自然结束。
-        tauri::async_runtime::spawn(async move {
-            while let Some(event) = rx.recv().await {
-                match event {
-                    CommandEvent::Stdout(line) => {
-                        let line = String::from_utf8_lossy(&line);
-                        println!("[claude-adapters:{label}] {}", line.trim_end());
+        match sidecar.spawn() {
+            Ok((mut rx, child)) => {
+                let label = label.to_string();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            CommandEvent::Stdout(line) => {
+                                let line = String::from_utf8_lossy(&line);
+                                println!("[claude-adapters:{label}] {}", line.trim_end());
+                            }
+                            CommandEvent::Stderr(line) => {
+                                let line = String::from_utf8_lossy(&line);
+                                eprintln!("[claude-adapters:{label}] {}", line.trim_end());
+                            }
+                            CommandEvent::Terminated(payload) => {
+                                println!(
+                                    "[claude-adapters:{label}] sidecar exited (code={:?}, signal={:?})",
+                                    payload.code, payload.signal
+                                );
+                            }
+                            _ => {}
+                        }
                     }
-                    CommandEvent::Stderr(line) => {
-                        let line = String::from_utf8_lossy(&line);
-                        eprintln!("[claude-adapters:{label}] {}", line.trim_end());
-                    }
-                    CommandEvent::Terminated(payload) => {
-                        // exit code != 0 是常态：用户没配凭据时 sidecar 内部会
-                        // warn + skip + process.exit(1)。这里只 info 一行，
-                        // 不要当错误冒泡。
-                        println!(
-                            "[claude-adapters:{label}] sidecar exited (code={:?}, signal={:?})",
-                            payload.code, payload.signal
-                        );
-                    }
-                    _ => {}
-                }
+                });
+                children.push(ManagedSidecarChild::from_shell(child));
             }
-        });
-
-        children.push(child);
+            Err(err) => {
+                let err_text = format!("spawn {label} adapter sidecar: {err}");
+                if !is_application_control_block(&err_text) {
+                    return Err(err_text);
+                }
+                eprintln!("[desktop] {err_text}; falling back to bun sidecar script");
+                let child = spawn_std_sidecar_fallback(
+                    &app_root,
+                    &sidecar_args,
+                    envs.clone(),
+                    format!("claude-adapters:{label}:fallback"),
+                    None,
+                )?;
+                children.push(child);
+            }
+        }
     }
 
     Ok(children)
@@ -2109,6 +2234,7 @@ pub fn run() {
         .manage(AppExitState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

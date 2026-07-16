@@ -8,6 +8,7 @@ const root = process.cwd()
 const roots = ['src/server', 'src/tools', 'src/utils']
 const excludedFiles = quarantinedPathSet(loadQuarantineManifest(undefined, { enforceReviewDate: true }))
 const testTimeoutMs = process.env.CC_JIANGXIA_SERVER_TEST_TIMEOUT_MS?.trim() || '20000'
+const maxConcurrency = process.env.CC_JIANGXIA_SERVER_TEST_MAX_CONCURRENCY?.trim() || '1'
 const isolateFiles = process.env.CC_JIANGXIA_SERVER_TEST_ISOLATE_FILES === '1'
 
 function normalize(path: string) {
@@ -49,7 +50,7 @@ if (testFiles.length === 0) {
 const failedFiles: string[] = []
 
 if (!isolateFiles) {
-  const proc = Bun.spawn(['bun', 'test', '--isolate', `--timeout=${testTimeoutMs}`, ...testFiles], {
+  const proc = Bun.spawn(['bun', 'test', '--isolate', `--max-concurrency=${maxConcurrency}`, `--timeout=${testTimeoutMs}`, ...testFiles], {
     cwd: root,
     stdout: 'inherit',
     stderr: 'inherit',
