@@ -415,6 +415,44 @@ function assertActivePhase(state: WorkflowSessionState, phaseId: string): Workfl
   return phase
 }
 
+const GENERIC_WORKFLOW_ROUTE_ACTION_RULES = new Set([
+  'route-request',
+  'route_request',
+  'request_workflow_route',
+  'workflow-route',
+  'workflow_route',
+  'workflow route',
+])
+
+const WORKFLOW_ROUTE_INTENT_ACTION_RULES: Record<WorkflowRouteIntent, ReadonlySet<string>> = {
+  advance: new Set(['advance', 'advance_phase', 'advance phase']),
+  rework_current_phase: new Set([
+    'rework_current_phase',
+    'rework current phase',
+    'return_to_phase',
+    'return to phase',
+  ]),
+  jump_to_phase: new Set(['jump_to_phase', 'jump to phase']),
+  route_to_workflow: new Set(['route_to_workflow', 'route to workflow']),
+  pause: new Set(['pause', 'pause_workflow', 'pause workflow']),
+  resume: new Set(['resume', 'resume_workflow', 'resume workflow']),
+  finish: new Set(['finish', 'finish_workflow', 'finish workflow']),
+}
+
+function normalizeWorkflowActionRule(action: string): string {
+  return action.trim().toLowerCase()
+}
+
+function isRouteActionRule(action: string, intent: WorkflowRouteIntent): boolean {
+  return GENERIC_WORKFLOW_ROUTE_ACTION_RULES.has(action)
+    || WORKFLOW_ROUTE_INTENT_ACTION_RULES[intent].has(action)
+}
+
+function isAnyRouteActionRule(action: string): boolean {
+  return GENERIC_WORKFLOW_ROUTE_ACTION_RULES.has(action)
+    || Object.values(WORKFLOW_ROUTE_INTENT_ACTION_RULES).some((rules) => rules.has(action))
+}
+
 function isRouteAllowedForCurrentPhase(
   state: WorkflowSessionState,
   template: WorkflowTemplate,
@@ -422,24 +460,15 @@ function isRouteAllowedForCurrentPhase(
 ): void {
   const policy = getWorkflowPhaseActionPolicy(state, template)
   if (!policy) return
-  const tokens = [
-    'route',
-    'workflow route',
-    'jump',
-    'jump to phase',
-    'advance',
-    'rework',
-    intent.replace(/_/g, ' '),
-  ]
-  const normalizedForbidden = policy.forbiddenActions.map((action) => action.toLowerCase())
-  if (normalizedForbidden.some((action) => tokens.some((token) => action.includes(token)))) {
+
+  const forbiddenRules = policy.forbiddenActions.map(normalizeWorkflowActionRule)
+  if (forbiddenRules.some((action) => isRouteActionRule(action, intent))) {
     throw workflowError('WORKFLOW_ROUTE_FORBIDDEN', `Workflow route intent "${intent}" is forbidden for the active phase.`)
   }
-  const normalizedAllowed = policy.allowedActions.map((action) => action.toLowerCase())
-  const hasRouteSpecificAllowList = normalizedAllowed.some((action) =>
-    /(?:workflow )?route|jump|rework|advance/.test(action),
-  )
-  if (hasRouteSpecificAllowList && !normalizedAllowed.some((action) => tokens.some((token) => action.includes(token)))) {
+
+  const allowedRules = policy.allowedActions.map(normalizeWorkflowActionRule)
+  const hasRouteSpecificAllowList = allowedRules.some(isAnyRouteActionRule)
+  if (hasRouteSpecificAllowList && !allowedRules.some((action) => isRouteActionRule(action, intent))) {
     throw workflowError('WORKFLOW_ROUTE_FORBIDDEN', `Workflow route intent "${intent}" is not allowed for the active phase.`)
   }
 }

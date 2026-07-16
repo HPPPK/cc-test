@@ -1299,6 +1299,156 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.phases[6].status).not.toBe('running')
   })
 
+  test('allows Stage 5 and Stage 6 jump routes when forbidden action prose only mentions non-workflow routes', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const cases = [
+      {
+        id: 'scenario-review',
+        label: 'Stage 5: Scenario review',
+        forbiddenAction: 'Route failed or unclear validation through validation problem routing instead of ad-hoc repair.',
+      },
+      {
+        id: 'local-preview',
+        label: 'Stage 6: Local preview',
+        forbiddenAction: 'Record preview URL, route, command, process ID, port, log path, and user feedback.',
+      },
+    ] as const
+
+    for (const scenario of cases) {
+      const template = makeTemplate({
+        phases: [
+          {
+            ...basePhase,
+            id: 'delegate-implement',
+            label: 'Stage 4: Delegate implementation',
+            transitionAuthority: 'user-confirmation',
+          },
+          {
+            ...basePhase,
+            id: scenario.id,
+            label: scenario.label,
+            transitionAuthority: 'user-confirmation',
+            actionPolicy: {
+              allowedActions: ['read', 'route-request'],
+              forbiddenActions: [scenario.forbiddenAction],
+            },
+          },
+          {
+            ...basePhase,
+            id: 'finish-memory',
+            label: 'Finish',
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      })
+      const state = makeState({
+        templateSnapshot: template,
+        activePhaseId: scenario.id,
+        workflowStatus: 'pending-confirmation',
+        status: 'pending-confirmation',
+        runStatus: 'waiting_for_user',
+        phases: template.phases.map((phase, index) => ({
+          id: phase.id,
+          index,
+          status: phase.id === scenario.id ? 'pending-confirmation' : index === 0 ? 'completed' : 'created',
+          artifactPointers: [],
+        })),
+        pendingConfirmation: {
+          confirmationId: `${scenario.id}-completion`,
+          phaseId: scenario.id,
+          fromPhaseId: scenario.id,
+          toPhaseId: 'finish-memory',
+          completionCheckId: `${scenario.id}-completion`,
+          artifactRefs: [],
+          createdAt: NOW,
+          status: 'pending',
+        },
+      })
+
+      const routed = await service.requestWorkflowRoute({
+        state,
+        requestedAt: NOW,
+        request: {
+          phaseId: scenario.id,
+          stateVersion: state.stateVersion,
+          intent: 'jump_to_phase',
+          targetPhaseId: 'delegate-implement',
+          rationale: 'A verified defect requires a scoped implementation repair.',
+          evidence: [{ kind: 'validation-failure' }],
+          requireUserConfirmation: true,
+        },
+      })
+
+      expect(routed.state.pendingRoute).toMatchObject({
+        phaseId: scenario.id,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        approvedTargetPhaseId: 'delegate-implement',
+        status: 'pending',
+      })
+    }
+  })
+
+  test('rejects jump_to_phase only when the active phase explicitly forbids that route intent', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const template = makeTemplate({
+      phases: [
+        {
+          ...basePhase,
+          id: 'delegate-implement',
+          label: 'Stage 4: Delegate implementation',
+          transitionAuthority: 'user-confirmation',
+        },
+        {
+          ...basePhase,
+          id: 'scenario-review',
+          label: 'Stage 5: Scenario review',
+          transitionAuthority: 'user-confirmation',
+          actionPolicy: {
+            allowedActions: ['read', 'route-request'],
+            forbiddenActions: ['jump_to_phase'],
+          },
+        },
+      ],
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      activePhaseId: 'scenario-review',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'delegate-implement', index: 0, status: 'completed', artifactPointers: [] },
+        { id: 'scenario-review', index: 1, status: 'pending-confirmation', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'scenario-review-completion',
+        phaseId: 'scenario-review',
+        fromPhaseId: 'scenario-review',
+        toPhaseId: null,
+        completionCheckId: 'scenario-review-completion',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'scenario-review',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        rationale: 'The review found an implementation defect.',
+        evidence: [{ kind: 'validation-failure' }],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_FORBIDDEN' })
+  })
+
   test('supports advance and rework_current_phase route intents after a pending completion', async () => {
     const service = await makeService()
     const pendingState = () => makeState({
