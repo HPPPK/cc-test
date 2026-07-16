@@ -4164,6 +4164,7 @@ function AboutSettings() {
               {t('settings.about.changelog')}
             </button>
           </div>
+          <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">{t('settings.about.welcome')}</p>
         </>
       )}
 
