@@ -174,7 +174,9 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /^返回 Stage 4 修复该问题$/ }))
+    const routeOption = screen.getByRole('button', { name: /^返回 Stage 4 修复该问题$/ })
+    fireEvent.click(routeOption)
+    expect(routeOption.querySelector('svg')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
     expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({

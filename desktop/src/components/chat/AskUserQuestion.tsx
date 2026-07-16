@@ -442,7 +442,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         {questionOptions(activeQuestion).length > 0 && (
           <div className="space-y-2 mb-3">
             {questionOptions(activeQuestion).map((opt, optIndex) => {
-              const isSelected = selections[safeActiveTab]?.includes(opt.label) ?? false
+              const isSelected = selections[safeActiveTab]?.includes(opt.id ?? opt.label) ?? false
               const isMultiSelect = activeQuestion.multiSelect === true
               const fakePermissionGrant = showPermissionControl && optionIsFakePermissionGrant(opt)
               return (
