@@ -23,6 +23,7 @@ import { deriveTitle, generateTitle, saveAiTitle } from '../services/titleServic
 import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
+import { loadCurrentWorkflowTemplate } from '../services/workflowRuntimeTemplateService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
 import {
   getWorkflowPhaseDisallowedTools,
@@ -48,6 +49,10 @@ import {
   LOCAL_COMMAND_STDOUT_TAG,
 } from '../../constants/xml.js'
 import { shouldCreateWorktreeForSessionLaunch } from '../services/repositoryLaunchService.js'
+import {
+  buildExpertRuntimeTurnInstruction,
+  buildNormalRuntimeResetInstruction,
+} from '../services/expertRuntimeBindingService.js'
 import { setSessionChatState } from '../api/conversations.js'
 
 const settingsService = new SettingsService()
@@ -121,7 +126,7 @@ function restoreRuntimeOverride(
 async function sendRepositoryStartupStatus(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
-  reason: 'user_message' | 'prewarm_session',
+  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue',
 ): Promise<void> {
   if (reason !== 'user_message') return
 
@@ -188,8 +193,21 @@ export const handleWebSocket = {
     const { sessionId, channel, sdkToken } = ws.data
 
     if (channel === 'sdk') {
-      if (!conversationService.authorizeSdkConnection(sessionId, sdkToken)) {
-        console.warn(`[WS] Rejected SDK connection for session: ${sessionId}`)
+      const authStatus = conversationService.getSdkConnectionAuthStatus(sessionId, sdkToken)
+      if (!authStatus.authorized) {
+        console.warn(
+          `[WS] Rejected SDK connection for session: ${sessionId} (${authStatus.reason})`,
+        )
+        void diagnosticsService.recordEvent({
+          type: 'sdk_connection_rejected',
+          severity: 'warn',
+          sessionId,
+          summary: `SDK connection rejected: ${authStatus.reason}`,
+          details: {
+            reason: authStatus.reason,
+            hasToken: Boolean(sdkToken),
+          },
+        })
         ws.close(1008, 'Invalid SDK token')
         return
       }
@@ -217,6 +235,13 @@ export const handleWebSocket = {
 
     const msg: ServerMessage = { type: 'connected', sessionId }
     ws.send(JSON.stringify(msg))
+    sendWorkflowWelcomeIfNeeded(ws, sessionId).catch((err) => {
+      console.warn(
+        `[WS] Failed to send workflow welcome for ${sessionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+    })
     replayPendingPermissionRequests(ws, sessionId)
   },
 
@@ -247,7 +272,7 @@ export const handleWebSocket = {
           break
 
         case 'permission_response':
-          handlePermissionResponse(ws, message)
+          void handlePermissionResponse(ws, message).catch((error) => sendWorkflowError(ws, error))
           break
 
         case 'computer_use_permission_response':
@@ -291,7 +316,7 @@ export const handleWebSocket = {
 
     if (channel === 'sdk') {
       console.log(`[WS] SDK disconnected from session: ${sessionId} (${code}: ${reason})`)
-      conversationService.detachSdkConnection(sessionId)
+      conversationService.detachSdkConnection(sessionId, ws)
       return
     }
 
@@ -429,7 +454,7 @@ async function handleUserMessage(
     },
   })
 
-  const resolvedMessage = await resolveWorkflowUserMessage(ws, sessionId, message.content)
+  const resolvedMessage = await resolveSessionRuntimeUserMessage(ws, sessionId, message.content)
   if (resolvedMessage === null) {
     sendMessage(ws, { type: 'status', state: 'idle' })
     return
@@ -489,6 +514,51 @@ async function handleDesktopClearCommand(
   })
 }
 
+async function sendWorkflowWelcomeIfNeeded(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+): Promise<void> {
+  const workflow = await getWorkflowMetadata(sessionId)
+  if (!workflow) return
+
+  const state = await loadWorkflowStateForWebSocket(sessionId, workflow)
+  if (!state) return
+  if (state.workflowStatus !== 'created' || state.runStatus !== 'draft') return
+
+  const currentTemplate = await loadCurrentWorkflowTemplate(state)
+  const workflowName = currentTemplate?.displayName || workflow.templateId
+  const description = currentTemplate?.description?.trim()
+  const firstPhase = currentTemplate?.phases.find((phase) => phase.id === state.activePhaseId)
+    ?? currentTemplate?.phases[0]
+  const phaseCount = currentTemplate?.phases.length ?? state.phases.length
+  const labels = Array.isArray(state.labels) ? state.labels : []
+  const capabilities = [
+    description,
+    phaseCount > 0 ? `我会按 ${phaseCount} 个阶段带你推进` : '',
+    firstPhase?.label ? `第一步会从「${firstPhase.label}」开始` : '',
+    labels.length ? `当前路线偏向：${labels.join('、')}` : '',
+  ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+
+  const message = [
+    `嗨，我是「${workflowName}」workflow。`,
+    capabilities.length ? capabilities.join('；') + '。' : '我会按这个 workflow 的阶段约束来协助你推进。',
+    '你可以直接告诉我想做什么、要改哪里、或把目标/问题丢给我；你一发消息，我就正式进入第一阶段开工。🚀',
+  ].join('\n\n')
+
+  sendMessage(ws, {
+    type: 'system_notification',
+    subtype: 'workflow_welcome',
+    message,
+    data: {
+      templateId: workflow.templateId,
+      templateSource: workflow.templateSource,
+      workflowName,
+      activePhaseId: state.activePhaseId,
+      phaseCount,
+    },
+  })
+}
+
 async function handlePrewarmSession(ws: ServerWebSocket<WebSocketData>) {
   const { sessionId } = ws.data
   if (conversationService.hasSession(sessionId) || sessionStartupPromises.has(sessionId)) {
@@ -498,6 +568,10 @@ async function handlePrewarmSession(ws: ServerWebSocket<WebSocketData>) {
   const launchInfo = await sessionService.getSessionLaunchInfo(sessionId).catch(() => null)
   if (launchInfo?.repository) {
     console.log(`[WS] Skipping prewarm for pending repository launch session ${sessionId}`)
+    return
+  }
+  if ((launchInfo?.transcriptMessageCount ?? 0) > 0) {
+    console.log(`[WS] Skipping prewarm resume for existing transcript session ${sessionId}`)
     return
   }
 
@@ -518,6 +592,33 @@ async function handlePrewarmSession(ws: ServerWebSocket<WebSocketData>) {
     })
 }
 
+async function resolveSessionRuntimeUserMessage(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  content: string,
+): Promise<string | null> {
+  const workflow = await getWorkflowMetadata(sessionId)
+  if (workflow) {
+    return resolveWorkflowUserMessage(ws, sessionId, content)
+  }
+
+  const session = await sessionService.getSession(sessionId).catch(() => null)
+  const expertInstruction = buildExpertRuntimeTurnInstruction(session?.expert)
+  if (expertInstruction) {
+    return [
+      expertInstruction,
+      '<expert-user-request>',
+      content,
+      '</expert-user-request>',
+    ].join('\n\n')
+  }
+
+  const resetInstruction = buildNormalRuntimeResetInstruction(session?.expert)
+  return resetInstruction
+    ? [resetInstruction, content].join('\n\n')
+    : content
+}
+
 async function resolveWorkflowUserMessage(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
@@ -528,6 +629,7 @@ async function resolveWorkflowUserMessage(
 
   const state = await loadWorkflowStateForWebSocket(sessionId, workflow)
   if (!state) return content
+  if (state.workflowStatus === 'cancelled' || state.status === 'cancelled') return content
   const defaultModel = await resolveWorkflowDefaultModel(sessionId)
 
   const started = await workflowRuntimeService.startPhase({
@@ -630,19 +732,120 @@ function isWorkflowModelResolution(value: unknown): value is WorkflowModelResolu
   )
 }
 
-function handlePermissionResponse(
+async function handlePermissionResponse(
   ws: ServerWebSocket<WebSocketData>,
   message: Extract<ClientMessage, { type: 'permission_response' }>
 ) {
   const { sessionId } = ws.data
-  conversationService.respondToPermission(
+  const workflowChoice = workflowChoiceActionFromInput(message.updatedInput)
+  if (workflowChoice) {
+    await handleWorkflowChoiceAction(ws, workflowChoice)
+    return
+  }
+
+  const delivered = conversationService.respondToPermission(
     sessionId,
     message.requestId,
     message.allowed,
     message.rule,
     message.updatedInput,
   )
+  if (!delivered && isAskUserQuestionAnswer(message.updatedInput)) {
+    sendMessage(ws, {
+      type: 'error',
+      message: 'The structured answer could not be delivered because the CLI session is not running.',
+      code: 'CLI_NOT_RUNNING',
+    })
+    sendMessage(ws, { type: 'status', state: 'idle' })
+    return
+  }
   console.log(`[WS] Permission response for ${message.requestId}: ${message.allowed}`)
+}
+
+type WorkflowChoiceAction = {
+  questionId: string
+  choiceId: string
+  action: 'advance_phase' | 'return_to_phase' | 'pause_workflow'
+  targetPhaseId?: string
+  metadata?: Record<string, unknown>
+}
+
+function workflowChoiceActionFromInput(input: unknown): WorkflowChoiceAction | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const actions = (input as Record<string, unknown>).workflowChoiceActions
+  if (!Array.isArray(actions) || actions.length !== 1) return null
+  const action = actions[0]
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return null
+  const record = action as Record<string, unknown>
+  if (
+    typeof record.questionId !== 'string'
+    || typeof record.choiceId !== 'string'
+    || (record.action !== 'advance_phase' && record.action !== 'return_to_phase' && record.action !== 'pause_workflow')
+  ) return null
+  return {
+    questionId: record.questionId,
+    choiceId: record.choiceId,
+    action: record.action,
+    ...(typeof record.targetPhaseId === 'string' ? { targetPhaseId: record.targetPhaseId } : {}),
+    ...(record.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
+      ? { metadata: record.metadata as Record<string, unknown> }
+      : {}),
+  }
+}
+
+async function handleWorkflowChoiceAction(
+  ws: ServerWebSocket<WebSocketData>,
+  choice: WorkflowChoiceAction,
+): Promise<void> {
+  const { sessionId } = ws.data
+  const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (!state) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_STATE_UNAVAILABLE',
+      message: 'The workflow choice cannot run because workflow state is unavailable.',
+    })
+    return
+  }
+
+  const action = choice.action === 'advance_phase'
+    ? 'confirm'
+    : choice.action === 'return_to_phase'
+      ? 'reject'
+      : 'pause'
+  const pending = state.pendingConfirmation
+  if (action !== 'pause') {
+    if (!pending || pending.status !== 'pending') {
+      sendMessage(ws, {
+        type: 'error',
+        code: 'WORKFLOW_COMPLETION_REQUIRED',
+        message: 'This workflow choice cannot advance a phase until submit_phase_completion creates a pending completion gate.',
+      })
+      return
+    }
+    if (choice.targetPhaseId && action === 'confirm' && pending.toPhaseId !== choice.targetPhaseId) {
+      sendMessage(ws, {
+        type: 'error',
+        code: 'WORKFLOW_CHOICE_PHASE_MISMATCH',
+        message: 'The selected workflow choice does not match the pending target phase.',
+      })
+      return
+    }
+  }
+
+  await applyWorkflowTransitionMessage(ws, {
+    type: 'workflow_transition',
+    phaseId: state.activePhaseId ?? pending?.phaseId ?? 'workflow',
+    action,
+    stateVersion: state.stateVersion,
+    transitionId: `ask-user-question:${choice.questionId}:${choice.choiceId}:${state.stateVersion}`,
+  } as WorkflowBoundaryTransitionMessage)
+}
+
+function isAskUserQuestionAnswer(input: unknown): boolean {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
+  const record = input as Record<string, unknown>
+  return Array.isArray(record.questions) && Boolean(record.answers && typeof record.answers === 'object')
 }
 
 function handleComputerUsePermissionResponse(
@@ -742,14 +945,17 @@ async function applyWorkflowTransitionMessage(
   for (const notification of result.notifications) {
     sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
   }
-  const shouldContinueNextPhase = shouldAutoContinueWorkflowAfterTransition(state, result.state, message)
-  if (conversationService.hasSession(sessionId)) {
+  const workflowResumeInstruction = getWorkflowResumeInstructionAfterTransition(state, result.state, message)
+    ?? getWorkflowResumeInstructionAfterCompletion(result.state, message)
+  if (message.action !== 'pause' && conversationService.hasSession(sessionId)) {
     await enqueueRuntimeTransition(sessionId, () =>
       restartSessionWithWorkflowPolicy(ws, sessionId, result.state),
     )
+  } else if (workflowResumeInstruction) {
+    await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
   }
-  if (shouldContinueNextPhase) {
-    await sendWorkflowAutoContinueTurn(ws, sessionId, result.state)
+  if (workflowResumeInstruction) {
+    await sendWorkflowResumeTurn(ws, sessionId, result.state, workflowResumeInstruction)
   }
 }
 
@@ -806,7 +1012,7 @@ function normalizeWorkflowTransitionMessage(
 }
 
 function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
-  return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+  return action === 'ready' || action === 'needs_user' || action === 'completed' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
 }
 
 function isSupportedNextPhaseContextStrategy(
@@ -826,22 +1032,61 @@ function toCompletionSubmission(message: WorkflowBoundaryTransitionMessage): Com
   }
 }
 
-function shouldAutoContinueWorkflowAfterTransition(
+function getWorkflowResumeInstructionAfterCompletion(
+  state: WorkflowSessionState,
+  message: WorkflowBoundaryTransitionMessage,
+): string | null {
+  if (
+    message.action === 'completed'
+    && state.workflowStatus === 'running'
+    && state.runStatus === 'active'
+    && Boolean(state.activePhaseId)
+    && !state.pendingConfirmation
+  ) {
+    return `Continue automatically with the workflow phase that was advanced by the completed phase submission: ${state.activePhaseId}.`
+  }
+  return null
+}
+
+function getWorkflowResumeInstructionAfterTransition(
   previousState: WorkflowSessionState,
   nextState: WorkflowSessionState,
   message: WorkflowBoundaryTransitionMessage,
-): boolean {
-  return message.action === 'confirm'
+): string | null {
+  const phaseId = nextState.activePhaseId
+  if (
+    message.action === 'confirm'
     && nextState.workflowStatus === 'running'
-    && Boolean(nextState.activePhaseId)
-    && nextState.activePhaseId !== previousState.activePhaseId
+    && Boolean(phaseId)
+    && phaseId !== previousState.activePhaseId
     && !nextState.pendingConfirmation
+  ) {
+    return `Continue automatically with the newly confirmed workflow phase: ${phaseId}.`
+  }
+
+  if (
+    message.action === 'reject'
+    && nextState.workflowStatus === 'running'
+    && Boolean(phaseId)
+    && phaseId === previousState.activePhaseId
+    && !nextState.pendingConfirmation
+  ) {
+    return [
+      `The user rejected the completion result for the current workflow phase: ${phaseId}.`,
+      'Do not advance the workflow phase.',
+      'Immediately use AskUserQuestion to ask what the user wants to adjust in this phase.',
+      'Offer concise, phase-appropriate choices and wait for the answer before revising the phase result.',
+    ].join(' ')
+  }
+
+  return null
 }
 
-async function sendWorkflowAutoContinueTurn(
+async function sendWorkflowResumeTurn(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
   state: WorkflowSessionState,
+  userMessage: string,
 ): Promise<void> {
   if (!conversationService.hasSession(sessionId)) return
 
@@ -868,7 +1113,7 @@ async function sendWorkflowAutoContinueTurn(
 
   const prompt = await workflowRuntimeService.assemblePrompt({
     state: started.state,
-    userMessage: `Continue automatically with the newly confirmed workflow phase: ${phaseId}.`,
+    userMessage,
   })
   const resolvedMessage = augmentWorkflowPrompt(started.state, prompt.content)
 
@@ -966,7 +1211,7 @@ async function restartSessionWithPermissionMode(
     await settingsService.setPermissionMode(mode)
 
     const workDir = conversationService.getSessionWorkDir(sessionId)
-    conversationService.stopSession(sessionId)
+    await conversationService.stopSessionAndWait(sessionId)
 
     // Rebuild runtime settings (will pick up the persisted mode)
     const runtimeSettings = await getRuntimeSettings(sessionId)
@@ -1007,7 +1252,7 @@ async function restartSessionWithRuntimeConfig(
 ): Promise<void> {
   try {
     const workDir = conversationService.getSessionWorkDir(sessionId)
-    conversationService.stopSession(sessionId)
+    await conversationService.stopSessionAndWait(sessionId)
 
     const runtimeSettings = await getRuntimeSettings(sessionId)
     const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
@@ -1049,7 +1294,7 @@ async function restartSessionWithWorkflowPolicy(
 ): Promise<void> {
   try {
     const workDir = conversationService.getSessionWorkDir(sessionId)
-    conversationService.stopSession(sessionId)
+    await conversationService.stopSessionAndWait(sessionId)
 
     const runtimeSettings = await getRuntimeSettings(sessionId)
     const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings, state)
@@ -1354,7 +1599,7 @@ async function resolveSessionWorkDir(sessionId: string, fallback = os.homedir())
 async function ensureCliSessionStarted(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
-  reason: 'user_message' | 'prewarm_session',
+  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue',
 ): Promise<void> {
   const pendingStartup = sessionStartupPromises.get(sessionId)
   if (pendingStartup) {
@@ -2505,26 +2750,6 @@ function makeEphemeralWorkflowState(
       snapshotId: workflow?.templateSnapshotId ?? `${templateId}-v${templateVersion}`,
       sourceState: 'current',
     },
-    templateSnapshot: {
-      schemaVersion: 1,
-      id: templateId,
-      source: templateSource,
-      version: templateVersion,
-      displayName: templateId,
-      description: 'Ephemeral workflow state for WebSocket transition handling.',
-      phases: [
-        {
-          id: activePhaseId || 'implementation',
-          label: activePhaseId || 'implementation',
-          instructions: `Continue workflow phase ${activePhaseId || 'implementation'}.`,
-          requestedModel: null,
-          skillDeclarations: [],
-          requiredArtifacts: [],
-          completionCriteria: { type: 'agent-reported', description: 'completion criteria' },
-          transitionAuthority: 'auto',
-        },
-      ],
-    },
     templateIdentity: {
       id: templateId,
       source: templateSource,
@@ -2564,7 +2789,12 @@ function isWorkflowTransitionRequest(message: Extract<ClientMessage, { type: 'wo
       message.action === 'reject' ||
       message.action === 'retry' ||
       message.action === 'manual_complete' ||
+      message.action === 'pause' ||
+      message.action === 'resume' ||
+      message.action === 'stop' ||
       message.action === 'ready' ||
+      message.action === 'needs_user' ||
+      message.action === 'completed' ||
       message.action === 'blocked' ||
       message.action === 'unable'
     ) &&

@@ -14,6 +14,7 @@ import {
   type WorkflowTemplateRegistryTemplate,
   type WorkflowTemplateValidationIssue,
 } from './workflowTemplateValidation.js'
+import { PackRegistryService } from './packRegistryService.js'
 import {
   resolveWorkflowPhaseSkills,
   type WorkflowPhaseSkillCatalogEntry,
@@ -41,11 +42,16 @@ export type WorkflowTemplateRegistryListResult = {
 type WorkflowConfigFile = {
   schemaVersion: 1
   templates?: unknown[]
+  seededEditableDefaultTemplateIds?: string[]
   [key: string]: unknown
 }
 
 const USER_CONFIG_SCHEMA_VERSION = WORKFLOW_TEMPLATE_SCHEMA_VERSION
 const TEMPLATE_VALIDATION_SUPPORTED_SKILL_SOURCES: WorkflowPhaseSkillSource[] = [
+  'superpowers',
+  'spec-kit-plus',
+  'codex',
+  'claude-code',
   'user',
   'project',
   'plugin',
@@ -58,12 +64,98 @@ function cloneTemplate(template: WorkflowTemplateRegistryTemplate): WorkflowTemp
   return JSON.parse(JSON.stringify(template)) as WorkflowTemplateRegistryTemplate
 }
 
+function editableDefaultTemplates(): WorkflowTemplateRegistryTemplate[] {
+  // Runtime workflow source is now ZIP pack only (via PackRegistryService).
+  // No builtin JSON templates are merged at runtime.
+  return []
+}
+
+function editableDefaultTemplateIds(): string[] {
+  return editableDefaultTemplates().map((template) => template.id)
+}
+
 function getConfigDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
 }
 
 function getWorkflowConfigPath(): string {
   return getAppStoragePath(getConfigDir(), 'workflows.json')
+}
+
+const BUNDLED_SKILLS_DIR_ENV = 'CLAUDE_BUNDLED_SKILLS_DIR'
+const SKILLS_DIR_ENV = 'CLAUDE_SKILLS_DIR'
+const PACK_SKILL_METADATA_FILE = '.cc-jiangxia-pack.json'
+
+function pushUniquePath(candidates: string[], candidate: string | null | undefined): void {
+  if (!candidate) return
+  const normalized = path.resolve(candidate)
+  if (!candidates.includes(normalized)) candidates.push(normalized)
+}
+
+function sidecarResourceBasePath(): string | null {
+  if (!process.execPath) return null
+  return path.dirname(process.execPath)
+}
+
+function pushRepoSkillRootCandidates(
+  roots: Array<{ path: string; source: WorkflowPhaseSkillSource }>,
+  seen: Set<string>,
+  basePath: string | null | undefined,
+): void {
+  if (!basePath) return
+  const baseCandidates: string[] = []
+  pushUniquePath(baseCandidates, basePath)
+  pushUniquePath(baseCandidates, path.join(basePath, '..'))
+  pushUniquePath(baseCandidates, path.join(basePath, '..', '..'))
+  pushUniquePath(baseCandidates, path.join(basePath, '..', '..', '..'))
+
+  for (const base of baseCandidates) {
+    pushSkillRoot(roots, seen, path.join(base, '.codex', 'skills'), 'managed')
+    pushSkillRoot(roots, seen, path.join(base, '.agents', 'skills'), 'managed')
+    pushSkillRoot(roots, seen, path.join(base, 'src', 'skills', 'bundled'), 'bundled')
+  }
+}
+
+function pushPackagedSkillRootCandidates(
+  roots: Array<{ path: string; source: WorkflowPhaseSkillSource }>,
+  seen: Set<string>,
+  basePath: string | null | undefined,
+): void {
+  if (!basePath) return
+  pushSkillRoot(roots, seen, path.join(basePath, 'skills', 'bundled'), 'bundled')
+  pushSkillRoot(roots, seen, path.join(basePath, 'binaries', 'skills', 'bundled'), 'bundled')
+}
+
+function pushSkillRoot(
+  roots: Array<{ path: string; source: WorkflowPhaseSkillSource }>,
+  seen: Set<string>,
+  rootPath: string | null | undefined,
+  source: WorkflowPhaseSkillSource,
+): void {
+  if (!rootPath) return
+  const normalized = path.resolve(rootPath)
+  const key = `${source}:${normalized}`
+  if (seen.has(key)) return
+  seen.add(key)
+  roots.push({ path: normalized, source })
+}
+
+function templateSkillCatalogRoots(): Array<{ path: string; source: WorkflowPhaseSkillSource }> {
+  const roots: Array<{ path: string; source: WorkflowPhaseSkillSource }> = []
+  const seen = new Set<string>()
+
+  pushSkillRoot(roots, seen, process.env[SKILLS_DIR_ENV], 'user')
+  pushSkillRoot(roots, seen, process.env[BUNDLED_SKILLS_DIR_ENV], 'bundled')
+  pushPackagedSkillRootCandidates(roots, seen, sidecarResourceBasePath())
+  pushRepoSkillRootCandidates(roots, seen, process.env.CLAUDE_APP_ROOT)
+  pushRepoSkillRootCandidates(roots, seen, process.env.CALLER_DIR)
+  pushRepoSkillRootCandidates(roots, seen, process.cwd())
+  pushSkillRoot(roots, seen, path.join(getConfigDir(), 'skills'), 'user')
+  for (const skillsPath of getProjectDirsUpToHome('skills', process.cwd())) {
+    pushSkillRoot(roots, seen, skillsPath, 'project')
+  }
+
+  return roots
 }
 
 function errnoCode(error: unknown): string | undefined {
@@ -299,6 +391,62 @@ function stripTemplateRuntimeState(template: unknown): unknown {
   }
 }
 
+async function ensureEditableDefaultTemplates(
+  config: WorkflowConfigFile | null,
+): Promise<WorkflowConfigFile | null> {
+  if (!config) return null
+
+  const seededIds = Array.isArray(config.seededEditableDefaultTemplateIds)
+    ? config.seededEditableDefaultTemplateIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : []
+  const editableDefaultIds = editableDefaultTemplateIds()
+  const templates = Array.isArray(config.templates) ? config.templates : []
+  const editableDefaults = editableDefaultTemplates()
+  const editableDefaultById = new Map(editableDefaults.map((template) => [template.id, template]))
+  const refreshedTemplates = templates.map((template) => {
+    if (!isRecord(template) || !isNonEmptyString(template.id) || !seededIds.includes(template.id)) {
+      return template
+    }
+    const defaultTemplate = editableDefaultById.get(template.id)
+    if (!defaultTemplate) return template
+    return stripTemplateRuntimeState({
+      ...template,
+      schemaVersion: defaultTemplate.schemaVersion,
+      source: 'user',
+      version: defaultTemplate.version,
+      name: defaultTemplate.name,
+      description: defaultTemplate.description,
+      ...(defaultTemplate.labels ? { labels: defaultTemplate.labels } : {}),
+      ...(defaultTemplate.routingPolicy ? { routingPolicy: defaultTemplate.routingPolicy } : {}),
+      ...(defaultTemplate.stopConditions ? { stopConditions: defaultTemplate.stopConditions } : {}),
+    })
+  })
+
+  const existingUserIds = new Set(
+    refreshedTemplates
+      .filter(isRecord)
+      .map((template) => template.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )
+  const defaultsToSeed = editableDefaults
+    .filter((template) => !existingUserIds.has(template.id))
+
+  const nextConfig: WorkflowConfigFile = {
+    ...config,
+    schemaVersion: USER_CONFIG_SCHEMA_VERSION,
+    templates: [
+      ...refreshedTemplates,
+      ...defaultsToSeed.map(stripTemplateRuntimeState),
+    ],
+    seededEditableDefaultTemplateIds: Array.from(new Set([
+      ...seededIds,
+      ...editableDefaultIds,
+    ])),
+  }
+
+  return nextConfig
+}
+
 let cachedRegistry: WorkflowTemplateRegistryListResult | null = null
 let cachedConfigPath: string | null = null
 
@@ -327,34 +475,33 @@ export class WorkflowTemplateRegistryService {
     return result
   }
 
+  async deleteStoredWorkflowPack(workflowId: string): Promise<void> {
+    await new PackRegistryService().deleteStoredWorkflowPack(workflowId)
+    resetWorkflowTemplateRegistryForTests()
+  }
+
   async writeTemplates(templates: unknown[]): Promise<void> {
-    const configPath = getWorkflowConfigPath()
-    const { config, issues } = await readUserConfig(configPath)
-    assertValidWritePayload(templates, issues)
-    const existingConfig: WorkflowConfigFile = config ?? {
-      schemaVersion: USER_CONFIG_SCHEMA_VERSION,
-      templates: [],
-    }
-    const existingTemplates = Array.isArray(existingConfig.templates)
-      ? existingConfig.templates
-      : []
+    assertValidWritePayload(templates, [])
+
+    const packRegistry = new PackRegistryService()
+    await migrateLegacyWorkflowConfigToPacks(getWorkflowConfigPath(), packRegistry).catch(() => [])
+    const existingTemplates = await packRegistry.listWorkflows().catch(() => [])
+    const existingById = new Map(existingTemplates
+      .filter((template) => template.source === 'user' || template.editable !== false)
+      .map((template) => [template.id, template]))
 
     const nextTemplates = templates.map((template) => {
       if (!isRecord(template) || !isNonEmptyString(template.id)) return template
-      const existingTemplate = existingTemplates.find((candidate) =>
-        isRecord(candidate) && candidate.id === template.id
-      )
+      const existingTemplate = existingById.get(template.id)
       return stripTemplateRuntimeState(mergeTemplateUnknownFields(template, existingTemplate))
     })
 
-    const nextConfig: WorkflowConfigFile = {
-      ...existingConfig,
-      schemaVersion: USER_CONFIG_SCHEMA_VERSION,
-      templates: nextTemplates,
-    }
+    const validationResults = nextTemplates.map((template, index) =>
+      validateAndNormalizeUserConfigTemplate(template, index),
+    )
+    const normalizedTemplates = validationResults.flatMap((result) => result.template ? [result.template] : [])
 
-    await fs.mkdir(path.dirname(configPath), { recursive: true })
-    await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, 'utf-8')
+    await packRegistry.writeSingleWorkflowPacks(normalizedTemplates)
 
     resetWorkflowTemplateRegistryForTests()
   }
@@ -363,49 +510,99 @@ export class WorkflowTemplateRegistryService {
     const templates: WorkflowTemplateRegistryTemplate[] = []
     const invalidTemplates: WorkflowTemplateValidationIssue[] = []
 
-    const { config, issues, missing } = await readUserConfig(configPath)
-    if (missing) {
-      return { templates, invalidTemplates }
-    }
-    invalidTemplates.push(...issues)
-    if (!config) {
-      return { templates, invalidTemplates }
-    }
-
-    const byId = new Map<string, WorkflowTemplateRegistryTemplate[]>()
-    const validationResults = config.templates?.map((template, index) =>
-      validateAndNormalizeUserConfigTemplate(template, index),
-    ) ?? []
-
-    for (const [index, { template, issues: templateIssues }] of validationResults.entries()) {
-      invalidTemplates.push(...templateIssues)
-      if (!template || templateIssues.length > 0) continue
-      invalidTemplates.push(...await resolveTemplatePhaseSkillIssues(template, index))
-      const existing = byId.get(template.id) ?? []
-      existing.push(template)
-      byId.set(template.id, existing)
-    }
-
-    for (const [id, matchingTemplates] of byId) {
-      if (matchingTemplates.length <= 1) continue
+    // ZIP-only workflow source: workflows are read from ZIP packs. A legacy
+    // workflows.json, when present, is treated only as an import/migration
+    // source into the fixed one-workflow-per-ZIP store.
+    try {
+      const packRegistry = new PackRegistryService()
+      invalidTemplates.push(...await migrateLegacyWorkflowConfigToPacks(configPath, packRegistry))
+      await packRegistry.seedBundledWorkflowPacks()
+      const packWorkflows = await packRegistry.listWorkflows()
+      templates.push(...packWorkflows)
+    } catch (error) {
       invalidTemplates.push({
-        source: 'user-config',
-        path: '$.templates',
-        code: 'WORKFLOW_TEMPLATE_DUPLICATE_ID',
-        message: 'User template ids must be unique.',
-        templateId: id,
-        severity: 'error',
+        source: 'pack-registry',
+        path: '$.packs',
+        code: 'WORKFLOW_PACK_REGISTRY_UNAVAILABLE',
+        message: `Workflow pack registry could not be loaded: ${errorMessage(error)}`,
+        severity: 'warning',
       })
-    }
-
-    for (const [, matchingTemplates] of byId) {
-      if (matchingTemplates.length === 1) {
-        templates.push(matchingTemplates[0])
-      }
     }
 
     return { templates, invalidTemplates }
   }
+}
+
+async function migrateLegacyWorkflowConfigToPacks(
+  configPath: string,
+  packRegistry: PackRegistryService,
+): Promise<WorkflowTemplateValidationIssue[]> {
+  const invalidTemplates: WorkflowTemplateValidationIssue[] = []
+  const { config, issues, missing } = await readUserConfig(configPath)
+  if (missing) return invalidTemplates
+  invalidTemplates.push(...issues)
+  if (!config) return invalidTemplates
+
+  const migrationMarkerPath = path.join(path.dirname(configPath), 'workflows', 'packs', '.legacy-workflows-json-migrated')
+  try {
+    await fs.access(migrationMarkerPath)
+    return invalidTemplates
+  } catch {
+    // no marker: legacy workflows.json has not been imported into ZIP storage yet
+  }
+
+  const seededEditableDefaultIds = new Set(
+    Array.isArray(config.seededEditableDefaultTemplateIds)
+      ? config.seededEditableDefaultTemplateIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [],
+  )
+  const migrationConfig = config
+  const storedPacks = await packRegistry.listStoredWorkflowPacks()
+  const storedWorkflowIds = new Set(storedPacks.flatMap((pack) =>
+    pack.workflows.map((workflow) => workflow.id),
+  ))
+  const byId = new Map<string, WorkflowTemplateRegistryTemplate[]>()
+  const validationResults = migrationConfig.templates?.map((template, index) =>
+    validateAndNormalizeUserConfigTemplate(template, index),
+  ) ?? []
+
+  for (const [index, { template, issues: templateIssues }] of validationResults.entries()) {
+    invalidTemplates.push(...templateIssues)
+    if (!template || templateIssues.some((issue) => issue.severity === 'error')) continue
+    if (seededEditableDefaultIds.has(template.id)) continue
+    const skillIssues = await resolveTemplatePhaseSkillIssues(template, index)
+    invalidTemplates.push(...skillIssues)
+    if (skillIssues.some((issue) => issue.severity === 'error')) continue
+    const existing = byId.get(template.id) ?? []
+    existing.push(template)
+    byId.set(template.id, existing)
+  }
+
+  const duplicateIds = new Set<string>()
+  for (const [id, matchingTemplates] of byId) {
+    if (matchingTemplates.length <= 1) continue
+    duplicateIds.add(id)
+    invalidTemplates.push({
+      source: 'user-config',
+      path: '$.templates',
+      code: 'WORKFLOW_TEMPLATE_DUPLICATE_ID',
+      message: 'User template ids must be unique.',
+      templateId: id,
+      severity: 'error',
+    })
+  }
+
+  for (const [id, matchingTemplates] of byId) {
+    if (matchingTemplates.length !== 1 || duplicateIds.has(id) || storedWorkflowIds.has(id)) continue
+    await packRegistry.writeSingleWorkflowPack(stripTemplateRuntimeState(matchingTemplates[0]) as WorkflowTemplateRegistryTemplate, id)
+  }
+
+  if (!invalidTemplates.some((issue) => issue.severity === 'error')) {
+    await fs.mkdir(path.dirname(migrationMarkerPath), { recursive: true })
+    await fs.writeFile(migrationMarkerPath, `${new Date().toISOString()}\n`, 'utf-8')
+  }
+
+  return invalidTemplates
 }
 
 async function resolveTemplatePhaseSkillIssues(
@@ -446,14 +643,8 @@ export async function collectTemplateSkillCatalog(): Promise<WorkflowPhaseSkillC
   const catalog: WorkflowPhaseSkillCatalogEntry[] = []
   const seen = new Set<string>()
   const roots: Array<{ path: string; source: WorkflowPhaseSkillSource }> = [
-    { path: path.join(process.cwd(), '.codex', 'skills'), source: 'managed' },
-    { path: path.join(process.cwd(), '.agents', 'skills'), source: 'managed' },
-    { path: path.join(process.cwd(), 'src', 'skills', 'bundled'), source: 'bundled' },
-    { path: path.join(getConfigDir(), 'skills'), source: 'user' },
-    ...getProjectDirsUpToHome('skills', process.cwd()).map((skillsPath) => ({
-      path: skillsPath,
-      source: 'project' as const,
-    })),
+    ...templateSkillCatalogRoots(),
+    ...(await superpowersSkillRoots()),
   ]
 
   for (const root of roots) {
@@ -476,16 +667,217 @@ export async function collectTemplateSkillCatalog(): Promise<WorkflowPhaseSkillC
         continue
       }
 
-      const key = `${root.source}:${entry.name}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      catalog.push({
-        name: entry.name,
-        source: root.source,
-        sourcePath: skillFile,
-      })
+      const skillText = await fs.readFile(skillFile, 'utf-8').catch(() => '')
+      const frontmatter = parseSkillFrontmatter(skillText)
+      const metadata = await readInstalledPackSkillMetadata(path.join(root.path, entry.name))
+      const aliases = collectSkillCatalogAliases(entry.name, root.source, frontmatter, metadata)
+      for (const alias of aliases) {
+        const key = `${root.source}:${metadata?.packId ?? ''}:${alias.name}:${alias.referenceId ?? ''}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        catalog.push({
+          name: alias.name,
+          displayName: alias.displayName ?? (root.source === 'superpowers' ? `Superpowers ${entry.name}` : frontmatter.displayName),
+          source: root.source,
+          pluginName: root.source === 'superpowers' ? 'superpowers' : undefined,
+          namespace: alias.namespace ?? (root.source === 'superpowers' ? 'superpowers' : undefined),
+          referenceId: alias.referenceId,
+          sourcePath: skillFile,
+          packId: metadata?.packId,
+          packSkillIdentity: metadata?.originalSkillId,
+          aliases: metadata?.aliases,
+        })
+      }
     }
   }
 
+  // Add pack-private skills from PackRegistryService (source='managed', installable=false)
+  try {
+    const packEntries = await new PackRegistryService().listPackSkillCatalogEntries()
+    for (const entry of packEntries) {
+      const key = `${entry.source}:${entry.packId ?? ''}:${entry.name}:${entry.referenceId ?? ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      catalog.push(entry)
+    }
+  } catch {
+    // Pack registry unavailable - pack-private skills may not resolve
+  }
+
   return catalog
+}
+
+
+type SkillCatalogAlias = {
+  name: string
+  referenceId?: string
+  namespace?: string
+  displayName?: string
+}
+
+type InstalledPackSkillMetadata = {
+  packId?: string
+  originalSkillId?: string
+  aliases: string[]
+  referenceMappings: Array<{ reference?: string; name?: string; namespace?: string; referenceId?: string }>
+}
+
+type SkillFrontmatter = {
+  name?: string
+  displayName?: string
+  referenceId?: string
+}
+
+function collectSkillCatalogAliases(
+  directoryName: string,
+  source: WorkflowPhaseSkillSource,
+  frontmatter: SkillFrontmatter,
+  metadata: InstalledPackSkillMetadata | null,
+): SkillCatalogAlias[] {
+  const aliases = new Map<string, SkillCatalogAlias>()
+  const add = (name: string | undefined, referenceId?: string, namespace?: string, displayName?: string): void => {
+    if (!isNonEmptyString(name)) return
+    const inferredNamespace = namespace ?? namespaceFromReference(referenceId ?? name)
+    const key = `${name}\0${referenceId ?? ''}\0${inferredNamespace ?? ''}`
+    if (aliases.has(key)) return
+    aliases.set(key, {
+      name,
+      ...(referenceId ? { referenceId } : {}),
+      ...(inferredNamespace ? { namespace: inferredNamespace } : {}),
+      ...(displayName ? { displayName } : {}),
+    })
+  }
+
+  if (source === 'superpowers') {
+    add(`superpowers:${directoryName}`, `superpowers:${directoryName}`, 'superpowers')
+    add(directoryName, `superpowers:${directoryName}`, 'superpowers')
+  } else {
+    add(directoryName, frontmatter.referenceId, namespaceFromReference(frontmatter.referenceId))
+  }
+
+  if (isNonEmptyString(frontmatter.referenceId)) add(frontmatter.referenceId, frontmatter.referenceId, namespaceFromReference(frontmatter.referenceId))
+  if (isNonEmptyString(frontmatter.name) && frontmatter.name.includes(':')) add(frontmatter.name, frontmatter.referenceId ?? frontmatter.name, namespaceFromReference(frontmatter.name))
+
+  if (metadata) {
+    if (isNonEmptyString(metadata.originalSkillId)) add(metadata.originalSkillId, metadata.originalSkillId, namespaceFromReference(metadata.originalSkillId))
+    for (const alias of metadata.aliases) add(alias, alias.includes(':') ? alias : undefined, namespaceFromReference(alias))
+    for (const mapping of metadata.referenceMappings) {
+      add(mapping.reference, mapping.referenceId ?? (mapping.reference?.includes(':') ? mapping.reference : undefined), mapping.namespace)
+      add(mapping.name, mapping.referenceId, mapping.namespace)
+      add(mapping.referenceId, mapping.referenceId, mapping.namespace)
+    }
+  }
+
+  return Array.from(aliases.values())
+}
+
+function namespaceFromReference(value: string | undefined): string | undefined {
+  if (!isNonEmptyString(value) || !value.includes(':')) return undefined
+  return value.split(':', 1)[0]
+}
+
+async function readInstalledPackSkillMetadata(skillDir: string): Promise<InstalledPackSkillMetadata | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(skillDir, PACK_SKILL_METADATA_FILE), 'utf-8'))
+    if (!isRecord(parsed)) return null
+    return {
+      packId: isNonEmptyString(parsed.packId) ? parsed.packId : undefined,
+      originalSkillId: isNonEmptyString(parsed.originalSkillId) ? parsed.originalSkillId : undefined,
+      aliases: Array.isArray(parsed.aliases) ? parsed.aliases.filter(isNonEmptyString) : [],
+      referenceMappings: parsePackReferenceMappings(parsed.referenceMappings),
+    }
+  } catch {
+    return null
+  }
+}
+
+function parsePackReferenceMappings(value: unknown): InstalledPackSkillMetadata['referenceMappings'] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isRecord).map((item) => ({
+    ...(isNonEmptyString(item.reference) ? { reference: item.reference } : {}),
+    ...(isNonEmptyString(item.name) ? { name: item.name } : {}),
+    ...(isNonEmptyString(item.namespace) ? { namespace: item.namespace } : {}),
+    ...(isNonEmptyString(item.referenceId) ? { referenceId: item.referenceId } : {}),
+  }))
+}
+
+function parseSkillFrontmatter(text: string): SkillFrontmatter {
+  if (!text.startsWith('---')) return {}
+  const end = text.indexOf('\n---', 3)
+  if (end < 0) return {}
+  const block = text.slice(3, end)
+  const result: SkillFrontmatter = {}
+  for (const line of block.split(/\r?\n/)) {
+    const match = /^([A-Za-z0-9_-]+):\s*(.+?)\s*$/.exec(line)
+    if (!match) continue
+    const key = match[1]
+    const value = match[2].replace(/^['"]|['"]$/g, '')
+    if (key === 'name' && isNonEmptyString(value)) result.name = value
+    if (key === 'displayName' && isNonEmptyString(value)) result.displayName = value
+    if ((key === 'referenceId' || key === 'reference-id') && isNonEmptyString(value)) result.referenceId = value
+  }
+  return result
+}
+
+async function superpowersSkillRoots(): Promise<Array<{ path: string; source: WorkflowPhaseSkillSource }>> {
+  const homes = Array.from(new Set([
+    getConfigDir(),
+    path.join(os.homedir(), '.claude'),
+    path.join(os.homedir(), '.codex'),
+  ]))
+  const bases = homes.flatMap((home) => [
+    path.join(home, 'plugins', 'cache', 'openai-curated-remote', 'superpowers'),
+    path.join(home, 'plugins', 'cache', 'openai-curated', 'superpowers'),
+    path.join(home, 'plugins', 'cache', 'superpowers'),
+  ])
+  const roots: Array<{ path: string; source: WorkflowPhaseSkillSource }> = []
+  const seen = new Set<string>()
+
+  for (const tmpSkills of homes.map((home) => path.join(home, '.tmp', 'plugins', 'plugins', 'superpowers', 'skills'))) {
+    if (await isDirectory(tmpSkills) && !seen.has(tmpSkills)) {
+      seen.add(tmpSkills)
+      roots.push({ path: tmpSkills, source: 'superpowers' })
+    }
+  }
+
+  for (const base of bases) {
+    const direct = path.join(base, 'skills')
+    if (await isDirectory(direct)) {
+      if (!seen.has(direct)) {
+        seen.add(direct)
+        roots.push({ path: direct, source: 'superpowers' })
+      }
+      continue
+    }
+
+    let versions: import('node:fs').Dirent[]
+    try {
+      versions = await fs.readdir(base, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const version of versions) {
+      if ((!version.isDirectory() && !version.isSymbolicLink()) || version.name.startsWith('.')) {
+        continue
+      }
+      const versionedSkills = path.join(base, version.name, 'skills')
+      if (!await isDirectory(versionedSkills) || seen.has(versionedSkills)) continue
+      seen.add(versionedSkills)
+      roots.push({ path: versionedSkills, source: 'superpowers' })
+    }
+  }
+
+  return roots
+}
+
+async function isDirectory(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

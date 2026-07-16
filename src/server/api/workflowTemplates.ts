@@ -1,16 +1,19 @@
-import {
+﻿import {
   WorkflowTemplateAuthoringService,
   type WorkflowTemplateAuthoringOperationInput,
   type WorkflowTemplateAuthoringResult,
 } from '../services/workflowTemplateAuthoringService.js'
 import {
   WorkflowTemplateRegistryService,
+  resetWorkflowTemplateRegistryForTests,
   type WorkflowTemplateRegistryListResult,
   type WorkflowTemplateRegistryTemplate,
   type WorkflowTemplateValidationIssue,
   collectTemplateSkillCatalog,
 } from '../services/workflowTemplateRegistryService.js'
 import { resolveWorkflowPhaseSkills } from '../services/workflowPhaseSkillResolver.js'
+import { PackRegistryService } from '../services/packRegistryService.js'
+import { WorkflowPackExportDependencyError } from '../services/workflowPackSkillService.js'
 import {
   isNonEmptyString,
   isRecord,
@@ -25,7 +28,7 @@ import type {
   WorkflowPhaseSkillSource,
 } from '../services/workflowTypes.js'
 
-type WorkflowTemplateSource = 'builtin' | 'user'
+type WorkflowTemplateSource = 'user' | 'pack'
 type ErrorStatus = 400 | 404 | 405 | 409
 type ApiValidationIssue = Omit<WorkflowTemplateValidationIssue, 'source'> & {
   source: WorkflowTemplateValidationIssue['source'] | 'request' | 'import'
@@ -38,7 +41,7 @@ type ImportCandidate = {
   name: string
   version: string
   phaseCount: number
-  conflict: 'none' | 'builtin-template' | 'user-template'
+  conflict: 'none' | 'user-template'
   defaultResolution: 'add' | 'rename'
   selectable: boolean
   issues: ApiValidationIssue[]
@@ -58,7 +61,7 @@ type WorkflowSkillDependency = {
 }
 
 const registryService = new WorkflowTemplateRegistryService()
-const VALID_SOURCES = new Set(['builtin', 'user'])
+const VALID_SOURCES = new Set(['user', 'pack'])
 
 export async function handleWorkflowTemplatesApi(req: Request, url: URL, segments: string[]): Promise<Response> {
   try {
@@ -105,7 +108,7 @@ export async function handleWorkflowTemplatesApi(req: Request, url: URL, segment
     if (tail.length === 2) {
       const [source, id] = tail
       if (!isWorkflowSource(source)) {
-        return workflowError(400, 'WORKFLOW_TEMPLATE_INVALID_SOURCE', 'Workflow template source must be builtin or user')
+        return workflowError(400, 'WORKFLOW_TEMPLATE_INVALID_SOURCE', 'Workflow template source must be user or pack')
       }
 
       if (req.method === 'GET') return await getTemplateDetail(source, decodeURIComponent(id))
@@ -222,6 +225,7 @@ async function deleteTemplate(id: string): Promise<Response> {
   }
 
   await writeUserTemplates(userTemplates(registry).filter((template) => template.id !== id))
+  await registryService.deleteStoredWorkflowPack(id)
   return Response.json(toListResponse(await registryService.listTemplates()))
 }
 
@@ -264,10 +268,33 @@ async function previewImport(req: Request): Promise<Response> {
   const body = await parseJsonBody(req)
   const payload = isRecord(body) ? body.payload : undefined
   const registry = await registryService.listTemplates()
+  if (isZipImportPayload(payload)) {
+    const packPreview = await new PackRegistryService().previewWorkflowPackZip(zipPayloadToBytes(payload))
+    const candidates = buildPackImportCandidates(packPreview.workflows)
+    return Response.json({
+      schemaVersion: 1,
+      format: 'zip-pack',
+      commitMode: 'pack',
+      pack: {
+        packId: packPreview.pack.packId,
+        name: packPreview.pack.name,
+        version: packPreview.pack.version,
+        description: packPreview.pack.description,
+        legacy: packPreview.legacy === true,
+      },
+      packagedSkills: packPreview.packagedSkills ?? [],
+      requiredHostTools: packPreview.requiredHostTools ?? [],
+      skillInstallPlan: packPreview.skillInstallPlan ?? [],
+      candidates: candidates.map(publicImportCandidate),
+      invalidTemplates: candidates.flatMap((candidate) => candidate.issues),
+      canCommit: candidates.some((candidate) => candidate.selectable) && !(packPreview.skillInstallPlan ?? []).some((item) => item.status === 'conflict'),
+    })
+  }
   const candidates = await buildImportCandidates(payload, registry)
 
   return Response.json({
     schemaVersion: 1,
+    format: 'json',
     candidates: candidates.map(publicImportCandidate),
     invalidTemplates: candidates.flatMap((candidate) => candidate.issues),
     canCommit: candidates.some((candidate) => candidate.selectable),
@@ -278,6 +305,11 @@ async function commitImport(req: Request): Promise<Response> {
   const body = await parseJsonBody(req)
   if (!isRecord(body)) {
     return workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Request body must be an object')
+  }
+  if (isZipImportPayload(body.payload)) {
+    await new PackRegistryService().importWorkflowPackZip(zipPayloadToBytes(body.payload))
+    resetWorkflowTemplateRegistryForTests()
+    return Response.json(toListResponse(await registryService.listTemplates()))
   }
   if (!Array.isArray(body.selections)) {
     return workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'selections must be an array')
@@ -349,12 +381,63 @@ async function exportTemplates(req: Request): Promise<Response> {
   }
 
   const exportedAt = new Date().toISOString()
+  if (body.format === 'zip' || body.format === 'zip-pack') {
+    const packId = isNonEmptyString(body.packId) ? body.packId : `workflow-export-${templates.length}-templates`
+    const packName = isNonEmptyString(body.name) ? body.name : 'Workflow Export Pack'
+    let data: Uint8Array
+    try {
+      data = await new PackRegistryService().exportWorkflowPackZip({
+        packId,
+        name: packName,
+        version: isNonEmptyString(body.version) ? body.version : '1.0.0',
+        description: isNonEmptyString(body.description) ? body.description : 'Exported workflow pack.',
+        workflows: templates,
+      })
+    } catch (error) {
+      if (error instanceof WorkflowPackExportDependencyError) {
+        throw new WorkflowTemplateApiError(400, 'WORKFLOW_PACK_DEPENDENCY_UNAVAILABLE', 'Workflow pack export requires real packable dependencies.', { blockers: error.blockers })
+      }
+      throw error
+    }
+    return Response.json({
+      schemaVersion: 1,
+      format: 'zip-pack',
+      exportedAt,
+      fileName: `${packId}.zip`,
+      contentType: 'application/zip',
+      dataBase64: Buffer.from(data).toString('base64'),
+      templates,
+    })
+  }
+
   return Response.json({
     schemaVersion: 2,
     exportedAt,
     templates,
     dependencyManifest: await buildExportDependencyManifest(dependencyTemplates, exportedAt),
   })
+}
+
+
+function buildPackImportCandidates(workflows: WorkflowTemplateRegistryTemplate[]): ImportCandidate[] {
+  return workflows.map((template, index) => ({
+    importId: `pack-${index + 1}`,
+    originalId: template.id,
+    proposedId: template.id,
+    name: template.name,
+    version: template.version,
+    phaseCount: template.phases.length,
+    conflict: 'none' as const,
+    defaultResolution: 'add' as const,
+    selectable: true,
+    issues: [],
+    dependencyDiagnostics: [],
+    template: cloneTemplateRecord(template),
+  }))
+}
+
+function cloneTemplateRecord(template: WorkflowTemplateRegistryTemplate): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(template)) as Record<string, unknown>
 }
 
 async function buildImportCandidates(payload: unknown, registry: WorkflowTemplateRegistryListResult): Promise<ImportCandidate[]> {
@@ -366,13 +449,12 @@ async function buildImportCandidates(payload: unknown, registry: WorkflowTemplat
   for (const [index, template] of importedTemplates.entries()) {
     const importId = `candidate-${index + 1}`
     const originalId = isRecord(template) && isNonEmptyString(template.id) ? template.id : importId
-    const conflict = registry.templates.some((candidate) => candidate.source === 'user' && candidate.id === originalId)
-      ? 'user-template'
-      : 'none'
+    const conflictingTemplate = registry.templates.find((candidate) => candidate.id === originalId)
+    const conflict = conflictingTemplate?.source === 'user' ? 'user-template' : 'none'
     const proposedId = conflict === 'none' ? originalId : nextAvailableId(`${originalId}-imported`, registry)
     const validationDraft = isRecord(template) ? { ...template, id: proposedId, source: 'user' } : template
     const validation = validateUserTemplate(validationDraft, `$.payload.templates[${index}]`, 'import', registry, {
-      allowExistingId: conflict === 'user-template' ? proposedId : undefined,
+      allowExistingId: conflict !== 'none' ? proposedId : undefined,
     })
     const manifestDependencyDiagnostics = buildManifestDependencyDiagnostics(originalId, dependencyManifest)
     const resolvedDependencyDiagnostics = validation.template
@@ -461,6 +543,21 @@ function exportDependencyFromResolution(
   return dependency
 }
 
+
+function isZipImportPayload(payload: unknown): payload is { format?: unknown; dataBase64?: unknown; zipBase64?: unknown } {
+  return isRecord(payload) &&
+    (payload.format === 'zip-pack' || payload.format === 'zip') &&
+    (isNonEmptyString(payload.dataBase64) || isNonEmptyString(payload.zipBase64))
+}
+
+function zipPayloadToBytes(payload: { dataBase64?: unknown; zipBase64?: unknown }): Uint8Array {
+  const dataBase64 = isNonEmptyString(payload.dataBase64)
+    ? payload.dataBase64
+    : isNonEmptyString(payload.zipBase64)
+      ? payload.zipBase64
+      : ''
+  return new Uint8Array(Buffer.from(dataBase64, 'base64'))
+}
 function extractImportTemplates(payload: unknown): unknown[] {
   if (isRecord(payload) && Array.isArray(payload.templates)) {
     return payload.templates
@@ -664,9 +761,18 @@ async function parseJsonBody(req: Request): Promise<unknown> {
 
 function toListResponse(registry: WorkflowTemplateRegistryListResult): { templates: Array<ReturnType<typeof summarizeTemplate>>; invalidTemplates: WorkflowTemplateValidationIssue[] } {
   return {
-    templates: registry.templates.map(summarizeTemplate),
+    templates: visibleTemplates(registry.templates).map(summarizeTemplate),
     invalidTemplates: registry.invalidTemplates,
   }
+}
+
+function visibleTemplates(templates: WorkflowTemplateRegistryTemplate[]): WorkflowTemplateRegistryTemplate[] {
+  const userTemplateIds = new Set(
+    templates
+      .filter((template) => template.source === 'user')
+      .map((template) => template.id),
+  )
+  return templates.filter((template) => template.source !== 'builtin' || !userTemplateIds.has(template.id))
 }
 
 function summarizeTemplate(template: WorkflowTemplateRegistryTemplate) {
@@ -676,12 +782,17 @@ function summarizeTemplate(template: WorkflowTemplateRegistryTemplate) {
     version: template.version,
     name: template.name,
     description: template.description,
+    labels: template.labels ?? [],
     phaseCount: template.phases.length,
     firstPhaseId: template.phases[0]?.id ?? null,
     phaseNames: template.phases.map((phase) => phase.name),
     startable: template.phases.length > 0,
     editable: template.source === 'user',
     copyable: true,
+    ...(template.modelRequirements ? { modelRequirements: template.modelRequirements } : {}),
+    ...(template.requiredModelCapabilities ? { requiredModelCapabilities: template.requiredModelCapabilities } : {}),
+    ...(template.packId ? { packId: template.packId } : {}),
+    ...(template.packName ? { packName: template.packName } : {}),
   }
 }
 
@@ -690,6 +801,10 @@ function decorateTemplate(template: WorkflowTemplateRegistryTemplate) {
     ...cloneTemplate(template),
     editable: template.source === 'user',
     copyable: true,
+    ...(template.modelRequirements ? { modelRequirements: template.modelRequirements } : {}),
+    ...(template.requiredModelCapabilities ? { requiredModelCapabilities: template.requiredModelCapabilities } : {}),
+    ...(template.packId ? { packId: template.packId } : {}),
+    ...(template.packName ? { packName: template.packName } : {}),
   }
 }
 
@@ -739,9 +854,7 @@ function templateDraftForDuplicate(template: WorkflowTemplateRegistryTemplate): 
 }
 
 function exportTemplateDraft(template: WorkflowTemplateRegistryTemplate): Record<string, unknown> {
-  const draft = template.source === 'builtin'
-    ? templateDraftForDuplicate(template)
-    : cloneTemplate(template) as Record<string, unknown>
+  const draft = cloneTemplate(template) as Record<string, unknown>
 
   delete draft.source
   delete draft.editable
@@ -810,3 +923,4 @@ class WorkflowTemplateApiError extends Error {
     super(message)
   }
 }
+

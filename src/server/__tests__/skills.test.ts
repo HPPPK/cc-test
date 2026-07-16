@@ -138,6 +138,129 @@ describe('Skills API', () => {
     )
   })
 
+  it('returns workflow fallback skills for workflow-only catalog requests even without installed skills', async () => {
+    const { req, url, segments } = makeRequest('/api/skills?catalogOnly=true&workflowOnly=true')
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      skills: Array<{
+        name: string
+        source: string
+        catalogStatus: string
+        referenceId?: string
+      }>
+    }
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'workflow:subagent-orchestrator',
+      source: 'workflow',
+      catalogStatus: 'fallback-contract',
+      referenceId: 'workflow:subagent-orchestrator',
+    }))
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'workflow:coder-subagent',
+      catalogStatus: 'fallback-contract',
+    }))
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'superpowers:verification-before-completion',
+      catalogStatus: 'fallback-contract',
+    }))
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'spec-kit-plus:implement-review',
+      catalogStatus: 'fallback-contract',
+    }))
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'claude-code:read-grep-edit-bash-todo',
+      catalogStatus: 'fallback-contract',
+    }))
+  })
+
+  it('promotes installed provider-prefixed workflow skills to native catalog entries', async () => {
+    const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')
+    await writeSkill(
+      userSkillsRoot,
+      'superpowers-verification-before-completion',
+      [
+        '---',
+        'referenceId: superpowers:verification-before-completion',
+        'description: Verify completion with the installed Superpowers skill.',
+        '---',
+        '',
+        '# verification-before-completion',
+      ].join('\n'),
+    )
+
+    const { req, url, segments } = makeRequest('/api/skills?catalogOnly=true&workflowOnly=true')
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      skills: Array<{
+        name: string
+        source: string
+        catalogStatus: string
+        nativeProvider?: string
+        referenceId?: string
+      }>
+    }
+    const installed = body.skills.filter((skill) => skill.name === 'superpowers:verification-before-completion')
+    expect(installed).toHaveLength(1)
+    expect(installed[0]).toMatchObject({
+      source: 'superpowers',
+      catalogStatus: 'available',
+      nativeProvider: 'skill-tool',
+      referenceId: 'superpowers:verification-before-completion',
+    })
+  })
+
+  it('resolves native provider skill details through the displayed workflow source', async () => {
+    const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')
+    await writeSkill(
+      userSkillsRoot,
+      'superpowers-verification-before-completion',
+      [
+        '---',
+        'referenceId: superpowers:verification-before-completion',
+        'description: Verify completion with the installed Superpowers skill.',
+        '---',
+        '',
+        '# verification-before-completion',
+        '',
+        'Run the native verification checklist.',
+      ].join('\n'),
+    )
+
+    const { req, url, segments } = makeRequest(
+      '/api/skills/detail?source=superpowers&name=superpowers%3Averification-before-completion',
+    )
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      detail: {
+        meta: {
+          name: string
+          source: string
+          nativeProvider?: string
+          referenceId?: string
+        }
+        files: Array<{ path: string; body?: string }>
+      }
+    }
+    expect(body.detail.meta).toMatchObject({
+      name: 'superpowers:verification-before-completion',
+      source: 'superpowers',
+      nativeProvider: 'skill-tool',
+      referenceId: 'superpowers:verification-before-completion',
+    })
+    expect(body.detail.files).toContainEqual(
+      expect.objectContaining({
+        path: 'SKILL.md',
+        body: expect.stringContaining('Run the native verification checklist.'),
+      }),
+    )
+  })
+
   it('lists user skills installed through a directory symlink or junction', async () => {
     const linkedSkillsRoot = path.join(tmpHome, '.agents', 'skills')
     const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')

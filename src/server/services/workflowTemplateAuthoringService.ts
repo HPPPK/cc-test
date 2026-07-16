@@ -131,7 +131,6 @@ export type WorkflowTemplateAuthoringNextAction =
   | 'inspect-and-retry'
   | 'repair-and-validate'
   | 'choose-unique-target'
-  | 'copy-builtin-first'
   | 'ask-user-to-disambiguate'
   | 'retry-after-server-available'
 
@@ -1155,15 +1154,15 @@ async function executeUpdate(
         issues: [
           authoringIssue(
             '$.selector.source',
-            'WORKFLOW_TEMPLATE_BUILTIN_READONLY',
-            'Builtin workflow templates are read-only; duplicate the template before editing.',
+            'WORKFLOW_TEMPLATE_INVALID_SOURCE',
+            'Workflow template source must be user.',
             input.selector.id,
           ),
         ],
       },
       invalidTemplates: registry.invalidTemplates,
-      nextAction: 'copy-builtin-first',
-      message: 'Builtin workflow templates are read-only; duplicate the template before editing.',
+      nextAction: 'inspect-and-retry',
+      message: 'Workflow template source must be user.',
     }
   }
 
@@ -1581,15 +1580,15 @@ async function executeDelete(
         issues: [
           authoringIssue(
             '$.selector.source',
-            'WORKFLOW_TEMPLATE_BUILTIN_READONLY',
-            'Builtin workflow templates are read-only; duplicate the template before editing.',
+            'WORKFLOW_TEMPLATE_INVALID_SOURCE',
+            'Workflow template source must be user.',
             input.selector.id,
           ),
         ],
       },
       invalidTemplates: registry.invalidTemplates,
-      nextAction: 'copy-builtin-first',
-      message: 'Builtin workflow templates are read-only; duplicate the template before editing.',
+      nextAction: 'inspect-and-retry',
+      message: 'Workflow template source must be user.',
     }
   }
 
@@ -1684,6 +1683,7 @@ async function executeDelete(
   await registryService.writeTemplates(registry.templates.filter((template) =>
     template.source === 'user' && template.id !== input.selector.id
   ))
+  await registryService.deleteStoredWorkflowPack(input.selector.id)
 
   const refreshed = await registryService.listTemplates()
 

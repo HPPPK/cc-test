@@ -101,6 +101,7 @@ export function registerTask(task: TaskState, setAppState: SetAppState): void {
   // Replacement (resume) — not a new start. Skip to avoid double-emit.
   if (isReplacement) return
 
+  const workflowTaskId = 'workflowTaskId' in task ? task.workflowTaskId as string | undefined : undefined
   enqueueSdkEvent({
     type: 'system',
     subtype: 'task_started',
@@ -113,6 +114,11 @@ export function registerTask(task: TaskState, setAppState: SetAppState): void {
         ? (task.workflowName as string | undefined)
         : undefined,
     prompt: 'prompt' in task ? (task.prompt as string) : undefined,
+    status: workflowTaskId ? 'queued' : undefined,
+    workflow_task_id: workflowTaskId,
+    execution_mode: 'executionMode' in task ? task.executionMode as 'read' | 'write' | undefined : undefined,
+    write_scopes: 'writeScopes' in task ? task.writeScopes as string[] | undefined : undefined,
+    worktree_isolation: 'worktreeIsolation' in task ? task.worktreeIsolation as boolean | undefined : undefined,
   })
 }
 

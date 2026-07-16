@@ -20,6 +20,9 @@ export type WorkflowPhaseSkillCatalogEntry = {
   referenceId?: string
   sourcePath?: string
   installable?: boolean
+  packId?: string
+  packSkillIdentity?: string
+  aliases?: string[]
 }
 
 export type ResolveWorkflowPhaseSkillsRequest = {
@@ -29,6 +32,7 @@ export type ResolveWorkflowPhaseSkillsRequest = {
   references: WorkflowPhaseSkillReference[]
   catalog: WorkflowPhaseSkillCatalogEntry[]
   supportedSources?: WorkflowPhaseSkillSource[]
+  requiredPackId?: string
   checkedAt?: string
 }
 
@@ -52,12 +56,13 @@ export async function resolveWorkflowPhaseSkills({
   references,
   catalog,
   supportedSources = DEFAULT_SUPPORTED_SOURCES,
+  requiredPackId,
   checkedAt = new Date().toISOString(),
 }: ResolveWorkflowPhaseSkillsRequest): Promise<ResolveWorkflowPhaseSkillsResponse> {
   return {
     schemaVersion: 1,
     resolvedAt: checkedAt,
-    resolutions: references.map((reference) => resolveWorkflowPhaseSkillReference(reference, catalog, supportedSources, checkedAt)),
+    resolutions: references.map((reference) => resolveWorkflowPhaseSkillReference(reference, catalog, supportedSources, checkedAt, requiredPackId)),
   }
 }
 
@@ -66,6 +71,7 @@ function resolveWorkflowPhaseSkillReference(
   catalog: WorkflowPhaseSkillCatalogEntry[],
   supportedSources: WorkflowPhaseSkillSource[],
   checkedAt: string,
+  requiredPackId?: string,
 ): WorkflowPhaseSkillResolution {
   const normalizedReference = normalizeReference(reference)
   const invalidDiagnostic = validateReference(normalizedReference)
@@ -92,7 +98,7 @@ function resolveWorkflowPhaseSkillReference(
     }
   }
 
-  const candidates = catalog.filter((entry) => matchesReference(normalizedReference, entry))
+  const candidates = catalog.filter((entry) => matchesReference(normalizedReference, entry, requiredPackId))
   const installableCandidates = candidates.filter((entry) => entry.installable)
   const presentCandidates = candidates.filter((entry) => !entry.installable)
 
@@ -192,7 +198,35 @@ function validateReference(reference: WorkflowPhaseSkillReference): WorkflowPhas
   return null
 }
 
-function matchesReference(reference: WorkflowPhaseSkillReference, entry: WorkflowPhaseSkillCatalogEntry): boolean {
+function referencePackId(reference: WorkflowPhaseSkillReference): string | undefined {
+  const packId = reference.packId
+  return typeof packId === 'string' && packId.trim() ? packId.trim() : undefined
+}
+
+function isPackPrivateCatalogEntry(entry: WorkflowPhaseSkillCatalogEntry): boolean {
+  return Boolean(
+    entry.packId
+      && typeof entry.sourcePath === 'string'
+      && entry.sourcePath.startsWith('pack://'),
+  )
+}
+
+function matchesReference(
+  reference: WorkflowPhaseSkillReference,
+  entry: WorkflowPhaseSkillCatalogEntry,
+  requiredPackId?: string,
+): boolean {
+  const explicitPackId = referencePackId(reference)
+  if (requiredPackId && entry.packId !== requiredPackId) {
+    return false
+  }
+  if (explicitPackId && entry.packId !== explicitPackId) {
+    return false
+  }
+  if (!requiredPackId && !explicitPackId && isPackPrivateCatalogEntry(entry)) {
+    return false
+  }
+
   if (entry.name !== reference.name) {
     return false
   }
@@ -253,6 +287,7 @@ function toCandidate(entry: WorkflowPhaseSkillCatalogEntry): WorkflowPhaseSkillC
     pluginName: entry.pluginName,
     namespace: entry.namespace,
     referenceId: entry.referenceId,
+    packId: entry.packId,
   }
 }
 
@@ -263,5 +298,6 @@ function toProvenance(entry: WorkflowPhaseSkillCatalogEntry): WorkflowPhaseSkill
     contentHash: entry.contentHash,
     namespace: entry.namespace,
     referenceId: entry.referenceId,
+    packId: entry.packId,
   }
 }

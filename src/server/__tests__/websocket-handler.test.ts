@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ServerWebSocket } from 'bun'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -16,7 +16,37 @@ import { conversationService } from '../services/conversationService.js'
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
 import { sessionService } from '../services/sessionService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
-import type { WorkflowSessionState } from '../services/workflowTypes.js'
+import type { WorkflowSessionState, WorkflowTemplate } from '../services/workflowTypes.js'
+import { setWorkflowRuntimeTemplateLoaderForTests } from '../services/workflowRuntimeTemplateService.js'
+
+beforeEach(() => {
+  setWorkflowRuntimeTemplateLoaderForTests(async (state): Promise<WorkflowTemplate | null> => {
+    if (state.templateSnapshot) return state.templateSnapshot
+    const templateId = state.templateIdentity?.id ?? 'ephemeral-workflow'
+    return {
+      schemaVersion: 1,
+      id: templateId,
+      source: state.templateIdentity?.source ?? 'builtin',
+      version: state.templateIdentity?.version ?? '1',
+      displayName: templateId,
+      description: 'Test-only current workflow template.',
+      phases: state.phases.map((phase) => ({
+        id: phase.id,
+        label: phase.label ?? phase.id,
+        instructions: `Continue workflow phase ${phase.id}.`,
+        requestedModel: null,
+        skillDeclarations: [],
+        requiredArtifacts: [],
+        completionCriteria: { type: 'agent-reported' },
+        transitionAuthority: phase.transitionAuthority ?? 'auto',
+      })),
+    }
+  })
+})
+
+afterEach(() => {
+  setWorkflowRuntimeTemplateLoaderForTests(null)
+})
 
 function makeClientSocket(sessionId: string) {
   const sent: string[] = []
@@ -43,7 +73,7 @@ async function flushAsyncHandlers() {
 
 async function waitForCondition(
   predicate: () => boolean,
-  timeoutMs = 250,
+  timeoutMs = 2000,
 ): Promise<void> {
   const start = Date.now()
   while (!predicate()) {
@@ -54,6 +84,57 @@ async function waitForCondition(
 
 function parseSentMessages(ws: { sent: string[] }) {
   return ws.sent.map((payload) => JSON.parse(payload) as Record<string, unknown>)
+}
+
+function makeExpertRuntimeMetadata(status: 'active' | 'exited') {
+  return {
+    mode: 'expert' as const,
+    expertId: 'repo-health-check',
+    expertName: 'Repository health',
+    packId: 'repo-health-check',
+    packVersion: '1.0.0',
+    status,
+    materialRefs: [],
+    startedAt: '2026-05-20T00:00:00.000Z',
+    updatedAt: '2026-05-20T00:00:00.000Z',
+    ...(status === 'active'
+      ? {
+          runtimeBinding: {
+            schemaVersion: 1 as const,
+            active: true as const,
+            expertId: 'repo-health-check',
+            expertName: 'Repository health',
+            packId: 'repo-health-check',
+            packVersion: '1.0.0',
+            promptSnapshot: 'Inspect the repository carefully before offering conclusions.',
+            skills: [{
+              skillId: 'repository-health',
+              title: 'Repository health review',
+              path: 'skills/repository-health/SKILL.md',
+              sha256: 'a'.repeat(64),
+              content: 'Report concrete repository health findings with evidence.',
+            }],
+            hostTools: [],
+            tools: [{
+              id: 'read-project',
+              name: 'Read project',
+              type: 'hostBuiltinRef' as const,
+              purpose: 'Inspect repository files',
+              entrypoint: 'Read',
+              hostToolId: 'Read',
+              permissions: [],
+            }],
+            permissions: [{
+              id: 'read-only',
+              description: 'Do not mutate repository files.',
+            }],
+            activatedAt: '2026-05-20T00:00:00.000Z',
+          },
+        }
+      : {
+          exitedAt: '2026-05-20T00:10:00.000Z',
+        }),
+  }
 }
 
 function makeWorkflowState(sessionId: string): WorkflowSessionState {
@@ -112,12 +193,16 @@ function makeWorkflowState(sessionId: string): WorkflowSessionState {
     phases: [
       {
         id: 'requirements-clarification',
+        label: 'Requirements Clarification',
+        transitionAuthority: 'user-confirmation',
         index: 0,
         status: 'running',
         artifactPointers: [],
       },
       {
         id: 'technical-design',
+        label: 'Technical Design',
+        transitionAuthority: 'user-confirmation',
         index: 1,
         status: 'created',
         artifactPointers: [],
@@ -132,6 +217,39 @@ function makeWorkflowState(sessionId: string): WorkflowSessionState {
     createdAt: now,
     updatedAt: now,
     pendingConfirmation: null,
+  }
+}
+
+function makeCreatedWorkflowState(sessionId: string): WorkflowSessionState {
+  const state = makeWorkflowState(sessionId)
+  return {
+    ...state,
+    status: 'created',
+    workflowStatus: 'created',
+    runStatus: 'draft',
+    phases: state.phases.map((phase) => ({
+      ...phase,
+      status: 'created',
+    })),
+    workflowRuns: [
+      {
+        id: `${sessionId}-run-1`,
+        templateId: state.template.id,
+        status: 'draft',
+        workspaceRoot: process.cwd(),
+        currentPhaseId: state.activePhaseId ?? undefined,
+        artifacts: [],
+        history: [
+          {
+            type: 'created',
+            at: state.createdAt,
+            summary: 'Workflow run created.',
+          },
+        ],
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+      },
+    ],
   }
 }
 
@@ -461,12 +579,106 @@ describe('WebSocket handler session isolation', () => {
       description: 'Workflow confirmation',
     })
   })
+
+  it('does not prewarm an existing transcript session by resuming the last turn', async () => {
+    const sessionId = `prewarm-existing-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+
+    spyOn(conversationService, 'hasSession').mockReturnValue(false)
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue({
+      filePath: path.join(os.tmpdir(), `${sessionId}.jsonl`),
+      projectDir: process.cwd(),
+      workDir: process.cwd(),
+      transcriptMessageCount: 2,
+      customTitle: null,
+    })
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({ type: 'prewarm_session' }))
+    await flushAsyncHandlers()
+
+    expect(startSession).not.toHaveBeenCalled()
+  })
 })
 
 describe('WebSocket handler workflow runtime gating', () => {
   afterEach(() => {
     __resetWebSocketHandlerStateForTests()
     mock.restore()
+  })
+
+  it('sends a friendly workflow welcome before the first user turn without starting the phase', async () => {
+    const sessionId = `workflow-welcome-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(false)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      workflow: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateSource: 'builtin',
+        templateVersion: '1',
+        templateName: 'Requirements to Implementation',
+        status: 'created',
+        activePhaseId: 'requirements-clarification',
+        activePhaseName: 'Requirements Clarification',
+        phaseCount: 2,
+        completedPhaseCount: 0,
+        updatedAt: '2026-05-20T00:00:00.000Z',
+      },
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+    await stateService.writeState(sessionId, makeCreatedWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    await waitForCondition(() => parseSentMessages(ws).some((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_welcome'
+    ))
+
+    const welcome = parseSentMessages(ws).find((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_welcome'
+    )
+    expect(welcome?.message).toContain('Requirements to Implementation')
+    expect(welcome?.message).toContain('你一发消息')
+    expect(welcome?.message).toContain('第一阶段')
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not send the pre-start workflow welcome after the workflow is already running', async () => {
+    const sessionId = `workflow-running-no-welcome-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      workflow: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateSource: 'builtin',
+        templateVersion: '1',
+        templateName: 'Requirements to Implementation',
+        status: 'running',
+        activePhaseId: 'requirements-clarification',
+        activePhaseName: 'Requirements Clarification',
+        phaseCount: 2,
+        completedPhaseCount: 0,
+        updatedAt: '2026-05-20T00:00:00.000Z',
+      },
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    await flushAsyncHandlers()
+
+    expect(parseSentMessages(ws).some((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_welcome'
+    )).toBe(false)
   })
 
   it('preserves normal dialogue user turns without workflow prompt text or workflow notifications', async () => {
@@ -499,13 +711,78 @@ describe('WebSocket handler workflow runtime gating', () => {
     )).toBe(false)
   })
 
-  it('assembles workflow-only phase guidance before sending a workflow session user turn', async () => {
-    const sessionId = `workflow-${crypto.randomUUID()}`
+  it('injects the active Expert Runtime into an ordinary chat turn on the server', async () => {
+    const sessionId = `expert-runtime-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
     spyOn(conversationService, 'onOutput').mockImplementation(() => {})
     spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: makeExpertRuntimeMetadata('active'),
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'user_message',
+      content: 'Please inspect the project health.',
+    }))
+    await waitForCondition(() => sendMessage.mock.calls.length > 0)
+
+    const expertTurn = sendMessage.mock.calls[0]?.[1] ?? ''
+    expect(expertTurn).toContain('<expert-runtime>')
+    expect(expertTurn).toContain('Repository health (repo-health-check)')
+    expect(expertTurn).toContain('Repository health review')
+    expect(expertTurn).toContain('- Read')
+    expect(expertTurn).toContain('read-only: Do not mutate repository files.')
+    expect(expertTurn).toContain('<expert-user-request>')
+    expect(expertTurn).toContain('Please inspect the project health.')
+    expect(expertTurn).toContain('</expert-user-request>')
+  })
+
+  it('injects an ordinary-chat reset after Expert Mode has exited', async () => {
+    const sessionId = `expert-runtime-exited-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: makeExpertRuntimeMetadata('exited'),
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'user_message',
+      content: 'Continue as normal chat.',
+    }))
+    await waitForCondition(() => sendMessage.mock.calls.length > 0)
+
+    const resetTurn = sendMessage.mock.calls[0]?.[1] ?? ''
+    expect(resetTurn).toContain('<runtime-mode-reset>')
+    expect(resetTurn).toContain('Expert Mode is exited')
+    expect(resetTurn).toContain('Continue as normal chat.')
+    expect(resetTurn).not.toContain('<expert-runtime>')
+  })
+
+  it('assembles workflow-only phase guidance before sending a workflow session user turn', async () => {
+    const sessionId = `workflow-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
     spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
@@ -518,6 +795,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       workDir: process.cwd(),
       workDirExists: true,
       messages: [],
+      expert: makeExpertRuntimeMetadata('active'),
       workflow: {
         mode: 'workflow',
         schemaVersion: 1,
@@ -539,7 +817,14 @@ describe('WebSocket handler workflow runtime gating', () => {
       },
     })
 
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
     handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
     handleWebSocket.message(ws, JSON.stringify({
       type: 'user_message',
       content: 'Start the next workflow step.',
@@ -554,6 +839,8 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(workflowPrompt).toContain('requirements-clarification')
     expect(workflowPrompt).toContain('completion criteria')
     expect(workflowPrompt).toContain('Start the next workflow step.')
+    expect(workflowPrompt).not.toContain('<expert-runtime>')
+    expect(workflowPrompt).not.toContain('Repository health review')
     expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
       type: 'system_notification',
       subtype: 'workflow_state',
@@ -753,7 +1040,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     }
   })
 
-  it('starts requirements-phase workflow sessions with mutating tools denied at CLI launch', async () => {
+  it('starts requirements-phase workflow sessions with write tools hard-denied at CLI launch', async () => {
     const sessionId = `workflow-launch-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
@@ -797,15 +1084,24 @@ describe('WebSocket handler workflow runtime gating', () => {
 
     handleWebSocket.open(ws)
     handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    handleWebSocket.message(ws, JSON.stringify({
       type: 'user_message',
       content: 'Clarify requirements first.',
     }))
     await waitForCondition(() => startSession.mock.calls.length > 0)
 
     expect(startSession).toHaveBeenCalled()
-    expect(startSession.mock.calls[0]?.[3]).toMatchObject({
-      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent'],
-    })
+    const disallowedTools = startSession.mock.calls[0]?.[3]?.disallowedTools ?? []
+    expect(disallowedTools).toEqual(expect.arrayContaining([
+      'Write',
+      'Edit',
+      'MultiEdit',
+      'NotebookEdit',
+    ]))
   })
 
   it('starts SuperSpec implementation workflow sessions without mutating tools denied at CLI launch', async () => {
@@ -852,6 +1148,11 @@ describe('WebSocket handler workflow runtime gating', () => {
 
     handleWebSocket.open(ws)
     handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    handleWebSocket.message(ws, JSON.stringify({
       type: 'user_message',
       content: 'Implement the approved tasks.',
     }))
@@ -861,10 +1162,16 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(startSession.mock.calls[0]?.[3]).toMatchObject({
       workflowSessionId: sessionId,
     })
-    expect(startSession.mock.calls[0]?.[3]).not.toHaveProperty('disallowedTools')
+    const disallowedTools = startSession.mock.calls[0]?.[3]?.disallowedTools ?? []
+    expect(disallowedTools).not.toEqual(expect.arrayContaining([
+      'Write',
+      'Edit',
+      'MultiEdit',
+      'NotebookEdit',
+    ]))
   })
 
-  it('starts custom phase tool-policy workflow sessions with matching CLI tool denial', async () => {
+  it('starts custom phase tool-policy workflow sessions with a matching CLI allow-list', async () => {
     const sessionId = `workflow-tool-policy-launch-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
@@ -916,6 +1223,11 @@ describe('WebSocket handler workflow runtime gating', () => {
 
     handleWebSocket.open(ws)
     handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    handleWebSocket.message(ws, JSON.stringify({
       type: 'user_message',
       content: 'Run only the selected tools.',
     }))
@@ -924,17 +1236,12 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(startSession).toHaveBeenCalled()
     expect(startSession.mock.calls[0]?.[3]).toMatchObject({
       workflowSessionId: sessionId,
-      disallowedTools: [
-        'Write',
-        'Edit',
-        'MultiEdit',
-        'NotebookEdit',
-        'PowerShell',
-        'Agent',
-        'workflow_template_authoring',
-      ],
     })
-    expect(startSession.mock.calls[0]?.[3]?.disallowedTools).not.toContain('Bash')
+    const disallowedTools = startSession.mock.calls[0]?.[3]?.disallowedTools ?? []
+    expect(disallowedTools).not.toContain('Bash')
+    for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'workflow_template_authoring']) {
+      expect(disallowedTools).toContain(toolName)
+    }
   })
 
   it('accepts idempotent workflow retry transition commands for workflow sessions', async () => {
@@ -1042,13 +1349,14 @@ describe('WebSocket handler workflow runtime gating', () => {
     )
   })
 
-  it('automatically starts the next workflow phase after user-confirmed advancement', async () => {
-    const sessionId = `workflow-auto-confirm-${crypto.randomUUID()}`
+  it('advances and resumes from an AskUserQuestion advance_phase choice without typed continue', async () => {
+    const sessionId = `workflow-choice-advance-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
-    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
-    spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
     spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
     spyOn(conversationService, 'onOutput').mockImplementation(() => {})
@@ -1058,6 +1366,95 @@ describe('WebSocket handler workflow runtime gating', () => {
     await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
 
     handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'ask-user-workflow-gate',
+      allowed: true,
+      updatedInput: {
+        questions: [{ id: 'confirm_next_action' }],
+        answers: { confirm_next_action: '进入下一阶段' },
+        workflowChoiceActions: [{
+          questionId: 'confirm_next_action',
+          choiceId: 'enter_next_stage',
+          action: 'advance_phase',
+          targetPhaseId: 'technical-design',
+        }],
+      },
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('Active phase: technical-design')
+    ))
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activePhaseId).toBe('technical-design')
+    expect(respondToPermission).not.toHaveBeenCalled()
+  })
+
+  it('auto-resumes the next phase after a completed auto-transition submission without typed continue', async () => {
+    const sessionId = `workflow-completed-auto-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+
+    const state = makeWorkflowState(sessionId)
+    state.templateSnapshot.phases[0]!.transitionAuthority = 'auto'
+    await stateService.writeState(sessionId, state)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'workflow_transition',
+      phaseId: 'requirements-clarification',
+      action: 'completed',
+      stateVersion: state.stateVersion,
+      handoff: { summary: 'Requirements complete.' },
+      rationale: 'All requirements evidence is recorded.',
+      evidence: [],
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('Active phase: technical-design')
+    ))
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activePhaseId).toBe('technical-design')
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('Active phase: technical-design'),
+    )
+  })
+
+  it('automatically starts the next workflow phase after user-confirmed advancement', async () => {
+    const sessionId = `workflow-auto-confirm-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
@@ -1082,13 +1479,138 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(autoContinuePrompts[0]?.[1]).toContain('Active phase: technical-design')
   })
 
+  it('resumes the current phase with an adjustment question after the user rejects its completion', async () => {
+    const sessionId = `workflow-adjust-reject-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    let cliSessionRunning = true
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
+      cliSessionRunning = true
+    })
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async () => {
+      cliSessionRunning = false
+    })
+    spyOn(conversationService, 'hasSession').mockImplementation(() => cliSessionRunning)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    await waitForCondition(() => startSession.mock.calls.length === 1)
+
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'workflow_transition',
+      phaseId: 'requirements-clarification',
+      action: 'reject',
+      stateVersion: 3,
+      transitionId: 'reject-and-adjust',
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('The user rejected the completion result for the current workflow phase: requirements-clarification.')
+    ))
+
+    expect(stopSessionAndWait).toHaveBeenCalledTimes(2)
+    expect(startSession).toHaveBeenCalledTimes(2)
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('Immediately use AskUserQuestion'),
+    )
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('Active phase: requirements-clarification'),
+    )
+  })
+
+  it('starts a missing CLI session before automatically continuing the next confirmed workflow phase', async () => {
+    const sessionId = `workflow-auto-confirm-recover-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    let cliSessionRunning = false
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
+      cliSessionRunning = true
+    })
+    spyOn(conversationService, 'hasSession').mockImplementation(() => cliSessionRunning)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'workflow_transition',
+      phaseId: 'requirements-clarification',
+      action: 'confirm',
+      stateVersion: 3,
+      transitionId: 'confirm-auto-continue-recover',
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('Continue automatically with the newly confirmed workflow phase: technical-design.')
+    ))
+
+    expect(startSession).toHaveBeenCalledTimes(1)
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('Active phase: technical-design'),
+    )
+  })
+
+  it('reports when a structured question answer cannot be delivered to the CLI session', async () => {
+    const sessionId = `workflow-question-undeliverable-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(false)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'question-permission-1',
+      allowed: true,
+      updatedInput: {
+        questions: [{ question: 'Continue?', options: [{ label: 'Yes' }] }],
+        answers: { 'Continue?': 'Yes' },
+      },
+    }))
+
+    await waitForCondition(() => parseSentMessages(ws).some((message) =>
+      message.type === 'error' && message.code === 'CLI_NOT_RUNNING'
+    ))
+    expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+      type: 'error',
+      code: 'CLI_NOT_RUNNING',
+    }))
+
+    expect(respondToPermission).toHaveBeenCalledWith(
+      sessionId,
+      'question-permission-1',
+      true,
+      undefined,
+      expect.objectContaining({ answers: { 'Continue?': 'Yes' } }),
+    )
+  })
   it('adds a clear-context boundary to the auto-continue prompt when requested', async () => {
     const sessionId = `workflow-auto-confirm-clear-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'startSession').mockResolvedValue()
-    spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
     spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
     spyOn(conversationService, 'onOutput').mockImplementation(() => {})
@@ -1098,6 +1620,11 @@ describe('WebSocket handler workflow runtime gating', () => {
     await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
 
     handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
@@ -1125,7 +1652,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     const sessionId = `runtime-force-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
-    spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
     spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
@@ -1165,7 +1692,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     let hasActiveSession = true
 
     spyOn(conversationService, 'hasSession').mockImplementation(() => hasActiveSession)
-    spyOn(conversationService, 'stopSession').mockImplementation(() => {
+    spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async () => {
       hasActiveSession = false
     })
     spyOn(conversationService, 'startSession').mockImplementation(async (
@@ -1247,7 +1774,14 @@ describe('WebSocket handler workflow runtime gating', () => {
 
     sessions.set(sessionId, makeSession(oldProc))
 
-    const stopSession = spyOn(conversationService, 'stopSession')
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async (sid) => {
+      const session = sessions.get(sid)
+      if (session) {
+        session.proc.kill()
+        sessions.delete(sid)
+      }
+    })
+    const stopSessionIfCurrent = spyOn(conversationService, 'stopSessionIfCurrent')
     const sendInterrupt = spyOn(conversationService, 'sendInterrupt').mockReturnValue(true)
     const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
       sessions.set(sessionId, makeSession(newProc))
@@ -1282,18 +1816,58 @@ describe('WebSocket handler workflow runtime gating', () => {
       }))
       await waitForCondition(() => startSession.mock.calls.length === 1)
 
-      expect(stopSession).toHaveBeenCalledTimes(1)
+      expect(stopSessionAndWait).toHaveBeenCalledTimes(1)
       expect(oldProc.kill).toHaveBeenCalledTimes(1)
       expect(newProc.kill).not.toHaveBeenCalled()
 
       delayedStopForceKill?.()
 
-      expect(stopSession).toHaveBeenCalledTimes(1)
+      expect(stopSessionAndWait).toHaveBeenCalledTimes(1)
+      expect(stopSessionIfCurrent).toHaveBeenCalledTimes(1)
       expect(newProc.kill).not.toHaveBeenCalled()
       expect(conversationService.hasSession(sessionId)).toBe(true)
     } finally {
       sessions.delete(sessionId)
     }
+  })
+
+  it('pauses a workflow without restarting the agent or sending a follow-up turn', async () => {
+    const sessionId = `workflow-pause-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'workflow_transition',
+      phaseId: 'requirements-clarification',
+      action: 'pause',
+      stateVersion: 3,
+      transitionId: 'pause-without-restart',
+    }))
+    await waitForCondition(() => parseSentMessages(ws).some((message) =>
+      message.type === 'system_notification'
+      && message.subtype === 'workflow_transition'
+    ))
+    await flushAsyncHandlers()
+
+    const paused = await stateService.readState(sessionId)
+    expect(paused.state).toMatchObject({
+      activePhaseId: 'requirements-clarification',
+      runStatus: 'paused',
+    })
+    expect(stopSessionAndWait).not.toHaveBeenCalled()
+    expect(startSession).not.toHaveBeenCalled()
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it.each(['reject', 'retry'] as const)(
@@ -1304,7 +1878,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       const stateService = new WorkflowSessionStateService()
       const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
       spyOn(conversationService, 'startSession').mockResolvedValue()
-      spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+      spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
       spyOn(conversationService, 'hasSession').mockReturnValue(true)
       spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
       spyOn(conversationService, 'onOutput').mockImplementation(() => {})

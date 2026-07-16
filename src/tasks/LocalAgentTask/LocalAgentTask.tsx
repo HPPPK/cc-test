@@ -18,6 +18,7 @@ import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
 import { evictTaskOutput, getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js';
 import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/framework.js';
+import type { SdkWorkflowTaskEventMetadata } from '../../utils/sdkEventQueue.js';
 import { emitTaskProgress } from '../../utils/task/sdkProgress.js';
 import type { TaskState } from '../types.js';
 export type ToolActivity = {
@@ -145,6 +146,11 @@ export type LocalAgentTaskState = TaskStateBase & {
   // timestamp = hide + GC-eligible after this time. Set at terminal transition
   // and on unselect; cleared on retain.
   evictAfter?: number;
+  workflowTaskId?: string;
+  executionMode?: 'read' | 'write';
+  writeScopes?: string[];
+  resourceClaims?: string[];
+  worktreeIsolation?: boolean;
 };
 export function isLocalAgentTask(task: unknown): task is LocalAgentTaskState {
   return typeof task === 'object' && task !== null && 'type' in task && task.type === 'local_agent';
@@ -281,7 +287,7 @@ export const LocalAgentTask: Task = {
 export function killAsyncAgent(taskId: string, setAppState: SetAppState): void {
   let killed = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
-    if (task.status !== 'running') {
+    if (task.status !== 'pending' && task.status !== 'running') {
       return task;
     }
     killed = true;
@@ -303,12 +309,75 @@ export function killAsyncAgent(taskId: string, setAppState: SetAppState): void {
 }
 
 /**
- * Kill all running agent tasks.
+ * Mark a registered asynchronous agent as running once it receives a start permit.
+ */
+export function startAsyncAgent(taskId: string, setAppState: SetAppState): void {
+  let startedTask: LocalAgentTaskState | undefined;
+  updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
+    if (task.status !== 'pending') {
+      return task;
+    }
+    startedTask = task;
+    return {
+      ...task,
+      status: 'running'
+    };
+  });
+  if (startedTask?.workflowTaskId) {
+    emitWorkflowTaskStatus(startedTask, 'running');
+  }
+}
+
+export function emitAsyncAgentBlocked(taskId: string, reason: string, setAppState: SetAppState): void {
+  let blockedTask: LocalAgentTaskState | undefined;
+  updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
+    blockedTask = task;
+    return task;
+  });
+  if (blockedTask?.workflowTaskId) {
+    emitWorkflowTaskStatus(blockedTask, 'blocked', reason);
+  }
+}
+
+function getWorkflowTaskEventMetadata(
+  task: LocalAgentTaskState,
+  status: SdkWorkflowTaskEventMetadata['status'],
+  blockedReason?: string,
+): SdkWorkflowTaskEventMetadata {
+  return {
+    status,
+    workflow_task_id: task.workflowTaskId,
+    execution_mode: task.executionMode,
+    write_scopes: task.writeScopes,
+    blocked_reason: blockedReason,
+    worktree_isolation: task.worktreeIsolation,
+  };
+}
+
+function emitWorkflowTaskStatus(
+  task: LocalAgentTaskState,
+  status: SdkWorkflowTaskEventMetadata['status'],
+  blockedReason?: string,
+): void {
+  emitTaskProgress({
+    taskId: task.id,
+    toolUseId: task.toolUseId,
+    description: task.description,
+    startTime: task.startTime,
+    totalTokens: task.progress?.tokenCount ?? 0,
+    toolUses: task.progress?.toolUseCount ?? 0,
+    summary: status === 'blocked' ? blockedReason : task.progress?.summary,
+    workflowTaskMetadata: getWorkflowTaskEventMetadata(task, status, blockedReason),
+  });
+}
+
+/**
+ * Kill all running or queued agent tasks.
  * Used by ESC cancellation in coordinator mode to stop all subagents.
  */
 export function killAllRunningAgentTasks(tasks: Record<string, TaskState>, setAppState: SetAppState): void {
   for (const [taskId, task] of Object.entries(tasks)) {
-    if (task.type === 'local_agent' && task.status === 'running') {
+    if (task.type === 'local_agent' && (task.status === 'pending' || task.status === 'running')) {
       killAsyncAgent(taskId, setAppState);
     }
   }
@@ -470,7 +539,12 @@ export function registerAsyncAgent({
   selectedAgent,
   setAppState,
   parentAbortController,
-  toolUseId
+  toolUseId,
+  workflowTaskId,
+  executionMode,
+  writeScopes,
+  resourceClaims,
+  worktreeIsolation
 }: {
   agentId: string;
   description: string;
@@ -479,6 +553,11 @@ export function registerAsyncAgent({
   setAppState: SetAppState;
   parentAbortController?: AbortController;
   toolUseId?: string;
+  workflowTaskId?: string;
+  executionMode?: 'read' | 'write';
+  writeScopes?: string[];
+  resourceClaims?: string[];
+  worktreeIsolation?: boolean;
 }): LocalAgentTaskState {
   void initTaskOutputAsSymlink(agentId, getAgentTranscriptPath(asAgentId(agentId)));
 
@@ -487,7 +566,6 @@ export function registerAsyncAgent({
   const taskState: LocalAgentTaskState = {
     ...createTaskStateBase(agentId, 'local_agent', description, toolUseId),
     type: 'local_agent',
-    status: 'running',
     agentId,
     prompt,
     selectedAgent,
@@ -497,10 +575,15 @@ export function registerAsyncAgent({
     lastReportedToolCount: 0,
     lastReportedTokenCount: 0,
     isBackgrounded: true,
-    // registerAsyncAgent immediately backgrounds
+    // It is a background task but stays pending until its lifecycle receives a start permit
     pendingMessages: [],
     retain: false,
-    diskLoaded: false
+    diskLoaded: false,
+    workflowTaskId,
+    executionMode,
+    writeScopes,
+    resourceClaims,
+    worktreeIsolation,
   };
 
   // Register cleanup handler
@@ -566,7 +649,7 @@ export function registerAgentForeground({
     // Not yet backgrounded - running in foreground
     pendingMessages: [],
     retain: false,
-    diskLoaded: false
+    diskLoaded: false,
   };
 
   // Create background signal promise

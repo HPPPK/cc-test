@@ -501,6 +501,10 @@ export function extractPartialResult(
 
 type SetAppState = (f: (prev: AppState) => AppState) => void
 
+export type AsyncAgentLifecycleOutcome =
+  | { status: 'succeeded' }
+  | { status: 'failed', reason: string }
+
 /**
  * Drives a background agent from spawn to terminal notification.
  * Shared between AgentTool's async-from-start path and resumeAgentBackground.
@@ -532,7 +536,7 @@ export async function runAsyncAgentLifecycle({
     worktreePath?: string
     worktreeBranch?: string
   }>
-}): Promise<void> {
+}): Promise<AsyncAgentLifecycleOutcome> {
   let stopSummarization: (() => void) | undefined
   const agentMessages: MessageType[] = []
   try {
@@ -635,6 +639,7 @@ export async function runAsyncAgentLifecycle({
         )
       }
     })()
+    return { status: 'succeeded' }
   } catch (error) {
     stopSummarization?.()
     if (error instanceof AbortError) {
@@ -668,7 +673,7 @@ export async function runAsyncAgentLifecycle({
           `Async agent post-cancel cleanup failed: ${errorMessage(cleanupError)}`,
         ),
       )
-      return
+      return { status: 'failed', reason: 'Agent was cancelled' }
     }
     const msg = errorMessage(error)
     failAsyncAgent(taskId, msg, rootSetAppState)
@@ -685,6 +690,7 @@ export async function runAsyncAgentLifecycle({
         `Async agent post-failure cleanup failed: ${errorMessage(cleanupError)}`,
       ),
     )
+    return { status: 'failed', reason: msg }
   } finally {
     clearInvokedSkillsForAgent(agentIdForCleanup)
     clearDumpState(agentIdForCleanup)

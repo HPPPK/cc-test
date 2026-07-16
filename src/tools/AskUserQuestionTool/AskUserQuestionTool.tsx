@@ -12,16 +12,39 @@ import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
 const questionOptionSchema = lazySchema(() => z.object({
+  id: z.string().min(1).optional().describe('Stable option ID. Required for workflow action choices when supplied by the workflow runtime.'),
   label: z.string().describe('The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.'),
-  description: z.string().describe('Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.'),
+  description: z.string().optional().describe('Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.'),
+  action: z.string().min(1).optional().describe('Optional workflow runtime action, such as advance_phase, pause_workflow, return_to_phase, view_report, or route_workflow. This is not ordinary chat text.'),
+  targetPhaseId: z.string().min(1).optional().describe('Optional target workflow phase ID used by workflow runtime actions.'),
+  metadata: z.record(z.string(), z.unknown()).optional().describe('Optional structured metadata consumed by the workflow runtime; never render it as ordinary user text.'),
   preview: z.string().optional().describe('Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.')
 }));
 const questionSchema = lazySchema(() => z.object({
-  question: z.string().describe('The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"'),
-  header: z.string().describe(`Very short label displayed as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Examples: "Auth method", "Library", "Approach".`),
-  options: z.array(questionOptionSchema()).min(2).max(4).describe(`The available choices for this question. Must have 2-4 options. Each option should be a distinct, mutually exclusive choice (unless multiSelect is enabled). There should be no 'Other' option, that will be provided automatically.`),
+  id: z.string().min(1).optional().describe('Stable question ID. Use this for workflow questions so a structured reply can be matched without relying on display text.'),
+  prompt: z.string().min(1).optional().describe('Canonical question prompt shown to the user.'),
+  question: z.string().min(1).optional().describe('Legacy alias for prompt. Use prompt for new workflow questions.'),
+  header: z.string().optional().describe(`Very short label displayed as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Examples: "Auth method", "Library", "Approach".`),
+  choices: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Canonical choices for this question. Workflow action choices must include id, label, action, and targetPhaseId when applicable.'),
+  options: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Legacy alias for choices. New workflow questions should use choices.'),
   multiSelect: z.boolean().default(false).describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.')
+}).superRefine((value, ctx) => {
+  if (!value.prompt && !value.question) {
+    ctx.addIssue({ code: 'custom', message: 'Question requires prompt (or legacy question).' })
+  }
+  if (!value.choices && !value.options) {
+    ctx.addIssue({ code: 'custom', message: 'Question requires choices (or legacy options).' })
+  }
 }));
+
+function questionPrompt(question: z.infer<ReturnType<typeof questionSchema>>): string {
+  return question.prompt ?? question.question ?? question.id ?? ''
+}
+
+function questionChoices(question: z.infer<ReturnType<typeof questionSchema>>) {
+  return question.choices ?? question.options ?? []
+}
+
 const annotationsSchema = lazySchema(() => {
   const annotationSchema = z.object({
     preview: z.string().optional().describe('The preview content of the selected option, if the question used previews.'),
@@ -30,27 +53,16 @@ const annotationsSchema = lazySchema(() => {
   return z.record(z.string(), annotationSchema).optional().describe('Optional per-question annotations from the user (e.g., notes on preview selections). Keyed by question text.');
 });
 const UNIQUENESS_REFINE = {
-  check: (data: {
-    questions: {
-      question: string;
-      options: {
-        label: string;
-      }[];
-    }[];
-  }) => {
-    const questions = data.questions.map(q => q.question);
-    if (questions.length !== new Set(questions).size) {
-      return false;
-    }
+  check: (data: { questions: Array<z.infer<ReturnType<typeof questionSchema>>> }) => {
+    const prompts = data.questions.map(questionPrompt)
+    if (prompts.length !== new Set(prompts).size) return false
     for (const question of data.questions) {
-      const labels = question.options.map(opt => opt.label);
-      if (labels.length !== new Set(labels).size) {
-        return false;
-      }
+      const labels = questionChoices(question).map((option) => option.label)
+      if (labels.length !== new Set(labels).size) return false
     }
-    return true;
+    return true
   },
-  message: 'Question texts must be unique, option labels must be unique within each question'
+  message: 'Question prompts must be unique, option labels must be unique within each question'
 } as const;
 const commonFields = lazySchema(() => ({
   answers: z.record(z.string(), z.string()).optional().describe('User answers collected by the permission component'),
@@ -150,7 +162,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     return true;
   },
   toAutoClassifierInput(input) {
-    return input.questions.map(q => q.question).join(' | ');
+    return input.questions.map(questionPrompt).join(' | ');
   },
   requiresUserInteraction() {
     return true;
@@ -164,12 +176,12 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
       };
     }
     for (const q of questions) {
-      for (const opt of q.options) {
+      for (const opt of questionChoices(q)) {
         const err = validateHtmlPreview(opt.preview);
         if (err) {
           return {
             result: false,
-            message: `Option "${opt.label}" in question "${q.question}": ${err}`,
+            message: `Option "${opt.label}" in question "${questionPrompt(q)}": ${err}`,
             errorCode: 1
           };
         }

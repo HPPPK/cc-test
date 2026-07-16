@@ -14,10 +14,11 @@ export type ClientMessage =
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'ready' | 'blocked' | 'unable'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
       stateVersion?: number
       expectedStateVersion?: number
+      nextPhaseContextStrategy?: 'inherit' | 'clear'
       handoff?: Record<string, unknown>
       rationale?: string
       evidence?: Array<Record<string, unknown>>

@@ -2,7 +2,7 @@
  * Unit tests for SessionService and Sessions API
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import * as path from 'node:path'
@@ -21,12 +21,16 @@ import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { updateSessionSlashCommands } from '../ws/handler.js'
 import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
 import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
-import { setSessionChatState } from '../api/conversations.js'
+import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
+import { getSessionChatState, setSessionChatState } from '../api/conversations.js'
+import { PackRegistryService, resetPackRegistryForTests } from '../services/packRegistryService.js'
+import { resetWorkflowTemplateRegistryForTests } from '../services/workflowTemplateRegistryService.js'
 
 const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TEMPLATE_NOT_FOUND',
   'WORKFLOW_TEMPLATE_INVALID',
   'WORKFLOW_TEMPLATE_CONFLICT',
+  'WORKFLOW_WORKSPACE_INVALID',
   'WORKFLOW_SOURCE_INVALID',
   'WORKFLOW_SOURCE_ACTIVE',
   'WORKFLOW_LINK_DUPLICATE',
@@ -41,6 +45,9 @@ const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_REPORT_NOT_READY',
   'WORKFLOW_REPORT_UNAVAILABLE',
   'WORKFLOW_MODEL_UNAVAILABLE',
+  'WORKFLOW_CHECKPOINT_INVALID',
+  'WORKFLOW_CHECKPOINT_WORKSPACE_REQUIRED',
+  'WORKFLOW_PREVIEW_ACTIVE',
 ] as const
 
 // ============================================================================
@@ -63,7 +70,20 @@ async function setupTmpConfigDir(): Promise<string> {
 
 async function cleanupTmpDir(): Promise<void> {
   if (tmpDir) {
-    await fs.rm(tmpDir, { recursive: true, force: true })
+    let lastError: unknown
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try {
+        await fs.rm(tmpDir, { recursive: true, force: true })
+        lastError = null
+        break
+      } catch (error) {
+        lastError = error
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    }
+    if (lastError) {
+      throw lastError
+    }
   }
   delete process.env.CLAUDE_CONFIG_DIR
   if (originalGitCeilingDirectories !== undefined) {
@@ -443,6 +463,12 @@ async function writeWorkflowConfigTemplates(templates: Array<Record<string, unkn
     JSON.stringify({ schemaVersion: 1, templates }),
     'utf-8',
   )
+  await new PackRegistryService().writeSingleWorkflowPacks(templates.map((template) => ({
+    ...template,
+    source: 'user',
+  }) as any))
+  resetPackRegistryForTests()
+  resetWorkflowTemplateRegistryForTests()
 }
 
 async function readJsonlEntries(filePath: string): Promise<Array<Record<string, unknown>>> {
@@ -2490,6 +2516,335 @@ describe('Sessions API', () => {
       expect(resolvedTemplate.phases[0]?.id).toBe('discussion')
     })
 
+    it('POST /api/sessions/:id/workflow/exit cancels the workflow while preserving history and artifacts', async () => {
+      const workDir = await createCleanGitRepo(tmpDir)
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = (await createRes.json()) as { sessionId: string }
+      const stateService = new WorkflowSessionStateService()
+      await stateService.updateState(created.sessionId, (state) => ({
+        ...state,
+        artifactIndex: [{
+          artifactId: 'requirements',
+          phaseId: 'discussion',
+          kind: 'document',
+          title: 'Requirements',
+          lifecycleStatus: 'accepted',
+        }],
+      }))
+      const stopSpy = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+
+      const exitRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/exit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      expect(exitRes.status).toBe(200)
+      const body = (await exitRes.json()) as {
+        ok: boolean
+        state: { status: string; workflowStatus: string; artifactIndex: unknown[]; transitionHistory: unknown[] }
+        workflow: { status: string; runStatus: string }
+      }
+      expect(body.ok).toBe(true)
+      expect(body.state.status).toBe('cancelled')
+      expect(body.state.workflowStatus).toBe('cancelled')
+      expect(body.workflow).toMatchObject({ status: 'cancelled', runStatus: 'cancelled' })
+      expect(body.state.artifactIndex).toHaveLength(1)
+      expect(body.state.transitionHistory.length).toBeGreaterThan(0)
+      expect(stopSpy).toHaveBeenCalledWith(created.sessionId)
+
+      const chatStatusRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/chat/status`)
+      expect(chatStatusRes.status).toBe(200)
+      expect(await chatStatusRes.json()).toEqual({ state: 'idle' })
+
+      const stateRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow`)
+      expect(stateRes.status).toBe(200)
+      const persisted = (await stateRes.json()) as { state: { status: string; artifactIndex: unknown[] } }
+      expect(persisted.state.status).toBe('cancelled')
+      expect(persisted.state.artifactIndex).toHaveLength(1)
+      stopSpy.mockRestore()
+    })
+    it('allows an exited workflow session to start a new linked workflow', async () => {
+      const workDir = await createCleanGitRepo(tmpDir)
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = (await createRes.json()) as { sessionId: string }
+      spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+
+      const exitRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/exit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      expect(exitRes.status).toBe(200)
+
+      const startRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+          contextStrategy: 'clear',
+          clientRequestId: 'relaunch-after-workflow-exit-0001',
+        }),
+      })
+      expect(startRes.status).toBe(201)
+      const body = (await startRes.json()) as { sessionId?: string; workflow?: { status?: string } }
+      expect(body.sessionId).not.toBe(created.sessionId)
+      expect(body.workflow?.status).toBe('created')
+    })
+    it('workflow checkpoint routes create, list, and restore git-backed workflow versions', async () => {
+      const workDir = await createCleanGitRepo(tmpDir)
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = (await createRes.json()) as { sessionId: string; workDir: string }
+      const sessionWorkDir = created.workDir
+      const firstUserId = crypto.randomUUID()
+      const firstAssistantId = crypto.randomUUID()
+      const secondUserId = crypto.randomUUID()
+      const secondAssistantId = crypto.randomUUID()
+      const sessionFilePath = path.join(tmpDir, 'projects', sanitizePath(sessionWorkDir), `${created.sessionId}.jsonl`)
+      const checkpointTranscriptEntries = [
+        {
+          ...makeUserEntry('checkpoint prompt', firstUserId),
+          cwd: sessionWorkDir,
+          sessionId: created.sessionId,
+        },
+        {
+          ...makeAssistantEntry('checkpoint reply', firstUserId),
+          uuid: firstAssistantId,
+          cwd: sessionWorkDir,
+          sessionId: created.sessionId,
+        },
+      ]
+      await fs.appendFile(
+        sessionFilePath,
+        checkpointTranscriptEntries.map((entry) => JSON.stringify(entry)).join('\n') + '\n',
+        'utf-8',
+      )
+
+      await fs.writeFile(path.join(workDir, 'README.md'), 'checkpoint content\n')
+      const saveRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/checkpoints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          phaseIndex: 0,
+          label: 'Discussion save',
+        }),
+      })
+      expect(saveRes.status).toBe(200)
+      const saveBody = (await saveRes.json()) as {
+        latestVersion: number
+        checkpoint: { id: string; phaseId: string | null; phaseIndex: number | null; label: string }
+      }
+      expect(saveBody.latestVersion).toBe(1)
+      expect(saveBody.checkpoint).toMatchObject({
+        id: 'v1',
+        phaseId: 'discussion',
+        phaseIndex: 0,
+        label: 'Discussion save',
+      })
+
+      const listRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/checkpoints`)
+      expect(listRes.status).toBe(200)
+      const listBody = (await listRes.json()) as {
+        enabled: boolean
+        latestVersion: number | null
+        checkpoints: Array<{ id: string }>
+      }
+      expect(listBody.enabled).toBe(true)
+      expect(listBody.latestVersion).toBe(1)
+      expect(listBody.checkpoints.map((checkpoint) => checkpoint.id)).toEqual(['v1'])
+
+      await fs.writeFile(path.join(workDir, 'README.md'), 'regressed content\n')
+      await fs.writeFile(path.join(workDir, 'generated-after-save.txt'), 'generated after checkpoint\n')
+      await fs.appendFile(
+        sessionFilePath,
+        [
+        {
+          ...makeUserEntry('post-checkpoint prompt', secondUserId),
+          parentUuid: firstAssistantId,
+          cwd: sessionWorkDir,
+          sessionId: created.sessionId,
+        },
+        {
+          ...makeAssistantEntry('post-checkpoint reply', secondUserId),
+          uuid: secondAssistantId,
+          cwd: sessionWorkDir,
+          sessionId: created.sessionId,
+        },
+        ].map((entry) => JSON.stringify(entry)).join('\n') + '\n',
+        'utf-8',
+      )
+      const stateService = new WorkflowSessionStateService()
+      await stateService.updateState(created.sessionId, (state) => ({
+        ...state,
+        activePhaseId: 'implement',
+        phases: state.phases.map((phase) =>
+          phase.id === 'discussion'
+            ? { ...phase, status: 'completed' }
+            : phase.id === 'implement'
+              ? { ...phase, status: 'running' }
+              : phase
+        ),
+        phaseRuns: state.phaseRuns.map((phaseRun) =>
+          phaseRun.phaseId === 'discussion'
+            ? { ...phaseRun, status: 'completed', completedAt: new Date().toISOString() }
+            : phaseRun.phaseId === 'implement'
+              ? { ...phaseRun, status: 'running', startedAt: new Date().toISOString() }
+              : phaseRun
+        ),
+      }))
+      const stopSpy = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+      setSessionChatState(created.sessionId, 'thinking')
+      const restoreRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/checkpoints/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkpointId: 'v1' }),
+      })
+      expect(restoreRes.status).toBe(200)
+      const restoreBody = (await restoreRes.json()) as {
+        workflowStateRestored: boolean
+        transcriptRestored: boolean
+        conversation: { messagesRemoved: number; removedMessageIds: string[] }
+        removedFiles: string[]
+        workflow?: { activePhaseId: string | null; activePhaseIndex: number }
+      }
+      expect(restoreBody.workflowStateRestored).toBe(true)
+      expect(restoreBody.transcriptRestored).toBe(true)
+      expect(restoreBody.conversation.messagesRemoved).toBe(2)
+      expect(restoreBody.conversation.removedMessageIds).toEqual([secondUserId, secondAssistantId])
+      expect(restoreBody.workflow?.activePhaseId).toBe('discussion')
+      expect(restoreBody.workflow?.activePhaseIndex).toBe(0)
+      expect(stopSpy).toHaveBeenCalledWith(created.sessionId)
+      stopSpy.mockRestore()
+      expect(getSessionChatState(created.sessionId)).toBe('idle')
+      expect(restoreBody.removedFiles).toContain('generated-after-save.txt')
+      const restoredReadme = await fs.readFile(path.join(workDir, 'README.md'), 'utf8')
+      expect(restoredReadme.replace(/\r\n/g, '\n')).toBe('checkpoint content\n')
+      await expect(fs.stat(path.join(workDir, 'generated-after-save.txt'))).rejects.toThrow()
+      const restoredMessages = await sessionService.getSessionMessages(created.sessionId)
+      expect(restoredMessages.map((message) => message.id)).toEqual([firstUserId, firstAssistantId])
+      expect(JSON.stringify(restoredMessages)).toContain('checkpoint prompt')
+      expect(JSON.stringify(restoredMessages)).toContain('checkpoint reply')
+      expect(JSON.stringify(restoredMessages)).not.toContain('post-checkpoint')
+      const restoredState = await stateService.readState(created.sessionId)
+      expect(restoredState.state?.activePhaseId).toBe('discussion')
+      expect(restoredState.state?.lastCheckpointRestore).toMatchObject({
+        checkpointId: 'v1',
+        restoredActivePhaseId: 'discussion',
+      })
+    }, 30_000)
+
+    it('workflow checkpoint routes reject malformed JSON request bodies', async () => {
+      const workDir = await createCleanGitRepo(tmpDir)
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = (await createRes.json()) as { sessionId: string }
+
+      const res = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/checkpoints`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{bad-json',
+      })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error?: string; message?: string }
+      expect(body.error).toBe('WORKFLOW_CHECKPOINT_INVALID')
+      expect(body.message).toContain('valid JSON')
+    })
+
+    it('POST /api/sessions should reject workflow creation when workDir would default to the home directory', async () => {
+      const projectsBefore = await collectFiles(path.join(tmpDir, 'projects'))
+      const workflowArtifactsBefore = await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions'))
+
+      const res = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error?: string; message?: string }
+      expect(body.error).toBe('WORKFLOW_WORKSPACE_INVALID')
+      expect(body.message).toContain('project workspace')
+      expect(await collectFiles(path.join(tmpDir, 'projects'))).toEqual(projectsBefore)
+      expect(await collectFiles(path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions'))).toEqual(workflowArtifactsBefore)
+    })
+
+    it('POST /api/sessions should reject workflow creation from broad user folders', async () => {
+      const res = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir: path.join(os.homedir(), 'Desktop'),
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+          },
+        }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error?: string; message?: string }
+      expect(body.error).toBe('WORKFLOW_WORKSPACE_INVALID')
+      expect(body.message).toContain('specific repository or app folder')
+    })
+
     describe('Linked workflow session start contract', () => {
       async function createSourceDialogueSession(
         strategy: 'clear' | 'inherit' | 'summarize',
@@ -2655,7 +3010,7 @@ describe('Sessions API', () => {
         expect(JSON.stringify(targetState)).not.toContain('Discuss linked workflow clear')
       })
 
-      it('WorkflowSessionLinkService inherit should store bounded context carryover on the target only', async () => {
+      it('WorkflowSessionLinkService inherit should turn the source chat itself into the workflow without losing its history', async () => {
         const source = await createSourceDialogueSession('inherit')
         const clientRequestId = 'service-linked-inherit-0001'
 
@@ -2669,32 +3024,50 @@ describe('Sessions API', () => {
           clientRequestId,
         })
 
-        await expectLinkedWorkflowServiceCreated(result, source, 'inherit', clientRequestId)
-        expect(result.link.summaryArtifactId).toBe('context-carryover')
-        const targetState = await readWorkflowSessionState(result.sessionId)
-        expect(targetState.contextCarryover).toMatchObject({
-          artifactId: 'context-carryover',
-          pointer: {
-            artifactId: 'context-carryover',
-            sessionId: result.sessionId,
+        expect(result.created).toBe(true)
+        expect(result.sessionId).toBe(source.sessionId)
+        expect(result.workDir).toBe(source.workDir)
+        expect(result.link).toMatchObject({
+          sourceSessionId: source.sessionId,
+          targetSessionId: source.sessionId,
+          contextStrategy: 'inherit',
+          sourceMessageCount: 2,
+          clientRequestId,
+        })
+        expect(result.link.summaryArtifactId).toBeUndefined()
+        const sourceState = await readWorkflowSessionState(source.sessionId)
+        expect(sourceState).toMatchObject({
+          sessionId: source.sessionId,
+          mode: 'workflow',
+          link: {
+            sourceSessionId: source.sessionId,
+            targetSessionId: source.sessionId,
+            contextStrategy: 'inherit',
           },
         })
-        expect(JSON.stringify(targetState)).toContain('Discuss linked workflow inherit')
-        const artifactPath = path.join(
-          tmpDir,
-          'cc-jiangxia',
-          'workflow-sessions',
-          result.sessionId,
-          'artifacts',
-          'context-carryover.json',
-        )
-        const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf-8')) as Record<string, unknown>
-        expect(artifact.content).toMatchObject({
-          sourceSessionId: source.sessionId,
-          targetSessionId: result.sessionId,
-          strategy: 'inherit',
+        expect(sourceState.contextCarryover).toBeUndefined()
+        const sourceAfter = await sessionService.getSession(source.sessionId)
+        expect(sourceAfter?.messages).toEqual(source.beforeDetail?.messages)
+      })
+
+      it('WorkflowSessionLinkService should generate a summary preview without creating a workflow target', async () => {
+        const source = await createSourceDialogueSession('summary-preview')
+        const result = await createLinkService({
+          summaryContext: {} as never,
+          summaryCarryover: async ({ summaryInstructions }) => ({
+            content: `Preview: ${summaryInstructions}`,
+            rawSummary: `Preview: ${summaryInstructions}`,
+            sourceMessageIds: [],
+          }),
+        }).previewSummary(source.sessionId, {
+          summaryInstructions: 'Preserve decisions.',
         })
-        expect(JSON.stringify(artifact.content)).toContain('Discuss linked workflow inherit')
+
+        expect(result).toEqual({
+          content: 'Preview: Preserve decisions.',
+          sourceMessageCount: 2,
+        })
+        await expectSourceSessionUnchanged(source)
       })
 
       it('WorkflowSessionLinkService summarize should coordinate non-mutating compact-style carryover on the target', async () => {
@@ -2736,7 +3109,79 @@ describe('Sessions API', () => {
         expect(JSON.stringify(artifact.content)).toContain('Summary: Preserve decisions.')
       })
 
-      it('WorkflowSessionLinkService should reject non-completed workflow, active, oversize inherit, and unavailable summarize sources without target creation', async () => {
+      it('WorkflowSessionLinkService persists selected expert material content as a startup artifact', async () => {
+        const source = await createSourceDialogueSession('expert-material')
+        const runId = 'expert-material-run-0001'
+        const materialDir = path.join(source.workDir, '.workflow', 'intake', 'expert-runs', runId, 'repo-health-check')
+        await fs.mkdir(materialDir, { recursive: true })
+        const summaryPath = path.join(materialDir, 'material-summary.md')
+        const materialJsonPath = path.join(materialDir, 'material.json')
+        const evidencePath = path.join(materialDir, 'evidence.md')
+        await fs.writeFile(summaryPath, '# Repository health\n\nThe desktop workflow context must include this checked report.', 'utf-8')
+        await fs.writeFile(materialJsonPath, JSON.stringify({ runId, summary: 'Checked report' }), 'utf-8')
+        await fs.writeFile(evidencePath, 'Evidence: package scripts were inspected.', 'utf-8')
+        const now = new Date().toISOString()
+        await service.appendSessionMetadata(source.sessionId, {
+          workDir: source.workDir,
+          expert: {
+            mode: 'expert',
+            expertId: 'repo-health-check',
+            expertName: 'Repository health',
+            packId: 'repo-health-check',
+            packVersion: '1.0.0',
+            status: 'completed',
+            materialRefs: [{
+              runId,
+              expertId: 'repo-health-check',
+              expertName: 'Repository health',
+              packId: 'repo-health-check',
+              packVersion: '1.0.0',
+              summaryPath,
+              materialJsonPath,
+              evidencePath,
+              createdAt: now,
+              title: 'Repository health report',
+              shortSummary: 'Checked report',
+            }],
+            startedAt: now,
+            updatedAt: now,
+          },
+        })
+
+        const result = await createLinkService().createLinkedWorkflowSession(source.sessionId, {
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+            repoMetadata: {
+              expertMaterials: [{ runId }],
+            },
+          },
+          contextStrategy: 'clear',
+          clientRequestId: 'service-linked-expert-material-0001',
+        })
+
+        expect(result.link.expertMaterialArtifactId).toBe('expert-materials')
+        const targetState = await readWorkflowSessionState(result.sessionId)
+        expect(targetState.startupPrompt).toContain('Repository health report')
+        expect(targetState.startupPrompt).toContain('desktop workflow context must include this checked report')
+        expect(targetState.artifactIndex).toEqual(expect.arrayContaining([
+          expect.objectContaining({ artifactId: 'expert-materials' }),
+        ]))
+        const artifactPath = path.join(
+          tmpDir,
+          'cc-jiangxia',
+          'workflow-sessions',
+          result.sessionId,
+          'artifacts',
+          'expert-materials.json',
+        )
+        const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf-8')) as Record<string, unknown>
+        expect(JSON.stringify(artifact.content)).toContain(runId)
+        expect(JSON.stringify(artifact.content)).toContain('Repository health report')
+      })
+
+      it('WorkflowSessionLinkService should reject non-completed workflow and active sources while inherit is not bounded by a copied-context limit', async () => {
         const workflowSourceSessionId = crypto.randomUUID()
         const workflowWorkDir = path.join(tmpDir, 'service-linked-workflow-source-is-workflow')
         const sourceFilePath = await writeSessionFile(sanitizePath(workflowWorkDir), workflowSourceSessionId, [
@@ -2772,30 +3217,41 @@ describe('Sessions API', () => {
         await expectSourceSessionUnchanged(activeSource)
 
         const inheritSource = await createSourceDialogueSession('inherit')
-        await expect(createLinkService({ inheritMaxCharacters: 1 }).createLinkedWorkflowSession(inheritSource.sessionId, {
+        const inherited = await createLinkService({ inheritMaxCharacters: 1 }).createLinkedWorkflowSession(inheritSource.sessionId, {
           workflow: {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'inherit',
-          clientRequestId: 'service-linked-inherit-too-large-0001',
-        })).rejects.toMatchObject({ statusCode: 422, code: 'WORKFLOW_CONTEXT_TOO_LARGE' })
-        await expectSourceSessionUnchanged(inheritSource)
+          clientRequestId: 'service-linked-inherit-no-copy-limit-0001',
+        })
+        expect(inherited.sessionId).toBe(inheritSource.sessionId)
+        const inheritAfter = await sessionService.getSession(inheritSource.sessionId)
+        expect(inheritAfter?.messages).toEqual(inheritSource.beforeDetail?.messages)
 
+      })
+
+      it('WorkflowSessionLinkService summarize should fall back to local carryover when provider summary is unavailable', async () => {
         const summarizeSource = await createSourceDialogueSession('summarize')
-        await expect(service.createLinkedWorkflowSession(summarizeSource.sessionId, {
+        const result = await createLinkService().createLinkedWorkflowSession(summarizeSource.sessionId, {
           workflow: {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
           },
           contextStrategy: 'summarize',
-          clientRequestId: 'service-linked-summary-unavailable-0001',
-        })).rejects.toMatchObject({
-          statusCode: 503,
-          code: 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE',
+          summaryInstructions: 'Keep decisions and open questions.',
+          clientRequestId: 'service-linked-summary-local-fallback-0001',
         })
+
+        await expectLinkedWorkflowServiceCreated(result, summarizeSource, 'summarize', 'service-linked-summary-local-fallback-0001')
+        expect(result.link.summaryArtifactId).toBe('context-carryover')
+        const targetState = await readWorkflowSessionState(result.sessionId)
+        expect(targetState.startupPrompt).toContain('Local workflow context summary')
+        expect(targetState.startupPrompt).toContain('Provider-backed summarization was unavailable')
+        expect(targetState.startupPrompt).toContain('Keep decisions and open questions.')
+        expect(targetState.startupPrompt).toContain('Discuss linked workflow summarize')
         await expectSourceSessionUnchanged(summarizeSource)
       })
 
@@ -2855,7 +3311,7 @@ describe('Sessions API', () => {
         await expectSourceSessionUnchanged(source)
       })
 
-      it('POST /api/sessions/:id/workflow/start inherit should create target provenance and preserve the source session', async () => {
+      it('POST /api/sessions/:id/workflow/start inherit should start the selected workflow in the source chat', async () => {
         const source = await createSourceDialogueSession('inherit')
         const clientRequestId = 'linked-inherit-0001'
 
@@ -2876,17 +3332,31 @@ describe('Sessions API', () => {
           workflow?: Record<string, unknown>
           link?: Record<string, unknown>
         }
-        await expectLinkedWorkflowCreated(body, source, 'inherit', clientRequestId)
-        const targetState = await readWorkflowSessionState(body.sessionId!)
-        expect(targetState.link).toMatchObject({
+        expect(body.sessionId).toBe(source.sessionId)
+        expect(body.workDir).toBe(source.workDir)
+        expect(body.link).toMatchObject({
+          sourceSessionId: source.sessionId,
+          targetSessionId: source.sessionId,
           contextStrategy: 'inherit',
           sourceMessageCount: 2,
+          clientRequestId,
         })
-        expect(JSON.stringify(targetState)).toContain('Discuss linked workflow inherit')
-        await expectSourceSessionUnchanged(source)
+        const sourceState = await readWorkflowSessionState(source.sessionId)
+        expect(sourceState).toMatchObject({
+          sessionId: source.sessionId,
+          mode: 'workflow',
+          link: {
+            sourceSessionId: source.sessionId,
+            targetSessionId: source.sessionId,
+            contextStrategy: 'inherit',
+          },
+        })
+        expect(sourceState.contextCarryover).toBeUndefined()
+        const sourceAfter = await sessionService.getSession(source.sessionId)
+        expect(sourceAfter?.messages).toEqual(source.beforeDetail?.messages)
       })
 
-      it('POST /api/sessions/:id/workflow/start summarize should return a visible unavailable error without fallback or source mutation', async () => {
+      it('POST /api/sessions/:id/workflow/start summarize should use local carryover fallback without source mutation', async () => {
         const source = await createSourceDialogueSession('summarize')
         const workflowRoot = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions')
         const beforeArtifacts = await collectFiles(workflowRoot)
@@ -2901,12 +3371,21 @@ describe('Sessions API', () => {
           summaryInstructions: 'Require a provider-backed summary.',
           clientRequestId: 'linked-summary-unavailable-0001',
         })
-        expect(res.status).toBe(503)
+        expect(res.status).toBe(201)
 
-        const body = await res.json() as { error?: unknown; code?: unknown; message?: unknown }
-        expectWorkflowErrorShape(body, 'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE')
-        expect(String(body.message)).toContain('summar')
-        expect(await collectFiles(workflowRoot)).toEqual(beforeArtifacts)
+        const body = await res.json() as {
+          sessionId?: string
+          workDir?: string
+          workflow?: Record<string, unknown>
+          link?: Record<string, unknown>
+        }
+        await expectLinkedWorkflowCreated(body, source, 'summarize', 'linked-summary-unavailable-0001')
+        expect(body.link?.summaryArtifactId).toBe('context-carryover')
+        expect(await collectFiles(workflowRoot)).not.toEqual(beforeArtifacts)
+        const targetState = await readWorkflowSessionState(body.sessionId!)
+        expect(targetState.startupPrompt).toContain('Local workflow context summary')
+        expect(targetState.startupPrompt).toContain('Provider-backed summarization was unavailable')
+        expect(targetState.startupPrompt).toContain('Require a provider-backed summary.')
         await expectSourceSessionUnchanged(source)
       })
 
@@ -2944,8 +3423,8 @@ describe('Sessions API', () => {
           workflow?: Record<string, unknown>
           link?: Record<string, unknown>
         }
-        expect(body.sessionId).toEqual(expect.any(String))
-        expect(body.workDir).toBe(workDir)
+        expect(body.sessionId).toBe(sourceSessionId)
+        expect(body.workDir).toBe(await fs.realpath(workDir))
         expect(body.workflow).toMatchObject({
           mode: 'workflow',
           templateId: 'agent-development',
@@ -2964,12 +3443,16 @@ describe('Sessions API', () => {
         const targetState = await readWorkflowSessionState(body.sessionId!)
         expect(targetState.link).toMatchObject({
           sourceSessionId,
+          targetSessionId: sourceSessionId,
           contextStrategy: 'inherit',
           sourceMessageCount: 2,
           clientRequestId,
         })
-        expect(JSON.stringify(targetState)).toContain('Completed workflow result that should be inherited.')
-        expect(await fs.readFile(sourceFilePath, 'utf-8')).toBe(sourceRawBefore)
+        expect(targetState.contextCarryover).toBeUndefined()
+        const sourceAfter = await sessionService.getSession(sourceSessionId)
+        expect(JSON.stringify(sourceAfter?.messages)).toContain('Preserve the completed workflow decision.')
+        expect(JSON.stringify(sourceAfter?.messages)).toContain('Completed workflow result that should be inherited.')
+        expect(await fs.readFile(sourceFilePath, 'utf-8')).not.toBe(sourceRawBefore)
       })
 
       it('POST /api/sessions/:id/workflow/start should allow idle prewarmed source sessions', async () => {
@@ -3174,6 +3657,137 @@ describe('Sessions API', () => {
       })
     })
 
+    it('POST /api/sessions/:id/workflow/follow-up should append an inherited workflow run in the same session', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-follow-up-'))
+
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+            request: '开发一个学生管理系统',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = (await createRes.json()) as { sessionId: string }
+
+      const stateService = new WorkflowSessionStateService()
+      const stateRead = await stateService.readState(created.sessionId)
+      expect(stateRead.state?.workflowRuns).toHaveLength(1)
+      const completed = stateRead.state!
+      const firstRun = completed.workflowRuns![0]!
+      firstRun.status = 'completed'
+      firstRun.artifacts.push({
+        id: 'project-context',
+        filename: 'project-context.md',
+        kind: 'markdown',
+        required: true,
+        phaseId: 'discussion',
+        createdAt: '2026-07-02T00:00:00.000Z',
+        updatedAt: '2026-07-02T00:00:00.000Z',
+        content: 'projectName: Students\nworkspaceRoot: test\nrunCommands: bun run dev',
+      })
+      completed.lastCompletedWorkflowRunId = firstRun.id
+      completed.activeWorkflowRunId = undefined
+      completed.runStatus = 'completed'
+      await stateService.writeState(created.sessionId, completed)
+
+      const followUpRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/follow-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request: '刚才学生新增保存 500',
+          errors: 'POST /students returned 500',
+        }),
+      })
+      expect(followUpRes.status).toBe(200)
+      const body = await followUpRes.json() as {
+        workflow: { activeWorkflowRunId?: string; workflowRuns?: Array<{ id: string; primaryLabel?: string; inheritedFromRunId?: string }> }
+        state: { workflowRuns?: Array<{ id: string; artifacts: Array<{ filename?: string }> }> }
+      }
+
+      expect(body.workflow.workflowRuns).toHaveLength(2)
+      const nextRun = body.workflow.workflowRuns?.at(-1)
+      expect(nextRun).toMatchObject({
+        primaryLabel: 'bug',
+        inheritedFromRunId: firstRun.id,
+      })
+      expect(body.workflow.activeWorkflowRunId).toBe(nextRun?.id)
+      expect(body.state.workflowRuns?.at(-1)?.artifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ filename: 'project-context.md' }),
+          expect.objectContaining({ filename: 'debug-context.md' }),
+        ]),
+      )
+    })
+
+    it('POST /api/sessions/:id/workflow/preview/start and stop should manage a workflow-owned preview process', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-preview-'))
+
+      const createRes = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDir,
+          workflow: {
+            templateId: 'agent-development',
+            templateSource: 'user',
+            initialPhaseId: 'discussion',
+            request: '开发一个学生管理系统',
+          },
+        }),
+      })
+      expect(createRes.status).toBe(201)
+      const created = await createRes.json() as { sessionId: string }
+      const command = `${process.execPath} -e "console.log('preview-ready'); setInterval(() => {}, 1000)"`
+
+      const startRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/preview/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command,
+          detectedUrl: 'http://127.0.0.1:5173',
+          detectedPort: 5173,
+        }),
+      })
+      expect(startRes.status).toBe(200)
+      const started = await startRes.json() as {
+        workflow: { preview?: { status: string; detectedUrl?: string } }
+        state: { preview?: { status: string; pid?: number }; workflowRuns?: Array<{ artifacts: Array<{ id: string; filename?: string }> }> }
+      }
+
+      expect(started.workflow.preview).toMatchObject({
+        status: 'running',
+        detectedUrl: 'http://127.0.0.1:5173',
+      })
+      expect(started.state.preview?.pid).toBeGreaterThan(0)
+      expect(started.state.workflowRuns?.[0]?.artifacts).toContainEqual(
+        expect.objectContaining({
+          id: 'run-preview',
+          filename: 'run-preview.md',
+        }),
+      )
+
+      const stopRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/preview/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'test cleanup' }),
+      })
+      expect(stopRes.status).toBe(200)
+      const stopped = await stopRes.json() as {
+        workflow: { preview?: { status: string } }
+        state: { preview?: { status: string } }
+      }
+
+      expect(stopped.workflow.preview?.status).toBe('stopped')
+      expect(stopped.state.preview?.status).toBe('stopped')
+    })
+
     it('POST /api/sessions/:id/workflow/transition should record clear next phase context on confirmation', async () => {
       const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-clear-'))
 
@@ -3298,6 +3912,69 @@ describe('Sessions API', () => {
         expect.objectContaining({ lifecycleStatus: expectedArtifactStatus }),
       )
       expectNoAbsolutePathLeak(body.workflow)
+    })
+
+    it('POST /api/sessions/:id/workflow/transition accepts needs_user as a structured pending gate', async () => {
+      const sessionId = `aaaaaaaa-bbbb-cccc-dddd-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
+      const workDir = path.join(tmpDir, 'api-workflow-needs-user')
+      const state = makePendingWorkflowTransitionState(sessionId, {
+        status: 'running',
+        workflowStatus: 'running',
+        runStatus: 'active',
+        stateVersion: 1,
+        revision: 1,
+        pendingConfirmation: null,
+        transitionHistory: [],
+        artifactIndex: [],
+        phases: [
+          {
+            id: 'discussion',
+            index: 0,
+            status: 'running',
+            transitionAuthority: 'auto',
+            artifactPointers: [],
+          },
+          {
+            id: 'specify',
+            index: 1,
+            status: 'created',
+            transitionAuthority: 'user-confirmation',
+            artifactPointers: [],
+          },
+        ],
+      })
+      state.templateSnapshot.phases[0]!.transitionAuthority = 'auto'
+      await writeWorkflowSessionState(sessionId, state)
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'running',
+          workflowStatus: 'running',
+          activePhaseId: 'discussion',
+          stateRevision: 1,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'needs_user',
+          stateVersion: 1,
+          handoff: { summary: 'Need a user confirmation.' },
+          rationale: 'The next step changes the approved scope.',
+          evidence: [],
+        }),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json() as { state: { activePhaseId: string; pendingConfirmation: { submission?: { status?: string } } | null } }
+      expect(body.state.activePhaseId).toBe('discussion')
+      expect(body.state.pendingConfirmation?.submission?.status).toBe('needs_user')
     })
 
     it('POST /api/sessions/:id/workflow/transition should reject stale canonical stateVersion without advancing', async () => {
@@ -3918,7 +4595,7 @@ describe('Sessions API', () => {
       }
     })
 
-    it('GET /api/workflows/templates should return user templates only and invalid user template issues', async () => {
+    it('GET /api/workflows/templates should return dynamic user templates and invalid user template issues', async () => {
       const workflowConfigPath = path.join(tmpDir, 'cc-jiangxia', 'workflows.json')
       await fs.mkdir(path.dirname(workflowConfigPath), { recursive: true })
       await fs.writeFile(
@@ -3960,8 +4637,10 @@ describe('Sessions API', () => {
           severity: string
         }>
       }
-      expect(body.templates).toEqual([])
-      expect(body.templates.some((template) => template.id === 'invalid-user-template')).toBe(false)
+      const userTemplates = body.templates.filter((template) => template.source === 'user')
+      expect(userTemplates.length).toBeGreaterThan(0)
+      expect(userTemplates.every((template) => template.phaseCount > 0 && template.firstPhaseId)).toBe(true)
+      expect(userTemplates.some((template) => template.id === 'invalid-user-template')).toBe(false)
       expect(body.invalidTemplates).toContainEqual({
         source: 'user-config',
         templateId: 'invalid-user-template',

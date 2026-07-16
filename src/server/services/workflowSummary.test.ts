@@ -58,12 +58,16 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
     phases: [
       {
         id: 'requirements-clarification',
+        label: 'Requirements Clarification',
+        transitionAuthority: 'user-confirmation',
         index: 0,
         status: 'pending-confirmation',
         artifactPointers: [],
       },
       {
         id: 'technical-design',
+        label: 'Technical Design',
+        transitionAuthority: 'user-confirmation',
         index: 1,
         status: 'created',
         artifactPointers: [],

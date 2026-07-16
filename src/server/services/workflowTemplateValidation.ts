@@ -1,14 +1,27 @@
 import type {
+  EffortMode,
+  WorkflowLabel,
   WorkflowPhaseActionPolicy,
   WorkflowPhaseConstraintStrength,
+  WorkflowPhaseModePolicy,
   WorkflowPhasePrompt,
+  WorkflowPhaseOutputArtifact,
+  WorkflowPhaseRuntimeContract,
+  WorkflowPhaseSkipPolicy,
   WorkflowPhaseSkillSource,
+  WorkflowSkillBinding,
+  WorkflowSkillBindingMode,
   WorkflowPhaseToolPolicy,
   WorkflowTemplateSource,
+} from './workflowTypes.js'
+import {
+  WORKFLOW_EFFORT_MODES,
+  WORKFLOW_LABELS,
 } from './workflowTypes.js'
 import { WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES } from './workflowToolPolicy.js'
 
 export const WORKFLOW_TEMPLATE_SCHEMA_VERSION = 1
+export const WORKFLOW_TEMPLATE_SUPPORTED_SCHEMA_VERSIONS = [1, 2] as const
 
 export type WorkflowTemplateValidationIssueSource =
   | 'user-config'
@@ -39,6 +52,8 @@ export type WorkflowTemplateRegistrySkillDeclaration = {
   [key: string]: unknown
 }
 
+export type WorkflowTemplateRegistrySkillBinding = string | WorkflowSkillBinding
+
 export type WorkflowTemplateRegistryRequiredArtifact = {
   id: string
   name?: string
@@ -64,7 +79,7 @@ export type WorkflowTemplateRegistryCompletionCriteria = {
 }
 
 export type WorkflowTemplateRegistryTransitionPolicy = {
-  authority: 'auto' | 'user-confirmation'
+  authority: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
   [key: string]: unknown
 }
 
@@ -72,16 +87,22 @@ export type WorkflowTemplateRegistryPhase = {
   id: string
   name: string
   instructions: string
+  appliesTo?: WorkflowLabel[]
+  skipWhen?: WorkflowPhaseSkipPolicy
+  modePolicy?: WorkflowPhaseModePolicy
   requestedModel?: unknown
   objective?: string
   requiredIntake?: string[]
   handoffRules?: string[]
   executionRules?: string[]
   outputArtifact?: WorkflowTemplateRegistryOutputArtifact
+  outputArtifacts?: WorkflowPhaseOutputArtifact[]
   skills: WorkflowTemplateRegistrySkillDeclaration[]
+  skillBindings?: WorkflowTemplateRegistrySkillBinding[]
   requiredArtifacts: WorkflowTemplateRegistryRequiredArtifact[]
   completionCriteria: WorkflowTemplateRegistryCompletionCriteria
   transition: WorkflowTemplateRegistryTransitionPolicy
+  runtimeContract?: WorkflowPhaseRuntimeContract
   intent?: {
     objective: string
     role: string
@@ -96,7 +117,7 @@ export type WorkflowTemplateRegistryPhase = {
       strength?: WorkflowPhaseConstraintStrength
       [key: string]: unknown
     }
-    transitionAuthority: 'auto' | 'user-confirmation'
+    transitionAuthority: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
     [key: string]: unknown
   }
   evidencePolicy?: {
@@ -113,12 +134,15 @@ export type WorkflowTemplateRegistryPhase = {
 }
 
 export type WorkflowTemplateRegistryTemplate = {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   id: string
   source: WorkflowTemplateSource
   version: string
   name: string
   description: string
+  labels?: WorkflowLabel[]
+  routingPolicy?: Record<string, unknown>
+  stopConditions?: string[]
   phases: WorkflowTemplateRegistryPhase[]
   [key: string]: unknown
 }
@@ -147,6 +171,48 @@ export function isNonEmptyString(value: unknown): value is string {
 
 export function normalizeStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(isNonEmptyString) : []
+}
+
+export function isWorkflowLabel(value: unknown): value is WorkflowLabel {
+  return typeof value === 'string' && (WORKFLOW_LABELS as readonly string[]).includes(value)
+}
+
+export function isEffortMode(value: unknown): value is EffortMode {
+  return typeof value === 'string' && (WORKFLOW_EFFORT_MODES as readonly string[]).includes(value)
+}
+
+export function normalizeWorkflowLabels(value: unknown): {
+  labels: WorkflowLabel[]
+  invalidIndexes: number[]
+} {
+  if (!Array.isArray(value)) return { labels: [], invalidIndexes: [] }
+  const labels: WorkflowLabel[] = []
+  const invalidIndexes: number[] = []
+  value.forEach((label, index) => {
+    if (!isWorkflowLabel(label)) {
+      invalidIndexes.push(index)
+      return
+    }
+    if (!labels.includes(label)) labels.push(label)
+  })
+  return { labels, invalidIndexes }
+}
+
+function normalizeEffortModes(value: unknown): {
+  efforts: EffortMode[]
+  invalidIndexes: number[]
+} {
+  if (!Array.isArray(value)) return { efforts: [], invalidIndexes: [] }
+  const efforts: EffortMode[] = []
+  const invalidIndexes: number[] = []
+  value.forEach((effort, index) => {
+    if (!isEffortMode(effort)) {
+      invalidIndexes.push(index)
+      return
+    }
+    if (!efforts.includes(effort)) efforts.push(effort)
+  })
+  return { efforts, invalidIndexes }
 }
 
 export function workflowTemplateValidationIssue(
@@ -235,6 +301,15 @@ export function normalizePhaseSkillReferences(value: unknown): {
   const invalidIndexes: number[] = []
 
   value.forEach((skill, index) => {
+    if (isNonEmptyString(skill)) {
+      references.push({
+        name: skill.trim(),
+        mode: 'recommended',
+        source: 'fallback',
+      })
+      return
+    }
+
     if (!isRecord(skill)) {
       invalidIndexes.push(index)
       return
@@ -295,12 +370,137 @@ export function normalizeCompletionCriteria(value: unknown): WorkflowTemplateReg
 
 export function normalizeTransition(value: unknown): WorkflowTemplateRegistryTransitionPolicy | null {
   if (!isRecord(value)) return null
-  if (value.authority !== 'auto' && value.authority !== 'user-confirmation') return null
+  if (
+    value.authority !== 'auto' &&
+    value.authority !== 'user-confirmation' &&
+    value.authority !== 'artifact-gate' &&
+    value.authority !== 'user-choice'
+  ) return null
 
   return {
     ...value,
     authority: value.authority,
   }
+}
+
+function isWorkflowSkillBindingMode(value: unknown): value is WorkflowSkillBindingMode {
+  return value === 'native-if-installed' ||
+    value === 'fallback-contract' ||
+    value === 'native-if-installed-else-fallback-contract' ||
+    value === 'disabled'
+}
+
+export function normalizeSkillBindings(value: unknown): {
+  bindings: WorkflowTemplateRegistrySkillBinding[]
+  invalidIndexes: number[]
+} {
+  if (!Array.isArray(value)) return { bindings: [], invalidIndexes: [] }
+
+  const bindings: WorkflowTemplateRegistrySkillBinding[] = []
+  const invalidIndexes: number[] = []
+
+  value.forEach((binding, index) => {
+    if (isNonEmptyString(binding)) {
+      bindings.push(binding)
+      return
+    }
+    if (!isRecord(binding) || !isNonEmptyString(binding.id)) {
+      invalidIndexes.push(index)
+      return
+    }
+    if (binding.mode !== undefined && !isWorkflowSkillBindingMode(binding.mode)) {
+      invalidIndexes.push(index)
+      return
+    }
+    bindings.push({
+      id: binding.id,
+      ...(binding.mode ? { mode: binding.mode } : {}),
+    })
+  })
+
+  return { bindings, invalidIndexes }
+}
+
+export function normalizeRuntimeContract(value: unknown): WorkflowPhaseRuntimeContract | undefined {
+  if (!isRecord(value)) return undefined
+  const contract: WorkflowPhaseRuntimeContract = {
+    ...(Array.isArray(value.allowedActions) ? { allowedActions: normalizeStringList(value.allowedActions) } : {}),
+    ...(Array.isArray(value.forbiddenActions) ? { forbiddenActions: normalizeStringList(value.forbiddenActions) } : {}),
+    ...(Array.isArray(value.allowedTools) ? { allowedTools: normalizeStringList(value.allowedTools) } : {}),
+    ...(Array.isArray(value.disallowedTools) ? { disallowedTools: normalizeStringList(value.disallowedTools) } : {}),
+    ...(Array.isArray(value.mustProduce) ? { mustProduce: normalizeStringList(value.mustProduce) } : {}),
+    ...(Array.isArray(value.completionRequires) ? { completionRequires: normalizeStringList(value.completionRequires) } : {}),
+    ...(isRecord(value.questionPolicy) ? { questionPolicy: value.questionPolicy } : {}),
+    ...(isRecord(value.explorationPolicy) ? { explorationPolicy: value.explorationPolicy } : {}),
+  }
+
+  if (isRecord(value.toolAccess)) {
+    contract.toolAccess = {
+      ...(Array.isArray(value.toolAccess.allowed) ? { allowed: normalizeStringList(value.toolAccess.allowed) } : {}),
+      ...(Array.isArray(value.toolAccess.forbidden) ? { forbidden: normalizeStringList(value.toolAccess.forbidden) } : {}),
+      ...(Array.isArray(value.toolAccess.requiresExplicitUserConfirmation)
+        ? { requiresExplicitUserConfirmation: normalizeStringList(value.toolAccess.requiresExplicitUserConfirmation) }
+        : {}),
+      ...(typeof value.toolAccess.maxRepairLoops === 'number'
+        ? { maxRepairLoops: value.toolAccess.maxRepairLoops }
+        : {}),
+      ...(isNonEmptyString(value.toolAccess.repairLoopAllowedTo)
+        ? { repairLoopAllowedTo: value.toolAccess.repairLoopAllowedTo }
+        : {}),
+    }
+  }
+
+  return Object.keys(contract).length ? contract : undefined
+}
+
+export function normalizeOutputArtifacts(value: unknown): WorkflowPhaseOutputArtifact[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(isRecord)
+    .filter((artifact) => isNonEmptyString(artifact.id) && isNonEmptyString(artifact.kind))
+    .map((artifact) => {
+      const requiredWhen = normalizeWorkflowLabels(artifact.requiredWhen)
+      return {
+        ...artifact,
+        id: artifact.id,
+        kind: artifact.kind,
+        ...(isNonEmptyString(artifact.filename) ? { filename: artifact.filename } : {}),
+        ...(typeof artifact.required === 'boolean' ? { required: artifact.required } : {}),
+        ...(requiredWhen.labels.length ? { requiredWhen: requiredWhen.labels } : {}),
+        ...(isNonEmptyString(artifact.description) ? { description: artifact.description } : {}),
+      }
+    })
+}
+
+function normalizeSkipWhen(value: unknown): {
+  policy?: WorkflowPhaseSkipPolicy
+  invalidLabelIndexes: number[]
+  invalidEffortIndexes: number[]
+} {
+  if (!isRecord(value)) {
+    return { invalidLabelIndexes: [], invalidEffortIndexes: [] }
+  }
+  const labels = normalizeWorkflowLabels(value.labels)
+  const efforts = normalizeEffortModes(value.efforts)
+  const policy: WorkflowPhaseSkipPolicy = {
+    ...(labels.labels.length ? { labels: labels.labels } : {}),
+    ...(efforts.efforts.length ? { efforts: efforts.efforts } : {}),
+  }
+  return {
+    policy: Object.keys(policy).length ? policy : undefined,
+    invalidLabelIndexes: labels.invalidIndexes,
+    invalidEffortIndexes: efforts.invalidIndexes,
+  }
+}
+
+function normalizeModePolicy(value: unknown): WorkflowPhaseModePolicy | undefined {
+  if (!isRecord(value)) return undefined
+  const modePolicy: WorkflowPhaseModePolicy = {
+    ...(isNonEmptyString(value.light) ? { light: value.light } : {}),
+    ...(isNonEmptyString(value.standard) ? { standard: value.standard } : {}),
+    ...(isNonEmptyString(value.heavy) ? { heavy: value.heavy } : {}),
+  }
+  return Object.keys(modePolicy).length ? modePolicy : undefined
 }
 
 export function normalizeActionPolicy(value: unknown): WorkflowPhaseActionPolicy | undefined {
@@ -337,6 +537,11 @@ export function normalizeToolPolicy(value: unknown): {
       .map((tool) => tool.trim()),
   ))
   const unknownTools = allowedTools.filter((tool) => !CONFIGURABLE_WORKFLOW_TOOL_NAME_SET.has(tool))
+  const disallowedTools = Array.isArray(value.disallowedTools)
+    ? Array.from(new Set(value.disallowedTools.filter(isNonEmptyString).map((tool) => tool.trim())))
+    : undefined
+  const unknownDisallowedTools = (disallowedTools ?? []).filter((tool) => !CONFIGURABLE_WORKFLOW_TOOL_NAME_SET.has(tool))
+  unknownTools.push(...unknownDisallowedTools)
   if (unknownTools.length > 0) {
     return { unknownTools, invalidShape: false }
   }
@@ -345,6 +550,7 @@ export function normalizeToolPolicy(value: unknown): {
     policy: {
       ...value,
       allowedTools,
+      ...(disallowedTools ? { disallowedTools } : {}),
     },
     unknownTools: [],
     invalidShape: false,
@@ -460,6 +666,21 @@ export function validateAndNormalizeWorkflowTemplate(
 
   const templateId = isNonEmptyString(value.id) ? value.id : undefined
   const issues: WorkflowTemplateValidationIssue[] = []
+  const templateSchemaVersion = value.schemaVersion === 2 ? 2 : 1
+
+  if (
+    value.schemaVersion !== undefined &&
+    value.schemaVersion !== 1 &&
+    value.schemaVersion !== 2
+  ) {
+    issues.push(workflowTemplateValidationIssue(
+      source,
+      `${templatePath}.schemaVersion`,
+      'WORKFLOW_TEMPLATE_SCHEMA_VERSION_UNSUPPORTED',
+      'Template schemaVersion must be 1 or 2.',
+      templateId,
+    ))
+  }
 
   if (
     !isNonEmptyString(value.id) ||
@@ -489,7 +710,7 @@ export function validateAndNormalizeWorkflowTemplate(
   if (
     isNonEmptyString(value.id) &&
     value.id !== options.allowExistingId &&
-    options.registry?.templates.some((template) => template.source === 'user' && template.id === value.id)
+    options.registry?.templates.some((template) => template.id === value.id)
   ) {
     issues.push(workflowTemplateValidationIssue(
       source,
@@ -509,6 +730,17 @@ export function validateAndNormalizeWorkflowTemplate(
       templateId,
     ))
   }
+
+  const templateLabels = normalizeWorkflowLabels(value.labels)
+  templateLabels.invalidIndexes.forEach((labelIndex) => {
+    issues.push(workflowTemplateValidationIssue(
+      source,
+      `${templatePath}.labels[${labelIndex}]`,
+      'WORKFLOW_LABEL_INVALID',
+      'Workflow template label is not supported.',
+      templateId,
+    ))
+  })
 
   issues.push(...validateLinearOnlyWorkflowTemplate(value, templatePath, source, templateId))
 
@@ -635,6 +867,56 @@ export function validateAndNormalizeWorkflowTemplate(
           templateId,
         ))
       }
+      const normalizedSkillBindings = normalizeSkillBindings(phaseForValidation.skillBindings)
+      normalizedSkillBindings.invalidIndexes.forEach((bindingIndex) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.skillBindings[${bindingIndex}]`,
+          'WORKFLOW_PHASE_SKILL_BINDING_INVALID_REFERENCE',
+          'Workflow phase skill binding requires a skill id and a supported binding mode.',
+          templateId,
+        ))
+      })
+
+      const appliesTo = normalizeWorkflowLabels(phaseForValidation.appliesTo)
+      appliesTo.invalidIndexes.forEach((labelIndex) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.appliesTo[${labelIndex}]`,
+          'WORKFLOW_LABEL_INVALID',
+          'Workflow phase appliesTo label is not supported.',
+          templateId,
+        ))
+      })
+      const skipWhen = normalizeSkipWhen(phaseForValidation.skipWhen)
+      skipWhen.invalidLabelIndexes.forEach((labelIndex) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.skipWhen.labels[${labelIndex}]`,
+          'WORKFLOW_LABEL_INVALID',
+          'Workflow phase skipWhen label is not supported.',
+          templateId,
+        ))
+      })
+      skipWhen.invalidEffortIndexes.forEach((effortIndex) => {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.skipWhen.efforts[${effortIndex}]`,
+          'WORKFLOW_EFFORT_INVALID',
+          'Workflow phase skipWhen effort is not supported.',
+          templateId,
+        ))
+      })
+      const modePolicy = normalizeModePolicy(phaseForValidation.modePolicy)
+      if (phaseForValidation.modePolicy !== undefined && !isRecord(phaseForValidation.modePolicy)) {
+        issues.push(workflowTemplateValidationIssue(
+          source,
+          `${phasePath}.modePolicy`,
+          'WORKFLOW_PHASE_MODE_POLICY_INVALID',
+          'Workflow phase modePolicy must be an object.',
+          templateId,
+        ))
+      }
 
       if (
         isNonEmptyString(phaseForValidation.id) &&
@@ -666,6 +948,8 @@ export function validateAndNormalizeWorkflowTemplate(
           ))
         })
         const phasePrompt = normalizePhasePrompt(phaseForValidation.phasePrompt)
+        const runtimeContract = normalizeRuntimeContract(phaseForValidation.runtimeContract)
+        const outputArtifacts = normalizeOutputArtifacts(phaseForValidation.outputArtifacts)
         normalizedPhases.push({
           ...stripRuntimeState(phase),
           id: phaseForValidation.id,
@@ -676,15 +960,21 @@ export function validateAndNormalizeWorkflowTemplate(
           handoffRules,
           executionRules: normalizeExecutionRules(phaseForValidation.executionRules),
           outputArtifact,
+          ...(outputArtifacts.length ? { outputArtifacts } : {}),
           skills: normalizedSkills.references,
+          ...(normalizedSkillBindings.bindings.length ? { skillBindings: normalizedSkillBindings.bindings } : {}),
           requiredArtifacts: normalizeRequiredArtifacts(phaseForValidation.requiredArtifacts),
           completionCriteria,
           transition,
           intent: groupedContract.intent,
           contract: groupedContract.contract,
           evidencePolicy: groupedContract.evidencePolicy,
+          ...(appliesTo.labels.length ? { appliesTo: appliesTo.labels } : {}),
+          ...(skipWhen.policy ? { skipWhen: skipWhen.policy } : {}),
+          ...(modePolicy ? { modePolicy } : {}),
           ...(actionPolicy ? { actionPolicy } : {}),
           ...(toolPolicyResult.policy ? { toolPolicy: toolPolicyResult.policy } : {}),
+          ...(runtimeContract ? { runtimeContract } : {}),
           ...(phasePrompt ? { phasePrompt } : {}),
         })
       }
@@ -699,12 +989,15 @@ export function validateAndNormalizeWorkflowTemplate(
     issues,
     template: {
       ...value,
-      schemaVersion: WORKFLOW_TEMPLATE_SCHEMA_VERSION,
+      schemaVersion: templateSchemaVersion,
       id: templateId,
       source: 'user',
       version: value.version,
       name: value.name,
       description: isNonEmptyString(value.description) ? value.description : '',
+      ...(templateLabels.labels.length ? { labels: templateLabels.labels } : {}),
+      ...(isRecord(value.routingPolicy) ? { routingPolicy: value.routingPolicy } : {}),
+      ...(normalizeStringList(value.stopConditions).length ? { stopConditions: normalizeStringList(value.stopConditions) } : {}),
       phases: normalizedPhases,
     },
   }
@@ -736,7 +1029,12 @@ function normalizeExecutionRules(value: unknown): string[] {
 }
 
 function normalizeGroupedTransition(value: unknown): WorkflowTemplateRegistryTransitionPolicy | null {
-  if (value !== 'auto' && value !== 'user-confirmation') return null
+  if (
+    value !== 'auto' &&
+    value !== 'user-confirmation' &&
+    value !== 'artifact-gate' &&
+    value !== 'user-choice'
+  ) return null
   return { authority: value }
 }
 
@@ -851,7 +1149,9 @@ function projectGroupedPhaseContract(phase: Record<string, unknown>): {
           : {}),
       ...(toolPolicyResult.policy ? { toolPolicy: toolPolicyResult.policy } : {}),
       transitionAuthority: existingContract.transitionAuthority === 'auto' ||
-        existingContract.transitionAuthority === 'user-confirmation'
+        existingContract.transitionAuthority === 'user-confirmation' ||
+        existingContract.transitionAuthority === 'artifact-gate' ||
+        existingContract.transitionAuthority === 'user-choice'
         ? existingContract.transitionAuthority
         : transition?.authority ?? 'auto',
     },
@@ -910,7 +1210,13 @@ function invalidStrengthIssuePaths(phase: Record<string, unknown>, phasePath: st
 }
 
 function isWorkflowPhaseSkillSource(value: unknown): value is WorkflowPhaseSkillSource {
-  return value === 'user' ||
+  return value === 'workflow' ||
+    value === 'fallback' ||
+    value === 'superpowers' ||
+    value === 'spec-kit-plus' ||
+    value === 'codex' ||
+    value === 'claude-code' ||
+    value === 'user' ||
     value === 'project' ||
     value === 'plugin' ||
     value === 'managed' ||

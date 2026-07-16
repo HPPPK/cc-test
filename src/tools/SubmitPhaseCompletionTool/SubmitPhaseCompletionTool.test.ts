@@ -115,17 +115,54 @@ describe('SubmitPhaseCompletionTool', () => {
     expect(findToolByName(tools, TOOL_NAME)?.name).toBe(TOOL_NAME)
   })
 
-  test('requires phaseId, stateVersion, status, handoff, rationale, and evidence', async () => {
+  test('requires status, handoff, rationale, and evidence while allowing phaseId and stateVersion to be inferred', async () => {
     const SubmitPhaseCompletionTool = await loadTool()
 
-    for (const field of ['phaseId', 'stateVersion', 'status', 'handoff', 'rationale', 'evidence']) {
+    for (const field of ['status', 'handoff', 'rationale', 'evidence']) {
       const input = validInput({ [field]: undefined })
 
       expect(SubmitPhaseCompletionTool.inputSchema.safeParse(input).success, field).toBe(false)
     }
+
+    expect(SubmitPhaseCompletionTool.inputSchema.safeParse(validInput({
+      phaseId: undefined,
+      stateVersion: undefined,
+    })).success).toBe(true)
   })
 
-  test.each(['ready', 'blocked', 'unable'] as const)('accepts %s completion status', async (status) => {
+  test('uses strict structured output and explains the complete phase-completion payload', async () => {
+    const SubmitPhaseCompletionTool = await loadTool()
+
+    expect(SubmitPhaseCompletionTool.strict).toBe(true)
+
+    const prompt = await SubmitPhaseCompletionTool.prompt({} as any)
+    expect(prompt).toContain('status, handoff, rationale, and evidence')
+    expect(prompt).toContain('handoff must be an object')
+    expect(prompt).toContain('rationale must be a non-empty string')
+    expect(prompt).toContain('evidence must be an array')
+    expect(prompt).toContain('Plain assistant text does not satisfy')
+  })
+
+  test('serializes the mandatory completion fields into the provider tool schema', async () => {
+    const SubmitPhaseCompletionTool = await loadTool()
+    const { toolToAPISchema } = await import('../../utils/api.js')
+
+    const schema = await toolToAPISchema(SubmitPhaseCompletionTool, {
+      getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+      tools: [],
+      agents: [],
+    })
+
+    expect(schema.input_schema).toMatchObject({ type: 'object' })
+    expect(schema.input_schema.required).toEqual(expect.arrayContaining([
+      'status',
+      'handoff',
+      'rationale',
+      'evidence',
+    ]))
+  })
+
+  test.each(['ready', 'needs_user', 'completed', 'blocked', 'unable'] as const)('accepts %s completion status', async (status) => {
     const SubmitPhaseCompletionTool = await loadTool()
 
     expect(SubmitPhaseCompletionTool.inputSchema.safeParse(validInput({ status })).success).toBe(true)
@@ -159,6 +196,66 @@ describe('SubmitPhaseCompletionTool', () => {
     )
 
     expect(result).toEqual({ result: true })
+  })
+
+  test('still rejects stale stateVersion when phaseId is inferred', async () => {
+    const SubmitPhaseCompletionTool = await loadTool()
+    const result = await SubmitPhaseCompletionTool.validateInput?.(
+      validInput({ phaseId: undefined, stateVersion: 2 }),
+      contextFor('workflow'),
+    )
+
+    expect(result).toMatchObject({
+      result: false,
+      message: expect.stringContaining('stale'),
+    })
+  })
+
+  test('refreshes Desktop workflow state during validation before allowing completion submission', async () => {
+    const requests: Array<{ method: string; url: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(req) {
+        const url = new URL(req.url)
+        requests.push({ method: req.method, url: url.pathname })
+        return Response.json({
+          state: {
+            mode: 'workflow',
+            activePhaseId: 'requirements',
+            stateVersion: 3,
+          },
+        })
+      },
+    })
+
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+
+    try {
+      const SubmitPhaseCompletionTool = await loadTool()
+      const result = await SubmitPhaseCompletionTool.validateInput?.(validInput(), contextFor('workflow'))
+
+      expect(result).toEqual({ result: true })
+      expect(requests).toEqual([
+        { method: 'GET', url: '/api/sessions/workflow-session-123/workflow' },
+      ])
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test('blocks the workflow completion path when the Desktop transition service is unavailable', async () => {
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:1'
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+
+    const SubmitPhaseCompletionTool = await loadTool()
+    const result = await SubmitPhaseCompletionTool.validateInput?.(validInput(), contextFor('workflow'))
+
+    expect(result).toMatchObject({
+      result: false,
+      message: expect.stringContaining('WORKFLOW_TRANSITION_BLOCKED'),
+    })
   })
 
   test('submits through the desktop workflow transition API when launched by Desktop', async () => {
@@ -211,6 +308,57 @@ describe('SubmitPhaseCompletionTool', () => {
         rationale: 'The required requirements artifact was produced.',
       })
       expect(result.data.message).toContain('user confirmation')
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test('infers phaseId and stateVersion from the latest Desktop workflow state', async () => {
+    const requests: Array<{ method: string; url: string; body: unknown }> = []
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      async fetch(req) {
+        const url = new URL(req.url)
+        if (req.method === 'GET' && url.pathname === '/api/sessions/workflow-session-123/workflow') {
+          requests.push({ method: req.method, url: url.pathname, body: null })
+          return Response.json({
+            state: {
+              mode: 'workflow',
+              activePhaseId: 'requirements',
+              stateVersion: 11,
+            },
+            workflow: { activePhaseId: 'requirements' },
+          })
+        }
+
+        requests.push({
+          method: req.method,
+          url: url.pathname,
+          body: await req.json(),
+        })
+        return Response.json({
+          workflow: { status: 'pending-confirmation', activePhaseId: 'requirements' },
+          state: { mode: 'workflow', activePhaseId: 'requirements', stateVersion: 12 },
+        })
+      },
+    })
+
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+
+    try {
+      const SubmitPhaseCompletionTool = await loadTool()
+      await SubmitPhaseCompletionTool.call(validInput({
+        phaseId: undefined,
+        stateVersion: undefined,
+      }), contextFor('workflow'))
+
+      expect(requests[1]?.body).toMatchObject({
+        action: 'ready',
+        phaseId: 'requirements',
+        stateVersion: 11,
+      })
     } finally {
       server.stop(true)
     }

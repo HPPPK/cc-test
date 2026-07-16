@@ -402,6 +402,44 @@ describe('ConversationService', () => {
     expect(env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING).toBe('1')
   })
 
+  test('reports SDK connection authorization status reasons', () => {
+    const service = new ConversationService() as any
+    service.sessions.set('sdk-test-session', {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [],
+      workDir: tmpDir,
+      permissionMode: 'default',
+      sdkToken: 'expected-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    })
+
+    expect(service.getSdkConnectionAuthStatus('missing-session', 'expected-token')).toEqual({
+      authorized: false,
+      reason: 'session-missing',
+    })
+    expect(service.getSdkConnectionAuthStatus('sdk-test-session', null)).toEqual({
+      authorized: false,
+      reason: 'token-missing',
+    })
+    expect(service.getSdkConnectionAuthStatus('sdk-test-session', 'stale-token')).toEqual({
+      authorized: false,
+      reason: 'token-mismatch',
+    })
+    expect(service.getSdkConnectionAuthStatus('sdk-test-session', 'expected-token')).toEqual({
+      authorized: true,
+      reason: 'authorized',
+    })
+  })
+
   test('uses bun entrypoint fallback on Windows dev mode', () => {
     const service = new ConversationService() as any
     const args = service.resolveCliArgs(['--print'])

@@ -130,6 +130,27 @@ describe('titleService', () => {
     expect(deriveTitle(raw)).toBe('/frontend-design @website 重新设计首页')
   })
 
+  test('derives titles from the user request inside workflow runtime prompts', () => {
+    const raw = [
+      'Workflow mode',
+      '',
+      'Active phase: route-context',
+      '',
+      'Phase instructions: Route the request, create project context.',
+      '',
+      'Stable phase execution contract',
+      '',
+      'Workflow runtime/system instructions should stay internal.',
+      '',
+      '做一个学生管理系统',
+      '',
+      'Workflow model provenance',
+      'Requested model: deepseek-v4-flash',
+    ].join('\n')
+
+    expect(deriveTitle(raw)).toBe('做一个学生管理系统')
+  })
+
   test('sends cleaned slash-command text to the title model', async () => {
     let requestBody: {
       messages?: Array<{ content?: string }>

@@ -59,6 +59,8 @@ function completedState(): WorkflowSessionState {
     phases: [
       {
         id: 'discussion',
+        label: 'Discussion',
+        transitionAuthority: 'user-confirmation',
         index: 0,
         status: 'completed',
         completedAt: now,

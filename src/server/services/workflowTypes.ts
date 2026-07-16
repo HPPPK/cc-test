@@ -1,4 +1,4 @@
-export const WORKFLOW_LIFECYCLE_STATUSES = [
+﻿export const WORKFLOW_LIFECYCLE_STATUSES = [
   'created',
   'running',
   'pending-confirmation',
@@ -24,13 +24,73 @@ export const WORKFLOW_TEMPLATE_SOURCE_STATUSES = ['current', 'stale-template', '
 
 export const WORKFLOW_ARTIFACT_POINTER_KINDS = ['workflow-state', 'phase-artifact', 'final-report'] as const
 
-export const WORKFLOW_COMPLETION_SUBMISSION_STATUSES = ['ready', 'blocked', 'unable'] as const
+export const WORKFLOW_COMPLETION_SUBMISSION_STATUSES = ['ready', 'needs_user', 'completed', 'blocked', 'unable'] as const
 
 export const WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES = ['pending', 'accepted', 'rejected', 'superseded'] as const
+
+export const WORKFLOW_LABELS = [
+  'new-product',
+  'enhancement',
+  'bug',
+  'documentation',
+  'refactor',
+  'test',
+  'question',
+  'duplicate',
+  'invalid',
+  'wontfix',
+  'help-wanted',
+  'good-first-issue',
+  'ux-copy',
+  'error-handling',
+] as const
+
+export const WORKFLOW_EFFORT_MODES = ['auto', 'light', 'standard', 'heavy'] as const
+
+export const WORKFLOW_BRAINSTORMING_MODES = ['auto', 'on', 'off'] as const
+
+export const WORKFLOW_RUN_STATUSES = [
+  'draft',
+  'active',
+  'waiting_for_user',
+  'paused',
+  'completed',
+  'cancelled',
+  'stopped',
+  'blocked',
+] as const
+
+export const WORKFLOW_PREVIEW_STATUSES = [
+  'idle',
+  'starting',
+  'running',
+  'failed',
+  'stopping',
+  'stopped',
+] as const
+
+export const WORKFLOW_SKILL_BINDING_MODES = [
+  'native-if-installed',
+  'fallback-contract',
+  'native-if-installed-else-fallback-contract',
+  'disabled',
+] as const
+
+export const WORKFLOW_SKILL_BINDING_AVAILABILITIES = [
+  'native',
+  'fallback',
+  'disabled',
+] as const
 
 export const WORKFLOW_PHASE_SKILL_MODES = ['recommended'] as const
 
 export const WORKFLOW_PHASE_SKILL_SOURCES = [
+  'workflow',
+  'fallback',
+  'superpowers',
+  'spec-kit-plus',
+  'codex',
+  'claude-code',
   'user',
   'project',
   'plugin',
@@ -42,6 +102,7 @@ export const WORKFLOW_PHASE_SKILL_SOURCES = [
 
 export const WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES = [
   'available',
+  'fallback-contract',
   'missing',
   'ambiguous',
   'unsupported-source',
@@ -50,7 +111,7 @@ export const WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES = [
   'installable',
 ] as const
 
-export type WorkflowTemplateSource = 'builtin' | 'user'
+export type WorkflowTemplateSource = 'builtin' | 'user' | 'pack'
 export type WorkflowMode = 'workflow'
 export type DialogueMode = 'dialogue'
 export type WorkflowLifecycleStatus = (typeof WORKFLOW_LIFECYCLE_STATUSES)[number]
@@ -59,6 +120,14 @@ export type WorkflowTemplateSourceStatus = (typeof WORKFLOW_TEMPLATE_SOURCE_STAT
 export type WorkflowArtifactPointerKind = (typeof WORKFLOW_ARTIFACT_POINTER_KINDS)[number]
 export type WorkflowCompletionSubmissionStatus = (typeof WORKFLOW_COMPLETION_SUBMISSION_STATUSES)[number]
 export type WorkflowArtifactLifecycleStatus = (typeof WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES)[number]
+export type WorkflowLabel = (typeof WORKFLOW_LABELS)[number]
+export type EffortMode = (typeof WORKFLOW_EFFORT_MODES)[number]
+export type WorkflowBrainstormingMode = (typeof WORKFLOW_BRAINSTORMING_MODES)[number]
+export type WorkflowRunStatus = (typeof WORKFLOW_RUN_STATUSES)[number]
+export type WorkflowPreviewStatus = (typeof WORKFLOW_PREVIEW_STATUSES)[number]
+export type WorkflowRoutingMode = 'manual' | 'auto-confirm' | 'auto'
+export type WorkflowSkillBindingMode = (typeof WORKFLOW_SKILL_BINDING_MODES)[number]
+export type WorkflowSkillBindingAvailability = (typeof WORKFLOW_SKILL_BINDING_AVAILABILITIES)[number]
 export type WorkflowPhaseSkillMode = (typeof WORKFLOW_PHASE_SKILL_MODES)[number]
 export type WorkflowPhaseSkillSource = (typeof WORKFLOW_PHASE_SKILL_SOURCES)[number]
 export type WorkflowPhaseSkillResolutionStatus = (typeof WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES)[number]
@@ -66,6 +135,49 @@ export type WorkflowTemplateVersion = string | number
 export type WorkflowModelSelector = string
 
 export type JsonObject = Record<string, unknown>
+
+export type WorkflowTaskRouterInput = {
+  request: string
+  selectedFiles?: string[]
+  repoMetadata?: JsonObject
+  errors?: string
+  logs?: string
+  testOutput?: string
+  forcedLabel?: WorkflowLabel
+}
+
+export type WorkflowTaskRouterResult = {
+  primaryLabel: WorkflowLabel
+  secondaryLabels: WorkflowLabel[]
+  effort: EffortMode
+  confidence: number
+  rationale: string
+  suggestedPath: string[]
+  terminalReason?: string
+}
+
+export type WorkflowSkillBinding = {
+  id: string
+  mode?: WorkflowSkillBindingMode
+}
+
+export type WorkflowSkillBindingResolution = {
+  id: string
+  mode: WorkflowSkillBindingMode
+  availability: WorkflowSkillBindingAvailability
+  fallbackContract?: string
+}
+
+export type WorkflowPhaseSkipPolicy = {
+  labels?: WorkflowLabel[]
+  efforts?: EffortMode[]
+}
+
+export type WorkflowPhaseModePolicy = {
+  light?: string
+  standard?: string
+  heavy?: string
+}
 
 export type DialogueSessionWorkflowProjection = {
   workflow?: never
@@ -151,6 +263,7 @@ export type WorkflowPhaseSkillCandidate = {
   pluginName?: string
   namespace?: string
   referenceId?: string
+  packId?: string
 }
 
 export type WorkflowPhaseSkillDiagnostic = {
@@ -165,6 +278,7 @@ export type WorkflowPhaseSkillProvenance = {
   contentHash?: string
   namespace?: string
   referenceId?: string
+  packId?: string
 }
 
 export type WorkflowPhaseSkillResolution = {
@@ -223,7 +337,39 @@ export type WorkflowPhaseActionPolicy = {
 
 export type WorkflowPhaseToolPolicy = {
   allowedTools: string[]
+  disallowedTools?: string[]
+  forbidden?: string[]
+  requiresExplicitUserConfirmation?: string[]
+  maxRepairLoops?: number
+  repairLoopAllowedTo?: string
   [key: string]: unknown
+}
+
+export type WorkflowPhaseRuntimeContract = {
+  allowedActions?: string[]
+  forbiddenActions?: string[]
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  mustProduce?: string[]
+  questionPolicy?: JsonObject
+  explorationPolicy?: JsonObject
+  toolAccess?: {
+    allowed?: string[]
+    forbidden?: string[]
+    requiresExplicitUserConfirmation?: string[]
+    maxRepairLoops?: number
+    repairLoopAllowedTo?: string
+  }
+  completionRequires?: string[]
+}
+
+export type WorkflowPhaseOutputArtifact = {
+  id: string
+  filename?: string
+  kind: string
+  required?: boolean
+  requiredWhen?: WorkflowLabel[]
+  description?: string
 }
 
 export type WorkflowPhaseConstraintStrength = 'guidance' | 'policy' | 'evidence' | 'gate'
@@ -244,7 +390,7 @@ export type WorkflowPhaseExecutionContract = {
     [key: string]: unknown
   }
   toolPolicy?: WorkflowPhaseToolPolicy
-  transitionAuthority: 'auto' | 'user-confirmation'
+  transitionAuthority: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
   [key: string]: unknown
 }
 
@@ -286,18 +432,24 @@ export type WorkflowPhaseDefinition = {
   id: string
   label: string
   instructions: string
+  appliesTo?: WorkflowLabel[]
+  skipWhen?: WorkflowPhaseSkipPolicy
+  modePolicy?: WorkflowPhaseModePolicy
   requestedModel?: WorkflowModelSelector | null
   skills?: WorkflowPhaseSkillReference[]
+  skillBindings?: Array<string | WorkflowSkillBinding>
   skillDeclarations: WorkflowSkillDeclaration[]
   requiredArtifacts: WorkflowRequiredArtifact[]
   completionCriteria: string[] | JsonObject
-  transitionAuthority: 'auto' | 'user-confirmation'
+  transitionAuthority: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
   intent?: WorkflowPhaseIntentContract
   contract?: WorkflowPhaseExecutionContract
   evidencePolicy?: WorkflowPhaseEvidencePolicy
   runtimeState?: WorkflowPhaseRuntimeState
   actionPolicy?: WorkflowPhaseActionPolicy
   toolPolicy?: WorkflowPhaseToolPolicy
+  runtimeContract?: WorkflowPhaseRuntimeContract
+  outputArtifacts?: WorkflowPhaseOutputArtifact[]
   phasePrompt?: WorkflowPhasePrompt
   [key: string]: unknown
 }
@@ -309,6 +461,9 @@ export type WorkflowTemplate = {
   version: WorkflowTemplateVersion
   displayName: string
   description: string
+  labels?: WorkflowLabel[]
+  routingPolicy?: JsonObject
+  stopConditions?: string[]
   phases: WorkflowPhaseDefinition[]
   registryKey?: string
   sourcePath?: string
@@ -326,6 +481,16 @@ export type WorkflowSessionCreateOptions = {
   templateId: string
   templateSource?: WorkflowTemplateSource
   initialPhaseId?: string
+  request?: string
+  selectedFiles?: string[]
+  repoMetadata?: JsonObject
+  errors?: string
+  logs?: string
+  testOutput?: string
+  labels?: WorkflowLabel[]
+  effort?: EffortMode
+  routingMode?: WorkflowRoutingMode
+  brainstormingMode?: WorkflowBrainstormingMode
 }
 
 export type WorkflowSessionSummary = {
@@ -339,11 +504,26 @@ export type WorkflowSessionSummary = {
   activePhaseIndex: number
   phaseCount: number
   pendingConfirmation: boolean
+  runStatus?: WorkflowRunStatus
+  labels?: WorkflowLabel[]
+  secondaryLabels?: WorkflowLabel[]
+  effort?: EffortMode
+  routingMode?: WorkflowRoutingMode
+  brainstormingMode?: WorkflowBrainstormingMode
+  router?: WorkflowTaskRouterResult
+  activeWorkflowRunId?: string
+  lastCompletedWorkflowRunId?: string
+  activeWorkflowRun?: WorkflowRunSummary
+  workflowRuns?: WorkflowRunSummary[]
+  artifactList?: WorkflowArtifactSummary[]
+  preview?: WorkflowPreviewState
+  skillBindingStatus?: WorkflowSkillBindingResolution[]
+  phaseNames?: string[]
   blockedReason?: string
   model?: WorkflowModelResolution
   statePointer: WorkflowArtifactPointer
   reportPointer?: WorkflowArtifactPointer
-  transitionAuthority?: 'auto' | 'user-confirmation'
+  transitionAuthority?: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
 }
 
 export type WorkflowSessionMetadata = {
@@ -356,6 +536,7 @@ export type WorkflowSessionMetadata = {
   templateSnapshotId: string
   workflowStatus: WorkflowLifecycleStatus
   status?: WorkflowLifecycleStatus
+  runStatus?: WorkflowRunStatus
   activePhaseId: string | null
   stateRef?: WorkflowArtifactPointer
   statePointer: WorkflowArtifactPointer
@@ -366,6 +547,19 @@ export type WorkflowSessionMetadata = {
   lastTransitionId?: string | null
   lastError?: string
   updatedAt: string
+  labels?: WorkflowLabel[]
+  secondaryLabels?: WorkflowLabel[]
+  effort?: EffortMode
+  routingMode?: WorkflowRoutingMode
+  brainstormingMode?: WorkflowBrainstormingMode
+  router?: WorkflowTaskRouterResult
+  activeWorkflowRunId?: string
+  lastCompletedWorkflowRunId?: string
+  workflowRuns?: WorkflowRunSummary[]
+  artifactList?: WorkflowArtifactSummary[]
+  preview?: WorkflowPreviewState
+  skillBindingStatus?: WorkflowSkillBindingResolution[]
+  phaseNames?: string[]
   [key: string]: unknown
 }
 
@@ -436,6 +630,8 @@ export type WorkflowPhaseRun = {
 
 export type WorkflowPhaseState = {
   id: string
+  label?: string
+  transitionAuthority?: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
   index: number
   status: WorkflowPhaseStatus
   startedAt?: string
@@ -454,8 +650,11 @@ export type WorkflowTransitionAuthority =
   | 'system'
   | 'completion-check'
   | 'user-confirmation'
+  | 'artifact-gate'
+  | 'user-choice'
   | 'resume'
   | 'cancel'
+  | 'stop'
   | 'recovery'
 
 export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear'
@@ -477,9 +676,11 @@ export type WorkflowTransitionRecord = {
     | 'cancelled'
     | 'completed'
     | 'resumed'
+    | 'paused'
+    | 'stopped'
     | 'stale-template'
     | 'missing-template'
-  action?: 'auto-advance' | 'confirmation-requested' | 'confirmed' | 'rejected' | 'retry'
+  action?: 'auto-advance' | 'confirmation-requested' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
   result?: 'accepted' | 'rejected' | 'superseded' | 'blocked' | 'unable' | 'noop'
   completionCheckId: string | null
   artifactRefs?: WorkflowArtifactPointer[]
@@ -502,7 +703,8 @@ export type WorkflowSessionState = {
     snapshotId: string
     sourceState: WorkflowTemplateSourceStatus
   } | WorkflowTemplate
-  templateSnapshot: WorkflowTemplate
+  /** @deprecated Legacy persisted sessions only; runtime always reloads the current fixed ZIP pack. */
+  templateSnapshot?: WorkflowTemplate
   templateIdentity: {
     id: string
     source: WorkflowTemplateSource
@@ -513,7 +715,23 @@ export type WorkflowSessionState = {
   sourceTemplateStatus: WorkflowTemplateSourceStatus
   status: WorkflowLifecycleStatus
   workflowStatus: WorkflowLifecycleStatus
+  runStatus?: WorkflowRunStatus
   activePhaseId: string | null
+  labels?: WorkflowLabel[]
+  secondaryLabels?: WorkflowLabel[]
+  effort?: EffortMode
+  routingMode?: WorkflowRoutingMode
+  brainstormingMode?: WorkflowBrainstormingMode
+  router?: WorkflowTaskRouterResult
+  workspaceRoot?: string
+  activeWorkflowRunId?: string
+  lastCompletedWorkflowRunId?: string
+  workflowRuns?: WorkflowRun[]
+  skillBindingStatus?: WorkflowSkillBindingResolution[]
+  skippedPhases?: Array<{
+    phaseId: string
+    reason: string
+  }>
   phases: WorkflowPhaseState[]
   phaseRuns: WorkflowPhaseRun[]
   transitionHistory: WorkflowTransitionRecord[]
@@ -531,6 +749,80 @@ export type WorkflowSessionState = {
   blockedReason?: string | JsonObject
   unknown?: JsonObject
   [key: string]: unknown
+}
+
+export type WorkflowArtifact = {
+  id: string
+  filename?: string
+  kind: string
+  required?: boolean
+  phaseId?: string
+  createdAt: string
+  updatedAt: string
+  content?: string
+  inheritedFromRunId?: string
+  description?: string
+  [key: string]: unknown
+}
+
+export type WorkflowArtifactSummary = Omit<WorkflowArtifact, 'content'>
+
+export type WorkflowPreviewState = {
+  status: WorkflowPreviewStatus
+  command?: string
+  cwd?: string
+  pid?: number
+  processOwner?: 'workflow'
+  logPath?: string
+  logs?: string[]
+  detectedUrl?: string
+  detectedPort?: number
+  dbStatus?: 'unknown' | 'not-required' | 'pending-confirmation' | 'initialized' | 'skipped' | 'failed'
+  startedAt?: string
+  stoppedAt?: string
+  updatedAt: string
+  error?: string
+}
+
+export type WorkflowRunEvent = {
+  type: string
+  at: string
+  summary: string
+  phaseId?: string
+  [key: string]: unknown
+}
+
+export type WorkflowRun = {
+  id: string
+  templateId: string
+  status: WorkflowRunStatus
+  primaryLabel?: WorkflowLabel
+  secondaryLabels?: WorkflowLabel[]
+  effort?: EffortMode
+  workspaceRoot?: string
+  currentPhaseId?: string
+  inheritedFromRunId?: string
+  artifacts: WorkflowArtifact[]
+  history: WorkflowRunEvent[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowRunSummary = Pick<
+  WorkflowRun,
+  | 'id'
+  | 'templateId'
+  | 'status'
+  | 'primaryLabel'
+  | 'secondaryLabels'
+  | 'effort'
+  | 'currentPhaseId'
+  | 'inheritedFromRunId'
+  | 'createdAt'
+  | 'updatedAt'
+> & {
+  artifacts: WorkflowArtifactSummary[]
+  historyCount: number
 }
 
 export type WorkflowVerificationResult = {
@@ -600,7 +892,7 @@ export type WorkflowPhaseArtifact = {
 
 export type WorkflowTransitionRequest = {
   phaseId: string
-  action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
+  action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'cancelled'
   transitionId?: string
   expectedStateVersion?: number
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
