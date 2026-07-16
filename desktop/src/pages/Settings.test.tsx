@@ -182,13 +182,6 @@ describe('Settings Workflows tab', () => {
     expect(useUIStore.getState().pendingSettingsTab).toBeNull()
   })
 
-  it('shows the cc-test update channel marker in About', async () => {
-    render(<Settings />)
-
-    fireEvent.click(screen.getByRole('button', { name: /About/ }))
-
-    expect(await screen.findByText('Test update channel: cc-test')).toBeInTheDocument()
-  })
 
   it('uses localized Chinese labels for the Workflows and Experts tabs', () => {
     expect(zh['settings.tab.workflows']).toBe('工作流')

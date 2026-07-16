@@ -4164,9 +4164,6 @@ function AboutSettings() {
               {t('settings.about.changelog')}
             </button>
           </div>
-          <div className="mt-1 text-xs text-[var(--color-text-tertiary)]">
-            {t('settings.about.testUpdateChannel')}
-          </div>
         </>
       )}
 
