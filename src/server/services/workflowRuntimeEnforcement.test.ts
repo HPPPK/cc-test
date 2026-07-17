@@ -550,6 +550,9 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('superpowers:writing-plans: fallback')
     expect(prompt).toContain('Do not jump ahead')
     expect(prompt).toContain('project-context.md')
+    expect(prompt).toContain('Workflow routing protocol:')
+    expect(prompt).toContain('request_workflow_route in the same assistant turn')
+    expect(prompt).toContain('Do not hide a route inside handoff')
   })
 
   test('runtime prompt injects stable phase execution contract for questions, output, gates, handoff, and internal safety', () => {

@@ -141,6 +141,23 @@ describe('SubmitPhaseCompletionTool', () => {
     expect(prompt).toContain('rationale must be a non-empty string')
     expect(prompt).toContain('evidence must be an array')
     expect(prompt).toContain('Plain assistant text does not satisfy')
+    expect(prompt).toContain('request_workflow_route')
+    expect(prompt).toContain('same assistant turn')
+    expect(prompt).toContain('Do not hide a route inside handoff')
+  })
+
+  test('rejects executable workflow routing fields hidden inside a completion handoff', async () => {
+    const SubmitPhaseCompletionTool = await loadTool()
+
+    expect(SubmitPhaseCompletionTool.inputSchema.safeParse(validInput({
+      handoff: {
+        summary: 'Validation found a critical defect.',
+        routeRequest: {
+          intent: 'jump_to_phase',
+          targetPhaseId: 'delegate-implement',
+        },
+      },
+    })).success).toBe(false)
   })
 
   test('serializes the mandatory completion fields into the provider tool schema', async () => {
@@ -308,6 +325,9 @@ describe('SubmitPhaseCompletionTool', () => {
         rationale: 'The required requirements artifact was produced.',
       })
       expect(result.data.message).toContain('user confirmation')
+      expect(result.data.message).toContain('request_workflow_route')
+      expect(result.data.message).toContain('same assistant turn')
+      expect(result.data.message).toContain('Do not hide a route inside handoff')
     } finally {
       server.stop(true)
     }

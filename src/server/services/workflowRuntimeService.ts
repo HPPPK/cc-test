@@ -494,6 +494,19 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+const EXECUTABLE_WORKFLOW_ROUTE_HANDOFF_FIELDS = new Set([
+  'routeRequest',
+  'routeDecision',
+  'workflowRoute',
+  'routeIntent',
+  'targetPhaseId',
+  'targetWorkflowId',
+])
+
+function executableWorkflowRouteHandoffField(handoff: Record<string, unknown>): string | null {
+  return Object.keys(handoff).find((key) => EXECUTABLE_WORKFLOW_ROUTE_HANDOFF_FIELDS.has(key)) ?? null
+}
+
 function isReadyCompletionStatus(status: CompletionSubmission['status']): boolean {
   return status === 'ready' || status === 'needs_user' || status === 'completed'
 }
@@ -527,6 +540,13 @@ function validateCompletionSubmission(
   const phase = assertActivePhase(state, submission.phaseId)
   if (!isJsonObject(submission.handoff)) {
     throw workflowError('WORKFLOW_COMPLETION_INVALID', 'Completion submission handoff is required.')
+  }
+  const routeField = executableWorkflowRouteHandoffField(submission.handoff)
+  if (routeField) {
+    throw workflowError(
+      'WORKFLOW_ROUTE_REQUEST_REQUIRED',
+      `Completion handoff cannot contain executable workflow routing field "${routeField}". Submit completion evidence without a route, then call request_workflow_route in the same assistant turn.`,
+    )
   }
   if (typeof submission.rationale !== 'string' || submission.rationale.length === 0) {
     throw workflowError('WORKFLOW_COMPLETION_INVALID', 'Completion submission rationale is required.')

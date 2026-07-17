@@ -14,7 +14,29 @@ import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 
 const evidenceSchema = z.record(z.string(), z.unknown())
-const handoffSchema = z.record(z.string(), z.unknown())
+const EXECUTABLE_WORKFLOW_ROUTE_HANDOFF_FIELDS = new Set([
+  'routeRequest',
+  'routeDecision',
+  'workflowRoute',
+  'routeIntent',
+  'targetPhaseId',
+  'targetWorkflowId',
+])
+
+function executableWorkflowRouteHandoffField(handoff: Record<string, unknown>): string | null {
+  return Object.keys(handoff).find((key) => EXECUTABLE_WORKFLOW_ROUTE_HANDOFF_FIELDS.has(key)) ?? null
+}
+
+const handoffSchema = z.record(z.string(), z.unknown()).superRefine((handoff, ctx) => {
+  const field = executableWorkflowRouteHandoffField(handoff)
+  if (!field) return
+
+  ctx.addIssue({
+    code: 'custom',
+    path: [field],
+    message: `Completion handoff cannot contain executable workflow routing field "${field}". Call request_workflow_route after completion instead.`,
+  })
+})
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -74,9 +96,14 @@ function errorToValidationResult(error: unknown) {
 }
 
 function messageForStatus(status: Output['status']): string {
-  return status === 'pending'
-    ? 'Completion is waiting for user confirmation'
-    : 'Workflow remains on the current phase'
+  if (status !== 'pending') return 'Workflow remains on the current phase'
+
+  return [
+    'Completion is recorded and is waiting for user confirmation.',
+    'Do not stop solely because completion is waiting for confirmation.',
+    'If the current phase requires a non-linear route, call request_workflow_route in the same assistant turn before waiting for the user.',
+    'Do not hide a route inside handoff or ordinary assistant text; submit_phase_completion records completion only and never creates a workflow route.',
+  ].join(' ')
 }
 
 function getDesktopWorkflowApiContext(): { serverUrl: string; sessionId: string } | null {
@@ -212,6 +239,8 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
       'rationale must be a non-empty string explaining why the selected completion status is appropriate.',
       'evidence must be an array of evidence objects. Use an empty array only when no evidence can be recorded, and explain that limitation in rationale.',
       'Plain assistant text does not satisfy handoff, rationale, or evidence: put all three values in this tool input before calling the tool.',
+      'If you determine that the completed phase must take a non-linear route, call request_workflow_route in the same assistant turn after this tool succeeds and before waiting for user confirmation.',
+      'Do not hide a route inside handoff or ordinary assistant text: submit_phase_completion records completion only; request_workflow_route is the only tool that creates a pending route.',
       'phaseId and stateVersion may be omitted; the active workflow phase and latest workflow state are inferred at call time.',
     ].join('\n')
   },

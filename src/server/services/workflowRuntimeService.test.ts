@@ -1967,6 +1967,19 @@ describe('WorkflowRuntimeService', () => {
         'WORKFLOW_COMPLETION_INVALID',
       ],
       [
+        'workflow route hidden in handoff',
+        completionSubmission({
+          handoff: {
+            summary: 'Validation found a defect that requires implementation repair.',
+            routeRequest: {
+              intent: 'jump_to_phase',
+              targetPhaseId: 'implementation',
+            },
+          },
+        }),
+        'WORKFLOW_ROUTE_REQUEST_REQUIRED',
+      ],
+      [
         'missing evidence',
         { ...completionSubmission(), evidence: undefined } as unknown as CompletionSubmission,
         'WORKFLOW_COMPLETION_INVALID',
