@@ -1356,7 +1356,7 @@ async function restartSessionWithWorkflowPolicy(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
   state: WorkflowSessionState,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const workDir = conversationService.getSessionWorkDir(sessionId)
     await conversationService.stopSessionAndWait(sessionId)
@@ -1367,9 +1367,11 @@ async function restartSessionWithWorkflowPolicy(
       `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
       `?token=${encodeURIComponent(crypto.randomUUID())}`
     await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
+    bindAllClientSessionOutputs(sessionId)
 
     sendMessage(ws, { type: 'status', state: 'idle' })
     console.log(`[WS] Restarted CLI for ${sessionId} with workflow tool policy`)
+    return true
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
     void diagnosticsService.recordEvent({
@@ -1389,7 +1391,48 @@ async function restartSessionWithWorkflowPolicy(
       code: 'CLI_RESTART_FAILED',
     })
     sendMessage(ws, { type: 'status', state: 'idle' })
+    return false
   }
+}
+
+/**
+ * Rebind a live CLI after a same-session workflow run changes. Workflow-scoped
+ * tools are registered at CLI startup from WORKFLOW_SESSION_ID, so retaining a
+ * completed/non-workflow process would leave the new run without its protocol
+ * tools and with stale phase permissions.
+ */
+export async function refreshWorkflowRuntimeBinding(
+  sessionId: string,
+  state: WorkflowSessionState,
+): Promise<{
+  status: 'not-running' | 'restarted' | 'stopped-without-client' | 'restart-failed'
+}> {
+  let result: {
+    status: 'not-running' | 'restarted' | 'stopped-without-client' | 'restart-failed'
+  } = { status: 'not-running' }
+
+  await enqueueRuntimeTransition(sessionId, async () => {
+    if (!conversationService.hasSession(sessionId)) return
+
+    const clients = activeSessions.get(sessionId)
+    const client = clients?.values().next().value as ServerWebSocket<WebSocketData> | undefined
+    if (!client) {
+      // Fail closed: do not keep an old CLI alive with a tool surface from a
+      // completed or different workflow run. A later client/user turn will
+      // start a fresh process from the persisted workflow state.
+      await conversationService.stopSessionAndWait(sessionId)
+      result = { status: 'stopped-without-client' }
+      return
+    }
+
+    result = {
+      status: await restartSessionWithWorkflowPolicy(client, sessionId, state)
+        ? 'restarted'
+        : 'restart-failed',
+    }
+  })
+
+  return result
 }
 
 function handleStopGeneration(ws: ServerWebSocket<WebSocketData>) {

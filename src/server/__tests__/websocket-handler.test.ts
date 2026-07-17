@@ -8,6 +8,7 @@ import {
   closeSessionConnection,
   getActiveSessionIds,
   handleWebSocket,
+  refreshWorkflowRuntimeBinding,
   sendToSession,
   workflowNotificationForDesktop,
   type WebSocketData,
@@ -217,6 +218,57 @@ function makeWorkflowState(sessionId: string): WorkflowSessionState {
     createdAt: now,
     updatedAt: now,
     pendingConfirmation: null,
+  }
+}
+
+function makeFollowUpWorkflowStageOneState(
+  sessionId: string,
+  input: {
+    templateId: string
+    phaseId: string
+    toolPolicy: { allowedTools: string[]; disallowedTools?: string[] }
+  },
+): WorkflowSessionState {
+  const state = makeWorkflowState(sessionId)
+  const phase = {
+    id: input.phaseId,
+    label: `${input.templateId} Stage 1`,
+    instructions: 'Start the follow-up workflow safely.',
+    requestedModel: null,
+    skillDeclarations: [],
+    requiredArtifacts: [],
+    completionCriteria: { type: 'agent-reported' as const },
+    transitionAuthority: 'user-confirmation' as const,
+    toolPolicy: input.toolPolicy,
+  }
+  return {
+    ...state,
+    template: {
+      ...state.template,
+      id: input.templateId,
+      snapshotId: `${input.templateId}-snapshot`,
+    },
+    templateIdentity: {
+      ...state.templateIdentity,
+      id: input.templateId,
+      registryKey: `user:${input.templateId}`,
+    },
+    templateSnapshot: {
+      ...state.templateSnapshot,
+      id: input.templateId,
+      source: 'user',
+      displayName: input.templateId,
+      phases: [phase],
+    },
+    activePhaseId: input.phaseId,
+    phases: [{
+      id: input.phaseId,
+      label: phase.label,
+      transitionAuthority: phase.transitionAuthority,
+      index: 0,
+      status: 'running',
+      artifactPointers: [],
+    }],
   }
 }
 
@@ -1101,6 +1153,97 @@ describe('WebSocket handler workflow runtime gating', () => {
       'Edit',
       'MultiEdit',
       'NotebookEdit',
+    ]))
+  })
+
+  for (const workflow of [
+    {
+      name: 'development',
+      templateId: 'efficient-constrained-dev-debug-workflow-v5',
+      phaseId: 'route-context',
+      toolPolicy: {
+        allowedTools: ['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion', 'request_workflow_route'],
+        disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent'],
+      },
+    },
+    {
+      name: 'debug repair',
+      templateId: 'debug-repair-workflow-v8',
+      phaseId: 'debug-memory-intake',
+      toolPolicy: { allowedTools: ['request_workflow_route'] },
+    },
+    {
+      name: 'feature extension',
+      templateId: 'feature-extension-workflow-v8',
+      phaseId: 'feature-memory-plan',
+      toolPolicy: { allowedTools: ['request_workflow_route'] },
+    },
+  ]) {
+    it(`rebinds an existing CLI to ${workflow.name} follow-up Stage 1 tools and hard permissions`, async () => {
+      const sessionId = `workflow-follow-up-rebind-${workflow.name.replaceAll(' ', '-')}-${crypto.randomUUID()}`
+      const ws = makeClientSocket(sessionId)
+      const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+      const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+      const onOutput = spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+      spyOn(conversationService, 'removeOutputCallback').mockImplementation(() => {})
+      spyOn(conversationService, 'hasSession').mockReturnValue(true)
+      spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+      handleWebSocket.open(ws)
+      onOutput.mockClear()
+
+      const result = await refreshWorkflowRuntimeBinding(
+        sessionId,
+        makeFollowUpWorkflowStageOneState(sessionId, workflow),
+      )
+
+      expect(result).toEqual({ status: 'restarted' })
+      expect(stopSessionAndWait).toHaveBeenCalledWith(sessionId)
+      expect(startSession).toHaveBeenCalledTimes(1)
+      expect(startSession.mock.calls[0]?.[3]).toMatchObject({
+        workflowSessionId: sessionId,
+      })
+      const disallowedTools = startSession.mock.calls[0]?.[3]?.disallowedTools ?? []
+      expect(disallowedTools).toEqual(expect.arrayContaining([
+        'Write',
+        'Edit',
+        'MultiEdit',
+        'NotebookEdit',
+        'Bash',
+        'PowerShell',
+        'Agent',
+      ]))
+      expect(disallowedTools).not.toEqual(expect.arrayContaining([
+        'submit_phase_completion',
+        'request_workflow_route',
+      ]))
+      expect(onOutput).toHaveBeenCalledWith(sessionId, expect.any(Function))
+    })
+  }
+
+  it('fails closed when an existing CLI cannot be rebound to a follow-up workflow', async () => {
+    const sessionId = `workflow-follow-up-rebind-failure-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockRejectedValue(new Error('replacement CLI failed'))
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+    handleWebSocket.open(ws)
+    const result = await refreshWorkflowRuntimeBinding(
+      sessionId,
+      makeFollowUpWorkflowStageOneState(sessionId, {
+        templateId: 'debug-repair-workflow-v8',
+        phaseId: 'debug-memory-intake',
+        toolPolicy: { allowedTools: ['request_workflow_route'] },
+      }),
+    )
+
+    expect(result).toEqual({ status: 'restart-failed' })
+    expect(stopSessionAndWait).toHaveBeenCalledWith(sessionId)
+    expect(startSession).toHaveBeenCalledTimes(1)
+    expect(parseSentMessages(ws)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'error', code: 'CLI_RESTART_FAILED' }),
     ]))
   })
 

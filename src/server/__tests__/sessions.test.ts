@@ -438,6 +438,22 @@ function workflowTemplatePhase(
   }
 }
 
+function followUpWorkflowTemplate(
+  id: string,
+  label: 'new-product' | 'enhancement' | 'bug',
+  phaseId: string,
+): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    id,
+    version: '1',
+    name: `${id} Follow-up`,
+    description: `Follow-up fixture for ${id}.`,
+    labels: [label],
+    phases: [workflowTemplatePhase(phaseId, `${id} intake`, 'user-confirmation', 'sp-discussion')],
+  }
+}
+
 function agentDevelopmentUserWorkflowTemplate(): Record<string, unknown> {
   return {
     schemaVersion: 1,
@@ -3655,6 +3671,88 @@ describe('Sessions API', () => {
       expect(confirmBody.state.phases.find((phase) => phase.id === 'specify')).toMatchObject({
         status: 'running',
       })
+    })
+
+    it('POST /api/sessions/:id/workflow/follow-up fails closed for existing CLIs across development, debug, and feature workflows', async () => {
+      await writeWorkflowConfigTemplates([
+        agentDevelopmentUserWorkflowTemplate(),
+        followUpWorkflowTemplate('efficient-constrained-dev-debug-workflow-v5', 'new-product', 'route-context'),
+        followUpWorkflowTemplate('debug-repair-workflow-v8', 'bug', 'debug-memory-intake'),
+        followUpWorkflowTemplate('feature-extension-workflow-v8', 'enhancement', 'feature-memory-plan'),
+      ])
+      const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+      const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+      spyOn(conversationService, 'hasSession').mockReturnValue(true)
+
+      for (const followUp of [
+        {
+          kind: 'development',
+          templateId: 'efficient-constrained-dev-debug-workflow-v5',
+          phaseId: 'route-context',
+        },
+        {
+          kind: 'debug-repair',
+          templateId: 'debug-repair-workflow-v8',
+          phaseId: 'debug-memory-intake',
+        },
+        {
+          kind: 'feature-extension',
+          templateId: 'feature-extension-workflow-v8',
+          phaseId: 'feature-memory-plan',
+        },
+      ] as const) {
+        const workDir = await fs.mkdtemp(path.join(tmpDir, `api-follow-up-runtime-${followUp.kind}-`))
+        const createRes = await fetch(`${baseUrl}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workDir,
+            workflow: {
+              templateId: 'agent-development',
+              templateSource: 'user',
+              initialPhaseId: 'discussion',
+              request: 'Prepare a completed workflow for a follow-up.',
+            },
+          }),
+        })
+        expect(createRes.status).toBe(201)
+        const created = await createRes.json() as { sessionId: string }
+
+        const stateService = new WorkflowSessionStateService()
+        const stateRead = await stateService.readState(created.sessionId)
+        const completed = stateRead.state!
+        const firstRun = completed.workflowRuns![0]!
+        firstRun.status = 'completed'
+        completed.lastCompletedWorkflowRunId = firstRun.id
+        completed.activeWorkflowRunId = undefined
+        completed.runStatus = 'completed'
+        completed.status = 'completed'
+        completed.workflowStatus = 'completed'
+        await stateService.writeState(created.sessionId, completed)
+
+        const followUpRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/follow-up`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            request: `Start ${followUp.kind} follow-up.`,
+            kind: followUp.kind,
+            templateId: followUp.templateId,
+            templateSource: 'user',
+            initialPhaseId: followUp.phaseId,
+          }),
+        })
+        expect(followUpRes.status).toBe(200)
+        const body = await followUpRes.json() as {
+          state: { template: { id: string }; activePhaseId: string }
+        }
+        expect(body.state).toMatchObject({
+          template: { id: followUp.templateId },
+          activePhaseId: followUp.phaseId,
+        })
+        expect(stopSessionAndWait).toHaveBeenCalledWith(created.sessionId)
+      }
+      expect(stopSessionAndWait).toHaveBeenCalledTimes(3)
+      expect(startSession).not.toHaveBeenCalled()
     })
 
     it('POST /api/sessions/:id/workflow/follow-up should append an inherited workflow run in the same session', async () => {

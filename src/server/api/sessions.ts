@@ -26,6 +26,7 @@ import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import {
   closeSessionConnection,
   getSlashCommands,
+  refreshWorkflowRuntimeBinding,
   sendToSession,
   workflowNotificationForDesktop,
 } from '../ws/handler.js'
@@ -1153,6 +1154,7 @@ async function startFollowUpWorkflowRun(req: Request, sessionId: string): Promis
       workDir,
       stateToWorkflowMetadata(state, pointer),
     )
+    await refreshWorkflowRuntimeBinding(sessionId, state)
 
     return Response.json({
       ok: true,
