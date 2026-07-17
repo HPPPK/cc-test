@@ -440,6 +440,80 @@ describe('workflowToolPolicy', () => {
     expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
     expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(true)
   })
+  test('hard-denies implementation, terminal, and agent tools for all shipped workflow stage-one contracts', () => {
+    const stageOneContracts = [
+      {
+        phaseId: 'route-context',
+        toolPolicy: {
+          allowedTools: [
+            'Read',
+            'Glob',
+            'Grep',
+            'LS',
+            'AskUserQuestion',
+            'workflow_template_authoring',
+            'submit_phase_completion',
+            'request_workflow_route',
+          ],
+          disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent'],
+        },
+        runtimeContract: {
+          allowedActions: ['read', 'artifact', 'question', 'route-request', 'request_workflow_route'],
+        },
+      },
+      {
+        phaseId: 'debug-memory-intake',
+        toolPolicy: { allowedTools: ['request_workflow_route'] },
+        runtimeContract: {
+          allowedActions: ['read', 'artifact', 'question', 'route-request', 'request_workflow_route'],
+          forbiddenActions: ['production edits', 'test execution', 'subagent dispatch'],
+        },
+      },
+      {
+        phaseId: 'feature-memory-plan',
+        toolPolicy: { allowedTools: ['request_workflow_route'] },
+        runtimeContract: {
+          allowedActions: ['read', 'search', 'artifact', 'question', 'route-request', 'request_workflow_route'],
+          forbiddenActions: ['production edits', 'test execution', 'subagent dispatch'],
+        },
+      },
+    ]
+
+    for (const contract of stageOneContracts) {
+      const state = {
+        ...stateFor(contract.phaseId),
+        templateSnapshot: {
+          schemaVersion: 2,
+          id: `${contract.phaseId}-fixture`,
+          source: 'user',
+          version: '1',
+          displayName: contract.phaseId,
+          description: 'Shipped stage-one workflow contract fixture.',
+          phases: [{
+            id: contract.phaseId,
+            label: contract.phaseId,
+            instructions: 'Run only the active stage-one workflow contract.',
+            requestedModel: null,
+            toolPolicy: contract.toolPolicy,
+            runtimeContract: contract.runtimeContract,
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['stage-one handoff is ready'],
+            transitionAuthority: 'user-confirmation',
+          }],
+        },
+      } as WorkflowSessionState
+
+      expect(isWorkflowPhaseToolDenied('Read', state), `${contract.phaseId}: Read`).toBe(false)
+      expect(isWorkflowPhaseToolDenied('AskUserQuestion', state), `${contract.phaseId}: AskUserQuestion`).toBe(false)
+      expect(isWorkflowPhaseToolDenied(SUBMIT_PHASE_COMPLETION_TOOL_NAME, state), `${contract.phaseId}: completion`).toBe(false)
+      expect(isWorkflowPhaseToolDenied('request_workflow_route', state), `${contract.phaseId}: route`).toBe(false)
+      for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']) {
+        expect(isWorkflowPhaseToolDenied(toolName, state), `${contract.phaseId}: ${toolName}`).toBe(true)
+      }
+    }
+  })
+
   test('does not expose workflow restrictions after exit', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const state = {

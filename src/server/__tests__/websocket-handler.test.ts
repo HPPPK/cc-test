@@ -1380,6 +1380,9 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(startSession.mock.calls[0]?.[3]).toMatchObject({
       workflowSessionId: sessionId,
     })
+    expect(startSession.mock.calls[0]?.[3]?.workflowSystemPrompt).toContain(
+      'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
+    )
     const disallowedTools = startSession.mock.calls[0]?.[3]?.disallowedTools ?? []
     expect(disallowedTools).not.toContain('Bash')
     for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'workflow_template_authoring']) {

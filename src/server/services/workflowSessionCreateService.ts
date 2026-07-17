@@ -525,6 +525,7 @@ export class WorkflowSessionCreateService {
           completionCriteria: phase.completionCriteria,
           transitionAuthority: phase.transition.authority,
           ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
+          ...(phase.toolPolicy ? { toolPolicy: phase.toolPolicy } : {}),
           ...(phase.intent ? { intent: phase.intent } : {}),
           ...(phase.contract ? { contract: phase.contract } : {}),
           ...(phase.evidencePolicy ? { evidencePolicy: phase.evidencePolicy } : {}),

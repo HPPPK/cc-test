@@ -2538,6 +2538,7 @@ type RuntimeSettings = {
   providerId?: string | null
   disallowedTools?: string[]
   workflowSessionId?: string
+  workflowSystemPrompt?: string
 }
 
 async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> {
@@ -2582,12 +2583,33 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const settings = runtimeSettings ?? await getRuntimeSettings(sessionId)
   const workflowState = state ?? await loadWorkflowStateForWebSocket(sessionId)
   const disallowedTools = getWorkflowPhaseDisallowedTools(workflowState)
+  const workflowSystemPrompt = buildWorkflowRuntimeBindingInstruction(sessionId, workflowState)
   const workflowSettings = getWorkflowScopedToolNames(workflowState).length > 0
-    ? { workflowSessionId: sessionId }
+    ? {
+        workflowSessionId: sessionId,
+        ...(workflowSystemPrompt ? { workflowSystemPrompt } : {}),
+      }
     : {}
   return disallowedTools.length > 0
     ? { ...settings, ...workflowSettings, disallowedTools }
     : { ...settings, ...workflowSettings }
+}
+
+function buildWorkflowRuntimeBindingInstruction(
+  sessionId: string,
+  state: WorkflowSessionState | null | undefined,
+): string | null {
+  if (!state || getWorkflowScopedToolNames(state).length === 0 || !state.activePhaseId) return null
+
+  return [
+    '<desktop-workflow-runtime-binding>',
+    `This CLI process is authoritatively bound to Desktop workflow session ${sessionId} and active phase ${state.activePhaseId}.`,
+    'The current process has registered submit_phase_completion and request_workflow_route for this active workflow phase.',
+    'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
+    'Use the actual current tool result as the only source of truth. When this phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
+    'Obey the current phase tool policy even if an older transcript turn used a now-forbidden tool.',
+    '</desktop-workflow-runtime-binding>',
+  ].join('\n')
 }
 
 async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {

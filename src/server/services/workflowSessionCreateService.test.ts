@@ -40,6 +40,35 @@ describe('workflow session creation routing', () => {
     await fs.rm(tempConfigDir, { recursive: true, force: true })
   })
 
+  test('preserves phase toolPolicy in the runtime template snapshot', () => {
+    const createService = new WorkflowSessionCreateService()
+    const template = {
+      schemaVersion: 2,
+      id: 'tool-policy-snapshot-fixture',
+      source: 'user' as const,
+      version: '1',
+      name: 'Tool policy snapshot fixture',
+      description: 'Preserves runtime permissions from the selected workflow.',
+      phases: [{
+        id: 'intake',
+        name: 'Intake',
+        instructions: 'Collect context without implementation access.',
+        skills: [],
+        requiredArtifacts: [],
+        completionCriteria: ['intake is complete'],
+        transition: { authority: 'user-confirmation' as const },
+        toolPolicy: {
+          allowedTools: ['Read', 'AskUserQuestion', 'request_workflow_route'],
+          disallowedTools: ['Write', 'Edit', 'Bash', 'Agent'],
+        },
+      }],
+    }
+
+    const runtimeTemplate = (createService as any).toWorkflowTemplate(template)
+
+    expect(runtimeTemplate.phases[0]?.toolPolicy).toEqual(template.phases[0]?.toolPolicy)
+  })
+
   test('bug route uses debug workflow with investigation and regression validation metadata', async () => {
     const registry = new WorkflowTemplateRegistryService()
     const createService = new WorkflowSessionCreateService({

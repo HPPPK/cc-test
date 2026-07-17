@@ -199,6 +199,7 @@ function phaseToolPolicy(state: WorkflowSessionState): {
     ...(toolPolicy?.allowedTools ?? []),
     ...(runtime?.allowedTools ?? []),
     ...(runtime?.toolAccess?.allowed ?? []),
+    ...(runtime?.allowedActions ?? []),
   ])
   const forbidden = toolsForCapabilities([
     ...(toolPolicy?.disallowedTools ?? []),
@@ -206,19 +207,31 @@ function phaseToolPolicy(state: WorkflowSessionState): {
     ...(runtime?.disallowedTools ?? []),
     ...(runtime?.toolAccess?.forbidden ?? []),
   ])
-  for (const action of phase.actionPolicy?.forbiddenActions ?? []) {
+  const forbiddenActions = [
+    ...(phase.actionPolicy?.forbiddenActions ?? []),
+    ...(runtime?.forbiddenActions ?? []),
+  ]
+  for (const action of forbiddenActions) {
     const normalized = action.toLowerCase()
     if (
       /(?:create|edit|delete|write).*(?:implementation|source|code|file)/.test(normalized)
       || normalized.includes('implementation coding')
+      || normalized.includes('production edit')
+      || normalized.includes('source edit')
       || normalized.includes('apply_patch')
       || normalized.includes('apply patch')
     ) {
       for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) forbidden.add(tool)
     }
-    if (/run.*implementation.*(?:command|test|build|lint)/.test(normalized)) {
+    if (
+      /run.*implementation.*(?:command|test|build|lint)/.test(normalized)
+      || normalized.includes('test execution')
+    ) {
       forbidden.add('Bash')
       forbidden.add('PowerShell')
+    }
+    if (normalized.includes('subagent dispatch') || normalized.includes('general autonomous agent')) {
+      forbidden.add('Agent')
     }
   }
 

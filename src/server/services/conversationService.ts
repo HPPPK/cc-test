@@ -84,6 +84,7 @@ type SessionStartOptions = {
   providerId?: string | null
   disallowedTools?: string[]
   workflowSessionId?: string
+  workflowSystemPrompt?: string
 }
 
 type RuntimeEnvironmentVariables = Record<string, string | null>
@@ -144,6 +145,9 @@ export class ConversationService {
       ...(shouldResume ? ['--resume', sessionId] : ['--session-id', sessionId]),
       ...worktreeArgs,
       '--replay-user-messages',
+      ...(options?.workflowSystemPrompt
+        ? ['--append-system-prompt', options.workflowSystemPrompt]
+        : []),
       ...this.getRuntimeArgs(options),
       ...this.getDisallowedToolArgs(options?.disallowedTools),
       ...this.getPermissionArgs(options?.permissionMode, dangerousMode),

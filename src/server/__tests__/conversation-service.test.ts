@@ -486,6 +486,21 @@ describe('ConversationService', () => {
     expect(args).toContain('--dangerously-skip-permissions')
   })
 
+  test('buildSessionCliArgs appends the authoritative workflow runtime instruction', () => {
+    const service = new ConversationService() as any
+    const workflowSystemPrompt = 'Workflow protocol tools are registered for this active runtime binding.'
+    const args = service.buildSessionCliArgs(
+      '123e4567-e89b-12d3-a456-426614174000',
+      'ws://127.0.0.1:3456/sdk/workflow-session?token=test-token',
+      false,
+      { workflowSessionId: 'workflow-session', workflowSystemPrompt },
+    ) as string[]
+
+    const promptIndex = args.indexOf('--append-system-prompt')
+    expect(promptIndex).toBeGreaterThan(-1)
+    expect(args[promptIndex + 1]).toBe(workflowSystemPrompt)
+  })
+
   test('buildChildEnv passes workflow context to desktop SDK CLI sessions only', async () => {
     const service = new ConversationService() as any
     const sdkEnv = (await service.buildChildEnv(
