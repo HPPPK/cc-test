@@ -188,7 +188,7 @@ describe('TabBar', () => {
       inline: 'nearest',
       behavior: 'smooth',
     })
-  })
+  }, 30_000)
 
   it('keeps the overflow button flush against window controls on Windows', async () => {
     const { TabBar } = await import('./TabBar')

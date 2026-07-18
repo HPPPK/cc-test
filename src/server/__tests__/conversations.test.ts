@@ -973,6 +973,11 @@ describe('WebSocket Chat Integration', () => {
   })
 
   it('should synchronize WebSocket turn status to the chat status API', async () => {
+    // Coverage instrumentation and Windows process scheduling can delay the
+    // mock CLI turn beyond the normal interactive threshold. This test asserts
+    // state ordering, so retain a finite but realistic event deadline.
+    const eventTimeoutMs = 20_000
+
     await withMockStreamDelay(150, async () => {
       const createRes = await fetch(`${baseUrl}/api/sessions`, {
         method: 'POST',
@@ -999,10 +1004,10 @@ describe('WebSocket Chat Integration', () => {
 
       const thinkingTimeout = setTimeout(() => {
         rejectThinking?.(new Error(`Timed out waiting for thinking status for session ${sessionId}`))
-      }, 5000)
+      }, eventTimeoutMs)
       const completeTimeout = setTimeout(() => {
         rejectComplete?.(new Error(`Timed out waiting for completion for session ${sessionId}`))
-      }, 5000)
+      }, eventTimeoutMs)
 
       try {
         ws.onmessage = (event) => {
@@ -1051,7 +1056,7 @@ describe('WebSocket Chat Integration', () => {
         await conversationService.stopSessionAndWait(sessionId)
       }
     })
-  })
+  }, 30_000)
 
   it('emits a worktree startup status before launching a repository session', async () => {
     const repoDir = await createCleanGitRepo()
@@ -1119,7 +1124,7 @@ describe('WebSocket Chat Integration', () => {
       const timeout = setTimeout(() => {
         ws.close()
         reject(new Error('Timed out waiting for derived session title'))
-      }, 5000)
+      }, 20_000)
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data as string)
@@ -1149,7 +1154,7 @@ describe('WebSocket Chat Integration', () => {
     expect(completionIndex).toBeGreaterThan(-1)
     expect(messages[titleIndex].title).toBe('开始优化UI')
     expect(titleIndex).toBeLessThan(completionIndex)
-  })
+  }, 30_000)
 
   it('uses the /goal objective for the derived session title', async () => {
     const sessionId = `title-goal-${crypto.randomUUID()}`

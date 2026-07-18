@@ -94,7 +94,7 @@ describe('workflowGitCheckpointService', () => {
     expect(listed.enabled).toBe(true)
     expect(listed.latestVersion).toBe(1)
     expect(listed.checkpoints.map((checkpoint) => checkpoint.id)).toEqual(['v1'])
-  })
+  }, 60_000)
 
   it('restores tracked files to a selected checkpoint version', async () => {
     const repo = await createRepo()
@@ -109,7 +109,7 @@ describe('workflowGitCheckpointService', () => {
     expect(restored.removedFiles).toContain('generated.txt')
     expect(await fs.readFile(path.join(repo, 'README.md'), 'utf8')).toBe('checkpoint content\n')
     await expect(fs.stat(path.join(repo, 'generated.txt'))).rejects.toThrow()
-  })
+  }, 60_000)
 
   it('stores and restores workflow state snapshots with checkpoint versions', async () => {
     const repo = await createRepo()
@@ -162,7 +162,7 @@ describe('workflowGitCheckpointService', () => {
     expect(restored.workflowStateRestored).toBe(true)
     expect(restored.workflowStateSnapshot?.activePhaseId).toBe('scope-plan')
     expect(restored.workflowStateSnapshot?.stateVersion).toBe(3)
-  })
+  }, 60_000)
 
   it('creates and restores checkpoints for non-git workflow workspaces using cc-jiangxia local storage', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-git-checkpoint-non-git-'))

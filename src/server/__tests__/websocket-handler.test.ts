@@ -226,7 +226,17 @@ function makeFollowUpWorkflowStageOneState(
   input: {
     templateId: string
     phaseId: string
-    toolPolicy: { allowedTools: string[]; disallowedTools?: string[] }
+    toolPolicy?: { allowedTools: string[]; disallowedTools?: string[] }
+    runtimeContract?: {
+      allowedActions?: string[]
+      forbiddenActions?: string[]
+      allowedTools?: string[]
+      disallowedTools?: string[]
+      toolAccess?: {
+        allowed?: string[]
+        forbidden?: string[]
+      }
+    }
   },
 ): WorkflowSessionState {
   const state = makeWorkflowState(sessionId)
@@ -239,7 +249,8 @@ function makeFollowUpWorkflowStageOneState(
     requiredArtifacts: [],
     completionCriteria: { type: 'agent-reported' as const },
     transitionAuthority: 'user-confirmation' as const,
-    toolPolicy: input.toolPolicy,
+    ...(input.toolPolicy ? { toolPolicy: input.toolPolicy } : {}),
+    ...(input.runtimeContract ? { runtimeContract: input.runtimeContract } : {}),
   }
   return {
     ...state,
@@ -604,6 +615,508 @@ describe('WebSocket handler session isolation', () => {
       })
       expect(parseSentMessages(first)).toContainEqual(expectedToolComplete)
       expect(parseSentMessages(second)).toContainEqual(expectedToolComplete)
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('retries an active workflow turn that asks for a user decision in prose instead of ending at the free-form composer', async () => {
+    const sessionId = `workflow-prose-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'text',
+            text: '我已经说明了本地启动方式。要我重新提交当前阶段，还是你先测试后再回来？',
+          }],
+        },
+      })
+      callback({
+        type: 'result',
+        is_error: false,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('AskUserQuestion'),
+      ))
+
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'message_complete',
+      }))
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('AskUserQuestion'),
+      )
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('recovers an English streamed prose decision with structured AskUserQuestion guidance', async () => {
+    const sessionId = `workflow-streamed-english-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({ type: 'stream_event', event: { type: 'message_start' } })
+      callback({
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+      })
+      callback({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'Would you like me to continue or pause?' },
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('Your previous response asked the user for a decision in prose'),
+      )
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: 'Generating choices',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('continues an active workflow that ends without a question, completion, or route instead of leaving the user at the composer', async () => {
+    const sessionId = `workflow-unstructured-terminal-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: '已记录本阶段的验证证据。' }],
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('submit_phase_completion'),
+      ))
+
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'message_complete',
+      }))
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('Continue the active phase now'),
+      )
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('continues a Chinese workflow turn that ends without a structured interaction', async () => {
+    const sessionId = `workflow-chinese-unstructured-terminal-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '已记录当前阶段的验证证据。' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('不得静默停止'),
+      )
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: '正在继续工作流',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('does not issue terminal recovery when AskUserQuestion is already pending', async () => {
+    const sessionId = `workflow-pending-ask-user-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const pendingRequests = spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([])
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      pendingRequests.mockReturnValue([{
+        requestId: 'pending-question',
+        toolName: 'AskUserQuestion',
+        toolUseId: 'ask-tool',
+        input: { questions: [] },
+        description: 'Pending workflow question',
+      }])
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'What would you like to do next?' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'message_complete'))
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('does not issue a recovery turn when the active workflow already emitted AskUserQuestion', async () => {
+    const sessionId = `workflow-structured-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: '我需要你选择下一步。' },
+            {
+              type: 'tool_use',
+              id: 'ask-structured-question',
+              name: 'AskUserQuestion',
+              input: {
+                questions: [{
+                  id: 'next-step',
+                  prompt: '下一步怎么做？',
+                  choices: [
+                    { id: 'continue', label: '继续' },
+                    { id: 'pause', label: '暂停' },
+                  ],
+                }],
+              },
+            },
+          ],
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'message_complete'))
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'tool_use_complete',
+        toolName: 'AskUserQuestion',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('fails visibly instead of looping when the recovery turn again asks a prose decision question', async () => {
+    const sessionId = `workflow-prose-question-repeat-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '你希望我现在继续还是暂停？' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '那么你要我怎么做？' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error'
+        && message.code === 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED'
+      ))
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('fails visibly without message_complete when a workflow terminal recovery instruction cannot be delivered', async () => {
+    const sessionId = `workflow-terminal-recovery-unavailable-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(false)
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '你希望我继续当前阶段还是暂停？' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE'
+      ))
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE',
+        retryable: true,
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('fails visibly when an active workflow recovery finds its CLI session gone', async () => {
+    const sessionId = `workflow-terminal-recovery-no-session-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      conversationService.stopSession(sessionId)
+
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Would you like to continue or pause?' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE'
+      ))
+
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE',
+        retryable: true,
+      }))
     } finally {
       conversationService.stopSession(sessionId)
     }
@@ -1167,16 +1680,24 @@ describe('WebSocket handler workflow runtime gating', () => {
       },
     },
     {
+      // Match the shipped Debug ZIP: Stage 1 is read/artifact/question-only.
       name: 'debug repair',
       templateId: 'debug-repair-workflow-v8',
       phaseId: 'debug-memory-intake',
-      toolPolicy: { allowedTools: ['request_workflow_route'] },
+      runtimeContract: {
+        allowedActions: ['read', 'artifact', 'question'],
+        forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
+      },
     },
     {
+      // Match the shipped Feature Extension ZIP: Stage 1 also permits search.
       name: 'feature extension',
       templateId: 'feature-extension-workflow-v8',
       phaseId: 'feature-memory-plan',
-      toolPolicy: { allowedTools: ['request_workflow_route'] },
+      runtimeContract: {
+        allowedActions: ['read', 'search', 'artifact', 'question'],
+        forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
+      },
     },
   ]) {
     it(`rebinds an existing CLI to ${workflow.name} follow-up Stage 1 tools and hard permissions`, async () => {
@@ -2448,6 +2969,14 @@ describe('WebSocket handler workflow runtime gating', () => {
     const stateService = new WorkflowSessionStateService()
     const appendSessionMetadata = spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    // Confirming this transition schedules workflow_auto_continue; keep this state-summary test isolated from the real CLI.
+    spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
     await stateService.writeState(sessionId, makeWorkflowState(sessionId))
 
     handleWebSocket.open(ws)

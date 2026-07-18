@@ -60,7 +60,7 @@ describe('workflow domain types', () => {
     ])
     expect(WORKFLOW_TEMPLATE_SOURCE_STATUSES).toEqual(['current', 'stale-template', 'missing-template'])
     expect(WORKFLOW_ARTIFACT_POINTER_KINDS).toEqual(['workflow-state', 'phase-artifact', 'final-report'])
-    expect(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).toEqual(['ready', 'blocked', 'unable'])
+    expect(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).toEqual(['ready', 'needs_user', 'completed', 'blocked', 'unable'])
     expect(WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES).toEqual(['pending', 'accepted', 'rejected', 'superseded'])
     expect(WORKFLOW_LABELS).toEqual([
       'new-product',

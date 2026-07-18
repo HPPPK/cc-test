@@ -115,8 +115,15 @@ function builtinWorkflowPhaseActionPolicyFor(phaseId: string): WorkflowPhaseActi
 }
 
 export function concreteToolNamesForWorkflowCapability(value: string): string[] {
-  const normalized = value.trim().toLowerCase()
+  const rawValue = value.trim()
+  const normalized = rawValue.toLowerCase()
   if (!normalized) return []
+
+  const exactToolName = WORKFLOW_PHASE_CONFIGURABLE_TOOL_NAMES.find(
+    (toolName) => toolName === rawValue,
+  )
+  if (exactToolName) return [exactToolName]
+
   if (normalized === 'read' || normalized.includes('read') || normalized.includes('inspect')) {
     return [...WORKFLOW_PHASE_READ_ONLY_TOOLS]
   }

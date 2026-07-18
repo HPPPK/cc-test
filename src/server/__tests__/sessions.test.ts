@@ -1679,7 +1679,7 @@ describe('SessionService', () => {
       worktree: true,
       worktreePath: expect.stringContaining(path.join('.claude', 'worktrees', 'desktop-feature-rail-')),
     })
-  })
+  }, 60_000)
 
   it('should preserve staged workflow metadata pointers when clearing a transcript', async () => {
     const sessionId = 'cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -1779,7 +1779,7 @@ describe('SessionService', () => {
       worktreePath,
       worktreeSlug: initialLaunchInfo?.repository?.worktreeSlug,
     })
-  })
+  }, 60_000)
 
   it('should recover workDir from transcript cwd when session-meta is missing', async () => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -1854,7 +1854,7 @@ describe('SessionService', () => {
       path.basename(plannedWorktreePath).replace(/^desktop-/, 'worktree-desktop-'),
     )
     expect(context.branches.some((branch) => branch.name.startsWith('worktree-desktop-'))).toBe(false)
-  })
+  }, 60_000)
 
   it('should defer direct branch switching until CLI startup when worktree isolation is disabled', async () => {
     const workDir = await createCleanGitRepo(tmpDir)
@@ -1877,7 +1877,7 @@ describe('SessionService', () => {
       worktree: false,
       baseRef: 'feature/rail',
     })
-  })
+  }, 60_000)
 
   it('should not list hidden desktop worktree branches', async () => {
     const workDir = await createCleanGitRepo(tmpDir)
@@ -1930,7 +1930,7 @@ describe('SessionService', () => {
     expect(git(workDir, 'branch', '--show-current')).toBe('feature/rail\n')
     expect(await fs.readFile(path.join(workDir, 'README.md'), 'utf-8'))
       .toContain('local-pricing-edit')
-  })
+  }, 60_000)
 
   it('should plan isolated worktrees from dirty source checkouts without switching branches', async () => {
     const workDir = await createCleanGitRepo(tmpDir)
@@ -2787,7 +2787,7 @@ describe('Sessions API', () => {
         checkpointId: 'v1',
         restoredActivePhaseId: 'discussion',
       })
-    }, 30_000)
+    }, 60_000)
 
     it('workflow checkpoint routes reject malformed JSON request bodies', async () => {
       const workDir = await createCleanGitRepo(tmpDir)

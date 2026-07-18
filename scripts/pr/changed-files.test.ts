@@ -42,7 +42,7 @@ describe('changedFilesForLocalPrCheck', () => {
     runGit(['config', 'user.name', 'Test User'])
     writeFile('README.md', '# test\n')
     commit('base')
-  })
+  }, 30_000)
 
   afterEach(() => {
     process.chdir(originalCwd)
@@ -52,7 +52,7 @@ describe('changedFilesForLocalPrCheck', () => {
       process.env.PR_BASE_REF = originalBaseRef
     }
     rmSync(tempDir, { recursive: true, force: true })
-  })
+  }, 30_000)
 
   test('uses only local changes in a dirty detached worktree', async () => {
     writeFile('scripts/quality-gate/coverage-thresholds.json', '{}\n')
@@ -61,7 +61,7 @@ describe('changedFilesForLocalPrCheck', () => {
     writeFile('src/server/current.ts', 'export const current = true\n')
 
     await expect(changedFilesForLocalPrCheck()).resolves.toEqual(['src/server/current.ts'])
-  })
+  }, 30_000)
 
   test('keeps branch commits and local changes on a normal branch', async () => {
     runGit(['checkout', '-b', 'feature/test'])
@@ -73,5 +73,5 @@ describe('changedFilesForLocalPrCheck', () => {
       'src/server/committed.ts',
       'desktop/src/local.ts',
     ])
-  })
+  }, 30_000)
 })

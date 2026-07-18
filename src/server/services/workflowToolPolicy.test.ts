@@ -4,6 +4,7 @@ import * as workflowToolPolicy from './workflowToolPolicy.js'
 import {
   WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS,
   WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS,
+  concreteToolNamesForWorkflowCapability,
   getWorkflowTemplateAuthoringOperationPolicy,
   getWorkflowUnavailableSearchToolNames,
   getWorkflowPhaseActionPolicy,
@@ -377,6 +378,26 @@ describe('workflowToolPolicy', () => {
     expect(isWorkflowPhaseToolDenied('AskUserQuestion', state)).toBe(false)
   })
 
+  test('keeps explicit tool names exact instead of expanding NotebookEdit into all edit tools', () => {
+    expect(concreteToolNamesForWorkflowCapability('NotebookEdit')).toEqual(['NotebookEdit'])
+    expect(concreteToolNamesForWorkflowCapability('Write')).toEqual(['Write'])
+    expect(concreteToolNamesForWorkflowCapability('Edit')).toEqual(['Edit'])
+    expect(concreteToolNamesForWorkflowCapability('read')).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'LS',
+    ])
+    expect(concreteToolNamesForWorkflowCapability('edit-within-plan')).toEqual([
+      'Write',
+      'Edit',
+      'MultiEdit',
+      'NotebookEdit',
+    ])
+    expect(concreteToolNamesForWorkflowCapability('   ')).toEqual([])
+    expect(concreteToolNamesForWorkflowCapability('not-a-workflow-tool')).toEqual([])
+  })
+
   test('identifies ripgrep-backed tools when search is unavailable', () => {
     expect(getWorkflowUnavailableSearchToolNames({
       mode: 'unavailable',
@@ -462,19 +483,20 @@ describe('workflowToolPolicy', () => {
         },
       },
       {
+        // Match the shipped Debug ZIP: Stage 1 permits read/artifact/question through
+        // its runtime contract; it does not declare a request_workflow_route-only tool policy.
         phaseId: 'debug-memory-intake',
-        toolPolicy: { allowedTools: ['request_workflow_route'] },
         runtimeContract: {
-          allowedActions: ['read', 'artifact', 'question', 'route-request', 'request_workflow_route'],
-          forbiddenActions: ['production edits', 'test execution', 'subagent dispatch'],
+          allowedActions: ['read', 'artifact', 'question'],
+          forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
         },
       },
       {
+        // Match the shipped Feature Extension ZIP: Stage 1 permits read/search/artifact/question.
         phaseId: 'feature-memory-plan',
-        toolPolicy: { allowedTools: ['request_workflow_route'] },
         runtimeContract: {
-          allowedActions: ['read', 'search', 'artifact', 'question', 'route-request', 'request_workflow_route'],
-          forbiddenActions: ['production edits', 'test execution', 'subagent dispatch'],
+          allowedActions: ['read', 'search', 'artifact', 'question'],
+          forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
         },
       },
     ]

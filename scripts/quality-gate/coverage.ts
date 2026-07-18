@@ -443,20 +443,83 @@ async function runSuite(
   }
 }
 
-function mergeLcovFiles(paths: string[], rootDir: string) {
-  const lines: string[] = []
-  for (const path of paths) {
-    if (!existsSync(path)) continue
-    const content = readFileSync(path, 'utf8').trim()
-    if (content) {
-      lines.push(content)
+export function mergeLcovFiles(paths: string[], rootDir: string) {
+  const recordsByFile = new Map<string, LcovRecord>()
+
+  for (const coveragePath of paths) {
+    if (!existsSync(coveragePath)) continue
+    const content = readFileSync(coveragePath, 'utf8')
+    for (const record of parseLcovRecords(content, { rootDir })) {
+      const current = recordsByFile.get(record.file)
+      if (!current) {
+        recordsByFile.set(record.file, {
+          ...record,
+          lineHits: new Map(record.lineHits),
+          functionHits: new Map(record.functionHits),
+          branchHits: new Map(record.branchHits),
+        })
+        continue
+      }
+
+      for (const [line, hits] of record.lineHits) {
+        current.lineHits.set(line, (current.lineHits.get(line) ?? 0) + hits)
+      }
+      for (const [name, hits] of record.functionHits) {
+        current.functionHits.set(name, (current.functionHits.get(name) ?? 0) + hits)
+      }
+      for (const [branch, hits] of record.branchHits) {
+        current.branchHits.set(branch, (current.branchHits.get(branch) ?? 0) + hits)
+      }
+      // Bun's LCOV output currently exposes aggregate FNF/FNH and BRF/BRH counts
+      // without individual FNDA/BRDA identifiers. Retain the best per-file run
+      // rather than summing duplicate full-file inventories from isolated runs.
+      current.functionsTotal = Math.max(current.functionsTotal, record.functionsTotal)
+      current.functionsCovered = Math.max(current.functionsCovered, record.functionsCovered)
+      current.branchesTotal = Math.max(current.branchesTotal, record.branchesTotal)
+      current.branchesCovered = Math.max(current.branchesCovered, record.branchesCovered)
     }
   }
-  return lines.join('\n') + (lines.length > 0 ? '\n' : '')
+
+  return [...recordsByFile.values()]
+    .sort((a, b) => a.file.localeCompare(b.file))
+    .map((record) => {
+      const lines = [
+        'TN:',
+        `SF:${record.file}`,
+        ...[...record.functionHits.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, hits]) => `FNDA:${hits},${name}`),
+        `FNF:${record.functionsTotal || record.functionHits.size}`,
+        `FNH:${record.functionsCovered || [...record.functionHits.values()].filter((hits) => hits > 0).length}`,
+        ...[...record.branchHits.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([branch, hits]) => `BRDA:${branch},${hits}`),
+        `BRF:${record.branchesTotal || record.branchHits.size}`,
+        `BRH:${record.branchesCovered || [...record.branchHits.values()].filter((hits) => hits > 0).length}`,
+        ...[...record.lineHits.entries()].sort(([a], [b]) => a - b).map(([line, hits]) => `DA:${line},${hits}`),
+        `LF:${record.lineHits.size}`,
+        `LH:${[...record.lineHits.values()].filter((hits) => hits > 0).length}`,
+        'end_of_record',
+      ]
+      return lines.join('\n')
+    })
+    .join('\n') + (recordsByFile.size > 0 ? '\n' : '')
 }
 
-const ROOT_COVERAGE_SEPARATE_FILES = new Set([
+/**
+ * These suites exercise process-wide environment or real subprocess behavior.
+ * Keep them under coverage, but execute them in their own Bun process so the
+ * main aggregate coverage process cannot leak state into them.
+ */
+/**
+ * Some Windows filesystem/Git worktree tests legitimately exceed Bun's default
+ * 20-second limit under coverage instrumentation. Keep the gate finite, but do
+ * not convert a healthy slow test into a missing-coverage failure.
+ */
+export const ROOT_COVERAGE_TIMEOUT_MS = 60_000
+
+export const ROOT_COVERAGE_SEPARATE_FILES = new Set([
   'src/server/__tests__/h5-access-auth.test.ts',
+  'src/server/__tests__/filesystem.test.ts',
+  'src/server/__tests__/filesystem-config-fallback.test.ts',
+  'src/server/__tests__/websocket-handler.test.ts',
+  'src/server/services/workflowToolPolicy.test.ts',
   'src/tools/AgentTool/loadAgentsDir.cache.test.ts',
 ])
 
@@ -473,7 +536,7 @@ async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: 
   const logParts: string[] = []
   let exitCode = 0
 
-  const mainCommand = ['bun', 'test', '--isolate', '--max-concurrency=1', '--timeout=20000', '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', join(rootDirPath, 'main'), ...mainFiles]
+  const mainCommand = ['bun', 'test', '--isolate', '--max-concurrency=1', `--timeout=${ROOT_COVERAGE_TIMEOUT_MS}`, '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', join(rootDirPath, 'main'), ...mainFiles]
   const mainLogPath = join(rootDirPath, 'main', 'coverage.log')
   const mainResult = await runCommand(mainCommand, rootDir, mainLogPath)
   logParts.push(existsSync(mainLogPath) ? readFileSync(mainLogPath, 'utf8') : `$ ${mainCommand.join(' ')}\n`)
@@ -484,9 +547,10 @@ async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: 
 
   for (const [index, testFile] of separateFiles.entries()) {
     const fileCoverageDir = join(perFileDir, String(index).padStart(3, '0'))
-    const command = ['bun', 'test', '--timeout=20000', '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', fileCoverageDir, testFile]
+    const command = ['bun', 'test', `--timeout=${ROOT_COVERAGE_TIMEOUT_MS}`, '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', fileCoverageDir, testFile]
     const fileLogPath = join(fileCoverageDir, 'coverage.log')
     const result = await runCommand(command, rootDir, fileLogPath)
+    lcovPaths.push(join(fileCoverageDir, 'lcov.info'))
     const log = existsSync(fileLogPath) ? readFileSync(fileLogPath, 'utf8') : ''
     logParts.push(`\n# ${testFile}\n${log}`)
     if (result.exitCode !== 0) {

@@ -75,17 +75,17 @@ async function pipeToLog(
   stream: ReadableStream<Uint8Array> | null,
   logPath: string,
   write: (chunk: Buffer) => void,
-  stop: Promise<unknown>,
+  signal: AbortSignal,
 ) {
   if (!stream) return
   const reader = stream.getReader()
-  let stopped = false
-  stop.finally(() => {
-    stopped = true
+  const cancel = () => {
     reader.cancel().catch(() => undefined)
-  }).catch(() => undefined)
+  }
+  signal.addEventListener('abort', cancel, { once: true })
+
   try {
-    while (!stopped) {
+    while (!signal.aborted) {
       const { done, value } = await reader.read()
       if (done || !value) break
       const chunk = Buffer.from(value)
@@ -93,8 +93,10 @@ async function pipeToLog(
       write(chunk)
     }
   } catch {
-    // The runner may cancel log readers after the child command exits. That is
-    // expected when grandchildren keep inherited stdout/stderr handles open.
+    // A completed command can leave grandchildren with inherited stdout/stderr
+    // handles. The caller aborts only after a bounded post-exit drain window.
+  } finally {
+    signal.removeEventListener('abort', cancel)
   }
 }
 
@@ -244,14 +246,20 @@ async function runCommandLane(lane: LaneDefinition, options: QualityGateOptions)
     stdout: 'pipe',
     stderr: 'pipe',
   })
+  // Start consuming both pipes before waiting for process exit. Otherwise a
+  // verbose test command can fill its OS pipe buffer and never reach exit.
+  const drainController = new AbortController()
+  const logPumps = Promise.all([
+    pipeToLog(proc.stdout, logPath, writeStdout, drainController.signal),
+    pipeToLog(proc.stderr, logPath, writeStderr, drainController.signal),
+  ])
   const exitCode = await proc.exited
   await Promise.race([
-    Promise.all([
-      pipeToLog(proc.stdout, logPath, writeStdout, proc.exited),
-      pipeToLog(proc.stderr, logPath, writeStderr, proc.exited),
-    ]),
-    new Promise<void>((resolve) => setTimeout(resolve, 250)),
+    logPumps,
+    new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
   ])
+  drainController.abort()
+  await logPumps
 
   return {
     id: lane.id,

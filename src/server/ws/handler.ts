@@ -1522,6 +1522,9 @@ type SessionStreamState = {
   activeBlockTypes: Map<number, 'text' | 'tool_use' | 'thinking'>
   activeToolBlocks: Map<number, { toolName: string; toolUseId: string; inputJson: string; parentToolUseId?: string }>
   pendingLocalCommand?: { name: string; args: string }
+  usedAskUserQuestion: boolean
+  assistantText: string
+  structuredInteractionRecoveryAttempts: number
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
@@ -1542,6 +1545,9 @@ function getStreamState(sessionId: string): SessionStreamState {
       activeBlockTypes: new Map(),
       activeToolBlocks: new Map(),
       pendingLocalCommand: undefined,
+      usedAskUserQuestion: false,
+      assistantText: '',
+      structuredInteractionRecoveryAttempts: 0,
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
       lastApiError: undefined,
@@ -1660,6 +1666,125 @@ function extractAssistantText(cliMsg: any): string {
   return textBlock?.text || ''
 }
 
+type WorkflowInteractionTurn = {
+  assistantText: string
+  usedAskUserQuestion: boolean
+  recoveryAttempts: number
+}
+
+type WorkflowTerminalRecovery = {
+  state: WorkflowSessionState
+  kind: 'ask-user-question' | 'continue-workflow'
+}
+
+function beginStreamedAssistantTurn(streamState: SessionStreamState): void {
+  streamState.usedAskUserQuestion = false
+  streamState.assistantText = ''
+}
+
+function recordAssistantText(streamState: SessionStreamState, text: unknown): void {
+  if (typeof text !== 'string' || !text) return
+  streamState.assistantText += text
+}
+
+function recordAssistantToolUse(streamState: SessionStreamState, toolName: unknown): void {
+  if (toolName === 'AskUserQuestion') streamState.usedAskUserQuestion = true
+}
+
+function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
+  const streamState = getStreamState(sessionId)
+  return {
+    assistantText: streamState.assistantText.trim(),
+    usedAskUserQuestion: streamState.usedAskUserQuestion,
+    recoveryAttempts: streamState.structuredInteractionRecoveryAttempts,
+  }
+}
+
+function finishWorkflowInteractionTurn(sessionId: string, resetRecoveryAttempts = true): void {
+  const streamState = getStreamState(sessionId)
+  streamState.usedAskUserQuestion = false
+  streamState.assistantText = ''
+  if (resetRecoveryAttempts) streamState.structuredInteractionRecoveryAttempts = 0
+}
+
+function assistantTextRequestsUserDecision(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) return false
+  const hasQuestionSignal = /[?？]/.test(normalized)
+  const hasDecisionLanguage = /(?:要我|还是|请(?:你)?(?:选择|确认|告诉)|你(?:想|要|希望)|是否|需不需要|下一步|怎么做|would you like|do you want|should i|which (?:option|one)|please (?:choose|confirm|tell)|let me know|what would you like)/i.test(normalized)
+  return hasQuestionSignal && hasDecisionLanguage
+}
+
+function hasPendingAskUserQuestion(sessionId: string): boolean {
+  return conversationService.getPendingPermissionRequests(sessionId).some(
+    (request) => request.toolName === 'AskUserQuestion',
+  )
+}
+
+function buildWorkflowTerminalRecoveryInstruction(
+  recovery: WorkflowTerminalRecovery,
+  assistantText: string,
+): string {
+  const isChinese = recovery.state.workflowLanguage === 'zh'
+  const interactionInstruction = recovery.kind === 'ask-user-question'
+    ? isChinese
+      ? [
+          '你刚才用普通文本向用户提出了需要选择、确认或决定的问题，但当前活跃工作流禁止在自由输入框等待回答。',
+          '现在必须立即调用 AskUserQuestion；不得再输出普通文本问题，也不得结束本轮。',
+          '调用必须包含顶层 questions 数组、稳定的 question id 和 option id，以及 2 至 4 个有界选项。',
+          '选项必须忠实表达你刚才提出的决定；若一个选项会触发 workflow route，使用结构化 action/targetPhaseId，而不是只写在标签文本中。',
+        ]
+      : [
+          'Your previous response asked the user for a decision in prose, but an active workflow must not wait at the free-form composer.',
+          'Immediately call AskUserQuestion. Do not ask another prose question and do not end this turn.',
+          'The call must include a top-level questions array, stable question and option ids, and 2-4 bounded choices.',
+          'The choices must faithfully represent the decision you just asked. For workflow routing, use structured action/targetPhaseId rather than only label text.',
+        ]
+    : isChinese
+      ? [
+          '你在 workflow 仍处于运行中时结束了模型回合，但没有产生 pending completion、pending route 或 AskUserQuestion。',
+          '不得静默停止，也不得等待用户在自由输入框中发送“继续”。',
+          '现在继续当前阶段：若需要用户判断、确认、权限、范围或下一步选择，立即调用 AskUserQuestion；若当前阶段已经完成，调用 submit_phase_completion；否则继续执行当前阶段允许的工作。',
+          '不要用普通文本问题替代 AskUserQuestion，也不要用普通文本声明阶段完成。',
+        ]
+      : [
+          'You ended a model turn while the workflow is still running, but there is no pending completion, pending route, or AskUserQuestion.',
+          'Do not silently stop and do not wait for the user to type “continue” in the free-form composer.',
+          'Continue the active phase now: call AskUserQuestion if user judgment, confirmation, permission, scope, or next-step choice is needed; call submit_phase_completion if the phase is ready; otherwise continue allowed phase work.',
+          'Do not replace AskUserQuestion or submit_phase_completion with prose.',
+        ]
+  const visibilityInstruction = isChinese
+    ? '所有用户可见文案使用中文（文件路径、代码和原始错误除外）。'
+    : 'Keep user-visible text in the current workflow language.'
+
+  return [
+    '<workflow-terminal-recovery>',
+    '这是工作流运行时的内部恢复指令，不要把它作为普通答复展示给用户。',
+    `Active phase: ${recovery.state.activePhaseId ?? 'unknown'}.`,
+    ...interactionInstruction,
+    visibilityInstruction,
+    assistantText ? `刚才的普通文本：${assistantText}` : '',
+    '</workflow-terminal-recovery>',
+  ].filter(Boolean).join('\n')
+}
+
+async function workflowTerminalRecoveryForResult(
+  sessionId: string,
+  turn: WorkflowInteractionTurn,
+): Promise<WorkflowTerminalRecovery | null> {
+  if (turn.usedAskUserQuestion || hasPendingAskUserQuestion(sessionId)) return null
+
+  const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (!state || state.mode !== 'workflow' || !state.activePhaseId) return null
+  if (state.workflowStatus !== 'running' || state.pendingConfirmation || state.pendingRoute) return null
+  return {
+    state,
+    kind: assistantTextRequestsUserDecision(turn.assistantText)
+      ? 'ask-user-question'
+      : 'continue-workflow',
+  }
+}
+
 function isDuplicateOfLastApiError(
   lastApiError: SessionStreamState['lastApiError'],
   resultMessage: string,
@@ -1759,6 +1884,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
       // Only extract tool_use blocks (stream_event's content_block_stop lacks complete tool info).
       if (cliMsg.message?.content && Array.isArray(cliMsg.message.content)) {
         const messages: ServerMessage[] = []
+        if (!streamState.hasReceivedStreamEvents) beginStreamedAssistantTurn(streamState)
 
         for (const block of cliMsg.message.content) {
           if (streamState.hasReceivedStreamEvents) {
@@ -1782,9 +1908,11 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
             if (block.type === 'thinking' && block.thinking) {
               messages.push({ type: 'thinking', text: block.thinking })
             } else if (block.type === 'text' && block.text) {
+              recordAssistantText(streamState, block.text)
               messages.push({ type: 'content_start', blockType: 'text' })
               messages.push({ type: 'content_delta', text: block.text })
             } else if (block.type === 'tool_use') {
+              recordAssistantToolUse(streamState, block.name)
               const parentToolUseId = cliParentToolUseId(cliMsg)
               rememberToolParentUseId(streamState, block.id, parentToolUseId)
               messages.push({
@@ -1860,6 +1988,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 
       switch (event.type) {
         case 'message_start': {
+          beginStreamedAssistantTurn(streamState)
           return [{ type: 'status', state: 'thinking' }]
         }
 
@@ -1870,6 +1999,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           const index = event.index ?? 0
 
           if (contentBlock.type === 'tool_use') {
+            recordAssistantToolUse(streamState, contentBlock.name)
             const parentToolUseId = cliParentToolUseId(cliMsg)
             streamState.activeBlockTypes.set(index, 'tool_use')
             // Track tool info so content_block_stop can emit complete data
@@ -1902,6 +2032,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           if (!delta) return []
 
           if (delta.type === 'text_delta' && delta.text) {
+            recordAssistantText(streamState, delta.text)
             return [{ type: 'content_delta', text: delta.text }]
           }
           if (delta.type === 'input_json_delta' && delta.partial_json) {
@@ -2479,6 +2610,96 @@ function bindAllClientSessionOutputs(
   conversationService.onOutput(sessionId, callback)
 }
 
+function broadcastCliMessagesToSession(sessionId: string, cliMsg: any): void {
+  const serverMsgs = translateCliMessage(cliMsg, sessionId)
+  const clients = activeSessions.get(sessionId)
+  if (clients) {
+    for (const ws of clients) {
+      for (const msg of serverMsgs) {
+        sendMessage(ws, msg)
+      }
+    }
+  }
+}
+
+function sendWorkflowTerminalProtocolError(
+  sessionId: string,
+  recovery: WorkflowTerminalRecovery,
+  code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED' | 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE',
+): void {
+  const clients = activeSessions.get(sessionId)
+  if (!clients) return
+  const isChinese = recovery.state.workflowLanguage === 'zh'
+  const message = code === 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE'
+    ? (isChinese
+      ? '当前工作流需要继续生成结构化交互，但运行时无法把恢复指令送达模型。系统不会把这次普通文本终止当作正常完成；请重试当前阶段。'
+      : 'This workflow needs a structured continuation, but the runtime could not deliver the recovery instruction to the model. This prose-only termination is not treated as normal completion; retry the current phase.')
+    : (isChinese
+      ? '当前工作流连续两次在没有 AskUserQuestion、阶段完成或阶段路由的情况下结束。请重试当前阶段；系统不会把这种普通文本终止当作已完成的工作流交互。'
+      : 'This workflow ended twice without AskUserQuestion, phase completion, or phase routing. Retry the current phase; prose-only termination is not treated as completed workflow interaction.')
+
+  for (const ws of clients) {
+    sendMessage(ws, {
+      type: 'error',
+      code,
+      message,
+      retryable: true,
+    })
+  }
+}
+
+async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
+  const turn = workflowInteractionTurnForResult(sessionId)
+  const recovery = !cliMsg.is_error
+    ? await workflowTerminalRecoveryForResult(sessionId, turn)
+    : null
+
+  if (recovery) {
+    if (turn.recoveryAttempts >= 1) {
+      sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED')
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    if (!conversationService.hasSession(sessionId)) {
+      sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE')
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    const streamState = getStreamState(sessionId)
+    streamState.structuredInteractionRecoveryAttempts += 1
+    const clients = activeSessions.get(sessionId)
+    if (clients) {
+      for (const ws of clients) {
+        sendMessage(ws, {
+          type: 'status',
+          state: 'thinking',
+          verb: recovery.state.workflowLanguage === 'zh'
+            ? (recovery.kind === 'ask-user-question' ? '正在生成选项' : '正在继续工作流')
+            : (recovery.kind === 'ask-user-question' ? 'Generating choices' : 'Continuing workflow'),
+        })
+      }
+    }
+    const sent = conversationService.sendMessage(
+      sessionId,
+      buildWorkflowTerminalRecoveryInstruction(recovery, turn.assistantText),
+    )
+    if (sent) return
+
+    sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE')
+    finishWorkflowInteractionTurn(sessionId)
+    return
+  }
+
+  broadcastCliMessagesToSession(sessionId, cliMsg)
+  const clients = activeSessions.get(sessionId)
+  finishWorkflowInteractionTurn(sessionId)
+
+  const firstClient = clients?.values().next().value
+  if (firstClient) triggerTitleGeneration(firstClient, sessionId)
+}
+
 function createClientBroadcastCallback(
   sessionId: string,
   options?: {
@@ -2486,26 +2707,14 @@ function createClientBroadcastCallback(
   },
 ): (cliMsg: any) => void {
   return (cliMsg: any) => {
-    if (options?.shouldForward && !options.shouldForward(cliMsg)) {
+    if (options?.shouldForward && !options.shouldForward(cliMsg)) return
+
+    if (cliMsg.type === 'result') {
+      void finalizeClientResult(sessionId, cliMsg)
       return
     }
 
-    const serverMsgs = translateCliMessage(cliMsg, sessionId)
-    const clients = activeSessions.get(sessionId)
-    if (clients) {
-      for (const ws of clients) {
-        for (const msg of serverMsgs) {
-          sendMessage(ws, msg)
-        }
-      }
-    }
-
-    if (cliMsg.type === 'result') {
-      const firstClient = clients?.values().next().value
-      if (firstClient) {
-        triggerTitleGeneration(firstClient, sessionId)
-      }
-    }
+    broadcastCliMessagesToSession(sessionId, cliMsg)
   }
 }
 
