@@ -526,6 +526,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('menuitem', { name: 'Pin Project' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Open in Finder' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Hide from Sidebar' })).toBeInTheDocument()
+    expect(screen.getByRole('menu')).toHaveClass('z-[9999]')
     expect(screen.queryByRole('menuitem', { name: 'Create Permanent Worktree' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Rename Project' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Archive Conversations' })).not.toBeInTheDocument()

@@ -1073,15 +1073,15 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
         document.body,
       )}
 
-      {projectContextMenu && (() => {
+      {projectContextMenu && typeof document !== 'undefined' && (() => {
         const project = orderedProjectGroups.find((group) => group.key === projectContextMenu.key)
         if (!project) return null
         const pinned = pinnedProjectKeys.has(project.key)
         const hidden = hiddenProjectKeys.has(project.key)
-        return (
+        return createPortal(
           <div
             role="menu"
-            className="fixed z-50 min-w-[230px] overflow-hidden rounded-[18px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] py-2 shadow-[var(--shadow-dropdown)]"
+            className="fixed z-[9999] min-w-[230px] overflow-hidden rounded-[18px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] py-2 shadow-[var(--shadow-dropdown)]"
             style={positionProjectMenu(projectContextMenu.x, projectContextMenu.y)}
             onClick={(event) => event.stopPropagation()}
           >
@@ -1104,7 +1104,8 @@ export function Sidebar({ isMobile = false, onRequestClose }: SidebarProps) {
             >
               {t(hidden ? 'sidebar.restoreProjectToSidebar' : 'sidebar.hideProjectFromSidebar')}
             </ProjectMenuItem>
-          </div>
+          </div>,
+          document.body,
         )
       })()}
 
