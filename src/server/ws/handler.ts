@@ -1525,6 +1525,8 @@ type SessionStreamState = {
   usedAskUserQuestion: boolean
   assistantText: string
   structuredInteractionRecoveryAttempts: number
+  workflowProtocolToolRegistryError?: 'submit_phase_completion' | 'request_workflow_route'
+  workflowProtocolBindingRecoveryAttempts: number
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
@@ -1548,6 +1550,8 @@ function getStreamState(sessionId: string): SessionStreamState {
       usedAskUserQuestion: false,
       assistantText: '',
       structuredInteractionRecoveryAttempts: 0,
+      workflowProtocolToolRegistryError: undefined,
+      workflowProtocolBindingRecoveryAttempts: 0,
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
       lastApiError: undefined,
@@ -1680,6 +1684,7 @@ type WorkflowTerminalRecovery = {
 function beginStreamedAssistantTurn(streamState: SessionStreamState): void {
   streamState.usedAskUserQuestion = false
   streamState.assistantText = ''
+  streamState.workflowProtocolToolRegistryError = undefined
 }
 
 function recordAssistantText(streamState: SessionStreamState, text: unknown): void {
@@ -1691,6 +1696,29 @@ function recordAssistantToolUse(streamState: SessionStreamState, toolName: unkno
   if (toolName === 'AskUserQuestion') streamState.usedAskUserQuestion = true
 }
 
+const WORKFLOW_PROTOCOL_TOOL_NAMES = new Set([
+  'submit_phase_completion',
+  'request_workflow_route',
+] as const)
+
+type WorkflowProtocolToolName = typeof WORKFLOW_PROTOCOL_TOOL_NAMES extends Set<infer T> ? T : never
+
+function workflowProtocolToolNameFromError(value: unknown): WorkflowProtocolToolName | null {
+  const text = typeof value === 'string' ? value : ''
+  const match = /No such tool available:\s*(submit_phase_completion|request_workflow_route)\b/i.exec(text)
+  if (!match || !WORKFLOW_PROTOCOL_TOOL_NAMES.has(match[1] as WorkflowProtocolToolName)) return null
+  return match[1] as WorkflowProtocolToolName
+}
+
+function recordWorkflowProtocolToolRegistryError(
+  streamState: SessionStreamState,
+  toolResult: { is_error?: unknown; content?: unknown },
+): void {
+  if (!toolResult.is_error) return
+  const toolName = workflowProtocolToolNameFromError(toolResult.content)
+  if (toolName) streamState.workflowProtocolToolRegistryError = toolName
+}
+
 function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
   const streamState = getStreamState(sessionId)
   return {
@@ -1700,11 +1728,17 @@ function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractio
   }
 }
 
-function finishWorkflowInteractionTurn(sessionId: string, resetRecoveryAttempts = true): void {
+function finishWorkflowInteractionTurn(
+  sessionId: string,
+  resetRecoveryAttempts = true,
+  resetBindingRecoveryAttempts = true,
+): void {
   const streamState = getStreamState(sessionId)
   streamState.usedAskUserQuestion = false
   streamState.assistantText = ''
+  streamState.workflowProtocolToolRegistryError = undefined
   if (resetRecoveryAttempts) streamState.structuredInteractionRecoveryAttempts = 0
+  if (resetBindingRecoveryAttempts) streamState.workflowProtocolBindingRecoveryAttempts = 0
 }
 
 function assistantTextRequestsUserDecision(text: string): boolean {
@@ -1964,6 +1998,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
       if (cliMsg.message?.content && Array.isArray(cliMsg.message.content)) {
         for (const block of cliMsg.message.content) {
           if (block.type === 'tool_result') {
+            recordWorkflowProtocolToolRegistryError(streamState, block)
             const rememberedParentToolUseId = consumeToolParentUseId(streamState, block.tool_use_id)
             const parentToolUseId =
               cliParentToolUseId(cliMsg) ?? rememberedParentToolUseId
@@ -2648,7 +2683,117 @@ function sendWorkflowTerminalProtocolError(
   }
 }
 
+function sendWorkflowProtocolToolBindingError(
+  sessionId: string,
+  state: WorkflowSessionState,
+): void {
+  const clients = activeSessions.get(sessionId)
+  if (!clients) return
+  const message = state.workflowLanguage === 'zh'
+    ? '工作流阶段工具未能恢复。系统没有继续推进阶段；请重试当前阶段。'
+    : 'Workflow phase tools could not be restored. The workflow was not advanced; retry the current phase.'
+
+  for (const ws of clients) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE',
+      message,
+      retryable: true,
+    })
+  }
+}
+
+function buildWorkflowProtocolToolBindingRecoveryInstruction(
+  state: WorkflowSessionState,
+  toolName: WorkflowProtocolToolName,
+): string {
+  const isChinese = state.workflowLanguage === 'zh'
+  const action = toolName === 'submit_phase_completion'
+    ? 'submit_phase_completion'
+    : 'request_workflow_route'
+  const instruction = isChinese
+    ? [
+        `刚才对 ${action} 的调用因运行时工具绑定异常未执行。新的工作流运行时已经启动，并且该工具现在可用。`,
+        `立即重新执行刚才需要的 ${action} 结构化调用。`,
+        '不要把工具调用失败解释给用户，不要等待用户在输入框发送“继续”，也不要用普通文本替代结构化工具调用。',
+        '继续遵守当前阶段权限；所有用户可见文字使用中文。',
+      ]
+    : [
+        `The previous ${action} call did not execute because the runtime tool binding was unhealthy. A fresh workflow runtime is now running and this tool is available.`,
+        `Immediately retry the required structured ${action} call.`,
+        'Do not ask the user to type continue, do not expose this internal binding failure, and do not replace the tool call with prose.',
+        'Continue to obey the active phase permissions.',
+      ]
+
+  return [
+    '<workflow-protocol-binding-recovery>',
+    ...instruction,
+    '</workflow-protocol-binding-recovery>',
+  ].join('\n')
+}
+
+async function recoverWorkflowProtocolToolBinding(
+  sessionId: string,
+  cliMsg: any,
+): Promise<boolean> {
+  const streamState = getStreamState(sessionId)
+  const toolName = streamState.workflowProtocolToolRegistryError
+    ?? workflowProtocolToolNameFromError(cliMsg?.result)
+    ?? workflowProtocolToolNameFromError(Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : undefined)
+  if (!toolName) return false
+
+  const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (
+    !state
+    || state.mode !== 'workflow'
+    || state.workflowStatus !== 'running'
+    || !getWorkflowScopedToolNames(state).includes(toolName)
+  ) {
+    return false
+  }
+
+  if (streamState.workflowProtocolBindingRecoveryAttempts >= 1) {
+    sendWorkflowProtocolToolBindingError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  streamState.workflowProtocolBindingRecoveryAttempts += 1
+  const clients = activeSessions.get(sessionId)
+  if (clients) {
+    for (const ws of clients) {
+      sendMessage(ws, {
+        type: 'status',
+        state: 'thinking',
+        verb: state.workflowLanguage === 'zh' ? '正在恢复工作流工具' : 'Restoring workflow tools',
+      })
+    }
+  }
+
+  const rebound = await refreshWorkflowRuntimeBinding(sessionId, state)
+  if (rebound.status !== 'restarted') {
+    if (rebound.status !== 'restart-failed') sendWorkflowProtocolToolBindingError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  const sent = conversationService.sendMessage(
+    sessionId,
+    buildWorkflowProtocolToolBindingRecoveryInstruction(state, toolName),
+  )
+  if (!sent) {
+    sendWorkflowProtocolToolBindingError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  finishWorkflowInteractionTurn(sessionId, true, false)
+  return true
+}
+
 async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
+  if (cliMsg.is_error && await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
+
   const turn = workflowInteractionTurnForResult(sessionId)
   const recovery = !cliMsg.is_error
     ? await workflowTerminalRecoveryForResult(sessionId, turn)

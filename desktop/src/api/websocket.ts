@@ -3,6 +3,16 @@ import { getAuthToken, getBaseUrl } from './client'
 
 type MessageHandler = (msg: ServerMessage) => void
 
+type WorkflowTransitionAction = Extract<ClientMessage, { type: 'workflow_transition' }>['action']
+
+export function createWorkflowTransitionId(
+  phaseId: string,
+  stateVersion: number | undefined,
+  action: WorkflowTransitionAction,
+): string {
+  return `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`
+}
+
 type Connection = {
   ws: WebSocket
   handlers: Set<MessageHandler>

@@ -962,6 +962,246 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
+  it('does not consume terminal recovery twice when the recovery turn ends with a tool-registration error', async () => {
+    const sessionId = `workflow-tool-registration-recovery-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Would you like to continue or pause?' }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      callback({
+        type: 'user',
+        message: {
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'workflow-completion-tool',
+            is_error: true,
+            content: 'No such tool available: submit_phase_completion',
+          }],
+        },
+      })
+      callback({
+        type: 'result',
+        is_error: true,
+        result: 'No such tool available: submit_phase_completion',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'CLI_ERROR'
+      ))
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('rebinds protocol tools and retries a Chinese route request without user-entered continue', async () => {
+    const sessionId = `workflow-protocol-route-retry-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'result',
+        is_error: true,
+        result: 'No such tool available: request_workflow_route',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+
+      await waitForCondition(() => startSession.mock.calls.length === 1 && sendMessage.mock.calls.length === 1)
+
+      expect(stopSessionAndWait).toHaveBeenCalledWith(sessionId)
+      expect(startSession.mock.calls[0]?.[3]).toMatchObject({ workflowSessionId: sessionId })
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('<workflow-protocol-binding-recovery>'),
+      )
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('request_workflow_route')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('所有用户可见文字使用中文')
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: '正在恢复工作流工具',
+      }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('fails visibly after the one permitted protocol-tool rebind retry', async () => {
+    const sessionId = `workflow-protocol-retry-exhausted-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      const protocolError = {
+        type: 'result',
+        is_error: true,
+        result: 'No such tool available: submit_phase_completion',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }
+      callback(protocolError)
+      await waitForCondition(() => startSession.mock.calls.length === 1)
+      callback(protocolError)
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE'
+      ))
+
+      expect(startSession).toHaveBeenCalledTimes(1)
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE',
+        retryable: true,
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('reports a retryable protocol error when the recovered CLI cannot accept the retry instruction', async () => {
+    const sessionId = `workflow-protocol-send-failed-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'sendMessage').mockReturnValue(false)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      session.outputCallbacks[0]!({
+        type: 'result',
+        is_error: true,
+        result: 'No such tool available: submit_phase_completion',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE'
+      ))
+
+      expect(startSession).toHaveBeenCalledTimes(1)
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE',
+        retryable: true,
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
   it('fails visibly instead of looping when the recovery turn again asks a prose decision question', async () => {
     const sessionId = `workflow-prose-question-repeat-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)

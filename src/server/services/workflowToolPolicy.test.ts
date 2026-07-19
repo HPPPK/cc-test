@@ -419,6 +419,68 @@ describe('workflowToolPolicy', () => {
     expect(isWorkflowPhaseToolDenied('Bash', implementation)).toBe(false)
     expect(getWorkflowPhaseDisallowedToolsWithWorkingSearch(stateFor(null))).toEqual([])
   })
+
+  test('applies legacy command and subagent restrictions when no structured tool access exists', () => {
+    const state = workflowStateWithActionPolicy('legacy-research')
+    state.templateSnapshot.phases[0] = {
+      ...state.templateSnapshot.phases[0],
+      actionPolicy: {
+        allowedActions: ['inspect evidence'],
+        forbiddenActions: [
+          'Run implementation command, test, build, or lint.',
+          'General autonomous agent and subagent dispatch are not permitted.',
+        ],
+      },
+    }
+
+    const denied = getWorkflowPhaseDisallowedToolsWithWorkingSearch(state)
+
+    expect(denied).toEqual(expect.arrayContaining(['Bash', 'PowerShell', 'Agent']))
+  })
+
+  test('does not treat Stage 4 prerequisite wording as a ban on explicitly allowed source-edit tools', () => {
+    const state: WorkflowSessionState = {
+      ...stateFor('delegate-implement'),
+      templateSnapshot: {
+        schemaVersion: 2,
+        id: 'stage-four-implementation-prerequisites',
+        source: 'user',
+        version: '1',
+        displayName: 'Stage 4 implementation prerequisites',
+        description: 'Regression fixture for implementation prerequisites.',
+        phases: [
+          {
+            id: 'delegate-implement',
+            label: 'Implementation',
+            instructions: 'Implement the approved task packet.',
+            requestedModel: null,
+            actionPolicy: {
+              allowedActions: ['edit-within-plan'],
+              forbiddenActions: [
+                'Create implementation-task-packets.md before any production code change.',
+                'Write implementation-log.md and update run-report.md before leaving Stage 4.',
+              ],
+            },
+            toolPolicy: {
+              allowedTools: ['Read', 'Write', 'Edit', 'MultiEdit', 'Bash'],
+              disallowedTools: ['NotebookEdit'],
+            },
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['implementation evidence is ready'],
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      },
+    } as WorkflowSessionState
+
+    const denied = getWorkflowPhaseDisallowedToolsWithWorkingSearch(state)
+
+    expect(denied).not.toContain('Write')
+    expect(denied).not.toContain('Edit')
+    expect(denied).not.toContain('MultiEdit')
+    expect(denied).toContain('NotebookEdit')
+  })
   test('keeps SuperSpec action guidance while leaving template authoring unrestricted', () => {
     const phaseState = workflowStateWithActionPolicy('sp-implement', 'implementation')
 

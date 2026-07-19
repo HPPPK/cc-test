@@ -338,6 +338,15 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
 }
 
 /**
+ * Build the startup tool set for a headless CLI process. Desktop workflow
+ * protocol tools are discovered from the process binding here, before MCP
+ * discovery completes.
+ */
+export function getHeadlessToolPool(permissionContext: ToolPermissionContext): Tools {
+  return assembleToolPool(permissionContext, [])
+}
+
+/**
  * Assemble the full tool pool for a given permission context and MCP tools.
  *
  * This is the single source of truth for combining built-in tools with MCP tools.

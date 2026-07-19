@@ -1203,6 +1203,9 @@ export function ActiveSession() {
   const hasIncompleteTasks = useCLITaskStore((s) => s.tasks.some((task) => task.status !== 'completed'))
   const hasRunningTasks = useCLITaskStore((s) => s.tasks.some((task) => task.status === 'in_progress'))
   const chatState = sessionState?.chatState ?? 'idle'
+  const pendingWorkflowTransition = sessionState?.pendingWorkflowTransition ?? null
+  const workflowTransitionError = sessionState?.workflowTransitionError ?? null
+  const workflowTransitionResetKey = sessionState?.workflowTransitionResetKey ?? 0
   const tokenUsage = sessionState?.tokenUsage ?? { input_tokens: 0, output_tokens: 0 }
   const backgroundAgentTasks = useMemo(
     () => Object.values(sessionState?.backgroundAgentTasks ?? {}),
@@ -1484,6 +1487,9 @@ export function ActiveSession() {
     <WorkflowTransitionControls
       workflow={workflowControlsDisplay}
       stateVersion={workflowStateVersion}
+      pendingTransition={pendingWorkflowTransition}
+      transitionError={workflowTransitionError}
+      transitionResetKey={workflowTransitionResetKey}
       onConfirm={handleWorkflowTransition}
       onReject={handleWorkflowTransition}
       onRetry={handleWorkflowTransition}

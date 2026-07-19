@@ -2840,6 +2840,76 @@ describe('WorkflowTransitionControls', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('locks all transition actions immediately after one click and shows the Chinese in-progress prompt', () => {
+    const onConfirm = vi.fn()
+    const onReject = vi.fn()
+    const onRetry = vi.fn()
+
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'specify',
+          pendingConfirmation: true,
+        }}
+        stateVersion={7}
+        onConfirm={onConfirm}
+        onReject={onReject}
+        onRetry={onRetry}
+      />,
+    )
+
+    const continueButton = screen.getByRole('button', { name: /Continue with this result/i })
+    fireEvent.click(continueButton)
+    fireEvent.click(continueButton)
+
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      transitionId: 'workflow-transition:specify:7:confirm',
+    }))
+    expect(screen.getByText('正在提交阶段操作，请稍候…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /I want to adjust it/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Pause workflow/i })).toBeDisabled()
+  })
+
+  it('unlocks controls and shows the transition error after the parent clears a failed action', () => {
+    const onConfirm = vi.fn()
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation' as const,
+      activePhaseId: 'specify',
+      pendingConfirmation: true,
+    }
+    const { rerender } = render(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={7}
+        onConfirm={onConfirm}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue with this result/i }))
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeDisabled()
+
+    rerender(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={7}
+        transitionError="工作流状态已更新，请根据最新状态重新选择操作。"
+        transitionResetKey={1}
+        onConfirm={onConfirm}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent('工作流状态已更新，请根据最新状态重新选择操作。')
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
+  })
+
   it('shows pending confirmation controls and sends idempotent transition context', () => {
     const onConfirm = vi.fn()
     const onReject = vi.fn()
@@ -2855,7 +2925,6 @@ describe('WorkflowTransitionControls', () => {
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
-        transitionId="transition-007"
         onConfirm={onConfirm}
         onReject={onReject}
         onRetry={onRetry}
@@ -2875,27 +2944,15 @@ describe('WorkflowTransitionControls', () => {
     expect(continueButton.className).toBe(pauseButton.className)
 
     fireEvent.click(continueButton)
-    fireEvent.click(screen.getByRole('button', { name: /I want to adjust it/i }))
-    fireEvent.click(screen.getByRole('button', { name: /Pause workflow/i }))
 
     expect(onConfirm).toHaveBeenCalledWith({
       phaseId: 'specify',
       action: 'confirm',
-      transitionId: 'transition-007',
+      transitionId: 'workflow-transition:specify:7:confirm',
       stateVersion: 7,
     })
-    expect(onReject).toHaveBeenCalledWith({
-      phaseId: 'specify',
-      action: 'reject',
-      transitionId: 'transition-007',
-      stateVersion: 7,
-    })
-    expect(onRetry).toHaveBeenCalledWith({
-      phaseId: 'specify',
-      action: 'pause',
-      transitionId: 'transition-007',
-      stateVersion: 7,
-    })
+    expect(onReject).not.toHaveBeenCalled()
+    expect(onRetry).not.toHaveBeenCalled()
   })
 
   it('localizes pending confirmation card copy in Chinese locale', () => {
@@ -2914,7 +2971,6 @@ describe('WorkflowTransitionControls', () => {
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
-        transitionId="transition-zh-007"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -2926,7 +2982,7 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.getByText('阶段摘要')).toBeInTheDocument()
     expect(screen.getByText(/^当前阶段：第 1 步：需求范围$/)).toBeInTheDocument()
     expect(screen.getByText('关键结果：当前阶段已完成，正在等待你的确认。')).toBeInTheDocument()
-    expect(screen.getByText('下一步：第 2 步：技术计划')).toBeInTheDocument()
+    expect(screen.queryByText('下一步：第 2 步：技术计划')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /继续使用这个结果（推荐）/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /我要调整当前结果/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /暂停工作流/ })).toBeInTheDocument()
@@ -2950,7 +3006,6 @@ describe('WorkflowTransitionControls', () => {
           blockedReason: '测试命令失败',
         }}
         stateVersion={9}
-        transitionId="transition-blocked-zh-009"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -2979,7 +3034,6 @@ describe('WorkflowTransitionControls', () => {
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
-        transitionId="transition-clear-007"
         onConfirm={onConfirm}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -2994,7 +3048,7 @@ describe('WorkflowTransitionControls', () => {
     expect(onConfirm).toHaveBeenLastCalledWith({
       phaseId: 'specify',
       action: 'confirm',
-      transitionId: 'transition-clear-007',
+      transitionId: 'workflow-transition:specify:7:confirm',
       stateVersion: 7,
     })
   })
@@ -3012,7 +3066,6 @@ describe('WorkflowTransitionControls', () => {
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={8}
-        transitionId="transition-final-008"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -3035,7 +3088,6 @@ describe('WorkflowTransitionControls', () => {
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={8}
-        transitionId="transition-008"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -3082,7 +3134,6 @@ describe('WorkflowTransitionControls', () => {
           blockedReason: 'Completion checklist is still missing the implementation plan.',
         }}
         stateVersion={9}
-        transitionId="retry-009"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={onRetry}
@@ -3099,7 +3150,7 @@ describe('WorkflowTransitionControls', () => {
     expect(onRetry).toHaveBeenCalledWith({
       phaseId: 'plan',
       action: 'retry',
-      transitionId: 'retry-009',
+      transitionId: 'workflow-transition:plan:9:retry',
       stateVersion: 9,
     })
   })
@@ -3121,7 +3172,6 @@ describe('WorkflowTransitionControls', () => {
           blockedStatus,
         } as typeof WORKFLOW_SUMMARY & { blockedStatus: 'blocked' | 'unable' }}
         stateVersion={10}
-        transitionId={`${blockedStatus}-010`}
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={onRetry}
@@ -3139,7 +3189,7 @@ describe('WorkflowTransitionControls', () => {
     expect(onRetry).toHaveBeenCalledWith({
       phaseId: 'plan',
       action: 'retry',
-      transitionId: `${blockedStatus}-010`,
+      transitionId: `workflow-transition:plan:10:retry`,
       stateVersion: 10,
     })
   })
@@ -3223,14 +3273,13 @@ describe('WorkflowTransitionControls route targets', () => {
           pendingTargetPhaseLabel: string
         }}
         stateVersion={12}
-        transitionId="route-to-stage-4"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
       />,
     )
 
-    expect(screen.getAllByText(/Stage 4: 分批实现与审查/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Step 4: 分批实现与审查/i).length).toBeGreaterThan(0)
     expect(screen.queryByText(/Stage 7: Release/i)).not.toBeInTheDocument()
   })
 })
@@ -3256,7 +3305,6 @@ describe('WorkflowTransitionControls Chinese route cards', () => {
           pendingTargetPhaseLabel: '分批实现与审查',
         } as any}
         stateVersion={12}
-        transitionId="route-zh"
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}

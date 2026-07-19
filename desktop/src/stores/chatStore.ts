@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { wsManager } from '../api/websocket'
+import { createWorkflowTransitionId, wsManager } from '../api/websocket'
 import { sessionsApi } from '../api/sessions'
 import { useTeamStore } from './teamStore'
 import { useSettingsStore } from './settingsStore'
@@ -28,13 +28,21 @@ import type {
   MemoryEventFile,
   UIAttachment,
   UIMessage,
-  ClientMessage,
   ServerMessage,
   TokenUsage,
 } from '../types/chat'
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
-type WorkflowTransitionCommand = Omit<Extract<ClientMessage, { type: 'workflow_transition' }>, 'type'>
+type WorkflowTransitionCommand = {
+  phaseId: string
+  action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop'
+  transitionId?: string
+  stateVersion?: number
+  nextPhaseContextStrategy?: 'inherit' | 'clear'
+  handoff?: { summary: string; artifacts: unknown[] }
+  rationale?: string
+  evidence?: Array<{ kind: string; label: string; ref: string }>
+}
 
 export type ComposerDraftState = {
   input: string
@@ -80,6 +88,9 @@ export type PerSessionState = {
     id: string
     submittedAt: number
   } | null
+  pendingWorkflowTransition?: WorkflowTransitionCommand | null
+  workflowTransitionError?: string | null
+  workflowTransitionResetKey?: number
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {
@@ -105,6 +116,9 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   composerDraft: null,
   localStopNonce: null,
   undoableSubmittedMessage: null,
+  pendingWorkflowTransition: null,
+  workflowTransitionError: null,
+  workflowTransitionResetKey: 0,
 }
 
 function createDefaultSessionState(): PerSessionState {
@@ -648,6 +662,10 @@ async function fetchAndMapSessionHistory(sessionId: string) {
   }
 }
 
+function isWorkflowTransitionError(code: string): boolean {
+  return code === 'CLI_NOT_RUNNING' || code.startsWith('WORKFLOW_')
+}
+
 export const useChatStore = create<ChatStore>((set, get) => {
   const submitNextQueuedMessage = (sessionId: string): boolean => {
     const queued = peekQueuedOutboundUserMessage(sessionId)
@@ -986,9 +1004,21 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   sendWorkflowTransition: (sessionId, command) => {
+    if (get().sessions[sessionId]?.pendingWorkflowTransition) return
+
+    const transition = {
+      ...command,
+      transitionId: createWorkflowTransitionId(command.phaseId, command.stateVersion, command.action),
+    }
+    set((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, () => ({
+        pendingWorkflowTransition: transition,
+        workflowTransitionError: null,
+      })),
+    }))
     wsManager.send(sessionId, {
       type: 'workflow_transition',
-      ...command,
+      ...transition,
     })
   },
 
@@ -1476,6 +1506,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (msg.code === 'CLI_RESTART_FAILED') {
           restoreRuntimeSelectionAfterFailure(sessionId)
         }
+        if (isWorkflowTransitionError(msg.code) && get().sessions[sessionId]?.pendingWorkflowTransition) {
+          update((session) => ({
+            pendingWorkflowTransition: null,
+            workflowTransitionError: msg.code === 'WORKFLOW_STATE_STALE'
+              ? '工作流状态已更新，请根据最新状态重新选择操作。'
+              : `阶段操作未完成：${msg.message}`,
+            workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+          }))
+        }
         update((s) => {
           const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
           let newMessages = s.messages
@@ -1528,6 +1567,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 ? { ...item, workflow, modifiedAt: new Date().toISOString() }
                 : item,
             ),
+          }))
+          update((session) => ({
+            pendingWorkflowTransition: null,
+            workflowTransitionError: null,
+            workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
           }))
           const session = get().sessions[sessionId]
           if (

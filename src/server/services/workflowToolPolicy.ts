@@ -214,31 +214,48 @@ function phaseToolPolicy(state: WorkflowSessionState): {
     ...(runtime?.disallowedTools ?? []),
     ...(runtime?.toolAccess?.forbidden ?? []),
   ])
-  const forbiddenActions = [
-    ...(phase.actionPolicy?.forbiddenActions ?? []),
-    ...(runtime?.forbiddenActions ?? []),
-  ]
-  for (const action of forbiddenActions) {
-    const normalized = action.toLowerCase()
-    if (
-      /(?:create|edit|delete|write).*(?:implementation|source|code|file)/.test(normalized)
-      || normalized.includes('implementation coding')
-      || normalized.includes('production edit')
-      || normalized.includes('source edit')
-      || normalized.includes('apply_patch')
-      || normalized.includes('apply patch')
-    ) {
-      for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) forbidden.add(tool)
-    }
-    if (
-      /run.*implementation.*(?:command|test|build|lint)/.test(normalized)
-      || normalized.includes('test execution')
-    ) {
-      forbidden.add('Bash')
-      forbidden.add('PowerShell')
-    }
-    if (normalized.includes('subagent dispatch') || normalized.includes('general autonomous agent')) {
-      forbidden.add('Agent')
+  const hasExplicitToolAccess = [
+    ...(toolPolicy?.allowedTools ?? []),
+    ...(toolPolicy?.disallowedTools ?? []),
+    ...(toolPolicy?.forbidden ?? []),
+    ...(runtime?.allowedTools ?? []),
+    ...(runtime?.disallowedTools ?? []),
+    ...(runtime?.toolAccess?.allowed ?? []),
+    ...(runtime?.toolAccess?.forbidden ?? []),
+  ].some((value) => value.trim().length > 0)
+
+  // Structured tool access is authoritative. `forbiddenActions` also carries
+  // human-readable prerequisites such as “Create the task packet before code
+  // changes”, which must not be reinterpreted as a ban on Write/Edit in an
+  // implementation phase that explicitly allows those tools. Keep the legacy
+  // natural-language inference only for templates that have no tool contract.
+  if (!hasExplicitToolAccess) {
+    const forbiddenActions = [
+      ...(phase.actionPolicy?.forbiddenActions ?? []),
+      ...(runtime?.forbiddenActions ?? []),
+    ]
+    for (const action of forbiddenActions) {
+      const normalized = action.toLowerCase()
+      if (
+        /(?:create|edit|delete|write).*(?:implementation|source|code|file)/.test(normalized)
+        || normalized.includes('implementation coding')
+        || normalized.includes('production edit')
+        || normalized.includes('source edit')
+        || normalized.includes('apply_patch')
+        || normalized.includes('apply patch')
+      ) {
+        for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) forbidden.add(tool)
+      }
+      if (
+        /run.*implementation.*(?:command|test|build|lint)/.test(normalized)
+        || normalized.includes('test execution')
+      ) {
+        forbidden.add('Bash')
+        forbidden.add('PowerShell')
+      }
+      if (normalized.includes('subagent dispatch') || normalized.includes('general autonomous agent')) {
+        forbidden.add('Agent')
+      }
     }
   }
 

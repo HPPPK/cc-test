@@ -1,4 +1,6 @@
-﻿import { useTranslation } from '../../i18n'
+﻿import { useEffect, useRef, useState } from 'react'
+import { createWorkflowTransitionId } from '../../api/websocket'
+import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
 import { formatWorkflowPhaseSummary } from './workflowPhaseDisplay'
 
@@ -23,7 +25,9 @@ export type WorkflowTransitionCommand = {
 type WorkflowTransitionControlsProps = {
   workflow?: WorkflowStatusPanelSummary | null
   stateVersion?: number
-  transitionId?: string
+  pendingTransition?: WorkflowTransitionCommand | null
+  transitionError?: string | null
+  transitionResetKey?: number
   embedded?: boolean
   onConfirm: (command: WorkflowTransitionCommand) => void
   onReject: (command: WorkflowTransitionCommand) => void
@@ -33,13 +37,19 @@ type WorkflowTransitionControlsProps = {
 export function WorkflowTransitionControls({
   workflow,
   stateVersion,
-  transitionId,
+  pendingTransition = null,
+  transitionError = null,
+  transitionResetKey = 0,
   embedded = false,
   onConfirm,
   onReject,
   onRetry,
 }: WorkflowTransitionControlsProps) {
   const t = useTranslation()
+  const [localPending, setLocalPending] = useState(false)
+  const submissionLockRef = useRef(false)
+  const lastWorkflowStateRef = useRef<string | null>(null)
+  const lastResetKeyRef = useRef(transitionResetKey)
 
   if (!workflow) return null
 
@@ -50,14 +60,37 @@ export function WorkflowTransitionControls({
   if (!phaseId || (!pending && !blocked)) return null
 
   const routeTarget = workflowRouteTarget(workflow, t)
-  const hasNextPhase = Boolean(routeTarget) || (workflow.activePhaseIndex >= 0 && workflow.phaseCount > workflow.activePhaseIndex + 1)
-  const nextStep = routeTarget ?? nextPhaseLabel(workflow, t)
   const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
-  const commandBase = {
-    phaseId,
-    transitionId,
-    stateVersion,
+  const workflowStateKey = `${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}`
+
+  useEffect(() => {
+    const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
+    const resetRequested = lastResetKeyRef.current !== transitionResetKey
+    if (workflowStateChanged || resetRequested) {
+      submissionLockRef.current = false
+      setLocalPending(false)
+    }
+    lastWorkflowStateRef.current = workflowStateKey
+    lastResetKeyRef.current = transitionResetKey
+  }, [transitionResetKey, workflowStateKey])
+
+  const transitionPending = localPending || Boolean(pendingTransition)
+  const submitTransition = (
+    handler: (command: WorkflowTransitionCommand) => void,
+    action: WorkflowTransitionCommand['action'],
+  ) => {
+    if (submissionLockRef.current || pendingTransition) return
+
+    submissionLockRef.current = true
+    setLocalPending(true)
+    handler({
+      phaseId,
+      action,
+      transitionId: createWorkflowTransitionId(phaseId, stateVersion, action),
+      stateVersion,
+    })
   }
+  const transitionNotice = transitionError || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
   if (blocked && !pending) {
     return (
       <section
@@ -73,18 +106,23 @@ export function WorkflowTransitionControls({
             ) : null}
           </div>
         </div>
+        {transitionNotice ? (
+          <p role="status" className="mt-3 text-xs leading-5 text-[var(--color-text-secondary)]">{transitionNotice}</p>
+        ) : null}
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           <OptionButton
             icon="refresh"
             title={t('workflows.transition.retryTitle')}
             description={t('workflows.transition.retryDescription')}
-            onClick={() => onRetry({ ...commandBase, action: 'retry' })}
+            disabled={transitionPending}
+            onClick={() => submitTransition(onRetry, 'retry')}
           />
           <OptionButton
             icon="pause_circle"
             title={t('workflows.transition.pauseTitle')}
             description={t('workflows.transition.pauseDescription')}
-            onClick={() => onRetry({ ...commandBase, action: 'pause' })}
+            disabled={transitionPending}
+            onClick={() => submitTransition(onRetry, 'pause')}
           />
         </div>
       </section>
@@ -106,12 +144,16 @@ export function WorkflowTransitionControls({
         </div>
       </div>
 
+      {transitionNotice ? (
+        <p role="status" className="mt-3 text-xs leading-5 text-[var(--color-text-secondary)]">{transitionNotice}</p>
+      ) : null}
+
       <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/30 bg-[var(--color-surface)] px-3 py-2">
         <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.summaryTitle')}</div>
         <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
           <li>{t('workflows.transition.currentPhase', { phase: formatWorkflowPhaseSummary(workflow) })}</li>
           <li>{t('workflows.transition.keyResult')}</li>
-          <li>{t('workflows.transition.nextStep', { step: hasNextPhase ? nextStep : t('workflows.transition.finishWorkflow') })}</li>
+          {routeTarget ? <li>{t('workflows.transition.nextStep', { step: routeTarget })}</li> : null}
         </ul>
       </div>
 
@@ -120,25 +162,28 @@ export function WorkflowTransitionControls({
           icon="thumb_up"
           title={t('workflows.transition.continueTitle')}
           description={
-            hasNextPhase
+            routeTarget
               ? isJumpRoute
-                ? t('workflows.transition.moveToRouteTarget', { step: nextStep })
-                : t('workflows.transition.moveToNext', { step: nextStep })
-              : t('workflows.transition.finishWorkflow')
+                ? t('workflows.transition.moveToRouteTarget', { step: routeTarget })
+                : t('workflows.transition.moveToNext', { step: routeTarget })
+              : ''
           }
-          onClick={() => onConfirm({ ...commandBase, action: 'confirm' })}
+          disabled={transitionPending}
+          onClick={() => submitTransition(onConfirm, 'confirm')}
         />
         <OptionButton
           icon="edit"
           title={t('workflows.transition.adjustTitle')}
           description={t('workflows.transition.adjustDescription')}
-          onClick={() => onReject({ ...commandBase, action: 'reject' })}
+          disabled={transitionPending}
+          onClick={() => submitTransition(onReject, 'reject')}
         />
         <OptionButton
           icon="pause_circle"
           title={t('workflows.transition.pauseTitle')}
           description={t('workflows.transition.pauseDescription')}
-          onClick={() => onRetry({ ...commandBase, action: 'pause' })}
+          disabled={transitionPending}
+          onClick={() => submitTransition(onRetry, 'pause')}
         />
       </div>
     </section>
@@ -168,17 +213,20 @@ function OptionButton({
   title,
   description,
   onClick,
+  disabled = false,
 }: {
   icon: string
   title: string
   description: string
   onClick: () => void
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[88px] w-full items-center gap-3 rounded-[12px] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-4 py-3 text-left transition-all duration-150 hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]"
+      disabled={disabled}
+      className="flex min-h-[88px] w-full items-center gap-3 rounded-[12px] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-4 py-3 text-left transition-all duration-150 hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-55"
     >
       <span className="material-symbols-outlined shrink-0 text-[24px] text-[var(--color-text-primary)]" aria-hidden="true">
         {icon}
@@ -195,22 +243,8 @@ function OptionButton({
   )
 }
 
-function nextPhaseLabel(workflow: WorkflowStatusPanelSummary, translate: ReturnType<typeof useTranslation>) {
-  const nextIndex = workflow.activePhaseIndex + 1
-  const nextName = workflow.phaseNames?.[nextIndex]
-  if (nextName) {
-    return translate('workflows.transition.nextStepWithName', { step: nextIndex + 1, name: nextName })
-  }
-  return translate('workflows.transition.nextStepNumber', { step: nextIndex + 1 })
-}
-
-
 function isNonLinearRouteTarget(workflow: WorkflowStatusPanelSummary): boolean {
   return workflow.pendingRoute?.intent === 'jump_to_phase'
-    || (
-      typeof workflow.pendingTargetPhaseIndex === 'number'
-      && workflow.pendingTargetPhaseIndex !== workflow.activePhaseIndex + 1
-    )
 }
 
 function workflowRouteTarget(

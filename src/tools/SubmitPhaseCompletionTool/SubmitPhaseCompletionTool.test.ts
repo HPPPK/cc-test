@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
-import { assembleWorkflowToolPool, getAllBaseTools } from '../../tools.js'
+import { assembleWorkflowToolPool, getAllBaseTools, getHeadlessToolPool } from '../../tools.js'
 
 const TOOL_NAME = 'submit_phase_completion'
 const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
@@ -96,6 +96,16 @@ describe('SubmitPhaseCompletionTool', () => {
 
     expect(SubmitPhaseCompletionTool.name).toBe(TOOL_NAME)
     expect(findToolByName(getAllBaseTools(), TOOL_NAME)).toBeUndefined()
+  })
+
+  test('is included in the initial headless tool pool when Desktop supplies a workflow binding', () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session'
+
+    const tools = getHeadlessToolPool(getEmptyToolPermissionContext())
+
+    expect(findToolByName(tools, 'submit_phase_completion')?.name).toBe('submit_phase_completion')
+    expect(findToolByName(tools, 'request_workflow_route')?.name).toBe('request_workflow_route')
   })
 
   test('is added to the assembled tool pool for active workflow sessions', () => {

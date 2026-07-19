@@ -62,6 +62,8 @@ vi.mock('../lib/desktopNotifications', () => ({
 }))
 
 vi.mock('../api/websocket', () => ({
+  createWorkflowTransitionId: (phaseId: string, stateVersion: number | undefined, action: string) =>
+    `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`,
   wsManager: {
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -1180,6 +1182,84 @@ Phase instructions: collect inputs
       mode: 'workflow',
       activePhaseId: 'technical-design',
       transitionAuthority: 'user-confirmation',
+    })
+  })
+
+  it('deduplicates a pending workflow transition and clears the lock after stale errors or a newer workflow state', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+    }]
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    const command = {
+      phaseId: 'technical-design',
+      action: 'confirm' as const,
+      stateVersion: 7,
+      transitionId: 'workflow-transition:technical-design:7:confirm',
+    }
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: command,
+      workflowTransitionError: null,
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'error',
+      code: 'WORKFLOW_STATE_STALE',
+      message: 'Workflow state version is stale.',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: '工作流状态已更新，请根据最新状态重新选择操作。',
+    })
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+    expect(sendMock).toHaveBeenCalledTimes(2)
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'pending-confirmation',
+        activePhaseId: 'technical-design',
+        activePhaseIndex: 1,
+        phaseCount: 5,
+        stateVersion: 8,
+        pendingConfirmation: true,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: null,
     })
   })
 

@@ -1822,7 +1822,7 @@ describe('ActiveSession task polling', () => {
     useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
   })
 
-  it('sends stateVersion with confirm, reject, and pause actions for pending artifacts', async () => {
+  it('locks pending artifact transition controls after the first action', async () => {
     const sessionId = 'workflow-pending-actions-session'
     const workflow = {
       ...WORKFLOW_SUMMARY,
@@ -1898,22 +1898,15 @@ describe('ActiveSession task polling', () => {
       fireEvent.click(screen.getByRole('button', { name: /暂停工作流/ }))
 
       await waitFor(() => {
+        expect(sendWorkflowTransition).toHaveBeenCalledTimes(1)
         expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
           phaseId: 'plan',
           action: 'confirm',
-          stateVersion: 21,
-        }))
-        expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-          phaseId: 'plan',
-          action: 'reject',
-          stateVersion: 21,
-        }))
-        expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-          phaseId: 'plan',
-          action: 'pause',
+          transitionId: 'workflow-transition:plan:21:confirm',
           stateVersion: 21,
         }))
       })
+
     } finally {
       useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
     }
