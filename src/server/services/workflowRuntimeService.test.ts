@@ -1299,6 +1299,95 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.phases[6].status).not.toBe('running')
   })
 
+  test('does not create a duplicate pending route when repaired Stage 4 already advances to Stage 5', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const template = makeTemplate({
+      phases: [
+        { ...basePhase, id: 'delegate-implement', label: 'Stage 4', transitionAuthority: 'user-confirmation' },
+        { ...basePhase, id: 'scenario-review', label: 'Stage 5', transitionAuthority: 'user-confirmation' },
+      ],
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      activePhaseId: 'delegate-implement',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'delegate-implement', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'scenario-review', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'repair-ready',
+        phaseId: 'delegate-implement',
+        fromPhaseId: 'delegate-implement',
+        toPhaseId: 'scenario-review',
+        completionCheckId: 'repair-ready',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const routed = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      transitionId: 'redundant-return-to-stage-5',
+      request: {
+        phaseId: 'delegate-implement',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'scenario-review',
+        rationale: 'The scoped repair is complete; resume validation.',
+        evidence: [{ kind: 'repair-verified' }],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(routed.state.pendingRoute).toBeUndefined()
+    expect(routed.state.pendingConfirmation).toMatchObject({
+      phaseId: 'delegate-implement',
+      toPhaseId: 'scenario-review',
+      status: 'pending',
+    })
+    expect(routed.approvedTargetPhaseId).toBe('scenario-review')
+    expect(routed.requiresConfirmation).toBe(true)
+
+    const confirmed = await service.applyTransition({
+      state: routed.state,
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      request: {
+        phaseId: 'delegate-implement',
+        action: 'confirm',
+        transitionId: 'confirm-repaired-stage-4',
+        expectedStateVersion: routed.state.stateVersion,
+      },
+    })
+    expect(confirmed.state.activePhaseId).toBe('scenario-review')
+    expect(confirmed.state.pendingRoute).toBeNull()
+    expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'confirmed' })
+
+    const autoRouted = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      transitionId: 'auto-confirm-repaired-stage-4',
+      request: {
+        phaseId: 'delegate-implement',
+        stateVersion: state.stateVersion,
+        intent: 'advance',
+        rationale: 'The user chose to continue to validation.',
+        evidence: [{ kind: 'user-choice' }],
+        requireUserConfirmation: false,
+      },
+    })
+    expect(autoRouted.state.activePhaseId).toBe('scenario-review')
+    expect(autoRouted.state.pendingConfirmation).toBeNull()
+    expect(autoRouted.state.pendingRoute).toBeNull()
+    expect(autoRouted.requiresConfirmation).toBe(false)
+    expect(autoRouted.state.transitionHistory.at(-1)).toMatchObject({ action: 'confirmed' })
+  })
+
   test('allows Stage 5 and Stage 6 jump routes when forbidden action prose only mentions non-workflow routes', async () => {
     const service = await makeService()
     const basePhase = makeTemplate().phases[0]

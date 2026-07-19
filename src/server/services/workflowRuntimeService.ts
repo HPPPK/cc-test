@@ -1386,6 +1386,41 @@ export class WorkflowRuntimeService {
       throw workflowError('WORKFLOW_ROUTE_TARGET_INVALID', `Workflow route target "${targetPhaseId}" does not exist in the current template.`)
     }
 
+    // A repair may describe returning to validation as a jump even though the
+    // submitted completion already targets the immediate next phase. Keep that
+    // ordinary completion confirmation as the single source of truth instead
+    // of creating a second pending route for the exact same destination.
+    if (
+      (input.request.intent === 'advance' || input.request.intent === 'jump_to_phase')
+      && targetPhaseId === state.pendingConfirmation.toPhaseId
+    ) {
+      const requiresConfirmation = input.request.requireUserConfirmation !== false
+      if (!requiresConfirmation) {
+        const confirmed = await this.confirmTransition(state, {
+          requestedAt: input.requestedAt,
+          request: {
+            phaseId: current.id,
+            action: 'confirm',
+            transitionId: `${input.transitionId ?? 'workflow-route'}-approved`,
+            expectedStateVersion: state.stateVersion,
+          },
+        }, current)
+        return {
+          ...confirmed,
+          approvedTargetPhaseId: targetPhaseId,
+          routeReason: input.request.rationale.trim(),
+          requiresConfirmation: false,
+        }
+      }
+      return {
+        state,
+        notifications: [],
+        approvedTargetPhaseId: targetPhaseId,
+        routeReason: input.request.rationale.trim(),
+        requiresConfirmation: true,
+      }
+    }
+
     const requiresConfirmation = input.request.requireUserConfirmation !== false
     state.pendingRoute = {
       routeId: input.transitionId ?? `workflow-route-${Date.now()}`,
