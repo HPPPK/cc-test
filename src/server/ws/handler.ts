@@ -1412,6 +1412,14 @@ export async function refreshWorkflowRuntimeBinding(
   } = { status: 'not-running' }
 
   await enqueueRuntimeTransition(sessionId, async () => {
+    // A prewarm can still be spawning an unbound CLI when a workflow starts.
+    // Wait for that startup before checking hasSession, then replace it with a
+    // workflow-bound process. Returning early here leaves the first workflow
+    // turn without submit_phase_completion/request_workflow_route.
+    const pendingStartup = sessionStartupPromises.get(sessionId)
+    if (pendingStartup) {
+      await pendingStartup.catch(() => undefined)
+    }
     if (!conversationService.hasSession(sessionId)) return
 
     const clients = activeSessions.get(sessionId)

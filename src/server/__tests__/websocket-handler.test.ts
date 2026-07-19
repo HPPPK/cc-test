@@ -1982,6 +1982,53 @@ describe('WebSocket handler workflow runtime gating', () => {
     })
   }
 
+  it('waits for an in-flight prewarm before rebinding its CLI to workflow protocol tools', async () => {
+    const sessionId = `workflow-prewarm-rebind-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    let hasSession = false
+    let releaseStartup: (() => void) | undefined
+    const startupGate = new Promise<void>((resolve) => {
+      releaseStartup = resolve
+    })
+    const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
+      await startupGate
+      hasSession = true
+    })
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async () => {
+      hasSession = false
+    })
+    spyOn(conversationService, 'hasSession').mockImplementation(() => hasSession)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({ type: 'prewarm_session' }))
+    await waitForCondition(() => startSession.mock.calls.length === 1)
+
+    const rebind = refreshWorkflowRuntimeBinding(
+      sessionId,
+      makeFollowUpWorkflowStageOneState(sessionId, {
+        templateId: 'feature-extension-workflow-v8',
+        phaseId: 'feature-memory-plan',
+        runtimeContract: {
+          allowedActions: ['read', 'search', 'artifact', 'question'],
+          forbiddenActions: ['production edits'],
+        },
+      }),
+    )
+
+    await flushAsyncHandlers()
+    releaseStartup?.()
+    await expect(rebind).resolves.toEqual({ status: 'restarted' })
+    expect(stopSessionAndWait).toHaveBeenCalledWith(sessionId)
+    expect(startSession).toHaveBeenCalledTimes(2)
+    expect(startSession.mock.calls[1]?.[3]).toMatchObject({
+      workflowSessionId: sessionId,
+    })
+  })
+
   it('fails closed when an existing CLI cannot be rebound to a follow-up workflow', async () => {
     const sessionId = `workflow-follow-up-rebind-failure-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
