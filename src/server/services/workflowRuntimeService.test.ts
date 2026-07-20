@@ -472,6 +472,8 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('鐢熸垚绠€鐗堢晫闈㈣崏鍥?(Recommended)')
     expect(prompt.content).toContain('provide a text or Mermaid sketch')
     expect(prompt.content).toContain('No such tool available')
+    expect(prompt.content).toContain('submit_phase_completion or request_workflow_route')
+    expect(prompt.content).toContain('Do not turn the failure into prose or AskUserQuestion')
     expect(prompt.content).toContain('do not use screen/computer-control tools to operate Terminal')
     expect(prompt.content).toContain('File has not been read yet')
     expect(prompt.content).toContain('Read the exact target file first')

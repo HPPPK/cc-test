@@ -1029,7 +1029,7 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
-  it('rebinds and retries when a submit tool-result error is followed by a successful CLI result', async () => {
+  it('immediately rebinds and retries a submit tool-result error before the old CLI can emit prose or AskUserQuestion', async () => {
     const sessionId = `workflow-protocol-tool-result-retry-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
@@ -1070,7 +1070,12 @@ describe('WebSocket handler session isolation', () => {
           }],
         },
       })
-      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'This stale CLI must not ask the user a replacement question.' }],
+        },
+      })
 
       await waitForCondition(() => startSession.mock.calls.length === 1 && sendMessage.mock.calls.length === 1)
 
@@ -1080,6 +1085,10 @@ describe('WebSocket handler session isolation', () => {
         expect.stringContaining('<workflow-protocol-binding-recovery>'),
       )
       expect(sendMessage.mock.calls[0]?.[1]).toContain('submit_phase_completion')
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'content_delta',
+        text: 'This stale CLI must not ask the user a replacement question.',
+      }))
       expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
         type: 'error',
         code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED',
@@ -1175,7 +1184,9 @@ describe('WebSocket handler session isolation', () => {
       pendingPermissionRequests: new Map(),
     }
     ;(conversationService as any).sessions.set(sessionId, session)
-    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
+      ;(conversationService as any).sessions.set(sessionId, { ...session, outputCallbacks: [] })
+    })
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
@@ -1192,7 +1203,9 @@ describe('WebSocket handler session isolation', () => {
       }
       callback(protocolError)
       await waitForCondition(() => startSession.mock.calls.length === 1)
-      callback(protocolError)
+      const recoveredSession = (conversationService as any).sessions.get(sessionId)
+      const recoveredCallback = recoveredSession.outputCallbacks[0] as (msg: any) => void
+      recoveredCallback(protocolError)
 
       await waitForCondition(() => parseSentMessages(ws).some((message) =>
         message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE'

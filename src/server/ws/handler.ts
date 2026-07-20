@@ -1545,6 +1545,7 @@ type SessionStreamState = {
   structuredInteractionRecoveryAttempts: number
   workflowProtocolToolRegistryError?: 'submit_phase_completion' | 'request_workflow_route'
   workflowProtocolBindingRecoveryAttempts: number
+  workflowProtocolBindingRecoveryInFlight: boolean
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
@@ -1570,6 +1571,7 @@ function getStreamState(sessionId: string): SessionStreamState {
       structuredInteractionRecoveryAttempts: 0,
       workflowProtocolToolRegistryError: undefined,
       workflowProtocolBindingRecoveryAttempts: 0,
+      workflowProtocolBindingRecoveryInFlight: false,
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
       lastApiError: undefined,
@@ -2877,23 +2879,56 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   if (firstClient) triggerTitleGeneration(firstClient, sessionId)
 }
 
+function recoverWorkflowProtocolToolBindingImmediately(
+  sessionId: string,
+  cliMsg: any,
+): boolean {
+  const streamState = getStreamState(sessionId)
+  if (
+    !streamState.workflowProtocolToolRegistryError
+    || streamState.workflowProtocolBindingRecoveryInFlight
+  ) {
+    return false
+  }
+
+  // A missing workflow protocol tool means this CLI was started with a stale
+  // tool surface. Do not let it continue with prose or AskUserQuestion: stop
+  // forwarding the old turn while a workflow-bound CLI is rebuilt and the
+  // required protocol action is replayed.
+  streamState.workflowProtocolBindingRecoveryInFlight = true
+  void recoverWorkflowProtocolToolBinding(sessionId, cliMsg)
+    .catch((error) => {
+      console.error(`[WS] Immediate workflow protocol recovery failed for ${sessionId}:`, error)
+    })
+    .finally(() => {
+      getStreamState(sessionId).workflowProtocolBindingRecoveryInFlight = false
+    })
+  return true
+}
+
 function createClientBroadcastCallback(
   sessionId: string,
   options?: {
     shouldForward?: (cliMsg: any) => boolean
   },
 ): (cliMsg: any) => void {
+  let supersededByProtocolRecovery = false
   return (cliMsg: any) => {
-    if (options?.shouldForward && !options.shouldForward(cliMsg)) return
+    if (supersededByProtocolRecovery || (options?.shouldForward && !options.shouldForward(cliMsg))) return
+
+    const streamState = getStreamState(sessionId)
+    recordWorkflowProtocolToolRegistryErrorFromMessage(streamState, cliMsg)
+    if (recoverWorkflowProtocolToolBindingImmediately(sessionId, cliMsg)) {
+      supersededByProtocolRecovery = true
+      return
+    }
 
     if (cliMsg.type === 'result') {
-      recordWorkflowProtocolToolRegistryErrorFromMessage(getStreamState(sessionId), cliMsg)
       void finalizeClientResult(sessionId, cliMsg)
       return
     }
 
     broadcastCliMessagesToSession(sessionId, cliMsg)
-    recordWorkflowProtocolToolRegistryErrorFromMessage(getStreamState(sessionId), cliMsg)
   }
 }
 
