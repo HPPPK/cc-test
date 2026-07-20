@@ -3,10 +3,13 @@ import {
   WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES,
   WORKFLOW_ARTIFACT_POINTER_KINDS,
   WORKFLOW_COMPLETION_SUBMISSION_STATUSES,
+  WORKFLOW_EFFORT_MODES,
+  WORKFLOW_LABELS,
   WORKFLOW_LIFECYCLE_STATUSES,
   WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES,
   WORKFLOW_PHASE_SKILL_SOURCES,
   WORKFLOW_PHASE_STATUSES,
+  WORKFLOW_RUN_STATUSES,
   WORKFLOW_TEMPLATE_SOURCE_STATUSES,
 } from './workflowTypes'
 import type {
@@ -28,6 +31,9 @@ import type {
   WorkflowPendingConfirmation,
   WorkflowPhaseSkillReference,
   WorkflowPhaseSkillResolution,
+  EffortMode,
+  WorkflowLabel,
+  WorkflowRunStatus,
 } from './workflowTypes'
 
 describe('workflow domain types', () => {
@@ -54,12 +60,55 @@ describe('workflow domain types', () => {
     ])
     expect(WORKFLOW_TEMPLATE_SOURCE_STATUSES).toEqual(['current', 'stale-template', 'missing-template'])
     expect(WORKFLOW_ARTIFACT_POINTER_KINDS).toEqual(['workflow-state', 'phase-artifact', 'final-report'])
-    expect(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).toEqual(['ready', 'blocked', 'unable'])
+    expect(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).toEqual(['ready', 'needs_user', 'completed', 'blocked', 'unable'])
     expect(WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES).toEqual(['pending', 'accepted', 'rejected', 'superseded'])
+    expect(WORKFLOW_LABELS).toEqual([
+      'new-product',
+      'enhancement',
+      'bug',
+      'documentation',
+      'refactor',
+      'test',
+      'question',
+      'duplicate',
+      'invalid',
+      'wontfix',
+      'help-wanted',
+      'good-first-issue',
+      'ux-copy',
+      'error-handling',
+    ])
+    expect(WORKFLOW_EFFORT_MODES).toEqual(['auto', 'light', 'standard', 'heavy'])
+    expect(WORKFLOW_RUN_STATUSES).toEqual([
+      'draft',
+      'active',
+      'waiting_for_user',
+      'paused',
+      'completed',
+      'cancelled',
+      'stopped',
+      'blocked',
+    ])
+  })
+
+  test('workflow labels, efforts, and additive run status are representable', () => {
+    const label: WorkflowLabel = 'new-product'
+    const effort: EffortMode = 'standard'
+    const runStatus: WorkflowRunStatus = 'paused'
+
+    expect(label).toBe('new-product')
+    expect(effort).toBe('standard')
+    expect(runStatus).toBe('paused')
   })
 
   test('exports canonical workflow phase skill source and resolver vocabularies', () => {
     expect(WORKFLOW_PHASE_SKILL_SOURCES).toEqual([
+      'workflow',
+      'fallback',
+      'superpowers',
+      'spec-kit-plus',
+      'codex',
+      'claude-code',
       'user',
       'project',
       'plugin',
@@ -70,6 +119,7 @@ describe('workflow domain types', () => {
     ])
     expect(WORKFLOW_PHASE_SKILL_RESOLUTION_STATUSES).toEqual([
       'available',
+      'fallback-contract',
       'missing',
       'ambiguous',
       'unsupported-source',

@@ -1,10 +1,31 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import { handleFilesystemRoute } from '../api/filesystem.js'
+
+let ripgrepFailure: unknown = unavailableRipgrepError()
+
+function unavailableRipgrepError(): NodeJS.ErrnoException {
+  const error = new Error('ripgrep executable is unavailable for this test') as NodeJS.ErrnoException
+  error.code = 'ENOENT'
+  return error
+}
+
+function ripgrepError(code?: string, message = 'ripgrep test failure'): NodeJS.ErrnoException {
+  const error = new Error(message) as NodeJS.ErrnoException
+  if (code) error.code = code
+  return error
+}
+
+mock.module('../../utils/ripgrep.js', () => ({
+  ripGrep: async () => {
+    throw ripgrepFailure
+  },
+}))
+
+const { handleFilesystemRoute } = await import('../api/filesystem.js')
 
 const cleanupDirs = new Set<string>()
 
@@ -17,6 +38,7 @@ function makeUrl(route: string, params: Record<string, string>): URL {
 }
 
 afterEach(async () => {
+  ripgrepFailure = unavailableRipgrepError()
   for (const dir of cleanupDirs) {
     await fsp.rm(dir, { recursive: true, force: true })
   }
@@ -121,14 +143,60 @@ describe('filesystem API', () => {
     expect(srcPaths.indexOf('src/hooks')).toBeLessThan(srcPaths.indexOf('scripts/quality-gate/baseline/fixtures/cross-module-refactor/src'))
   })
 
-  it('falls back to ripgrep search outside git and still respects ignore files', async () => {
+  it('falls back to native traversal when ripgrep is unavailable, respects ignore files, and stays available before config initialization', async () => {
     const homeFixtureDir = await fsp.mkdtemp(path.join(os.homedir(), 'claude-filesystem-test-'))
     cleanupDirs.add(homeFixtureDir)
     await fsp.mkdir(path.join(homeFixtureDir, 'app'), { recursive: true })
     await fsp.mkdir(path.join(homeFixtureDir, 'node_modules', 'pkg'), { recursive: true })
+    await fsp.mkdir(path.join(homeFixtureDir, 'private'), { recursive: true })
+    await fsp.mkdir(path.join(homeFixtureDir, '.git'), { recursive: true })
     await fsp.writeFile(path.join(homeFixtureDir, '.gitignore'), 'node_modules/')
+    await fsp.writeFile(path.join(homeFixtureDir, '.ignore'), 'private/')
     await fsp.writeFile(path.join(homeFixtureDir, 'app', 'cache-result.ts'), 'export {}')
     await fsp.writeFile(path.join(homeFixtureDir, 'node_modules', 'pkg', 'cache-result.js'), '')
+    await fsp.writeFile(path.join(homeFixtureDir, 'private', 'cache-secret.ts'), '')
+    await fsp.writeFile(path.join(homeFixtureDir, '.git', 'cache-internal.ts'), '')
+
+    const originalNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'development'
+    try {
+      const res = await handleFilesystemRoute(
+        '/api/filesystem/browse',
+        makeUrl('/api/filesystem/browse', {
+          path: homeFixtureDir,
+          search: 'cache',
+          includeFiles: 'true',
+        }),
+      )
+
+      if (res.status !== 200) {
+        throw new Error('Expected filesystem fallback to succeed, received ' + res.status + ': ' + await res.text())
+      }
+      expect(res.status).toBe(200)
+      const body = await res.json() as { entries: Array<{ relativePath?: string; isDirectory: boolean }> }
+      expect(body.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          relativePath: 'app/cache-result.ts',
+          isDirectory: false,
+        }),
+      ]))
+      expect(body.entries.some((entry) => entry.relativePath === 'node_modules/pkg/cache-result.js')).toBe(false)
+      expect(body.entries.some((entry) => entry.relativePath === 'private/cache-secret.ts')).toBe(false)
+      expect(body.entries.some((entry) => entry.relativePath === '.git/cache-internal.ts')).toBe(false)
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = originalNodeEnv
+      }
+    }
+  })
+
+  it('keeps unexpected ripgrep failures visible instead of hiding them behind an empty result set', async () => {
+    const homeFixtureDir = await fsp.mkdtemp(path.join(os.homedir(), 'claude-filesystem-test-'))
+    cleanupDirs.add(homeFixtureDir)
+    await fsp.writeFile(path.join(homeFixtureDir, 'cache-result.ts'), 'export {}')
+    ripgrepFailure = ripgrepError(undefined, 'unexpected ripgrep runtime failure')
 
     const res = await handleFilesystemRoute(
       '/api/filesystem/browse',
@@ -139,15 +207,36 @@ describe('filesystem API', () => {
       }),
     )
 
-    expect(res.status).toBe(200)
-    const body = await res.json() as { entries: Array<{ relativePath?: string; isDirectory: boolean }> }
-    expect(body.entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        relativePath: 'app/cache-result.ts',
-        isDirectory: false,
-      }),
-    ]))
-    expect(body.entries.some((entry) => entry.relativePath === 'node_modules/pkg/cache-result.js')).toBe(false)
+    expect(res.status).toBe(500)
+    expect(await res.text()).toContain('unexpected ripgrep runtime failure')
+  })
+
+  it('uses the native fallback for executable failures', async () => {
+    const homeFixtureDir = await fsp.mkdtemp(path.join(os.homedir(), 'claude-filesystem-test-'))
+    cleanupDirs.add(homeFixtureDir)
+    await fsp.mkdir(path.join(homeFixtureDir, 'app'), { recursive: true })
+    await fsp.writeFile(path.join(homeFixtureDir, 'app', 'cache-result.ts'), 'export {}')
+
+    for (const failure of [
+      ripgrepError('EACCES'),
+      ripgrepError('EPERM'),
+      ripgrepError(undefined, 'ripgrep is not available in this test'),
+      ripgrepError(undefined, 'ripgrep executable is unavailable in this test'),
+    ]) {
+      ripgrepFailure = failure
+      const res = await handleFilesystemRoute(
+        '/api/filesystem/browse',
+        makeUrl('/api/filesystem/browse', {
+          path: homeFixtureDir,
+          search: 'cache',
+          includeFiles: 'true',
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { entries: Array<{ relativePath?: string }> }
+      expect(body.entries.some((entry) => entry.relativePath === 'app/cache-result.ts')).toBe(true)
+    }
   })
 
   it('accepts /private/tmp aliases on macOS for browsing and file serving', async () => {

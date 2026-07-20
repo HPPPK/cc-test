@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom'
 import { act } from 'react'
-import { ApiError } from '../../api/client'
 
 const viewportMocks = vi.hoisted(() => ({
   isMobile: false,
@@ -12,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   delete: vi.fn(),
   startLinkedWorkflowSession: vi.fn(),
+  previewLinkedWorkflowContext: vi.fn(),
   list: vi.fn(),
   listWorkflowTemplates: vi.fn(),
   getMessages: vi.fn(),
@@ -20,10 +20,20 @@ const mocks = vi.hoisted(() => ({
   getSlashCommands: vi.fn(),
   getRepositoryContext: vi.fn(),
   getRecentProjects: vi.fn(),
+  runRepoHealthCheck: vi.fn(),
+  listExperts: vi.fn(),
+  listPacks: vi.fn(),
+  enterSessionExpertMode: vi.fn(),
+  exitSessionExpertMode: vi.fn(),
+  writePlaceholderMaterial: vi.fn(),
+  exportPack: vi.fn(),
+  previewImport: vi.fn(),
+  importPack: vi.fn(),
   search: vi.fn(),
   browse: vi.fn(),
   wsSend: vi.fn(),
   dialogOpen: vi.fn(),
+  getModelCapability: vi.fn(),
   permissionModeSelectorRender: vi.fn(),
   webviewDragHandlers: [] as Array<(event: { payload: unknown }) => void>,
   webviewUnlisten: vi.fn(),
@@ -34,6 +44,7 @@ vi.mock('../../api/sessions', () => ({
     create: mocks.create,
     delete: mocks.delete,
     startLinkedWorkflowSession: mocks.startLinkedWorkflowSession,
+    previewLinkedWorkflowContext: mocks.previewLinkedWorkflowContext,
     list: mocks.list,
     listWorkflowTemplates: mocks.listWorkflowTemplates,
     getMessages: mocks.getMessages,
@@ -49,6 +60,27 @@ vi.mock('../../api/filesystem', () => ({
   filesystemApi: {
     search: mocks.search,
     browse: mocks.browse,
+  },
+}))
+
+vi.mock('../../api/experts', () => ({
+  expertsApi: {
+    listExperts: mocks.listExperts,
+    listPacks: mocks.listPacks,
+    enterSessionExpertMode: mocks.enterSessionExpertMode,
+    exitSessionExpertMode: mocks.exitSessionExpertMode,
+    writePlaceholderMaterial: mocks.writePlaceholderMaterial,
+    exportPack: mocks.exportPack,
+    previewImport: mocks.previewImport,
+    importPack: mocks.importPack,
+    runRepoHealthCheck: mocks.runRepoHealthCheck,
+  },
+}))
+
+
+vi.mock('../../api/modelCapabilities', () => ({
+  modelCapabilitiesApi: {
+    get: mocks.getModelCapability,
   },
 }))
 
@@ -98,10 +130,12 @@ import { useTabStore } from '../../stores/tabStore'
 import { useTeamStore } from '../../stores/teamStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
+import { useExpertStore } from '../../stores/expertStore'
+import { UNSUPPORTED_IMAGE_INPUT_MESSAGE } from '../../lib/modelCapabilities'
 
-const BUILTIN_WORKFLOW_TEMPLATE = {
+const USER_WORKFLOW_TEMPLATE = {
   id: 'requirements-to-implementation',
-  source: 'builtin' as const,
+  source: 'user' as const,
   version: '1.0.0',
   name: 'Requirements to Implementation',
   description: 'Clarify, design, plan, implement, and verify.',
@@ -118,14 +152,14 @@ const BUILTIN_WORKFLOW_TEMPLATE = {
 
 const LINKED_WORKFLOW_SUMMARY = {
   mode: 'workflow' as const,
-  templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
+  templateId: USER_WORKFLOW_TEMPLATE.id,
   templateVersion: '1.0.0',
-  templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
+  templateSource: USER_WORKFLOW_TEMPLATE.source,
   templateSnapshotId: 'requirements-to-implementation-v1',
   status: 'created' as const,
-  activePhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+  activePhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
   activePhaseIndex: 0,
-  phaseCount: BUILTIN_WORKFLOW_TEMPLATE.phaseCount,
+  phaseCount: USER_WORKFLOW_TEMPLATE.phaseCount,
   pendingConfirmation: false,
   statePointer: {
     kind: 'workflow-state' as const,
@@ -179,12 +213,14 @@ describe('ChatInput file mentions', () => {
   const initialTeamState = useTeamStore.getInitialState()
   const initialUIState = useUIStore.getInitialState()
   const initialWorkspaceContextState = useWorkspaceChatContextStore.getInitialState()
+  const initialExpertState = useExpertStore.getInitialState()
 
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.webviewDragHandlers.length = 0
     delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
     viewportMocks.isMobile = false
+    mocks.getModelCapability.mockRejectedValue(new Error('dynamic capability unavailable'))
     useSettingsStore.setState({ locale: 'en' })
     useChatStore.setState(initialChatState, true)
     useSessionStore.setState(initialSessionState, true)
@@ -192,6 +228,7 @@ describe('ChatInput file mentions', () => {
     useTeamStore.setState(initialTeamState, true)
     useUIStore.setState(initialUIState, true)
     useWorkspaceChatContextStore.setState(initialWorkspaceContextState, true)
+    useExpertStore.setState(initialExpertState, true)
 
     useTabStore.setState({
       activeTabId: sessionId,
@@ -237,6 +274,10 @@ describe('ChatInput file mentions', () => {
     mocks.getRecentProjects.mockResolvedValue({ projects: [] })
     mocks.create.mockResolvedValue({ sessionId: 'created-session', workDir: '/repo' })
     mocks.delete.mockResolvedValue({ ok: true })
+    mocks.previewLinkedWorkflowContext.mockResolvedValue({
+      content: 'Summary of the current chat with decisions and open questions.',
+      sourceMessageCount: 1,
+    })
     mocks.startLinkedWorkflowSession.mockResolvedValue({
       sessionId: 'linked-workflow-session',
       workDir: '/repo',
@@ -251,13 +292,327 @@ describe('ChatInput file mentions', () => {
     })
     mocks.list.mockResolvedValue({ sessions: [], total: 0 })
     mocks.listWorkflowTemplates.mockResolvedValue({
-      templates: [BUILTIN_WORKFLOW_TEMPLATE],
+      templates: [USER_WORKFLOW_TEMPLATE],
       invalidTemplates: [],
     })
     mocks.getMessages.mockResolvedValue({ messages: [] })
     mocks.getChatStatus.mockResolvedValue({ state: 'idle' })
     mocks.getSlashCommands.mockResolvedValue({ commands: [] })
+    mocks.listExperts.mockResolvedValue({
+      experts: [
+        {
+          id: 'repo-health-check',
+          name: '项目体检',
+          description: '帮你快速看懂一个已有项目：它是什么、怎么运行、怎么测试、后续修改哪里要小心。',
+          statusLabel: '框架已准备',
+          packId: 'builtin-expert-starter-pack',
+          packName: '内置专家包',
+          packVersion: '1.0.0',
+          entrypoint: 'experts/repo-health-check/expert.json',
+          promptPaths: { system: 'experts/repo-health-check/prompts/system.md' },
+          formPaths: ['experts/repo-health-check/forms/intake.json'],
+          outputProtocolPath: 'experts/repo-health-check/outputs/material-protocol.json',
+          skillIds: ['repo-health-check-guide'],
+          hostTools: [{ id: 'AskUserQuestion', name: '提问', purpose: '确认重点' }],
+          permissions: [{ id: 'write-expert-output', description: '只写入专家报告目录' }],
+          portable: true,
+        },
+        {
+          id: 'product-brief-intake',
+          name: '需求梳理',
+          description: '把需求文档、Markdown、HTML 原型或大段说明整理成清晰的功能范围、页面、流程和验收标准。',
+          statusLabel: '框架已准备',
+          packId: 'builtin-expert-starter-pack',
+          packName: '内置专家包',
+          packVersion: '1.0.0',
+          entrypoint: 'experts/product-brief-intake/expert.json',
+          promptPaths: { system: 'experts/product-brief-intake/prompts/system.md' },
+          formPaths: ['experts/product-brief-intake/forms/intake.json'],
+          outputProtocolPath: 'experts/product-brief-intake/outputs/material-protocol.json',
+          skillIds: ['product-brief-intake-guide'],
+          hostTools: [{ id: 'ExpertIntakeForm', name: '表单', purpose: '收集材料' }],
+          permissions: [{ id: 'write-expert-output', description: '只写入专家报告目录' }],
+          portable: true,
+        },
+      ],
+    })
+    mocks.listPacks.mockResolvedValue({
+      packs: [{
+        packId: 'builtin-expert-starter-pack',
+        name: '内置专家包',
+        version: '1.0.0',
+        description: '内置专家 Mode 框架包',
+        storage: { kind: 'builtin' },
+        experts: [],
+        importedAt: '2026-07-08T00:00:00.000Z',
+      }],
+    })
+    mocks.enterSessionExpertMode.mockResolvedValue({
+      expert: {
+        mode: 'expert',
+        expertId: 'repo-health-check',
+        expertName: '项目体检',
+        packId: 'builtin-expert-starter-pack',
+        packVersion: '1.0.0',
+        status: 'active',
+        materialRefs: [],
+        startedAt: '2026-07-08T00:00:00.000Z',
+        updatedAt: '2026-07-08T00:00:00.000Z',
+      },
+    })
+    mocks.runRepoHealthCheck.mockResolvedValue({
+      runId: 'repo-health-run-1',
+      expertId: 'repo-health-check-expert',
+      intentId: 'test-guide',
+      status: 'completed',
+      outputDirectory: '/repo/.workflow/intake/expert-runs/repo-health-run-1/repo-health-check',
+      materialSummaryPath: '/repo/.workflow/intake/expert-runs/repo-health-run-1/repo-health-check/material-summary.md',
+      materialJsonPath: '/repo/.workflow/intake/expert-runs/repo-health-run-1/repo-health-check/material.json',
+      evidencePath: '/repo/.workflow/intake/expert-runs/repo-health-run-1/repo-health-check/evidence.md',
+      material: {
+        expertId: 'repo-health-check-expert',
+        sourceType: 'existingProject',
+        intentId: 'test-guide',
+        runId: 'repo-health-run-1',
+        createdAt: '2026-07-08T00:00:00.000Z',
+        projectRoot: '/repo',
+        workspaceValid: true,
+        projectSummary: '这是项目体检摘要。',
+        projectType: 'Web 前端 / Vite React 项目',
+        detectedTechStack: ['Node.js', 'React', 'Vite'],
+        packageManagers: ['bun'],
+        entrypoints: ['package.json scripts.dev'],
+        runCommands: [{ label: 'dev', command: 'bun run dev', source: 'package.json scripts.dev', riskLevel: 'long-running', note: 'vite' }],
+        testCommands: [{ label: 'test', command: 'bun run test', source: 'package.json scripts.test', riskLevel: 'safe-check', note: 'vitest' }],
+        buildCommands: [{ label: 'build', command: 'bun run build', source: 'package.json scripts.build', riskLevel: 'safe-check', note: 'vite build' }],
+        lintCommands: [],
+        checkCommands: [],
+        databaseNotes: [],
+        environmentNotes: [],
+        importantDirectories: ['src'],
+        importantFiles: ['package.json'],
+        riskAreas: [{ title: '启动命令可能是长时间运行服务', level: 'long-running', reason: '会占用端口。', evidence: ['package.json scripts.dev'] }],
+        safeNextActions: ['先阅读报告。'],
+        suggestedFollowupQuestions: ['怎么测试？'],
+        skillsRun: ['workspace-validation', 'material-package-writer'],
+        skillsSkipped: ['workflow-start', 'workflow-stage-advance'],
+        handoffSummary: '项目上下文',
+        limitations: ['静态扫描'],
+      },
+    })
   })
+
+
+
+  it('blocks pasted image attachments when the selected model lacks image input capability', async () => {
+    useSettingsStore.setState({
+      locale: 'zh',
+      currentModel: { id: 'unknown-text-only-model', name: 'Unknown Text Model' } as never,
+    })
+
+    render(<ChatInput />)
+
+    const input = screen.getByRole('textbox')
+    const imageFile = new File(['image-bytes'], 'screen.png', { type: 'image/png' })
+    fireEvent.paste(input, {
+      clipboardData: {
+        items: [{ type: 'image/png', getAsFile: () => imageFile }],
+        getData: () => '',
+      },
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().toasts).toContainEqual(expect.objectContaining({
+        type: 'warning',
+        message: UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+      }))
+    })
+    expect(screen.queryByText(/pasted-image/i)).not.toBeInTheDocument()
+  })
+
+  it('allows pasted image attachments when the selected model supports image input', async () => {
+    useSettingsStore.setState({
+      locale: 'en',
+      currentModel: { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' } as never,
+    })
+
+    render(<ChatInput />)
+
+    const input = screen.getByRole('textbox')
+    const imageFile = new File(['image-bytes'], 'screen.png', { type: 'image/png' })
+    fireEvent.paste(input, {
+      clipboardData: {
+        items: [{ type: 'image/png', getAsFile: () => imageFile }],
+        getData: () => '',
+      },
+    })
+
+    expect(await screen.findByAltText(/pasted-image/i)).toBeInTheDocument()
+    expect(useUIStore.getState().toasts).not.toContainEqual(expect.objectContaining({
+      message: UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+    }))
+  })
+
+  it('uses server-resolved provider capabilities for models missing from the local registry', async () => {
+    mocks.getModelCapability.mockResolvedValue({
+      schemaVersion: 1,
+      capability: {
+        provider: 'custom-provider',
+        modelId: 'vendor-vision-model',
+        capabilities: {
+          textInput: true,
+          imageInput: true,
+          audioInput: false,
+          videoInput: false,
+          fileTextInput: true,
+          pdfInput: true,
+          toolCalling: true,
+          structuredOutput: true,
+          jsonMode: true,
+          longContext: true,
+          codeReasoning: true,
+        },
+        source: 'provider-metadata',
+      },
+    })
+    useSettingsStore.setState({
+      locale: 'en',
+      currentModel: { id: 'vendor-vision-model', name: 'Vendor Vision Model' } as never,
+    })
+
+    render(<ChatInput />)
+
+    await waitFor(() => {
+      expect(mocks.getModelCapability).toHaveBeenCalledWith(null, 'vendor-vision-model')
+    })
+
+    const input = screen.getByRole('textbox')
+    const imageFile = new File(['image-bytes'], 'screen.png', { type: 'image/png' })
+    fireEvent.paste(input, {
+      clipboardData: {
+        items: [{ type: 'image/png', getAsFile: () => imageFile }],
+        getData: () => '',
+      },
+    })
+
+    expect(await screen.findByAltText(/pasted-image/i)).toBeInTheDocument()
+    expect(useUIStore.getState().toasts).not.toContainEqual(expect.objectContaining({
+      message: UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+    }))
+  })
+
+  it('probes provider capability on demand before blocking a pasted image', async () => {
+    const capabilityResponse = {
+      schemaVersion: 1 as const,
+      capability: {
+        provider: 'custom-provider',
+        modelId: 'vendor-vision-model',
+        capabilities: {
+          textInput: true,
+          imageInput: true,
+          audioInput: false,
+          videoInput: false,
+          fileTextInput: true,
+          pdfInput: true,
+          toolCalling: true,
+          structuredOutput: true,
+          jsonMode: true,
+          longContext: true,
+          codeReasoning: true,
+        },
+        source: 'provider-metadata' as const,
+      },
+    }
+    const resolvers: Array<(value: typeof capabilityResponse) => void> = []
+    mocks.getModelCapability.mockImplementation(() => new Promise((resolve) => {
+      resolvers.push(resolve)
+    }))
+    useSettingsStore.setState({
+      locale: 'en',
+      currentModel: { id: 'vendor-vision-model', name: 'Vendor Vision Model' } as never,
+    })
+
+    render(<ChatInput />)
+
+    const input = screen.getByRole('textbox')
+    const imageFile = new File(['image-bytes'], 'screen.png', { type: 'image/png' })
+    fireEvent.paste(input, {
+      clipboardData: {
+        items: [{ type: 'image/png', getAsFile: () => imageFile }],
+        getData: () => '',
+      },
+    })
+
+    await waitFor(() => expect(mocks.getModelCapability).toHaveBeenCalled())
+    await act(async () => {
+      for (const resolve of resolvers) resolve(capabilityResponse)
+    })
+
+    expect(await screen.findByAltText(/pasted-image/i)).toBeInTheDocument()
+    expect(useUIStore.getState().toasts).not.toContainEqual(expect.objectContaining({
+      message: UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+    }))
+  })
+
+  it('blocks workflow start when required model capabilities are missing', async () => {
+    useSettingsStore.setState({
+      locale: 'en',
+      currentModel: { id: 'unknown-text-only-model', name: 'Unknown Text Model' } as never,
+    })
+    mocks.listWorkflowTemplates.mockResolvedValue({
+      templates: [{
+        ...USER_WORKFLOW_TEMPLATE,
+        modelRequirements: { required: ['imageInput'] },
+      }],
+      invalidTemplates: [],
+    })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    await waitFor(() => {
+      expect(useUIStore.getState().toasts).toContainEqual(expect.objectContaining({
+        type: 'error',
+        message: expect.stringContaining('imageInput'),
+      }))
+    })
+    expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('workflow-context-strategy-dialog')).not.toBeInTheDocument()
+  })
+
+  it('warns but allows workflow start when only optional model capabilities are missing', async () => {
+    useSettingsStore.setState({
+      locale: 'en',
+      currentModel: { id: 'unknown-text-only-model', name: 'Unknown Text Model' } as never,
+    })
+    mocks.listWorkflowTemplates.mockResolvedValue({
+      templates: [{
+        ...USER_WORKFLOW_TEMPLATE,
+        modelRequirements: { optional: ['imageInput'] },
+      }],
+      invalidTemplates: [],
+    })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    expect(await screen.findByTestId('workflow-context-strategy-dialog')).toBeInTheDocument()
+    expect(useUIStore.getState().toasts).toContainEqual(expect.objectContaining({
+      type: 'warning',
+      message: expect.stringContaining('imageInput'),
+    }))
+  })
+
 
   it('keeps deleted team member sessions read-only after they disconnect', () => {
     const memberSessionId = 'team-member:worker@test-team'
@@ -701,9 +1056,9 @@ describe('ChatInput file mentions', () => {
       sessionId: 'created-workflow',
       workDir: '/repo',
       workflow: {
-        templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-        templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
-        currentPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        templateId: USER_WORKFLOW_TEMPLATE.id,
+        templateSource: USER_WORKFLOW_TEMPLATE.source,
+        currentPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
         stateVersion: 1,
       },
     })
@@ -718,9 +1073,9 @@ describe('ChatInput file mentions', () => {
         workDir: '/repo',
         workDirExists: true,
         workflow: {
-          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
-          currentPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+          templateId: USER_WORKFLOW_TEMPLATE.id,
+          templateSource: USER_WORKFLOW_TEMPLATE.source,
+          currentPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
           stateVersion: 1,
         },
       }],
@@ -776,11 +1131,14 @@ describe('ChatInput file mentions', () => {
     await waitFor(() => {
       expect(mocks.create).toHaveBeenCalledWith({
         workDir: '/repo',
-        workflow: {
-          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
-          initialPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
-        },
+        workflow: expect.objectContaining({
+          templateId: USER_WORKFLOW_TEMPLATE.id,
+          templateSource: USER_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
+          request: '',
+          labels: ['new-product'],
+          effort: 'standard',
+        }),
       })
     })
     expect(mocks.delete).toHaveBeenCalledWith(sessionId)
@@ -788,8 +1146,8 @@ describe('ChatInput file mentions', () => {
     expect(useSessionStore.getState().sessions[0]).toMatchObject({
       id: 'created-workflow',
       workflow: expect.objectContaining({
-        templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-        currentPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        templateId: USER_WORKFLOW_TEMPLATE.id,
+        currentPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
       }),
     })
     expect(mocks.wsSend).not.toHaveBeenCalledWith('created-workflow', expect.objectContaining({
@@ -808,11 +1166,131 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
-    expect(within(strategyDialog).getByRole('heading', { name: 'Choose source context' })).toBeInTheDocument()
-    expect(within(strategyDialog).getByRole('button', { name: /Start clean/ })).toBeInTheDocument()
-    expect(within(strategyDialog).getByRole('button', { name: /Inherit visible context/ })).toBeInTheDocument()
-    expect(within(strategyDialog).getByRole('button', { name: /Summarize context/ })).toBeInTheDocument()
+    expect(strategyDialog.parentElement).toHaveClass('workflow-content-modal-overlay')
+    expect(within(strategyDialog).getByRole('heading', { name: 'Choose how chat context is handled' })).toBeInTheDocument()
+    expect(within(strategyDialog).getByRole('button', { name: /Start new clean Workflow/ })).toBeInTheDocument()
+    expect(within(strategyDialog).getByRole('button', { name: /Start Workflow in this chat/ })).toBeInTheDocument()
+    expect(within(strategyDialog).getByRole('button', { name: /Start new Workflow with summary/ })).toBeInTheDocument()
     expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+  })
+
+  it('generates a copyable context summary before opening a new workflow session', async () => {
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
+    fireEvent.change(within(strategyDialog).getByLabelText('Summary instructions'), {
+      target: { value: 'Preserve decisions and unresolved questions.' },
+    })
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start new Workflow with summary/ }))
+
+    await waitFor(() => {
+      expect(mocks.previewLinkedWorkflowContext).toHaveBeenCalledWith(sessionId, {
+        summaryInstructions: 'Preserve decisions and unresolved questions.',
+      })
+    })
+    expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+    expect(within(strategyDialog).getByDisplayValue('Summary of the current chat with decisions and open questions.')).toBeInTheDocument()
+    expect(within(strategyDialog).getByRole('button', { name: 'Open in new session' })).toBeInTheDocument()
+  })
+
+  it('opens the expert panel from the plus menu and enters expert Mode without starting a workflow', async () => {
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /专家/ }))
+
+    const expertDialog = await screen.findByTestId('expert-selection-dialog')
+    const expertList = within(expertDialog).getByRole('region', { name: '专家列表' })
+    expect(within(expertDialog).getByRole('heading', { name: '专家' })).toBeInTheDocument()
+    expect(within(expertDialog).getByText(/导入或查看专家包也不会运行包内代码/)).toBeInTheDocument()
+    expect(within(expertList).getByRole('heading', { name: '项目体检' })).toBeInTheDocument()
+    expect(within(expertList).getByRole('heading', { name: '需求梳理' })).toBeInTheDocument()
+
+    fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
+
+    await waitFor(() => {
+      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'repo-health-check')
+    })
+    expect(useSessionStore.getState().sessions[0]?.expert).toMatchObject({
+      mode: 'expert',
+      expertId: 'repo-health-check',
+      expertName: '项目体检',
+      status: 'active',
+    })
+    expect(useSessionStore.getState().sessions[0]?.workflow).toBeUndefined()
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+    expect(mocks.runRepoHealthCheck).not.toHaveBeenCalled()
+  })
+
+  it('enters the selected package-driven expert instead of a hardcoded runner', async () => {
+    mocks.enterSessionExpertMode.mockResolvedValueOnce({
+      expert: {
+        mode: 'expert',
+        expertId: 'product-brief-intake',
+        expertName: '需求梳理',
+        packId: 'builtin-expert-starter-pack',
+        packVersion: '1.0.0',
+        status: 'active',
+        materialRefs: [],
+        startedAt: '2026-07-08T00:00:00.000Z',
+        updatedAt: '2026-07-08T00:00:00.000Z',
+      },
+    })
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /专家/ }))
+
+    const expertDialog = await screen.findByTestId('expert-selection-dialog')
+    fireEvent.click(within(expertDialog).getByRole('button', { name: /需求梳理/ }))
+    fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
+
+    await waitFor(() => {
+      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'product-brief-intake')
+    })
+    expect(useSessionStore.getState().sessions[0]?.expert).toMatchObject({
+      mode: 'expert',
+      expertId: 'product-brief-intake',
+      expertName: '需求梳理',
+      status: 'active',
+    })
+    expect(useSessionStore.getState().sessions[0]?.workflow).toBeUndefined()
+    expect(mocks.runRepoHealthCheck).not.toHaveBeenCalled()
+    expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+  })
+
+  it('retries workflow template loading from the dialog after an earlier API timeout', async () => {
+    mocks.listWorkflowTemplates
+      .mockRejectedValueOnce(new Error('Request timed out after 30s'))
+      .mockRejectedValueOnce(new Error('Request timed out after 30s'))
+      .mockResolvedValueOnce({
+        templates: [USER_WORKFLOW_TEMPLATE],
+        invalidTemplates: [],
+      })
+
+    render(<ChatInput compact />)
+
+    await waitFor(() => {
+      expect(mocks.listWorkflowTemplates).toHaveBeenCalledTimes(1)
+    })
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    expect(await within(workflowDialog).findByRole('alert')).toHaveTextContent('Could not load workflows.')
+
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: 'Retry' }))
+
+    expect(await within(workflowDialog).findByRole('button', { name: /Requirements to Implementation/ })).toBeInTheDocument()
+    expect(mocks.listWorkflowTemplates).toHaveBeenCalledTimes(3)
   })
 
   it('opens workflows from the plus menu after the current workflow is completed', async () => {
@@ -838,20 +1316,85 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
-    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Inherit visible context/ }))
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start Workflow in this chat/ }))
 
     await waitFor(() => {
       expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-        workflow: {
-          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
-          initialPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
-        },
+        workflow: expect.objectContaining({
+          templateId: USER_WORKFLOW_TEMPLATE.id,
+          templateSource: USER_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
+          request: '',
+          labels: ['new-product'],
+          effort: 'standard',
+        }),
         contextStrategy: 'inherit',
       }))
     })
   })
 
+  it.each(['created', 'running', 'pending-confirmation', 'failed'] as const)('starts a fresh workflow from a %s workflow session without linking its context', async (status) => {
+    useSessionStore.setState({
+      sessions: [{
+        ...useSessionStore.getState().sessions[0]!,
+        workflow: {
+          ...LINKED_WORKFLOW_SUMMARY,
+          status,
+          activePhaseId: 'technical-design',
+          activePhaseIndex: 1,
+        },
+      }],
+    })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    const workflowsButton = screen.getByRole('button', { name: /Workflows/ })
+    expect(workflowsButton).not.toBeDisabled()
+    fireEvent.click(workflowsButton)
+
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    await waitFor(() => {
+      expect(mocks.create).toHaveBeenCalledWith({
+        workDir: '/repo',
+        workflow: expect.objectContaining({
+          templateId: USER_WORKFLOW_TEMPLATE.id,
+          templateSource: USER_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
+        }),
+      })
+    })
+    expect(mocks.startLinkedWorkflowSession).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('workflow-context-strategy-dialog')).not.toBeInTheDocument()
+    expect(useTabStore.getState().activeTabId).toBe('created-session')
+  })
+  it('opens the context strategy dialog when starting a workflow after exiting the current workflow', async () => {
+    useSessionStore.setState({
+      sessions: [{
+        ...useSessionStore.getState().sessions[0]!,
+        workflow: {
+          ...LINKED_WORKFLOW_SUMMARY,
+          status: 'cancelled',
+          activePhaseId: 'technical-design',
+          activePhaseIndex: 1,
+        },
+      }],
+    })
+
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /Workflows/ }))
+    const workflowDialog = await screen.findByTestId('workflow-start-dialog')
+    fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+    expect(await screen.findByTestId('workflow-context-strategy-dialog')).toBeInTheDocument()
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
   it('reconciles stale active state before starting a workflow from a completed source session', async () => {
     useSessionStore.setState({
       sessions: [{
@@ -892,7 +1435,7 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
 
     const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
-    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start clean/ }))
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start new clean Workflow/ }))
 
     await waitFor(() => {
       expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
@@ -907,9 +1450,9 @@ describe('ChatInput file mentions', () => {
   })
 
   it.each([
-    ['clear' as const, /Start clean/, undefined],
-    ['inherit' as const, /Inherit visible context/, undefined],
-    ['summarize' as const, /Summarize context/, 'Preserve risks and decisions.'],
+    ['clear' as const, /Start new clean Workflow/, undefined],
+    ['inherit' as const, /Start Workflow in this chat/, undefined],
+    ['summarize' as const, /Start new Workflow with summary/, 'Preserve risks and decisions.'],
   ])('starts a linked workflow with %s context and opens the returned session', async (
     strategy,
     buttonName,
@@ -930,14 +1473,25 @@ describe('ChatInput file mentions', () => {
       })
     }
     fireEvent.click(within(strategyDialog).getByRole('button', { name: buttonName }))
+    if (strategy === 'summarize') {
+      await waitFor(() => {
+        expect(mocks.previewLinkedWorkflowContext).toHaveBeenCalledWith(sessionId, {
+          summaryInstructions,
+        })
+      })
+      fireEvent.click(within(strategyDialog).getByRole('button', { name: 'Open in new session' }))
+    }
 
     await waitFor(() => {
       expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-        workflow: {
-          templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-          templateSource: BUILTIN_WORKFLOW_TEMPLATE.source,
-          initialPhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
-        },
+        workflow: expect.objectContaining({
+          templateId: USER_WORKFLOW_TEMPLATE.id,
+          templateSource: USER_WORKFLOW_TEMPLATE.source,
+          initialPhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
+          request: '',
+          labels: ['new-product'],
+          effort: 'standard',
+        }),
         contextStrategy: strategy,
       }))
     })
@@ -948,19 +1502,31 @@ describe('ChatInput file mentions', () => {
     } else {
       expect(payload?.summaryInstructions).toBeUndefined()
     }
+    if (strategy === 'summarize') {
+      expect(payload?.summaryContent).toBe('Summary of the current chat with decisions and open questions.')
+    } else {
+      expect(payload?.summaryContent).toBeUndefined()
+    }
     expect(payload?.clientRequestId).toEqual(expect.stringMatching(/^desktop-linked-workflow-session-file-mention-\d+$/))
     expect(useTabStore.getState().activeTabId).toBe('linked-workflow-session')
     expect(useSessionStore.getState().sessions[0]).toMatchObject({
       id: 'linked-workflow-session',
       workDir: '/repo',
       workflow: expect.objectContaining({
-        templateId: BUILTIN_WORKFLOW_TEMPLATE.id,
-        activePhaseId: BUILTIN_WORKFLOW_TEMPLATE.firstPhaseId,
+        templateId: USER_WORKFLOW_TEMPLATE.id,
+        activePhaseId: USER_WORKFLOW_TEMPLATE.firstPhaseId,
       }),
     })
-    expect(mocks.wsSend).not.toHaveBeenCalledWith('linked-workflow-session', expect.objectContaining({
-      type: 'user_message',
-    }))
+    if (strategy === 'summarize') {
+      expect(mocks.wsSend).toHaveBeenCalledWith('linked-workflow-session', expect.objectContaining({
+        type: 'user_message',
+        content: expect.stringContaining('Summary of the current chat with decisions and open questions.'),
+      }))
+    } else {
+      expect(mocks.wsSend).not.toHaveBeenCalledWith('linked-workflow-session', expect.objectContaining({
+        type: 'user_message',
+      }))
+    }
   })
 
   it('does not start a linked workflow while the source chat is active', async () => {
@@ -994,8 +1560,8 @@ describe('ChatInput file mentions', () => {
     const input = screen.getByRole('textbox') as HTMLTextAreaElement
     fireEvent.change(input, {
       target: {
-        value: '我想做个飞机大战于系',
-        selectionStart: '我想做个飞机大战于系'.length,
+        value: '鎴戞兂鍋氫釜椋炴満澶ф垬浜庣郴',
+        selectionStart: '鎴戞兂鍋氫釜椋炴満澶ф垬浜庣郴'.length,
       },
     })
 
@@ -1008,7 +1574,7 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
     await waitFor(() => {
-      expect(input).toHaveValue('我想做个飞机大战于系')
+      expect(input).toHaveValue('鎴戞兂鍋氫釜椋炴満澶ф垬浜庣郴')
     })
     expect(useChatStore.getState().sessions[sessionId]?.chatState).toBe('idle')
     expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, { type: 'stop_generation' })
@@ -1153,7 +1719,11 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
-    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Summarize context/ }))
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start new Workflow with summary/ }))
+    await waitFor(() => {
+      expect(mocks.previewLinkedWorkflowContext).toHaveBeenCalledWith(sessionId, {})
+    })
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: 'Open in new session' }))
 
     await waitFor(() => {
       const toasts = useUIStore.getState().toasts
@@ -1173,11 +1743,19 @@ describe('ChatInput file mentions', () => {
     expect(screen.getByTestId('workflow-context-strategy-dialog')).toBeInTheDocument()
   })
 
-  it('keeps summary recovery visible after direct context inheritance is too large', async () => {
-    mocks.startLinkedWorkflowSession.mockRejectedValueOnce(new ApiError(422, {
-      code: 'WORKFLOW_CONTEXT_TOO_LARGE',
-      message: 'Source context is too large to inherit; choose summarize instead',
-    }))
+  it('keeps inherit in the current chat instead of opening a linked session', async () => {
+    mocks.startLinkedWorkflowSession.mockResolvedValueOnce({
+      sessionId,
+      workDir: '/repo',
+      workflow: LINKED_WORKFLOW_SUMMARY,
+      link: {
+        sourceSessionId: sessionId,
+        targetSessionId: sessionId,
+        contextStrategy: 'inherit',
+        sourceMessageCount: 1,
+        createdAt: '2026-05-26T00:00:00.000Z',
+      },
+    })
 
     render(<ChatInput compact />)
 
@@ -1187,12 +1765,19 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(within(workflowDialog).getByRole('button', { name: /Requirements to Implementation/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     const strategyDialog = await screen.findByTestId('workflow-context-strategy-dialog')
-    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Inherit visible context/ }))
+    fireEvent.click(within(strategyDialog).getByRole('button', { name: /Start Workflow in this chat/ }))
 
-    const alert = await within(strategyDialog).findByRole('alert')
-    expect(alert).toHaveTextContent('This chat is too large to inherit directly. Choose Summarize context instead.')
-    expect(within(strategyDialog).getByRole('button', { name: /Summarize context/ })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mocks.startLinkedWorkflowSession).toHaveBeenCalledWith(sessionId, expect.objectContaining({
+        contextStrategy: 'inherit',
+      }))
+    })
     expect(useTabStore.getState().activeTabId).toBe(sessionId)
+    expect(useTabStore.getState().tabs).toHaveLength(1)
+    expect(useSessionStore.getState().sessions[0]).toMatchObject({
+      id: sessionId,
+      workflow: LINKED_WORKFLOW_SUMMARY,
+    })
   })
 
   it('starts an empty active session on the selected branch inside an isolated worktree', async () => {

@@ -60,6 +60,10 @@ vi.mock('../components/workflow/WorkflowTemplateManager', () => ({
   WorkflowTemplateManager: () => <div data-testid="workflow-template-manager">Workflow Template Manager</div>,
 }))
 
+vi.mock('../components/experts/ExpertPackManager', () => ({
+  ExpertPackManager: () => <div data-testid="expert-pack-manager">Expert Pack Manager</div>,
+}))
+
 vi.mock('../stores/agentStore', () => ({
   useAgentStore: () => ({
     activeAgents: [],
@@ -101,19 +105,23 @@ vi.mock('../components/plugins/PluginDetail', () => ({
 }))
 
 vi.mock('../stores/updateStore', () => ({
-  useUpdateStore: () => ({
-    status: 'idle',
-    availableVersion: null,
-    releaseNotes: null,
-    progressPercent: 0,
-    downloadedBytes: 0,
-    totalBytes: null,
-    error: null,
-    checkedAt: null,
-    initialize: vi.fn(),
-    checkForUpdates: vi.fn(),
-    installUpdate: vi.fn(),
-  }),
+  useUpdateStore: (selector?: (state: any) => any) => {
+    const state = {
+      status: 'idle' as const,
+      availableVersion: null,
+      releaseNotes: null,
+      progressPercent: 0,
+      downloadedBytes: 0,
+      totalBytes: null,
+      error: null,
+      checkedAt: null,
+      initialize: vi.fn(),
+      checkForUpdates: vi.fn(),
+      installUpdate: vi.fn(),
+    }
+
+    return selector ? selector(state) : state
+  },
 }))
 
 vi.mock('qrcode', () => ({
@@ -134,6 +142,7 @@ describe('Settings Workflows tab', () => {
     expect(screen.getByRole('button', { name: /Providers/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /General/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Workflows/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Experts/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Environment/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /About/ })).toBeInTheDocument()
 
@@ -142,6 +151,18 @@ describe('Settings Workflows tab', () => {
     expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument()
     expect(screen.getByText('Manage workflow templates and staged execution contracts.')).toBeInTheDocument()
     expect(screen.getByTestId('workflow-template-manager')).toBeInTheDocument()
+    expect(screen.queryByTestId('expert-pack-manager')).not.toBeInTheDocument()
+  })
+
+  it('routes to a separate Experts tab below Workflows', () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Experts/ }))
+
+    expect(screen.getByRole('heading', { name: 'Experts' })).toBeInTheDocument()
+    expect(screen.getByText('Manage Expert ZIP packages and the experts they contain.')).toBeInTheDocument()
+    expect(screen.getByTestId('expert-pack-manager')).toBeInTheDocument()
+    expect(screen.queryByTestId('workflow-template-manager')).not.toBeInTheDocument()
   })
 
   it('routes to the Environment tab', () => {
@@ -161,7 +182,9 @@ describe('Settings Workflows tab', () => {
     expect(useUIStore.getState().pendingSettingsTab).toBeNull()
   })
 
-  it('uses a localized Chinese Workflows tab label', () => {
+
+  it('uses localized Chinese labels for the Workflows and Experts tabs', () => {
     expect(zh['settings.tab.workflows']).toBe('工作流')
+    expect(zh['settings.tab.experts']).toBe('专家')
   })
 })

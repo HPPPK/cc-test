@@ -1456,7 +1456,15 @@ describe('Settings > Providers tab', () => {
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByPlaceholderText('sk-...'), { target: { value: 'sk-test' } })
     fireEvent.change(within(dialog).getByLabelText(/Main Model|主模型/i), { target: { value: 'gpt-5.5' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: /Save|Add|保存|添加/i }))
+    const submitButton = within(dialog).getByRole('button', { name: /Save|Add|保存|添加/i })
+
+    await waitFor(() => {
+      expect(submitButton).toBeEnabled()
+    })
+    await act(async () => {
+      fireEvent.click(submitButton)
+      await Promise.resolve()
+    })
 
     await waitFor(() => {
       expect(providerStoreState.createProvider).toHaveBeenCalledWith(expect.objectContaining({
@@ -1537,6 +1545,15 @@ describe('Settings > About tab', () => {
     expect(await screen.findByRole('heading', { name: 'Claude Code Jiangxia v0.1.5' })).toBeInTheDocument()
     expect(screen.getByText('Fixed updater rendering')).toBeInTheDocument()
     expect(screen.getByText('Added markdown support')).toBeInTheDocument()
+  })
+
+  it('keeps update controls while hiding author and social media links', async () => {
+    render(<Settings />)
+
+    expect(await screen.findByRole('button', { name: 'Check now' })).toBeInTheDocument()
+    expect(screen.queryByText('Author')).not.toBeInTheDocument()
+    expect(screen.queryByText('Social Media')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bilibili')).not.toBeInTheDocument()
   })
 
   it('shows downloaded bytes instead of a fake zero percent when total size is unknown', async () => {

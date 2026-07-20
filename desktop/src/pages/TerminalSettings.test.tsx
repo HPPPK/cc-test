@@ -190,6 +190,29 @@ describe('TerminalSettings', () => {
     expect(await screen.findByRole('button', { name: 'Saved' })).toBeInTheDocument()
   })
 
+  it('cleans the saved Bash path reset timer when the settings panel unmounts', async () => {
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout')
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    terminalMocks.available = true
+
+    try {
+      const { unmount } = render(<TerminalSettings showPreferences />)
+      const input = await screen.findByPlaceholderText('Bash Path')
+      fireEvent.change(input, { target: { value: 'C:\\Tools\\Git\\bin\\bash.exe' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        expect(terminalMocks.setBashPath).toHaveBeenCalledWith('C:\\Tools\\Git\\bin\\bash.exe')
+      })
+      clearTimeoutSpy.mockClear()
+
+      unmount()
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+    }
+  })
+
   it('shows an invalid path message when native bash path validation fails', async () => {
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
     terminalMocks.available = true

@@ -1,80 +1,84 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/nicegui/static/tauri-schema-v2.json",
-  "productName": "Claude Code Jiangxia",
-  "version": "0.2.8",
-  "identifier": "com.claude-code-jiangxia.desktop",
-  "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "bun run build:sidecars && bun run dev",
-    "beforeBuildCommand": "bun run build && bun run build:sidecars"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "Claude Code Jiangxia",
-        "width": 1440,
-        "height": 960,
-        "minWidth": 960,
-        "minHeight": 640,
-        "decorations": true,
-        "transparent": false,
-        "acceptFirstMouse": true
-      }
-    ],
-    "security": {
-      "dangerousDisableAssetCspModification": ["style-src"],
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: https://asset.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src 'self' blob:"
-    }
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlCOUIwRDExQTc5RTFGMzYKUldRMkg1Nm5FUTJibTJ2cGlHY0pkL0dGemxXMUlzc01pVTVMM1U3WGpmWUtrUC8wK2ErSXhLKzEK",
-      "endpoints": [
-        "https://github.com/NanmiCoder/cc-jiangxia/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "createUpdaterArtifacts": true,
-    "windows": {
-      "nsis": {
-        "installerHooks": "windows-installer-hooks.nsh"
-      }
-    },
-    "externalBin": [
-      "binaries/claude-sidecar"
-    ],
-    "resources": [
-      "../dist"
-    ],
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "macOS": {
-      "dmg": {
-        "appPosition": {
-          "x": 180,
-          "y": 170
-        },
-        "applicationFolderPosition": {
-          "x": 480,
-          "y": 170
-        },
-        "windowSize": {
-          "width": 660,
-          "height": 400
-        }
-      }
-    }
-  }
+    "$schema":  "https://raw.githubusercontent.com/nicegui/nicegui/main/nicegui/static/tauri-schema-v2.json",
+    "productName":  "Claude Code Jiangxia",
+    "version": "0.2.28",
+    "identifier":  "com.claude-code-jiangxia.desktop",
+    "build":  {
+                  "frontendDist":  "../dist",
+                  "devUrl":  "http://localhost:1420",
+                  "beforeDevCommand":  "bun run dev",
+                  "beforeBuildCommand":  "bun run build \u0026\u0026 bun run build:sidecars"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "title":  "Claude Code Jiangxia",
+                                    "width":  1440,
+                                    "height":  960,
+                                    "minWidth":  960,
+                                    "minHeight":  640,
+                                    "decorations":  true,
+                                    "transparent":  false,
+                                    "acceptFirstMouse":  true
+                                }
+                            ],
+                "security":  {
+                                 "dangerousDisableAssetCspModification":  [
+                                                                              "style-src"
+                                                                          ],
+                                 "csp":  "default-src \u0027self\u0027; script-src \u0027self\u0027; style-src \u0027self\u0027 \u0027unsafe-inline\u0027; img-src \u0027self\u0027 data: blob: asset: https://asset.localhost http://127.0.0.1:* http://localhost:*; font-src \u0027self\u0027 data:; connect-src \u0027self\u0027 ws://127.0.0.1:* http://127.0.0.1:* ws://localhost:* http://localhost:*; media-src \u0027self\u0027 blob:"
+                             }
+            },
+    "plugins":  {
+                    "updater":  {
+                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1MUI5Q0QxNjlENDI2MDIKUldRQ0p0UnAwWndiSmJmYmQwbERQbWpBSWFTMXp6S3M0QXRqRmY0N0ttRnhsUlNwQUZGSUlTVGQK",
+                                    "endpoints":  [
+                                                      "https://github.com/HPPPK/cc-test/releases/latest/download/latest.json"
+                                                  ],
+                                    "windows":  {
+                                                    "installMode":  "passive"
+                                                }
+                                }
+                },
+    "bundle":  {
+                   "active":  true,
+                   "targets":  "all",
+                   "createUpdaterArtifacts":  true,
+                   "windows":  {
+                                   "nsis":  {
+                                                "installerHooks":  "windows-installer-hooks.nsh"
+                                            }
+                               },
+                   "externalBin":  [
+                                       "binaries/claude-sidecar"
+                                   ],
+                   "resources":  [
+                                     "../dist",
+                                     "binaries/packs",
+                                     "binaries/skills"
+                                 ],
+                   "icon":  [
+                                "icons/32x32.png",
+                                "icons/128x128.png",
+                                "icons/128x128@2x.png",
+                                "icons/icon.icns",
+                                "icons/icon.ico"
+                            ],
+                   "macOS":  {
+                                 "dmg":  {
+                                             "appPosition":  {
+                                                                 "x":  180,
+                                                                 "y":  170
+                                                             },
+                                             "applicationFolderPosition":  {
+                                                                               "x":  480,
+                                                                               "y":  170
+                                                                           },
+                                             "windowSize":  {
+                                                                "width":  660,
+                                                                "height":  400
+                                                            }
+                                         }
+                             }
+               }
 }

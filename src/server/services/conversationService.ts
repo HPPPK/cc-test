@@ -84,6 +84,7 @@ type SessionStartOptions = {
   providerId?: string | null
   disallowedTools?: string[]
   workflowSessionId?: string
+  workflowSystemPrompt?: string
 }
 
 type RuntimeEnvironmentVariables = Record<string, string | null>
@@ -144,6 +145,9 @@ export class ConversationService {
       ...(shouldResume ? ['--resume', sessionId] : ['--session-id', sessionId]),
       ...worktreeArgs,
       '--replay-user-messages',
+      ...(options?.workflowSystemPrompt
+        ? ['--append-system-prompt', options.workflowSystemPrompt]
+        : []),
       ...this.getRuntimeArgs(options),
       ...this.getDisallowedToolArgs(options?.disallowedTools),
       ...this.getPermissionArgs(options?.permissionMode, dangerousMode),
@@ -645,8 +649,27 @@ export class ConversationService {
     sessionId: string,
     token: string | null | undefined,
   ): boolean {
+    return this.getSdkConnectionAuthStatus(sessionId, token).authorized
+  }
+
+  getSdkConnectionAuthStatus(
+    sessionId: string,
+    token: string | null | undefined,
+  ): {
+    authorized: boolean
+    reason: 'authorized' | 'session-missing' | 'token-missing' | 'token-mismatch'
+  } {
     const session = this.sessions.get(sessionId)
-    return Boolean(session && token && token === session.sdkToken)
+    if (!session) {
+      return { authorized: false, reason: 'session-missing' }
+    }
+    if (!token) {
+      return { authorized: false, reason: 'token-missing' }
+    }
+    if (token !== session.sdkToken) {
+      return { authorized: false, reason: 'token-mismatch' }
+    }
+    return { authorized: true, reason: 'authorized' }
   }
 
   attachSdkConnection(
@@ -666,9 +689,12 @@ export class ConversationService {
     return true
   }
 
-  detachSdkConnection(sessionId: string): void {
+  detachSdkConnection(
+    sessionId: string,
+    socket?: { send(data: string): void },
+  ): void {
     const session = this.sessions.get(sessionId)
-    if (session) {
+    if (session && (!socket || session.sdkSocket === socket)) {
       session.sdkSocket = null
     }
   }

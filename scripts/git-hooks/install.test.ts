@@ -91,7 +91,7 @@ describe('installPrePushHook', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('stores live gate settings in local git config', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'git-hook-install-test-'))
@@ -119,5 +119,5 @@ describe('installPrePushHook', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 })

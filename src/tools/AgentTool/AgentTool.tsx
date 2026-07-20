@@ -11,7 +11,7 @@ import { startAgentSummarization } from '../../services/AgentSummary/agentSummar
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { clearDumpState } from '../../services/api/dumpPrompts.js';
-import { completeAgentTask as completeAsyncAgent, createActivityDescriptionResolver, createProgressTracker, enqueueAgentNotification, failAgentTask as failAsyncAgent, getProgressUpdate, getTokenCountFromTracker, isLocalAgentTask, killAsyncAgent, registerAgentForeground, registerAsyncAgent, unregisterAgentForeground, updateAgentProgress as updateAsyncAgentProgress, updateProgressFromMessage } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
+import { completeAgentTask as completeAsyncAgent, createActivityDescriptionResolver, createProgressTracker, enqueueAgentNotification, emitAsyncAgentBlocked, failAgentTask as failAsyncAgent, getProgressUpdate, getTokenCountFromTracker, isLocalAgentTask, killAsyncAgent, registerAgentForeground, registerAsyncAgent, startAsyncAgent, unregisterAgentForeground, updateAgentProgress as updateAsyncAgentProgress, updateProgressFromMessage } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { checkRemoteAgentEligibility, formatPreconditionError, getRemoteTaskSessionUrl, registerRemoteAgentTask } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { assembleToolPool, assembleWorkflowToolPool } from '../../tools.js';
 import { asAgentId } from '../../types/ids.js';
@@ -53,6 +53,8 @@ import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
 import { runAgent } from './runAgent.js';
+import { getWorkflowTaskExecutionMode, hasActiveWorkflowTaskSchedule, normalizeWorkflowTaskSchedulePlan, runWithinWorkflowTaskSchedule, validateWorkflowTaskSchedule } from './workflowTaskScheduling.js';
+import { runWithinWorkflowParallelism } from './workflowParallelism.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -79,6 +81,19 @@ function getAutoBackgroundMs(): number {
 // Multi-agent type constants are defined inline inside gated blocks to enable dead code elimination
 
 // Base input schema without multi-agent parameters
+const workflowParallelTaskInputSchema = z.object({
+  id: z.string().min(1).describe('Stable task identifier within workflow_parallel_plan.tasks'),
+  depends_on: z.array(z.string().min(1)).default([]).describe('Task IDs that must succeed before this task can start'),
+  write_scopes: z.array(z.string().min(1)).default([]).describe('Declared repository paths this task may write'),
+  resource_claims: z.array(z.string().min(1)).default([]).describe('Exclusive resources required by this task, such as port:3456'),
+  execution_mode: z.enum(['read', 'write']).describe('Whether this task only reads or may modify files'),
+})
+
+const workflowParallelPlanInputSchema = z.object({
+  task_id: z.string().min(1).describe('The task in tasks assigned to this Agent invocation'),
+  tasks: z.array(workflowParallelTaskInputSchema).min(1).describe('The complete structured task plan for the active workflow phase'),
+})
+
 const baseInputSchema = lazySchema(() => z.object({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
@@ -86,7 +101,8 @@ const baseInputSchema = lazySchema(() => z.object({
   model: z.enum(['sonnet', 'opus', 'haiku']).optional().describe("Optional legacy model alias override for this agent. This does not select a custom provider; for spawned teammates on a specific provider/model, use provider_id and model_id together."),
   provider_id: z.string().nullable().optional().describe('Optional provider ID for a spawned teammate. Required with model_id. Use null for the official/default provider. If the provider roster shows provider_id=null, pass JSON null, not the string "null".'),
   model_id: z.string().optional().describe('Optional exact model ID for a spawned teammate. Requires provider_id so the runtime provider is explicit. This is passed through without alias parsing.'),
-  run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.')
+  run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.'),
+  workflow_parallel_plan: workflowParallelPlanInputSchema.optional().describe('Optional structured workflow task plan. All background Agents in this phase must use the same complete plan.')
 }));
 
 // Full schema combining base + multi-agent params + isolation
@@ -120,12 +136,17 @@ export const inputSchema = lazySchema(() => {
   // "schema shows a no-op param" (gate flips on mid-session: param ignored
   // by forceAsync) or "schema hides a param that would've worked" (gate
   // flips off mid-session: everything still runs async via memoized
-  // forceAsync). No Zod rejection, no crash — unlike required→optional.
+  // forceAsync). No Zod rejection, no crash 鈥?unlike required鈫抩ptional.
   return isBackgroundTasksDisabled || isForkSubagentEnabled() ? schema.omit({
     run_in_background: true
   }) : schema;
 });
 type InputSchema = ReturnType<typeof inputSchema>;
+
+export function normalizeSubagentType(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized || undefined
+}
 
 // Explicit type widens the schema inference to always include all optional
 // fields even when .omit() strips them for gating (cwd, run_in_background).
@@ -187,7 +208,7 @@ type TeammateSpawnedOutput = {
 
 // Combined output type including both public and internal types
 // Note: TeammateSpawnedOutput type is fine - TypeScript types are erased at compile time
-// Private type for remote-launched results — excluded from exported schema
+// Private type for remote-launched results 鈥?excluded from exported schema
 // like TeammateSpawnedOutput for dead code elimination purposes. Exported
 // for UI.tsx to do proper discriminated-union narrowing instead of ad-hoc casts.
 export type RemoteLaunchedOutput = {
@@ -258,10 +279,12 @@ export const AgentTool = buildTool({
     provider_id,
     model_id,
     isolation,
-    cwd
+    cwd,
+    workflow_parallel_plan
   }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
     const startTime = Date.now();
     const model = isCoordinatorMode() ? undefined : modelParam;
+    const normalizedSubagentType = normalizeSubagentType(subagent_type);
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState();
@@ -276,13 +299,13 @@ export const AgentTool = buildTool({
     }
 
     // Teammates (in-process or tmux) passing `name` would trigger spawnTeammate()
-    // below, but TeamFile.members is a flat array with one leadAgentId — nested
+    // below, but TeamFile.members is a flat array with one leadAgentId 鈥?nested
     // teammates land in the roster with no provenance and confuse the lead.
     const teamName = resolveTeamName({
       team_name
     }, appState);
     if (isTeammate() && teamName && name) {
-      throw new Error('Teammates cannot spawn other teammates — the team roster is flat. To spawn a subagent instead, omit the `name` parameter.');
+      throw new Error('Teammates cannot spawn other teammates 鈥?the team roster is flat. To spawn a subagent instead, omit the `name` parameter.');
     }
     // In-process teammates cannot spawn background agents (their lifecycle is
     // tied to the leader's process). Tmux teammates are separate processes and
@@ -301,9 +324,9 @@ export const AgentTool = buildTool({
         throw new Error('provider_id is required when model_id is provided for a teammate. Use provider_id=null for the official/default provider, or a provider_id from the latest Teammate runtime providers reminder.');
       }
       // Set agent definition color for grouped UI display before spawning
-      const agentDef = subagent_type ? toolUseContext.options.agentDefinitions.activeAgents.find(a => a.agentType === subagent_type) : undefined;
+      const agentDef = normalizedSubagentType ? toolUseContext.options.agentDefinitions.activeAgents.find(a => a.agentType === normalizedSubagentType) : undefined;
       if (agentDef?.color) {
-        setAgentColor(subagent_type!, agentDef.color);
+        setAgentColor(normalizedSubagentType!, agentDef.color);
       }
       const result = await spawnTeammate({
         name,
@@ -315,7 +338,7 @@ export const AgentTool = buildTool({
         model: model ?? agentDef?.model,
         providerId: provider_id,
         modelId: model_id,
-        agent_type: subagent_type,
+        agent_type: normalizedSubagentType,
         invokingRequestId: assistantMessage?.requestId
       }, toolUseContext);
 
@@ -339,13 +362,13 @@ export const AgentTool = buildTool({
     // - subagent_type set: use it (explicit wins)
     // - subagent_type omitted, gate on: fork path (undefined)
     // - subagent_type omitted, gate off: default general-purpose
-    const effectiveType = subagent_type ?? (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType);
+    const effectiveType = normalizedSubagentType ?? (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType);
     const isForkPath = effectiveType === undefined;
     let selectedAgent: AgentDefinition;
     if (isForkPath) {
       // Recursive fork guard: fork children keep the Agent tool in their
       // pool for cache-identical tool defs, so reject fork attempts at call
-      // time. Primary check is querySource (compaction-resistant — set on
+      // time. Primary check is querySource (compaction-resistant 鈥?set on
       // context.options at spawn time, survives autocompact's message
       // rewrite). Message-scan fallback catches any path where querySource
       // wasn't threaded.
@@ -382,7 +405,7 @@ export const AgentTool = buildTool({
       throw new Error(`In-process teammates cannot spawn background agents. Agent '${selectedAgent.agentType}' has background: true in its definition.`);
     }
 
-    // Capture for type narrowing — `let selectedAgent` prevents TS from
+    // Capture for type narrowing 鈥?`let selectedAgent` prevents TS from
     // narrowing property types across the if-else assignment above.
     const requiredMcpServers = selectedAgent.requiredMcpServers;
 
@@ -403,7 +426,7 @@ export const AgentTool = buildTool({
           currentAppState = toolUseContext.getAppState();
 
           // Early exit: if any required server has already failed, no point
-          // waiting for other pending servers — the check will fail regardless.
+          // waiting for other pending servers 鈥?the check will fail regardless.
           const hasFailedRequiredServer = currentAppState.mcp.clients.some(c => c.type === 'failed' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
           if (hasFailedRequiredServer) break;
           const stillPending = currentAppState.mcp.clients.some(c => c.type === 'pending' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
@@ -447,10 +470,21 @@ export const AgentTool = buildTool({
       is_fork: isForkPath
     });
 
-    // Resolve effective isolation mode (explicit param overrides agent def)
-    const effectiveIsolation = isolation ?? selectedAgent.isolation;
+    const workflowTaskPlan = workflow_parallel_plan ? normalizeWorkflowTaskSchedulePlan(workflow_parallel_plan) : undefined;
+    const workflowTaskExecutionMode = workflowTaskPlan ? getWorkflowTaskExecutionMode(workflowTaskPlan) : undefined;
+    const workflowTask = workflowTaskPlan?.tasks.find(task => task.id === workflowTaskPlan.taskId);
+    if (workflowTaskExecutionMode === 'write' && cwd) {
+      throw new Error('A workflow write task cannot use cwd; it must run in its isolated worktree.');
+    }
+    if (workflowTaskExecutionMode === 'write' && isolation && isolation !== 'worktree') {
+      throw new Error('A workflow write task requires isolation: "worktree".');
+    }
 
-    // Remote isolation: delegate to CCR. Gated ant-only — the guard enables
+    // Structured workflow write tasks always use their own worktree. Existing
+    // non-workflow Agent isolation semantics remain unchanged.
+    const effectiveIsolation = workflowTaskExecutionMode === 'write' ? 'worktree' : isolation ?? selectedAgent.isolation;
+
+    // Remote isolation: delegate to CCR. Gated ant-only 鈥?the guard enables
     // dead code elimination of the entire block for external builds.
     if ("external" === 'ant' && effectiveIsolation === 'remote') {
       const eligibility = await checkRemoteAgentEligibility();
@@ -573,11 +607,11 @@ export const AgentTool = buildTool({
     const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE) : false;
 
     // Fork subagent experiment: force ALL spawns async for a unified
-    // <task-notification> interaction model (not just fork spawns — all of them).
+    // <task-notification> interaction model (not just fork spawns 鈥?all of them).
     const forceAsync = isForkSubagentEnabled();
 
     // Assistant mode: force all agents async. Synchronous subagents hold the
-    // main loop's turn open until they complete — the daemon's inputQueue
+    // main loop's turn open until they complete 鈥?the daemon's inputQueue
     // backs up, and the first overdue cron catch-up on spawn becomes N
     // serial subagent turns blocking all user input. Same gate as
     // executeForkedSlashCommand's fire-and-forget path; the
@@ -585,6 +619,15 @@ export const AgentTool = buildTool({
     // below (registerAsyncAgentTask + notifyOnCompletion).
     const assistantForceAsync = feature('KAIROS') ? appState.kairosEnabled : false;
     const shouldRunAsync = (run_in_background === true || selectedAgent.background === true || isCoordinator || forceAsync || assistantForceAsync || (proactiveModule?.isProactiveActive() ?? false)) && !isBackgroundTasksDisabled;
+    const activeWorkflow = (appState as { workflow?: unknown }).workflow;
+    if (workflowTaskPlan) {
+      if (!shouldRunAsync) {
+        throw new Error('workflow_parallel_plan requires asynchronous Agent execution');
+      }
+      await validateWorkflowTaskSchedule(activeWorkflow, workflowTaskPlan);
+    } else if (shouldRunAsync && await hasActiveWorkflowTaskSchedule(activeWorkflow)) {
+      throw new Error('The active workflow phase is using a structured task plan. Every background Agent must provide that same workflow_parallel_plan.');
+    }
     // Assemble the worker's tool pool independently of the parent's.
     // Workers always get their tools from assembleToolPool with their own
     // permission mode, so they aren't affected by the parent's tool
@@ -601,7 +644,9 @@ export const AgentTool = buildTool({
     // Create a stable agent ID early so it can be used for worktree slug
     const earlyAgentId = createAgentId();
 
-    // Set up worktree isolation if requested
+    // Worktree allocation is intentionally lazy. For queued workflow tasks this
+    // runs only after the scheduler has granted a permit, so waiting tasks do
+    // not create branches or worktree directories before they can execute.
     let worktreeInfo: {
       worktreePath: string;
       worktreeBranch?: string;
@@ -609,19 +654,26 @@ export const AgentTool = buildTool({
       gitRoot?: string;
       hookBased?: boolean;
     } | null = null;
-    if (effectiveIsolation === 'worktree') {
+    const ensureWorktreeIfNeeded = async (): Promise<void> => {
+      if (effectiveIsolation !== 'worktree' || worktreeInfo) return;
+
       const slug = `agent-${earlyAgentId.slice(0, 8)}`;
       worktreeInfo = await createAgentWorktree(slug);
-    }
 
-    // Fork + worktree: inject a notice telling the child to translate paths
-    // and re-read potentially stale files. Appended after the fork directive
-    // so it appears as the most recent guidance the child sees.
-    if (isForkPath && worktreeInfo) {
-      promptMessages.push(createUserMessage({
-        content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
-      }));
-    }
+      // Fork + worktree: inject a notice telling the child to translate paths
+      // and re-read potentially stale files. Appended after the fork directive
+      // so it appears as the most recent guidance the child sees.
+      if (isForkPath) {
+        promptMessages.push(createUserMessage({
+          content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
+        }));
+      }
+      if (workflowTaskExecutionMode === 'write') {
+        promptMessages.push(createUserMessage({
+          content: `You are executing a workflow write task in an isolated worktree: ${worktreeInfo.worktreePath}. Do not merge or rebase this worktree into the source branch. Finish the assigned changes, run relevant validation, and report the worktree handoff for the coordinator to review and integrate.`
+        }));
+      }
+    };
     const runAgentParams: Parameters<typeof runAgent>[0] = {
       agentDefinition: selectedAgent,
       promptMessages,
@@ -641,11 +693,13 @@ export const AgentTool = buildTool({
       // or explicit cwd), skip the pre-built system prompt so runAgent's
       // buildAgentSystemPrompt() runs inside wrapWithCwd where getCwd()
       // returns the override path.
-      override: isForkPath ? {
-        systemPrompt: forkParentSystemPrompt
-      } : enhancedSystemPrompt && !worktreeInfo && !cwd ? {
-        systemPrompt: asSystemPrompt(enhancedSystemPrompt)
-      } : undefined,
+      get override() {
+        return isForkPath ? {
+          systemPrompt: forkParentSystemPrompt
+        } : enhancedSystemPrompt && !worktreeInfo && !cwd ? {
+          systemPrompt: asSystemPrompt(enhancedSystemPrompt)
+        } : undefined;
+      },
       availableTools: isForkPath ? toolUseContext.options.tools : workerTools,
       // Pass parent conversation when the fork-subagent path needs full
       // context. useExactTools inherits thinkingConfig (runAgent.ts:624).
@@ -653,14 +707,22 @@ export const AgentTool = buildTool({
       ...(isForkPath && {
         useExactTools: true
       }),
-      worktreePath: worktreeInfo?.worktreePath,
+      get worktreePath() {
+        return worktreeInfo?.worktreePath;
+      },
       description
     };
 
     // Helper to wrap execution with a cwd override: explicit cwd arg (KAIROS)
-    // takes precedence over worktree isolation path.
-    const cwdOverridePath = cwd ?? worktreeInfo?.worktreePath;
-    const wrapWithCwd = <T,>(fn: () => T): T => cwdOverridePath ? runWithCwdOverride(cwdOverridePath, fn) : fn();
+    // takes precedence over worktree isolation path. Awaiting the lazy setup
+    // here puts allocation inside the scheduler-controlled lifecycle.
+    const wrapWithCwd = async <T,>(fn: () => T): Promise<Awaited<T>> => {
+      await ensureWorktreeIfNeeded();
+      const cwdOverridePath = cwd ?? worktreeInfo?.worktreePath;
+      return cwdOverridePath
+        ? await runWithCwdOverride(cwdOverridePath, fn)
+        : await fn();
+    };
 
     // Helper to clean up worktree after agent completes
     const cleanupWorktreeIfNeeded = async (): Promise<{
@@ -675,7 +737,7 @@ export const AgentTool = buildTool({
         gitRoot,
         hookBased
       } = worktreeInfo;
-      // Null out to make idempotent — guards against double-call if code
+      // Null out to make idempotent 鈥?guards against double-call if code
       // between cleanup and end of try throws into catch
       worktreeInfo = null;
       if (hookBased) {
@@ -716,11 +778,16 @@ export const AgentTool = buildTool({
         // Don't link to parent's abort controller -- background agents should
         // survive when the user presses ESC to cancel the main thread.
         // They are killed explicitly via chat:killAgents.
-        toolUseId: toolUseContext.toolUseId
+        toolUseId: toolUseContext.toolUseId,
+        workflowTaskId: workflowTaskPlan?.taskId,
+        executionMode: workflowTaskExecutionMode,
+        writeScopes: workflowTask?.writeScopes,
+        resourceClaims: workflowTask?.resourceClaims,
+        worktreeIsolation: workflowTaskExecutionMode === 'write'
       });
 
-      // Register name → agentId for SendMessage routing. Post-registerAsyncAgent
-      // so we don't leave a stale entry if spawn fails. Sync agents skipped —
+      // Register name 鈫?agentId for SendMessage routing. Post-registerAsyncAgent
+      // so we don't leave a stale entry if spawn fails. Sync agents skipped 鈥?
       // coordinator is blocked, so SendMessage routing doesn't apply.
       if (name) {
         rootSetAppState(prev => {
@@ -749,29 +816,83 @@ export const AgentTool = buildTool({
 
       // Workload propagation: handlePromptSubmit wraps the entire turn in
       // runWithWorkload (AsyncLocalStorage). ALS context is captured at
-      // invocation time — when this `void` fires — and survives every await
+      // invocation time 鈥?when this `void` fires 鈥?and survives every await
       // inside. No capture/restore needed; the detached closure sees the
       // parent turn's workload automatically, isolated from its finally.
-      void runWithAgentContext(asyncAgentContext, () => wrapWithCwd(() => runAsyncAgentLifecycle({
-        taskId: agentBackgroundTask.agentId,
-        abortController: agentBackgroundTask.abortController!,
-        makeStream: onCacheSafeParams => runAgent({
-          ...runAgentParams,
-          override: {
-            ...runAgentParams.override,
-            agentId: asAgentId(agentBackgroundTask.agentId),
-            abortController: agentBackgroundTask.abortController!
-          },
-          onCacheSafeParams
-        }),
-        metadata,
-        description,
-        toolUseContext,
-        rootSetAppState,
-        agentIdForCleanup: asyncAgentId,
-        enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
-        getWorktreeResult: cleanupWorktreeIfNeeded
-      })));
+      void runWithAgentContext(
+        asyncAgentContext,
+        () => (workflowTaskPlan
+          ? runWithinWorkflowTaskSchedule(
+            activeWorkflow,
+            workflowTaskPlan,
+            () => wrapWithCwd(() => runAsyncAgentLifecycle({
+            taskId: agentBackgroundTask.agentId,
+            abortController: agentBackgroundTask.abortController!,
+            makeStream: onCacheSafeParams => runAgent({
+              ...runAgentParams,
+              override: {
+                ...runAgentParams.override,
+                agentId: asAgentId(agentBackgroundTask.agentId),
+                abortController: agentBackgroundTask.abortController!
+              },
+              onCacheSafeParams
+            }),
+            metadata,
+            description,
+            toolUseContext,
+            rootSetAppState,
+            agentIdForCleanup: asyncAgentId,
+            enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
+            getWorktreeResult: cleanupWorktreeIfNeeded
+            })),
+            {
+              signal: agentBackgroundTask.abortController!.signal,
+              onStarted: () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
+              onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
+              onBlocked: reason => {
+                const error = `Workflow task ${workflowTaskPlan.taskId} was blocked: ${reason}`;
+                emitAsyncAgentBlocked(agentBackgroundTask.agentId, reason, rootSetAppState);
+                failAsyncAgent(agentBackgroundTask.agentId, error, rootSetAppState);
+                enqueueAgentNotification({
+                  taskId: agentBackgroundTask.agentId,
+                  description,
+                  status: 'failed',
+                  error,
+                  setAppState: rootSetAppState,
+                  toolUseId: toolUseContext.toolUseId,
+                });
+              },
+            },
+          )
+          : runWithinWorkflowParallelism(
+            activeWorkflow,
+            () => wrapWithCwd(() => runAsyncAgentLifecycle({
+              taskId: agentBackgroundTask.agentId,
+              abortController: agentBackgroundTask.abortController!,
+              makeStream: onCacheSafeParams => runAgent({
+                ...runAgentParams,
+                override: {
+                  ...runAgentParams.override,
+                  agentId: asAgentId(agentBackgroundTask.agentId),
+                  abortController: agentBackgroundTask.abortController!
+                },
+                onCacheSafeParams
+              }),
+              metadata,
+              description,
+              toolUseContext,
+              rootSetAppState,
+              agentIdForCleanup: asyncAgentId,
+              enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
+              getWorktreeResult: cleanupWorktreeIfNeeded
+            })),
+            {
+              signal: agentBackgroundTask.abortController!.signal,
+              onStarted: () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
+              onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
+            },
+          )),
+      );
       const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));
       return {
         data: {
@@ -830,7 +951,7 @@ export const AgentTool = buildTool({
         // Register as foreground task immediately so it can be backgrounded at any time
         // Skip registration if background tasks are disabled
         let foregroundTaskId: string | undefined;
-        // Create the background race promise once outside the loop — otherwise
+        // Create the background race promise once outside the loop 鈥?otherwise
         // each iteration adds a new .then() reaction to the same pending
         // promise, accumulating callbacks for the lifetime of the agent.
         let backgroundPromise: Promise<{
@@ -858,7 +979,7 @@ export const AgentTool = buildTool({
         let backgroundHintShown = false;
         // Track if the agent was backgrounded (cleanup handled by backgrounded finally)
         let wasBackgrounded = false;
-        // Per-scope stop function — NOT shared with the backgrounded closure.
+        // Per-scope stop function 鈥?NOT shared with the backgrounded closure.
         // idempotent: startAgentSummarization's stop() checks `stopped` flag.
         let stopForegroundSummarization: (() => void) | undefined;
         // const capture for sound type narrowing inside the callback below
@@ -1171,7 +1292,7 @@ export const AgentTool = buildTool({
             toolUseContext.setToolJSX(null);
           }
 
-          // Stop foreground summarization. Idempotent — if already stopped at
+          // Stop foreground summarization. Idempotent 鈥?if already stopped at
           // the backgrounding transition, this is a no-op. The backgrounded
           // closure owns a separate stop function (stopBackgroundedSummarization).
           stopForegroundSummarization?.();
@@ -1180,7 +1301,7 @@ export const AgentTool = buildTool({
           if (foregroundTaskId) {
             unregisterAgentForeground(foregroundTaskId, rootSetAppState);
             // Notify SDK consumers (e.g. VS Code subagent panel) that this
-            // foreground agent is done. Goes through drainSdkEvents() — does
+            // foreground agent is done. Goes through drainSdkEvents() 鈥?does
             // NOT trigger the print.ts XML task_notification parser or the LLM loop.
             if (!wasBackgrounded) {
               const progress = getProgressUpdate(syncTracker);
@@ -1205,7 +1326,7 @@ export const AgentTool = buildTool({
           clearInvokedSkillsForAgent(syncAgentId);
 
           // Clean up dumpState entry for this agent to prevent unbounded growth
-          // Skip if backgrounded — the backgrounded agent's finally handles cleanup
+          // Skip if backgrounded 鈥?the backgrounded agent's finally handles cleanup
           if (!wasBackgrounded) {
             clearDumpState(syncAgentId);
           }
@@ -1214,7 +1335,7 @@ export const AgentTool = buildTool({
           cancelAutoBackground?.();
 
           // Clean up worktree if applicable (in finally to handle abort/error paths)
-          // Skip if backgrounded — the background continuation is still running in it
+          // Skip if backgrounded 鈥?the background continuation is still running in it
           if (!wasBackgrounded) {
             worktreeResult = await cleanupWorktreeIfNeeded();
           }
@@ -1345,7 +1466,7 @@ The agent is now running and will receive instructions via mailbox.`
     if (data.status === 'async_launched') {
       const prefix = `Async agent launched successfully.\nagentId: ${data.agentId} (internal ID - do not mention to user. Use SendMessage with to: '${data.agentId}' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.`;
       const stopGuidance = `Do not stop this agent just because you have enough partial output. Stop it only if the user asks to cancel it, or if it is clearly runaway, harmful, duplicative, or no longer useful.`;
-      const instructions = data.canReadOutputFile ? `Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.\n${stopGuidance}\noutput_file: ${data.outputFile}\nIf asked, you can check progress before completion by using ${FILE_READ_TOOL_NAME} or ${BASH_TOOL_NAME} tail on the output file.` : `Briefly tell the user what you launched and end your response. Do not generate any other text — agent results will arrive in a subsequent message.\n${stopGuidance}`;
+      const instructions = data.canReadOutputFile ? `Do not duplicate this agent's work 鈥?avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.\n${stopGuidance}\noutput_file: ${data.outputFile}\nIf asked, you can check progress before completion by using ${FILE_READ_TOOL_NAME} or ${BASH_TOOL_NAME} tail on the output file.` : `Briefly tell the user what you launched and end your response. Do not generate any other text 鈥?agent results will arrive in a subsequent message.\n${stopGuidance}`;
       const text = `${prefix}\n${instructions}`;
       return {
         tool_use_id: toolUseID,
@@ -1360,7 +1481,7 @@ The agent is now running and will receive instructions via mailbox.`
       const worktreeData = data as Record<string, unknown>;
       const worktreeInfoText = worktreeData.worktreePath ? `\nworktreePath: ${worktreeData.worktreePath}\nworktreeBranch: ${worktreeData.worktreeBranch}` : '';
       // If the subagent completes with no content, the tool_result is just the
-      // agentId/usage trailer below — a metadata-only block at the prompt tail.
+      // agentId/usage trailer below 鈥?a metadata-only block at the prompt tail.
       // Some models read that as "nothing to act on" and end their turn
       // immediately. Say so explicitly so the parent has something to react to.
       const contentOrMarker = data.content.length > 0 ? data.content : [{
@@ -1368,10 +1489,10 @@ The agent is now running and will receive instructions via mailbox.`
         text: '(Subagent completed but returned no output.)'
       }];
       // One-shot built-ins (Explore, Plan) are never continued via SendMessage
-      // — the agentId hint and <usage> block are dead weight (~135 chars ×
-      // 34M Explore runs/week ≈ 1-2 Gtok/week). Telemetry doesn't parse this
+      // 鈥?the agentId hint and <usage> block are dead weight (~135 chars 脳
+      // 34M Explore runs/week 鈮?1-2 Gtok/week). Telemetry doesn't parse this
       // block (it uses logEvent in finalizeAgentTool), so dropping is safe.
-      // agentType is optional for resume compat — missing means show trailer.
+      // agentType is optional for resume compat 鈥?missing means show trailer.
       if (data.agentType && ONE_SHOT_BUILTIN_AGENT_TYPES.has(data.agentType) && !worktreeInfoText) {
         return {
           tool_use_id: toolUseID,

@@ -55,6 +55,12 @@ Desktop tests use Vitest with Testing Library in a `jsdom` environment. Name tes
 - Protected files include `~/.claude/projects/**/*.jsonl`, `~/.claude/settings.json`, project `.claude/settings.json`, `~/.claude/cc-jiangxia/providers.json`, `~/.claude/cc-jiangxia/settings.json`, `~/.claude/adapters.json`, `~/.claude/adapter-sessions.json`, `~/.claude/skills`, project `.claude/skills`, `.mcp.json`, managed MCP config, `~/.claude/plugins/**`, `~/.claude/teams/**`, and `~/.claude/cc-jiangxia/*oauth*.json`. Doctor may diagnose these paths only with redaction unless a future task explicitly adds a reviewed, backup-first manual repair flow.
 - If a persistence shape cannot be upgraded in place, the change is blocked until the upgrade path is explicit and tested.
 
+## Workflow Defaults
+- The user's primary development workflow is the user template `efficient-constrained-dev-debug-workflow-v5`, displayed as `引导式产品开发流程`.
+- Unless the user explicitly names another template, all future "development workflow" template edits, prompt tuning, stage tuning, and default development-flow assumptions should target `efficient-constrained-dev-debug-workflow-v5`.
+- Treat `feature-extension-workflow-v8` and `debug-repair-workflow-v8` as separate specialized workflows. Do not move development changes into those templates unless the user specifically asks for feature-extension or debug workflow changes.
+- A copied template such as `efficient-constrained-dev-debug-workflow-v5-copy` is not the canonical development workflow unless the user explicitly selects that copy by id or name.
+
 ## Feature Quality Contract
 Every feature, bugfix, and behavior change must ship with proof that matches the changed surface. Treat this as the implementation contract for both human authors and AI coding agents.
 
@@ -116,7 +122,7 @@ Branch names should use normal product prefixes such as `fix/xxx`, `feat/xxx`, o
 - Treat live `specify --help` output as the authoritative CLI surface.
 - Before suggesting or running a `specify <subcommand>` invocation, verify that help exposes it.
 - Do not invent unsupported CLI names such as `specify create-feature`.
-- Feature creation uses the generated create-feature script at `.specify/scripts/bash/create-new-feature.sh` or `.specify/scripts/powershell/create-new-feature.ps1`.
+- Feature creation uses the generated create-feature script at `.specify/scripts/bash/create-new-feature.sh` or `.specify/scripts/powershell/create-new-feature.ps1`; default feature workspace names use `YYYY-MM-DD-<slug>`.
 
 ## Durable State
 

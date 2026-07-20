@@ -46,7 +46,7 @@ describe('workspaceChatContextStore', () => {
     ])
 
     expect(prompt).toContain('Referenced workspace context:')
-    expect(prompt).toContain('@"src/App.tsx:L12":')
+    expect(prompt).toContain('Location: src/App.tsx:L12')
     expect(prompt).toContain('Comment: Use a clearer name')
     expect(prompt).toContain('```tsx\nconst value = 1\n```')
     expect(prompt).not.toContain('Use the Read tool')
@@ -68,7 +68,7 @@ describe('workspaceChatContextStore', () => {
     ])
 
     expect(prompt).toContain('Referenced workspace context:')
-    expect(prompt).toContain('@"src/App.tsx:L10-L12":')
+    expect(prompt).toContain('Location: src/App.tsx:L10-L12')
     expect(prompt).toContain('```tsx\nconst value = 1\nreturn value\n```')
     expect(prompt).not.toContain('Comment:')
   })

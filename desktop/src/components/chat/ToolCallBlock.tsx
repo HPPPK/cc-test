@@ -30,6 +30,8 @@ const TOOL_ICONS: Record<string, string> = {
   Skill: 'auto_awesome',
 }
 
+const READ_BEFORE_WRITE_ERROR = 'File has not been read yet. Read it first before writing to it.'
+
 export function ToolCallBlock({ toolName, input, result, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false)
   const t = useTranslation()
@@ -37,14 +39,19 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
   const icon = TOOL_ICONS[toolName] || 'build'
   const filePath = typeof obj.file_path === 'string' ? obj.file_path : ''
   const summary = getToolSummary(toolName, obj, t)
+  const isRecoverableReadBeforeWriteError = isReadBeforeWriteRecoveryResult(result)
+  const isResultError = Boolean(result?.isError && !isRecoverableReadBeforeWriteError)
   const outputSummary = getToolResultSummary(
     toolName,
     result?.content,
-    result?.isError ?? false,
+    isResultError,
     t,
   )
 
-  const preview = useMemo(() => renderPreview(toolName, obj, result, t), [obj, result, toolName, t])
+  const preview = useMemo(
+    () => renderPreview(toolName, obj, result, t, isRecoverableReadBeforeWriteError),
+    [isRecoverableReadBeforeWriteError, obj, result, toolName, t],
+  )
   const details = useMemo(() => renderDetails(toolName, obj, t), [obj, toolName, t])
   const hasResultDetails = Boolean(result && extractTextContent(result.content))
   const expandable = toolName === 'Edit' || toolName === 'Write' || hasResultDetails
@@ -80,7 +87,7 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
         {result && outputSummary && (
           <span
             className={`shrink-0 text-[10px] ${
-              result.isError
+              isResultError
                 ? 'text-[var(--color-error)]'
                 : 'text-[var(--color-outline)]'
             }`}
@@ -88,7 +95,7 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
             {outputSummary}
           </span>
         )}
-        {result?.isError && (
+        {isResultError && (
           <span className="material-symbols-outlined shrink-0 text-[14px] text-[var(--color-error)]">error</span>
         )}
         {expandable && (
@@ -113,6 +120,7 @@ function renderPreview(
   obj: Record<string, unknown>,
   result?: { content: unknown; isError: boolean } | null,
   t?: (key: TranslationKey, params?: Record<string, string | number>) => string,
+  isRecoverableReadBeforeWriteError = false,
 ) {
   const filePath = typeof obj.file_path === 'string' ? obj.file_path : 'file'
 
@@ -136,6 +144,14 @@ function renderPreview(
 
   if (toolName === 'Read') {
     return null
+  }
+
+  if (isRecoverableReadBeforeWriteError) {
+    return (
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
+        {t?.('tool.readBeforeWriteRecovery') ?? 'Reading file before retrying edit'}
+      </div>
+    )
   }
 
   if (result) {
@@ -195,6 +211,10 @@ function getToolResultSummary(
   const text = extractTextContent(content)
   if (!text) return ''
 
+  if (isReadBeforeWriteRecoveryText(text)) {
+    return t?.('tool.readBeforeWriteRecovery') ?? 'Reading file before retrying edit'
+  }
+
   if (isError) {
     const firstLine = text
       .split('\n')
@@ -219,6 +239,16 @@ function getToolResultSummary(
   if (!compact) return ''
   if (compact.length <= 36) return compact
   return `${compact.slice(0, 36)}…`
+}
+
+function isReadBeforeWriteRecoveryResult(result?: { content: unknown; isError: boolean } | null): boolean {
+  if (!result?.isError) return false
+  const text = extractTextContent(result.content)
+  return Boolean(text && isReadBeforeWriteRecoveryText(text))
+}
+
+function isReadBeforeWriteRecoveryText(text: string): boolean {
+  return text.includes(READ_BEFORE_WRITE_ERROR)
 }
 
 function stripAnsi(value: string): string {

@@ -8,8 +8,10 @@ import {
   workflowTemplateBasisHash,
   type WorkflowTemplateSummary,
 } from './workflowTemplateAuthoringService.js'
-import { resetWorkflowTemplateRegistryForTests } from './workflowTemplateRegistryService.js'
+import { resetWorkflowTemplateRegistryForTests, WorkflowTemplateRegistryService } from './workflowTemplateRegistryService.js'
 import { workflowTemplateAuthoringGuide } from './workflowTemplateAuthoringGuide.js'
+import { PackRegistryService } from './packRegistryService.js'
+import { ZipPackAdapter } from './zipPackAdapter.js'
 
 type WorkflowTemplateAuthoringFixture = {
   schemaVersion: 1
@@ -59,6 +61,14 @@ type ConfigSnapshot = {
   workflowConfig: unknown
   protectedFiles: Record<string, unknown>
 }
+
+const editableDefaultTemplateIds = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
+
+const zipAdapter = new ZipPackAdapter()
 
 const protectedConfigRelativePaths = [
   'settings.json',
@@ -154,6 +164,11 @@ async function writeWorkflowConfig(
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8')
   resetWorkflowTemplateRegistryForTests()
+  try {
+    await new WorkflowTemplateRegistryService().writeTemplates(config.templates ?? [])
+  } catch {
+    resetWorkflowTemplateRegistryForTests()
+  }
 }
 
 async function writeUserSkill(name: string, body = 'Use this skill for release readiness checks.'): Promise<void> {
@@ -192,7 +207,42 @@ async function readJsonIfExists(filePath: string): Promise<unknown> {
 async function readWorkflowConfig(
   configDir = tempConfigDir,
 ): Promise<unknown> {
+  const storedTemplates = configDir === tempConfigDir
+    ? await readStoredUserWorkflowTemplates()
+    : []
+  if (storedTemplates.length > 0 || await legacyMigrationMarkerExists(configDir)) {
+    return {
+      schemaVersion: 1,
+      templates: storedTemplates,
+    }
+  }
   return readJsonIfExists(workflowConfigPath(configDir))
+}
+
+async function legacyMigrationMarkerExists(configDir = tempConfigDir): Promise<boolean> {
+  try {
+    await fs.access(path.join(configDir, 'cc-jiangxia', 'workflows', 'packs', '.legacy-workflows-json-migrated'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function readStoredUserWorkflowTemplates(): Promise<WorkflowTemplateAuthoringFixture[]> {
+  const packs = await new PackRegistryService().listStoredWorkflowPacks()
+  const templates: WorkflowTemplateAuthoringFixture[] = []
+  for (const pack of packs) {
+    for (const workflow of pack.workflows) {
+      if (editableDefaultTemplateIds.has(workflow.id)) continue
+      const zip = await zipAdapter.read(new Uint8Array(await fs.readFile(pack.storage.path)))
+      const template = await zip.readJson(workflow.entrypoint) as WorkflowTemplateAuthoringFixture
+      templates.push({
+        ...template,
+        source: 'user',
+      })
+    }
+  }
+  return templates.sort((a, b) => a.id.localeCompare(b.id))
 }
 
 async function snapshotConfig(configDir = tempConfigDir): Promise<ConfigSnapshot> {
@@ -206,7 +256,7 @@ async function snapshotConfig(configDir = tempConfigDir): Promise<ConfigSnapshot
   )
 
   return {
-    workflowConfig: await readWorkflowConfig(configDir),
+    workflowConfig: await readJsonIfExists(workflowConfigPath(configDir)),
     protectedFiles,
   }
 }
@@ -555,7 +605,8 @@ describe('workflow template authoring service read-only operations', () => {
       ],
       nextAction: 'repair-and-validate',
     })
-    expect(result.templates?.map((template) => template.id)).toEqual(['valid-workflow'])
+    expect(result.templates?.map((template) => template.id)).toContain('valid-workflow')
+    expect(result.templates?.map((template) => template.id)).not.toContain('invalid-workflow')
   })
 
   test('inspects user template with editability metadata and basis hash without writing', async () => {
@@ -835,15 +886,15 @@ describe('workflow template authoring service create operation', () => {
       message: 'Workflow template created.',
     })
     expect(afterSummaryBasisHash).toBe(affectedBasisHash)
-    expect(await readWorkflowConfig()).toEqual({
+    expect(await readWorkflowConfig()).toMatchObject({
       schemaVersion: 1,
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({
           id: 'conversation-workflow',
           source: 'user',
           name: 'Conversation Workflow',
         }),
-      ],
+      ]),
     })
   })
 
@@ -1000,7 +1051,7 @@ describe('workflow template authoring service create operation', () => {
     })
     expect(await readWorkflowConfig()).toMatchObject({
       schemaVersion: 1,
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({
           id: 'available-skill-workflow',
           phases: [
@@ -1015,7 +1066,7 @@ describe('workflow template authoring service create operation', () => {
             }),
           ],
         }),
-      ],
+      ]),
     })
   })
 
@@ -1148,14 +1199,15 @@ describe('workflow template authoring service runtime snapshot safety', () => {
         adapter: 'keep',
       },
     })
-    expect(finalSnapshot.workflowConfig).toMatchObject({
+    const finalWorkflowConfig = await readWorkflowConfig()
+    expect(finalWorkflowConfig).toMatchObject({
       schemaVersion: 1,
       templates: expect.arrayContaining([
         expect.objectContaining({ id: 'runtime-safe-workflow', name: 'Runtime Safe Workflow Updated' }),
         expect.objectContaining({ id: 'runtime-safe-workflow-copy', source: 'user' }),
       ]),
     })
-    expect(finalSnapshot.workflowConfig).not.toEqual(initialSnapshot.workflowConfig)
+    expect(finalWorkflowConfig).not.toEqual(initialSnapshot.workflowConfig)
   })
 })
 
@@ -1290,34 +1342,32 @@ describe('workflow template authoring service update operation', () => {
     })
     expect(result.afterSummary?.basisHash).toBe(result.affectedTemplate?.basisHash)
     expect(result.afterSummary?.basisHash).not.toBe(basisHash)
-    expect(await readWorkflowConfig()).toMatchObject({
+    const updatedConfig = await readWorkflowConfig() as WorkflowConfigFixture
+    expect(updatedConfig).toMatchObject({
       schemaVersion: 1,
-      ownerDefinedTopLevel: { keep: 'config' },
-      templates: [
-        {
-          id: 'editable-workflow',
-          source: 'user',
-          version: '1.0.1',
-          name: 'Editable Workflow Updated',
-          ownerDefinedTemplateField: { keep: 'template' },
-          phases: [
-            {
-              id: 'draft',
-              instructions: 'Draft the updated workflow output.',
-              ownerDefinedPhaseField: { keep: 'phase' },
-              outputArtifact: {
-                ownerDefinedArtifactField: 'keep-artifact',
-              },
-              completionCriteria: {
-                ownerDefinedCriteriaField: 'keep-criteria',
-              },
-              transition: {
-                ownerDefinedTransitionField: 'keep-transition',
-              },
-            },
-          ],
-        },
-      ],
+    })
+    const persistedUpdatedTemplate = updatedConfig.templates.find((template) => template.id === 'editable-workflow')
+    expect(persistedUpdatedTemplate).toMatchObject({
+      id: 'editable-workflow',
+      source: 'user',
+      version: '1.0.1',
+      name: 'Editable Workflow Updated',
+      ownerDefinedTemplateField: { keep: 'template' },
+    })
+    const persistedUpdatedPhase = persistedUpdatedTemplate?.phases?.[0]
+    expect(persistedUpdatedPhase).toMatchObject({
+      id: 'draft',
+      instructions: 'Draft the updated workflow output.',
+      ownerDefinedPhaseField: { keep: 'phase' },
+    })
+    expect(persistedUpdatedPhase?.outputArtifact).toMatchObject({
+      ownerDefinedArtifactField: 'keep-artifact',
+    })
+    expect(persistedUpdatedPhase?.completionCriteria).toMatchObject({
+      ownerDefinedCriteriaField: 'keep-criteria',
+    })
+    expect(persistedUpdatedPhase?.transition).toMatchObject({
+      ownerDefinedTransitionField: 'keep-transition',
     })
   })
 
@@ -1459,7 +1509,7 @@ describe('workflow template authoring service update operation', () => {
     expect(await readWorkflowConfig()).toEqual(beforeConfig)
   })
 
-  test('rejects builtin template updates with copy guidance without writing config', async () => {
+  test('rejects unsupported-source template updates without writing config', async () => {
     const result = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({
         operation: 'update',
@@ -1489,13 +1539,13 @@ describe('workflow template authoring service update operation', () => {
           expect.objectContaining({
             source: 'authoring',
             path: '$.selector.source',
-            code: 'WORKFLOW_TEMPLATE_BUILTIN_READONLY',
+            code: 'WORKFLOW_TEMPLATE_INVALID_SOURCE',
             templateId: 'agent-development',
           }),
         ],
       },
-      nextAction: 'copy-builtin-first',
-      message: 'Builtin workflow templates are read-only; duplicate the template before editing.',
+      nextAction: 'inspect-and-retry',
+      message: 'Workflow template source must be user.',
     })
   })
 })
@@ -1562,9 +1612,9 @@ describe('workflow template authoring service duplicate operation', () => {
     expect(result.afterSummary?.basisHash).toBe(result.affectedTemplate?.basisHash)
 
     const persistedConfig = await readWorkflowConfig()
-    expect(persistedConfig).toEqual({
+    expect(persistedConfig).toMatchObject({
       schemaVersion: 1,
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({
           source: 'user',
           id: 'agent-development',
@@ -1575,7 +1625,7 @@ describe('workflow template authoring service duplicate operation', () => {
           id: 'agent-development-copy',
           name: 'Agent Development Copy',
         }),
-      ],
+      ]),
     })
   })
 
@@ -1679,12 +1729,12 @@ describe('workflow template authoring service duplicate operation', () => {
       name: 'Agent Development Copy',
     })
     expect(await readWorkflowConfig()).toMatchObject({
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({ id: 'agent-development' }),
         expect.objectContaining({ id: 'agent-development-copy' }),
         expect.objectContaining({ id: 'agent-development-copy-2' }),
         expect.objectContaining({ id: 'agent-development-copy-3' }),
-      ],
+      ]),
     })
   })
 
@@ -1847,15 +1897,22 @@ describe('workflow template authoring service delete operation', () => {
       nextAction: 'none',
       message: 'Workflow template deleted.',
     })
-    expect(result.templates).toEqual([])
     expect(result.templates?.some((template) => template.id === 'deletable-workflow')).toBe(false)
-    expect(await readWorkflowConfig()).toEqual({
+    expect(result.templates?.filter((template) => template.source === 'user')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'efficient-constrained-dev-debug-workflow-v5' }),
+      expect.objectContaining({ id: 'feature-extension-workflow-v8' }),
+      expect.objectContaining({ id: 'debug-repair-workflow-v8' }),
+    ]))
+    expect(result.templates?.some((template) => template.id === 'deletable-workflow')).toBe(false)
+    expect(await readWorkflowConfig()).toMatchObject({
       schemaVersion: 1,
-      templates: [],
+      templates: expect.not.arrayContaining([
+        expect.objectContaining({ id: 'deletable-workflow' }),
+      ]),
     })
   })
 
-  test('rejects builtin template deletes with copy guidance without writing config', async () => {
+  test('rejects unsupported-source template deletes without writing config', async () => {
     const result = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({
         operation: 'delete',
@@ -1881,13 +1938,13 @@ describe('workflow template authoring service delete operation', () => {
           expect.objectContaining({
             source: 'authoring',
             path: '$.selector.source',
-            code: 'WORKFLOW_TEMPLATE_BUILTIN_READONLY',
+            code: 'WORKFLOW_TEMPLATE_INVALID_SOURCE',
             templateId: 'agent-development',
           }),
         ],
       },
-      nextAction: 'copy-builtin-first',
-      message: 'Builtin workflow templates are read-only; duplicate the template before editing.',
+      nextAction: 'inspect-and-retry',
+      message: 'Workflow template source must be user.',
     })
   })
 

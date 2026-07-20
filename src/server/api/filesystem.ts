@@ -25,6 +25,7 @@ type ScoredFilesystemEntry = FilesystemEntry & {
 }
 
 const FILE_SEARCH_TIMEOUT_MS = 10_000
+const VCS_METADATA_DIRECTORIES = new Set(['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'])
 
 const IMAGE_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -261,8 +262,15 @@ async function getProjectSearchFiles(rootPath: string): Promise<string[]> {
 
 function shouldRespectGitignore(): boolean {
   const projectSettings = getInitialSettings()
-  const globalConfig = getGlobalConfig()
-  return projectSettings.respectGitignore ?? globalConfig.respectGitignore ?? true
+  try {
+    const globalConfig = getGlobalConfig()
+    return projectSettings.respectGitignore ?? globalConfig.respectGitignore ?? true
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Config accessed before allowed')) {
+      return projectSettings.respectGitignore ?? true
+    }
+    throw error
+  }
 }
 
 async function getFilesUsingGit(rootPath: string, respectGitignore: boolean): Promise<string[] | null> {
@@ -325,7 +333,16 @@ async function getFilesUsingRipgrep(rootPath: string, respectGitignore: boolean)
     rgArgs.push('--no-ignore-vcs')
   }
 
-  const files = await ripGrep(rgArgs, rootPath, AbortSignal.timeout(FILE_SEARCH_TIMEOUT_MS))
+  let files: string[]
+  try {
+    files = await ripGrep(rgArgs, rootPath, AbortSignal.timeout(FILE_SEARCH_TIMEOUT_MS))
+  } catch (error) {
+    if (!shouldFallbackFromRipgrep(error)) {
+      throw error
+    }
+    files = getFilesUsingNativeTraversal(rootPath)
+  }
+
   let normalized = files
     .map(filePath => normalizeRipgrepPath(filePath, rootPath))
     .filter((filePath): filePath is string => filePath !== null)
@@ -336,6 +353,54 @@ async function getFilesUsingRipgrep(rootPath: string, respectGitignore: boolean)
   }
 
   return normalized
+}
+
+function shouldFallbackFromRipgrep(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const errorCode = (error as NodeJS.ErrnoException).code
+  return (
+    errorCode === 'ENOENT' ||
+    errorCode === 'EACCES' ||
+    errorCode === 'EPERM' ||
+    error.message.includes('ripgrep is not available') ||
+    error.message.includes('ripgrep executable is unavailable')
+  )
+}
+
+function getFilesUsingNativeTraversal(rootPath: string): string[] {
+  const files: string[] = []
+  const pendingDirectories = [rootPath]
+
+  while (pendingDirectories.length > 0) {
+    const currentPath = pendingDirectories.pop()!
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(currentPath, { withFileTypes: true })
+    } catch (error) {
+      if (normalizeComparablePath(currentPath) === normalizeComparablePath(rootPath)) {
+        throw error
+      }
+      continue
+    }
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue
+      if (entry.isDirectory()) {
+        if (!VCS_METADATA_DIRECTORIES.has(entry.name)) {
+          pendingDirectories.push(path.join(currentPath, entry.name))
+        }
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      const relativePath = normalizeRipgrepPath(path.join(currentPath, entry.name), rootPath)
+      if (relativePath !== null) {
+        files.push(relativePath)
+      }
+    }
+  }
+
+  return files
 }
 
 function normalizeGitPath(filePath: string, repoRoot: string, rootPath: string): string | null {

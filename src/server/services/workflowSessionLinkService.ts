@@ -37,6 +37,7 @@ export type LinkedWorkflowSessionCreateRequest = {
   workflow: WorkflowSessionCreateOptions
   contextStrategy: WorkflowLinkContextStrategy
   summaryInstructions?: string
+  summaryContent?: string
   clientRequestId?: string
 }
 
@@ -46,6 +47,7 @@ export type LinkedWorkflowSessionProvenance = {
   sourceMessageCount: number
   contextStrategy: WorkflowLinkContextStrategy
   summaryArtifactId?: string
+  expertMaterialArtifactId?: string
   createdAt: string
   clientRequestId?: string
 }
@@ -78,12 +80,14 @@ export type WorkflowSessionLinkServiceOptions = {
   ) => Promise<WorkflowSummaryCarryoverResult>
   summaryContext?: WorkflowSummaryCarryoverOptions['context']
   inheritMaxCharacters?: number
+  summaryFallbackMaxCharacters?: number
 }
 
 const LINK_CREATE_KEYS = new Set([
   'workflow',
   'contextStrategy',
   'summaryInstructions',
+  'summaryContent',
   'clientRequestId',
 ])
 const CONTEXT_STRATEGIES = new Set<WorkflowLinkContextStrategy>([
@@ -93,6 +97,7 @@ const CONTEXT_STRATEGIES = new Set<WorkflowLinkContextStrategy>([
 ])
 const CARRYOVER_ARTIFACT_ID = 'context-carryover'
 const DEFAULT_INHERIT_MAX_CHARACTERS = 24_000
+const DEFAULT_SUMMARY_FALLBACK_MAX_CHARACTERS = 12_000
 
 class WorkflowSessionLinkError extends ApiError {
   constructor(statusCode: number, code: string, message: string) {
@@ -135,6 +140,14 @@ function normalizeRequest(value: unknown): LinkedWorkflowSessionCreateRequest {
   if (value.summaryInstructions !== undefined && typeof value.summaryInstructions !== 'string') {
     throw workflowLinkError(400, 'WORKFLOW_TEMPLATE_INVALID', 'summaryInstructions must be a string')
   }
+  if (value.summaryContent !== undefined) {
+    if (typeof value.summaryContent !== 'string' || value.summaryContent.trim().length === 0) {
+      throw workflowLinkError(400, 'WORKFLOW_TEMPLATE_INVALID', 'summaryContent must be a non-empty string')
+    }
+    if (value.summaryContent.length > DEFAULT_SUMMARY_FALLBACK_MAX_CHARACTERS) {
+      throw workflowLinkError(400, 'WORKFLOW_TEMPLATE_INVALID', 'summaryContent is too large')
+    }
+  }
 
   if (value.clientRequestId !== undefined) {
     if (typeof value.clientRequestId !== 'string' || value.clientRequestId.trim().length === 0) {
@@ -146,8 +159,63 @@ function normalizeRequest(value: unknown): LinkedWorkflowSessionCreateRequest {
     workflow: value.workflow as WorkflowSessionCreateOptions,
     contextStrategy: strategy as WorkflowLinkContextStrategy,
     ...(typeof value.summaryInstructions === 'string' ? { summaryInstructions: value.summaryInstructions } : {}),
+    ...(typeof value.summaryContent === 'string' ? { summaryContent: value.summaryContent.trim() } : {}),
     ...(typeof value.clientRequestId === 'string' ? { clientRequestId: value.clientRequestId.trim() } : {}),
   }
+}
+
+function hydrateSelectedExpertMaterials(
+  source: Awaited<ReturnType<SessionService['getSession']>> ,
+  request: LinkedWorkflowSessionCreateRequest,
+): LinkedWorkflowSessionCreateRequest {
+  const repoMetadata = request.workflow.repoMetadata
+  if (!isRecord(repoMetadata) || !Array.isArray(repoMetadata.expertMaterials)) return request
+  const requestedRunIds = repoMetadata.expertMaterials.map((value) => {
+    if (typeof value === 'string') return value
+    return isRecord(value) && typeof value.runId === 'string' ? value.runId : ''
+  }).filter(Boolean)
+  if (requestedRunIds.length === 0) return request
+
+  const available = new Map((source?.expert?.materialRefs ?? []).map((ref) => [ref.runId, ref]))
+  const resolved = requestedRunIds.map((runId) => available.get(runId)).filter(Boolean)
+  if (resolved.length !== requestedRunIds.length) {
+    throw workflowLinkError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Selected expert materials are not available from this source session')
+  }
+  return {
+    ...request,
+    workflow: {
+      ...request.workflow,
+      repoMetadata: {
+        ...repoMetadata,
+        expertMaterials: resolved,
+      },
+    },
+  }
+}
+
+function hasSelectedExpertMaterials(request: LinkedWorkflowSessionCreateRequest): boolean {
+  return isRecord(request.workflow.repoMetadata) &&
+    Array.isArray(request.workflow.repoMetadata.expertMaterials) &&
+    request.workflow.repoMetadata.expertMaterials.length > 0
+}
+
+async function exitExpertRuntimeForWorkflowSource(
+  service: SessionService,
+  sourceSessionId: string,
+  source: Awaited<ReturnType<SessionService['getSession']>> ,
+): Promise<void> {
+  if (!source?.expert || source.expert.status === 'exited') return
+  const { runtimeBinding: _runtimeBinding, ...retainedExpertMetadata } = source.expert
+  const now = new Date().toISOString()
+  await service.appendSessionMetadata(sourceSessionId, {
+    workDir: source.workDir || process.cwd(),
+    expert: {
+      ...retainedExpertMetadata,
+      status: 'exited',
+      updatedAt: now,
+      exitedAt: now,
+    },
+  })
 }
 
 function visibleMessageText(message: MessageEntry): string {
@@ -174,6 +242,65 @@ function formatInheritContent(messages: MessageEntry[]): string {
     })
     .filter((line): line is string => !!line)
     .join('\n\n')
+}
+
+function truncateForCarryover(text: string, maxCharacters: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxCharacters) return normalized
+  return `${normalized.slice(0, Math.max(0, maxCharacters - 16)).trimEnd()} ...[truncated]`
+}
+
+function generateLocalSummaryCarryover(
+  messages: MessageEntry[],
+  options: {
+    summaryInstructions?: string
+    maxCharacters: number
+    unavailableReason?: string
+  },
+): { content: string; sourceMessageIds: string[] } {
+  const visible = messages
+    .map((message) => {
+      const text = visibleMessageText(message)
+      if (!text) return null
+      const label = message.type === 'assistant' ? 'Assistant' : message.type === 'system' ? 'System' : 'User'
+      return {
+        id: message.id,
+        text: `${label}: ${truncateForCarryover(text, 1_600)}`,
+      }
+    })
+    .filter((item): item is { id: string; text: string } => !!item)
+
+  const header = [
+    'Local workflow context summary',
+    'Provider-backed summarization was unavailable, so this carryover was generated locally from visible source messages.',
+    options.unavailableReason ? `Unavailable reason: ${truncateForCarryover(options.unavailableReason, 600)}` : '',
+    options.summaryInstructions?.trim()
+      ? `User summary instructions: ${truncateForCarryover(options.summaryInstructions, 800)}`
+      : 'User summary instructions: preserve decisions, constraints, and unresolved questions.',
+    '',
+    'Source message excerpts:',
+  ].filter(Boolean).join('\n')
+
+  if (visible.length === 0) {
+    return {
+      content: `${header}\n- No visible source messages were available.`,
+      sourceMessageIds: [],
+    }
+  }
+
+  const selected: typeof visible = []
+  let used = header.length
+  for (const item of [...visible].reverse()) {
+    const nextLength = item.text.length + 4
+    if (selected.length > 0 && used + nextLength > options.maxCharacters) break
+    selected.unshift(item)
+    used += nextLength
+  }
+
+  return {
+    content: `${header}\n${selected.map((item) => `- ${item.text}`).join('\n')}`,
+    sourceMessageIds: selected.map((item) => item.id),
+  }
 }
 
 function toSummaryMessages(messages: MessageEntry[]): WorkflowSummaryCarryoverOptions['messages'] {
@@ -262,6 +389,7 @@ export class WorkflowSessionLinkService {
   ) => Promise<WorkflowSummaryCarryoverResult>
   private readonly summaryContext?: WorkflowSummaryCarryoverOptions['context']
   private readonly inheritMaxCharacters: number
+  private readonly summaryFallbackMaxCharacters: number
 
   constructor(options: WorkflowSessionLinkServiceOptions = {}) {
     this.sessionService = options.sessionService ?? defaultSessionService
@@ -273,13 +401,14 @@ export class WorkflowSessionLinkService {
     this.summaryCarryover = options.summaryCarryover ?? generateWorkflowSummaryCarryover
     this.summaryContext = options.summaryContext
     this.inheritMaxCharacters = options.inheritMaxCharacters ?? DEFAULT_INHERIT_MAX_CHARACTERS
+    this.summaryFallbackMaxCharacters = options.summaryFallbackMaxCharacters ?? DEFAULT_SUMMARY_FALLBACK_MAX_CHARACTERS
   }
 
   async createLinkedWorkflowSession(
     sourceSessionId: string,
     requestInput: unknown,
   ): Promise<LinkedWorkflowSessionCreateResult> {
-    const request = normalizeRequest(requestInput)
+    let request = normalizeRequest(requestInput)
     const duplicate = request.clientRequestId
       ? await this.findDuplicateLink(sourceSessionId, request.clientRequestId)
       : null
@@ -289,25 +418,53 @@ export class WorkflowSessionLinkService {
     if (!source) {
       throw workflowLinkError(404, 'SESSION_NOT_FOUND', `Session not found: ${sourceSessionId}`)
     }
-    if (source.workflow?.mode === 'workflow' && source.workflow.status !== 'completed') {
+    if (source.workflow?.mode === 'workflow' && source.workflow.status !== 'completed' && source.workflow.status !== 'cancelled') {
       throw workflowLinkError(400, 'WORKFLOW_SOURCE_INVALID', 'Workflow sessions cannot be used as linked workflow sources')
     }
     if (await this.isSourceActive(sourceSessionId)) {
       throw workflowLinkError(409, 'WORKFLOW_SOURCE_ACTIVE', 'Source session is active')
     }
 
+    request = hydrateSelectedExpertMaterials(source, request)
     const workflowTemplate = await this.createService.resolveTemplate(request.workflow)
-    const carryover = await this.prepareCarryover(
-      sourceSessionId,
-      source.messages,
-      request,
-    )
 
+    if (request.contextStrategy === 'inherit') {
+      await exitExpertRuntimeForWorkflowSource(this.sessionService, sourceSessionId, source)
+      const workDir = source.workDir || process.cwd()
+      const workflow = await this.createService.createWorkflowSessionMetadata(
+        sourceSessionId,
+        workDir,
+        workflowTemplate,
+        request.workflow,
+      )
+      const createdAt = new Date().toISOString()
+      const link = {
+        sourceSessionId,
+        targetSessionId: sourceSessionId,
+        sourceMessageCount: source.messageCount,
+        contextStrategy: request.contextStrategy,
+        ...(hasSelectedExpertMaterials(request) ? { expertMaterialArtifactId: 'expert-materials' } : {}),
+        createdAt,
+        ...(request.clientRequestId ? { clientRequestId: request.clientRequestId } : {}),
+      } satisfies LinkedWorkflowSessionCreateResult['link']
+      await this.persistLinkState(sourceSessionId, link, { content: '', sourceMessageIds: [] }, createdAt)
+      const updatedState = await this.stateService.readState(sourceSessionId)
+      return {
+        sessionId: sourceSessionId,
+        workDir,
+        workflow: updatedState.state ? workflowSummaryFromState(updatedState.state) : workflow,
+        link,
+        created: true,
+      }
+    }
+
+    const carryover = await this.prepareCarryover(source.messages, request)
     const target = await this.sessionService.createSession(source.workDir || undefined)
     const workflow = await this.createService.createWorkflowSessionMetadata(
       target.sessionId,
       target.workDir,
       workflowTemplate,
+      request.workflow,
     )
     const createdAt = new Date().toISOString()
     const link = {
@@ -316,6 +473,7 @@ export class WorkflowSessionLinkService {
       sourceMessageCount: source.messageCount,
       contextStrategy: request.contextStrategy,
       ...(carryover.content ? { summaryArtifactId: CARRYOVER_ARTIFACT_ID } : {}),
+      ...(hasSelectedExpertMaterials(request) ? { expertMaterialArtifactId: 'expert-materials' } : {}),
       createdAt,
       ...(request.clientRequestId ? { clientRequestId: request.clientRequestId } : {}),
     } satisfies LinkedWorkflowSessionCreateResult['link']
@@ -332,8 +490,32 @@ export class WorkflowSessionLinkService {
     }
   }
 
-  private async prepareCarryover(
+  async previewSummary(
     sourceSessionId: string,
+    options: { summaryInstructions?: string },
+  ): Promise<{ content: string; sourceMessageCount: number }> {
+    const source = await this.sessionService.getSession(sourceSessionId)
+    if (!source) {
+      throw workflowLinkError(404, 'SESSION_NOT_FOUND', `Session not found: ${sourceSessionId}`)
+    }
+    if (source.workflow?.mode === 'workflow' && source.workflow.status !== 'completed' && source.workflow.status !== 'cancelled') {
+      throw workflowLinkError(400, 'WORKFLOW_SOURCE_INVALID', 'Workflow sessions cannot be used as linked workflow sources')
+    }
+    if (await this.isSourceActive(sourceSessionId)) {
+      throw workflowLinkError(409, 'WORKFLOW_SOURCE_ACTIVE', 'Source session is active')
+    }
+    const carryover = await this.prepareCarryover(source.messages, {
+      workflow: {} as WorkflowSessionCreateOptions,
+      contextStrategy: 'summarize',
+      ...(options.summaryInstructions ? { summaryInstructions: options.summaryInstructions } : {}),
+    })
+    return {
+      content: carryover.content,
+      sourceMessageCount: source.messageCount,
+    }
+  }
+
+  private async prepareCarryover(
     messages: MessageEntry[],
     request: LinkedWorkflowSessionCreateRequest,
   ): Promise<{ content: string; sourceMessageIds: string[] }> {
@@ -356,12 +538,19 @@ export class WorkflowSessionLinkService {
       }
     }
 
+    if (request.summaryContent) {
+      return {
+        content: request.summaryContent,
+        sourceMessageIds: messages.map((message) => message.id),
+      }
+    }
+
     if (!this.summaryContext) {
-      throw workflowLinkError(
-        503,
-        'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE',
-        'Compact-style workflow summary is unavailable: summary runtime context is not configured',
-      )
+      return generateLocalSummaryCarryover(messages, {
+        summaryInstructions: request.summaryInstructions,
+        maxCharacters: this.summaryFallbackMaxCharacters,
+        unavailableReason: 'summary runtime context is not configured',
+      })
     }
 
     try {
@@ -376,13 +565,17 @@ export class WorkflowSessionLinkService {
       }
     } catch (error) {
       if (error instanceof WorkflowSummaryCarryoverError) {
-        throw workflowLinkError(503, error.code, error.message)
+        return generateLocalSummaryCarryover(messages, {
+          summaryInstructions: request.summaryInstructions,
+          maxCharacters: this.summaryFallbackMaxCharacters,
+          unavailableReason: error.message,
+        })
       }
-      throw workflowLinkError(
-        503,
-        'WORKFLOW_CONTEXT_SUMMARY_UNAVAILABLE',
-        `Compact-style workflow summary is unavailable: ${error instanceof Error ? error.message : String(error)}`,
-      )
+      return generateLocalSummaryCarryover(messages, {
+        summaryInstructions: request.summaryInstructions,
+        maxCharacters: this.summaryFallbackMaxCharacters,
+        unavailableReason: `Compact-style workflow summary is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      })
     }
   }
 
@@ -420,8 +613,9 @@ export class WorkflowSessionLinkService {
       carryoverPointer = write.pointer
     }
 
-    const startupPrompt = makeStartupPrompt(link.contextStrategy, carryover.content)
+    const carryoverStartupPrompt = makeStartupPrompt(link.contextStrategy, carryover.content)
     const updated = await this.stateService.updateState(targetSessionId, (state) => {
+      const startupPrompt = [state.startupPrompt, carryoverStartupPrompt].filter(Boolean).join('\n\n') || undefined
       const nextState = {
         ...state,
         link,
@@ -429,7 +623,7 @@ export class WorkflowSessionLinkService {
           ? {
               artifactId: carryoverPointer.artifactId,
               pointer: carryoverPointer,
-              startupPrompt,
+              startupPrompt: startupPrompt!,
             }
           : undefined,
         startupPrompt,

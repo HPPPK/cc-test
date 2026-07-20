@@ -8,12 +8,18 @@ import {
   collectTemplateSkillCatalog,
   WorkflowTemplateRegistryService,
   type WorkflowTemplateRegistryTemplate,
+  type WorkflowTemplateRegistryPhase,
 } from './workflowTemplateRegistryService.js'
 import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
 import type {
+  EffortMode,
+  WorkflowLabel,
+  WorkflowBrainstormingMode,
+  WorkflowArtifactPointer,
   WorkflowPhaseSkillReference,
   WorkflowPhaseSkillSnapshot,
+  WorkflowRoutingMode,
   WorkflowSessionCreateOptions,
   WorkflowSessionMetadata,
   WorkflowSessionState,
@@ -21,11 +27,46 @@ import type {
   WorkflowTemplate,
 } from './workflowTypes.js'
 import {
+  WORKFLOW_EFFORT_MODES,
+  WORKFLOW_BRAINSTORMING_MODES,
+  WORKFLOW_LABELS,
+} from './workflowTypes.js'
+import {
   stateToWorkflowMetadata,
   workflowSummaryFromMetadata,
 } from './workflowSummary.js'
+import {
+  phaseAppliesToRoute,
+  routeWorkflowTask,
+} from './workflowTaskRouter.js'
+import {
+  ensureMandatoryWorkflowArtifacts,
+} from './workflowRuntimeEnforcement.js'
+import {
+  resolveWorkflowSkillBindings,
+} from './workflowSkillRegistry.js'
+import { validateWorkflowWorkspaceRoot } from './workflowWorkspacePolicy.js'
+import {
+  collectWorkflowExpertMaterials,
+  EXPERT_MATERIALS_ARTIFACT_ID,
+  makeWorkflowExpertMaterialsStartupPrompt,
+} from './workflowExpertMaterialService.js'
 
-const WORKFLOW_CREATE_KEYS = new Set(['templateId', 'templateSource', 'initialPhaseId'])
+const WORKFLOW_CREATE_KEYS = new Set([
+  'templateId',
+  'templateSource',
+  'initialPhaseId',
+  'request',
+  'selectedFiles',
+  'repoMetadata',
+  'errors',
+  'logs',
+  'testOutput',
+  'labels',
+  'effort',
+  'routingMode',
+  'brainstormingMode',
+])
 const WORKFLOW_PHASE_SKILL_RESOLVER_VERSION = 'workflow-phase-skill-resolver-v1'
 const BUILTIN_AGENT_DEVELOPMENT_PHASE_SKILLS: Record<string, WorkflowPhaseSkillReference[]> = {
   discussion: [{ name: 'sp-discussion', mode: 'recommended', source: 'managed' }],
@@ -52,6 +93,130 @@ function configDir(): string {
 
 function workflowError(statusCode: number, code: string, message: string): WorkflowSessionCreateError {
   return new WorkflowSessionCreateError(statusCode, code, message)
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isWorkflowLabelArray(value: unknown): value is WorkflowLabel[] {
+  return Array.isArray(value) &&
+    value.every((item) => typeof item === 'string' && (WORKFLOW_LABELS as readonly string[]).includes(item))
+}
+
+function appendArtifactPointer(
+  state: WorkflowSessionState,
+  pointer: WorkflowArtifactPointer,
+): WorkflowSessionState['artifactIndex'] {
+  if (Array.isArray(state.artifactIndex)) {
+    return state.artifactIndex.some((item) => item.artifactId === pointer.artifactId)
+      ? state.artifactIndex
+      : [...state.artifactIndex, pointer]
+  }
+  return {
+    ...(state.artifactIndex ?? {}),
+    [pointer.artifactId]: pointer,
+  }
+}
+
+function appendActivePhaseInputRef(
+  state: WorkflowSessionState,
+  pointer: WorkflowArtifactPointer,
+): WorkflowSessionState['phaseRuns'] {
+  return state.phaseRuns.map((phaseRun) => {
+    if (phaseRun.phaseId !== state.activePhaseId) return phaseRun
+    if (phaseRun.inputArtifactRefs.some((ref) => ref.artifactId === pointer.artifactId)) return phaseRun
+    return {
+      ...phaseRun,
+      inputArtifactRefs: [...phaseRun.inputArtifactRefs, pointer],
+    }
+  })
+}
+
+function shouldRouteWorkflow(
+  template: WorkflowTemplateRegistryTemplate,
+  workflowOptions?: WorkflowSessionCreateOptions,
+): boolean {
+  return template.schemaVersion === 2 ||
+    Boolean(
+      workflowOptions?.request ||
+      workflowOptions?.labels?.length ||
+      workflowOptions?.effort ||
+      workflowOptions?.routingMode,
+    )
+}
+
+function resolveWorkflowRoute(
+  template: WorkflowTemplateRegistryTemplate,
+  workflowOptions?: WorkflowSessionCreateOptions,
+): {
+  labels: WorkflowLabel[]
+  secondaryLabels: WorkflowLabel[]
+  effort?: EffortMode
+  routingMode?: WorkflowRoutingMode
+  brainstormingMode?: WorkflowBrainstormingMode
+  router?: ReturnType<typeof routeWorkflowTask>
+  applicablePhases: WorkflowTemplateRegistryPhase[]
+  skippedPhases: Array<{ phaseId: string; reason: string }>
+} {
+  if (!shouldRouteWorkflow(template, workflowOptions)) {
+    return {
+      labels: [],
+      secondaryLabels: [],
+      applicablePhases: template.phases,
+      skippedPhases: [],
+    }
+  }
+
+  const requestedLabels = Array.isArray(workflowOptions?.labels) ? workflowOptions.labels : []
+  const request = workflowOptions?.request ?? ''
+  const baseRouter = routeWorkflowTask({
+    request,
+    selectedFiles: workflowOptions?.selectedFiles,
+    repoMetadata: workflowOptions?.repoMetadata,
+    errors: workflowOptions?.errors,
+    logs: workflowOptions?.logs,
+    testOutput: workflowOptions?.testOutput,
+    forcedLabel: requestedLabels[0],
+  })
+  const labels = Array.from(new Set([
+    ...(requestedLabels.length ? requestedLabels : [baseRouter.primaryLabel]),
+    ...baseRouter.secondaryLabels,
+  ]))
+  const secondaryLabels = labels.filter((label) => label !== labels[0])
+  const effort = workflowOptions?.effort ?? baseRouter.effort
+  const routingMode = workflowOptions?.routingMode ?? 'manual'
+  const brainstormingMode = workflowOptions?.brainstormingMode ?? 'auto'
+  const skippedPhases: Array<{ phaseId: string; reason: string }> = []
+  const applicablePhases = template.phases.filter((phase) => {
+    const result = phaseAppliesToRoute({
+      phase,
+      labels,
+      effort,
+    })
+    if (!result.applies) {
+      skippedPhases.push({ phaseId: phase.id, reason: result.reason ?? 'Skipped by workflow route.' })
+    }
+    return result.applies
+  })
+  const router = template.routingPolicy?.router
+    ? {
+        ...baseRouter,
+        effort,
+        suggestedPath: applicablePhases.map((phase) => phase.id),
+      }
+    : baseRouter
+
+  return {
+    labels,
+    secondaryLabels,
+    effort,
+    routingMode,
+    brainstormingMode,
+    router,
+    applicablePhases,
+    skippedPhases,
+  }
 }
 
 export class WorkflowSessionCreateService {
@@ -83,9 +248,10 @@ export class WorkflowSessionCreateService {
     if (
       workflow.templateSource !== undefined &&
       workflow.templateSource !== 'builtin' &&
-      workflow.templateSource !== 'user'
+      workflow.templateSource !== 'user' &&
+      workflow.templateSource !== 'pack'
     ) {
-      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateSource must be builtin or user')
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.templateSource must be builtin, user, or pack')
     }
 
     if (
@@ -94,12 +260,44 @@ export class WorkflowSessionCreateService {
     ) {
       throw workflowError(400, 'WORKFLOW_TRANSITION_INVALID', 'workflow.initialPhaseId must be a non-empty string')
     }
+    if (workflow.request !== undefined && typeof workflow.request !== 'string') {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.request must be a string')
+    }
+    if (workflow.selectedFiles !== undefined && !isStringArray(workflow.selectedFiles)) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.selectedFiles must be an array of strings')
+    }
+    if (workflow.labels !== undefined && !isWorkflowLabelArray(workflow.labels)) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.labels contains an unsupported label')
+    }
+    if (workflow.effort !== undefined && !(WORKFLOW_EFFORT_MODES as readonly string[]).includes(workflow.effort)) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.effort must be auto, light, standard, or heavy')
+    }
+    if (
+      workflow.routingMode !== undefined &&
+      workflow.routingMode !== 'manual' &&
+      workflow.routingMode !== 'auto-confirm' &&
+      workflow.routingMode !== 'auto'
+    ) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.routingMode must be manual, auto-confirm, or auto')
+    }
+    if (
+      workflow.brainstormingMode !== undefined &&
+      !(WORKFLOW_BRAINSTORMING_MODES as readonly string[]).includes(workflow.brainstormingMode)
+    ) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'workflow.brainstormingMode must be auto, on, or off')
+    }
 
     const registry = await this.registryService.listTemplates()
-    const candidates = registry.templates.filter((template) =>
+    let candidates = registry.templates.filter((template) =>
       template.id === workflow.templateId &&
       (workflow.templateSource === undefined || template.source === workflow.templateSource)
     )
+
+    if (candidates.length === 0 && workflow.templateSource === 'builtin') {
+      candidates = registry.templates.filter((template) =>
+        template.id === workflow.templateId && (template.source === 'user' || template.source === 'pack')
+      )
+    }
 
     if (candidates.length === 0) {
       throw workflowError(400, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
@@ -124,18 +322,28 @@ export class WorkflowSessionCreateService {
     sessionId: string,
     workDir: string,
     registryTemplate: WorkflowTemplateRegistryTemplate,
+    workflowOptions?: WorkflowSessionCreateOptions,
   ): Promise<WorkflowSessionSummary> {
+    const workspaceValidation = validateWorkflowWorkspaceRoot(workDir)
+    if (!workspaceValidation.valid) {
+      throw workflowError(400, 'WORKFLOW_WORKSPACE_INVALID', workspaceValidation.message)
+    }
+
     const now = new Date().toISOString()
-    const templateSnapshot = this.toWorkflowTemplate(registryTemplate)
-    const templateSnapshotId = `${registryTemplate.id}-v${registryTemplate.version}`
-    const phaseSkillSnapshots = await this.createPhaseSkillSnapshots(templateSnapshot, now)
-    const phases = registryTemplate.phases.map((phase, index) => ({
+    const route = resolveWorkflowRoute(registryTemplate, workflowOptions)
+    const templatePhases = route.applicablePhases.length ? route.applicablePhases : registryTemplate.phases
+    const runtimeTemplate = this.toWorkflowTemplate(registryTemplate, templatePhases)
+    const templateVersionId = `${registryTemplate.id}-v${registryTemplate.version}`
+    const phaseSkillSnapshots = await this.createPhaseSkillSnapshots(runtimeTemplate, now)
+    const phases = templatePhases.map((phase, index) => ({
       id: phase.id,
+      label: phase.name,
+      transitionAuthority: phase.transition.authority,
       index,
       status: 'created' as const,
       artifactPointers: [],
     }))
-    const phaseRuns = registryTemplate.phases.map((phase, index) => ({
+    const phaseRuns = templatePhases.map((phase, index) => ({
       phaseId: phase.id,
       index,
       status: 'created' as const,
@@ -153,18 +361,24 @@ export class WorkflowSessionCreateService {
       skillProvenance: [],
       blockedReason: null,
     }))
-    const state = {
+    const firstRunId = `${sessionId}-run-1`
+    const installedSkillIds = await installedWorkflowSkillIdsForCreate()
+    const initialSkillBindingStatus = resolveWorkflowSkillBindings(runtimeTemplate.phases[0]?.skillBindings, {
+      installedSkillIds,
+      allowFallbackContracts: runtimeTemplate.source !== 'pack',
+    })
+    const initialState = {
       schemaVersion: 1,
       sessionId,
       mode: 'workflow',
+      templateSnapshot: runtimeTemplate,
       template: {
         id: registryTemplate.id,
         version: registryTemplate.version,
         source: registryTemplate.source,
-        snapshotId: templateSnapshotId,
+        snapshotId: templateVersionId,
         sourceState: 'current',
       },
-      templateSnapshot,
       templateIdentity: {
         id: registryTemplate.id,
         source: registryTemplate.source,
@@ -174,7 +388,17 @@ export class WorkflowSessionCreateService {
       sourceTemplateStatus: 'current',
       status: 'created',
       workflowStatus: 'created',
-      activePhaseId: registryTemplate.phases[0]?.id ?? null,
+      runStatus: 'draft',
+      activePhaseId: templatePhases[0]?.id ?? null,
+      workspaceRoot: workDir,
+      activeWorkflowRunId: firstRunId,
+      ...(route.labels.length ? { labels: route.labels } : {}),
+      ...(route.secondaryLabels.length ? { secondaryLabels: route.secondaryLabels } : {}),
+      ...(route.effort ? { effort: route.effort } : {}),
+      ...(route.routingMode ? { routingMode: route.routingMode } : {}),
+      ...(route.brainstormingMode ? { brainstormingMode: route.brainstormingMode } : {}),
+      ...(route.router ? { router: route.router } : {}),
+      ...(route.skippedPhases.length ? { skippedPhases: route.skippedPhases } : {}),
       phases,
       phaseRuns,
       transitionHistory: [],
@@ -186,15 +410,86 @@ export class WorkflowSessionCreateService {
       updatedAt: now,
       pendingConfirmation: null,
       ...(phaseSkillSnapshots.length ? { phaseSkillSnapshots } : {}),
+      ...(initialSkillBindingStatus.length ? { skillBindingStatus: initialSkillBindingStatus } : {}),
+      workflowRuns: [
+        {
+          id: firstRunId,
+          templateId: registryTemplate.id,
+          status: 'draft',
+          ...(route.labels[0] ? { primaryLabel: route.labels[0] } : {}),
+          ...(route.secondaryLabels.length ? { secondaryLabels: route.secondaryLabels } : {}),
+          ...(route.effort ? { effort: route.effort } : {}),
+          workspaceRoot: workDir,
+          currentPhaseId: templatePhases[0]?.id ?? undefined,
+          artifacts: [],
+          history: [
+            {
+              type: 'created',
+              at: now,
+              summary: 'Workflow run created.',
+            },
+          ],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
     } satisfies WorkflowSessionState
+    const state = ensureMandatoryWorkflowArtifacts(initialState, {
+      request: workflowOptions?.request ?? '',
+      selectedFiles: workflowOptions?.selectedFiles,
+      repoMetadata: workflowOptions?.repoMetadata,
+      errors: workflowOptions?.errors,
+      logs: workflowOptions?.logs,
+      testOutput: workflowOptions?.testOutput,
+      now,
+    })
 
-    const { pointer } = await this.stateService.writeState(sessionId, state)
-    const metadata = stateToWorkflowMetadata(state, pointer)
+    let persisted = await this.stateService.writeState(sessionId, state)
+    const expertMaterials = await collectWorkflowExpertMaterials(
+      workDir,
+      workflowOptions?.repoMetadata,
+    ).catch((error) => {
+      throw workflowError(
+        400,
+        'WORKFLOW_TEMPLATE_INVALID',
+        error instanceof Error ? error.message : String(error),
+      )
+    })
+
+    if (expertMaterials) {
+      const artifact = await this.stateService.writePhaseArtifact(sessionId, {
+        schemaVersion: 1,
+        sessionId,
+        phaseId: 'startup',
+        artifactId: EXPERT_MATERIALS_ARTIFACT_ID,
+        lifecycleStatus: 'accepted',
+        type: 'text-summary',
+        createdAt: now,
+        title: 'Selected expert materials',
+        content: expertMaterials,
+        provenance: {
+          messageId: 'expert-materials:' + expertMaterials.materials.map((material) => material.runId).join(','),
+        },
+      })
+      const expertStartupPrompt = makeWorkflowExpertMaterialsStartupPrompt(expertMaterials)
+      persisted = await this.stateService.updateState(sessionId, (current) => ({
+        ...current,
+        startupPrompt: [current.startupPrompt, expertStartupPrompt].filter(Boolean).join('\n\n'),
+        artifactIndex: appendArtifactPointer(current, artifact.pointer),
+        phaseRuns: appendActivePhaseInputRef(current, artifact.pointer),
+        updatedAt: now,
+      }))
+    }
+
+    const metadata = stateToWorkflowMetadata(persisted.state, persisted.pointer)
     await this.appendWorkflowMetadata(sessionId, workDir, metadata)
     return workflowSummaryFromMetadata(metadata)
   }
 
-  private toWorkflowTemplate(template: WorkflowTemplateRegistryTemplate): WorkflowTemplate {
+  private toWorkflowTemplate(
+    template: WorkflowTemplateRegistryTemplate,
+    phases: WorkflowTemplateRegistryPhase[] = template.phases,
+  ): WorkflowTemplate {
     return {
       schemaVersion: template.schemaVersion,
       id: template.id,
@@ -202,14 +497,21 @@ export class WorkflowSessionCreateService {
       version: template.version,
       displayName: template.name,
       description: template.description,
-      phases: template.phases.map((phase) => {
+      ...(template.labels ? { labels: template.labels } : {}),
+      ...(template.routingPolicy ? { routingPolicy: template.routingPolicy } : {}),
+      ...(template.stopConditions ? { stopConditions: template.stopConditions } : {}),
+      phases: phases.map((phase) => {
         const skills = this.phaseSkillReferences(template, phase.id, phase.skills)
         return {
           id: phase.id,
           label: phase.name,
           instructions: phase.instructions,
+          ...(phase.appliesTo ? { appliesTo: phase.appliesTo } : {}),
+          ...(phase.skipWhen ? { skipWhen: phase.skipWhen } : {}),
+          ...(phase.modePolicy ? { modePolicy: phase.modePolicy } : {}),
           requestedModel: typeof phase.requestedModel === 'string' ? phase.requestedModel : null,
           skills,
+          ...(phase.skillBindings ? { skillBindings: phase.skillBindings } : {}),
           skillDeclarations: phase.skills.map((skill) => ({
             ...skill,
             source: 'template',
@@ -223,11 +525,21 @@ export class WorkflowSessionCreateService {
           completionCriteria: phase.completionCriteria,
           transitionAuthority: phase.transition.authority,
           ...(phase.actionPolicy ? { actionPolicy: phase.actionPolicy } : {}),
+          ...(phase.toolPolicy ? { toolPolicy: phase.toolPolicy } : {}),
+          ...(phase.intent ? { intent: phase.intent } : {}),
+          ...(phase.contract ? { contract: phase.contract } : {}),
+          ...(phase.evidencePolicy ? { evidencePolicy: phase.evidencePolicy } : {}),
           ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
+          ...(phase.runtimeContract ? { runtimeContract: phase.runtimeContract } : {}),
+          ...(phase.outputArtifacts ? { outputArtifacts: phase.outputArtifacts } : {}),
         }
       }),
       registryKey: `${template.source}:${template.id}`,
       ...(template.contentHash ? { contentHash: template.contentHash } : {}),
+      ...(typeof template.packId === 'string' ? { packId: template.packId } : {}),
+      ...(typeof template.packName === 'string' ? { packName: template.packName } : {}),
+      ...(typeof template.packVersion === 'string' ? { packVersion: template.packVersion } : {}),
+      ...(typeof template.packEntrypoint === 'string' ? { packEntrypoint: template.packEntrypoint } : {}),
     }
   }
 
@@ -257,6 +569,7 @@ export class WorkflowSessionCreateService {
         phaseId: phase.id,
         references,
         catalog,
+        requiredPackId: template.source === 'pack' ? template.packId : undefined,
         checkedAt: snapshottedAt,
       })
       snapshots.push({
@@ -291,4 +604,16 @@ export class WorkflowSessionCreateService {
       'utf-8',
     )
   }
+}
+
+
+async function installedWorkflowSkillIdsForCreate(): Promise<Set<string>> {
+  const catalog = await collectTemplateSkillCatalog()
+  const ids = new Set<string>()
+  for (const entry of catalog) {
+    ids.add(entry.name)
+    if (entry.referenceId) ids.add(entry.referenceId)
+    for (const alias of entry.aliases ?? []) ids.add(alias)
+  }
+  return ids
 }

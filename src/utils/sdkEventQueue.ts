@@ -3,6 +3,19 @@ import { randomUUID } from 'crypto'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import type { SdkWorkflowProgress } from '../types/tools.js'
 
+export type SdkTaskLifecycleStatus = 'queued' | 'running' | 'blocked' | 'completed' | 'failed' | 'stopped'
+
+export type SdkWorkflowTaskEventMetadata = {
+  status?: Extract<SdkTaskLifecycleStatus, 'queued' | 'running' | 'blocked'>
+  workflow_task_id?: string
+  execution_mode?: 'read' | 'write'
+  write_scopes?: string[]
+  blocked_reason?: string
+  worktree_isolation?: boolean
+  worktree_path?: string
+  worktree_branch?: string
+}
+
 type TaskStartedEvent = {
   type: 'system'
   subtype: 'task_started'
@@ -12,7 +25,7 @@ type TaskStartedEvent = {
   task_type?: string
   workflow_name?: string
   prompt?: string
-}
+} & SdkWorkflowTaskEventMetadata
 
 type TaskProgressEvent = {
   type: 'system'
@@ -31,7 +44,7 @@ type TaskProgressEvent = {
   // `${type}:${index}` then group by phaseIndex to rebuild the phase tree,
   // same fold as collectFromEvents + groupByPhase in PhaseProgress.tsx.
   workflow_progress?: SdkWorkflowProgress[]
-}
+} & SdkWorkflowTaskEventMetadata
 
 // Emitted when a foreground agent completes without being backgrounded.
 // Drained by drainSdkEvents() directly into the output stream — does NOT
@@ -52,6 +65,8 @@ type TaskNotificationSdkEvent = {
     tool_uses: number
     duration_ms: number
   }
+  worktree_path?: string
+  worktree_branch?: string
 }
 
 // Mirrors notifySessionStateChanged. The CCR bridge already receives this
@@ -120,6 +135,8 @@ export function emitTaskTerminatedSdk(
     summary?: string
     outputFile?: string
     usage?: { total_tokens: number; tool_uses: number; duration_ms: number }
+    worktreePath?: string
+    worktreeBranch?: string
   },
 ): void {
   enqueueSdkEvent({
@@ -131,5 +148,7 @@ export function emitTaskTerminatedSdk(
     output_file: opts?.outputFile ?? '',
     summary: opts?.summary ?? '',
     usage: opts?.usage,
+    worktree_path: opts?.worktreePath,
+    worktree_branch: opts?.worktreeBranch,
   })
 }

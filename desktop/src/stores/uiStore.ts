@@ -35,6 +35,7 @@ export type SettingsTab =
   | 'general'
   | 'h5Access'
   | 'workflows'
+  | 'experts'
   | 'adapters'
   | 'terminal'
   | 'environment'

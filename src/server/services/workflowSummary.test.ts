@@ -58,12 +58,16 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
     phases: [
       {
         id: 'requirements-clarification',
+        label: 'Requirements Clarification',
+        transitionAuthority: 'user-confirmation',
         index: 0,
         status: 'pending-confirmation',
         artifactPointers: [],
       },
       {
         id: 'technical-design',
+        label: 'Technical Design',
+        transitionAuthority: 'user-confirmation',
         index: 1,
         status: 'created',
         artifactPointers: [],
@@ -75,7 +79,7 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
     finalReportRef: null,
     stateVersion: 2,
     revision: 2,
-    createdAt: now,
+    createdAt: '2026-05-20T00:00:00.000Z',
     updatedAt: now,
     pendingConfirmation: {
       confirmationId: 'confirm-1',
@@ -143,6 +147,40 @@ describe('workflowSummaryFromState', () => {
       activePhaseId: 'technical-design',
       activePhaseIndex: 1,
       pendingConfirmation: false,
+    })
+  })
+
+  test('projects a pending non-linear route target for Desktop confirmation cards', () => {
+    const state = makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      activePhaseId: 'technical-design',
+      pendingRoute: {
+        routeId: 'route-stage-4',
+        phaseId: 'technical-design',
+        fromPhaseId: 'technical-design',
+        targetPhaseId: 'delegate-implement',
+        approvedTargetPhaseId: 'delegate-implement',
+        intent: 'jump_to_phase',
+        rationale: 'Return to implementation for a repair.',
+        evidence: [],
+        createdAt: '2026-05-20T00:00:00.000Z',
+        requiresConfirmation: true,
+        status: 'pending',
+      },
+      phases: [
+        { id: 'requirements-clarification', index: 0, status: 'completed', artifactPointers: [] },
+        { id: 'technical-design', index: 1, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'delegate-implement', label: '分批实现与审查', index: 3, status: 'created', artifactPointers: [] },
+      ],
+    })
+
+    expect(workflowSummaryFromState(state)).toMatchObject({
+      pendingTargetPhaseId: 'delegate-implement',
+      pendingTargetPhaseIndex: 3,
+      pendingTargetPhaseLabel: '分批实现与审查',
+      routeReason: 'Return to implementation for a repair.',
+      requiresConfirmation: true,
     })
   })
 

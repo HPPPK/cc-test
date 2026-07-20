@@ -62,6 +62,8 @@ vi.mock('../lib/desktopNotifications', () => ({
 }))
 
 vi.mock('../api/websocket', () => ({
+  createWorkflowTransitionId: (phaseId: string, stateVersion: number | undefined, action: string) =>
+    `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`,
   wsManager: {
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -645,6 +647,61 @@ describe('chatStore history mapping', () => {
     ])
   })
 
+  it('strips workflow runtime prompt metadata from restored user messages', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'workflow-user-1',
+        type: 'user',
+        timestamp: '2026-04-06T00:00:00.000Z',
+        content: `Workflow mode
+
+Active phase: ship-handoff
+
+Phase instructions: 自动总结整个过程：任务类型、做了什么、文件列表、验证结果、如何使用。直接输出总结。
+
+Workflow-generated question policy
+Every workflow-generated question must use AskUserQuestion or the existing structured question UI.
+
+Required artifacts: none
+
+completion criteria: {"type":"manual-checklist","description":"工作流已完成。"}
+
+Actual model: deepseek-v4-flash
+
+Continue automatically with the newly confirmed workflow phase: ship-handoff.
+
+Workflow model provenance
+Requested model: (none)
+Actual model: deepseek-v4-flash
+
+Workflow-only tools
+Use submit_phase_completion only when the active workflow phase is ready.`,
+      },
+      {
+        id: 'workflow-user-2',
+        type: 'user',
+        timestamp: '2026-04-06T00:00:01.000Z',
+        content: `Workflow mode
+
+Active phase: discovery
+
+Phase instructions: collect inputs
+
+我的真实回复`,
+      },
+    ]
+
+    const mapped = mapHistoryMessagesToUiMessages(messages)
+
+    expect(mapped).toMatchObject([
+      {
+        id: 'workflow-user-2',
+        type: 'user_text',
+        content: '我的真实回复',
+      },
+    ])
+  })
+
   it('restores CLI file mentions as visible attachment chips from transcript history', () => {
     const messages: MessageEntry[] = [
       {
@@ -698,7 +755,7 @@ describe('chatStore history mapping', () => {
 
     useChatStore.getState().sendMessage(
       TEST_SESSION_ID,
-      'Referenced workspace context:\n@"src/App.tsx:L4":\nComment: tighten this\n```tsx\nconst value = 1\n```',
+      'Referenced workspace context:\nLocation: src/App.tsx:L4\nComment: tighten this\n```tsx\nconst value = 1\n```',
       [{
         type: 'file',
         name: 'App.tsx',
@@ -726,7 +783,7 @@ describe('chatStore history mapping', () => {
       {
         type: 'user_text',
         content: '改这里',
-        modelContent: '@"/repo/src/App.tsx" Referenced workspace context:\n@"src/App.tsx:L4":\nComment: tighten this\n```tsx\nconst value = 1\n```',
+        modelContent: '@"/repo/src/App.tsx" Referenced workspace context:\nLocation: src/App.tsx:L4\nComment: tighten this\n```tsx\nconst value = 1\n```',
         attachments: [{
           type: 'file',
           name: 'App.tsx',
@@ -742,7 +799,7 @@ describe('chatStore history mapping', () => {
       TEST_SESSION_ID,
       {
         type: 'user_message',
-        content: 'Referenced workspace context:\n@"src/App.tsx:L4":\nComment: tighten this\n```tsx\nconst value = 1\n```',
+        content: 'Referenced workspace context:\nLocation: src/App.tsx:L4\nComment: tighten this\n```tsx\nconst value = 1\n```',
         attachments: [{
           type: 'file',
           name: 'App.tsx',
@@ -754,6 +811,32 @@ describe('chatStore history mapping', () => {
         }],
       },
     )
+  })
+
+  it('does not restore workspace reference prompts as visible user text', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'workspace-reference-only',
+        type: 'user',
+        timestamp: '2026-04-06T00:00:00.000Z',
+        content: 'Referenced workspace context:\nLocation: src/App.tsx:L4\nComment: tighten this\n```tsx\nconst value = 1\n```',
+      },
+    ]
+
+    expect(mapHistoryMessagesToUiMessages(messages)).toEqual([])
+  })
+
+  it('does not restore chat reference prompts as visible user text', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'chat-reference-only',
+        type: 'user',
+        timestamp: '2026-04-06T00:00:00.000Z',
+        content: 'Referenced chat context:\nAssistant message:\n```\nUse this detail later.\n```',
+      },
+    ]
+
+    expect(mapHistoryMessagesToUiMessages(messages)).toEqual([])
   })
 
   it('stores server-materialized attachment prefixes for rewind matching', () => {
@@ -1102,6 +1185,133 @@ describe('chatStore history mapping', () => {
     })
   })
 
+  it('deduplicates a pending workflow transition and clears the lock after stale errors or a newer workflow state', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+    }]
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    const command = {
+      phaseId: 'technical-design',
+      action: 'confirm' as const,
+      stateVersion: 7,
+      transitionId: 'workflow-transition:technical-design:7:confirm',
+    }
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: command,
+      workflowTransitionError: null,
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'error',
+      code: 'WORKFLOW_STATE_STALE',
+      message: 'Workflow state version is stale.',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: '工作流状态已更新，请根据最新状态重新选择操作。',
+    })
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+    expect(sendMock).toHaveBeenCalledTimes(2)
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'pending-confirmation',
+        activePhaseId: 'technical-design',
+        activePhaseIndex: 1,
+        phaseCount: 5,
+        stateVersion: 8,
+        pendingConfirmation: true,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: null,
+    })
+  })
+
+  it('unlocks a workflow confirmation if its server acknowledgement never arrives', () => {
+    vi.useFakeTimers()
+    try {
+      useChatStore.setState({
+        sessions: { [TEST_SESSION_ID]: makeSession() },
+      })
+      const command = {
+        phaseId: 'delegate-implement',
+        action: 'confirm' as const,
+        stateVersion: 25,
+      }
+
+      useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).not.toBeNull()
+
+      vi.advanceTimersByTime(15_000)
+
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+        pendingWorkflowTransition: null,
+        workflowTransitionError: expect.stringContaining('未收到服务端结果'),
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends the UI language only for active workflow sessions', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 0,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      workflow: { mode: 'workflow' } as WorkflowSessionSummary,
+    }]
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, '继续当前工作流')
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'user_message',
+      content: '继续当前工作流',
+      attachments: undefined,
+      workflowLanguage: 'zh',
+    })
+  })
+
   it('settles busy chat state without auto-submitting queued prompts when workflow_state reaches completed', () => {
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,
@@ -1179,6 +1389,7 @@ describe('chatStore history mapping', () => {
       type: 'user_message',
       content: 'start a follow-up workflow',
       attachments: undefined,
+      workflowLanguage: 'zh',
     })
   })
 
@@ -1693,6 +1904,126 @@ describe('chatStore history mapping', () => {
     vi.useRealTimers()
   })
 
+  it('tracks workflow scheduled agent queued, running, blocked, and worktree handoff metadata', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-06T00:00:01.000Z'))
+
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'task_started',
+      data: {
+        task_id: 'agent-task-queued',
+        tool_use_id: 'agent-tool-queued',
+        status: 'queued',
+        description: 'Implement workflow UI handoff',
+        task_type: 'local_agent',
+        workflow_task_id: 'ui-handoff',
+        execution_mode: 'write',
+        write_scopes: ['desktop/src'],
+        worktree_isolation: true,
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.backgroundAgentTasks?.['agent-task-queued']).toMatchObject({
+      status: 'queued',
+      workflowTaskId: 'ui-handoff',
+      executionMode: 'write',
+      writeScopes: ['desktop/src'],
+      worktreeIsolation: true,
+    })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([{
+      type: 'background_task',
+      task: {
+        taskId: 'agent-task-queued',
+        status: 'queued',
+        workflowTaskId: 'ui-handoff',
+      },
+    }])
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'task_progress',
+      data: {
+        task_id: 'agent-task-queued',
+        tool_use_id: 'agent-tool-queued',
+        status: 'running',
+        description: 'Implement workflow UI handoff',
+        workflow_task_id: 'ui-handoff',
+        execution_mode: 'write',
+        worktree_isolation: true,
+        usage: { total_tokens: 42, tool_uses: 1, duration_ms: 2000 },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.backgroundAgentTasks?.['agent-task-queued']).toMatchObject({
+      status: 'running',
+      workflowTaskId: 'ui-handoff',
+      executionMode: 'write',
+      worktreeIsolation: true,
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'task_progress',
+      data: {
+        task_id: 'agent-task-queued',
+        tool_use_id: 'agent-tool-queued',
+        status: 'blocked',
+        description: 'Implement workflow UI handoff',
+        workflow_task_id: 'ui-handoff',
+        blocked_reason: 'depends on failed task api-contract',
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.backgroundAgentTasks?.['agent-task-queued']).toMatchObject({
+      status: 'blocked',
+      blockedReason: 'depends on failed task api-contract',
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'task_notification',
+      data: {
+        task_id: 'agent-task-queued',
+        tool_use_id: 'agent-tool-queued',
+        status: 'failed',
+        summary: 'Workflow task ui-handoff was blocked: depends on failed task api-contract',
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.backgroundAgentTasks?.['agent-task-queued']).toMatchObject({
+      status: 'blocked',
+      summary: 'Workflow task ui-handoff was blocked: depends on failed task api-contract',
+      blockedReason: 'depends on failed task api-contract',
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'task_notification',
+      data: {
+        task_id: 'agent-task-queued',
+        tool_use_id: 'agent-tool-queued',
+        status: 'completed',
+        summary: 'Implemented handoff display.',
+        worktree_path: 'C:/repo/.claude/worktrees/workflow-ui',
+        worktree_branch: 'workflow-ui-handoff',
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.backgroundAgentTasks?.['agent-task-queued']).toMatchObject({
+      status: 'completed',
+      worktreePath: 'C:/repo/.claude/worktrees/workflow-ui',
+      worktreeBranch: 'workflow-ui-handoff',
+    })
+    vi.useRealTimers()
+  })
+
   it('keeps non-agent background tasks visible and updates the existing transcript card', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-06T00:00:01.000Z'))
@@ -1900,6 +2231,45 @@ describe('chatStore history mapping', () => {
 
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
       { type: 'system', content: 'Context compacted' },
+    ])
+  })
+
+  it('renders workflow welcome notifications as pre-start system messages', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        }),
+      },
+    })
+
+    const message = 'Workflow is ready. Tell me what you want to do to start the first phase.'
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_welcome',
+      message,
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'system',
+        content: message,
+      },
     ])
   })
 

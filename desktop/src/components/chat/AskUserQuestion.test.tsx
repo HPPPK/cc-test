@@ -22,6 +22,10 @@ vi.mock('../../api/sessions', () => ({
   },
 }))
 
+vi.mock('../controls/PermissionModeSelector', () => ({
+  PermissionModeSelector: () => <button type="button">Permission mode</button>,
+}))
+
 import { AskUserQuestion } from './AskUserQuestion'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -104,6 +108,162 @@ describe('AskUserQuestion', () => {
         ],
         answers: {
           'Should we persist data?': 'No',
+        },
+      },
+    })
+  })
+
+  it('sends workflow choice actions as structured runtime data instead of ordinary chat text', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{
+            id: 'confirm_next_action',
+            prompt: '进入下一阶段？',
+            choices: [{
+              id: 'enter_next_stage',
+              label: '进入下一阶段',
+              action: 'advance_phase',
+              targetPhaseId: 'feature-implement',
+            }, { id: 'stay', label: '返回修改当前阶段', action: 'return_to_phase' }],
+          }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^进入下一阶段$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
+      type: 'permission_response',
+      updatedInput: expect.objectContaining({
+        answers: { '进入下一阶段？': '进入下一阶段' },
+        workflowChoiceActions: [{
+          questionId: 'confirm_next_action',
+          choiceId: 'enter_next_stage',
+          action: 'advance_phase',
+          targetPhaseId: 'feature-implement',
+        }],
+      }),
+    }))
+  })
+
+  it('serializes a structured jump route by stable option id and preserves the route action', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{
+            id: 'route_after_validation',
+            prompt: '发现问题后要怎么做？',
+            choices: [
+              {
+                id: 'return-to-stage-4',
+                label: '返回 Stage 4 修复该问题',
+                action: {
+                  kind: 'workflow-route',
+                  intent: 'jump_to_phase',
+                  targetPhaseId: 'delegate-implement',
+                },
+              },
+              { id: 'continue-stage-7', label: '继续下一阶段' },
+            ],
+          }],
+        }}
+      />,
+    )
+
+    const routeOption = screen.getByRole('button', { name: /^返回 Stage 4 修复该问题$/ })
+    fireEvent.click(routeOption)
+    expect(routeOption.querySelector('svg')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
+      type: 'permission_response',
+      updatedInput: expect.objectContaining({
+        answers: { '发现问题后要怎么做？': '返回 Stage 4 修复该问题' },
+        workflowChoiceActions: [{
+          questionId: 'route_after_validation',
+          choiceId: 'return-to-stage-4',
+          action: {
+            kind: 'workflow-route',
+            intent: 'jump_to_phase',
+            targetPhaseId: 'delegate-implement',
+          },
+        }],
+      }),
+    }))
+  })
+
+  it('shows the real permission mode control when a workflow asks for tool access', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [
+            {
+              question: '当前会话中缺少创建文件的工具权限，无法自动写入项目代码。如何继续？',
+              options: [
+                { label: '请我手动创建目录和文件 (Recommended)' },
+                { label: '授权终端访问权限', description: '如果可能，授权我使用终端来创建目录结构和文件' },
+                { label: '暂停，稍后继续' },
+              ],
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/choose permissions in the selector/i)).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /permission mode/i }).length).toBeGreaterThan(0)
+    expect((screen.getByRole('button', { name: /授权终端访问权限/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/use the permission selector above/i)).toBeTruthy()
+  })
+
+  it('does not submit fake permission grant answers as workflow authorization', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [
+            {
+              question: '当前会话缺少文件/终端权限。如何继续？',
+              options: [
+                { label: '授予文件/终端权限 (Recommended)' },
+                { label: '请我手动创建目录和文件' },
+                { label: '暂停，稍后继续' },
+              ],
+            },
+          ],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /授予文件\/终端权限/i }))
+    expect((screen.getByRole('button', { name: /submit/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(sendMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /请我手动创建目录和文件/i }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
+      type: 'permission_response',
+      requestId: 'perm-1',
+      allowed: true,
+      updatedInput: {
+        questions: [
+          {
+            question: '当前会话缺少文件/终端权限。如何继续？',
+            options: [
+              { label: '授予文件/终端权限 (Recommended)' },
+              { label: '请我手动创建目录和文件' },
+              { label: '暂停，稍后继续' },
+            ],
+          },
+        ],
+        answers: {
+          '当前会话缺少文件/终端权限。如何继续？': '请我手动创建目录和文件',
         },
       },
     })
@@ -397,6 +557,50 @@ describe('AskUserQuestion', () => {
     })
   })
 
+  it('submits an answered question without requiring every question tab', () => {
+    const input = {
+      questions: [
+        {
+          header: 'Scope',
+          question: 'What should we include?',
+          options: [{ label: 'Everything' }, { label: 'Only the current issue' }],
+        },
+        {
+          header: 'Timing',
+          question: 'When should we start?',
+          options: [{ label: 'Now' }, { label: 'Later' }],
+        },
+      ],
+    }
+
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={input}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+      target: { value: 'Please only fix the current issue and keep the workflow unchanged.' },
+    })
+
+    const submitButton = screen.getByRole('button', { name: /submit/i })
+    expect((submitButton as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.click(submitButton)
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
+      type: 'permission_response',
+      requestId: 'perm-1',
+      allowed: true,
+      updatedInput: {
+        ...input,
+        answers: {
+          'What should we include?': 'Please only fix the current issue and keep the workflow unchanged.',
+        },
+      },
+    })
+  })
   it('uses a multiline custom response box and submits it with Ctrl+Enter', () => {
     render(
       <AskUserQuestion

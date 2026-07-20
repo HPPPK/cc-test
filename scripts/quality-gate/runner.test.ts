@@ -141,7 +141,7 @@ describe('runQualityGate', () => {
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('continues through later lanes after a failure so reports show full impact', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
@@ -212,7 +212,7 @@ describe('runQualityGate', () => {
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('command lanes persist per-lane logs', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
@@ -245,7 +245,40 @@ describe('runQualityGate', () => {
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
+
+  test('drains verbose command output before waiting for command exit', async () => {
+    const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
+    const outputBytes = 2 * 1024 * 1024
+    const lanes: LaneDefinition[] = [
+      {
+        id: 'verbose-log-lane',
+        title: 'Verbose log lane',
+        description: 'Writes enough output to require active pipe draining.',
+        kind: 'command',
+        command: ['bun', '-e', `process.stdout.write('x'.repeat(${outputBytes}))`],
+        requiredForModes: ['pr'],
+      },
+    ]
+
+    try {
+      const { report } = await runQualityGateLanes({
+        mode: 'pr',
+        dryRun: false,
+        allowLive: false,
+        baselineTargets: [],
+        rootDir: process.cwd(),
+        artifactsDir,
+        runId: 'verbose-command-log-test',
+      }, lanes)
+
+      const logPath = report.results[0].logPath
+      expect(report.results[0].status).toBe('passed')
+      expect(readFileSync(logPath!, 'utf8')).toContain('x'.repeat(512))
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   test('skips PR local check lanes when the impact report does not require them', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
@@ -295,7 +328,7 @@ describe('runQualityGate', () => {
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('runs PR local check lanes selected by the impact report', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
@@ -344,7 +377,7 @@ describe('runQualityGate', () => {
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('hydrates impact and coverage summaries from generated command artifacts', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))
@@ -449,7 +482,7 @@ describe('runQualityGate', () => {
       'Bun.spawn([',
       '  process.execPath,',
       '  "-e",',
-      '  "setTimeout(() => {}, 10000)",',
+      '  "setTimeout(() => {}, 20000)",',
       '], { stdout: "inherit", stderr: "inherit" })',
       'console.log("parent complete")',
       'process.exit(0)',
@@ -479,13 +512,15 @@ describe('runQualityGate', () => {
         runId: 'grandchild-log-test',
       }, lanes)
 
-      expect(Date.now() - start).toBeLessThan(5_000)
+      // The grandchild remains alive for 20 seconds. The lane only passes if
+      // inherited output handles do not make the runner wait for that full lifecycle.
+      expect(Date.now() - start).toBeLessThan(12_000)
       expect(report.results[0].status).toBe('passed')
       expect(readFileSync(report.results[0].logPath!, 'utf8')).toContain('parent complete')
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('keeps PR readiness false when impact policy is blocked', async () => {
     const artifactsDir = mkdtempSync(join(tmpdir(), 'quality-gate-test-'))

@@ -997,6 +997,15 @@ button, input, textarea, select, a, [role="button"] {
   overflow-x: hidden;
 }
 
+.workflow-content-modal-overlay {
+  padding-left: var(--sidebar-width);
+  padding-right: 1rem;
+}
+
+.app-shell:has(.sidebar-shell[data-state="closed"]) .workflow-content-modal-overlay {
+  padding-left: var(--sidebar-rail-width);
+}
+
 .app-shell-backdrop {
   background: var(--color-overlay-scrim);
 }
@@ -1178,6 +1187,10 @@ button, input, textarea, select, a, [role="button"] {
 }
 
 @media (max-width: 767px) {
+  .workflow-content-modal-overlay {
+    padding-left: 1rem;
+  }
+
   .app-shell-main--mobile {
     width: 100%;
     min-width: 0;

@@ -7,11 +7,11 @@ import type { RuntimeSelection } from './runtime'
 
 export type ClientMessage =
   | { type: 'prewarm_session' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[] }
+  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; workflowLanguage?: 'zh' | 'en' }
   | {
       type: 'workflow_transition'
       phaseId: string
-      action: 'confirm' | 'reject' | 'retry' | 'manual_complete'
+      action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'route' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
       expectedStateVersion?: number
       stateVersion?: number
@@ -19,6 +19,10 @@ export type ClientMessage =
       handoff?: unknown
       rationale?: string
       evidence?: unknown[]
+      routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      targetPhaseId?: string
+      targetWorkflowId?: string
+      requireUserConfirmation?: boolean
     }
   | {
       type: 'permission_response'
@@ -183,6 +187,8 @@ export type AgentTaskNotification = {
   result?: string
   outputFile?: string
   usage?: BackgroundAgentTaskUsage
+  worktreePath?: string
+  worktreeBranch?: string
   timestamp?: string
 }
 
@@ -195,7 +201,7 @@ export type BackgroundAgentTaskUsage = {
 export type BackgroundAgentTask = {
   taskId: string
   toolUseId?: string
-  status: 'running' | 'completed' | 'failed' | 'stopped'
+  status: 'queued' | 'running' | 'blocked' | 'completed' | 'failed' | 'stopped'
   description?: string
   taskType?: string
   workflowName?: string
@@ -204,6 +210,13 @@ export type BackgroundAgentTask = {
   lastToolName?: string
   outputFile?: string
   usage?: BackgroundAgentTaskUsage
+  workflowTaskId?: string
+  executionMode?: 'read' | 'write'
+  writeScopes?: string[]
+  blockedReason?: string
+  worktreeIsolation?: boolean
+  worktreePath?: string
+  worktreeBranch?: string
   startedAt: number
   updatedAt: number
 }

@@ -251,4 +251,88 @@ describe('workflow phase skill resolver', () => {
       },
     })
   })
+
+  test('requires matching pack provenance when a pack workflow resolves phase skills', async () => {
+    const result = await resolveWorkflowPhaseSkills({
+      checkedAt,
+      requiredPackId: 'guided-development-pack',
+      references: [{ name: 'planning', referenceId: 'superpowers:writing-plans' }],
+      catalog: [
+        {
+          name: 'planning',
+          source: 'user',
+          referenceId: 'superpowers:writing-plans',
+          sourcePath: 'global/skills/planning/SKILL.md',
+        },
+        {
+          name: 'planning',
+          source: 'user',
+          referenceId: 'superpowers:writing-plans',
+          packId: 'guided-development-pack',
+          sourcePath: 'user/skills/guided-development-pack-planning/SKILL.md',
+        },
+      ],
+    })
+
+    expect(result.resolutions[0]).toMatchObject({
+      status: 'available',
+      provenance: {
+        packId: 'guided-development-pack',
+        sourcePath: 'user/skills/guided-development-pack-planning/SKILL.md',
+      },
+    })
+  })
+
+  test('does not resolve a host skill as a pack workflow dependency when pack provenance is missing', async () => {
+    const result = await resolveWorkflowPhaseSkills({
+      checkedAt,
+      requiredPackId: 'imported-pack',
+      references: [{ name: 'planning', referenceId: 'superpowers:writing-plans' }],
+      catalog: [
+        {
+          name: 'planning',
+          source: 'user',
+          referenceId: 'superpowers:writing-plans',
+          sourcePath: 'global/skills/planning/SKILL.md',
+        },
+      ],
+    })
+
+    expect(result.resolutions[0]).toMatchObject({
+      status: 'missing',
+      diagnostic: {
+        code: 'WORKFLOW_PHASE_SKILL_MISSING',
+        severity: 'warning',
+      },
+    })
+  })
+
+  test('ignores pack-private catalog entries when no pack provenance is required', async () => {
+    const result = await resolveWorkflowPhaseSkills({
+      checkedAt,
+      references: [{ name: 'sp-discussion', source: 'managed' }],
+      catalog: [
+        {
+          name: 'sp-discussion',
+          source: 'managed',
+          referenceId: 'managed:sp-discussion',
+        },
+        {
+          name: 'sp-discussion',
+          source: 'managed',
+          packId: 'agent-development',
+          referenceId: 'pack:agent-development:sp-discussion',
+          sourcePath: 'pack://agent-development/skills/sp-discussion/SKILL.md',
+        },
+      ],
+    })
+
+    expect(result.resolutions[0]).toMatchObject({
+      status: 'available',
+      provenance: {
+        referenceId: 'managed:sp-discussion',
+      },
+    })
+  })
+
 })

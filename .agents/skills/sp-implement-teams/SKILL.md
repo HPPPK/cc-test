@@ -1,0 +1,556 @@
+---
+name: "sp-implement-teams"
+description: "Execute implementation through Codex Agent Teams when you explicitly want durable team execution."
+argument-hint: "Optional implementation scope or coordination guidance for the Agent Teams run"
+compatibility: "Requires spec-kit project structure with .specify/ directory"
+metadata:
+  author: "github-spec-kit"
+  source: "src/specify_cli/integrations/Codex/templates/implement-teams.md"
+user-invocable: true
+---
+
+
+# Codex Agent Teams
+
+User-facing workflow skill:
+
+```text
+/sp-implement-teams
+```
+
+<!-- SEMANTIC_WORK_CONTRACT_BEGIN -->
+## Semantic Work Contract
+
+[AGENT] Treat every project-cognition-backed request as natural-language intake first, regardless of whether the eventual work looks like planning, research, debugging, implementation, review, or map maintenance.
+
+- **Single unified entrypoint**: the agent is the semantic mediator between the user's words and the project's stored vocabulary. Do not choose debug, implement, plan, or research from the user's raw words. First normalize the request into project terms, surfaces, constraints, exclusions, and evidence needs.
+- **WorkContract v1**: before route or write-scope decisions, carry a contract with `raw_request`, `normalized_goal`, `semantic_intake`, `selected_concept_ids`, `rejected_concept_ids`, `evidence_plan`, `permission_decision`, and `learning_contract`.
+- **Facet coverage**: keep `semantic_intake` decisions explicit about covered facets, missing facets, match sources, and rejected false friends; do not collapse the candidate universe into one top-similarity route.
+- **Runtime path**: use compass-first navigation for ordinary generated workflows. Run or emulate `project-cognition compass --intent <intent> --query "$ARGUMENTS" --format json` as the default brownfield intake, then use semantic-intake escalation when the compass packet is draft-like, localized, symptom-first, mixed-language, missing coverage, or needs explicit concept decisions. When that escalation is available, run or emulate `project-cognition semantic-intake --input <work-contract-input.json> --format json`; if the command is unavailable, manually produce the same fields from the alias catalog and existing compass/query guidance.
+- **Semantic-intake evidence boundary**: `semantic-intake` can rank candidates, explain match basis, reject false friends, suggest `minimal_live_reads`, and name missing facets. It is not proof that a bug exists, a design is correct, a fix is safe, or a release is ready.
+- **v1.1 audit artifact**: when semantic-intake escalation influences routing, capture a replayable WorkContract artifact with the semantic-intake input/output snapshot, selected/rejected basis, permission upgrade/downgrade reason, action log, and route corrections. If available, run or emulate `project-cognition semantic-audit --input <semantic-audit-input.json> --format json` to build that record. The audit artifact records why the route was chosen; it does not authorize source changes, does not read live source, does not raise permission above P2, and does not replace workflow verification.
+- **Audit fallback**: if semantic-audit is unavailable, manually produce the same semantic_audit_input fields from the WorkContract, semantic-intake input/output, route decision, permission decision, action log, and route corrections. Do not block on installing a newer runtime solely for semantic-audit; continue only under the lower available permission and prove any later claims with live evidence.
+- **v1.2 evidence-guided inspection**: when semantic-audit returns inspection_plan, treat it as the only P2 live-read plan. inspection_plan maps each missing facet or evidence need to a bounded target. Execute targeted_read only for listed target_path or target_id; do not broaden reads from raw user wording. Capture live_evidence_capture before raising permission. Use rerank_after_inspect before any root-cause, fixed, complete, or release-safe claim. Apply stale_index_downgrade when runtime is unavailable, stale, missing owners, or contradicted by live evidence.
+- **v1.2.1 captured evidence gate**: workflow-captured live_evidence_capture may feed rerank_assessment, but live evidence can create a permission_promotion_candidate only. candidate_only is not granted permission, not authorization to edit, and not a final claim. route_contradicted downgrades permission, blocks targeted_inspect/change/final claims, and requires rerunning semantic-intake or choosing another route.
+- **v1.2.2 owner confidence**: owner_bundle_confidence summarizes indexed owner roles for selected candidates; it is confidence, not live proof. owner_miss_expansion max_radius is 1. If no bounded target_id exists, stop and request map update or user clarification; do not broaden reads.
+- **v1.2.3 live source boundary**: route vocabulary evidence is not live source evidence. A live_evidence_capture item may support rerank_assessment only when `source_kind` is `source`, `read_path` names the bounded source read from inspection_plan or selected owner hints, and `supports_candidate` or `contradicts_candidate` is explicit. Otherwise permission_promotion_candidate stays blocked by live_source_evidence_required and bounded_source_evidence_required.
+- **v1.3 verification owner discovery**: verification_owner_discovery identifies indexed or missing verification owners and targeted_test candidates. It does not grant P3/P4, does not mark work fixed, and keeps promotion_blocked true until workflow authorization and verification results exist.
+- **v1.3.1 verification result ingestion**: verification_results may be recorded after the workflow runs targeted verification. A result satisfies claim_readiness only when every selected candidate has an indexed verification owner, status is passed, and verification_path matches an indexed verification owner for the selected candidate. Without workflow_authorization, claim_status is claim_candidate, claim_ready remains false, and workflow_authorization is still required.
+- **v1.3.2 workflow authorization baseline**: workflow_authorization is the explicit bridge from runtime evidence to workflow-owned claims. The v1.3.2 baseline allowed only `root_cause_claim` after bounded source evidence, matching passed verification for every selected candidate, `status: authorized`, `authorized_claims` containing `root_cause_claim`, and a non-empty `authorization_ref`.
+- **v1.3.3 claim-specific final claims**: current generated workflows may mark `fixed_claim`, `completed_claim`, or `release_safe` claim_ready only when every selected candidate has claim-specific passed verification, top-level workflow_authorization has `status: authorized`, `authorized_claims` contains that claim, and workflow_authorization contains a matching `claim_authorizations[]` entry with `status: authorized`, a non-empty `authorization_ref`, and `verification_evidence_refs` covering the matched verification results. Empty verification `claim_type` is legacy-compatible only for `root_cause_claim`. Claim readiness still does not grant P3/P4 permission, unblock source edits, or prove release safety beyond the named claim.
+- **v1.3.18 verification outcome policy**: failed verification results block final claims until superseded by a newer matching passed rerun and surface `verification_result_failed`; blocked verification results block final claims until recovery or rerun produces a newer matching passed result and surface `verification_result_blocked`; skipped or otherwise inconclusive verification results block final claims and surface `verification_result_inconclusive`. A newer passed rerun may recover claim candidacy only when it matches the same indexed verification owner path and selected candidate. These blockers explain verification state; they do not prove root cause, authorize source edits, or grant P3/P4 permission.
+- **v1.3.19 active claim authorization policy**: workflow_authorization.active_claim_type records the single active final claim when a workflow authorizes more than one claim type. Multiple authorized claims require explicit active_claim_type; otherwise claim readiness stays blocked with `active_claim_type_required`. If active_claim_type is not listed in authorized_claims, claim readiness stays blocked with `active_claim_not_authorized`. Single-claim authorization remains backward-compatible and still does not infer claims from workflow names.
+- **v1.3.4 audit state persistence**: persist semantic-audit-input.json and semantic-audit-output.json next to the active workflow state. Use `semantic_audit_input_path` and `semantic_audit_output_path` to record the exact files, with `<WORKFLOW_STATE_DIR>/semantic-audit-input.json` and `<WORKFLOW_STATE_DIR>/semantic-audit-output.json` as the default when a workflow-state directory exists. On resume, re-read `semantic_audit_state`, both persisted audit files, `claim_authorization_refs`, and `claim_verification_refs` before recomputing claim_readiness or making final claims. If any referenced file is missing, stale, or inconsistent with the current route decision, set `semantic_audit_resume_status` to `missing|stale|needs-rerun` and rerun or rebuild the audit instead of trusting chat memory.
+- **v1.3.5 resume validation**: before trusting persisted claim_readiness on resume, compare selected_candidate_ids, active_claim_type, claim_authorization_refs, and claim_verification_refs from workflow state against the persisted semantic-audit-output.json. Record the comparison in `semantic_audit_resume_validation` and `semantic_audit_route_fingerprint`. If selected candidates, active claim type, authorization refs, verification refs, or route decision fingerprint differ, set `semantic_audit_resume_status: needs-rerun` and rebuild semantic-audit-input.json before any final claim.
+- **v1.3.6 generated resume smoke**: generated workflows must perform a prompt-level generated resume smoke before trusting persisted semantic-audit state. Verify that semantic-audit-input.json and semantic-audit-output.json exist. Compare selected_candidate_ids, active_claim_type, and semantic_audit_route_fingerprint against workflow state plus `semantic-audit-input.json.semantic_audit_input.route_decision`; compare claim_authorization_refs and claim_verification_refs against `semantic-audit-output.json.workflow_authorization and semantic-audit-output.json.claim_readiness`. Record `semantic_audit_generated_resume_smoke` and `semantic_audit_stale_reasons`. Stale-state detection remains prompt-only in v1.3.6. Fingerprint mismatches are route-changed. Use the semantic audit resume examples at `.specify/templates/examples/semantic-audit-resume/scenarios.md` when available. If any smoke check fails, set `semantic_audit_resume_status: needs-rerun`, keep claim_ready false, and rebuild semantic-audit-input.json before any final claim.
+- **v1.3.9 optional runtime validator**: when available, generated workflows may run `project-cognition semantic-audit-resume --input <resume-validation.json> --format json` as an optional runtime validator for the same resume smoke. The input should contain extracted workflow state plus concrete paths to persisted semantic-audit-input.json and semantic-audit-output.json; do not require the runtime to parse workflow-state.md. Prompt fallback remains valid when the command is unavailable, blocked, or unnecessary. The validator is a comparison helper only and does not authorize source edits, final claims, or P3/P4 permission. Its output records `validator: semantic-audit-resume`, `can_reuse_persisted_claim_readiness`, `grants_permission: false`, and `boundary: comparison_only_no_source_edit_or_claim_authorization`.
+- **v1.3.10 downstream validator examples**: generated projects include concrete runtime-adoption fixtures under `.specify/templates/examples/semantic-audit-resume/`. Use `resume-validation.json` as the fresh example and `resume-validation-route-changed.json` as the stale route example; both reference sibling `semantic-audit-input.json` and `semantic-audit-output.json`. These examples demonstrate the optional validator input shape and expected output without making the validator mandatory.
+- **v1.3.11 resume validator workflow preference**: on resume, prefer the optional runtime validator when a compatible `project-cognition semantic-audit-resume` command is available. Build an ephemeral resume-validation.json from the current workflow state's semantic_audit_state plus concrete `semantic_audit_input_path` and `semantic_audit_output_path`, run the validator, and copy its smoke status, validation status, stale reasons, and reuse decision back into workflow state. If the validator returns fresh and `can_reuse_persisted_claim_readiness: true`, the workflow may reuse persisted claim readiness for the same active claim; this still does not grant P3/P4 permission or source edits. If the validator is unavailable, blocked, or returns stale output, prompt fallback remains valid and any failed result keeps final claims blocked until semantic-audit-input.json is rebuilt.
+- **v1.3.12 stale case matrix**: generated projects also include executable stale fixtures for `resume-validation-active-claim-changed.json`, `resume-validation-missing-file.json`, `resume-validation-claim-ref-mismatch.json`, and `resume-validation-verification-ref-mismatch.json`. Use them to understand how the optional validator reports each stale reason before trusting resumed claim readiness.
+- **v1.3.13 real downstream resume smoke**: generated-project tests verify the validator with workflow-local semantic-audit-input.json and workflow-local semantic-audit-output.json under an actual downstream state directory, plus an ephemeral resume-validation.json built from that local state. Treat this as the adoption proof: examples teach the shape, while workflow-local files prove path resolution and resume behavior.
+- **Workflow-written audit input**: when a workflow uses semantic-intake escalation, write or carry `semantic-audit-input.json` in workflow state before broad live reads. The object is named `"semantic_audit_input"` in notes/handoffs and has this minimum shape:
+  ```json
+  {
+    "semantic_audit_input": {
+      "version": 1,
+      "work_contract": {
+        "id": "<stable workflow-local id>",
+        "raw_request": "<original user words>",
+        "normalized_goal": "<agent-normalized project goal>",
+        "workflow_intent": "<intent hint only>",
+        "extracted_facets": ["<project-language facet>"],
+        "semantic_intake_ref": "semantic_intake_output",
+        "selected_concept_ids": ["<primary concept id>"],
+        "rejected_concept_ids": ["<false friend concept id>"],
+        "evidence_plan": [
+          {
+            "evidence_need": "<missing facet or verification need>",
+            "suggested_action": "<bounded live-read or clarification step>",
+            "owner_ref": "<candidate id or path owner>"
+          }
+        ],
+        "permission_decision": {
+          "current_level": "P0|P1|P2",
+          "maximum_without_live_evidence": "P0|P1|P2",
+          "blocked_actions": ["change", "fixed_claim", "completed_claim", "release_safe"]
+        },
+        "learning_contract": {
+          "memory_level": "M0|M1",
+          "promotion_requires": ["live_source_evidence", "user_confirmation_or_verified_behavior"]
+        }
+      },
+      "semantic_intake_input": {},
+      "semantic_intake_output": {},
+      "route_decision": {
+        "selected_candidate_ids": [],
+        "contrast_candidate_ids": [],
+        "rejected_candidate_ids": [],
+        "selection_reason": "<facet coverage and false-friend reasoning>"
+      },
+      "permission_decision": {
+        "requested_level": "P0|P1|P2",
+        "evidence_level": "semantic_intake_only",
+        "requested_actions": [],
+        "upgrade_reasons": [],
+        "downgrade_reasons": []
+      },
+      "workflow_authorization": {
+        "workflow_intent": "<active workflow name, informational only>",
+        "status": "authorized|blocked|missing",
+        "authorized_claims": ["root_cause_claim|fixed_claim|completed_claim|release_safe"],
+        "active_claim_type": "<single active claim when authorized_claims has more than one value>",
+        "authorization_ref": "<stable workflow evidence ref proving the workflow reviewed the evidence>",
+        "claim_authorizations": [
+          {
+            "claim_type": "fixed_claim|completed_claim|release_safe",
+            "status": "authorized|blocked|missing",
+            "authorization_ref": "<stable workflow evidence ref for this claim>",
+            "verification_evidence_refs": ["<matching claim-specific passed verification evidence ref>"],
+            "reason": "<why the active workflow permits this claim type>"
+          }
+        ],
+        "reason": "<why the active workflow permits this claim type>"
+      },
+      "action_log": [],
+      "route_corrections": [],
+      "semantic_audit_state": {
+        "semantic_audit_status": "not-needed|input-draft|audit-recorded|claim-candidate|claim-ready|blocked",
+        "semantic_audit_input_path": "<WORKFLOW_STATE_DIR>/semantic-audit-input.json",
+        "semantic_audit_output_path": "<WORKFLOW_STATE_DIR>/semantic-audit-output.json",
+        "semantic_audit_resume_status": "fresh|missing|stale|needs-rerun",
+        "semantic_audit_resume_validation": "not-run|fresh|missing-file|route-changed|active-claim-changed|claim-ref-mismatch|verification-ref-mismatch|needs-rerun",
+        "semantic_audit_route_fingerprint": "<stable fingerprint of route_decision.selected_candidate_ids plus active_claim_type>",
+        "semantic_audit_generated_resume_smoke": "not-run|passed|failed|not-applicable",
+        "semantic_audit_stale_reasons": ["none|missing-file|route-changed|active-claim-changed|claim-ref-mismatch|verification-ref-mismatch"],
+        "active_claim_type": "none|root_cause_claim|fixed_claim|completed_claim|release_safe",
+        "selected_candidate_ids": ["<selected candidate id>"],
+        "claim_readiness_status": "not-evaluated|claim_blocked|claim_candidate|claim_ready",
+        "claim_authorization_refs": ["<workflow authorization ref>"],
+        "claim_verification_refs": ["<matching claim-specific passed verification evidence ref>"]
+      }
+    },
+    "semantic_audit_output": {
+      "live_evidence_capture": [
+        {
+          "step_id": "<inspection step id>",
+          "read_path": "<bounded path actually read>",
+          "evidence_need": "<evidence need from inspection_plan>",
+          "source_kind": "source|route_vocabulary|runtime|user_confirmation",
+          "source_ref": "<source path, runtime artifact, user confirmation id, or semantic snapshot ref>",
+          "line_refs": ["<line or range reference when source_kind is source>"],
+          "observed_signal": "<specific source/runtime signal>",
+          "supports_candidate_id": "<selected candidate id, when supported>",
+          "supports_candidate": false,
+          "contradicts_candidate_id": "<selected candidate id, when contradicted>",
+          "contradicts_candidate": false,
+          "supports_facets": [],
+          "missing_facets": [],
+          "content_hash": "<optional content hash for replay>",
+          "captured_at": "<optional timestamp>",
+          "evidence_ref": "<stable evidence reference>",
+          "verification_owner": "<optional verification owner hint>"
+        }
+      ],
+      "rerank_assessment": {
+        "status": "evidence_missing|route_supported|route_contradicted|no_selected_route",
+        "selected_candidate_id": "<selected candidate id>",
+        "supporting_evidence_refs": [],
+        "contradicting_evidence_refs": [],
+        "permission_promotion_candidate": {
+          "current_allowed_level": "P0|P1|P2",
+          "candidate_level": "P1|P2|P3",
+          "status": "blocked|candidate_only",
+          "granted": false,
+          "blocked_by": ["verification_owner_discovery", "workflow_authorization", "verification_result_required"],
+          "reason": "<why this is or is not a later promotion candidate>"
+        }
+      },
+      "owner_bundle_confidence": {
+        "summary": "owner_bundle_high|owner_bundle_medium|owner_bundle_low|owner_bundle_missing",
+        "candidates": [
+          {
+            "candidate_id": "<selected candidate id>",
+            "primary_paths": [],
+            "supporting_paths": [],
+            "truth_paths": [],
+            "verification_paths": [],
+            "confidence": "high|medium|low",
+            "confidence_reasons": [],
+            "covered_owner_roles": [],
+            "missing_owner_roles": []
+          }
+        ]
+      },
+      "owner_miss_expansion": {
+        "max_radius": 1,
+        "allowed_target_ids": [],
+        "blocked_reason": "<why expansion is blocked, if no bounded target exists>",
+        "on_miss": "stop_and_request_map_update_or_user_clarification",
+        "blocked_actions": ["inspect_broadly", "change", "root_cause_claim", "fixed_claim", "completed_claim", "release_safe"]
+      },
+      "verification_owner_discovery": {
+        "summary": "verification_owner_indexed|verification_owner_partial|verification_owner_missing",
+        "required_owners": [
+          {
+            "candidate_id": "<selected candidate id>",
+            "status": "owner_indexed|owner_missing",
+            "verification_paths": [],
+            "verification_command_candidates": ["targeted_test:<verification path>"],
+            "required_signals": ["positive verification covers selected behavior", "regression verification covers rejected or contrast false friends"],
+            "required_action": "identify positive and regression verification owner",
+            "blocked_by": ["verification_owner_missing", "verification_result_required"]
+          }
+        ],
+        "blocked_claims": ["root_cause_claim", "fixed_claim", "completed_claim", "release_safe"],
+        "promotion_blocked": true,
+        "reason": "<why verification owner discovery still blocks claim promotion>"
+      },
+      "verification_results": [
+        {
+          "candidate_id": "<selected candidate id>",
+          "verification_path": "<indexed verification owner path>",
+          "command": "<targeted verification command actually run>",
+          "status": "passed|failed|blocked",
+          "claim_type": "root_cause_claim|fixed_claim|completed_claim|release_safe",
+          "claim_types": ["root_cause_claim|fixed_claim|completed_claim|release_safe"],
+          "evidence_ref": "<stable verification evidence reference>",
+          "captured_at": "<optional timestamp>",
+          "summary": "<short verification result summary>"
+        }
+      ],
+      "workflow_authorization": {
+        "workflow_intent": "<active workflow name, informational only>",
+        "status": "authorized|blocked|missing",
+        "authorized_claims": ["root_cause_claim|fixed_claim|completed_claim|release_safe"],
+        "authorization_ref": "<stable workflow evidence ref proving the workflow reviewed the evidence>",
+        "claim_authorizations": [
+          {
+            "claim_type": "fixed_claim|completed_claim|release_safe",
+            "status": "authorized|blocked|missing",
+            "authorization_ref": "<stable workflow evidence ref for this claim>",
+            "verification_evidence_refs": ["<matching claim-specific passed verification evidence ref>"],
+            "reason": "<why the active workflow permits this claim type>"
+          }
+        ],
+        "reason": "<why the active workflow permits this claim type>"
+      },
+      "claim_readiness": {
+        "inspect_status": "inspect_ready|inspect_limited|inspect_blocked",
+        "inspect_ready": false,
+        "change_status": "change_blocked|change_candidate",
+        "change_ready": false,
+        "claim_status": "claim_blocked|claim_candidate|claim_ready",
+        "claim_type": "root_cause_claim|fixed_claim|completed_claim|release_safe",
+        "claim_ready": false,
+        "verification_satisfied": false,
+        "promotion_blocked": true,
+        "blocked_by": ["verification_result_required", "verification_owner_match_required", "verification_result_failed", "verification_result_blocked", "verification_result_inconclusive", "workflow_authorization", "workflow_authorization_ref_required", "claim_type_not_supported", "claim_specific_verification_required", "claim_authorization_required", "claim_authorization_ref_required", "claim_authorization_verification_ref_required", "active_claim_type_required", "active_claim_not_authorized"],
+        "claim_verification_refs": ["<matching claim-specific passed verification evidence ref>"],
+        "evidence_trail": ["<bounded live evidence ref>", "<matching verification result ref>"],
+        "reason": "<why claim remains blocked or is only a candidate>"
+      },
+      "inspection_plan": {
+        "readiness": "inspect_ready|inspect_limited|inspect_blocked",
+        "max_permission": "P0|P1|P2",
+        "steps": [
+          {
+            "id": "<stable step id>",
+            "candidate_id": "<selected candidate id>",
+            "evidence_need": "<missing facet or evidence need>",
+            "target_path": "<bounded owner path, if known>",
+            "target_id": "<expansion target or unresolved owner id, if path is unknown>",
+            "suggested_action": "<bounded live-read purpose>",
+            "allowed_action": "targeted_read|resolve_owner_before_source_read",
+            "permission_level": "P1|P2",
+            "expected_signal": "<signal that would support the route>",
+            "on_contradiction": "downgrade_route_and_rerun_semantic_intake"
+          }
+        ],
+        "live_evidence_capture": {
+          "required_fields": ["source_kind", "read_path", "evidence_need", "observed_signal", "supports_candidate", "contradicts_candidate", "evidence_ref"],
+          "boundary": "records evidence after bounded reads; only source_kind=source with a bounded read_path from inspection_plan or selected owner hints can support rerank; route_vocabulary is not live source evidence and does not authorize edits or final claims"
+        },
+        "rerank_after_inspect": {
+          "required_when": ["live_evidence_contradicts_selected_candidate", "required_facet_remains_missing", "selected_owner_path_missing"],
+          "inputs": ["inspection_plan.steps", "live_evidence_capture", "semantic_intake_snapshot"],
+          "blocked_claims_until_rerank": ["root_cause_claim", "fixed_claim", "completed_claim", "release_safe"],
+          "permission_promotion_blocked": true
+        },
+        "stale_index_downgrade": {
+          "conditions": ["runtime_unavailable", "stale_index", "selected_owner_missing", "live_evidence_contradicts_candidate"],
+          "downgrade_to": "P0|P1",
+          "reason": "live evidence or runtime freshness wins over indexed routing"
+        },
+        "blocked_actions": ["change", "root_cause_claim", "fixed_claim", "completed_claim", "release_safe"]
+      }
+    }
+  }
+  ```
+- **PermissionDecision**: carry `maximum_without_live_evidence` explicitly.
+  - `P0`: no usable cognition baseline; ask for or gather minimal live evidence before route claims.
+  - `P1`: route/read-only candidate selection only; no source edits.
+  - `P2`: bounded live reads and artifact planning are allowed; source edits still require workflow authorization plus live evidence.
+  - Higher permissions require live repository evidence, active workflow rules, and verification signals outside semantic intake.
+- **Permission-gated actions**: do not use semantic intake alone to authorize source changes, destructive operations, dependency changes, broad refactors, root-cause claims, fixed claims, complete claims, or release-safe claims.
+- **LearningContract**: carry the memory level separately from action permission.
+  - `M0`: no durable learning; runtime unavailable, match ambiguous, or evidence missing.
+  - `M1`: candidate lesson only; record in working state if useful, but do not promote as durable project truth.
+  - `M2`: durable learning only after live evidence or verified artifacts prove the lesson is reusable.
+- **Final claim gate**: do not claim root cause, fixed, complete, or release-safe from `semantic-intake`, alias ranking, or similarity alone. Root-cause claims require bounded live source evidence, matching passed verification for every selected candidate, and explicit workflow_authorization. Fixed, complete, and release-safe claims additionally require claim-specific passed verification and a matching claim_authorizations entry. Multiple authorized claims require explicit active_claim_type. Failed, blocked, skipped, or inconclusive verification blocks final claims until a newer matching passed rerun supersedes it. These gates do not grant source-edit permission or release approval beyond the named claim.
+<!-- SEMANTIC_WORK_CONTRACT_END -->
+
+## Team Bootstrap Gate
+
+This gate is mandatory and precedes all broad implementation-context recovery.
+
+1. After `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` resolves `FEATURE_DIR` and confirms `tasks.md` exists, the first non-prerequisite action is creating or resuming the Codex Agent Team.
+2. Do not read `plan.md`, `tasks.md` beyond the minimum existence/status check, project cognition runtime files, compatibility/export files such as `PROJECT-HANDBOOK.md`, implementation files, or test files before this gate passes.
+3. Do not run validation, edit files, or inspect broad implementation context before this gate passes.
+4. If a Codex Agent Team for the same feature slug already exists, resume that team and inspect only its ledger and shared task list until the leader has confirmed the team state.
+5. If `TeamCreate`, team resume, shared task records, or native teammate launch is unavailable, stop and report that Codex Agent Teams is unavailable for this `/sp-implement-teams` run.
+6. Do not fall back to `/sp-implement`, ordinary subagents, ordinary `Agent` tool calls, or leader-inline implementation from this gate.
+
+## Boundary
+
+1. Codex-only
+2. Implementation-phase entry point only; use it after `tasks.md` is ready
+3. Use Codex's built-in Agent Teams surface, not the Codex runtime surface
+4. Keep `sp-teams` and Codex extension commands out of Codex guidance
+5. The ordinary `Agent` tool must not be used as a teammate substitute. `/sp-implement-teams` requires team-managed teammates that join the shared Agent Teams ledger.
+
+## When To Use
+
+Use this when:
+
+1. `/sp-implement` would otherwise run a `leader-inline-fallback` or native subagent flow
+2. you want durable coordinated execution with a shared task list and explicit teammate messaging
+3. the implementation work is already decomposed into task-ready execution slices
+
+
+## Shared Contract With `/sp-implement`
+
+`/sp-implement` remains the canonical implementation workflow. `/sp-implement-teams` is the same execution contract with the concrete team-managed work pinned to Codex Agent Teams.
+
+When you use `/sp-implement-teams`, keep the same leader-owned execution semantics that `/sp-implement` requires:
+
+1. keep `FEATURE_DIR/implement-tracker.md` as the execution-state source of truth
+2. compile and validate a `WorkerTaskPacket` before assigning each team-managed execution task
+3. for implementation-oriented teams flows, preserve the user-visible fields `execution_model`, `dispatch_shape`, and `execution_surface`
+4. preserve explicit join point behavior, blocker reporting, retry-pending state, and completion checks
+5. preserve the team result contract and canonical result file handoff path
+6. preserve final-completion truthfulness: do not describe `core implementation complete`, `implementation complete`, or `ready for integration testing` as overall feature completion while required E2E, Polish, documentation, quickstart, or validation work remains
+
+Every team-managed task in the teams-backed flow must still behave like an explicit execution packet, not a chat-only summary. Preserve these fields whenever the backend exposes task records, mailbox messages, or equivalent runtime-managed assignments:
+
+1. task id and subject
+2. write set and shared surfaces
+3. required references and forbidden drift
+4. explicit verification command or acceptance check
+5. canonical result handoff path or runtime-managed result channel expectation
+6. completion-handoff protocol covering start, blocker, and final completion evidence
+7. platform guardrails such as supported platforms, conditional compilation requirements, or other environment-sensitive constraints
+
+Before Codex Agent Teams starts concrete work, ensure the current ready batch is prepared the same way `/sp-implement` would prepare it:
+
+1. the current batch is recorded in `implement-tracker.md`
+2. each team-managed task has a validated `WorkerTaskPacket`
+3. join point expectations and result handoff expectations are explicit
+4. the team-managed lane cannot be treated as complete from a status flip alone; the leader still needs the promised completion handoff or result evidence
+
+Before assigning team-managed work, preserve the same project cognition compass contract that `sp-implement` uses:
+
+1. run `project-cognition compass --intent implement --query="$ARGUMENTS" --format json` and include the compass packet in the execution context bundle
+2. read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons, evidence hints, `verification_hints`, `followup_surfaces`, and `before_fix_claim` checks
+3. preserve `coverage_diagnostics` as confidence and closeout signals, not route candidates
+4. treat `expansion_ref` as a normal continuation path and run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail
+5. do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`; carry them as advisory first-pass evidence routes in every teammate context packet
+6. use the advanced `lexicon -> semantic_intake -> query` path only when explicit concept decisions are needed or coverage cannot be resolved from the default compass packet
+7. in that precision escalation, normalize user input and write a `semantic_intake` object with `workflow_intent`, `normalized_query`, `intent_facets`, `negative_constraints`, `alias_interpretations`, and `open_semantic_questions`
+8. treat `agent_normalization.required=true` as a non-intelligent CLI reminder to write `semantic_intake` from the alias catalog (raw lexicon ranking is only a bootstrap; action: write_semantic_intake_from_alias_catalog); if `agent_normalization` is omitted, treat it as `required=false`, not as proof that raw lexical ranking is authoritative
+9. keep CJK or mixed CJK/ASCII input in agent-owned normalization even when positive raw lexical matches exist because embedded project tokens do not translate the surrounding user language; the agent still owns translation and `agent_normalization` is advisory guidance, not a route decision
+10. keep `alias_interpretations` object-shaped, for example `{"alias": "<user term>", "meaning": "<project term>", "confidence": "medium"}`, never as a string array
+11. build a `query_plan` with `selected_concepts`, `rejected_concepts`, `concept_decisions`, `covered_facets`, `missing_facets`, `match_sources`, `lexicon_generation_id`, `expanded_queries`, `repository_search_terms`, and justified `paths`
+12. derive project-language search terms from the alias catalog before source search; do not search only the raw user words; include component names, state names, file names, command names, UI labels, and route names from candidates, aliases, matched terms, returned paths, `normalized_query`, and `expanded_queries`
+13. run `project-cognition query --intent implement --query-plan "<query_plan_json>" --format json` only for that precision escalation, and preserve returned readiness, `minimal_live_reads`, `first_pass_paths`, and the task-local bundle in every teammate context packet
+14. if the query reports diagnostics, preserve `warnings`, `repair_hints`, normalized `query_plan`, structured `errors`, and `expected_shape` so the leader can repair the plan instead of losing the diagnostics in team chat
+
+The only intended difference is the dispatch path:
+
+1. `/sp-implement` may route the current ready batch through subagents first
+2. `/sp-implement-teams` forces the concrete team-managed execution through Codex Agent Teams for the same batch and join-point semantics
+3. Codex Agent Teams must not weaken the tracker, packet, validation, or completion contract
+
+## Execution Contract
+
+1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS` list. All paths must be absolute.
+2. If the prerequisites output does not resolve a `FEATURE_DIR` with `tasks.md`, stop and run `/sp-tasks` first instead of guessing from chat state.
+3. Confirm the current project is using the Codex integration and that `tasks.md` is ready.
+4. Confirm Codex Agent Teams is actually enabled before you try to use it:
+   - confirm the current Codex configuration enables Agent Teams, whether that configuration lives in `settings.json` or the environment
+   - treat `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` as the canonical Codex setting/env key for that feature gate when you need to name the switch explicitly
+   - if the Agent Teams surface is unavailable, or if the first `TeamCreate` / Agent Teams call fails as though the feature is disabled, stop and explicitly remind the user to enable Agent Teams in Codex settings or environment instead of continuing with a broken team setup
+   - treat this as a hard prerequisite for `/sp-implement-teams`, not as an optional hint
+5. Create or resume a Codex Agent Team for the feature:
+   - if a team for the same feature slug is already active, reuse or resume it instead of creating a second parallel team for the same feature
+   - if the first `TeamCreate` call fails because you are already leading the team, treat that as a recoverable resume signal rather than a terminal failure
+   - inspect the existing team ledger, shared task list, and pending work first, then continue from the recorded ready batch
+   - do not create a second parallel team for the same feature just to get unstuck
+
+```text
+TeamCreate({
+  team_name: "<feature-slug>",
+  description: "Implementing <feature>",
+  agent_type: "researcher"
+})
+```
+
+6. Treat the team ledger as shared state:
+   - team membership lives in `~/.Codex/teams/{team-name}/config.json`
+   - shared tasks live under `~/.Codex/tasks/{team-name}/`
+7. Before the first `TaskCreate`, compile an execution context bundle for the current batch:
+   - run `'C:\Users\11034\.specify\bin\project-cognition.exe' compass --intent implement '--query=$ARGUMENTS' --format json` first and include the compass packet in teammate context
+   - read top-level `minimal_live_reads` first, then use lane-level `first_pass_paths` reasons, evidence hints, `verification_hints`, `followup_surfaces`, and `before_fix_claim` checks
+   - carry `coverage_diagnostics` as confidence and closeout signals, not route candidates
+   - treat `expansion_ref` as a normal continuation path and run `project-cognition expand --id <id> --section <section> --format json` only when coverage state or live evidence requires more map detail
+   - do not infer final edit scope from `minimal_live_reads` or `first_pass_paths`; carry them as advisory first-pass evidence routes in every teammate context packet
+   - preserve advanced `lexicon -> semantic_intake -> query` / `project-cognition query --query-plan` only as conditional precision escalation when explicit concept decisions are needed or coverage cannot be resolved from the default compass packet
+   - in that precision escalation, derive project-language search terms from the alias catalog before source search; do not search only the raw user words
+   - candidate selection in the precision escalation must satisfy facet coverage through `covered_facets`, `missing_facets`, and `match_sources`; do not trust top similarity alone
+   - run `'C:\Users\11034\.specify\bin\project-cognition.exe' query --intent implement --query-plan '<query_plan_json>' --format json` only for that precision escalation
+   - if the precision escalation runs, include returned readiness, the task-local bundle, and only the returned `minimal_live_reads` needed for the lane
+   - include `.specify/project-cognition/status.json` and `.specify/project-cognition/project-cognition.db` as the runtime freshness/store boundary when the teammate must acknowledge the underlying cognition runtime
+   - include compatibility/export files such as `PROJECT-HANDBOOK.md` only when the task explicitly depends on handbook/export parity, downstream compatibility, or exported handbook wording
+   - for each bundled item, preserve the path or query source, why it matters, and a read order so the teammate knows which query results are primary and which compatibility/export artifacts are supplementary
+8. Convert the ready implementation slices into explicit shared tasks with `TaskCreate`.
+   - every shared task must carry the execution context bundle, not just the task summary
+   - the task body must tell the teammate which context items are required, what each item is for, and which ones must be read before work starts
+   - create the full task set before wiring `blockedBy` / `blocks` dependencies; do not point one task at another task record that does not exist yet
+   - every shared task must preserve an explicit execution packet shape, not just prose:
+     - task id and subject
+     - write set and shared surfaces
+     - required references and forbidden drift
+     - deliverables
+     - explicit verification command or acceptance check
+     - canonical result handoff path when the leader expects a file handoff
+     - completion protocol covering start, blocker, and final completion evidence
+     - platform guardrails such as supported platforms or required conditional compilation for platform-specific code
+   - use a standardized task body shape such as:
+
+```text
+Task ID: T001
+Subject: Protocol update for foreground process payload
+Write Set:
+- apps/local-agent/src/protocol.rs
+- apps/relay-server/src/protocol.rs
+Required References:
+- .specify/project-cognition/status.json
+- project-cognition compass intake packet with top-level `minimal_live_reads` and lane-level `first_pass_paths`
+- PROJECT-HANDBOOK.md (only when compatibility/export parity matters)
+Deliverables:
+- matching protocol definitions on both sides
+- focused tests updated
+Verification:
+- cargo test -p local-agent
+Result Handoff:
+- write the normalized result envelope to FEATURE_DIR/worker-results/T001.json when the leader requests a file handoff
+Completion Protocol:
+1. SendMessage({ type: "task_started", task_id: "T001" })
+2. run the required verification
+3. TaskUpdate({ taskId: "T001", status: "completed" })
+4. SendMessage({ type: "task_completed", task_id: "T001", summary: "...", verification: "...", files_changed: [...] })
+Platform Guardrails:
+- supported_platforms: windows, linux
+- use conditional compilation for platform-specific code instead of assuming unix-only APIs are always available
+Join Point:
+- Join Point 1.1
+```
+8b. Team Wave Protocol: plan the team wave before launching teammates.
+   - Each execution wave must identify:
+     - implementation teammate ownership for concrete write tasks
+     - review teammate ownership for shared surfaces, schema/API changes, risky refactors, or cross-module changes
+     - verification teammate ownership for test execution, E2E checks, build checks, or scripted validation
+     - leader integration responsibility for final synthesis and next-wave planning
+   - A wave may omit a review teammate or verification teammate only when the leader records why the batch is low risk and what validation evidence will replace that role.
+   - Treat the team wave as a collaboration protocol, not just parallel task dispatch.
+   - Require these team messages when applicable:
+     - `interface_change` before a teammate changes a shared API, schema, protocol, config surface, or boundary contract
+     - `review_requested` when an implementation teammate finishes a risky or shared-surface task
+     - `verification_started` before a verification teammate begins the validation lane
+     - `team_synthesis` from the leader after every join point, summarizing completed work, open blockers, interface changes, verification evidence, and the next ready wave
+9. Encode dependencies and ownership with `TaskUpdate`:
+   - use `blockedBy` / `blocks` for ordering
+   - use `owner` to assign each task to a named teammate
+   - finish all `TaskCreate` calls for the current ready batch first, then wire dependency edges and ownership in a second pass so dependency references never point at missing task records
+10. Inherit Codex's configured subagent model behavior before teammate creation:
+   - rely on Codex's current subagent configuration instead of resolving teammate model choice manually for this workflow
+   - if `CLAUDE_CODE_SUBAGENT_MODEL` is configured in the environment, treat it as the active subagent model hint for this run
+   - when subagent model behavior is configured through Codex settings, trust that configuration instead of re-deriving or copying model values into teammate setup
+   - do not derive teammate model from `ANTHROPIC_MODEL`
+   - do not ask the user for an explicit teammate model just to launch the team
+   - do not require local `.Codex/agents/<team-name>-<role>.md` teammate definitions solely to force a model choice
+11. Create the teammates on the native Agent Teams surface:
+   - this step requires the current Codex Agent Teams teammate launch surface, not the ordinary `Agent` tool
+   - the ordinary `Agent` tool must not be used as a teammate substitute, even if it can read or update shared tasks
+   - if no native Agent Teams teammate launch surface is available, stop instead of falling back to ordinary subagents and report that Agent Teams is unavailable for this run
+   - reference a generated teammate definition name when the current Codex build supports it and you genuinely need reusable teammate packaging
+   - prompt-only specialization is acceptable when you do not need a persisted custom teammate definition
+   - use read-only style teammate definitions for analysis or planning lanes and implementation-oriented teammate definitions for write lanes
+   - set `team_name` so every teammate joins the same shared ledger
+   - prefer `run_in_background: true` for long-running execution
+   - use `isolation: "worktree"` when the lane needs isolated edits
+12. Verify the launched teammate instead of assuming startup succeeded:
+   - inspect the team ledger and shared task state after teammate creation and confirm the teammate joined the intended team
+   - if the runtime cannot use the chosen teammate configuration, simplify the launch path instead of forcing an explicit model override
+   - if the teammate enters `idle` without consuming its first probe message, treat startup as failed rather than successful
+   - use a minimal readiness probe message before task assignment so an idle lane is detected early and does not silently absorb a real task
+   - the readiness probe must confirm the teammate consumed the execution context bundle and can echo a `context_ack` containing the required paths or read-order items before any real work is assigned
+13. Tell every teammate to call `TaskList`, claim or inspect its assigned work, and use `SendMessage` for coordination instead of silent progress.
+   - ack the context bundle before claiming work; a teammate must not claim work until it has confirmed the required paths
+   - after claiming work, the teammate must emit an explicit `task_started` message before settling into background execution so the leader can distinguish real execution from a silent idle lane
+   - implementation teammates must announce `interface_change` before changing shared contracts
+   - review teammates must use `review_requested` / `review_completed` messages instead of relying on task status alone
+   - verification teammates must send `verification_started` and `verification_completed` with commands, exit status, and evidence paths
+14. Track progress through the shared task list:
+   - `TaskUpdate({ taskId, status: "in_progress" })`
+   - `TaskUpdate({ taskId, status: "completed" })`
+   - `TaskList()` and `TaskGet(taskId: "...")` to inspect team state
+   - treat `TaskUpdate({ status: "completed" })` as necessary but not sufficient when the task promised a completion handoff, verification summary, or result file
+15. Use `SendMessage` for handoffs, blockers, dependency releases, and context acknowledgement receipts. Approve structured messages such as `context_ack`, `shutdown_request`, or `plan_approval_request` when they arrive.
+   - when execution actually begins, prefer `task_started` messages with the task id and a short execution note
+   - when blocked, require a `task_blocked` message naming the blocker, failed assumption, and smallest safe recovery step
+   - when complete, require a `task_completed` message that includes task id, summary, verification run, files changed, and any residual concern even if the task status is already marked `completed`
+   - when a result handoff path was promised, the teammate must write that result before entering `idle`; a completion message without the promised handoff is incomplete
+16. Keep the same completion discipline as `/sp-implement`: do not cross the join point or declare completion until structured handoffs are consumed, the tracker/result state is updated, and every teammate has confirmed the required context bundle for its lane.
+    - after each completed join point or ready batch, immediately re-read the shared task ledger, select the next ready batch and continue automatically
+    - stop only when no ready work remains, a real blocker stops progress, or an explicit human approval gate is reached
+    - planned validation tasks are still ready work; if the remaining tasks are executable tests, E2E checks, security verification, quickstart validation, or other scripted validation work already present in `tasks.md`, continue automatically instead of asking whether validation should start
+    - do not stop to ask whether validation should start unless a manual-only check or approval step is explicitly recorded in the tracker or task plan
+    - do not stop after a single completed batch just because the current assignee went idle
+17. Only after the shared completion contract is fully satisfied may you request shutdown for each teammate, then clean up the team with `TeamDelete()`.
+   - if the team has only finished core implementation or is merely ready for integration testing while required E2E, Polish, documentation, or validation tasks remain, report partial progress and keep the remaining work explicit instead of declaring overall feature completion
+   - a `shutdown_response` or other approval signal means the teammate accepted shutdown, not that it already left the team; confirm active membership before treating cleanup as complete
+
+## Output Expectations
+
+Successful runs should leave the user with:
+
+1. a Codex-native team config under `~/.Codex/teams/{team-name}/config.json`
+2. a shared task ledger under `~/.Codex/tasks/{team-name}/`
+3. explicit teammate ownership, status transitions, and dependency tracking
+4. the same implementation lifecycle semantics as `/sp-implement`, including tracker continuity, join point visibility, and result handoff discipline
+5. implementation framed as Codex Agent Teams execution, not as Codex runtime or extension plumbing
+6. explicit evidence that teammates inherited Codex's configured subagent model behavior when applicable, without ad hoc model-guessing or forced local teammate model files
+
+## Codex Agent Teams Teammate Result Contract
+
+- Preferred result contract: WorkerTaskResult contract with status, changed files, validation evidence, blockers, failed assumptions, and recovery guidance.
+- Result file handoff path: FEATURE_DIR/worker-results/<task-id>.json
+- For filesystem handoffs, use `specify result path` with the concrete workflow identifiers such as `--feature-dir`/`--task-id`, `--workspace`/`--lane-id`, or `--session-slug`/`--lane-id`.
+- `specify result path` emits JSON and does not accept `--format`; do not append `--format`.
+- Normalize teammate-reported statuses like `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, and `NEEDS_CONTEXT` into the shared `WorkerTaskResult` contract before the leader accepts the handoff.
+- Keep `reported_status` when normalization occurs so the leader can distinguish raw teammate language from canonical orchestration state.
+- Wait for every Agent Teams teammate's structured handoff before accepting the join point, closing the team wave, or declaring completion.
+- Do not treat an idle teammate as done work; idle without a consumed handoff means the team result channel is still unresolved.
+- Do not interrupt or shut down teammate work before the handoff has been written or explicitly reported as `BLOCKED` or `NEEDS_CONTEXT`.
+- Treat `DONE_WITH_CONCERNS` as completed work plus follow-up concerns, not as silent success.
+- Treat `NEEDS_CONTEXT` as a blocked handoff that must carry the missing context or failed assumption explicitly.

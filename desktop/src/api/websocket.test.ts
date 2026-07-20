@@ -10,7 +10,7 @@ vi.mock('./client', () => ({
   getAuthToken: () => clientMocks.authToken,
 }))
 
-import { buildSessionWebSocketUrl, wsManager } from './websocket'
+import { buildSessionWebSocketUrl, createWorkflowTransitionId, wsManager } from './websocket'
 
 type SocketHandler = (() => void) | ((event: { data: string }) => void)
 
@@ -96,6 +96,12 @@ describe('wsManager reconnect buffering', () => {
     expect(secondSocket!.sent).toEqual([
       JSON.stringify({ type: 'user_message', content: 'queued while offline' }),
     ])
+  })
+
+  it('creates deterministic workflow transition IDs from phase, state version, and action', () => {
+    expect(createWorkflowTransitionId('technical-design', 17, 'confirm')).toBe(
+      'workflow-transition:technical-design:17:confirm',
+    )
   })
 
   it('builds websocket URLs from http and encodes token query params', () => {

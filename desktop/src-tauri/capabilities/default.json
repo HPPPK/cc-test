@@ -101,6 +101,7 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
+    "fs:write-all",
     "notification:default",
     "process:allow-exit",
     "process:allow-restart",

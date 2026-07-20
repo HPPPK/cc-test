@@ -1,11 +1,11 @@
 {
   "ai": "claude",
   "ai_skills": true,
-  "branch_numbering": "sequential",
+  "branch_numbering": "date",
   "constitution_profile": "product",
   "here": true,
   "integration": "claude",
   "preset": null,
-  "script": "ps",
-  "speckit_version": "0.5.12.dev0"
+  "script": "sh",
+  "speckit_version": "0.5.18.dev0"
 }

@@ -4,8 +4,10 @@
 
 import { handleSessionsApi } from './api/sessions.js'
 import { handleWorkflowTemplatesApi } from './api/workflowTemplates.js'
+import { handleWorkflowSaveApi } from './api/workflowSave.js'
 import { handleSettingsApi } from './api/settings.js'
 import { handleModelsApi } from './api/models.js'
+import { handleModelCapabilitiesApi } from './api/modelCapabilities.js'
 import { handleScheduledTasksApi } from './api/scheduled-tasks.js'
 import { handleSearchApi } from './api/search.js'
 import { handleAgentsApi } from './api/agents.js'
@@ -28,6 +30,7 @@ import { handleActivityStatsApi } from './api/activityStats.js'
 import { handleOpenTargetsApi } from './api/open-targets.js'
 import { handleMemoryApi } from './api/memory.js'
 import { handleDesktopUiApi } from './api/desktop-ui.js'
+import { handleExpertsApi } from './api/experts.js'
 
 export async function handleApiRequest(req: Request, url: URL): Promise<Response> {
   const path = url.pathname
@@ -50,6 +53,9 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
       if (segments[2] === 'templates') {
         return handleWorkflowTemplatesApi(req, url, segments)
       }
+      if (segments[2] === 'save') {
+        return handleWorkflowSaveApi(req, url, segments)
+      }
       return Response.json(
         { error: 'Not Found', message: `Unknown workflows resource: ${segments[2]}` },
         { status: 404 }
@@ -60,6 +66,9 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'settings':
       return handleSettingsApi(req, url, segments)
+
+    case 'model-capabilities':
+      return handleModelCapabilitiesApi(req, url, segments)
 
     case 'models':
     case 'effort':
@@ -130,6 +139,9 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'desktop-ui':
       return handleDesktopUiApi(req, url, segments)
+
+    case 'experts':
+      return handleExpertsApi(req, url, segments)
 
     case 'filesystem':
       return handleFilesystemRoute(url.pathname, url)

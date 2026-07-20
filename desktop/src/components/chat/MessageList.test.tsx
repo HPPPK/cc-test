@@ -324,6 +324,49 @@ describe('MessageList nested tool calls', () => {
     expect(cards[1]?.textContent).toContain('Background task')
   })
 
+  it('renders workflow scheduled agent state and worktree handoff inline', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [{
+            id: 'background-task-agent-workflow',
+            type: 'background_task',
+            timestamp: 2,
+            task: {
+              taskId: 'agent-workflow-task',
+              toolUseId: 'agent-workflow-tool',
+              status: 'blocked',
+              taskType: 'local_agent',
+              description: 'Implement workflow UI handoff',
+              workflowTaskId: 'ui-handoff',
+              executionMode: 'write',
+              writeScopes: ['desktop/src'],
+              worktreeIsolation: true,
+              blockedReason: 'depends on failed task api-contract',
+              worktreePath: 'C:/repo/.claude/worktrees/workflow-ui',
+              worktreeBranch: 'workflow-ui-handoff',
+              startedAt: 1,
+              updatedAt: 2,
+            },
+          }],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const card = screen.getByTestId('background-task-event-card')
+    expect(card.getAttribute('data-status')).toBe('blocked')
+    expect(card.textContent).toContain('blocked')
+    expect(card.textContent).toContain('Implement workflow UI handoff')
+    expect(card.textContent).toContain('write task')
+    expect(card.textContent).toContain('desktop/src')
+    expect(card.textContent).toContain('depends on failed task api-contract')
+    expect(card.textContent).toContain('C:/repo/.claude/worktrees/workflow-ui')
+    expect(card.textContent).toContain('workflow-ui-handoff')
+    expect(card.textContent).toContain('not merged automatically')
+  })
+
   it('does not render agent background task events as separate transcript cards', () => {
     useChatStore.setState({
       sessions: {

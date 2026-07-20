@@ -1,6 +1,6 @@
 [package]
 name = "cc-jiangxia-desktop"
-version = "0.2.8"
+version = "0.2.28"
 edition = "2021"
 
 [lib]
@@ -16,6 +16,7 @@ tauri-runtime = "=2.10.1"
 tauri-runtime-wry = "=2.10.1"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }

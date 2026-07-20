@@ -1,6 +1,10 @@
 import {
   WORKFLOW_TEMPLATE_SCHEMA_VERSION,
 } from './workflowTemplateValidation.js'
+import {
+  WORKFLOW_EFFORT_MODES,
+  WORKFLOW_LABELS,
+} from './workflowTypes.js'
 
 export type WorkflowTemplateAuthoringGuideFieldGroup = {
   id: string
@@ -17,6 +21,8 @@ export type WorkflowTemplateAuthoringGuide = {
   allowedValues: {
     completionCriteriaTypes: string[]
     transitionAuthorities: string[]
+    labels: string[]
+    efforts: string[]
   }
   unsupportedShapes: string[]
   repairHintsByIssueCode: Record<string, string[]>
@@ -54,6 +60,26 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
         'Phases must be a non-empty ordered linear array.',
         'Each phase id must be unique within the template.',
         'Use short readable phase names that match the phase intent.',
+      ],
+    },
+    {
+      id: 'routing-policy',
+      title: 'Routing policy',
+      requiredFields: [],
+      optionalFields: [
+        'labels',
+        'routingPolicy',
+        'stopConditions',
+        'phases[].appliesTo',
+        'phases[].skipWhen.labels',
+        'phases[].skipWhen.efforts',
+        'phases[].modePolicy',
+      ],
+      guidance: [
+        'Use labels to describe the task types a workflow supports.',
+        'Use phases[].appliesTo and phases[].skipWhen to keep one linear template appropriate for product, bug, docs, refactor, and test routes.',
+        'Use phases[].modePolicy.light, standard, and heavy to vary phase guidance by effort.',
+        'Use stopConditions to document terminal label behavior; duplicate, invalid, and wontfix require user confirmation before stopping.',
       ],
     },
     {
@@ -175,6 +201,8 @@ export const workflowTemplateAuthoringGuide: WorkflowTemplateAuthoringGuide = {
       'auto',
       'user-confirmation',
     ],
+    labels: [...WORKFLOW_LABELS],
+    efforts: [...WORKFLOW_EFFORT_MODES],
   },
   unsupportedShapes: [
     'branching',

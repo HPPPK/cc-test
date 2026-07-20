@@ -10,6 +10,7 @@ import {
 const requiredGuideGroupTitles = [
   'Template identity',
   'Phase identity',
+  'Routing policy',
   'Phase intent',
   'Handoff contract',
   'Execution contract',

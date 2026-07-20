@@ -29,6 +29,7 @@ import {
 } from './repositoryLaunchService.js'
 import { cleanSessionTitleSource } from '../../utils/sessionTitleText.js'
 import type { WorkflowSessionMetadata } from './workflowTypes.js'
+import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 
 // ============================================================================
 // Types
@@ -45,6 +46,7 @@ export type SessionListItem = {
   workDir: string | null
   workDirExists: boolean
   workflow?: WorkflowSessionMetadata
+  expert?: ExpertSessionMetadata
 }
 
 export type DeleteSessionFailure = {
@@ -202,6 +204,7 @@ type RawEntry = {
   }
   customTitle?: string
   workflow?: unknown
+  expert?: unknown
   worktreeSession?: PersistedWorktreeSession | null
   title?: string
   [key: string]: unknown
@@ -336,6 +339,25 @@ export class SessionService {
         (workflow as Record<string, unknown>).mode === 'workflow'
       ) {
         return workflow as WorkflowSessionMetadata
+      }
+    }
+    return undefined
+  }
+
+
+  private resolveExpertFromEntries(entries: RawEntry[]): ExpertSessionMetadata | undefined {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i]
+      if (entry?.type !== 'session-meta') continue
+
+      const expert = entry.expert
+      if (
+        expert &&
+        typeof expert === 'object' &&
+        !Array.isArray(expert) &&
+        (expert as Record<string, unknown>).mode === 'expert'
+      ) {
+        return expert as ExpertSessionMetadata
       }
     }
     return undefined
@@ -1399,6 +1421,7 @@ export class SessionService {
         const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
         const workDirExists = await this.pathExists(workDir)
         const workflow = this.resolveWorkflowFromEntries(entries)
+        const expert = this.resolveExpertFromEntries(entries)
 
         // Count transcript messages only (user + assistant)
         const messageCount = entries.filter(
@@ -1427,6 +1450,7 @@ export class SessionService {
           workDir,
           workDirExists,
           ...(workflow ? { workflow } : {}),
+          ...(expert ? { expert } : {}),
         }
       } catch {
         // Skip unreadable files
@@ -1458,6 +1482,7 @@ export class SessionService {
     const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
     const workDirExists = await this.pathExists(workDir)
     const workflow = this.resolveWorkflowFromEntries(entries)
+    const expert = this.resolveExpertFromEntries(entries)
 
     let createdAt = stat.birthtime.toISOString()
     for (const e of entries) {
@@ -1479,6 +1504,7 @@ export class SessionService {
       workDirExists,
       messages,
       ...(workflow ? { workflow } : {}),
+      ...(expert ? { expert } : {}),
     }
   }
 
@@ -1779,6 +1805,7 @@ export class SessionService {
       customTitle?: string | null
       repository?: PreparedSessionWorkspace['repository']
       workflow?: WorkflowSessionMetadata
+      expert?: ExpertSessionMetadata
     }
   ): Promise<void> {
     const matches = await this.findSessionFiles(sessionId)
@@ -1805,6 +1832,7 @@ export class SessionService {
       workDir: metadata.workDir,
       repository,
       ...(metadata.workflow ? { workflow: metadata.workflow } : {}),
+      ...(metadata.expert ? { expert: metadata.expert } : {}),
       timestamp: new Date().toISOString(),
     })
 
@@ -1893,6 +1921,59 @@ export class SessionService {
         return true
       },
     )
+
+    const content =
+      filteredEntries.length > 0
+        ? filteredEntries.map((entry) => JSON.stringify(entry)).join('\n') + '\n'
+        : ''
+    await fs.writeFile(found.filePath, content, 'utf-8')
+
+    return {
+      removedCount: removedMessageIds.length,
+      removedMessageIds,
+    }
+  }
+
+  async trimSessionMessagesAfterCount(
+    sessionId: string,
+    messageCount: number,
+  ): Promise<TrimSessionResult> {
+    const found = await this.findSessionFile(sessionId)
+    if (!found) {
+      throw ApiError.notFound(`Session not found: ${sessionId}`)
+    }
+
+    const entries = await this.readJsonlFile(found.filePath)
+    const activeMessages = this.entriesToMessages(entries)
+    const normalizedCount = Number.isInteger(messageCount)
+      ? Math.max(0, Math.min(messageCount, activeMessages.length))
+      : 0
+
+    const removedMessageIds = activeMessages
+      .slice(normalizedCount)
+      .map((message) => message.id)
+    const remainingMessageIds = new Set(
+      activeMessages
+        .slice(0, normalizedCount)
+        .map((message) => message.id),
+    )
+
+    if (removedMessageIds.length === 0) {
+      return { removedCount: 0, removedMessageIds: [] }
+    }
+
+    const removedIds = new Set(removedMessageIds)
+    const filteredEntries = entries.filter((entry) => {
+      if (typeof entry.uuid !== 'string') return true
+      if (removedIds.has(entry.uuid)) return false
+      if (
+        entry.message?.role &&
+        (entry.type === 'user' || entry.type === 'assistant' || entry.type === 'system')
+      ) {
+        return remainingMessageIds.has(entry.uuid)
+      }
+      return true
+    })
 
     const content =
       filteredEntries.length > 0

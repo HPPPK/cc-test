@@ -17,7 +17,10 @@ import { Folder, FolderOpen, SquareTerminal } from 'lucide-react'
 
 const TAB_WIDTH = 180
 const DRAG_START_THRESHOLD = 4
-const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+
+function isTauriRuntime() {
+  return typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+}
 
 type PendingCloseRequest = {
   tabs: Tab[]
@@ -40,6 +43,7 @@ function isSessionTabId(tabId: string | null) {
 }
 
 export function TabBar() {
+  const isTauri = isTauriRuntime()
   const tabs = useTabStore((s) => s.tabs)
   const activeTabId = useTabStore((s) => s.activeTabId)
   const setActiveTab = useTabStore((s) => s.setActiveTab)
@@ -84,7 +88,7 @@ export function TabBar() {
         startDraggingRef.current = () => win.startDragging()
       })
       .catch(() => {})
-  }, [])
+  }, [isTauri])
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current

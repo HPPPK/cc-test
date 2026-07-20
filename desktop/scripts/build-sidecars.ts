@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { cp, mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 const desktopRoot = path.resolve(import.meta.dir, '..')
@@ -25,6 +25,8 @@ if (scanExit !== 0) {
 }
 
 await mkdir(binariesDir, { recursive: true })
+await copyBundledWorkflowPacks()
+await copyBundledSkills()
 
 // 单一合并 sidecar：server / cli 共享一份 bun runtime + 共享依赖代码。
 // 调用方（Tauri lib.rs / conversationService）通过第一个 positional 参数
@@ -37,6 +39,24 @@ await compileExecutable({
 })
 
 console.log(`[build-sidecars] Built desktop sidecar for ${targetTriple} (${bunTarget})`)
+
+
+async function copyBundledWorkflowPacks() {
+  const sourceDir = path.join(repoRoot, 'src', 'server', 'packs')
+  const targetDir = path.join(binariesDir, 'packs')
+  await rm(targetDir, { recursive: true, force: true })
+  await cp(sourceDir, targetDir, { recursive: true })
+  console.log(`[build-sidecars] Copied bundled workflow packs -> ${targetDir}`)
+}
+
+
+async function copyBundledSkills() {
+  const sourceDir = path.join(repoRoot, 'src', 'skills', 'bundled')
+  const targetDir = path.join(binariesDir, 'skills', 'bundled')
+  await rm(targetDir, { recursive: true, force: true })
+  await cp(sourceDir, targetDir, { recursive: true })
+  console.log(`[build-sidecars] Copied bundled skills -> ${targetDir}`)
+}
 
 async function detectHostTriple() {
   const proc = Bun.spawn(['rustc', '-vV'], {

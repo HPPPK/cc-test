@@ -37,7 +37,7 @@ function phaseSummaries(state: WorkflowSessionState): WorkflowPhaseReportSummary
   return state.phases
     .filter((phase) => phase.status === 'completed' || phase.status === 'failed' || phase.status === 'cancelled')
     .map((phase) => {
-      const definition = state.templateSnapshot.phases.find((candidate) => candidate.id === phase.id)
+      const definition = state.phases.find((candidate) => candidate.id === phase.id)
       const model = phase.requestedModel !== undefined || phase.actualModel !== undefined || phase.fallbackReason !== undefined
         ? {
             requestedModel: phase.requestedModel ?? null,
@@ -88,7 +88,7 @@ function modelResolutions(state: WorkflowSessionState): WorkflowModelResolution[
     }))
 }
 
-function templateSnapshotId(state: WorkflowSessionState): string {
+function templateVersionId(state: WorkflowSessionState): string {
   if ('snapshotId' in state.template && typeof state.template.snapshotId === 'string') {
     return state.template.snapshotId
   }
@@ -175,7 +175,7 @@ export function buildWorkflowFinalReport(state: WorkflowSessionState): WorkflowF
       id: state.templateIdentity.id,
       version: String(state.templateIdentity.version),
       source: state.templateIdentity.source,
-      snapshotId: templateSnapshotId(state),
+      snapshotId: templateVersionId(state),
     },
     status: 'completed',
     summary: 'Workflow completed.',

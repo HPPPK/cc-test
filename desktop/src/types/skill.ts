@@ -3,7 +3,20 @@ import type {
   WorkflowPhaseSkillSource,
 } from './session'
 
-export type SkillSource = Extract<WorkflowPhaseSkillSource, 'user' | 'project' | 'plugin' | 'mcp' | 'bundled'>
+export type SkillSource = Extract<
+  WorkflowPhaseSkillSource,
+  | 'workflow'
+  | 'fallback'
+  | 'superpowers'
+  | 'spec-kit-plus'
+  | 'codex'
+  | 'claude-code'
+  | 'user'
+  | 'project'
+  | 'plugin'
+  | 'mcp'
+  | 'bundled'
+>
 export type SkillCatalogStatus = WorkflowPhaseSkillResolutionStatus
 
 export type SkillCatalogProvenance = {
@@ -21,6 +34,7 @@ export type SkillMeta = {
   description: string
   source: SkillSource
   catalogStatus?: SkillCatalogStatus
+  nativeProvider?: 'skill-tool'
   userInvocable: boolean
   version?: string
   contentLength: number
@@ -41,6 +55,7 @@ export type SkillCatalogItem = Pick<
   | 'description'
   | 'source'
   | 'catalogStatus'
+  | 'nativeProvider'
   | 'userInvocable'
   | 'version'
   | 'hasDirectory'

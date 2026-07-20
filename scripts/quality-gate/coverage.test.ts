@@ -1,13 +1,30 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
   evaluateChangedLineCoverage,
   evaluateThresholds,
+  ROOT_COVERAGE_SEPARATE_FILES,
+  ROOT_COVERAGE_TIMEOUT_MS,
   parseChangedLinesFromDiff,
+  mergeLcovFiles,
   parseLcov,
   prefixRelativeLcovSourcePaths,
 } from './coverage'
 
 describe('coverage gate helpers', () => {
+  test('runs isolated coverage for environment-sensitive filesystem and workflow runtime suites', () => {
+    expect([...ROOT_COVERAGE_SEPARATE_FILES]).toEqual(expect.arrayContaining([
+      'src/server/__tests__/filesystem.test.ts',
+      'src/server/__tests__/filesystem-config-fallback.test.ts',
+      'src/server/__tests__/websocket-handler.test.ts',
+      'src/server/services/workflowToolPolicy.test.ts',
+    ]))
+  })
+
+  test('allows Windows Git and worktree coverage tests enough time to complete', () => {
+    expect(ROOT_COVERAGE_TIMEOUT_MS).toBe(60_000)
+  })
+
   test('parses lcov totals into percentages', () => {
     const summary = parseLcov([
       'TN:',
@@ -73,6 +90,47 @@ describe('coverage gate helpers', () => {
     expect(summary.lines).toEqual({ total: 4, covered: 1, pct: 25 })
     expect(summary.functions).toEqual({ total: 2, covered: 1, pct: 50 })
     expect(summary.branches).toEqual({ total: 2, covered: 1, pct: 50 })
+  })
+
+  test('merges separate lcov runs by source path without diluting coverage', () => {
+    const root = `/tmp/coverage-merge-${crypto.randomUUID()}`
+    const first = `${root}/first.lcov`
+    const second = `${root}/second.lcov`
+    const source = `${root}/src/server/example.ts`
+    mkdirSync(`${root}/src/server`, { recursive: true })
+    try {
+      writeFileSync(first, [
+        'TN:',
+        `SF:${source}`,
+        'FNDA:0,run',
+        'FNF:1',
+        'FNH:0',
+        'DA:1,0',
+        'DA:2,0',
+        'LF:2',
+        'LH:0',
+        'end_of_record',
+      ].join('\n'))
+      writeFileSync(second, [
+        'TN:',
+        `SF:${source}`,
+        'FNDA:1,run',
+        'FNF:1',
+        'FNH:1',
+        'DA:1,1',
+        'DA:2,0',
+        'LF:2',
+        'LH:1',
+        'end_of_record',
+      ].join('\n'))
+
+      const merged = mergeLcovFiles([first, second], root)
+      expect((merged.match(/^SF:/gm) ?? [])).toHaveLength(1)
+      expect(parseLcov(merged, { rootDir: root }).lines).toEqual({ total: 2, covered: 1, pct: 50 })
+      expect(parseLcov(merged, { rootDir: root }).functions).toEqual({ total: 1, covered: 1, pct: 100 })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test('filters lcov records to an explicit source scope', () => {

@@ -4,9 +4,21 @@ import type {
   SessionListItem,
   LinkedWorkflowSessionCreateRequest,
   LinkedWorkflowSessionCreateResponse,
+  LinkedWorkflowContextSummaryPreviewRequest,
+  LinkedWorkflowContextSummaryPreviewResponse,
   LinkedWorkflowSessionStartErrorBody,
   LinkedWorkflowSessionStartErrorCode,
   MessageEntry,
+  WorkflowFollowUpRunRequest,
+  WorkflowFollowUpRunResponse,
+  WorkflowGitCheckpointCreateRequest,
+  WorkflowGitCheckpointCreateResponse,
+  WorkflowGitCheckpointListResponse,
+  WorkflowGitCheckpointRestoreRequest,
+  WorkflowGitCheckpointRestoreResponse,
+  WorkflowPreviewResponse,
+  WorkflowPreviewStartRequest,
+  WorkflowPreviewStopRequest,
   WorkflowReportResponse,
   WorkflowSessionCreateOptions,
   WorkflowSessionStateResponse,
@@ -83,6 +95,16 @@ export type {
   LinkedWorkflowSessionCreateResponse,
   LinkedWorkflowSessionStartErrorBody,
   LinkedWorkflowSessionStartErrorCode,
+  WorkflowFollowUpRunRequest,
+  WorkflowFollowUpRunResponse,
+  WorkflowGitCheckpointCreateRequest,
+  WorkflowGitCheckpointCreateResponse,
+  WorkflowGitCheckpointListResponse,
+  WorkflowGitCheckpointRestoreRequest,
+  WorkflowGitCheckpointRestoreResponse,
+  WorkflowPreviewResponse,
+  WorkflowPreviewStartRequest,
+  WorkflowPreviewStopRequest,
   WorkflowReportResponse,
   WorkflowSessionCreateOptions,
   WorkflowSessionStateResponse,
@@ -446,6 +468,41 @@ export const sessionsApi = {
     )
   },
 
+  previewLinkedWorkflowContext(sourceSessionId: string, body: LinkedWorkflowContextSummaryPreviewRequest) {
+    return api.post<LinkedWorkflowContextSummaryPreviewResponse>(
+      `/api/sessions/${sourceSessionId}/workflow/context-summary`,
+      body,
+    )
+  },
+
+  startWorkflowFollowUpRun(sessionId: string, body: WorkflowFollowUpRunRequest) {
+    return api.post<WorkflowFollowUpRunResponse>(
+      `/api/sessions/${sessionId}/workflow/follow-up`,
+      body,
+    )
+  },
+
+  startWorkflowPreview(sessionId: string, body: WorkflowPreviewStartRequest = {}) {
+    return api.post<WorkflowPreviewResponse>(
+      `/api/sessions/${sessionId}/workflow/preview/start`,
+      body,
+    )
+  },
+
+  stopWorkflowPreview(sessionId: string, body: WorkflowPreviewStopRequest = {}) {
+    return api.post<WorkflowPreviewResponse>(
+      `/api/sessions/${sessionId}/workflow/preview/stop`,
+      body,
+    )
+  },
+
+  exitWorkflow(sessionId: string) {
+    return api.post<WorkflowTransitionResponse>(
+      `/api/sessions/${sessionId}/workflow/exit`,
+      {},
+    )
+  },
+
   getWorkflowState(sessionId: string) {
     return api.get<WorkflowSessionStateResponse>(`/api/sessions/${sessionId}/workflow`)
   },
@@ -456,6 +513,26 @@ export const sessionsApi = {
 
   getWorkflowReport(sessionId: string) {
     return api.get<WorkflowReportResponse>(`/api/sessions/${sessionId}/workflow/report`)
+  },
+
+  listWorkflowGitCheckpoints(sessionId: string) {
+    return api.get<WorkflowGitCheckpointListResponse>(`/api/sessions/${sessionId}/workflow/checkpoints`)
+  },
+
+  createWorkflowGitCheckpoint(sessionId: string, body: WorkflowGitCheckpointCreateRequest) {
+    return api.post<WorkflowGitCheckpointCreateResponse>(
+      `/api/sessions/${sessionId}/workflow/checkpoints`,
+      body,
+      { timeout: 120_000 },
+    )
+  },
+
+  restoreWorkflowGitCheckpoint(sessionId: string, body: WorkflowGitCheckpointRestoreRequest) {
+    return api.post<WorkflowGitCheckpointRestoreResponse>(
+      `/api/sessions/${sessionId}/workflow/checkpoints/restore`,
+      body,
+      { timeout: 120_000 },
+    )
   },
 
   delete(sessionId: string) {

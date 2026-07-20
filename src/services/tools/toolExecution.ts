@@ -39,8 +39,10 @@ import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
+import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
+import { handleSubmitPhaseCompletionFailure } from '../../tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { parseGitCommitId } from '../../tools/shared/gitOperationTracking.js'
@@ -49,6 +51,7 @@ import {
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
 import { getAllBaseTools } from '../../tools.js'
+import { isWorkflowPhaseToolDenied } from '../../server/services/workflowToolPolicy.js'
 import type { HookProgress } from '../../types/hooks.js'
 import type {
   AssistantMessage,
@@ -280,6 +283,9 @@ export type McpServerType =
   | 'claudeai-proxy'
   | undefined
 
+const FILE_NOT_READ_BEFORE_WRITE_MESSAGE =
+  'File has not been read yet. Read it first before writing to it.'
+
 function findMcpServerConnection(
   toolName: string,
   mcpClients: MCPServerConnection[],
@@ -332,6 +338,43 @@ function getMcpServerBaseUrlFromToolName(
     return undefined
   }
   return getLoggingSafeMcpBaseUrl(serverConnection.config)
+}
+
+function isRecoverableUnreadFileEditValidation(
+  tool: Tool,
+  validation: Awaited<ReturnType<NonNullable<Tool['validateInput']>>>,
+  input: unknown,
+): input is { file_path: string } {
+  return (
+    validation?.result === false &&
+    (tool.name === FILE_EDIT_TOOL_NAME || tool.name === FILE_WRITE_TOOL_NAME) &&
+    typeof input === 'object' &&
+    input !== null &&
+    typeof (input as Record<string, unknown>).file_path === 'string' &&
+    validation.message === FILE_NOT_READ_BEFORE_WRITE_MESSAGE
+  )
+}
+
+async function recoverUnreadFileEditValidation(
+  input: { file_path: string },
+  toolUseContext: ToolUseContext,
+  canUseTool: CanUseToolFn,
+  assistantMessage: AssistantMessage,
+): Promise<boolean> {
+  try {
+    await FileReadTool.call(
+      { file_path: input.file_path },
+      toolUseContext,
+      canUseTool,
+      assistantMessage,
+    )
+    return true
+  } catch (error) {
+    logForDebugging(
+      `File edit auto-read recovery failed for ${input.file_path}: ${errorMessage(error).slice(0, 200)}`,
+    )
+    return false
+  }
 }
 
 export async function* runToolUse(
@@ -471,18 +514,19 @@ export async function* runToolUse(
     const errorMessage = error instanceof Error ? error.message : String(error)
     const toolInfo = tool ? ` (${tool.name})` : ''
     const detailedError = `Error calling tool${toolInfo}: ${errorMessage}`
+    const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, detailedError)
 
     yield {
       message: createUserMessage({
         content: [
           {
             type: 'tool_result',
-            content: `<tool_use_error>${detailedError}</tool_use_error>`,
+            content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
             is_error: true,
             tool_use_id: toolUse.id,
           },
         ],
-        toolUseResult: detailedError,
+        toolUseResult: workflowErrorContent,
         sourceToolAssistantUUID: assistantMessage.uuid,
       }),
     }
@@ -596,6 +640,16 @@ export function buildSchemaNotSentHint(
   )
 }
 
+async function workflowSubmitFailureText(
+  tool: Tool,
+  context: ToolUseContext,
+  message: string,
+): Promise<string> {
+  if (tool.name !== 'submit_phase_completion') return message
+  const recovery = await handleSubmitPhaseCompletionFailure(context, message)
+  return recovery.message
+}
+
 async function checkPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
@@ -661,18 +715,49 @@ async function checkPermissionsAndCallTool(
       }),
       ...mcpToolDetailsForAnalytics(tool.name, mcpServerType, mcpServerBaseUrl),
     })
+    const workflowErrorContent = await workflowSubmitFailureText(
+      tool,
+      toolUseContext,
+      `InputValidationError: ${errorContent}`,
+    )
     return [
       {
         message: createUserMessage({
           content: [
             {
               type: 'tool_result',
-              content: `<tool_use_error>InputValidationError: ${errorContent}</tool_use_error>`,
+              content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
               is_error: true,
               tool_use_id: toolUseID,
             },
           ],
-          toolUseResult: `InputValidationError: ${parsedInput.error.message}`,
+          toolUseResult: workflowErrorContent,
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      },
+    ]
+  }
+
+  // Enforce the active workflow contract again at the execution boundary.
+  // The CLI receives the same deny list at session launch, but this guard
+  // prevents a stale/resumed tool reference from bypassing a phase change.
+  const workflowState = (toolUseContext.getAppState() as { workflow?: unknown }).workflow
+  if (isWorkflowPhaseToolDenied(tool.name, workflowState as any)) {
+    const violation = `WORKFLOW_TOOL_FORBIDDEN: ${tool.name} is not allowed in the current workflow phase. Complete or route the current phase before using this tool.`
+    logForDebugging(violation)
+    const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          toolUseResult: `Error: ${workflowErrorContent}`,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       },
@@ -680,10 +765,29 @@ async function checkPermissionsAndCallTool(
   }
 
   // Validate input values. Each tool has its own validation logic
-  const isValidCall = await tool.validateInput?.(
+  let isValidCall = await tool.validateInput?.(
     parsedInput.data,
     toolUseContext,
   )
+  if (
+    isRecoverableUnreadFileEditValidation(tool, isValidCall, parsedInput.data)
+  ) {
+    logForDebugging(
+      `${tool.name} tool validation recovery: auto-reading ${parsedInput.data.file_path} before retrying edit validation`,
+    )
+    const recovered = await recoverUnreadFileEditValidation(
+      parsedInput.data,
+      toolUseContext,
+      canUseTool,
+      assistantMessage,
+    )
+    if (recovered) {
+      isValidCall = await tool.validateInput?.(
+        parsedInput.data,
+        toolUseContext,
+      )
+    }
+  }
   if (isValidCall?.result === false) {
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
@@ -714,18 +818,23 @@ async function checkPermissionsAndCallTool(
       }),
       ...mcpToolDetailsForAnalytics(tool.name, mcpServerType, mcpServerBaseUrl),
     })
+    const workflowErrorContent = await workflowSubmitFailureText(
+      tool,
+      toolUseContext,
+      isValidCall.message ?? 'Tool validation failed.',
+    )
     return [
       {
         message: createUserMessage({
           content: [
             {
               type: 'tool_result',
-              content: `<tool_use_error>${isValidCall.message}</tool_use_error>`,
+              content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
               is_error: true,
               tool_use_id: toolUseID,
             },
           ],
-          toolUseResult: `Error: ${isValidCall.message}`,
+          toolUseResult: `Error: ${workflowErrorContent}`,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       },

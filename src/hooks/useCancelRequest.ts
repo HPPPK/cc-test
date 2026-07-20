@@ -172,7 +172,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   const killAllAgentsAndNotify = useCallback((): boolean => {
     const tasks = store.getState().tasks
     const running = Object.entries(tasks).filter(
-      ([, t]) => t.type === 'local_agent' && t.status === 'running',
+      ([, t]) =>
+        t.type === 'local_agent' &&
+        (t.status === 'pending' || t.status === 'running'),
     )
     if (running.length === 0) return false
     killAllRunningAgentTasks(tasks, setAppState)
@@ -225,7 +227,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   const handleKillAgents = useCallback(() => {
     const tasks = store.getState().tasks
     const hasRunningAgents = Object.values(tasks).some(
-      t => t.type === 'local_agent' && t.status === 'running',
+      t =>
+        t.type === 'local_agent' &&
+        (t.status === 'pending' || t.status === 'running'),
     )
     if (!hasRunningAgents) {
       addNotification({

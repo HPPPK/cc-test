@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import type {
   CompletionSubmission,
   WorkflowSessionState,
   WorkflowTemplate,
   WorkflowTransitionRequest,
 } from './workflowTypes.js'
+import type { WorkflowPhaseSkillCatalogEntry } from './workflowPhaseSkillResolver.js'
 
 const NOW = '2026-05-20T00:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-service-test'
@@ -27,6 +31,14 @@ type WorkflowRuntimeServiceContract = {
     content: string
     skillProvenance: unknown[]
     scheduledToolCalls?: unknown[]
+  }>
+  exitWorkflow(input: {
+    state: WorkflowSessionState
+    requestedAt: string
+    transitionId?: string
+  }): Promise<{
+    state: WorkflowSessionState
+    notifications: Array<Record<string, unknown>>
   }>
   applyTransition(input: {
     state: WorkflowSessionState
@@ -52,11 +64,38 @@ type WorkflowRuntimeServiceContract = {
     artifact: Record<string, unknown>
     notifications: Array<Record<string, unknown>>
   }>
+  requestWorkflowRoute(input: {
+    state: WorkflowSessionState
+    request: {
+      phaseId?: string
+      stateVersion?: number
+      intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      targetPhaseId?: string
+      targetWorkflowId?: string
+      rationale: string
+      evidence: Array<Record<string, unknown>>
+      requireUserConfirmation?: boolean
+    }
+    requestedAt: string
+    transitionId?: string
+  }): Promise<{
+    state: WorkflowSessionState
+    notifications: Array<Record<string, unknown>>
+    approvedTargetPhaseId: string | null
+    routeReason: string
+    requiresConfirmation: boolean
+  }>
 }
 
-async function makeService(): Promise<WorkflowRuntimeServiceContract> {
+async function makeService(input: {
+  skillCatalog?: () => Promise<WorkflowPhaseSkillCatalogEntry[]>
+  templateLoader?: (state: WorkflowSessionState) => Promise<WorkflowTemplate | null>
+} = {}): Promise<WorkflowRuntimeServiceContract> {
   const mod = await import('./workflowRuntimeService.js')
-  return new mod.WorkflowRuntimeService() as WorkflowRuntimeServiceContract
+  return new mod.WorkflowRuntimeService(
+    input.skillCatalog,
+    input.templateLoader ?? (async (state: WorkflowSessionState) => state.templateSnapshot ?? null),
+  ) as WorkflowRuntimeServiceContract
 }
 
 function makeTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemplate {
@@ -346,6 +385,40 @@ describe('WorkflowRuntimeService', () => {
     }))
   })
 
+  test('reloads the current ZIP template for an existing session instead of using its legacy snapshot', async () => {
+    const staleTemplate = makeTemplate({
+      phases: [
+        {
+          ...makeTemplate().phases[0],
+          instructions: 'STALE instructions from the old session snapshot.',
+        },
+      ],
+    })
+    const currentTemplate = makeTemplate({
+      phases: [
+        {
+          ...makeTemplate().phases[0],
+          instructions: 'CURRENT instructions loaded from the canonical workflow ZIP.',
+        },
+      ],
+    })
+    const service = await makeService({
+      templateLoader: async () => currentTemplate,
+    })
+
+    const prompt = await service.assemblePrompt({
+      state: makeState({
+        templateSnapshot: staleTemplate,
+        activePhaseId: 'requirements',
+        phases: [{ id: 'requirements', index: 0, status: 'running', artifactPointers: [] }],
+      }),
+      userMessage: 'Continue the current phase.',
+    })
+
+    expect(prompt.content).toContain('CURRENT instructions loaded from the canonical workflow ZIP.')
+    expect(prompt.content).not.toContain('STALE instructions from the old session snapshot.')
+  })
+
   test('assembles workflow phase prompt guidance with artifacts, skills, and model fallback context', async () => {
     const service = await makeService()
     const state = makeState({
@@ -383,6 +456,36 @@ describe('WorkflowRuntimeService', () => {
     })
 
     expect(prompt.content).toContain('Workflow mode')
+    expect(prompt.content).toContain('Every workflow-generated question must use AskUserQuestion')
+    expect(prompt.content).toContain('Ask one question at a time')
+    expect(prompt.content).toContain('(Recommended)')
+    expect(prompt.content).toContain('When confirming a recommended tech stack')
+    expect(prompt.content).toContain('everyday words')
+    expect(prompt.content).toContain('Avoid specialist wording')
+    expect(prompt.content).toContain('Plain assistant text is not an approval gate')
+    expect(prompt.content).toContain('Do not put user-input requests')
+    expect(prompt.content).toContain('Allowed workflow question intents')
+    expect(prompt.content).toContain('confirm-workspace')
+    expect(prompt.content).toContain('record-user-note')
+    expect(prompt.content).toContain('鎯宠瘯璇曞悧')
+    expect(prompt.content).toContain('For optional visual brainstorming')
+    expect(prompt.content).toContain('鐢熸垚绠€鐗堢晫闈㈣崏鍥?(Recommended)')
+    expect(prompt.content).toContain('provide a text or Mermaid sketch')
+    expect(prompt.content).toContain('No such tool available')
+    expect(prompt.content).toContain('do not use screen/computer-control tools to operate Terminal')
+    expect(prompt.content).toContain('File has not been read yet')
+    expect(prompt.content).toContain('Read the exact target file first')
+    expect(prompt.content).toContain('write the artifact content in the phase handoff/answer')
+    expect(prompt.content).toContain('inspect directories only with an available directory-listing or search tool')
+    expect(prompt.content).toContain('inspect files only when the exact file path is known')
+    expect(prompt.content).toContain('Allowed workflow capabilities')
+    expect(prompt.content).toContain('not a callable tool catalog')
+    expect(prompt.content).toContain('Only call a concrete tool when that tool is explicitly present')
+    expect(prompt.content).toContain('workspace inspection capability')
+    expect(prompt.content).not.toContain('Do not call Bash')
+    expect(prompt.content).not.toContain('If Bash, Glob, Grep, or LS is unavailable')
+    expect(prompt.content).toContain('do not guess paths')
+    expect(prompt.content).toContain('Do not offer fake permission choices')
     expect(prompt.content).toContain('requirements')
     expect(prompt.content).toContain('Clarify the user-visible requirements')
     expect(prompt.content).toContain('Accepted requirements document')
@@ -392,6 +495,128 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('claude-sonnet-4')
     expect(prompt.content).toContain('Requested model unavailable')
     expect(prompt.content).toContain('Please continue.')
+  })
+
+  test('pause, resume, and stop preserve artifacts and transition history', async () => {
+    const service = await makeService()
+    const artifact = pointer('requirements-output')
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        {
+          id: 'requirements',
+          index: 0,
+          status: 'running',
+          artifactPointers: [artifact],
+        },
+        {
+          id: 'implementation',
+          index: 1,
+          status: 'created',
+          artifactPointers: [],
+        },
+      ],
+      artifactIndex: [artifact],
+      transitionHistory: [
+        {
+          transitionId: 'existing-transition',
+          fromPhaseId: 'requirements',
+          toPhaseId: 'requirements',
+          authority: 'auto',
+          action: 'retry',
+          result: 'accepted',
+          completionCheckId: null,
+          createdAt: NOW,
+          stateVersion: 1,
+        },
+      ],
+    })
+
+    const paused = await service.applyTransition({
+      state,
+      requestedAt: '2026-05-20T00:01:00.000Z',
+      request: {
+        phaseId: 'requirements',
+        action: 'pause',
+        transitionId: 'pause-1',
+      },
+    })
+    expect(paused.state.runStatus).toBe('paused')
+    expect(paused.state.artifactIndex).toEqual([artifact])
+    expect(paused.state.transitionHistory.map((transition) => transition.transitionId)).toEqual([
+      'existing-transition',
+      'pause-1',
+    ])
+
+    const resumed = await service.applyTransition({
+      state: paused.state,
+      requestedAt: '2026-05-20T00:02:00.000Z',
+      request: {
+        phaseId: 'requirements',
+        action: 'resume',
+        transitionId: 'resume-1',
+      },
+    })
+    expect(resumed.state.runStatus).toBe('active')
+    expect(resumed.state.artifactIndex).toEqual([artifact])
+
+    const stopped = await service.applyTransition({
+      state: resumed.state,
+      requestedAt: '2026-05-20T00:03:00.000Z',
+      request: {
+        phaseId: 'requirements',
+        action: 'stop',
+        transitionId: 'stop-1',
+      },
+    })
+    expect(stopped.state.runStatus).toBe('stopped')
+    expect(stopped.state.activePhaseId).toBe('requirements')
+    expect(stopped.state.artifactIndex).toEqual([artifact])
+    expect(stopped.state.transitionHistory.map((transition) => transition.transitionId)).toEqual([
+      'existing-transition',
+      'pause-1',
+      'resume-1',
+      'stop-1',
+    ])
+  })
+
+  test('exits an active workflow without deleting its phase or artifacts', async () => {
+    const service = await makeService()
+    const artifact = pointer('requirements-artifact')
+    const result = await service.exitWorkflow({
+      state: makeState({
+        status: 'running',
+        workflowStatus: 'running',
+        runStatus: 'active',
+        phases: [{
+          id: 'requirements',
+          index: 0,
+          status: 'running',
+          artifactPointers: [artifact],
+        }, {
+          id: 'implementation',
+          index: 1,
+          status: 'created',
+          artifactPointers: [],
+        }],
+        artifactIndex: [artifact],
+      }),
+      requestedAt: '2026-05-20T00:03:00.000Z',
+      transitionId: 'exit-1',
+    })
+
+    expect(result.state.workflowStatus).toBe('cancelled')
+    expect(result.state.status).toBe('cancelled')
+    expect(result.state.runStatus).toBe('cancelled')
+    expect(result.state.activePhaseId).toBe('requirements')
+    expect(result.state.artifactIndex).toEqual([artifact])
+    expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
+      transitionId: 'exit-1',
+      authority: 'cancel',
+      decision: 'cancelled',
+    }))
   })
 
   test('startPhase snapshots active phase recommended skill resolutions for resume-stable prompts', async () => {
@@ -443,6 +668,219 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.scheduledToolCalls ?? []).toEqual([])
   })
 
+  test('exposes native SkillTool execution guidance for installed provider skills', async () => {
+    const service = await makeService()
+    const state = recommendedSkillRuntimeState()
+    const snapshot = state.phaseSkillSnapshots?.[0]
+    if (!snapshot) throw new Error('missing skill snapshot')
+    snapshot.references = [
+      {
+        name: 'superpowers:verification-before-completion',
+        mode: 'recommended',
+        source: 'superpowers',
+        reason: 'Use installed Superpowers verification before final completion.',
+      },
+    ]
+    snapshot.resolutions = [
+      {
+        reference: snapshot.references[0],
+        status: 'available',
+        checkedAt: NOW,
+        resolvedSkill: {
+          name: 'superpowers:verification-before-completion',
+          displayName: 'Superpowers: Verification Before Completion',
+          source: 'superpowers',
+        },
+        provenance: {
+          referenceId: 'superpowers:verification-before-completion',
+          sourcePath: '/tmp/.claude/skills/superpowers:verification-before-completion/SKILL.md',
+        },
+      },
+    ]
+    state.skillBindingStatus = [
+      {
+        id: 'superpowers:verification-before-completion',
+        mode: 'native-if-installed-else-fallback-contract',
+        availability: 'native',
+      },
+    ]
+
+    const prompt = await service.assemblePrompt({
+      state,
+      userMessage: 'Verify before completion.',
+    })
+
+    expect(prompt.content).toContain('Native skill execution')
+    expect(prompt.content).toContain('Use SkillTool')
+    expect(prompt.content).toContain('superpowers:verification-before-completion')
+    expect(prompt.content).toContain('If SkillTool is unavailable or denied')
+    expect(prompt.scheduledToolCalls ?? []).toEqual([])
+  })
+
+
+
+  test('does not use fallback contracts for missing skill bindings from pack templates', async () => {
+    const service = await makeService()
+    const template = makeTemplate({
+      source: 'pack',
+      phases: [
+        {
+          id: 'pack-phase',
+          label: 'Pack Phase',
+          instructions: 'Run the imported pack phase.',
+          requestedModel: null,
+          skillBindings: ['missing-provider:missing-skill'],
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['pack phase completed'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    })
+    const state = makeState({
+      workflowStatus: 'running',
+      activePhaseId: 'pack-phase',
+      templateSnapshot: template,
+      template: {
+        id: template.id,
+        version: String(template.version),
+        source: 'pack',
+        snapshotId: 'pack-snapshot-1',
+        sourceState: 'current',
+      },
+      templateIdentity: {
+        id: template.id,
+        source: 'pack',
+        version: template.version,
+        registryKey: `pack:${template.id}`,
+      },
+      phases: [
+        {
+          id: 'pack-phase',
+          index: 0,
+          status: 'running',
+          artifactPointers: [],
+        },
+      ],
+    })
+
+    const prompt = await service.assemblePrompt({
+      state,
+      userMessage: 'Continue the imported pack workflow.',
+    })
+
+    expect(prompt.content).toContain('- missing-provider:missing-skill: disabled')
+    expect(prompt.content).not.toContain('fallback contract:')
+    expect(prompt.content).not.toContain('Use the workflow phase contract as the local fallback')
+  })
+
+  test('uses installed Superpowers brainstorming when brainstorming is forced on', async () => {
+    const service = await makeService()
+    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+    const tempConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-superpowers-'))
+    const skillDir = path.join(
+      tempConfigDir,
+      'plugins',
+      'cache',
+      'openai-curated-remote',
+      'superpowers',
+      '5.1.4',
+      'skills',
+      'brainstorming',
+    )
+    try {
+      process.env.CLAUDE_CONFIG_DIR = tempConfigDir
+      await fs.mkdir(skillDir, { recursive: true })
+      await fs.writeFile(
+        path.join(skillDir, 'SKILL.md'),
+        [
+          '---',
+          'name: brainstorming',
+          'description: Superpowers brainstorming',
+          '---',
+          'Use brainstorming before creative work.',
+          '',
+        ].join('\n'),
+        'utf-8',
+      )
+      const template = makeTemplate({
+        phases: [
+          {
+            id: 'scope-plan',
+            label: 'Scope Plan',
+            instructions: 'Explore and lock scope.',
+            requestedModel: null,
+            skillBindings: ['superpowers:brainstorming'],
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['scope is confirmed'],
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      })
+      const state = makeState({
+        brainstormingMode: 'on',
+        labels: ['new-product'],
+        effort: 'standard',
+        activePhaseId: 'scope-plan',
+        templateSnapshot: template,
+        phases: [{ id: 'scope-plan', index: 0, status: 'running', artifactPointers: [] }],
+      })
+
+      const prompt = await service.assemblePrompt({
+        state,
+        userMessage: 'Continue scope discovery.',
+      })
+
+      expect(prompt.content).toContain('Native Superpowers brainstorming is available and active')
+      expect(prompt.content).toContain('superpowers:brainstorming: native')
+      expect(prompt.content).toContain('follow the installed superpowers:brainstorming process')
+    } finally {
+      if (originalConfigDir === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+      }
+      await fs.rm(tempConfigDir, { recursive: true, force: true })
+    }
+  }, 20_000)
+
+  test('does not bind Superpowers brainstorming when brainstorming is off', async () => {
+    const service = await makeService()
+    const template = makeTemplate({
+      phases: [
+        {
+          id: 'scope-plan',
+          label: 'Scope Plan',
+          instructions: 'Explore and lock scope.',
+          requestedModel: null,
+          skillBindings: ['superpowers:brainstorming'],
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['scope is confirmed'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    })
+    const state = makeState({
+      brainstormingMode: 'off',
+      labels: ['new-product'],
+      effort: 'standard',
+      activePhaseId: 'scope-plan',
+      templateSnapshot: template,
+      phases: [{ id: 'scope-plan', index: 0, status: 'running', artifactPointers: [] }],
+    })
+
+    const prompt = await service.assemblePrompt({
+      state,
+      userMessage: 'Continue from supplied requirements.',
+    })
+
+    expect(prompt.content).toContain('Brainstorming: off')
+    expect(prompt.content).not.toContain('superpowers:brainstorming')
+    expect(prompt.content).not.toContain('Native Superpowers brainstorming is available and active')
+  })
+
   test('describes recommended-skill priority as attention-only runtime guidance', async () => {
     const service = await makeService()
     const state = recommendedSkillRuntimeState()
@@ -491,6 +929,28 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('nested skill invocation')
     expect(prompt.content).toContain('depth')
     expect(prompt.scheduledToolCalls ?? []).toEqual([])
+  })
+
+  test('injects Chinese language policy into active workflow prompts for Chinese users', async () => {
+    const service = await makeService()
+    const prompt = await service.assemblePrompt({
+      state: makeState({ workflowStatus: 'running', status: 'running' }),
+      userMessage: '请继续当前阶段，并在需要我确认时给出中文选项。',
+    })
+
+    expect(prompt.content).toContain('当前用户主要使用中文')
+    expect(prompt.content).toContain('AskUserQuestion 的 prompt、choice label、阶段摘要')
+  })
+
+  test('keeps Chinese workflow language for an English continue message when the UI locale is Chinese', async () => {
+    const service = await makeService()
+    const prompt = await service.assemblePrompt({
+      state: makeState({ workflowStatus: 'running', status: 'running', workflowLanguage: 'zh' }),
+      userMessage: 'continue',
+    })
+
+    expect(prompt.content).toContain('当前 UI 使用中文')
+    expect(prompt.content).not.toContain('current UI language is English')
   })
 
   test('injects phase action guardrails into the active workflow prompt', async () => {
@@ -560,6 +1020,32 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('Forbidden actions:')
     expect(prompt.content).toContain('- Create, edit, or delete implementation files')
     expect(prompt.content).toContain('Do not perform forbidden actions in this phase even if the user asks.')
+  })
+
+  test('injects checkpoint rollback context into the next workflow prompt', async () => {
+    const service = await makeService()
+    const prompt = await service.assemblePrompt({
+      state: makeState({
+        workflowStatus: 'running',
+        lastCheckpointRestore: {
+          checkpointId: 'v2',
+          checkpointVersion: 2,
+          checkpointLabel: 'before verify prompt experiment',
+          restoredAt: '2026-07-04T13:20:00.000Z',
+          restoredActivePhaseId: 'requirements',
+          restoredPhaseIndex: 0,
+          removedFiles: ['generated-after-save.txt'],
+          instruction: 'Treat later generated context as superseded and re-evaluate the next stage prompt.',
+        },
+      }),
+      userMessage: 'Continue after rollback.',
+    })
+
+    expect(prompt.content).toContain('Workflow checkpoint rollback context')
+    expect(prompt.content).toContain('Restored checkpoint: v2')
+    expect(prompt.content).toContain('Files removed by rollback')
+    expect(prompt.content).toContain('generated-after-save.txt')
+    expect(prompt.content).toContain('Treat later generated context as superseded')
   })
 
   test('injects phase handoff intake, output artifact, and stop rules into the active workflow prompt', async () => {
@@ -727,6 +1213,484 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.phases[1].status).toBe('running')
   })
 
+  test('routes a confirmed Stage 6 completion back to Stage 4 instead of advancing linearly to Stage 7', async () => {
+    const service = await makeService()
+    const phases = [
+      ['discover', 'Stage 1'],
+      ['shape', 'Stage 2'],
+      ['specify', 'Stage 3'],
+      ['delegate-implement', 'Stage 4: 分批实现与审查'],
+      ['build', 'Stage 5'],
+      ['validate', 'Stage 6'],
+      ['release', 'Stage 7'],
+    ] as const
+    const template = makeTemplate({
+      phases: phases.map(([id, label]) => ({
+        ...makeTemplate().phases[0],
+        id,
+        label,
+        transitionAuthority: 'user-confirmation',
+      })),
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      template: {
+        id: template.id,
+        version: String(template.version),
+        source: template.source,
+        snapshotId: 'snapshot-1',
+        sourceState: 'current',
+      },
+      activePhaseId: 'validate',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: phases.map(([id], index) => ({
+        id,
+        index,
+        status: id === 'validate' ? 'pending-confirmation' : index < 5 ? 'completed' : 'created',
+        artifactPointers: [],
+      })),
+      pendingConfirmation: {
+        confirmationId: 'validate-completion',
+        phaseId: 'validate',
+        fromPhaseId: 'validate',
+        toPhaseId: 'release',
+        completionCheckId: 'validate-completion',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const routed = await service.requestWorkflowRoute({
+      state,
+      requestedAt: '2026-05-20T00:04:00.000Z',
+      transitionId: 'route-back-to-stage-4',
+      request: {
+        phaseId: 'validate',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        rationale: 'Validation found a defect that must be fixed in implementation.',
+        evidence: [{ kind: 'validation-failure', test: 'route regression' }],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(routed.state.pendingRoute).toMatchObject({
+      intent: 'jump_to_phase',
+      targetPhaseId: 'delegate-implement',
+      approvedTargetPhaseId: 'delegate-implement',
+    })
+
+    const confirmed = await service.applyTransition({
+      state: routed.state,
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      request: {
+        phaseId: 'validate',
+        action: 'confirm',
+        transitionId: 'confirm-route-back-to-stage-4',
+        expectedStateVersion: routed.state.stateVersion,
+      },
+    })
+
+    expect(confirmed.state.activePhaseId).toBe('delegate-implement')
+    expect(confirmed.state.phases[3].status).toBe('running')
+    expect(confirmed.state.phases[6].status).not.toBe('running')
+  })
+
+  test('does not create a duplicate pending route when repaired Stage 4 already advances to Stage 5', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const template = makeTemplate({
+      phases: [
+        { ...basePhase, id: 'delegate-implement', label: 'Stage 4', transitionAuthority: 'user-confirmation' },
+        { ...basePhase, id: 'scenario-review', label: 'Stage 5', transitionAuthority: 'user-confirmation' },
+      ],
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      activePhaseId: 'delegate-implement',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'delegate-implement', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'scenario-review', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'repair-ready',
+        phaseId: 'delegate-implement',
+        fromPhaseId: 'delegate-implement',
+        toPhaseId: 'scenario-review',
+        completionCheckId: 'repair-ready',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const routed = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      transitionId: 'redundant-return-to-stage-5',
+      request: {
+        phaseId: 'delegate-implement',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'scenario-review',
+        rationale: 'The scoped repair is complete; resume validation.',
+        evidence: [{ kind: 'repair-verified' }],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(routed.state.pendingRoute).toBeUndefined()
+    expect(routed.state.pendingConfirmation).toMatchObject({
+      phaseId: 'delegate-implement',
+      toPhaseId: 'scenario-review',
+      status: 'pending',
+    })
+    expect(routed.approvedTargetPhaseId).toBe('scenario-review')
+    expect(routed.requiresConfirmation).toBe(true)
+
+    const confirmed = await service.applyTransition({
+      state: routed.state,
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      request: {
+        phaseId: 'delegate-implement',
+        action: 'confirm',
+        transitionId: 'confirm-repaired-stage-4',
+        expectedStateVersion: routed.state.stateVersion,
+      },
+    })
+    expect(confirmed.state.activePhaseId).toBe('scenario-review')
+    expect(confirmed.state.pendingRoute).toBeNull()
+    expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'confirmed' })
+
+    const autoRouted = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      transitionId: 'auto-confirm-repaired-stage-4',
+      request: {
+        phaseId: 'delegate-implement',
+        stateVersion: state.stateVersion,
+        intent: 'advance',
+        rationale: 'The user chose to continue to validation.',
+        evidence: [{ kind: 'user-choice' }],
+        requireUserConfirmation: false,
+      },
+    })
+    expect(autoRouted.state.activePhaseId).toBe('scenario-review')
+    expect(autoRouted.state.pendingConfirmation).toBeNull()
+    expect(autoRouted.state.pendingRoute).toBeNull()
+    expect(autoRouted.requiresConfirmation).toBe(false)
+    expect(autoRouted.state.transitionHistory.at(-1)).toMatchObject({ action: 'confirmed' })
+  })
+
+  test('allows Stage 5 and Stage 6 jump routes when forbidden action prose only mentions non-workflow routes', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const cases = [
+      {
+        id: 'scenario-review',
+        label: 'Stage 5: Scenario review',
+        forbiddenAction: 'Route failed or unclear validation through validation problem routing instead of ad-hoc repair.',
+      },
+      {
+        id: 'local-preview',
+        label: 'Stage 6: Local preview',
+        forbiddenAction: 'Record preview URL, route, command, process ID, port, log path, and user feedback.',
+      },
+    ] as const
+
+    for (const scenario of cases) {
+      const template = makeTemplate({
+        phases: [
+          {
+            ...basePhase,
+            id: 'delegate-implement',
+            label: 'Stage 4: Delegate implementation',
+            transitionAuthority: 'user-confirmation',
+          },
+          {
+            ...basePhase,
+            id: scenario.id,
+            label: scenario.label,
+            transitionAuthority: 'user-confirmation',
+            actionPolicy: {
+              allowedActions: ['read', 'route-request'],
+              forbiddenActions: [scenario.forbiddenAction],
+            },
+          },
+          {
+            ...basePhase,
+            id: 'finish-memory',
+            label: 'Finish',
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      })
+      const state = makeState({
+        templateSnapshot: template,
+        activePhaseId: scenario.id,
+        workflowStatus: 'pending-confirmation',
+        status: 'pending-confirmation',
+        runStatus: 'waiting_for_user',
+        phases: template.phases.map((phase, index) => ({
+          id: phase.id,
+          index,
+          status: phase.id === scenario.id ? 'pending-confirmation' : index === 0 ? 'completed' : 'created',
+          artifactPointers: [],
+        })),
+        pendingConfirmation: {
+          confirmationId: `${scenario.id}-completion`,
+          phaseId: scenario.id,
+          fromPhaseId: scenario.id,
+          toPhaseId: 'finish-memory',
+          completionCheckId: `${scenario.id}-completion`,
+          artifactRefs: [],
+          createdAt: NOW,
+          status: 'pending',
+        },
+      })
+
+      const routed = await service.requestWorkflowRoute({
+        state,
+        requestedAt: NOW,
+        request: {
+          phaseId: scenario.id,
+          stateVersion: state.stateVersion,
+          intent: 'jump_to_phase',
+          targetPhaseId: 'delegate-implement',
+          rationale: 'A verified defect requires a scoped implementation repair.',
+          evidence: [{ kind: 'validation-failure' }],
+          requireUserConfirmation: true,
+        },
+      })
+
+      expect(routed.state.pendingRoute).toMatchObject({
+        phaseId: scenario.id,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        approvedTargetPhaseId: 'delegate-implement',
+        status: 'pending',
+      })
+    }
+  })
+
+  test('rejects jump_to_phase only when the active phase explicitly forbids that route intent', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const template = makeTemplate({
+      phases: [
+        {
+          ...basePhase,
+          id: 'delegate-implement',
+          label: 'Stage 4: Delegate implementation',
+          transitionAuthority: 'user-confirmation',
+        },
+        {
+          ...basePhase,
+          id: 'scenario-review',
+          label: 'Stage 5: Scenario review',
+          transitionAuthority: 'user-confirmation',
+          actionPolicy: {
+            allowedActions: ['read', 'route-request'],
+            forbiddenActions: ['jump_to_phase'],
+          },
+        },
+      ],
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      activePhaseId: 'scenario-review',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'delegate-implement', index: 0, status: 'completed', artifactPointers: [] },
+        { id: 'scenario-review', index: 1, status: 'pending-confirmation', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'scenario-review-completion',
+        phaseId: 'scenario-review',
+        fromPhaseId: 'scenario-review',
+        toPhaseId: null,
+        completionCheckId: 'scenario-review-completion',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'scenario-review',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delegate-implement',
+        rationale: 'The review found an implementation defect.',
+        evidence: [{ kind: 'validation-failure' }],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_FORBIDDEN' })
+  })
+
+  test('supports advance and rework_current_phase route intents after a pending completion', async () => {
+    const service = await makeService()
+    const pendingState = () => makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'requirements-ready',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'requirements-ready',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    const advanceState = pendingState()
+    const advanceRoute = await service.requestWorkflowRoute({
+      state: advanceState,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: advanceState.stateVersion,
+        intent: 'advance', rationale: 'Proceed to implementation.', evidence: [],
+      },
+    })
+    const advanced = await service.applyTransition({
+      state: advanceRoute.state,
+      requestedAt: NOW,
+      request: { phaseId: 'requirements', action: 'confirm', stateVersion: advanceRoute.state.stateVersion },
+    })
+    expect(advanced.state.activePhaseId).toBe('implementation')
+
+    const reworkState = pendingState()
+    const reworkRoute = await service.requestWorkflowRoute({
+      state: reworkState,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: reworkState.stateVersion,
+        intent: 'rework_current_phase', rationale: 'Revise the current phase.', evidence: [],
+      },
+    })
+    const reworked = await service.applyTransition({
+      state: reworkRoute.state,
+      requestedAt: NOW,
+      request: { phaseId: 'requirements', action: 'confirm', stateVersion: reworkRoute.state.stateVersion },
+    })
+    expect(reworked.state.activePhaseId).toBe('requirements')
+    expect(reworked.state.phases[0]?.status).toBe('running')
+    expect(reworked.state.pendingConfirmation).toBeNull()
+  })
+
+  test('rejects route_to_workflow instead of interpreting it as finish', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation', status: 'pending-confirmation', runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'requirements-ready', phaseId: 'requirements', fromPhaseId: 'requirements',
+        toPhaseId: 'implementation', completionCheckId: 'requirements-ready', artifactRefs: [], createdAt: NOW, status: 'pending',
+      },
+    })
+    await expect(service.requestWorkflowRoute({
+      state, requestedAt: NOW,
+      request: {
+        phaseId: 'requirements', stateVersion: state.stateVersion, intent: 'route_to_workflow',
+        targetWorkflowId: 'debug-repair-workflow-v8', rationale: 'This needs a dedicated debug workflow.', evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_UNSUPPORTED' })
+    expect(state.activePhaseId).toBe('requirements')
+  })
+
+  test('rejects a stale workflow route request without mutating the pending completion', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'pending-requirements',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'pending-requirements',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion - 1,
+        intent: 'advance',
+        rationale: 'Advance after confirmation.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_STATE_STALE' })
+    expect(state.pendingRoute).toBeUndefined()
+    expect(state.pendingConfirmation?.status).toBe('pending')
+  })
+
+  test('rejects a route target that is not in the workflow template', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: [
+        { id: 'requirements', index: 0, status: 'pending-confirmation', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'pending-requirements',
+        phaseId: 'requirements',
+        fromPhaseId: 'requirements',
+        toPhaseId: 'implementation',
+        completionCheckId: 'pending-requirements',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'does-not-exist',
+        rationale: 'Need a valid target.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_TARGET_INVALID' })
+  })
+
   test('keeps retry transitions idempotent without duplicating artifacts or skipping phases', async () => {
     const service = await makeService()
     const state = makeState({
@@ -879,6 +1843,38 @@ describe('WorkflowRuntimeService', () => {
         transitionId: 'submit-ready-1',
         action: 'confirmation-requested',
         result: 'accepted',
+      }))
+    })
+
+    test('keeps needs_user completion at the structured stage gate even when the phase allows auto transition', async () => {
+      const service = await makeService()
+      const result = await service.submitPhaseCompletion({
+        state: runningState(),
+        requestedAt: '2026-05-20T00:05:30.000Z',
+        transitionId: 'submit-needs-user-1',
+        submission: completionSubmission({ status: 'needs_user' }),
+      })
+
+      expect(result.status).toBe('pending')
+      expect(result.state.activePhaseId).toBe('requirements')
+      expect(result.state.pendingConfirmation?.submission?.status).toBe('needs_user')
+    })
+
+    test('auto-advances a completed submission only when the current phase transition authority is auto', async () => {
+      const service = await makeService()
+      const result = await service.submitPhaseCompletion({
+        state: runningState(),
+        requestedAt: '2026-05-20T00:05:45.000Z',
+        transitionId: 'submit-completed-auto-1',
+        submission: completionSubmission({ status: 'completed' }),
+      })
+
+      expect(result.status).toBe('recorded')
+      expect(result.state.activePhaseId).toBe('implementation')
+      expect(result.state.pendingConfirmation).toBeNull()
+      expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
+        transitionId: 'submit-completed-auto-1',
+        action: 'auto-advance',
       }))
     })
 
@@ -1058,6 +2054,19 @@ describe('WorkflowRuntimeService', () => {
         'missing handoff',
         { ...completionSubmission(), handoff: undefined } as unknown as CompletionSubmission,
         'WORKFLOW_COMPLETION_INVALID',
+      ],
+      [
+        'workflow route hidden in handoff',
+        completionSubmission({
+          handoff: {
+            summary: 'Validation found a defect that requires implementation repair.',
+            routeRequest: {
+              intent: 'jump_to_phase',
+              targetPhaseId: 'implementation',
+            },
+          },
+        }),
+        'WORKFLOW_ROUTE_REQUEST_REQUIRED',
       ],
       [
         'missing evidence',
@@ -1523,4 +2532,83 @@ describe('WorkflowRuntimeService', () => {
       }))
     })
   })
+  test('injects the bundled complete brainstorming contract when this workflow has no native brainstorming Skill and mode is on or eligible auto', async () => {
+    const bundledSkillsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-fallback-bundled-'))
+    const bundledSkillDir = path.join(bundledSkillsDir, 'brainstorming')
+
+    try {
+      await fs.mkdir(bundledSkillDir, { recursive: true })
+      await fs.writeFile(
+        path.join(bundledSkillDir, 'SKILL.md'),
+        [
+          '---',
+          'name: brainstorming',
+          'referenceId: superpowers:brainstorming',
+          '---',
+          '# Brainstorming Ideas Into Designs',
+          '',
+          '<HARD-GATE>',
+          'Wait for user approval before implementation.',
+          '</HARD-GATE>',
+          '',
+        ].join('\n'),
+        'utf-8',
+      )
+
+      const service = await makeService({
+        skillCatalog: async () => [{
+          name: 'brainstorming',
+          displayName: 'Brainstorming',
+          source: 'bundled',
+          sourcePath: path.join(bundledSkillDir, 'SKILL.md'),
+        }, {
+          name: 'superpowers:brainstorming',
+          displayName: 'Brainstorming in another workflow ZIP',
+          source: 'managed',
+          packId: 'another-workflow-pack',
+          referenceId: 'superpowers:brainstorming',
+          sourcePath: 'pack://another-workflow-pack/skills/brainstorming/SKILL.md',
+        }],
+      })
+
+
+      const template = makeTemplate({
+        source: 'pack',
+        phases: [
+          {
+            id: 'scope-plan',
+            label: 'Scope Plan',
+            instructions: 'Explore and lock scope.',
+            requestedModel: null,
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['scope is confirmed'],
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      })
+      for (const brainstormingMode of ['on', 'auto'] as const) {
+        const state = makeState({
+          brainstormingMode,
+          labels: ['new-product'],
+          activePhaseId: 'scope-plan',
+          templateSnapshot: template,
+          phases: [{ id: 'scope-plan', index: 0, status: 'running', artifactPointers: [] }],
+        })
+
+        const prompt = await service.assemblePrompt({
+          state,
+          userMessage: 'Continue scope discovery.',
+        })
+
+        expect(prompt.content).toContain('Bundled brainstorming fallback is active')
+        expect(prompt.content).toContain('# Brainstorming Ideas Into Designs')
+        expect(prompt.content).toContain('<HARD-GATE>')
+        expect(prompt.content).toContain('superpowers:brainstorming: fallback')
+        expect(prompt.content).not.toContain('Native Superpowers brainstorming is available and active')
+      }
+    } finally {
+      await fs.rm(bundledSkillsDir, { recursive: true, force: true })
+    }
+  }, 20_000)
 })

@@ -49,6 +49,7 @@ vi.mock('../../i18n', () => ({
       'sidebar.useExistingFolder': 'Use existing folder',
       'sidebar.chooseProjectFolderUnavailable': 'Folder selection is only available in the desktop app.',
       'sidebar.projectActions': 'Project actions for {project}',
+      'sidebar.sessionActions': 'Session actions for {session}',
       'sidebar.pinProject': 'Pin Project',
       'sidebar.unpinProject': 'Unpin Project',
       'sidebar.openInFinder': 'Open in Finder',
@@ -228,6 +229,12 @@ describe('Sidebar', () => {
     window.localStorage.removeItem(PROJECT_HIDDEN_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_ORGANIZATION_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_SORT_STORAGE_KEY)
+  })
+
+  it('does not render the GitHub navigation link in the header', () => {
+    const { container } = render(<Sidebar />)
+
+    expect(container.querySelector('a[href="https://github.com/NanmiCoder/cc-jiangxia"]')).not.toBeInTheDocument()
   })
 
   it('opens a new tab when creating a session from the sidebar', async () => {
@@ -519,6 +526,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('menuitem', { name: 'Pin Project' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Open in Finder' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Hide from Sidebar' })).toBeInTheDocument()
+    expect(screen.getByRole('menu')).toHaveClass('z-[9999]')
     expect(screen.queryByRole('menuitem', { name: 'Create Permanent Worktree' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Rename Project' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Archive Conversations' })).not.toBeInTheDocument()
@@ -795,6 +803,34 @@ describe('Sidebar', () => {
     expect(useTabStore.getState().tabs).toEqual([])
   })
 
+  it('opens the session context menu at the right-click point above all layout layers', () => {
+    useSessionStore.setState({
+      sessions: [makeSession('session-1', 'Open Session', '/workspace/project', new Date().toISOString())],
+    })
+
+    render(<Sidebar />)
+
+    const sessionButton = screen.getByRole('button', { name: /Open Session/ })
+    vi.spyOn(sessionButton, 'getBoundingClientRect').mockReturnValue({
+      top: 240,
+      bottom: 272,
+      left: 16,
+      right: 276,
+      width: 260,
+      height: 32,
+      x: 16,
+      y: 240,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.contextMenu(sessionButton, { clientX: 84, clientY: 252 })
+
+    const menu = screen.getByRole('menu', { name: 'Session actions for Open Session' })
+    expect(menu).toHaveStyle({ left: '84px', top: '252px' })
+    expect(menu).toHaveClass('z-[9999]', 'min-w-[140px]', 'bg-[var(--color-surface)]')
+    expect(within(menu).getByRole('menuitem', { name: 'Delete' })).toHaveClass('text-[var(--color-error)]')
+  })
+
   it('requires confirmation before deleting a session from the sidebar', async () => {
     deleteSession.mockResolvedValue(undefined)
     useSessionStore.setState({
@@ -820,7 +856,7 @@ describe('Sidebar', () => {
 
     fireEvent.contextMenu(screen.getByRole('button', { name: /Open Session/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
 
     expect(deleteSession).not.toHaveBeenCalled()
     const dialog = screen.getByRole('dialog')

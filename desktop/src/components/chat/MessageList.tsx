@@ -214,7 +214,9 @@ function formatBackgroundTaskDuration(durationMs?: number) {
 function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) {
   const t = useTranslation()
   const { task } = message
+  const isQueued = task.status === 'queued'
   const isRunning = task.status === 'running'
+  const isBlocked = task.status === 'blocked'
   const isFailed = task.status === 'failed'
   const isStopped = task.status === 'stopped'
   const duration = formatBackgroundTaskDuration(task.usage?.durationMs)
@@ -229,8 +231,12 @@ function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) 
         className="flex min-w-0 items-start gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-3 py-2"
       >
         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
-          {isRunning ? (
+          {isQueued ? (
+            <LoaderCircle size={15} strokeWidth={2.25} className="text-[var(--color-text-tertiary)]" aria-hidden="true" />
+          ) : isRunning ? (
             <LoaderCircle size={15} strokeWidth={2.25} className="animate-spin text-[var(--color-accent)]" aria-hidden="true" />
+          ) : isBlocked ? (
+            <XCircle size={15} strokeWidth={2.25} className="text-[var(--color-error)]" aria-hidden="true" />
           ) : isFailed ? (
             <XCircle size={15} strokeWidth={2.25} className="text-[var(--color-error)]" aria-hidden="true" />
           ) : isStopped ? (
@@ -262,6 +268,41 @@ function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) 
           <div className="mt-0.5 truncate text-[12px] leading-5 text-[var(--color-text-secondary)]">
             {detail}
           </div>
+          {task.workflowTaskId || task.blockedReason || task.worktreePath ? (
+            <div className="mt-1.5 space-y-1 text-[11px] leading-4 text-[var(--color-text-tertiary)]">
+              {task.workflowTaskId ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5">
+                    {t('chat.backgroundAgents.workflowTask', { id: task.workflowTaskId })}
+                  </span>
+                  {task.executionMode ? (
+                    <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5">
+                      {task.executionMode === 'write' ? t('chat.backgroundAgents.writeTask') : t('chat.backgroundAgents.readTask')}
+                    </span>
+                  ) : null}
+                  {task.worktreeIsolation ? (
+                    <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5">
+                      {t('chat.backgroundAgents.worktreeIsolation')}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {task.writeScopes?.length ? (
+                <div>{t('chat.backgroundAgents.writeScopes', { scopes: task.writeScopes.join(', ') })}</div>
+              ) : null}
+              {task.blockedReason ? (
+                <div>{t('chat.backgroundAgents.blockedReason', { reason: task.blockedReason })}</div>
+              ) : null}
+              {task.worktreePath ? (
+                <div>
+                  {t('chat.backgroundAgents.worktreeHandoff', { path: task.worktreePath })}
+                  {task.worktreeBranch ? ` (${task.worktreeBranch})` : ''}
+                  {' '}
+                  {t('chat.backgroundAgents.notMerged')}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -270,6 +311,7 @@ function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) 
 
 function isAgentBackgroundTaskMessage(message: UIMessage): boolean {
   if (message.type !== 'background_task') return false
+  if (message.task.workflowTaskId) return false
   if (message.task.taskType === 'local_agent' || message.task.taskType === 'remote_agent') {
     return true
   }
@@ -624,6 +666,7 @@ function MemoryEventCard({ message }: { message: MemoryEvent }) {
 type MessageListProps = {
   sessionId?: string | null
   compact?: boolean
+  workflowTransitionCard?: ReactNode
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48
@@ -679,7 +722,7 @@ function getBottomScrollTop(element: HTMLElement) {
   return Math.max(0, element.scrollHeight - element.clientHeight)
 }
 
-export function MessageList({ sessionId, compact = false }: MessageListProps = {}) {
+export function MessageList({ sessionId, compact = false, workflowTransitionCard }: MessageListProps = {}) {
   const activeTabId = useTabStore((s) => s.activeTabId)
   const resolvedSessionId = sessionId ?? activeTabId
   const sessionState = useChatStore((s) =>
@@ -1065,6 +1108,12 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
           {(chatState === 'tool_executing' || (chatState === 'thinking' && !activeThinkingId)) && (
             <StreamingIndicator />
           )}
+
+          {workflowTransitionCard ? (
+            <div className="mt-2" data-testid="workflow-transition-chat-card">
+              {workflowTransitionCard}
+            </div>
+          ) : null}
 
           {!isLoadingTurnChangeCards && turnChangeCards.length === 0 && turnChangeLoadError && (
             <div className="mx-auto mb-5 w-full max-w-[860px] rounded-[var(--radius-lg)] border border-[var(--color-error)]/25 bg-[var(--color-error-container)]/18 px-4 py-3 text-xs text-[var(--color-error)]">

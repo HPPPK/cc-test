@@ -19,6 +19,20 @@ function normalizeTitleWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
+function stripInternalWorkflowPrompt(raw: string): string {
+  const normalized = raw.replace(/\r\n/g, '\n').trimStart()
+  if (!normalized.startsWith('Workflow mode\n\n') || !normalized.includes('\n\nActive phase:')) {
+    return raw
+  }
+
+  const marker = '\n\nWorkflow model provenance'
+  const beforeModelProvenance = normalized.includes(marker)
+    ? normalized.slice(0, normalized.indexOf(marker))
+    : normalized
+  const sections = beforeModelProvenance.split(/\n{2,}/)
+  return sections.at(-1)?.trim() ?? ''
+}
+
 /**
  * Convert system-injected XML wrappers into user-facing text before using a
  * message as a session title source. Slash commands are stored in transcripts
@@ -26,13 +40,14 @@ function normalizeTitleWhitespace(text: string): string {
  * user typed, not the internal XML transport.
  */
 export function cleanSessionTitleSource(raw: string): string {
+  const workflowStripped = stripInternalWorkflowPrompt(raw)
   const commandName = extractXmlTag(raw, 'command-name')
   const commandArgs = extractXmlTag(raw, 'command-args')
   if (commandName) {
     return normalizeTitleWhitespace([commandName, commandArgs].filter(Boolean).join(' '))
   }
 
-  const stripped = raw.replace(XML_TAG_BLOCK_PATTERN, ' ')
+  const stripped = workflowStripped.replace(XML_TAG_BLOCK_PATTERN, ' ')
   return normalizeTitleWhitespace(stripped)
 }
 

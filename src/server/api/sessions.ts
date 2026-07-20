@@ -9,6 +9,9 @@
  *   GET    /api/sessions/:id/messages — 获取会话消息
  *   GET    /api/sessions/:id/turn-checkpoints — 获取按轮次保留的 checkpoint 预览
  *   GET    /api/sessions/:id/turn-checkpoints/diff — 获取绑定到指定 checkpoint 的 diff
+ *   GET    /api/sessions/:id/workflow/checkpoints — 获取 workflow git checkpoint 列表
+ *   POST   /api/sessions/:id/workflow/checkpoints — 创建 workflow git checkpoint
+ *   POST   /api/sessions/:id/workflow/checkpoints/restore — 回退到 workflow git checkpoint
  *   POST   /api/sessions            — 创建新会话
  *   POST   /api/sessions/batch-delete — 批量删除会话
  *   DELETE /api/sessions/:id        — 删除会话
@@ -23,6 +26,7 @@ import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import {
   closeSessionConnection,
   getSlashCommands,
+  refreshWorkflowRuntimeBinding,
   sendToSession,
   workflowNotificationForDesktop,
 } from '../ws/handler.js'
@@ -35,15 +39,29 @@ import {
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
 import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
+import { validateWorkflowWorkspaceRoot } from '../services/workflowWorkspacePolicy.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
 import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
+import { WorkflowPreviewService } from '../services/workflowPreviewService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
+import {
+  createWorkflowGitCheckpoint,
+  listWorkflowGitCheckpoints,
+  restoreWorkflowGitCheckpoint,
+} from '../services/workflowGitCheckpointService.js'
+import {
+  createFollowUpWorkflowRun,
+  selectFollowUpWorkflowTemplate,
+  type WorkflowFollowUpRunKind,
+} from '../services/workflowRuntimeEnforcement.js'
 import {
   type CompletionSubmission,
   type WorkflowSessionCreateOptions,
   type WorkflowSessionMetadata,
   type WorkflowSessionState,
   type WorkflowSessionSummary,
+  type WorkflowTemplate,
+  type WorkflowTemplateSource,
   type WorkflowTransitionRecord,
   type WorkflowTransitionRequest,
 } from '../services/workflowTypes.js'
@@ -62,7 +80,9 @@ import {
   type RewindTargetSelector,
 } from '../services/sessionRewindService.js'
 import { SessionStore } from '../../../adapters/common/session-store.js'
-import { getSessionChatState } from './conversations.js'
+import { getSessionChatState, setSessionChatState } from './conversations.js'
+import { ExpertSessionService } from '../services/expertSessionService.js'
+import { resetTaskList } from '../../utils/tasks.js'
 
 const workspaceService = new WorkspaceService(
   async (sessionId) => (
@@ -85,6 +105,8 @@ const workflowSessionLinkService = new WorkflowSessionLinkService({
 })
 const workflowReportStore = new WorkflowReportStore()
 const workflowRuntimeService = new WorkflowRuntimeService()
+const workflowPreviewService = new WorkflowPreviewService()
+const expertSessionService = new ExpertSessionService()
 
 const workflowTransitionPromises = new Map<string, Promise<unknown>>()
 
@@ -218,7 +240,11 @@ export async function handleSessionsApi(
     }
 
     if (subResource === 'workflow') {
-      return await handleWorkflowSessionRoute(req, sessionId, segments[4])
+      return await handleWorkflowSessionRoute(req, sessionId, segments[4], segments[5])
+    }
+
+    if (subResource === 'expert') {
+      return await handleSessionExpertRoute(req, sessionId, segments[4], segments[5], segments[6])
     }
 
     // Route to conversations handler if sub-resource is 'chat'
@@ -354,6 +380,12 @@ async function createSession(req: Request): Promise<Response> {
   const workflowTemplate = body.workflow === undefined
     ? null
     : await workflowSessionCreateService.resolveTemplate(body.workflow)
+  if (workflowTemplate) {
+    const workspaceValidation = validateWorkflowWorkspaceRoot(body.workDir)
+    if (!workspaceValidation.valid) {
+      throw new ApiError(400, workspaceValidation.message, 'WORKFLOW_WORKSPACE_INVALID')
+    }
+  }
   const result = await sessionService.createSession(body.workDir, body.repository)
   let response: { sessionId: string; workDir: string; workflow?: WorkflowSessionSummary } = result
 
@@ -364,6 +396,7 @@ async function createSession(req: Request): Promise<Response> {
         result.sessionId,
         result.workDir,
         workflowTemplate,
+        body.workflow,
       ),
     }
   }
@@ -398,6 +431,7 @@ export async function handleWorkflowTemplatesApi(req: Request): Promise<Response
         version: template.version,
         name: template.name,
         description: template.description,
+        labels: template.labels,
         phaseCount: template.phases.length,
         firstPhaseId: template.phases[0]?.id ?? null,
         phaseNames: template.phases.map((phase) => phase.name),
@@ -409,10 +443,114 @@ export async function handleWorkflowTemplatesApi(req: Request): Promise<Response
   }
 }
 
+
+async function handleSessionExpertRoute(
+  req: Request,
+  sessionId: string,
+  action?: string,
+  subAction?: string,
+  subSubAction?: string,
+): Promise<Response> {
+  if (action === 'materials') {
+    if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    // 材料包下载：GET /api/sessions/:id/expert/materials/:runId/download
+    if (subAction && subSubAction === 'download') {
+      return await downloadExpertMaterialPackage(sessionId, subAction)
+    }
+    return Response.json(await expertSessionService.listMaterials(sessionId))
+  }
+  if (action === 'start') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    const expertId = typeof body.expertId === 'string' ? body.expertId : ''
+    if (!expertId) throw ApiError.badRequest('请选择一个专家。')
+    return Response.json({ expert: await expertSessionService.enterExpertMode(sessionId, expertId) })
+  }
+  if (action === 'intake') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    return Response.json(await expertSessionService.submitIntakeStep(sessionId, {
+      stepId: typeof body.stepId === 'string' ? body.stepId : undefined,
+      answer: body.answer,
+      answers: body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers as Record<string, unknown> : undefined,
+    }))
+  }
+  if (action === 'run') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+
+    // 检查是否是流式请求（通过 Accept 头）
+    const isStreaming = req.headers.get('Accept')?.includes('text/event-stream')
+
+    if (isStreaming) {
+      // 返回 SSE 流式响应（包含进度事件）
+      const encoder = new TextEncoder()
+      const enqueue = (c: ReadableStreamDefaultController<Uint8Array>, data: unknown) => {
+        c.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            const result = await expertSessionService.runExpertAgent(
+              sessionId,
+              {
+                expertId: typeof body.expertId === 'string' ? body.expertId : undefined,
+                projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : undefined,
+                title: typeof body.title === 'string' ? body.title : undefined,
+                notes: typeof body.notes === 'string' ? body.notes : undefined,
+              },
+              (progress) => {
+                enqueue(controller, { type: 'progress', phase: progress.phase, content: progress.content })
+              },
+            )
+
+            enqueue(controller, { type: 'complete', data: result })
+            console.log('[Expert SSE] 发送 complete 事件')
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : '分析失败'
+            enqueue(controller, { type: 'error', error: errorMsg })
+            console.error('[Expert SSE] 发送 error 事件:', errorMsg)
+          }
+          controller.close()
+        },
+      })
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
+    }
+
+    // 普通的非流式请求
+    return Response.json(await expertSessionService.runExpertAgent(sessionId, {
+      expertId: typeof body.expertId === 'string' ? body.expertId : undefined,
+      projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : undefined,
+      title: typeof body.title === 'string' ? body.title : undefined,
+      notes: typeof body.notes === 'string' ? body.notes : undefined,
+    }))
+  }
+  if (action === 'exit') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const current = await sessionService.getSession(sessionId)
+    if (!current) throw ApiError.notFound(`Session not found: ${sessionId}`)
+    if (!current.expert) throw ApiError.notFound(`Expert mode not active for session: ${sessionId}`)
+    await conversationService.stopSessionAndWait(sessionId)
+    setSessionChatState(sessionId, 'idle')
+    await resetTaskList(sessionId)
+    return Response.json({ expert: await expertSessionService.exitExpertMode(sessionId) })
+  }
+  throw ApiError.notFound(`Unknown session expert resource: ${action || 'expert'}`)
+}
+
 async function handleWorkflowSessionRoute(
   req: Request,
   sessionId: string,
   workflowResource?: string,
+  workflowAction?: string,
 ): Promise<Response> {
   switch (workflowResource) {
     case undefined:
@@ -424,12 +562,498 @@ async function handleWorkflowSessionRoute(
     case 'start':
       if (req.method !== 'POST') return methodNotAllowed(req.method)
       return await startLinkedWorkflow(req, sessionId)
+    case 'context-summary':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await previewLinkedWorkflowContext(req, sessionId)
+    case 'follow-up':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await startFollowUpWorkflowRun(req, sessionId)
+    case 'exit':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await exitWorkflow(req, sessionId)
+    case 'preview':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await controlWorkflowPreview(req, sessionId, workflowAction)
+    case 'checkpoints':
+      return await handleWorkflowGitCheckpoints(req, sessionId, workflowAction)
     case 'report':
       if (req.method !== 'GET') return methodNotAllowed(req.method)
       return await getWorkflowReport(sessionId)
     default:
       throw ApiError.notFound(`Unknown workflow resource: ${workflowResource}`)
   }
+}
+
+async function handleWorkflowGitCheckpoints(
+  req: Request,
+  sessionId: string,
+  action?: string,
+): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+  const workDir = await requireSessionWorkspace(
+    sessionId,
+    'Workflow checkpoints require a project workspace. Select the repository or app folder before saving checkpoints.',
+    'WORKFLOW_CHECKPOINT_WORKSPACE_REQUIRED',
+  )
+  const workspaceValidation = validateWorkflowWorkspaceRoot(workDir)
+  if (!workspaceValidation.valid) {
+    if (req.method === 'GET' && !action) {
+      return Response.json({
+        enabled: false,
+        reason: workspaceValidation.message,
+        latestVersion: null,
+        checkpoints: [],
+      })
+    }
+    throw workflowError(400, 'WORKFLOW_CHECKPOINT_WORKSPACE_REQUIRED', workspaceValidation.message)
+  }
+
+  if (req.method === 'GET' && !action) {
+    return Response.json(await listWorkflowGitCheckpoints(sessionId, workDir))
+  }
+
+  if (req.method === 'POST' && !action) {
+    const body = await readOptionalObjectBody(req)
+    try {
+      const [stateResult, messages] = await Promise.all([
+        workflowSessionStateService.readState(sessionId),
+        sessionService.getSessionMessages(sessionId),
+      ])
+      const lastMessage = messages[messages.length - 1]
+      return Response.json(await createWorkflowGitCheckpoint(sessionId, workDir, {
+        ...body,
+        workflowStateSnapshot: stateResult.state,
+        transcriptSnapshot: {
+          messageCount: messages.length,
+          lastMessageId: lastMessage?.id ?? null,
+        },
+      }))
+    } catch (error) {
+      throw workflowError(400, 'WORKFLOW_CHECKPOINT_INVALID', error instanceof Error ? error.message : 'Workflow checkpoint could not be created')
+    }
+  }
+
+  if (req.method === 'POST' && action === 'restore') {
+    const body = await readOptionalObjectBody(req)
+    try {
+      await conversationService.stopSessionAndWait(sessionId)
+      setSessionChatState(sessionId, 'idle')
+      const restored = await restoreWorkflowGitCheckpoint(sessionId, workDir, body as { checkpointId: string })
+      let workflow: WorkflowSessionSummary | undefined
+      if (restored.workflowStateSnapshot) {
+        const current = await workflowSessionStateService.readState(sessionId)
+        const now = new Date().toISOString()
+        const restoredState = workflowStateAfterCheckpointRestore({
+          snapshot: restored.workflowStateSnapshot,
+          current: current.state,
+          checkpointId: restored.checkpoint.id,
+          checkpointVersion: restored.checkpoint.version,
+          checkpointLabel: restored.checkpoint.label,
+          removedFiles: restored.removedFiles,
+          restoredAt: now,
+        })
+        const written = await workflowSessionStateService.writeState(sessionId, restoredState)
+        workflow = workflowSummaryFromState(written.state)
+      }
+      const transcriptTrim = restored.transcriptSnapshot
+        ? await sessionService.trimSessionMessagesAfterCount(
+          sessionId,
+          restored.transcriptSnapshot.messageCount,
+        )
+        : { removedCount: 0, removedMessageIds: [] }
+      const {
+        workflowStateSnapshot: _workflowStateSnapshot,
+        transcriptSnapshot: _transcriptSnapshot,
+        ...publicRestored
+      } = restored
+      return Response.json({
+        ...publicRestored,
+        transcriptRestored: Boolean(restored.transcriptSnapshot),
+        conversation: {
+          messagesRemoved: transcriptTrim.removedCount,
+          removedMessageIds: transcriptTrim.removedMessageIds,
+        },
+        ...(workflow ? { workflow } : {}),
+      })
+    } catch (error) {
+      throw workflowError(400, 'WORKFLOW_CHECKPOINT_INVALID', error instanceof Error ? error.message : 'Workflow checkpoint could not be restored')
+    }
+  }
+
+  if (action) throw ApiError.notFound(`Unknown workflow checkpoint action: ${action}`)
+  return methodNotAllowed(req.method)
+}
+
+async function downloadExpertMaterialPackage(
+  sessionId: string,
+  runId: string,
+): Promise<Response> {
+  const materials = await expertSessionService.listMaterials(sessionId)
+  const material = materials.materialRefs.find((ref) => ref.runId === runId)
+  if (!material) throw ApiError.notFound(`Material run not found: ${runId}`)
+
+  const session = await sessionService.getSession(sessionId)
+  if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
+  const projectRoot = session.workDir || session.projectRoot || session.projectPath
+  if (!projectRoot) throw ApiError.badRequest('缺少项目目录，无法读取材料包。')
+
+  // 材料文件所在目录
+  const materialDir = path.dirname(material.materialJsonPath)
+  if (!materialDir.startsWith(path.resolve(projectRoot, '.workflow'))) {
+    throw ApiError.badRequest('材料路径不安全。')
+  }
+
+  // 读取目录中所有文件打包为 ZIP
+  const zipParts: Array<{ name: string; data: Uint8Array }> = []
+  try {
+    const entries = await fs.readdir(materialDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isFile()) continue
+      const filePath = path.join(materialDir, entry.name)
+      const data = await fs.readFile(filePath)
+      zipParts.push({ name: entry.name, data: new Uint8Array(data) })
+    }
+  } catch {
+    throw ApiError.notFound('材料文件不可用。')
+  }
+
+  // 简单 ZIP 打包（使用 Bun 原生支持）
+  const zipBuffer = await createZipBuffer(zipParts)
+  const filename = `expert-material-${runId.slice(0, 8)}.zip`
+
+  return new Response(zipBuffer, {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  })
+}
+
+async function createZipBuffer(files: Array<{ name: string; data: Uint8Array }>): Promise<Uint8Array> {
+  // 使用 Bun 的 gzip 或其他方式... Bun 没有内置 zip，手动实现简单 ZIP
+  const chunks: Uint8Array[] = []
+  const encoder = new TextEncoder()
+  const fileEntries: Array<{ name: Uint8Array; data: Uint8Array; crc: number }> = []
+
+  // 计算各文件的偏移
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name)
+    let crc = 0
+    for (const b of file.data) {
+      crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ b) & 0xff]
+    }
+    crc = (crc ^ 0xffffffff) >>> 0
+    fileEntries.push({ name: nameBytes, data: file.data, crc })
+  }
+
+  // 写入各文件
+  const centralDir: Uint8Array[] = []
+  let offset = 0
+
+  for (const entry of fileEntries) {
+    const localHeader = createLocalFileHeader(entry)
+    chunks.push(localHeader)
+    chunks.push(entry.data)
+    const centralEntry = createCentralDirEntry(entry, offset)
+    centralDir.push(centralEntry)
+    offset += localHeader.length + entry.data.length
+  }
+
+  const centralDirBytes = concatUint8Arrays(centralDir)
+  chunks.push(centralDirBytes)
+  chunks.push(createEndOfCentralDir(fileEntries.length, centralDirBytes.length, offset))
+
+  return concatUint8Arrays(chunks)
+}
+
+function createLocalFileHeader(entry: { name: Uint8Array; data: Uint8Array; crc: number }): Uint8Array {
+  const buf = new ArrayBuffer(30 + entry.name.length)
+  const view = new DataView(buf)
+  let pos = 0
+  const arr = new Uint8Array(buf)
+  setU32LE(arr, pos, 0x04034b50); pos += 4 // signature
+  setU16LE(arr, pos, 20); pos += 2 // version needed
+  setU16LE(arr, pos, 0); pos += 2 // flags
+  setU16LE(arr, pos, 0); pos += 2 // compression (stored)
+  setU16LE(arr, pos, 0); pos += 2 // mod time
+  setU16LE(arr, pos, 0); pos += 2 // mod date
+  setU32LE(arr, pos, entry.crc); pos += 4 // crc32
+  setU32LE(arr, pos, entry.data.length); pos += 4 // compressed size
+  setU32LE(arr, pos, entry.data.length); pos += 4 // uncompressed size
+  setU16LE(arr, pos, entry.name.length); pos += 2 // filename length
+  setU16LE(arr, pos, 0); pos += 2 // extra field length
+  arr.set(entry.name, pos)
+  return arr
+}
+
+function createCentralDirEntry(entry: { name: Uint8Array; data: Uint8Array; crc: number }, offset: number): Uint8Array {
+  const buf = new ArrayBuffer(46 + entry.name.length)
+  const arr = new Uint8Array(buf)
+  let pos = 0
+  setU32LE(arr, pos, 0x02014b50); pos += 4 // signature
+  setU16LE(arr, pos, 20); pos += 2 // version made by
+  setU16LE(arr, pos, 20); pos += 2 // version needed
+  setU16LE(arr, pos, 0); pos += 2 // flags
+  setU16LE(arr, pos, 0); pos += 2 // compression
+  setU16LE(arr, pos, 0); pos += 2 // mod time
+  setU16LE(arr, pos, 0); pos += 2 // mod date
+  setU32LE(arr, pos, entry.crc); pos += 4 // crc32
+  setU32LE(arr, pos, entry.data.length); pos += 4 // compressed size
+  setU32LE(arr, pos, entry.data.length); pos += 4 // uncompressed size
+  setU16LE(arr, pos, entry.name.length); pos += 2 // filename length
+  setU16LE(arr, pos, 0); pos += 2 // extra field length
+  setU16LE(arr, pos, 0); pos += 2 // file comment length
+  setU16LE(arr, pos, 0); pos += 2 // disk number start
+  setU16LE(arr, pos, 0); pos += 2 // internal file attrs
+  setU32LE(arr, pos, 0); pos += 4 // external file attrs
+  setU32LE(arr, pos, offset); pos += 4 // relative offset
+  arr.set(entry.name, pos)
+  return arr
+}
+
+function createEndOfCentralDir(fileCount: number, centralDirSize: number, centralDirOffset: number): Uint8Array {
+  const buf = new ArrayBuffer(22)
+  const arr = new Uint8Array(buf)
+  let pos = 0
+  setU32LE(arr, pos, 0x06054b50); pos += 4
+  setU16LE(arr, pos, 0); pos += 2 // disk number
+  setU16LE(arr, pos, 0); pos += 2 // disk with central dir
+  setU16LE(arr, pos, fileCount); pos += 2 // entries on disk
+  setU16LE(arr, pos, fileCount); pos += 2 // total entries
+  setU32LE(arr, pos, centralDirSize); pos += 4
+  setU32LE(arr, pos, centralDirOffset); pos += 4
+  setU16LE(arr, pos, 0); pos += 2 // comment length
+  return arr
+}
+
+function setU32LE(arr: Uint8Array, offset: number, value: number): void {
+  arr[offset] = value & 0xff
+  arr[offset + 1] = (value >>> 8) & 0xff
+  arr[offset + 2] = (value >>> 16) & 0xff
+  arr[offset + 3] = (value >>> 24) & 0xff
+}
+
+function setU16LE(arr: Uint8Array, offset: number, value: number): void {
+  arr[offset] = value & 0xff
+  arr[offset + 1] = (value >>> 8) & 0xff
+}
+
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((sum, arr) => sum + arr.length, 0)
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const arr of arrays) {
+    result.set(arr, offset)
+    offset += arr.length
+  }
+  return result
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Int32Array(256)
+  for (let i = 0; i < 256; i++) {
+    let crc = i
+    for (let j = 0; j < 8; j++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1
+    }
+    table[i] = crc
+  }
+  return table
+})()
+
+function workflowStateAfterCheckpointRestore(input: {
+  snapshot: WorkflowSessionState
+  current: WorkflowSessionState | null
+  checkpointId: string
+  checkpointVersion: number
+  checkpointLabel: string
+  removedFiles: string[]
+  restoredAt: string
+}): WorkflowSessionState {
+  const previousRevision = typeof input.current?.revision === 'number'
+    ? input.current.revision
+    : typeof input.snapshot.revision === 'number'
+      ? input.snapshot.revision
+      : 0
+  const previousStateVersion = typeof input.current?.stateVersion === 'number'
+    ? input.current.stateVersion
+    : typeof input.snapshot.stateVersion === 'number'
+      ? input.snapshot.stateVersion
+      : 0
+  const activeRunId = input.snapshot.activeWorkflowRunId
+  const workflowRuns = input.snapshot.workflowRuns?.map((run) => {
+    if (run.id !== activeRunId) return run
+    return {
+      ...run,
+      history: [
+        ...run.history,
+        {
+          type: 'checkpoint-restored',
+          at: input.restoredAt,
+          phaseId: input.snapshot.activePhaseId ?? undefined,
+          summary: `Restored workflow checkpoint ${input.checkpointId} (${input.checkpointLabel}).`,
+          checkpointId: input.checkpointId,
+          checkpointVersion: input.checkpointVersion,
+          removedFiles: input.removedFiles,
+        },
+      ],
+      updatedAt: input.restoredAt,
+    }
+  })
+
+  return {
+    ...input.snapshot,
+    workflowRuns,
+    revision: previousRevision + 1,
+    stateVersion: previousStateVersion + 1,
+    updatedAt: input.restoredAt,
+    nextPhaseContextStrategy: 'clear',
+    pendingConfirmation: null,
+    lastCheckpointRestore: {
+      checkpointId: input.checkpointId,
+      checkpointVersion: input.checkpointVersion,
+      checkpointLabel: input.checkpointLabel,
+      restoredAt: input.restoredAt,
+      restoredActivePhaseId: input.snapshot.activePhaseId,
+      restoredPhaseIndex: input.snapshot.phases.find((phase) => phase.id === input.snapshot.activePhaseId)?.index ?? null,
+      removedFiles: input.removedFiles,
+      instruction: 'The workflow and files were rolled back to this checkpoint. Treat later generated context as superseded. Continue from the restored phase and re-evaluate subsequent stage prompts, assumptions, and outputs from the restored project state.',
+    },
+  }
+}
+
+async function readOptionalObjectBody(req: Request): Promise<Record<string, unknown>> {
+  const rawBody = await req.text()
+  let body: unknown = {}
+  if (rawBody.trim()) {
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      throw workflowError(400, 'WORKFLOW_CHECKPOINT_INVALID', 'Workflow checkpoint request body must be valid JSON')
+    }
+  }
+  if (body === null) body = {}
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    throw workflowError(400, 'WORKFLOW_CHECKPOINT_INVALID', 'Workflow checkpoint request body must be an object')
+  }
+  return body as Record<string, unknown>
+}
+
+async function exitWorkflow(_req: Request, sessionId: string): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+
+  return await enqueueWorkflowTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    if (stateRead.state.preview?.status === 'running' || stateRead.state.preview?.status === 'starting' || stateRead.state.preview?.status === 'stopping') {
+      throw workflowError(409, 'WORKFLOW_PREVIEW_ACTIVE', 'Stop the workflow preview before exiting the workflow')
+    }
+
+    await conversationService.stopSessionAndWait(sessionId)
+    setSessionChatState(sessionId, 'idle')
+    // Exiting a workflow also clears its live Todo/Task list; transcript and workflow artifacts remain persisted.
+    await resetTaskList(sessionId)
+    const now = new Date().toISOString()
+    const result = await workflowRuntimeService.exitWorkflow({
+      state: stateRead.state,
+      requestedAt: now,
+      transitionId: 'exit-' + sessionId + '-' + stateRead.state.stateVersion,
+    })
+    const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state)
+    const detail = await sessionService.getSession(sessionId)
+    const workDir = detail.workDir || process.cwd()
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      workDir,
+      stateToWorkflowMetadata(result.state, pointer),
+    )
+    for (const notification of result.notifications) {
+      sendToSession(sessionId, workflowNotificationForDesktop(notification) as any)
+    }
+
+    return Response.json({
+      ok: true,
+      state: result.state,
+      workflow: workflowSummaryFromState(result.state),
+    })
+  })
+}
+
+async function controlWorkflowPreview(
+  req: Request,
+  sessionId: string,
+  action?: string,
+): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+  if (action !== 'start' && action !== 'stop') {
+    throw ApiError.notFound(`Unknown workflow preview action: ${action || 'preview'}`)
+  }
+
+  let body: unknown = {}
+  try {
+    body = await req.json()
+  } catch {
+    body = {}
+  }
+  if (body === null) body = {}
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    throw workflowError(400, 'WORKFLOW_PREVIEW_INVALID', 'Workflow preview request must be an object')
+  }
+  const request = body as Record<string, unknown>
+
+  return await enqueueWorkflowTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    assertWorkflowStateTrustedForTransition(stateRead.state)
+
+    const result = action === 'start'
+      ? await workflowPreviewService.startPreview(stateRead.state, {
+          command: optionalString(request.command, 'command'),
+          cwd: optionalString(request.cwd, 'cwd'),
+          detectedPort: optionalNumber(request.detectedPort, 'detectedPort'),
+          detectedUrl: optionalString(request.detectedUrl, 'detectedUrl'),
+        })
+      : await workflowPreviewService.stopPreview(stateRead.state, {
+          reason: optionalString(request.reason, 'reason'),
+        })
+
+    const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state)
+    const detail = await sessionService.getSession(sessionId)
+    const workDir = detail.workDir || process.cwd()
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      workDir,
+      stateToWorkflowMetadata(result.state, pointer),
+    )
+
+    return Response.json({
+      ok: true,
+      state: result.state,
+      workflow: workflowSummaryFromState(result.state),
+      preview: result.preview,
+    })
+  })
+}
+
+function optionalString(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    throw workflowError(400, 'WORKFLOW_PREVIEW_INVALID', `${fieldName} must be a string`)
+  }
+  const trimmed = value.trim()
+  return trimmed || undefined
+}
+
+function optionalNumber(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw workflowError(400, 'WORKFLOW_PREVIEW_INVALID', `${fieldName} must be a number`)
+  }
+  return value
 }
 
 async function startLinkedWorkflow(req: Request, sessionId: string): Promise<Response> {
@@ -443,6 +1067,141 @@ async function startLinkedWorkflow(req: Request, sessionId: string): Promise<Res
   const result = await workflowSessionLinkService.createLinkedWorkflowSession(sessionId, body)
   const { created, ...response } = result
   return Response.json(response, { status: created ? 201 : 200 })
+}
+
+async function previewLinkedWorkflowContext(req: Request, sessionId: string): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Invalid JSON body')
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Context summary request must be an object')
+  }
+  const record = body as Record<string, unknown>
+  for (const key of Object.keys(record)) {
+    if (key !== 'summaryInstructions') {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', `Unsupported context summary field: ${key}`)
+    }
+  }
+  if (record.summaryInstructions !== undefined && typeof record.summaryInstructions !== 'string') {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'summaryInstructions must be a string')
+  }
+  const result = await workflowSessionLinkService.previewSummary(sessionId, {
+    ...(typeof record.summaryInstructions === 'string' && record.summaryInstructions.trim()
+      ? { summaryInstructions: record.summaryInstructions.trim() }
+      : {}),
+  })
+  return Response.json(result)
+}
+
+async function startFollowUpWorkflowRun(req: Request, sessionId: string): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Invalid JSON body')
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Workflow follow-up request must be an object')
+  }
+  const request = typeof (body as Record<string, unknown>).request === 'string'
+    ? String((body as Record<string, unknown>).request)
+    : ''
+  if (!request.trim()) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'request is required')
+  }
+
+  return await enqueueWorkflowTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    assertWorkflowStateTrustedForTransition(stateRead.state)
+
+    const record = body as Record<string, unknown>
+    const kind = normalizeWorkflowFollowUpKind(record.kind)
+    const selectedTemplate = await resolveWorkflowFollowUpTemplate(record, kind)
+    const initialPhaseId = normalizeOptionalNonEmptyString(record.initialPhaseId)
+    if (selectedTemplate && initialPhaseId && !selectedTemplate.phases.some((phase) => phase.id === initialPhaseId)) {
+      throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'initialPhaseId does not exist in the selected workflow template')
+    }
+    const now = new Date().toISOString()
+    const state = await createFollowUpWorkflowRun(stateRead.state, {
+      request,
+      kind,
+      template: selectedTemplate,
+      ...(initialPhaseId ? { initialPhaseId } : {}),
+      selectedFiles: Array.isArray(record.selectedFiles)
+        ? record.selectedFiles.filter((item): item is string => typeof item === 'string')
+        : undefined,
+      repoMetadata: record.repoMetadata && typeof record.repoMetadata === 'object' && !Array.isArray(record.repoMetadata)
+        ? record.repoMetadata as Record<string, unknown>
+        : undefined,
+      errors: typeof record.errors === 'string' ? record.errors : undefined,
+      logs: typeof record.logs === 'string' ? record.logs : undefined,
+      testOutput: typeof record.testOutput === 'string' ? record.testOutput : undefined,
+      now,
+    })
+    const { pointer } = await workflowSessionStateService.writeState(sessionId, state)
+    const detail = await sessionService.getSession(sessionId)
+    const workDir = detail.workDir || process.cwd()
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      workDir,
+      stateToWorkflowMetadata(state, pointer),
+    )
+    await refreshWorkflowRuntimeBinding(sessionId, state)
+
+    return Response.json({
+      ok: true,
+      state,
+      workflow: workflowSummaryFromState(state),
+    })
+  })
+}
+
+async function resolveWorkflowFollowUpTemplate(
+  record: Record<string, unknown>,
+  kind: WorkflowFollowUpRunKind | undefined,
+): Promise<WorkflowTemplate> {
+  const templateId = normalizeOptionalNonEmptyString(record.templateId)
+  const templateSource = normalizeWorkflowTemplateSource(record.templateSource)
+  const registry = await workflowTemplateRegistryService.listTemplates()
+  const template = templateId
+    ? registry.templates.find((candidate) => candidate.id === templateId && (!templateSource || candidate.source === templateSource))
+    : selectFollowUpWorkflowTemplate(registry.templates, kind)
+  if (!template) {
+    throw workflowError(404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Selected workflow template was not found')
+  }
+  if (template.phases.length === 0) {
+    throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Selected workflow template has no phases')
+  }
+  return {
+    ...template,
+    displayName: typeof template.displayName === 'string' ? template.displayName : template.name,
+  } as WorkflowTemplate
+}
+
+function normalizeWorkflowFollowUpKind(value: unknown): WorkflowFollowUpRunKind | undefined {
+  if (value === undefined) return undefined
+  if (value === 'development' || value === 'feature-extension' || value === 'debug-repair') return value
+  if (value === 'feature') return 'feature-extension'
+  if (value === 'debug') return 'debug-repair'
+  throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Unsupported workflow follow-up kind')
+}
+
+function normalizeWorkflowTemplateSource(value: unknown): WorkflowTemplateSource | undefined {
+  if (value === undefined) return undefined
+  if (value === 'builtin' || value === 'user' || value === 'pack') return value
+  throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Unsupported workflow template source')
+}
+
+function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
 async function getWorkflowState(sessionId: string): Promise<Response> {
@@ -571,6 +1330,7 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
       ok: true,
       state: result.state,
       workflow: workflowSummaryFromState(result.state),
+      ...(result.route ? { route: result.route } : {}),
     })
   })
 }
@@ -602,13 +1362,51 @@ type WorkflowBoundaryTransitionRequest = Omit<WorkflowTransitionRequest, 'action
   evidence?: unknown
 }
 
-type WorkflowBoundaryTransitionResult = Awaited<ReturnType<WorkflowRuntimeService['applyTransition']>>
+type WorkflowBoundaryTransitionResult = {
+  state: WorkflowSessionState
+  notifications: Array<Record<string, unknown>>
+  route?: {
+    approvedTargetPhaseId: string | null
+    routeReason: string
+    requiresConfirmation: boolean
+  }
+}
 
 async function applyWorkflowBoundaryTransition(
   state: WorkflowSessionState,
   request: WorkflowBoundaryTransitionRequest,
   requestedAt: string,
 ): Promise<WorkflowBoundaryTransitionResult> {
+  if (request.action === 'route') {
+    if (!request.routeIntent || typeof request.rationale !== 'string' || !Array.isArray(request.evidence)) {
+      throw workflowError(400, 'WORKFLOW_ROUTE_INVALID', 'Workflow route requires routeIntent, rationale, and evidence.')
+    }
+    const result = await workflowRuntimeService.requestWorkflowRoute({
+      state,
+      requestedAt,
+      transitionId: request.transitionId,
+      request: {
+        phaseId: request.phaseId,
+        stateVersion: request.stateVersion,
+        intent: request.routeIntent,
+        targetPhaseId: request.targetPhaseId,
+        targetWorkflowId: request.targetWorkflowId,
+        rationale: request.rationale,
+        evidence: request.evidence as Array<Record<string, unknown>>,
+        requireUserConfirmation: request.requireUserConfirmation,
+      },
+    })
+    return {
+      state: result.state,
+      notifications: result.notifications,
+      route: {
+        approvedTargetPhaseId: result.approvedTargetPhaseId,
+        routeReason: result.routeReason,
+        requiresConfirmation: result.requiresConfirmation,
+      },
+    }
+  }
+
   if (isCompletionSubmissionAction(request.action)) {
     const submission = toCompletionSubmission(request)
     const result = request.action === 'manual_complete'
@@ -653,17 +1451,23 @@ function isSupportedWorkflowBoundaryAction(
 ): action is WorkflowBoundaryTransitionRequest['action'] {
   return (
     action === 'confirm' ||
+    action === 'route' ||
     action === 'reject' ||
     action === 'retry' ||
     action === 'manual_complete' ||
+    action === 'pause' ||
+    action === 'resume' ||
+    action === 'stop' ||
     action === 'ready' ||
+    action === 'needs_user' ||
+    action === 'completed' ||
     action === 'blocked' ||
     action === 'unable'
   )
 }
 
 function isCompletionSubmissionAction(action: unknown): action is CompletionSubmission['status'] | 'manual_complete' {
-  return action === 'ready' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
+  return action === 'ready' || action === 'needs_user' || action === 'completed' || action === 'blocked' || action === 'unable' || action === 'manual_complete'
 }
 
 function isSupportedNextPhaseContextStrategy(
@@ -734,13 +1538,20 @@ function methodNotAllowed(method: string): Response {
   )
 }
 
-async function requireSessionWorkspace(sessionId: string): Promise<string> {
+async function requireSessionWorkspace(
+  sessionId: string,
+  missingMessage = `Session not found: ${sessionId}`,
+  missingCode?: string,
+): Promise<string> {
   const workDir =
     conversationService.getSessionWorkDir(sessionId) ||
     await sessionService.getSessionWorkDir(sessionId)
 
   if (!workDir) {
-    throw ApiError.notFound(`Session not found: ${sessionId}`)
+    if (missingCode) {
+      throw workflowError(400, missingCode, missingMessage)
+    }
+    throw ApiError.notFound(missingMessage)
   }
 
   return workDir

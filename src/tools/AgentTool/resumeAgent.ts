@@ -4,7 +4,7 @@ import { getSystemPrompt } from '../../constants/prompts.js'
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import type { ToolUseContext } from '../../Tool.js'
-import { registerAsyncAgent } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
+import { registerAsyncAgent, startAsyncAgent } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import { assembleToolPool } from '../../tools.js'
 import { asAgentId } from '../../types/ids.js'
 import { runWithAgentContext } from '../../utils/agentContext.js'
@@ -203,6 +203,8 @@ export async function resumeAgentBackground({
     setAppState: rootSetAppState,
     toolUseId: toolUseContext.toolUseId,
   })
+
+  startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState)
 
   const metadata = {
     prompt,

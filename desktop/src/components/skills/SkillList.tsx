@@ -4,7 +4,19 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useTranslation } from '../../i18n'
 import type { SkillMeta, SkillSource } from '../../types/skill'
 
-const SOURCE_ORDER: SkillSource[] = ['user', 'project', 'plugin', 'mcp', 'bundled']
+const SOURCE_ORDER: SkillSource[] = [
+  'workflow',
+  'fallback',
+  'superpowers',
+  'spec-kit-plus',
+  'codex',
+  'claude-code',
+  'user',
+  'project',
+  'plugin',
+  'mcp',
+  'bundled',
+]
 
 export type SkillSortKey =
   | 'name'
@@ -21,6 +33,12 @@ type SkillListProps = {
 }
 
 const SOURCE_ICONS: Record<SkillSource, string> = {
+  workflow: 'account_tree',
+  fallback: 'contract',
+  superpowers: 'bolt',
+  'spec-kit-plus': 'schema',
+  codex: 'terminal',
+  'claude-code': 'code',
   user: 'person',
   project: 'folder',
   plugin: 'extension',
@@ -29,6 +47,12 @@ const SOURCE_ICONS: Record<SkillSource, string> = {
 }
 
 const SOURCE_ACCENT_CLASSES: Record<SkillSource, string> = {
+  workflow: 'bg-[var(--color-info-container)] text-[var(--color-info)]',
+  fallback: 'bg-[var(--color-surface-container-high)] text-[var(--color-text-tertiary)]',
+  superpowers: 'bg-[var(--color-warning-container)] text-[var(--color-warning)]',
+  'spec-kit-plus': 'bg-[var(--color-primary-fixed)] text-[var(--color-brand)]',
+  codex: 'bg-[var(--color-success-container)] text-[var(--color-success)]',
+  'claude-code': 'bg-[var(--color-surface-container-high)] text-[var(--color-text-secondary)]',
   user: 'bg-[var(--color-primary-fixed)] text-[var(--color-brand)]',
   project: 'bg-[var(--color-success-container)] text-[var(--color-success)]',
   plugin: 'bg-[var(--color-warning-container)] text-[var(--color-warning)]',

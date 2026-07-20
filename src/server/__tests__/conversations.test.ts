@@ -5,7 +5,7 @@
  * WebSocket 集成测试验证消息从客户端经过服务端到达 CLI 的完整流转。
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
@@ -322,6 +322,40 @@ describe('ConversationService', () => {
         },
       },
     ])
+  })
+
+  it('should ignore stale SDK disconnects after a session reconnects', async () => {
+    const svc = new ConversationService() as any
+    const activeSent: string[] = []
+    const staleSocket = { send() {} }
+    const activeSocket = { send: (data: string) => activeSent.push(data) }
+
+    svc.sessions.set('session-sdk-reconnect', {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: activeSocket,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    })
+
+    svc.detachSdkConnection('session-sdk-reconnect', staleSocket)
+    expect(await svc.sendMessage('session-sdk-reconnect', 'hello')).toBe(true)
+    expect(activeSent).toHaveLength(1)
+
+    svc.detachSdkConnection('session-sdk-reconnect', activeSocket)
+    expect(await svc.sendMessage('session-sdk-reconnect', 'queued')).toBe(true)
+    expect(activeSent).toHaveLength(1)
+    expect(svc.sessions.get('session-sdk-reconnect').pendingOutbound).toHaveLength(1)
   })
 
   it('should return false when sending interrupt to non-existent session', () => {
@@ -816,6 +850,14 @@ describe('WebSocket Chat Integration', () => {
     wsUrl = `ws://127.0.0.1:${port}`
   })
 
+  afterEach(async () => {
+    await Promise.all(
+      conversationService.getActiveSessions().map((sessionId) =>
+        conversationService.stopSessionAndWait(sessionId),
+      ),
+    )
+  })
+
   afterAll(async () => {
     server?.stop(true)
     if (tmpDir) {
@@ -931,6 +973,11 @@ describe('WebSocket Chat Integration', () => {
   })
 
   it('should synchronize WebSocket turn status to the chat status API', async () => {
+    // Coverage instrumentation and Windows process scheduling can delay the
+    // mock CLI turn beyond the normal interactive threshold. This test asserts
+    // state ordering, so retain a finite but realistic event deadline.
+    const eventTimeoutMs = 20_000
+
     await withMockStreamDelay(150, async () => {
       const createRes = await fetch(`${baseUrl}/api/sessions`, {
         method: 'POST',
@@ -957,10 +1004,10 @@ describe('WebSocket Chat Integration', () => {
 
       const thinkingTimeout = setTimeout(() => {
         rejectThinking?.(new Error(`Timed out waiting for thinking status for session ${sessionId}`))
-      }, 5000)
+      }, eventTimeoutMs)
       const completeTimeout = setTimeout(() => {
         rejectComplete?.(new Error(`Timed out waiting for completion for session ${sessionId}`))
-      }, 5000)
+      }, eventTimeoutMs)
 
       try {
         ws.onmessage = (event) => {
@@ -1006,10 +1053,10 @@ describe('WebSocket Chat Integration', () => {
         clearTimeout(thinkingTimeout)
         clearTimeout(completeTimeout)
         ws.close()
-        conversationService.stopSession(sessionId)
+        await conversationService.stopSessionAndWait(sessionId)
       }
     })
-  })
+  }, 30_000)
 
   it('emits a worktree startup status before launching a repository session', async () => {
     const repoDir = await createCleanGitRepo()
@@ -1077,7 +1124,7 @@ describe('WebSocket Chat Integration', () => {
       const timeout = setTimeout(() => {
         ws.close()
         reject(new Error('Timed out waiting for derived session title'))
-      }, 5000)
+      }, 20_000)
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data as string)
@@ -1107,7 +1154,7 @@ describe('WebSocket Chat Integration', () => {
     expect(completionIndex).toBeGreaterThan(-1)
     expect(messages[titleIndex].title).toBe('开始优化UI')
     expect(titleIndex).toBeLessThan(completionIndex)
-  })
+  }, 30_000)
 
   it('uses the /goal objective for the derived session title', async () => {
     const sessionId = `title-goal-${crypto.randomUUID()}`
@@ -1176,7 +1223,7 @@ describe('WebSocket Chat Integration', () => {
       expect(startOptions).toEqual([{ thinking: 'disabled', model: undefined }])
     } finally {
       conversationService.startSession = originalStartSession as typeof conversationService.startSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
       await fs.writeFile(path.join(tmpDir, 'settings.json'), '{}\n', 'utf-8')
     }
   })
@@ -1258,7 +1305,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       conversationService.startSession = originalStartSession as typeof conversationService.startSession
       for (const sessionId of sessionIds) {
-        conversationService.stopSession(sessionId)
+        await conversationService.stopSessionAndWait(sessionId)
       }
       await providerService.activateOfficial()
       await fs.writeFile(path.join(tmpDir, 'settings.json'), '{}\n', 'utf-8')
@@ -1404,7 +1451,7 @@ describe('WebSocket Chat Integration', () => {
         expect(elapsedMs).toBeLessThan(2_000)
       } finally {
         ws.close()
-        conversationService.stopSession(sessionId)
+        await conversationService.stopSessionAndWait(sessionId)
       }
     })
   }, 10_000)
@@ -1803,7 +1850,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       ws.close()
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -1860,7 +1907,7 @@ describe('WebSocket Chat Integration', () => {
       })
     } finally {
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
       await providerService.activateOfficial()
     }
   }, 20_000)
@@ -1984,8 +2031,8 @@ describe('WebSocket Chat Integration', () => {
       })
     } finally {
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionA)
-      conversationService.stopSession(sessionB)
+      await conversationService.stopSessionAndWait(sessionA)
+      await conversationService.stopSessionAndWait(sessionB)
     }
   }, 20_000)
 
@@ -2094,7 +2141,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       ws.close()
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -2224,7 +2271,7 @@ describe('WebSocket Chat Integration', () => {
       ws.close()
       conversationService.startSession = originalStartSession
       conversationService.sendMessage = originalSendMessage
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -2335,7 +2382,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       ws.close()
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -2435,7 +2482,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       ws.close()
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
       await fetch(`${baseUrl}/api/permissions/mode`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -2541,7 +2588,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       ws.close()
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
       await providerService.activateOfficial()
     }
   }, 20_000)
@@ -2756,7 +2803,7 @@ describe('WebSocket Chat Integration', () => {
       })
     } finally {
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -2891,7 +2938,7 @@ describe('WebSocket Chat Integration', () => {
       })
     } finally {
       conversationService.startSession = originalStartSession
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
     }
   }, 20_000)
 
@@ -3022,7 +3069,7 @@ describe('WebSocket Chat Integration', () => {
     } finally {
       conversationService.startSession = originalStartSession
       conversationService.sendMessage = originalSendMessage
-      conversationService.stopSession(sessionId)
+      await conversationService.stopSessionAndWait(sessionId)
       await fetch(`${baseUrl}/api/permissions/mode`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -63,6 +63,63 @@ export function shouldInjectAgentListInMessages(): boolean {
   return getFeatureValue_CACHED_MAY_BE_STALE('tengu_agent_list_attach', false)
 }
 
+export const SUBAGENT_DELEGATION_PROTOCOL = `
+## Subagent delegation protocol
+
+When you launch or continue an agent, write a self-contained structured brief. Do not rely on the agent knowing the chat, your intentions, or previous worker output unless you include the relevant facts. The brief must make scope, forbidden actions, deliverables, verification, and reporting explicit enough that you can review the result without guessing.
+
+### Delegation Brief (leader → subagent)
+
+Include these fields in the prompt you send to an agent:
+- task_id: unique, short, and referenceable.
+- task_title: one-sentence title.
+- mission: the final outcome expected in one sentence.
+- background_context: only the context needed to do the task; do not dump unrelated conversation.
+- current_state: known facts, completed work, important diffs, file status, or prior findings.
+- scope_included: files, modules, behaviors, questions, or actions the agent may handle.
+- scope_excluded / must_not_do: files, modules, behaviors, bugs, or actions the agent must not touch.
+- allowed_actions: permitted actions such as read-only research, editing specific files, or running named checks.
+- forbidden_actions: prohibited actions such as out-of-scope edits, git commit/push/reset/rebase, deleting user data, destructive commands, or modifying protected files unless explicitly authorized with safety boundaries.
+- target_files_or_areas: relevant paths, modules, symbols, and domain concepts.
+- constraints: architecture, compatibility, security, style, user preference, AGENTS.md, and test requirements.
+- expected_deliverables: code, tests, docs, analysis, or other outputs required.
+- success_criteria: objective conditions that define completion.
+- verification_required: exact commands/checks to run, or when verification is not required and why.
+- report_format: require the Result Report format below.
+- stop_and_ask_if: ambiguity, missing data, risk, permission, or scope conflicts that require stopping for clarification.
+- risk_budget / time_budget: optional limits on exploration, changes, or risk.
+- handoff_requirements: how to hand back paths, evidence, decisions, blockers, and remaining work.
+- do_not_claim_done_until: conditions that must be met before the agent may say completed/done.
+
+### Result Report (subagent → leader)
+
+Require the agent to finish with this exact structure:
+- status: completed | blocked | partial | failed
+- summary: 1-3 sentences.
+- changes_made: files, symbols, and behavior changed; use none for research-only tasks.
+- deliverables: actual outputs produced.
+- verification: commands run with pass/fail results; if not run, include not_run_reason.
+- evidence: file paths, tests, log snippets, screenshots, or key diff summaries proving the result.
+- open_questions: decisions still needed from the leader or user.
+- risks_or_followups: remaining risks, caveats, and recommended follow-up work.
+- leader_next_action: what the leader should do next, such as merge, continue, test, review, or clarify.
+- completion_confidence: high | medium | low, consistent with verification and evidence.
+- did_not_do: explicit confirmation of prohibited or out-of-scope things not touched.
+- blockers: required when status is blocked, partial, or failed; include unblock conditions.
+
+### Behavioral rules
+
+- Research-only tasks must not modify files. Implementation tasks must not edit outside scope_included or target_files_or_areas.
+- The agent must not claim done/completed until success_criteria and do_not_claim_done_until are satisfied.
+- Unverified work must not be reported as completed. If required verification was not run, the agent must use partial or lower completion_confidence and explain not_run_reason.
+- blocked, partial, and failed reports must include blockers and concrete unblock conditions.
+- Code changes must list changed files, behavior changes, verification evidence, and any remaining risk.
+- Agents must not run git commit/push/reset/rebase, delete user data, run destructive commands, or modify protected files unless the brief explicitly allows it and defines safe boundaries.
+- Agents must follow repository AGENTS.md instructions, user language/style preferences, and same-area test expectations.
+- If a brief lacks critical fields, the agent must ask for the missing information or report blocked; it must not invent scope or silently expand the task.
+- Leaders must review status, verification, evidence, risks_or_followups, did_not_do, and blockers before treating a result as complete.
+`
+
 export async function getPrompt(
   agentDefinitions: AgentDefinition[],
   isCoordinator?: boolean,
@@ -209,7 +266,9 @@ ${
   forkEnabled
     ? `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type to use a specialized agent, or omit it to fork yourself — a fork inherits your full conversation context.`
     : `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.`
-}`
+}
+
+${SUBAGENT_DELEGATION_PROTOCOL}`
 
   // Coordinator mode gets the slim prompt -- the coordinator system prompt
   // already covers usage notes, examples, and when-not-to-use guidance.

@@ -210,6 +210,14 @@ async function selectRenderedText(container: Element, text: string, target?: Ele
   await flushReactWork()
 }
 
+
+vi.mock('./WorkspaceCodeSurface', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./WorkspaceCodeSurface')>()
+  return {
+    ...actual,
+    WORKSPACE_PREVIEW_LINE_LIMIT: 20,
+  }
+})
 function classNameContains(element: Element | null, needle: string) {
   let current = element
   while (current) {
@@ -874,7 +882,7 @@ describe('WorkspacePanel', () => {
       expect(view.getByTestId('workspace-code').textContent).toContain('+line 2300')
     })
     expect(view.getByRole('button', { name: 'Collapse preview' })).toBeTruthy()
-  })
+  }, 20_000)
 
   it('keeps diff rows intrinsically wide so H5 users can scroll sideways', async () => {
     const longDiffLine = '+const label = "this is a very long generated line that should not be compressed into the phone viewport";'
@@ -928,7 +936,7 @@ describe('WorkspacePanel', () => {
   })
 
   it('can expand long file previews beyond the default rendered line cap', async () => {
-    const longFile = Array.from({ length: 2300 }, (_, index) => `const line${index + 1} = ${index + 1}`).join('\n')
+    const longFile = Array.from({ length: 23 }, (_, index) => `const line${index + 1} = ${index + 1}`).join('\n')
 
     await setWorkspaceState((state) => ({
       ...state,
@@ -947,7 +955,7 @@ describe('WorkspacePanel', () => {
           kind: 'file',
           title: 'large-file.ts',
           content: longFile,
-          language: 'typescript',
+          language: 'text',
           previewType: 'text',
           state: 'ok',
         }],
@@ -962,12 +970,12 @@ describe('WorkspacePanel', () => {
     const highlightedCode = view.getByTestId('workspace-code').textContent ?? ''
 
     expect(highlightedCode).toContain('const line1 = 1')
-    expect(highlightedCode).toContain('const line2000 = 2000')
-    expect(highlightedCode).not.toContain('const line2001 = 2001')
+    expect(highlightedCode).toContain('const line20 = 20')
+    expect(highlightedCode).not.toContain('const line21 = 21')
     await clickElement(view.getByRole('button', { name: 'Show all loaded lines' }))
 
     await waitFor(() => {
-      expect(view.getByTestId('workspace-code').textContent).toContain('const line2300 = 2300')
+      expect(view.getByTestId('workspace-code').textContent).toContain('const line23 = 23')
     })
     expect(view.getByRole('button', { name: 'Collapse preview' })).toBeTruthy()
   }, 20_000)
@@ -1598,7 +1606,7 @@ describe('WorkspacePanel', () => {
 
     const view = await renderPanel('session-zh')
 
-    expect(view.getByRole('button', { name: '已更改文件' })).toBeTruthy()
+    expect(view.getByRole('button', { name: '\u5df2\u66f4\u6539\u6587\u4ef6' })).toBeTruthy()
   })
 
   it('keeps the workspace header controls compact', async () => {

@@ -49,6 +49,11 @@ describe('WebSocket background task events', () => {
       description: 'Verify the todo app',
       task_type: 'local_agent',
       prompt: 'Run E2E checks',
+      status: 'queued',
+      workflow_task_id: 'verify-ui',
+      execution_mode: 'write',
+      write_scopes: ['desktop/src'],
+      worktree_isolation: true,
     }
 
     expect(translateCliMessage(started, 'session-1')).toEqual([
@@ -78,6 +83,11 @@ describe('WebSocket background task events', () => {
         tool_uses: 4,
         duration_ms: 45000,
       },
+      status: 'running',
+      workflow_task_id: 'verify-ui',
+      execution_mode: 'write',
+      write_scopes: ['desktop/src'],
+      worktree_isolation: true,
     }
 
     expect(translateCliMessage(progress, 'session-1')).toEqual([

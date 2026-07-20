@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+﻿import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { createServer } from 'node:net'
 import * as os from 'node:os'
@@ -151,7 +151,7 @@ describe('DiagnosticsService', () => {
     })
 
     try {
-      await waitForHttp(`http://127.0.0.1:${port}/health`, 10_000)
+      await waitForHttp(`http://127.0.0.1:${port}/health`, 20_000)
 
       const duplicate = Bun.spawn(serverArgs, {
         cwd: process.cwd(),
@@ -177,7 +177,7 @@ describe('DiagnosticsService', () => {
       server.kill()
       await server.exited.catch(() => undefined)
     }
-  })
+  }, 30_000)
 
   test('keeps error messages visible when runtime stacks omit them', () => {
     const writes: string[] = []

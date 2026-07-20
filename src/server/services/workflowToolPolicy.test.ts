@@ -4,7 +4,9 @@ import * as workflowToolPolicy from './workflowToolPolicy.js'
 import {
   WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS,
   WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS,
+  concreteToolNamesForWorkflowCapability,
   getWorkflowTemplateAuthoringOperationPolicy,
+  getWorkflowUnavailableSearchToolNames,
   getWorkflowPhaseActionPolicy,
   getWorkflowPhaseDisallowedTools,
   isWorkflowTemplateAuthoringMutationDenied,
@@ -15,6 +17,16 @@ import {
 
 const SUBMIT_PHASE_COMPLETION_TOOL_NAME = 'submit_phase_completion'
 
+const WORKING_RIPGREP_STATUS = {
+  mode: 'system' as const,
+  path: '/usr/local/bin/rg',
+  working: true,
+}
+
+function getWorkflowPhaseDisallowedToolsWithWorkingSearch(state: WorkflowSessionState | null | undefined): string[] {
+  return getWorkflowPhaseDisallowedTools(state, WORKING_RIPGREP_STATUS)
+}
+
 const getWorkflowScopedToolNames = (
   workflowToolPolicy as typeof workflowToolPolicy & {
     getWorkflowScopedToolNames?: (state: WorkflowSessionState | null | undefined) => string[]
@@ -23,7 +35,7 @@ const getWorkflowScopedToolNames = (
 
 const getWorkflowPromptToolGuidance = (
   workflowToolPolicy as typeof workflowToolPolicy & {
-    getWorkflowPromptToolGuidance?: (state: WorkflowSessionState | null | undefined) => string | null
+    getWorkflowPromptToolGuidance?: (state: WorkflowSessionState | null | undefined, template?: WorkflowSessionState['templateSnapshot']) => string | null
   }
 ).getWorkflowPromptToolGuidance
 
@@ -49,6 +61,97 @@ function stateFor(activePhaseId: string | null): WorkflowSessionState {
     activePhaseId,
     workflowStatus: activePhaseId ? 'running' : 'completed',
     status: activePhaseId ? 'running' : 'completed',
+  } as WorkflowSessionState
+}
+
+const ACTION_POLICY_BY_PHASE_ID = {
+  'requirements-clarification': {
+    allowedActions: [
+      'Ask clarifying questions',
+      'Summarize confirmed requirements',
+      'Record constraints, acceptance criteria, and open questions',
+    ],
+    forbiddenActions: [
+      'Create, edit, or delete implementation files',
+      'Start implementation coding',
+      'Skip user confirmation before design',
+    ],
+  },
+  'technical-design': {
+    allowedActions: [
+      'Design the technical approach and affected code surfaces',
+      'Identify risks, dependencies, and validation strategy',
+      'Explain tradeoffs before implementation planning',
+    ],
+    forbiddenActions: [
+      'Create, edit, or delete implementation files',
+      'Run implementation commands',
+      'Skip user confirmation before task planning',
+    ],
+  },
+  'implementation-planning': {
+    allowedActions: [
+      'Break the approved design into ordered implementation tasks',
+      'Name files and tests that will be changed',
+      'Define validation commands and handoff checkpoints',
+    ],
+    forbiddenActions: [
+      'Create, edit, or delete implementation files',
+      'Start implementation coding before the plan is accepted',
+      'Expand scope beyond the approved design',
+    ],
+  },
+  implementation: {
+    allowedActions: [
+      'Create and edit scoped production, test, and documentation files',
+      'Run focused checks while implementing',
+      'Fix defects found inside the approved implementation scope',
+    ],
+    forbiddenActions: [
+      'Change requirements without returning to an earlier phase',
+      'Skip required validation evidence',
+      'Make unrelated refactors or scope expansions',
+    ],
+  },
+  verification: {
+    allowedActions: [
+      'Run verification commands and inspect their output',
+      'Record pass, fail, skipped checks, and residual risk',
+      'Apply narrow fixes only for validation failures inside the implemented scope',
+    ],
+    forbiddenActions: [
+      'Add new product scope without returning to requirements or design',
+      'Start a new implementation batch without a failed validation reason',
+      'Claim completion without fresh evidence',
+    ],
+  },
+}
+
+function workflowStateWithActionPolicy(activePhaseId: string, policyPhaseId = activePhaseId): WorkflowSessionState {
+  const actionPolicy = ACTION_POLICY_BY_PHASE_ID[policyPhaseId as keyof typeof ACTION_POLICY_BY_PHASE_ID]
+  return {
+    ...stateFor(activePhaseId),
+    templateSnapshot: {
+      schemaVersion: 2,
+      id: 'zip-action-policy-fixture',
+      source: 'user',
+      version: '1',
+      displayName: 'ZIP action policy fixture',
+      description: 'Workflow policy fixture loaded from ZIP content',
+      phases: [
+        {
+          id: activePhaseId,
+          label: activePhaseId,
+          instructions: 'Run with explicit ZIP-packaged action policy.',
+          requestedModel: null,
+          actionPolicy,
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['phase handoff is ready'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
   } as WorkflowSessionState
 }
 
@@ -204,13 +307,47 @@ function workflowStateWithToolPolicy(
   } as WorkflowSessionState
 }
 
+function workflowStateWithRuntimeContractToolAccess(
+  activePhaseId: string,
+  allowed: string[],
+): WorkflowSessionState {
+  return {
+    ...stateFor(activePhaseId),
+    templateSnapshot: {
+      schemaVersion: 2,
+      id: 'runtime-contract-tools',
+      source: 'user',
+      version: '1',
+      displayName: 'Runtime Contract Tools',
+      description: 'Runtime contract tool access fixture',
+      phases: [
+        {
+          id: activePhaseId,
+          label: 'Runtime contract phase',
+          instructions: 'Run with runtimeContract.toolAccess.',
+          requestedModel: null,
+          runtimeContract: {
+            allowedActions: ['read', 'artifact', 'question'],
+            forbiddenActions: ['production edits'],
+            toolAccess: { allowed },
+          },
+          skillDeclarations: [],
+          requiredArtifacts: [],
+          completionCriteria: ['contract satisfied'],
+          transitionAuthority: 'user-confirmation',
+        },
+      ],
+    },
+  } as WorkflowSessionState
+}
+
 describe('workflowToolPolicy', () => {
-  test('defines explicit allowed and forbidden actions for the builtin five-phase workflow', () => {
-    const requirements = getWorkflowPhaseActionPolicy(stateFor('requirements-clarification'))
-    const design = getWorkflowPhaseActionPolicy(stateFor('technical-design'))
-    const planning = getWorkflowPhaseActionPolicy(stateFor('implementation-planning'))
-    const implementation = getWorkflowPhaseActionPolicy(stateFor('implementation'))
-    const verification = getWorkflowPhaseActionPolicy(stateFor('verification'))
+  test('reads explicit allowed and forbidden actions from the ZIP-packaged workflow template snapshot', () => {
+    const requirements = getWorkflowPhaseActionPolicy((state => state)(workflowStateWithActionPolicy('requirements-clarification')), workflowStateWithActionPolicy('requirements-clarification').templateSnapshot)
+    const design = getWorkflowPhaseActionPolicy((state => state)(workflowStateWithActionPolicy('technical-design')), workflowStateWithActionPolicy('technical-design').templateSnapshot)
+    const planning = getWorkflowPhaseActionPolicy((state => state)(workflowStateWithActionPolicy('implementation-planning')), workflowStateWithActionPolicy('implementation-planning').templateSnapshot)
+    const implementation = getWorkflowPhaseActionPolicy((state => state)(workflowStateWithActionPolicy('implementation')), workflowStateWithActionPolicy('implementation').templateSnapshot)
+    const verification = getWorkflowPhaseActionPolicy((state => state)(workflowStateWithActionPolicy('verification')), workflowStateWithActionPolicy('verification').templateSnapshot)
 
     expect(requirements).toMatchObject({
       phaseId: 'requirements-clarification',
@@ -231,54 +368,123 @@ describe('workflowToolPolicy', () => {
     expect(verification?.forbiddenActions).toContain('Add new product scope without returning to requirements or design')
   })
 
-  test('blocks mutating tools while requirements are still being clarified', () => {
-    const state = stateFor('requirements-clarification')
+  test('hard-denies write tools during a phase whose ZIP action policy forbids implementation changes', () => {
+    const state = workflowStateWithActionPolicy('requirements-clarification')
 
-    expect(getWorkflowPhaseDisallowedTools(state)).toEqual([
-      'Write',
-      'Edit',
-      'MultiEdit',
-      'NotebookEdit',
-      'Bash',
-      'PowerShell',
-      'Agent',
-    ])
-    expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
-    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(true)
-    expect(isWorkflowPhaseToolDenied('Read', state)).toBe(false)
+    for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+      expect(isWorkflowPhaseToolDenied(toolName, state), toolName).toBe(true)
+    }
+    expect(isWorkflowPhaseToolDenied(SUBMIT_PHASE_COMPLETION_TOOL_NAME, state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('AskUserQuestion', state)).toBe(false)
   })
 
-  test('allows implementation tools only in implementation and keeps verification test-only', () => {
-    expect(getWorkflowPhaseDisallowedTools(stateFor('implementation'))).toEqual([])
-    expect(getWorkflowPhaseDisallowedTools(stateFor('implement'))).toEqual([])
-    expect(getWorkflowPhaseDisallowedTools(stateFor('sp-implement'))).toEqual([])
-    expect(getWorkflowPhaseDisallowedTools(stateFor('sp_implement'))).toEqual([])
-    expect(getWorkflowPhaseDisallowedTools(stateFor('implementation-planning'))).toEqual([
+  test('keeps explicit tool names exact instead of expanding NotebookEdit into all edit tools', () => {
+    expect(concreteToolNamesForWorkflowCapability('NotebookEdit')).toEqual(['NotebookEdit'])
+    expect(concreteToolNamesForWorkflowCapability('Write')).toEqual(['Write'])
+    expect(concreteToolNamesForWorkflowCapability('Edit')).toEqual(['Edit'])
+    expect(concreteToolNamesForWorkflowCapability('read')).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'LS',
+    ])
+    expect(concreteToolNamesForWorkflowCapability('edit-within-plan')).toEqual([
       'Write',
       'Edit',
       'MultiEdit',
       'NotebookEdit',
-      'Bash',
-      'PowerShell',
-      'Agent',
     ])
-    expect(getWorkflowPhaseDisallowedTools(stateFor('verification'))).toEqual([
-      'Write',
-      'Edit',
-      'MultiEdit',
-      'NotebookEdit',
-      'Agent',
-    ])
-    expect(isWorkflowPhaseToolDenied('Write', stateFor('sp-implement'))).toBe(false)
-    expect(isWorkflowPhaseToolDenied('Bash', stateFor('verification'))).toBe(false)
-    expect(isWorkflowPhaseToolDenied('Write', stateFor('verification'))).toBe(true)
-    expect(getWorkflowPhaseDisallowedTools(stateFor(null))).toEqual([])
+    expect(concreteToolNamesForWorkflowCapability('   ')).toEqual([])
+    expect(concreteToolNamesForWorkflowCapability('not-a-workflow-tool')).toEqual([])
   })
 
-  test('treats SuperSpec implementation phase ids as implementation for action and authoring policy', () => {
-    const phaseState = stateFor('sp-implement')
+  test('identifies ripgrep-backed tools when search is unavailable', () => {
+    expect(getWorkflowUnavailableSearchToolNames({
+      mode: 'unavailable',
+      path: '',
+      working: false,
+    })).toEqual(['Glob', 'Grep'])
 
-    expect(getWorkflowPhaseActionPolicy(phaseState)).toMatchObject({
+    expect(getWorkflowUnavailableSearchToolNames({
+      mode: 'system',
+      path: '/usr/local/bin/rg',
+      working: null,
+    })).toEqual([])
+  })
+
+  test('allows implementation tools only after the workflow formally advances into an implementation phase', () => {
+    const implementation = workflowStateWithActionPolicy('implementation')
+    expect(isWorkflowPhaseToolDenied('Write', implementation)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Edit', implementation)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Bash', implementation)).toBe(false)
+    expect(getWorkflowPhaseDisallowedToolsWithWorkingSearch(stateFor(null))).toEqual([])
+  })
+
+  test('applies legacy command and subagent restrictions when no structured tool access exists', () => {
+    const state = workflowStateWithActionPolicy('legacy-research')
+    state.templateSnapshot.phases[0] = {
+      ...state.templateSnapshot.phases[0],
+      actionPolicy: {
+        allowedActions: ['inspect evidence'],
+        forbiddenActions: [
+          'Run implementation command, test, build, or lint.',
+          'General autonomous agent and subagent dispatch are not permitted.',
+        ],
+      },
+    }
+
+    const denied = getWorkflowPhaseDisallowedToolsWithWorkingSearch(state)
+
+    expect(denied).toEqual(expect.arrayContaining(['Bash', 'PowerShell', 'Agent']))
+  })
+
+  test('does not treat Stage 4 prerequisite wording as a ban on explicitly allowed source-edit tools', () => {
+    const state: WorkflowSessionState = {
+      ...stateFor('delegate-implement'),
+      templateSnapshot: {
+        schemaVersion: 2,
+        id: 'stage-four-implementation-prerequisites',
+        source: 'user',
+        version: '1',
+        displayName: 'Stage 4 implementation prerequisites',
+        description: 'Regression fixture for implementation prerequisites.',
+        phases: [
+          {
+            id: 'delegate-implement',
+            label: 'Implementation',
+            instructions: 'Implement the approved task packet.',
+            requestedModel: null,
+            actionPolicy: {
+              allowedActions: ['edit-within-plan'],
+              forbiddenActions: [
+                'Create implementation-task-packets.md before any production code change.',
+                'Write implementation-log.md and update run-report.md before leaving Stage 4.',
+              ],
+            },
+            toolPolicy: {
+              allowedTools: ['Read', 'Write', 'Edit', 'MultiEdit', 'Bash'],
+              disallowedTools: ['NotebookEdit'],
+            },
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['implementation evidence is ready'],
+            transitionAuthority: 'user-confirmation',
+          },
+        ],
+      },
+    } as WorkflowSessionState
+
+    const denied = getWorkflowPhaseDisallowedToolsWithWorkingSearch(state)
+
+    expect(denied).not.toContain('Write')
+    expect(denied).not.toContain('Edit')
+    expect(denied).not.toContain('MultiEdit')
+    expect(denied).toContain('NotebookEdit')
+  })
+  test('keeps SuperSpec action guidance while leaving template authoring unrestricted', () => {
+    const phaseState = workflowStateWithActionPolicy('sp-implement', 'implementation')
+
+    expect(getWorkflowPhaseActionPolicy(phaseState, phaseState.templateSnapshot)).toMatchObject({
       phaseId: 'sp-implement',
       allowedActions: expect.arrayContaining([
         'Create and edit scoped production, test, and documentation files',
@@ -287,45 +493,130 @@ describe('workflowToolPolicy', () => {
     expect(getWorkflowTemplateAuthoringOperationPolicy('create', phaseState)).toMatchObject({
       allowed: true,
       denied: false,
-      reason: 'implementation-phase',
+      reason: 'workflow-tool-access-unrestricted',
       phaseId: 'sp-implement',
     })
   })
-
-  test('uses explicit per-phase tool policy for managed and workflow-scoped tools', () => {
+  test('enforces an explicit phase tool allow-list while retaining completion and structured-question tools', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const state = workflowStateWithToolPolicy('requirements-clarification', [
-      'Bash',
-      SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+      'read',
+      'AskUserQuestion',
     ])
 
-    expect(getWorkflowPhaseDisallowedTools(state)).toEqual([
-      'Write',
-      'Edit',
-      'MultiEdit',
-      'NotebookEdit',
-      'PowerShell',
-      'Agent',
-      'workflow_template_authoring',
-    ])
-    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Read', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('AskUserQuestion', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied(SUBMIT_PHASE_COMPLETION_TOOL_NAME, state)).toBe(false)
     expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
-    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(true)
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME, 'request_workflow_route'])
+  })
+  test('enforces runtimeContract toolAccess aliases as a concrete allow-list', () => {
+    const state = workflowStateWithRuntimeContractToolAccess('route-context', [
+      'read',
+      'artifact',
+      'AskUserQuestion',
+    ])
+
+    expect(isWorkflowPhaseToolDenied('Read', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('AskUserQuestion', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
+    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(true)
+  })
+  test('hard-denies implementation, terminal, and agent tools for all shipped workflow stage-one contracts', () => {
+    const stageOneContracts = [
+      {
+        phaseId: 'route-context',
+        toolPolicy: {
+          allowedTools: [
+            'Read',
+            'Glob',
+            'Grep',
+            'LS',
+            'AskUserQuestion',
+            'workflow_template_authoring',
+            'submit_phase_completion',
+            'request_workflow_route',
+          ],
+          disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent'],
+        },
+        runtimeContract: {
+          allowedActions: ['read', 'artifact', 'question', 'route-request', 'request_workflow_route'],
+        },
+      },
+      {
+        // Match the shipped Debug ZIP: Stage 1 permits read/artifact/question through
+        // its runtime contract; it does not declare a request_workflow_route-only tool policy.
+        phaseId: 'debug-memory-intake',
+        runtimeContract: {
+          allowedActions: ['read', 'artifact', 'question'],
+          forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
+        },
+      },
+      {
+        // Match the shipped Feature Extension ZIP: Stage 1 permits read/search/artifact/question.
+        phaseId: 'feature-memory-plan',
+        runtimeContract: {
+          allowedActions: ['read', 'search', 'artifact', 'question'],
+          forbiddenActions: ['production edits', 'dependency installs', 'migrations', 'deletes', 'deploy'],
+        },
+      },
+    ]
+
+    for (const contract of stageOneContracts) {
+      const state = {
+        ...stateFor(contract.phaseId),
+        templateSnapshot: {
+          schemaVersion: 2,
+          id: `${contract.phaseId}-fixture`,
+          source: 'user',
+          version: '1',
+          displayName: contract.phaseId,
+          description: 'Shipped stage-one workflow contract fixture.',
+          phases: [{
+            id: contract.phaseId,
+            label: contract.phaseId,
+            instructions: 'Run only the active stage-one workflow contract.',
+            requestedModel: null,
+            toolPolicy: contract.toolPolicy,
+            runtimeContract: contract.runtimeContract,
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: ['stage-one handoff is ready'],
+            transitionAuthority: 'user-confirmation',
+          }],
+        },
+      } as WorkflowSessionState
+
+      expect(isWorkflowPhaseToolDenied('Read', state), `${contract.phaseId}: Read`).toBe(false)
+      expect(isWorkflowPhaseToolDenied('AskUserQuestion', state), `${contract.phaseId}: AskUserQuestion`).toBe(false)
+      expect(isWorkflowPhaseToolDenied(SUBMIT_PHASE_COMPLETION_TOOL_NAME, state), `${contract.phaseId}: completion`).toBe(false)
+      expect(isWorkflowPhaseToolDenied('request_workflow_route', state), `${contract.phaseId}: route`).toBe(false)
+      for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']) {
+        expect(isWorkflowPhaseToolDenied(toolName, state), `${contract.phaseId}: ${toolName}`).toBe(true)
+      }
+    }
   })
 
-  test('allows workflow built-in tools to be disabled per phase', () => {
+  test('does not expose workflow restrictions after exit', () => {
     const getToolNames = requireWorkflowScopedToolNames()
+    const state = {
+      ...stateFor('requirements-clarification'),
+      workflowStatus: 'cancelled',
+      status: 'cancelled',
+    } as WorkflowSessionState
+
+    expect(getWorkflowPhaseDisallowedToolsWithWorkingSearch(state)).toEqual([])
+    expect(getToolNames(state)).toEqual([])
+    expect(getWorkflowPromptToolGuidance(state)).toBeNull()
+  })
+
+  test('does not use user text or a legacy policy omission to re-enable denied tools', () => {
     const state = workflowStateWithToolPolicy('requirements-clarification', ['Bash'])
 
-    expect(getToolNames(state)).toEqual([])
-    expect(getWorkflowTemplateAuthoringOperationPolicy('list', state)).toMatchObject({
-      allowed: false,
-      denied: true,
-      reason: 'phase-tool-policy-denies-workflow-template-authoring',
-    })
-    expect(getWorkflowPromptToolGuidance(state)).toContain('disabled by this phase tool policy')
+    expect(isWorkflowPhaseToolDenied('Bash', state)).toBe(false)
+    expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
   })
-
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
     expect(WORKFLOW_TEMPLATE_AUTHORING_READ_ONLY_OPERATIONS).toEqual([
       'guide',
@@ -374,68 +665,51 @@ describe('workflowToolPolicy', () => {
     )
   })
 
-  test('denies workflow template authoring mutations before implementation and during verification', () => {
+  test('keeps workflow template authoring mutations available in every active phase', () => {
     for (const phaseId of ['requirements-clarification', 'technical-design', 'implementation-planning', 'verification']) {
       for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
         const result = getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(phaseId))
 
         expect(result).toMatchObject({
           operation,
-          allowed: false,
-          denied: true,
+          allowed: true,
+          denied: false,
           readOnly: false,
           mutating: true,
           phaseId,
-          reason: 'phase-policy-denies-workflow-template-authoring',
+          reason: 'workflow-tool-access-unrestricted',
         })
-        expect(result.message).toContain('denied')
-        expect(isWorkflowTemplateAuthoringMutationDenied(operation, stateFor(phaseId))).toBe(true)
+        expect(result.message).toContain('follow the active phase guidance')
+        expect(isWorkflowTemplateAuthoringMutationDenied(operation, stateFor(phaseId))).toBe(false)
       }
     }
   })
-
-  test('allows workflow template authoring mutations outside active workflows and in implementation phases', () => {
+  test('keeps workflow template authoring mutations available outside and inside active workflows', () => {
     const nonWorkflowState = {
       mode: 'dialogue',
     } as unknown as WorkflowSessionState
 
     for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
-      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, undefined)).toMatchObject({
-        operation,
-        allowed: true,
-        denied: false,
-        reason: 'outside-active-workflow',
-      })
-      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(null))).toMatchObject({
-        operation,
-        allowed: true,
-        denied: false,
-        reason: 'outside-active-workflow',
-      })
-      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, nonWorkflowState)).toMatchObject({
-        operation,
-        allowed: true,
-        denied: false,
-        reason: 'outside-active-workflow',
-      })
-      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor('implementation'))).toMatchObject({
-        operation,
-        allowed: true,
-        denied: false,
-        phaseId: 'implementation',
-        reason: 'implementation-phase',
-      })
-      expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor('implement'))).toMatchObject({
-        operation,
-        allowed: true,
-        denied: false,
-        phaseId: 'implement',
-        reason: 'implementation-phase',
-      })
+      for (const state of [undefined, stateFor(null), nonWorkflowState]) {
+        expect(getWorkflowTemplateAuthoringOperationPolicy(operation, state)).toMatchObject({
+          operation,
+          allowed: true,
+          denied: false,
+          reason: 'outside-active-workflow',
+        })
+      }
+      for (const phaseId of ['implementation', 'implement']) {
+        expect(getWorkflowTemplateAuthoringOperationPolicy(operation, stateFor(phaseId))).toMatchObject({
+          operation,
+          allowed: true,
+          denied: false,
+          phaseId,
+          reason: 'workflow-tool-access-unrestricted',
+        })
+      }
     }
   })
-
-  test('allows workflow template authoring mutations when custom phase policy explicitly allows them', () => {
+  test('ignores custom phase policy for template authoring availability', () => {
     const state = workflowStateWithCustomAuthoringPolicy('workflow-maintenance')
 
     for (const operation of WORKFLOW_TEMPLATE_AUTHORING_MUTATING_OPERATIONS) {
@@ -444,12 +718,11 @@ describe('workflowToolPolicy', () => {
         allowed: true,
         denied: false,
         phaseId: 'workflow-maintenance',
-        reason: 'custom-policy-allows-workflow-template-authoring',
+        reason: 'workflow-tool-access-unrestricted',
       })
       expect(isWorkflowTemplateAuthoringMutationDenied(operation, state)).toBe(false)
     }
   })
-
   test('fails closed for unknown workflow template authoring operations', () => {
     expect(getWorkflowTemplateAuthoringOperationPolicy('publish', stateFor('implementation'))).toMatchObject({
       operation: 'publish',
@@ -486,7 +759,8 @@ describe('workflowToolPolicy', () => {
   test('adds workflow prompt guidance for skills and completion tool without enabling SkillTool globally', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
 
-    const guidance = getPromptGuidance(workflowStateWithSkills())
+    const skillsState = workflowStateWithSkills()
+    const guidance = getPromptGuidance(skillsState, skillsState.templateSnapshot)
 
     expect(guidance).toContain(SUBMIT_PHASE_COMPLETION_TOOL_NAME)
     expect(guidance).toContain('phaseId')
@@ -495,6 +769,11 @@ describe('workflowToolPolicy', () => {
     expect(guidance).toContain('handoff')
     expect(guidance).toContain('rationale')
     expect(guidance).toContain('evidence')
+    expect(guidance).toContain('requires status, handoff, rationale, and evidence')
+    expect(guidance).toContain('phaseId and stateVersion may be omitted')
+    expect(guidance).toContain('handoff must be an object')
+    expect(guidance).toContain('rationale must be a non-empty string')
+    expect(guidance).toContain('evidence must be an array')
     expect(guidance).toContain('call submit_phase_completion with status ready in the same assistant turn')
     expect(guidance).toContain('Do not ask the user to type continue before calling the completion tool')
     expect(guidance).toContain('requirements-review')
@@ -506,21 +785,26 @@ describe('workflowToolPolicy', () => {
     expect(getPromptGuidance(dialogueState)).toBeNull()
   })
 
-  test('recommended phase skills do not bypass workflow tool permissions or enable SkillTool globally', () => {
+  test('recommended phase skills do not create hard tool restrictions or enable SkillTool globally', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const state = workflowStateWithRecommendedPhaseSkills()
 
-    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME])
+    expect(getToolNames(state)).toEqual([SUBMIT_PHASE_COMPLETION_TOOL_NAME, 'request_workflow_route'])
     expect(getToolNames(state)).not.toContain('SkillTool')
     expect(getToolNames(state)).not.toContain('skill')
-    expect(getWorkflowPhaseDisallowedTools(state)).toContain('Write')
-    expect(getWorkflowPhaseDisallowedTools(state)).toContain('Bash')
+    const disallowedTools = getWorkflowPhaseDisallowedTools(state)
+    for (const toolName of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+      expect(disallowedTools).toContain(toolName)
+    }
+    for (const toolName of ['Bash', 'PowerShell', 'Agent', 'workflow_template_authoring']) {
+      expect(disallowedTools).not.toContain(toolName)
+    }
     expect(isWorkflowPhaseToolDenied('Write', state)).toBe(true)
     expect(getWorkflowTemplateAuthoringOperationPolicy('update', state)).toMatchObject({
-      allowed: false,
-      denied: true,
-      reason: 'phase-policy-denies-workflow-template-authoring',
+      allowed: true,
+      denied: false,
+      reason: 'workflow-tool-access-unrestricted',
     })
 
     const guidance = getPromptGuidance(state)
@@ -531,7 +815,6 @@ describe('workflowToolPolicy', () => {
     expect(guidance).not.toContain('shell')
     expect(guidance).not.toContain('hook')
   })
-
   test('priority recommendations are described as attention metadata without granting SkillTool access', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const getPromptGuidance = requireWorkflowPromptToolGuidance()

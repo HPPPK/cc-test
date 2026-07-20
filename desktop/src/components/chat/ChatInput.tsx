@@ -7,6 +7,7 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useSessionRuntimeStore } from '../../stores/sessionRuntimeStore'
 import { useTeamStore } from '../../stores/teamStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useExpertStore } from '../../stores/expertStore'
 import {
   formatWorkspaceReferencePrompt,
   useWorkspaceChatContextStore,
@@ -25,6 +26,9 @@ import type { AttachmentRef, UIMessage } from '../../types/chat'
 import { AttachmentGallery } from './AttachmentGallery'
 import { ComposerDropOverlay } from './ComposerDropOverlay'
 import { ProjectContextChip } from '../shared/ProjectContextChip'
+import { ExpertSelectionDialog } from '../experts/ExpertSelectionDialog'
+import type { ExpertDefinition } from '../../api/experts'
+import { modelCapabilitiesApi } from '../../api/modelCapabilities'
 import { RepositoryLaunchControls } from '../shared/RepositoryLaunchControls'
 import {
   WorkflowStartDialog,
@@ -50,6 +54,13 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { useComposerFileDrop } from './useComposerFileDrop'
+import {
+  UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+  evaluateDesktopModelRequirements,
+  getDesktopModelCapability,
+  isImageLikeAttachment,
+  type DesktopModelCapabilityDefinition,
+} from '../../lib/modelCapabilities'
 import type {
   LinkedWorkflowContextStrategy,
   LinkedWorkflowSessionStartErrorCode,
@@ -163,8 +174,11 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const [launchTransitioning, setLaunchTransitioning] = useState(false)
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
   const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
+  const [workflowTemplatesLoading, setWorkflowTemplatesLoading] = useState(false)
+  const [workflowTemplatesLoadFailed, setWorkflowTemplatesLoadFailed] = useState(false)
   const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const [expertDialogOpen, setExpertDialogOpen] = useState(false)
   const [workflowContextDialogOpen, setWorkflowContextDialogOpen] = useState(false)
   const [pendingLinkedWorkflowSelection, setPendingLinkedWorkflowSelection] =
     useState<WorkflowStartDialogSelection | null>(null)
@@ -172,7 +186,10 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const [linkedWorkflowRecoveryError, setLinkedWorkflowRecoveryError] =
     useState<'context-too-large' | null>(null)
   const [summaryInstructions, setSummaryInstructions] = useState('')
+  const [summaryPreview, setSummaryPreview] = useState<string | null>(null)
+  const [summaryPreviewing, setSummaryPreviewing] = useState(false)
   const composingRef = useRef(false)
+  const workflowTemplateRequestIdRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerOverlayRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -195,6 +212,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       return next
     })
   }, [])
+
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopGeneration = useChatStore((s) => s.stopGeneration)
   const guideQueuedMessage = useChatStore((s) => s.guideQueuedMessage)
@@ -215,6 +233,76 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     ? `${runtimeSelection.providerId ?? 'official'}:${runtimeSelection.modelId}`
     : undefined
   const runtimeModelLabel = runtimeSelection?.modelId ?? currentModel?.name ?? currentModel?.id
+  const capabilityProvider = runtimeSelection?.providerId ?? null
+  const capabilityModelId = runtimeSelection?.modelId ?? currentModel?.id ?? currentModel?.name ?? null
+  const localModelCapability = useMemo(() => getDesktopModelCapability(
+    capabilityProvider ?? 'official',
+    capabilityModelId,
+  ), [capabilityModelId, capabilityProvider])
+  const [remoteModelCapability, setRemoteModelCapability] = useState<{
+    key: string
+    capability: DesktopModelCapabilityDefinition
+  } | null>(null)
+  const capabilityLookupKey = `${capabilityProvider ?? 'active'}:${capabilityModelId ?? ''}`
+  const currentModelCapability = remoteModelCapability?.key === capabilityLookupKey
+    ? remoteModelCapability.capability
+    : localModelCapability
+  const supportsImageInput = currentModelCapability.capabilities.imageInput === true
+  const resolveCurrentModelCapability = useCallback(async () => {
+    if (!capabilityModelId) return localModelCapability
+    if (remoteModelCapability?.key === capabilityLookupKey) return remoteModelCapability.capability
+
+    try {
+      const response = await modelCapabilitiesApi.get(capabilityProvider, capabilityModelId)
+      setRemoteModelCapability({ key: capabilityLookupKey, capability: response.capability })
+      return response.capability
+    } catch {
+      setRemoteModelCapability((current) => current?.key === capabilityLookupKey ? null : current)
+      return localModelCapability
+    }
+  }, [capabilityLookupKey, capabilityModelId, capabilityProvider, localModelCapability, remoteModelCapability])
+
+  useEffect(() => {
+    if (!capabilityModelId) {
+      setRemoteModelCapability(null)
+      return
+    }
+
+    let cancelled = false
+    void modelCapabilitiesApi.get(capabilityProvider, capabilityModelId)
+      .then((response) => {
+        if (cancelled) return
+        setRemoteModelCapability({ key: capabilityLookupKey, capability: response.capability })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRemoteModelCapability((current) => current?.key === capabilityLookupKey ? null : current)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [capabilityLookupKey, capabilityModelId, capabilityProvider])
+
+  const showUnsupportedImageInputToast = useCallback(() => {
+    useUIStore.getState().addToast({
+      type: 'warning',
+      message: UNSUPPORTED_IMAGE_INPUT_MESSAGE,
+    })
+  }, [])
+
+  const filterImageAttachmentsForCurrentModel = useCallback(async (nextAttachments: Attachment[]) => {
+    const hasImageAttachment = nextAttachments.some((attachment) => isImageLikeAttachment(attachment))
+    if (!hasImageAttachment) return nextAttachments
+
+    const resolvedCapability = supportsImageInput
+      ? currentModelCapability
+      : await resolveCurrentModelCapability()
+    if (resolvedCapability.capabilities.imageInput === true) return nextAttachments
+
+    showUnsupportedImageInputToast()
+    return nextAttachments.filter((attachment) => !isImageLikeAttachment(attachment))
+  }, [currentModelCapability, resolveCurrentModelCapability, showUnsupportedImageInputToast, supportsImageInput])
   const activeSession = useSessionStore((state) => activeTabId ? state.sessions.find((session) => session.id === activeTabId) ?? null : null)
   const messageCount = Math.max(loadedMessageCount, activeSession?.messageCount ?? 0)
   const memberInfo = useTeamStore((s) => activeTabId ? s.getMemberBySessionId(activeTabId) : null)
@@ -253,8 +341,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
   const hasTerminalWorkflow = isTerminalWorkflowStatus(activeSession?.workflow?.status)
-  const hasBlockingWorkflow = !!activeSession?.workflow && !hasTerminalWorkflow
-  const canOpenWorkflowDialog = !isMemberSession && !!activeTabId && !hasBlockingWorkflow
+  const mustStartFreshWorkflow = activeSession?.workflow?.mode === 'workflow' && activeSession.workflow.status !== 'completed' && activeSession.workflow.status !== 'cancelled'
+  const canOpenWorkflowDialog = !isMemberSession && !!activeTabId
   const canAttemptWorkflowDialog = canOpenWorkflowDialog && (!isActive || hasTerminalWorkflow)
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
   const hasComposerPayload =
@@ -262,7 +350,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     (!isMemberSession && (attachments.length > 0 || hasWorkspaceReferences))
   const showStopAction = !isMemberSession && isActive && !hasComposerPayload
   const isHeroComposer = variant === 'hero' && !isMemberSession && !compact
-  const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
+  const resolvedWorkDir = activeSession?.workDir || activeSession?.projectRoot || gitInfo?.workDir || undefined
   const showLaunchControls = !isMemberSession && messageCount === 0
   const useCompactControls = compact || isMobileComposer
   const iconOnlyAction = compact || isMobileComposer
@@ -276,6 +364,31 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     !launchTransitioning &&
     (!showLaunchControls || launchReady || !!pendingSlashUiAction) &&
     hasComposerPayload
+  const precheckWorkflowModelRequirements = useCallback((selection: { templateId: string; templateSource: WorkflowTemplateSource }) => {
+    const template = workflowTemplates.find((candidate) =>
+      candidate.id === selection.templateId && candidate.source === selection.templateSource
+    )
+    if (!template) return true
+    const requirements = {
+      ...(template.modelRequirements ?? {}),
+      ...(template.requiredModelCapabilities ? { required: template.requiredModelCapabilities } : {}),
+    }
+    const result = evaluateDesktopModelRequirements(currentModelCapability.capabilities, requirements)
+    if (result.blockers.length > 0) {
+      useUIStore.getState().addToast({
+        type: 'error',
+        message: `当前模型不满足该流程的必需能力：${result.blockers.join(', ')}。请切换模型后再启动。`,
+      })
+      return false
+    }
+    if (result.warnings.length > 0) {
+      useUIStore.getState().addToast({
+        type: 'warning',
+        message: `当前模型缺少该流程的可选能力：${result.warnings.join(', ')}，流程仍可启动但可能降级。`,
+      })
+    }
+    return true
+  }, [currentModelCapability.capabilities, workflowTemplates])
   const composerAttachments = useMemo(
     () => [
       ...attachments,
@@ -309,6 +422,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     setSlashMenuOpen(false)
     setFileSearchOpen(false)
     setLocalSlashPanel(null)
+    setExpertDialogOpen(false)
     setSlashFilter('')
     setAtFilter('')
     setAtCursorPos(-1)
@@ -399,10 +513,33 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     })
   }, [activeSession?.workDir, activeTabId, gitInfo?.workDir, showLaunchControls])
 
+  const refreshWorkflowTemplates = useCallback(async () => {
+    const requestId = ++workflowTemplateRequestIdRef.current
+    setWorkflowTemplatesLoading(true)
+    setWorkflowTemplatesLoadFailed(false)
+
+    try {
+      const { templates, invalidTemplates } = await sessionsApi.listWorkflowTemplates()
+      if (requestId !== workflowTemplateRequestIdRef.current) return
+      setWorkflowTemplates(templates)
+      setInvalidWorkflowTemplates(invalidTemplates)
+    } catch {
+      if (requestId !== workflowTemplateRequestIdRef.current) return
+      setWorkflowTemplatesLoadFailed(true)
+    } finally {
+      if (requestId === workflowTemplateRequestIdRef.current) {
+        setWorkflowTemplatesLoading(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!canOpenWorkflowDialog) {
+      workflowTemplateRequestIdRef.current += 1
       setWorkflowTemplates([])
       setInvalidWorkflowTemplates([])
+      setWorkflowTemplatesLoading(false)
+      setWorkflowTemplatesLoadFailed(false)
       setSelectedWorkflowTemplate(null)
       setWorkflowDialogOpen(false)
       setWorkflowContextDialogOpen(false)
@@ -411,26 +548,9 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
       return
     }
 
-    let cancelled = false
     setSelectedWorkflowTemplate(null)
-
-    sessionsApi.listWorkflowTemplates()
-      .then(({ templates, invalidTemplates }) => {
-        if (cancelled) return
-        setWorkflowTemplates(templates)
-        setInvalidWorkflowTemplates(invalidTemplates)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setWorkflowTemplates([])
-        setInvalidWorkflowTemplates([])
-        setSelectedWorkflowTemplate(null)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeTabId, canOpenWorkflowDialog])
+    void refreshWorkflowTemplates()
+  }, [activeTabId, canOpenWorkflowDialog, refreshWorkflowTemplates])
 
   const resizeComposerTextarea = useCallback(() => {
     const el = textareaRef.current
@@ -678,6 +798,13 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     }
   }, [activeTabId, replaceEmptySession, t])
 
+  const handleWorkflowWorkspaceChange = useCallback((newWorkDir: string) => {
+    setLaunchWorkDir(newWorkDir)
+    setLaunchBranch(null)
+    setLaunchUseWorktree(false)
+    setLaunchReady(true)
+  }, [])
+
   const handleSubmit = async () => {
     const text = input.trim()
     if ((!text && ((!attachments.length && !hasWorkspaceReferences) || isMemberSession)) || isWorkspaceMissing) return
@@ -875,37 +1002,45 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     if (isMemberSession) return
     const items = event.clipboardData?.items
 
-    let hasImage = false
+    const imageFiles: File[] = []
     if (items) {
       for (let i = 0; i < items.length; i += 1) {
         const item = items[i]
         if (!item || !item.type.startsWith('image/')) continue
-
-        hasImage = true
-        event.preventDefault()
         const file = item.getAsFile()
-        if (!file) continue
-
-        const id = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`
-        const reader = new FileReader()
-        reader.onload = () => {
-          setComposerAttachments((prev) => [
-            ...prev,
-            {
-              id,
-              name: `pasted-image-${Date.now()}.png`,
-              type: 'image',
-              mimeType: file.type || 'image/png',
-              previewUrl: reader.result as string,
-              data: reader.result as string,
-            },
-          ])
-        }
-        reader.readAsDataURL(file)
+        if (file) imageFiles.push(file)
       }
     }
 
-    if (hasImage) return
+    if (imageFiles.length > 0) {
+      event.preventDefault()
+      void resolveCurrentModelCapability().then((resolvedCapability) => {
+        if (resolvedCapability.capabilities.imageInput !== true) {
+          showUnsupportedImageInputToast()
+          return
+        }
+
+        for (const file of imageFiles) {
+          const id = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`
+          const reader = new FileReader()
+          reader.onload = () => {
+            setComposerAttachments((prev) => [
+              ...prev,
+              {
+                id,
+                name: `pasted-image-${Date.now()}.png`,
+                type: 'image',
+                mimeType: file.type || 'image/png',
+                previewUrl: reader.result as string,
+                data: reader.result as string,
+              },
+            ])
+          }
+          reader.readAsDataURL(file)
+        }
+      })
+      return
+    }
 
     const text = event.clipboardData?.getData('text/plain') || event.clipboardData?.getData('text') || ''
     if (!text) return
@@ -930,19 +1065,23 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
 
   const appendFiles = useCallback((files: FileList | File[]) => {
     void filesToComposerAttachments(files)
-      .then((nextAttachments) => {
-        if (nextAttachments.length === 0) return
-        setComposerAttachments((prev) => [...prev, ...nextAttachments])
+      .then((nextAttachments) => filterImageAttachmentsForCurrentModel(nextAttachments))
+      .then((allowedAttachments) => {
+        if (allowedAttachments.length === 0) return
+        setComposerAttachments((prev) => [...prev, ...allowedAttachments])
       })
       .catch((error) => {
         console.warn('[attachments] Failed to read selected files', error)
       })
-  }, [setComposerAttachments])
+  }, [filterImageAttachmentsForCurrentModel, setComposerAttachments])
 
   const appendAttachments = useCallback((nextAttachments: Attachment[]) => {
-    if (nextAttachments.length === 0) return
-    setComposerAttachments((prev) => [...prev, ...nextAttachments])
-  }, [setComposerAttachments])
+    void filterImageAttachmentsForCurrentModel(nextAttachments)
+      .then((allowedAttachments) => {
+        if (allowedAttachments.length === 0) return
+        setComposerAttachments((prev) => [...prev, ...allowedAttachments])
+      })
+  }, [filterImageAttachmentsForCurrentModel, setComposerAttachments])
 
   const { isDragActive, dragHandlers } = useComposerFileDrop({
     disabled: isMemberSession || isWorkspaceMissing,
@@ -961,17 +1100,20 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     }
 
     void selectNativeFileAttachments()
-      .then((nativeAttachments) => {
+      .then(async (nativeAttachments) => {
         if (nativeAttachments) {
           if (nativeAttachments.length > 0) {
-            setComposerAttachments((prev) => [...prev, ...nativeAttachments])
+            const allowedAttachments = await filterImageAttachmentsForCurrentModel(nativeAttachments)
+            if (allowedAttachments.length > 0) {
+              setComposerAttachments((prev) => [...prev, ...allowedAttachments])
+            }
           }
           return
         }
         fileInputRef.current?.click()
       })
       .finally(() => setPlusMenuOpen(false))
-  }, [setComposerAttachments])
+  }, [filterImageAttachmentsForCurrentModel, setComposerAttachments])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (isMemberSession) return
@@ -999,6 +1141,51 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     requestAnimationFrame(() => {
       textareaRef.current?.focus()
       textareaRef.current?.setSelectionRange(replacement.cursorPos, replacement.cursorPos)
+    })
+  }
+
+  const openExpertDialog = () => {
+    if (isMemberSession) return
+    setPlusMenuOpen(false)
+    setSlashMenuOpen(false)
+    setFileSearchOpen(false)
+    setExpertDialogOpen(true)
+  }
+
+  const handleEnterExpertMode = async (expert: ExpertDefinition) => {
+    if (!activeTabId) throw new Error('请先打开或创建一个聊天会话。')
+    const expertMetadata = await useExpertStore.getState().enterExpertMode(activeTabId, expert.id)
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => session.id === activeTabId
+        ? { ...session, expert: expertMetadata, modifiedAt: new Date().toISOString() }
+        : session),
+    }))
+
+    // 构造专家激活消息，发送给 Claude 开始对话式引导
+    const skillContent = expert.skillContents
+      ? Object.values(expert.skillContents).join('\n\n---\n\n')
+      : ''
+    const activationMsg = [
+      `[系统指令] 你现在作为「${expert.name}」专家角色工作。`,
+      expert.systemPromptContent ? `\n## 专家 System Prompt\n${expert.systemPromptContent}` : '',
+      skillContent ? `\n## 专家技能指令\n${skillContent}` : '',
+      `\n## 交互规则（必须遵守）`,
+      `- 所有用户交互使用 AskUserQuestion tool，不要让用户在聊天框打字`,
+      `- 需要项目路径时用 AskUserQuestion（type: 'path'），让用户选择文件夹`,
+      `- 需要确认分析重点时用 AskUserQuestion，提供选项让用户选择`,
+      `- 需要文件时用 AskUserQuestion（type: 'file'），让用户选择文件`,
+      `- 永远不要让用户直接在聊天框输入回复`,
+      `\n## 工作规则`,
+      `- 材料足够后自动整理分析，流式输出结果`,
+      `- 使用 ExpertMaterialWriter tool 保存材料包`,
+      `- 不使用 ExpertIntakeForm tool`,
+      `\n请现在开始：用 AskUserQuestion tool 向用户打招呼，询问需要什么帮助，并提供选项。`,
+    ].filter(Boolean).join('\n')
+
+    useChatStore.getState().sendMessage(activeTabId, activationMsg)
+    useUIStore.getState().addToast({
+      type: 'success',
+      message: `已进入「${expert.name}」专家 Mode`,
     })
   }
 
@@ -1036,9 +1223,51 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     setSlashMenuOpen(false)
     setFileSearchOpen(false)
     setWorkflowDialogOpen(true)
+    void refreshWorkflowTemplates()
   }
 
   const handleStartWorkflow = async (selection: WorkflowStartDialogSelection) => {
+    if (!precheckWorkflowModelRequirements(selection)) return
+    if (mustStartFreshWorkflow) {
+      if (!activeTabId || linkedWorkflowStarting) return
+      const sourceIdle = await ensureWorkflowSourceIdle()
+      if (!sourceIdle) {
+        if (isActive) showWorkflowSourceActiveToast()
+        return
+      }
+
+      setLaunchTransitioning(true)
+      try {
+        const workflowWorkDir = selection.workspaceRoot || resolvedWorkDir || activeLaunchWorkDir
+        const newSessionId = await useSessionStore.getState().createSession(workflowWorkDir || undefined, {
+          workflow: {
+            templateId: selection.templateId,
+            templateSource: selection.templateSource,
+            initialPhaseId: selection.initialPhaseId,
+            request: selection.request || input,
+            labels: selection.labels,
+            effort: selection.effort,
+            routingMode: selection.routingMode,
+            brainstormingMode: selection.brainstormingMode,
+            ...(selection.expertMaterialRefs?.length
+              ? { repoMetadata: { expertMaterials: selection.expertMaterialRefs } }
+              : {}),
+          },
+        })
+        useTabStore.getState().openTab(newSessionId, 'New Session', 'session')
+        useChatStore.getState().connectToSession(newSessionId)
+        setWorkflowDialogOpen(false)
+      } catch (error) {
+        useUIStore.getState().addToast({
+          type: 'error',
+          message: error instanceof Error ? error.message : t('empty.failedToCreate'),
+        })
+      } finally {
+        setLaunchTransitioning(false)
+      }
+      return
+    }
+
     if (!showLaunchControls) {
       if (!activeTabId || !canOpenWorkflowDialog || messageCount === 0 || linkedWorkflowStarting) return
       const sourceIdle = await ensureWorkflowSourceIdle()
@@ -1069,12 +1298,21 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
 
     setLaunchTransitioning(true)
     try {
-      await replaceEmptySession(activeLaunchWorkDir, {
+      const workflowWorkDir = selection.workspaceRoot || activeLaunchWorkDir
+      await replaceEmptySession(workflowWorkDir, {
         ...(repository ? { repository } : {}),
         workflow: {
           templateId: selection.templateId,
           templateSource: selection.templateSource,
           initialPhaseId: selection.initialPhaseId,
+          request: selection.request || input,
+          labels: selection.labels,
+          effort: selection.effort,
+          routingMode: selection.routingMode,
+          brainstormingMode: selection.brainstormingMode,
+          ...(selection.expertMaterialRefs?.length
+            ? { repoMetadata: { expertMaterials: selection.expertMaterialRefs } }
+            : {}),
         },
       })
       setWorkflowDialogOpen(false)
@@ -1088,8 +1326,36 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     }
   }
 
-  const handleStartLinkedWorkflow = async (contextStrategy: LinkedWorkflowContextStrategy) => {
+  const handlePreviewLinkedWorkflowSummary = async () => {
+    if (!activeTabId || !pendingLinkedWorkflowSelection || linkedWorkflowStarting || summaryPreviewing) return
+    const sourceIdle = await ensureWorkflowSourceIdle()
+    if (!sourceIdle) {
+      if (isActive) showWorkflowSourceActiveToast()
+      return
+    }
+
+    setSummaryPreviewing(true)
+    try {
+      const response = await sessionsApi.previewLinkedWorkflowContext(activeTabId, {
+        ...(summaryInstructions.trim() ? { summaryInstructions: summaryInstructions.trim() } : {}),
+      })
+      setSummaryPreview(response.content)
+    } catch (error) {
+      useUIStore.getState().addToast({
+        type: 'error',
+        message: getLinkedWorkflowStartErrorMessage(error, t),
+      })
+    } finally {
+      setSummaryPreviewing(false)
+    }
+  }
+
+  const handleStartLinkedWorkflow = async (
+    contextStrategy: LinkedWorkflowContextStrategy,
+    summaryContent?: string,
+  ) => {
     if (!activeTabId || !pendingLinkedWorkflowSelection || linkedWorkflowStarting) return
+    if (!precheckWorkflowModelRequirements(pendingLinkedWorkflowSelection)) return
     const sourceIdle = await ensureWorkflowSourceIdle()
     if (!sourceIdle) {
       if (isActive) showWorkflowSourceActiveToast()
@@ -1104,10 +1370,21 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           templateId: pendingLinkedWorkflowSelection.templateId,
           templateSource: pendingLinkedWorkflowSelection.templateSource,
           initialPhaseId: pendingLinkedWorkflowSelection.initialPhaseId,
+          request: pendingLinkedWorkflowSelection.request || input,
+          labels: pendingLinkedWorkflowSelection.labels,
+          effort: pendingLinkedWorkflowSelection.effort,
+          routingMode: pendingLinkedWorkflowSelection.routingMode,
+          brainstormingMode: pendingLinkedWorkflowSelection.brainstormingMode,
+          ...(pendingLinkedWorkflowSelection.expertMaterialRefs?.length
+            ? { repoMetadata: { expertMaterials: pendingLinkedWorkflowSelection.expertMaterialRefs } }
+            : {}),
         },
         contextStrategy,
         ...(contextStrategy === 'summarize' && summaryInstructions.trim()
           ? { summaryInstructions: summaryInstructions.trim() }
+          : {}),
+        ...(contextStrategy === 'summarize' && summaryContent
+          ? { summaryContent }
           : {}),
         clientRequestId: `desktop-linked-workflow-${activeTabId}-${Date.now()}`,
       })
@@ -1135,11 +1412,25 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           activeSessionId: response.sessionId,
         }
       })
-      useTabStore.getState().openTab(response.sessionId, 'New Session', 'session')
-      useChatStore.getState().connectToSession(response.sessionId)
+      const openedSeparateSession = response.sessionId !== activeTabId
+      if (openedSeparateSession) {
+        useTabStore.getState().openTab(response.sessionId, 'New Session', 'session')
+        useChatStore.getState().connectToSession(response.sessionId)
+      }
+      if (openedSeparateSession && contextStrategy === 'summarize' && summaryContent) {
+        useChatStore.getState().sendMessage(
+          response.sessionId,
+          [
+            '[Workflow context summary]',
+            summaryContent,
+            'Use this source-chat summary as context and begin the selected workflow.',
+          ].join('\n\n'),
+        )
+      }
       setWorkflowContextDialogOpen(false)
       setPendingLinkedWorkflowSelection(null)
       setSummaryInstructions('')
+      setSummaryPreview(null)
     } catch (error) {
       if (getLinkedWorkflowStartErrorCode(error) === 'WORKFLOW_CONTEXT_TOO_LARGE') {
         setLinkedWorkflowRecoveryError('context-too-large')
@@ -1178,23 +1469,45 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
             : `bg-[var(--color-surface)] ${isMobileComposer ? 'px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2' : 'px-4 py-4'}`
       }
     >
+      <ExpertSelectionDialog
+        open={expertDialogOpen}
+        onClose={() => setExpertDialogOpen(false)}
+        projectRoot={activeLaunchWorkDir || resolvedWorkDir || ''}
+        sessionId={activeTabId}
+        onEnterExpert={handleEnterExpertMode}
+      />
       <WorkflowStartDialog
         open={workflowDialogOpen}
         templates={workflowTemplates}
         invalidTemplates={invalidWorkflowTemplates}
+        templatesLoading={workflowTemplatesLoading}
+        templatesLoadFailed={workflowTemplatesLoadFailed}
+        onRetryTemplates={() => void refreshWorkflowTemplates()}
         selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+        selectedTemplateSource={selectedWorkflowTemplate?.templateSource ?? null}
         onSelect={setSelectedWorkflowTemplate}
         onStart={handleStartWorkflow}
         onClose={() => setWorkflowDialogOpen(false)}
         starting={launchTransitioning || linkedWorkflowStarting}
+        requestText={input}
+        workspaceRoot={showLaunchControls ? activeLaunchWorkDir : (resolvedWorkDir || '')}
+        onWorkspaceRootChange={showLaunchControls ? handleWorkflowWorkspaceChange : undefined}
+        expertMaterialRefs={activeSession?.expert?.materialRefs ?? []}
       />
       <WorkflowContextStrategyDialog
         open={workflowContextDialogOpen}
         starting={linkedWorkflowStarting}
         summaryInstructions={summaryInstructions}
+        summaryPreview={summaryPreview}
+        summaryPreviewing={summaryPreviewing}
         recoveryError={linkedWorkflowRecoveryError}
-        onSummaryInstructionsChange={setSummaryInstructions}
+        onSummaryInstructionsChange={(value) => {
+          setSummaryInstructions(value)
+          setSummaryPreview(null)
+        }}
+        onPreviewSummary={handlePreviewLinkedWorkflowSummary}
         onStart={handleStartLinkedWorkflow}
+        onOpenSummary={(content) => handleStartLinkedWorkflow('summarize', content)}
         onBack={() => {
           if (linkedWorkflowStarting) return
           setWorkflowContextDialogOpen(false)
@@ -1507,6 +1820,13 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
                           <span className="w-[24px] text-center text-[18px] font-bold text-[var(--color-text-secondary)]">/</span>
                           <span className="text-sm text-[var(--color-text-primary)]">{slashCommandsLabel}</span>
                         </button>
+                        <button
+                          onClick={openExpertDialog}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+                        >
+                          <span className="material-symbols-outlined text-[18px] text-[var(--color-text-secondary)]">support_agent</span>
+                          <span className="text-sm text-[var(--color-text-primary)]">专家</span>
+                        </button>
                         {canOpenWorkflowDialog ? (
                           <button
                             onClick={openWorkflowDialog}
@@ -1626,18 +1946,26 @@ function WorkflowContextStrategyDialog({
   open,
   starting,
   summaryInstructions,
+  summaryPreview,
+  summaryPreviewing,
   recoveryError,
   onSummaryInstructionsChange,
+  onPreviewSummary,
   onStart,
+  onOpenSummary,
   onBack,
   onClose,
 }: {
   open: boolean
   starting: boolean
   summaryInstructions: string
+  summaryPreview: string | null
+  summaryPreviewing: boolean
   recoveryError: 'context-too-large' | null
   onSummaryInstructionsChange: (value: string) => void
+  onPreviewSummary: () => void
   onStart: (strategy: LinkedWorkflowContextStrategy) => void
+  onOpenSummary: (content: string) => void
   onBack: () => void
   onClose: () => void
 }) {
@@ -1653,7 +1981,7 @@ function WorkflowContextStrategyDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
+      className="workflow-content-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/35 py-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !starting) onClose()
@@ -1732,8 +2060,8 @@ function WorkflowContextStrategyDialog({
               icon="summarize"
               title={t('workflows.linkedStart.summarize.title')}
               description={t('workflows.linkedStart.summarize.description')}
-              disabled={starting}
-              onClick={() => onStart('summarize')}
+              disabled={starting || summaryPreviewing}
+              onClick={onPreviewSummary}
               embedded
             />
             <label className="mt-3 block text-xs font-medium text-[var(--color-text-secondary)]">
@@ -1741,12 +2069,42 @@ function WorkflowContextStrategyDialog({
               <textarea
                 value={summaryInstructions}
                 onChange={(event) => onSummaryInstructionsChange(event.target.value)}
-                disabled={starting}
+                disabled={starting || summaryPreviewing}
                 rows={3}
                 placeholder={t('workflows.linkedStart.summaryInstructionsPlaceholder')}
                 className="mt-1 w-full resize-none rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm leading-5 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-brand)] disabled:opacity-60"
               />
             </label>
+            {summaryPreviewing && (
+              <p className="mt-3 text-xs text-[var(--color-text-secondary)]" role="status">
+                {t('workflows.linkedStart.summaryGenerating')}
+              </p>
+            )}
+            {summaryPreview && (
+              <div className="mt-3 space-y-2">
+                <label className="block text-xs font-medium text-[var(--color-text-secondary)]">
+                  {t('workflows.linkedStart.summaryPreview')}
+                  <textarea
+                    aria-label={t('workflows.linkedStart.summaryPreview')}
+                    readOnly
+                    value={summaryPreview}
+                    rows={8}
+                    className="mt-1 w-full resize-y rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm leading-5 text-[var(--color-text-primary)] outline-none"
+                  />
+                </label>
+                <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {t('workflows.linkedStart.summaryPreviewHint')}
+                </p>
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={() => onOpenSummary(summaryPreview)}
+                  className="inline-flex h-9 items-center justify-center rounded-[7px] bg-[var(--color-brand)] px-3 text-sm font-medium text-white transition-colors hover:bg-[var(--color-brand-hover)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {t('workflows.linkedStart.openSummarySession')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

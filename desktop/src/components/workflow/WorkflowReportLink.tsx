@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { sessionsApi, type WorkflowReportResponse } from '../../api/sessions'
 import { Modal } from '../shared/Modal'
 import { CopyButton } from '../shared/CopyButton'
@@ -7,9 +7,11 @@ import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
 type WorkflowReportLinkProps = {
   workflow?: WorkflowStatusPanelSummary | null
   compact?: boolean
+  openRequestId?: number
+  onOpenHandled?: () => void
 }
 
-export function WorkflowReportLink({ workflow, compact = false }: WorkflowReportLinkProps) {
+export function WorkflowReportLink({ workflow, compact = false, openRequestId, onOpenHandled }: WorkflowReportLinkProps) {
   const pointer = workflow?.reportPointer
   const displayRef = pointer?.uri ?? pointer?.artifactId
   const sessionId = pointer?.sessionId ?? workflow?.statePointer?.sessionId
@@ -17,13 +19,12 @@ export function WorkflowReportLink({ workflow, compact = false }: WorkflowReport
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reportResponse, setReportResponse] = useState<WorkflowReportResponse | null>(null)
+  const handledOpenRequestId = useRef<number | undefined>(undefined)
 
   const reportJson = useMemo(() => {
     if (!reportResponse) return ''
     return JSON.stringify(reportResponse.report, null, 2)
   }, [reportResponse])
-
-  if (!workflow || workflow.status !== 'completed' || !pointer || !displayRef) return null
 
   const loadReport = async () => {
     if (!sessionId) {
@@ -49,6 +50,20 @@ export function WorkflowReportLink({ workflow, compact = false }: WorkflowReport
       void loadReport()
     }
   }
+
+  useEffect(() => {
+    if (
+      openRequestId === undefined ||
+      openRequestId === 0 ||
+      handledOpenRequestId.current === openRequestId
+    ) return
+
+    handledOpenRequestId.current = openRequestId
+    openReport()
+    onOpenHandled?.()
+  }, [openRequestId])
+
+  if (!workflow || workflow.status !== 'completed' || !pointer || !displayRef) return null
 
   const downloadReport = () => {
     if (!reportJson) return

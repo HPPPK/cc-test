@@ -20,7 +20,7 @@
     "check:server": "bun run scripts/pr/run-server-tests.ts",
     "check:desktop": "cd desktop && bun run lint && bun run test -- --run && bun run build",
     "check:adapters": "cd adapters && bun test",
-    "check:native": "cd desktop && bun run build:sidecars && cd src-tauri && cargo check",
+    "check:native": "bun run scripts/check-native.ts",
     "check:docs": "npm ci --loglevel=error && npm run --loglevel=error docs:build",
     "check:persistence-upgrade": "bun run scripts/quality-gate/persistence-upgrade.ts",
     "check:quarantine": "bun run scripts/quality-gate/quarantine.ts --enforce-review-date",

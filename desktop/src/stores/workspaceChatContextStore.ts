@@ -104,7 +104,7 @@ export function formatWorkspaceReferencePrompt(references: WorkspaceChatReferenc
         'Referenced workspace context:',
         ...workspaceReferencesWithContext.map((reference) => {
           const location = formatWorkspaceReferenceLocation(reference)
-          const parts = [`@"${location}":`]
+          const parts = [`Location: ${location}`]
           if (reference.note?.trim()) parts.push(`Comment: ${reference.note.trim()}`)
           if (reference.quote?.trim()) {
             const fence = getFenceForQuote(reference.quote)

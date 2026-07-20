@@ -6,7 +6,9 @@ import * as path from 'node:path'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
 import { getAllBaseTools, getTools } from '../../tools.js'
-import { resetWorkflowTemplateRegistryForTests } from '../../server/services/workflowTemplateRegistryService.js'
+import { resetWorkflowTemplateRegistryForTests, WorkflowTemplateRegistryService } from '../../server/services/workflowTemplateRegistryService.js'
+import { PackRegistryService } from '../../server/services/packRegistryService.js'
+import { ZipPackAdapter } from '../../server/services/zipPackAdapter.js'
 import { toolToAPISchema } from '../../utils/api.js'
 import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js'
 
@@ -16,6 +18,14 @@ const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 
 let tempConfigDir: string
+
+const editableDefaultTemplateIds = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
+
+const zipAdapter = new ZipPackAdapter()
 
 beforeEach(async () => {
   tempConfigDir = await fs.mkdtemp(
@@ -139,6 +149,13 @@ function contextFor(activePhaseId: string | null = null): ToolUseContext {
 }
 
 async function readWorkflowConfig(): Promise<unknown> {
+  const storedTemplates = await readStoredUserWorkflowTemplates()
+  if (storedTemplates.length > 0 || await legacyMigrationMarkerExists()) {
+    return {
+      schemaVersion: 1,
+      templates: storedTemplates,
+    }
+  }
   try {
     return JSON.parse(
       await fs.readFile(path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json'), 'utf-8'),
@@ -156,11 +173,44 @@ async function readWorkflowConfig(): Promise<unknown> {
   }
 }
 
+async function legacyMigrationMarkerExists(): Promise<boolean> {
+  try {
+    await fs.access(path.join(tempConfigDir, 'cc-jiangxia', 'workflows', 'packs', '.legacy-workflows-json-migrated'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function readStoredUserWorkflowTemplates(): Promise<Record<string, unknown>[]> {
+  const packs = await new PackRegistryService().listStoredWorkflowPacks()
+  const templates: Record<string, unknown>[] = []
+  for (const pack of packs) {
+    for (const workflow of pack.workflows) {
+      if (editableDefaultTemplateIds.has(workflow.id)) continue
+      const zip = await zipAdapter.read(new Uint8Array(await fs.readFile(pack.storage.path)))
+      const template = await zip.readJson(workflow.entrypoint) as Record<string, unknown>
+      templates.push({
+        ...template,
+        source: 'user',
+      })
+    }
+  }
+  return templates.sort((a, b) => String(a.id).localeCompare(String(b.id)))
+}
+
 async function writeWorkflowConfig(config: Record<string, unknown>): Promise<void> {
   const filePath = path.join(tempConfigDir, 'cc-jiangxia', 'workflows.json')
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8')
   resetWorkflowTemplateRegistryForTests()
+  try {
+    await new WorkflowTemplateRegistryService().writeTemplates(
+      Array.isArray(config.templates) ? config.templates : [],
+    )
+  } catch {
+    resetWorkflowTemplateRegistryForTests()
+  }
 }
 
 function buildDesktopSuccessResult(input: Record<string, unknown>): Record<string, unknown> {
@@ -533,21 +583,21 @@ describe('WorkflowTemplateAuthoringTool', () => {
       operation: 'list',
       status: 'succeeded',
       persisted: false,
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({
           source: 'user',
           id: 'direct-created-workflow',
         }),
-      ],
+      ]),
     })
-    expect(await readWorkflowConfig()).toEqual({
+    expect(await readWorkflowConfig()).toMatchObject({
       schemaVersion: 1,
-      templates: [
+      templates: expect.arrayContaining([
         expect.objectContaining({
           id: 'direct-created-workflow',
           source: 'user',
         }),
-      ],
+      ]),
     })
   })
 
@@ -677,10 +727,11 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(block.content).toContain('status=succeeded')
     expect(block.content).toContain('persisted=true')
     expect(block.content).toContain('affected=user:direct-deleted-workflow')
-    expect(await readWorkflowConfig()).toEqual({
-      schemaVersion: 1,
-      templates: [],
-    })
+    const updatedConfig = await readWorkflowConfig()
+    expect(updatedConfig).toMatchObject({ schemaVersion: 1 })
+    expect(updatedConfig.templates).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'direct-deleted-workflow' }),
+    ]))
   })
 
   test('returns validation diagnostics without writing for invalid direct validate calls', async () => {
@@ -715,7 +766,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(await readWorkflowConfig()).toBeUndefined()
   })
 
-  test('denies mutating operations during workflow phases that do not allow authoring', async () => {
+  test('allows mutating operations during every workflow phase and leaves phase rules as prompt guidance', async () => {
     const tool = await loadTool()
 
     await expect(tool.validateInput?.(
@@ -724,12 +775,9 @@ describe('WorkflowTemplateAuthoringTool', () => {
     )).resolves.toEqual({ result: true })
 
     await expect(tool.validateInput?.(
-      { operation: 'create', template: validTemplate('denied-workflow') },
+      { operation: 'create', template: validTemplate('unrestricted-workflow') },
       contextFor('requirements-clarification'),
-    )).resolves.toMatchObject({
-      result: false,
-      message: expect.stringContaining('denied by the active workflow phase policy'),
-    })
+    )).resolves.toEqual({ result: true })
   })
 
   test('posts mutating operations to the desktop authoring endpoint and returns server responses without direct writes', async () => {

@@ -11,7 +11,23 @@ const apiMocks = vi.hoisted(() => ({
   getMessages: vi.fn(),
   getSlashCommands: vi.fn(),
   getWorkflowReport: vi.fn(),
+  listWorkflowTemplates: vi.fn(),
+  listWorkflowGitCheckpoints: vi.fn(),
+  createWorkflowGitCheckpoint: vi.fn(),
+  restoreWorkflowGitCheckpoint: vi.fn(),
+  startWorkflowFollowUpRun: vi.fn(),
+  startWorkflowPreview: vi.fn(),
+  stopWorkflowPreview: vi.fn(),
+  exitWorkflow: vi.fn(),
   transitionWorkflow: vi.fn(),
+}))
+
+const tauriDialogMocks = vi.hoisted(() => ({
+  open: vi.fn(),
+}))
+
+const expertApiMocks = vi.hoisted(() => ({
+  downloadMaterialPackage: vi.fn(),
 }))
 
 vi.mock('../hooks/useMobileViewport', () => ({
@@ -23,13 +39,33 @@ vi.mock('../api/sessions', () => ({
     getMessages: apiMocks.getMessages,
     getSlashCommands: apiMocks.getSlashCommands,
     getWorkflowReport: apiMocks.getWorkflowReport,
+    listWorkflowTemplates: apiMocks.listWorkflowTemplates,
+    listWorkflowGitCheckpoints: apiMocks.listWorkflowGitCheckpoints,
+    createWorkflowGitCheckpoint: apiMocks.createWorkflowGitCheckpoint,
+    restoreWorkflowGitCheckpoint: apiMocks.restoreWorkflowGitCheckpoint,
+    startWorkflowFollowUpRun: apiMocks.startWorkflowFollowUpRun,
+    startWorkflowPreview: apiMocks.startWorkflowPreview,
+    stopWorkflowPreview: apiMocks.stopWorkflowPreview,
+    exitWorkflow: apiMocks.exitWorkflow,
     transitionWorkflow: apiMocks.transitionWorkflow,
   },
 }))
 
+vi.mock('../api/experts', () => ({
+  expertsApi: {
+    downloadMaterialPackage: expertApiMocks.downloadMaterialPackage,
+  },
+}))
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: tauriDialogMocks.open,
+}))
+
 vi.mock('../components/chat/MessageList', () => ({
-  MessageList: ({ compact }: { compact?: boolean }) => (
-    <div data-testid="message-list" data-compact={compact ? 'true' : 'false'} />
+  MessageList: ({ compact, workflowTransitionCard }: { compact?: boolean; workflowTransitionCard?: import('react').ReactNode }) => (
+    <div data-testid="message-list" data-compact={compact ? 'true' : 'false'}>
+      {workflowTransitionCard}
+    </div>
   ),
 }))
 
@@ -72,8 +108,78 @@ vi.mock('./TerminalSettings', () => ({
   ),
 }))
 
+vi.mock('../components/experts/ExpertSelectionDialog', async () => {
+  const React = await import('react')
+  const { useExpertStore } = await import('../stores/expertStore')
+  const { useSessionStore } = await import('../stores/sessionStore')
+
+  return {
+    ExpertSelectionDialog: ({
+      open,
+      onClose,
+      sessionId,
+      onEnterExpert,
+    }: {
+      open: boolean
+      onClose: () => void
+      sessionId?: string
+      onEnterExpert: (expert: { id: string; name: string }) => Promise<void> | void
+    }) => {
+      const experts = useExpertStore((state) => state.experts)
+      const exitExpertMode = useExpertStore((state) => state.exitExpertMode)
+      const session = useSessionStore((state) => state.sessions.find((candidate) => candidate.id === sessionId))
+      const [selectedExpertId, setSelectedExpertId] = React.useState<string | null>(null)
+      const [confirming, setConfirming] = React.useState(false)
+      if (!open) return null
+      const selectedExpert = experts.find((expert) => expert.id === selectedExpertId) ?? experts[0]
+      const currentExpert = session?.expert?.status === 'active' || session?.expert?.status === 'collecting' || session?.expert?.status === 'running'
+        ? session.expert
+        : null
+      const needsSwitchConfirmation = Boolean(currentExpert && selectedExpert && currentExpert?.expertId !== selectedExpert.id)
+      const enterSelectedExpert = async () => {
+        if (!selectedExpert) return
+        if (needsSwitchConfirmation && !confirming) {
+          setConfirming(true)
+          return
+        }
+        await onEnterExpert(selectedExpert)
+        onClose()
+      }
+      const exitAndSwitch = async () => {
+        if (!selectedExpert || !sessionId) return
+        const exitedExpert = await exitExpertMode(sessionId)
+        useSessionStore.setState((state) => ({
+          sessions: state.sessions.map((candidate) => candidate.id === sessionId ? { ...candidate, expert: exitedExpert } : candidate),
+        }))
+        await onEnterExpert(selectedExpert)
+        onClose()
+      }
+
+      return (
+        <div data-testid="expert-selection-dialog">
+          {experts.map((expert) => (
+            <button key={expert.id} type="button" onClick={() => setSelectedExpertId(expert.id)}>{expert.name}</button>
+          ))}
+          <button type="button" onClick={enterSelectedExpert}>进入专家 Mode</button>
+          {confirming && currentExpert ? (
+            <div data-testid="expert-switch-confirmation">
+              <p>当前会话正在使用「{currentExpert.expertName}」专家</p>
+              <p>不会创建 workflow，也不会改动 workflow state</p>
+              <button type="button" onClick={onClose}>继续当前专家</button>
+              <button type="button" onClick={exitAndSwitch}>退出并切换</button>
+              <button type="button" onClick={() => setConfirming(false)}>取消</button>
+            </div>
+          ) : null}
+        </div>
+      )
+    },
+  }
+})
+
 import { ActiveSession } from './ActiveSession'
+import { ExpertSelectionDialog } from '../components/experts/ExpertSelectionDialog'
 import { useChatStore } from '../stores/chatStore'
+import { useExpertStore } from '../stores/expertStore'
 import { useCLITaskStore } from '../stores/cliTaskStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useTabStore } from '../stores/tabStore'
@@ -86,7 +192,8 @@ import {
   TERMINAL_PANEL_MAX_HEIGHT,
   TERMINAL_PANEL_MIN_HEIGHT,
 } from '../stores/terminalPanelStore'
-import type { WorkflowSessionSummary } from '../types/session'
+import type { ExpertDefinition } from '../api/experts'
+import type { ExpertSessionSummary, WorkflowSessionSummary } from '../types/session'
 
 type WorkflowPhaseArtifact = {
   artifactId: string
@@ -181,6 +288,111 @@ const ARTIFACT_HISTORY: WorkflowPhaseArtifact[] = [
   },
 ]
 
+
+function createExpertDefinition(overrides: Partial<ExpertDefinition> & Pick<ExpertDefinition, 'id' | 'name'>): ExpertDefinition {
+  return {
+    id: overrides.id,
+    name: overrides.name,
+    description: overrides.description ?? `${overrides.name}说明`,
+    statusLabel: overrides.statusLabel ?? '框架已准备',
+    packId: overrides.packId ?? 'builtin-experts',
+    packName: overrides.packName ?? '内置专家基础包',
+    packVersion: overrides.packVersion ?? '1.0.0',
+    entrypoint: overrides.entrypoint ?? `experts/${overrides.id}/expert.json`,
+    promptPaths: overrides.promptPaths ?? {},
+    formPaths: overrides.formPaths ?? [],
+    skillIds: overrides.skillIds ?? [],
+    hostTools: overrides.hostTools ?? [],
+    permissions: overrides.permissions ?? [],
+    tools: overrides.tools ?? [],
+    intakeFlow: overrides.intakeFlow,
+    portable: overrides.portable ?? true,
+  }
+}
+
+function createExpertSessionSummary(overrides: Partial<ExpertSessionSummary> & Pick<ExpertSessionSummary, 'expertId' | 'expertName'>): ExpertSessionSummary {
+  return {
+    mode: 'expert',
+    expertId: overrides.expertId,
+    expertName: overrides.expertName,
+    packId: overrides.packId ?? 'builtin-experts',
+    packVersion: overrides.packVersion ?? '1.0.0',
+    status: overrides.status ?? 'active',
+    activeRunId: overrides.activeRunId,
+    intakeState: overrides.intakeState,
+    materialRefs: overrides.materialRefs ?? [],
+    startedAt: overrides.startedAt ?? '2026-07-08T00:00:00.000Z',
+    updatedAt: overrides.updatedAt ?? '2026-07-08T00:00:00.000Z',
+    completedAt: overrides.completedAt,
+    exitedAt: overrides.exitedAt,
+    error: overrides.error,
+  }
+}
+
+function renderExpertSwitchDialog() {
+  const sessionId = 'expert-switch-session'
+  const currentExpert = createExpertDefinition({ id: 'repo-health-check', name: '项目体检' })
+  const nextExpert = createExpertDefinition({ id: 'architecture-review', name: '架构顾问' })
+  const activeExpert = createExpertSessionSummary({
+    expertId: currentExpert.id,
+    expertName: currentExpert.name,
+    status: 'active',
+  })
+  const exitedExpert = { ...activeExpert, status: 'exited' as const, exitedAt: '2026-07-08T00:02:00.000Z' }
+  const loadExperts = vi.fn().mockResolvedValue(undefined)
+  const enterExpertMode = vi.fn().mockResolvedValue(createExpertSessionSummary({
+    expertId: nextExpert.id,
+    expertName: nextExpert.name,
+    status: 'collecting',
+  }))
+  const exitExpertMode = vi.fn().mockResolvedValue(exitedExpert)
+  const exportPack = vi.fn().mockResolvedValue(undefined)
+  const onEnterExpert = vi.fn().mockResolvedValue(undefined)
+  const onClose = vi.fn()
+
+  useExpertStore.setState({
+    experts: [currentExpert, nextExpert],
+    packs: [],
+    loadingExperts: false,
+    expertsError: null,
+    modePhase: 'idle',
+    modeMessage: null,
+    modeError: null,
+    loadExperts,
+    enterExpertMode,
+    exitExpertMode,
+    exportPack,
+  })
+  useSessionStore.setState({
+    sessions: [{
+      id: sessionId,
+      title: 'Expert Switch Session',
+      createdAt: '2026-07-08T00:00:00.000Z',
+      modifiedAt: '2026-07-08T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      expert: activeExpert,
+    }],
+    activeSessionId: sessionId,
+    isLoading: false,
+    error: null,
+  })
+
+  render(
+    <ExpertSelectionDialog
+      open
+      onClose={onClose}
+      projectRoot="/workspace/project"
+      sessionId={sessionId}
+      onEnterExpert={onEnterExpert}
+    />,
+  )
+
+  return { sessionId, nextExpert, loadExperts, enterExpertMode, exitExpertMode, onEnterExpert, onClose }
+}
+
 const BLOCKED_ARTIFACT = {
   artifactId: 'artifact-plan-blocked',
   phaseId: 'plan',
@@ -208,6 +420,8 @@ const UNABLE_ARTIFACT = {
 }
 
 beforeEach(() => {
+  delete (window as typeof window & { __TAURI__?: unknown }).__TAURI__
+  tauriDialogMocks.open.mockReset()
   apiMocks.getMessages.mockResolvedValue({ messages: [] })
   apiMocks.getSlashCommands.mockResolvedValue({ commands: [] })
   apiMocks.getWorkflowReport.mockResolvedValue({
@@ -229,6 +443,95 @@ beforeEach(() => {
     ok: true,
     workflow: WORKFLOW_SUMMARY,
   })
+  apiMocks.listWorkflowTemplates.mockResolvedValue({
+    templates: [
+      {
+        id: 'debug-repair-workflow-v8',
+        source: 'user',
+        version: '8',
+        name: 'Debug Repair Workflow',
+        description: 'Debug, investigate, and repair a defect.',
+        labels: ['bug'],
+        phaseCount: 5,
+        firstPhaseId: 'debug-memory-intake',
+        phaseNames: ['Debug Memory Intake'],
+        startable: true,
+      },
+      {
+        id: 'feature-extension-workflow-v8',
+        source: 'user',
+        version: '8',
+        name: 'Feature Extension Workflow',
+        description: 'Plan and implement a feature extension.',
+        labels: ['enhancement'],
+        phaseCount: 4,
+        firstPhaseId: 'feature-memory-plan',
+        phaseNames: ['Feature Memory Plan'],
+        startable: true,
+      },
+    ],
+    invalidTemplates: [],
+  })
+  apiMocks.listWorkflowGitCheckpoints.mockResolvedValue({
+    enabled: false,
+    latestVersion: null,
+    checkpoints: [],
+  })
+  apiMocks.createWorkflowGitCheckpoint.mockResolvedValue({
+    workflow: WORKFLOW_SUMMARY,
+    checkpoint: null,
+    checkpoints: [],
+  })
+  apiMocks.restoreWorkflowGitCheckpoint.mockResolvedValue({
+    workflow: WORKFLOW_SUMMARY,
+    checkpoint: null,
+    checkpoints: [],
+  })
+  apiMocks.startWorkflowFollowUpRun.mockResolvedValue({
+    ok: true,
+    workflow: {
+      ...WORKFLOW_SUMMARY,
+      activeWorkflowRunId: 'run-debug',
+      workflowRuns: [
+        { id: 'run-dev', templateId: 'agent-development', status: 'completed', artifacts: [], historyCount: 1, createdAt: '2026-05-20T00:00:00.000Z', updatedAt: '2026-05-20T00:10:00.000Z' },
+        { id: 'run-debug', templateId: 'agent-development', status: 'active', primaryLabel: 'bug', artifacts: [], historyCount: 1, createdAt: '2026-05-20T00:11:00.000Z', updatedAt: '2026-05-20T00:11:00.000Z' },
+      ],
+    },
+  })
+  apiMocks.startWorkflowPreview.mockResolvedValue({
+    ok: true,
+    workflow: {
+      ...WORKFLOW_SUMMARY,
+      activePhaseId: 'run-preview',
+      preview: {
+        status: 'running',
+        command: 'bun run dev',
+        updatedAt: '2026-07-02T00:00:00.000Z',
+      },
+    },
+    preview: {
+      status: 'running',
+      command: 'bun run dev',
+      updatedAt: '2026-07-02T00:00:00.000Z',
+    },
+  })
+  apiMocks.stopWorkflowPreview.mockResolvedValue({
+    ok: true,
+    workflow: {
+      ...WORKFLOW_SUMMARY,
+      activePhaseId: 'run-preview',
+      preview: {
+        status: 'stopped',
+        command: 'bun run dev',
+        updatedAt: '2026-07-02T00:01:00.000Z',
+      },
+    },
+    preview: {
+      status: 'stopped',
+      command: 'bun run dev',
+      updatedAt: '2026-07-02T00:01:00.000Z',
+    },
+  })
 })
 
 afterEach(() => {
@@ -242,9 +545,61 @@ afterEach(() => {
   useTeamStore.setState(useTeamStore.getInitialState(), true)
   useWorkspacePanelStore.setState(useWorkspacePanelStore.getInitialState(), true)
   useTerminalPanelStore.setState(useTerminalPanelStore.getInitialState(), true)
+  delete (window as typeof window & { __TAURI__?: unknown }).__TAURI__
 })
 
 describe('ActiveSession task polling', () => {
+
+  it('confirms before leaving an active expert when selecting another expert', async () => {
+    const { exitExpertMode, onEnterExpert, onClose } = renderExpertSwitchDialog()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /架构顾问/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /架构顾问/ }))
+    fireEvent.click(screen.getByRole('button', { name: '进入专家 Mode' }))
+
+    const confirmation = screen.getByTestId('expert-switch-confirmation')
+    expect(within(confirmation).getByText(/当前会话正在使用「项目体检」专家/)).toBeInTheDocument()
+    expect(within(confirmation).getByText(/不会创建 workflow，也不会改动 workflow state/)).toBeInTheDocument()
+    expect(within(confirmation).getByRole('button', { name: '继续当前专家' })).toBeInTheDocument()
+    expect(within(confirmation).getByRole('button', { name: '退出并切换' })).toBeInTheDocument()
+    expect(within(confirmation).getByRole('button', { name: '取消' })).toBeInTheDocument()
+    expect(exitExpertMode).not.toHaveBeenCalled()
+    expect(onEnterExpert).not.toHaveBeenCalled()
+
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }))
+    expect(screen.queryByTestId('expert-switch-confirmation')).not.toBeInTheDocument()
+    expect(exitExpertMode).not.toHaveBeenCalled()
+    expect(onEnterExpert).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '进入专家 Mode' }))
+    fireEvent.click(within(screen.getByTestId('expert-switch-confirmation')).getByRole('button', { name: '继续当前专家' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(exitExpertMode).not.toHaveBeenCalled()
+    expect(onEnterExpert).not.toHaveBeenCalled()
+  })
+
+  it('exits the current expert before switching and does not touch workflow state', async () => {
+    const { sessionId, nextExpert, exitExpertMode, onEnterExpert, onClose } = renderExpertSwitchDialog()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /架构顾问/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /架构顾问/ }))
+    fireEvent.click(screen.getByRole('button', { name: '进入专家 Mode' }))
+    fireEvent.click(within(screen.getByTestId('expert-switch-confirmation')).getByRole('button', { name: '退出并切换' }))
+
+    await waitFor(() => expect(exitExpertMode).toHaveBeenCalledWith(sessionId))
+    await waitFor(() => expect(onEnterExpert).toHaveBeenCalledWith(nextExpert))
+    const exitCallOrder = exitExpertMode.mock.invocationCallOrder[0]
+    const enterCallOrder = onEnterExpert.mock.invocationCallOrder[0]
+    expect(exitCallOrder).toBeDefined()
+    expect(enterCallOrder).toBeDefined()
+    expect(exitCallOrder!).toBeLessThan(enterCallOrder!)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(useSessionStore.getState().sessions[0]?.expert?.status).toBe('exited')
+    expect(apiMocks.startWorkflowFollowUpRun).not.toHaveBeenCalled()
+    expect(apiMocks.transitionWorkflow).not.toHaveBeenCalled()
+  })
+
   it('does not render workflow controls for a normal dialogue active chat', () => {
     const sessionId = 'dialogue-session'
 
@@ -254,7 +609,7 @@ describe('ActiveSession task polling', () => {
         title: 'Dialogue Session',
         createdAt: '2026-05-20T00:00:00.000Z',
         modifiedAt: '2026-05-20T00:00:00.000Z',
-        messageCount: 1,
+        messageCount: 0,
         projectPath: '/workspace/project',
         workDir: '/workspace/project',
         workDirExists: true,
@@ -300,7 +655,198 @@ describe('ActiveSession task polling', () => {
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
   })
 
-  it('renders the workflow status panel only for staged workflow sessions', () => {
+
+
+  it('keeps Expert Mode chat-first while exposing optional intake and downloadable materials', async () => {
+    const sessionId = 'expert-session'
+    const expert = {
+      mode: 'expert' as const,
+      expertId: 'repo-health-check',
+      expertName: '项目体检',
+      packId: 'builtin-experts',
+      packVersion: '1.0.0',
+      status: 'active' as const,
+      materialRefs: [],
+      startedAt: '2026-07-08T00:00:00.000Z',
+      updatedAt: '2026-07-08T00:00:00.000Z',
+      intakeState: {
+        answers: {},
+        errors: {},
+        completedStepIds: [],
+        updatedAt: '2026-07-08T00:00:00.000Z',
+      },
+    }
+    const materialRef = {
+      runId: 'expert-run-1',
+      expertId: 'repo-health-check',
+      expertName: '项目体检',
+      packId: 'builtin-experts',
+      packVersion: '1.0.0',
+      summaryPath: '/workspace/project/.workflow/intake/expert-runs/expert-run-1/repo-health-check/material-summary.md',
+      materialJsonPath: '/workspace/project/.workflow/intake/expert-runs/expert-run-1/repo-health-check/material.json',
+      evidencePath: '/workspace/project/.workflow/intake/expert-runs/expert-run-1/repo-health-check/evidence.md',
+      createdAt: '2026-07-08T00:01:00.000Z',
+      title: '项目体检：怎么运行',
+      shortSummary: '已生成专家材料包。',
+    }
+    const submitIntakeStep = vi.fn().mockResolvedValue(expert)
+    const runExpertAgent = vi.fn().mockResolvedValue({
+      expert: { ...expert, status: 'completed' as const, materialRefs: [materialRef] },
+      materialRef,
+    })
+
+    useExpertStore.setState({
+      experts: [{
+        id: 'repo-health-check',
+        name: '项目体检',
+        description: '整理项目材料',
+        statusLabel: '框架已准备',
+        packId: 'builtin-experts',
+        packName: '内置专家基础包',
+        packVersion: '1.0.0',
+        entrypoint: 'experts/repo-health-check/expert.json',
+        promptPaths: {},
+        formPaths: [],
+        skillIds: ['repo-health-check-skill'],
+        hostTools: [],
+        permissions: [],
+        tools: [],
+        portable: true,
+        intakeFlow: {
+          version: 1,
+          steps: [
+            { type: 'question', id: 'focus', question: '你这次希望专家重点帮你看什么？', options: [{ id: 'run', label: '怎么运行' }, { id: 'test', label: '怎么测试' }] },
+            {
+              type: 'form',
+              id: 'materials',
+              title: '请补充材料',
+              fields: [
+                { id: 'projectRoot', kind: 'folder', label: '项目目录' },
+                { id: 'briefFile', kind: 'file', label: '参考文件' },
+                { id: 'materialPaths', kind: 'file-list', label: '附件路径' },
+                { id: 'notes', kind: 'textarea', label: '补充说明' },
+              ],
+            },
+          ],
+        },
+      }],
+      submitIntakeStep,
+      runExpertAgent,
+    })
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Expert Session',
+        createdAt: '2026-07-08T00:00:00.000Z',
+        modifiedAt: '2026-07-08T00:00:00.000Z',
+        messageCount: 0,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        expert,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: '[专家] 项目体检 - Expert Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const messageList = screen.getByTestId('message-list')
+    expect(screen.getByTestId('expert-mode-strip')).toBeInTheDocument()
+    expect(within(messageList).queryByTestId('expert-intake-card')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('expert-mode-banner')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '新建会话' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: /项目体检/ }).length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '补充结构化信息' }))
+    const expertIntakeCard = within(messageList).getByTestId('expert-intake-card')
+    expect(within(expertIntakeCard).getByTestId('expert-intake-flow')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '选择文件夹' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '选择文件' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '添加路径' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '选择文件夹' }))
+    expect(await screen.findByText('当前环境不能打开系统选择器，请直接粘贴路径。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '怎么运行' }))
+    fireEvent.change(screen.getByLabelText(/项目目录/), { target: { value: '/workspace/project-from-form' } })
+    fireEvent.change(screen.getByLabelText(/参考文件/), { target: { value: '/workspace/project/README.md' } })
+    fireEvent.change(screen.getByLabelText(/附件路径/), { target: { value: '/workspace/project/a.md\n/workspace/project/b.md' } })
+
+    Object.defineProperty(window, '__TAURI__', { value: {}, configurable: true })
+    tauriDialogMocks.open.mockResolvedValueOnce(['/workspace/project/c.md', '/workspace/project/a.md'])
+    const fileButtons = screen.getAllByRole('button', { name: '选择文件' })
+    const addFileListButton = fileButtons[1]
+    expect(addFileListButton).toBeDefined()
+    fireEvent.click(addFileListButton!)
+    await waitFor(() => expect(tauriDialogMocks.open).toHaveBeenCalledWith(expect.objectContaining({
+      directory: false,
+      multiple: true,
+      title: '选择文件',
+    })))
+    expect(await screen.findByText('已添加 2 个路径。')).toBeInTheDocument()
+    expect(screen.getByLabelText(/附件路径/)).toHaveValue('/workspace/project/a.md\n/workspace/project/b.md\n/workspace/project/c.md')
+
+    fireEvent.change(screen.getByLabelText(/补充说明/), { target: { value: '请优先整理启动命令。' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成材料包' }))
+
+    await waitFor(() => expect(runExpertAgent).toHaveBeenCalledTimes(1))
+    expect(submitIntakeStep).toHaveBeenCalledWith(sessionId, expect.objectContaining({
+      answers: expect.objectContaining({
+        focus: 'run',
+        projectRoot: '/workspace/project-from-form',
+        briefFile: '/workspace/project/README.md',
+        materialPaths: ['/workspace/project/a.md', '/workspace/project/b.md', '/workspace/project/c.md'],
+        notes: '请优先整理启动命令。',
+      }),
+    }))
+    expect(runExpertAgent).toHaveBeenCalledWith(sessionId, expect.objectContaining({
+      notes: '请优先整理启动命令。',
+      projectRoot: '/workspace/project-from-form',
+    }))
+    expect(apiMocks.startWorkflowFollowUpRun).not.toHaveBeenCalled()
+
+    expertApiMocks.downloadMaterialPackage.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer)
+    const createObjectURL = vi.fn().mockReturnValue('blob:expert-material')
+    const revokeObjectURL = vi.fn()
+    Object.assign(URL, { createObjectURL, revokeObjectURL })
+    const downloadClick = vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    fireEvent.click(screen.getByRole('button', { name: /专家产物/ }))
+    expect(screen.getByTestId('expert-material-expert-run-1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '下载材料包' }))
+    await waitFor(() => expect(expertApiMocks.downloadMaterialPackage).toHaveBeenCalledWith(sessionId, 'expert-run-1'))
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(downloadClick).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:expert-material')
+  })
+
+  it('exits a workflow without deleting the session history', async () => {
     const sessionId = 'workflow-session'
 
     useSessionStore.setState({
@@ -320,7 +866,89 @@ describe('ActiveSession task polling', () => {
       error: null,
     })
     useTabStore.setState({
-      tabs: [{ sessionId, title: 'Workflow Session', type: 'session', status: 'idle' }],
+      tabs: [{ sessionId, title: 'Workflow Session', type: 'session', status: 'running' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'workflow started', timestamp: 1 }],
+          chatState: 'thinking',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    expect(panel).toHaveTextContent(/\u5f00\u53d1\u6d41\u7a0b/)
+    expect(panel).toHaveTextContent(/\u89c4\u683c\u6f84\u6e05.*Specify/)
+    expect(panel).toHaveTextContent(/\u7b2c 2 \u6b65.*Specify/)
+    expect(panel).not.toHaveTextContent(/state-001/i)
+
+    apiMocks.exitWorkflow.mockResolvedValue({
+      ok: true,
+      workflow: { ...WORKFLOW_SUMMARY, status: 'cancelled', runStatus: 'cancelled' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '退出工作流' }))
+    const confirmDialog = screen.getByRole('dialog', { name: '退出工作流' })
+    expect(confirmDialog).toHaveTextContent('不会回滚已经写入磁盘的代码')
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '退出工作流' }))
+
+    await waitFor(() => expect(apiMocks.exitWorkflow).toHaveBeenCalledWith(sessionId))
+    await waitFor(() => expect(screen.queryByTestId('workflow-status-panel')).not.toBeInTheDocument())
+    expect(useSessionStore.getState().sessions[0]?.workflow?.status).toBe('cancelled')
+    expect(useChatStore.getState().sessions[sessionId]?.chatState).toBe('idle')
+    expect(useTabStore.getState().tabs.find((tab) => tab.sessionId === sessionId)?.status).toBe('idle')
+    expect(screen.getByTestId('message-list')).toBeInTheDocument()
+  })
+
+  it('renders workflow preview controls and calls start and stop preview APIs', async () => {
+    const sessionId = 'workflow-preview-session'
+    const workflow: WorkflowSessionSummary = {
+      ...WORKFLOW_SUMMARY,
+      activePhaseId: 'run-preview',
+      activePhaseIndex: 3,
+      phaseNames: ['Route', 'Plan', 'Implement', 'Run Preview', 'Ship'],
+      preview: {
+        status: 'stopped',
+        command: 'bun run dev',
+        updatedAt: '2026-07-02T00:00:00.000Z',
+      },
+    }
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Workflow Preview Session',
+        createdAt: '2026-07-02T00:00:00.000Z',
+        modifiedAt: '2026-07-02T00:00:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        workflow,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Workflow Preview Session', type: 'session', status: 'idle' }],
       activeTabId: sessionId,
     })
     useChatStore.setState({
@@ -348,15 +976,27 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    const panel = screen.getByTestId('workflow-status-panel')
-    expect(panel).toHaveTextContent(/agent development/i)
-    expect(panel).toHaveTextContent(/specify/i)
-    expect(panel).toHaveTextContent(/phase 2 of 5/i)
-    expect(panel).not.toHaveTextContent(/state-001/i)
+    const previewControls = screen.getByTestId('workflow-preview-controls')
+    expect(previewControls).toHaveTextContent(/local preview/i)
+    expect(previewControls).toHaveTextContent(/stopped/i)
 
-    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
+    fireEvent.click(within(previewControls).getByTestId('workflow-preview-start'))
 
-    expect(panel).toHaveTextContent(/state-001/i)
+    await waitFor(() => {
+      expect(apiMocks.startWorkflowPreview).toHaveBeenCalledWith(sessionId)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-preview-controls')).toHaveTextContent(/running/i)
+    })
+
+    const runningControls = screen.getByTestId('workflow-preview-controls')
+    fireEvent.click(within(runningControls).getByTestId('workflow-preview-stop'))
+
+    await waitFor(() => {
+      expect(apiMocks.stopWorkflowPreview).toHaveBeenCalledWith(sessionId, {
+        reason: 'User stopped local preview from workflow UI.',
+      })
+    })
   })
 
   it('keeps chat primary while showing compact workflow status for workflow sessions only', () => {
@@ -410,15 +1050,9 @@ describe('ActiveSession task polling', () => {
     const chatColumn = screen.getByTestId('active-session-chat-column')
     const statusPanel = within(chatColumn).getByTestId('workflow-status-panel')
     expect(statusPanel).toHaveClass('text-[12px]')
-    expect(statusPanel).toHaveTextContent(/phase 2 of 5/i)
-    const detailsToggle = within(statusPanel).getByRole('button', { name: /workflow details/i })
-    expect(detailsToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(statusPanel).toHaveTextContent(/\u7b2c 2 \u6b65.*Specify/)
     expect(within(statusPanel).queryByTestId('workflow-status-details')).not.toBeInTheDocument()
-
-    fireEvent.click(detailsToggle)
-
-    const details = within(statusPanel).getByTestId('workflow-status-details')
-    expect(details).toHaveTextContent(/state-001/i)
+    expect(statusPanel).not.toHaveTextContent(/state-001/i)
     expect(screen.queryByText(/final report not ready/i)).not.toBeInTheDocument()
     expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
     expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
@@ -511,6 +1145,89 @@ describe('ActiveSession task polling', () => {
     expect(screen.getByTestId('workflow-final-report-json')).toHaveTextContent(/workflow completed/i)
     expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
     expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
+    fireEvent.click(within(strip).getByRole('button', { name: /debug/i }))
+    const followUpDialog = await screen.findByRole('dialog', { name: '\u9009\u62e9\u8c03\u8bd5\u4fee\u590d workflow' })
+    const startButton = within(followUpDialog).getByRole('button', { name: '\u4f7f\u7528\u8fd9\u4e2a workflow' })
+    expect(startButton).toBeDisabled()
+    expect(apiMocks.startWorkflowFollowUpRun).not.toHaveBeenCalled()
+
+    fireEvent.click(within(followUpDialog).getByRole('radio', { name: /debug repair workflow/i }))
+    expect(startButton).toBeEnabled()
+    fireEvent.click(startButton)
+    await waitFor(() => {
+      expect(apiMocks.startWorkflowFollowUpRun).toHaveBeenCalledWith(sessionId, {
+        request: 'Start Debug Repair follow-up from the previous workflow result.',
+        kind: 'debug-repair',
+        templateId: 'debug-repair-workflow-v8',
+        templateSource: 'user',
+        initialPhaseId: 'debug-memory-intake',
+      })
+    })
+  })
+
+  it('shows the active follow-up workflow on a completed workflow strip', () => {
+    const sessionId = 'workflow-completed-with-follow-up-session'
+    const workflow: WorkflowSessionSummary = {
+      ...WORKFLOW_SUMMARY,
+      status: 'completed',
+      activeWorkflowRunId: 'run-feature-follow-up',
+      workflowRuns: [
+        { id: 'run-original', templateId: 'agent-development', status: 'completed', artifacts: [], historyCount: 1, createdAt: '2026-05-20T00:00:00.000Z', updatedAt: '2026-05-20T00:10:00.000Z' },
+        { id: 'run-feature-follow-up', templateId: 'feature-extension', status: 'active', primaryLabel: 'enhancement', artifacts: [], historyCount: 1, createdAt: '2026-05-20T00:11:00.000Z', updatedAt: '2026-05-20T00:11:00.000Z' },
+      ],
+    }
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Workflow Follow Up Session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:11:00.000Z',
+        messageCount: 3,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+        workflow,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Workflow Follow Up Session', type: 'session', status: 'idle' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'msg-1', type: 'assistant_text', content: 'workflow complete', timestamp: 1 }],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    const strip = screen.getByTestId('completed-workflow-strip')
+    expect(within(strip).getByTestId('active-follow-up-workflow')).toHaveTextContent(/next: feature extension \u00b7 active/i)
+    expect(within(strip).getByRole('button', { name: /debug/i })).toBeDisabled()
+    expect(within(strip).getByRole('button', { name: /feature/i })).toBeDisabled()
+    expect(within(strip).getByRole('button', { name: /development/i })).toBeDisabled()
+    expect(apiMocks.startWorkflowFollowUpRun).not.toHaveBeenCalled()
   })
 
   it('renders bounded recommended skill evidence without listing unused recommendations', () => {
@@ -621,19 +1338,9 @@ describe('ActiveSession task polling', () => {
     const panel = screen.getByTestId('workflow-status-panel')
     expect(within(panel).queryByTestId('workflow-recommended-skill-status')).not.toBeInTheDocument()
 
-    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
-
-    const skillStatus = within(panel).getByTestId('workflow-recommended-skill-status')
-    expect(skillStatus).toHaveTextContent(/recommended skills/i)
-    expect(skillStatus).toHaveTextContent(/2 available/i)
-    expect(skillStatus).toHaveTextContent(/1 unavailable/i)
-    expect(skillStatus).toHaveTextContent(/1 degraded/i)
-    expect(skillStatus).toHaveTextContent(/3 evidence/i)
-    expect(skillStatus).toHaveTextContent(/sp-specify/i)
-    expect(skillStatus).toHaveTextContent(/security-review/i)
-    expect(skillStatus).toHaveTextContent(/plugin-helper/i)
-    expect(skillStatus).not.toHaveTextContent(/style-pass-unused|bundle-default-unused/i)
-    expect(skillStatus).not.toHaveTextContent(/auto.?exec|auto.?run|default gate|plugin-primary|default bundle|permission bypass/i)
+    expect(panel).not.toHaveTextContent(/sp-specify|security-review|plugin-helper/i)
+    expect(panel).not.toHaveTextContent(/style-pass-unused|bundle-default-unused/i)
+    expect(within(panel).queryByRole('button', { name: /show workflow details/i })).not.toBeInTheDocument()
     expect(within(panel).queryByRole('button', { name: /run|execute|install|enable/i })).not.toBeInTheDocument()
   })
 
@@ -716,23 +1423,16 @@ describe('ActiveSession task polling', () => {
 
     const panel = screen.getByTestId('workflow-status-panel')
     expect(panel).toHaveTextContent(/plan/i)
-    expect(panel).toHaveTextContent(/phase 3 of 5/i)
-    expect(panel).toHaveTextContent(/waiting for confirmation/i)
+    expect(panel).toHaveTextContent(/\u7b2c 3 \u6b65.*Plan/)
+    expect(panel).toHaveTextContent(/\u7b49\u5f85\u786e\u8ba4/)
     expect(panel).not.toHaveTextContent(/state-resumed-002/i)
     expect(panel).not.toHaveTextContent(/claude-opus-4/i)
     expect(panel).not.toHaveTextContent(/claude-sonnet-4/i)
     expect(panel).not.toHaveTextContent(/requested phase model is unavailable/i)
     expect(panel).not.toHaveTextContent(/stale-local-state/i)
-    expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /继续使用这个结果/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /我要调整当前结果/ })).toBeInTheDocument()
 
-    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
-
-    expect(panel).toHaveTextContent(/state-resumed-002/i)
-    expect(panel).toHaveTextContent(/claude-opus-4/i)
-    expect(panel).toHaveTextContent(/claude-sonnet-4/i)
-    expect(panel).toHaveTextContent(/requested phase model is unavailable/i)
-    expect(panel).not.toHaveTextContent(/stale-local-state/i)
   })
 
   it('renders pending confirmation artifact evidence, model provenance, and read-only artifact history', () => {
@@ -816,35 +1516,17 @@ describe('ActiveSession task polling', () => {
     expect(panel).not.toHaveTextContent(/claude-opus-4/i)
     expect(within(panel).queryByTestId('workflow-pending-artifact')).not.toBeInTheDocument()
     expect(within(panel).queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
-
-    fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
-
-    expect(panel).toHaveTextContent(/claude-opus-4/i)
-    expect(panel).toHaveTextContent(/claude-sonnet-4/i)
-    expect(panel).toHaveTextContent(/provider/i)
-    expect(panel).toHaveTextContent(/phase-request/i)
-    expect(panel).toHaveTextContent(/fallback applied/i)
-    expect(panel).toHaveTextContent(/requested phase model is unavailable/i)
-
-    const pendingArtifact = within(panel).getByTestId('workflow-pending-artifact')
-    expect(pendingArtifact).toHaveTextContent(/plan handoff/i)
-    expect(pendingArtifact).toHaveTextContent(/validated requirements/i)
-    expect(pendingArtifact).toHaveTextContent(/agent-ready/i)
-
-    const history = within(panel).getByTestId('workflow-artifact-history')
-    for (const status of ['pending', 'accepted', 'rejected', 'superseded']) {
-      expect(history).toHaveTextContent(new RegExp(status, 'i'))
-    }
-    expect(history).toHaveTextContent(/specification accepted for planning/i)
-    expect(history).toHaveTextContent(/earlier plan omitted rollback evidence/i)
-    expect(history).toHaveTextContent(/retry replaced this older plan artifact/i)
+    expect(panel).toHaveTextContent(/\u5f00\u53d1\u6d41\u7a0b/)
+    expect(panel).toHaveTextContent(/\u5236\u5b9a\u8ba1\u5212.*Plan/)
+    expect(panel).not.toHaveTextContent(/claude-opus-4/i)
+    expect(screen.queryByTestId('workflow-artifact-history')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('button', { name: /edit|save|delete/i })).not.toBeInTheDocument()
   })
 
   it.each([
-    ['stale-template', 'Template source is stale'],
-    ['missing-template', 'Template source is missing'],
+    ['stale-template', '\u6a21\u677f\u9700\u66f4\u65b0'],
+    ['missing-template', '\u6a21\u677f\u7f3a\u5931'],
   ] as const)('surfaces %s recovery state on the active workflow session', (status, expectedLabel) => {
     const sessionId = `workflow-${status}-session`
 
@@ -974,7 +1656,7 @@ describe('ActiveSession task polling', () => {
     expect(reportButton).toHaveAttribute('data-compact', 'true')
     expect(screen.queryByText(/report-001/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('workflow-status-panel')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /完成当前阶段/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
@@ -1062,7 +1744,7 @@ describe('ActiveSession task polling', () => {
     expect(history).toHaveTextContent(/retry replaced this older plan artifact/i)
     expect(within(history).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(history).queryByRole('button', { name: /edit|save|delete/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /complete phase|confirm|reject|retry/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /完成当前阶段|确认当前阶段|我要调整当前结果|重试当前阶段/ })).not.toBeInTheDocument()
   })
 
   it('sends workflow transition commands over the live session websocket', async () => {
@@ -1127,7 +1809,7 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    fireEvent.click(screen.getByRole('button', { name: /继续使用这个结果/ }))
 
     await waitFor(() => {
       expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
@@ -1140,7 +1822,7 @@ describe('ActiveSession task polling', () => {
     useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
   })
 
-  it('sends stateVersion with confirm, reject, and retry actions for pending artifacts', async () => {
+  it('locks pending artifact transition controls after the first action', async () => {
     const sessionId = 'workflow-pending-actions-session'
     const workflow = {
       ...WORKFLOW_SUMMARY,
@@ -1211,33 +1893,26 @@ describe('ActiveSession task polling', () => {
     try {
       render(<ActiveSession />)
 
-      fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
-      fireEvent.click(screen.getByRole('button', { name: /reject/i }))
-      fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+      fireEvent.click(screen.getByRole('button', { name: /继续使用这个结果/ }))
+      fireEvent.click(screen.getByRole('button', { name: /我要调整当前结果/ }))
+      fireEvent.click(screen.getByRole('button', { name: /暂停工作流/ }))
 
       await waitFor(() => {
+        expect(sendWorkflowTransition).toHaveBeenCalledTimes(1)
         expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
           phaseId: 'plan',
           action: 'confirm',
-          stateVersion: 21,
-        }))
-        expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-          phaseId: 'plan',
-          action: 'reject',
-          stateVersion: 21,
-        }))
-        expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-          phaseId: 'plan',
-          action: 'retry',
+          transitionId: 'workflow-transition:plan:21:confirm',
           stateVersion: 21,
         }))
       })
+
     } finally {
       useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
     }
   })
 
-  it('confirms manual completion and sends optional summary and evidence payload', async () => {
+  it('does not show pending confirmation controls for running workflows', () => {
     const sessionId = 'workflow-running-session'
     const workflow: WorkflowSessionSummary = {
       ...WORKFLOW_SUMMARY,
@@ -1300,39 +1975,9 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    fireEvent.click(screen.getByRole('button', { name: /show workflow details/i }))
-    fireEvent.click(screen.getByRole('button', { name: /complete phase/i }))
-
+    expect(screen.queryByRole('button', { name: /继续使用这个结果/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /complete discussion phase/i })).not.toBeInTheDocument()
     expect(sendWorkflowTransition).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: /complete discussion phase/i })).toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText(/summary/i), {
-      target: { value: 'Discussion scope and acceptance criteria were reviewed.' },
-    })
-    fireEvent.change(screen.getByLabelText(/evidence/i), {
-      target: { value: '.specify/features/004-workflow-session-mode/spec.md' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /confirm completion/i }))
-
-    await waitFor(() => {
-      expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
-        phaseId: 'discussion',
-        action: 'manual_complete',
-        stateVersion: 12,
-        handoff: {
-          summary: 'Discussion scope and acceptance criteria were reviewed.',
-          artifacts: [],
-        },
-        rationale: 'User manually confirmed this phase is complete.',
-        evidence: [
-          {
-            kind: 'manual',
-            label: 'Manual completion evidence',
-            ref: '.specify/features/004-workflow-session-mode/spec.md',
-          },
-        ],
-      }))
-    })
     expect(apiMocks.transitionWorkflow).not.toHaveBeenCalled()
     useChatStore.setState({ sendWorkflowTransition: originalSendWorkflowTransition })
   })
@@ -1359,7 +2004,7 @@ describe('ActiveSession task polling', () => {
     const sessionId = `workflow-${blockedStatus}-status-session`
     const workflow = {
       ...WORKFLOW_SUMMARY,
-      status: 'running',
+      status: 'idle',
       pendingConfirmation: false,
       activePhaseId: 'plan',
       activePhaseIndex: 2,
@@ -1424,19 +2069,16 @@ describe('ActiveSession task polling', () => {
       render(<ActiveSession />)
 
       const panel = screen.getByTestId('workflow-status-panel')
-      expect(panel).toHaveTextContent(blockedReason)
-      expect(panel).toHaveTextContent(new RegExp(`recovery:\\s*${blockedStatus}`, 'i'))
-      expect(panel).not.toHaveTextContent(evidencePattern)
+      expect(panel).toHaveTextContent(/\u5236\u5b9a\u8ba1\u5212.*Plan/)
+      expect(panel).not.toHaveTextContent(blockedReason)
+      const confirmationCard = screen.getByTestId('workflow-phase-confirmation-card')
+      expect(confirmationCard).toHaveTextContent(blockedReason)
+      expect(confirmationCard).not.toHaveTextContent(evidencePattern)
+      expect(screen.queryByRole('button', { name: /继续使用这个结果/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /我要调整当前结果/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /完成当前阶段/ })).not.toBeInTheDocument()
 
-      fireEvent.click(within(panel).getByRole('button', { name: /show workflow details/i }))
-
-      expect(panel).toHaveTextContent(new RegExp(blockedStatus, 'i'))
-      expect(panel).toHaveTextContent(evidencePattern)
-      expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /complete phase/i })).not.toBeInTheDocument()
-
-      const retry = screen.getByRole('button', { name: /retry/i })
+      const retry = screen.getByRole('button', { name: /重试当前阶段/ })
       fireEvent.click(retry)
 
       await waitFor(() => {
@@ -1514,11 +2156,10 @@ describe('ActiveSession task polling', () => {
     render(<ActiveSession />)
 
     const panel = screen.getByTestId('workflow-status-panel')
-    expect(panel).toHaveTextContent(/waiting for confirmation/i)
+    expect(panel).toHaveTextContent(/\u5f00\u53d1\u6d41\u7a0b/)
     expect(panel).not.toHaveTextContent(/old blocked recovery reason/i)
-    expect(panel).not.toHaveTextContent(/recovery:/i)
-    expect(within(panel).getByRole('button', { name: /^confirm$/i })).toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: /reject/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /继续使用这个结果/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /我要调整当前结果/ })).toBeInTheDocument()
   })
 
   it('treats a persisted historical session as non-empty before messages finish loading', () => {
@@ -1591,7 +2232,7 @@ describe('ActiveSession task polling', () => {
       error: null,
     })
     useTabStore.setState({
-      tabs: [{ sessionId, title: 'Goal Visible Session', type: 'session', status: 'running' }],
+      tabs: [{ sessionId, title: 'Goal Visible Session', type: 'session', status: 'idle' }],
       activeTabId: sessionId,
     })
     useChatStore.setState({
@@ -1615,7 +2256,7 @@ describe('ActiveSession task polling', () => {
             continuations: '0',
             updatedAt: 1,
           },
-          chatState: 'thinking',
+          chatState: 'idle',
           connectionState: 'connected',
           streamingText: '',
           streamingToolInput: '',
@@ -1725,7 +2366,7 @@ describe('ActiveSession task polling', () => {
       error: null,
     })
     useTabStore.setState({
-      tabs: [{ sessionId, title: 'Background Agent Session', type: 'session', status: 'running' }],
+      tabs: [{ sessionId, title: 'Background Agent Session', type: 'session', status: 'idle' }],
       activeTabId: sessionId,
     })
     useChatStore.setState({
@@ -1742,15 +2383,10 @@ describe('ActiveSession task polling', () => {
             'agent-task-1': {
               taskId: 'agent-task-1',
               toolUseId: 'agent-tool-1',
-              status: 'running',
-              taskType: 'local_agent',
-              description: 'Verify the todo app',
-              summary: 'Running Playwright checks',
-              usage: {
-                totalTokens: 1200,
-                toolUses: 4,
-                durationMs: 45000,
-              },
+              status: 'completed',
+              taskType: 'in_process_teammate',
+              description: 'Background agent: introduce self',
+              summary: 'Background agent completed introduction',
               startedAt: 1,
               updatedAt: 2,
             },
@@ -1838,7 +2474,7 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    expect(screen.getByText(/session active|会话活跃中/)).toBeInTheDocument()
+    expect(screen.getByText(/Background Shell Session/i)).toBeInTheDocument()
     expect(screen.getByTestId('chat-input')).toHaveAttribute('data-variant', 'default')
   })
 
@@ -1874,8 +2510,8 @@ describe('ActiveSession task polling', () => {
               toolUseId: 'agent-tool-1',
               status: 'completed',
               taskType: 'in_process_teammate',
-              description: '小明: 介绍自己',
-              summary: '小明已完成介绍',
+              description: 'Background agent: introduce self',
+              summary: 'Background agent completed introduction',
               startedAt: 1,
               updatedAt: 2,
             },
@@ -1902,7 +2538,7 @@ describe('ActiveSession task polling', () => {
     render(<ActiveSession />)
 
     expect(screen.queryByTestId('background-agent-panel')).not.toBeInTheDocument()
-    expect(screen.queryByText('小明已完成介绍')).not.toBeInTheDocument()
+    expect(screen.queryByText('Background agent completed introduction')).not.toBeInTheDocument()
     expect(screen.getByTestId('message-list')).toBeInTheDocument()
   })
 
@@ -1998,13 +2634,13 @@ describe('ActiveSession task polling', () => {
           {
             agentId: 'team-lead@test-team',
             role: 'team-lead',
-            status: 'running',
+            status: 'idle',
             sessionId: 'leader-session',
           },
           {
             agentId: 'security-reviewer@test-team',
             role: 'security-reviewer',
-            status: 'running',
+            status: 'idle',
           },
         ],
       },
@@ -2023,7 +2659,7 @@ describe('ActiveSession task polling', () => {
       sessions: {
         [memberSessionId]: {
           messages: [],
-          chatState: 'thinking',
+          chatState: 'idle',
           connectionState: 'connected',
           streamingText: '',
           streamingToolInput: '',
@@ -2068,13 +2704,13 @@ describe('ActiveSession task polling', () => {
           {
             agentId: 'team-lead@test-team',
             role: 'team-lead',
-            status: 'running',
+            status: 'idle',
             sessionId: 'leader-session',
           },
           {
             agentId: 'security-reviewer@test-team',
             role: 'security-reviewer',
-            status: 'running',
+            status: 'idle',
           },
         ],
       },
@@ -2205,7 +2841,7 @@ describe('ActiveSession task polling', () => {
 
     render(<ActiveSession />)
 
-    expect(screen.getByText(/成员会话已断开/)).toBeInTheDocument()
+    expect(screen.getByText(/\u8fd9\u4e2a\u6210\u5458\u4f1a\u8bdd\u5df2\u65ad\u5f00/)).toBeInTheDocument()
     expect(screen.getByText('security-reviewer')).toBeInTheDocument()
     expect(screen.getByTestId('message-list')).toBeInTheDocument()
     expect(screen.getByTestId('chat-input')).toBeInTheDocument()
@@ -2342,13 +2978,13 @@ describe('ActiveSession task polling', () => {
             {
               agentId: 'team-lead@test-team',
               role: 'team-lead',
-              status: 'running',
+              status: 'idle',
               sessionId: 'leader-session',
             },
             {
               agentId: 'security-reviewer@test-team',
               role: 'security-reviewer',
-              status: 'running',
+              status: 'idle',
             },
           ],
       },

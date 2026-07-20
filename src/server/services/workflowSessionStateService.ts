@@ -7,8 +7,10 @@ import { getAppStoragePath } from '../../utils/appIdentity.js'
 import type {
   WorkflowArtifactPointer,
   WorkflowPhaseArtifact,
+  WorkflowRun,
   WorkflowSessionState,
 } from './workflowTypes.js'
+import { ensureWorkflowArtifactStorage } from './workflowArtifactStorage.js'
 
 export type WorkflowStateReadResult = {
   exists: boolean
@@ -91,6 +93,30 @@ function projectReadableState(state: WorkflowSessionState): WorkflowSessionState
     ...state,
     lastRecoveryStatus: 'ok',
   }
+}
+
+function activeRunForStorage(state: WorkflowSessionState): { run: WorkflowRun; index: number } | null {
+  const runs = Array.isArray(state.workflowRuns) ? state.workflowRuns : []
+  if (runs.length === 0) return null
+  const activeIndex = state.activeWorkflowRunId
+    ? runs.findIndex((run) => run.id === state.activeWorkflowRunId)
+    : runs.findIndex((run) => run.status === 'active')
+  const index = activeIndex >= 0 ? activeIndex : runs.length - 1
+  const run = runs[index]
+  return run ? { run, index } : null
+}
+
+async function syncProjectWorkflowArtifacts(state: WorkflowSessionState): Promise<void> {
+  if (state.mode !== 'workflow' || !state.workspaceRoot) return
+  const activeRun = activeRunForStorage(state)
+  if (!activeRun) return
+
+  await ensureWorkflowArtifactStorage({
+    workspaceRoot: state.workspaceRoot,
+    run: activeRun.run,
+    runIndex: activeRun.index,
+    now: state.updatedAt || new Date().toISOString(),
+  })
 }
 
 async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
@@ -180,6 +206,7 @@ export class WorkflowSessionStateService {
       }
       assertSafeArtifactId('state')
 
+      await syncProjectWorkflowArtifacts(state)
       await atomicWriteJson(this.statePath(sessionId), state)
       return {
         state,
@@ -208,6 +235,7 @@ export class WorkflowSessionStateService {
         revision: previousRevision + 1,
       }
 
+      await syncProjectWorkflowArtifacts(state)
       await atomicWriteJson(this.statePath(sessionId), state)
       return {
         state,

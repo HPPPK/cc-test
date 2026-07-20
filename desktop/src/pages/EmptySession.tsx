@@ -107,8 +107,11 @@ export function EmptySession() {
   const [slashCommands, setSlashCommands] = useState<SlashCommandOption[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplatesResponse['templates']>([])
   const [invalidWorkflowTemplates, setInvalidWorkflowTemplates] = useState<WorkflowTemplatesResponse['invalidTemplates']>([])
+  const [workflowTemplatesLoading, setWorkflowTemplatesLoading] = useState(false)
+  const [workflowTemplatesLoadFailed, setWorkflowTemplatesLoadFailed] = useState(false)
   const [selectedWorkflowTemplate, setSelectedWorkflowTemplate] = useState<WorkflowTemplateSelection | null>(null)
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const workflowTemplateRequestIdRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -134,26 +137,32 @@ export function EmptySession() {
     textareaRef.current?.focus()
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
+  const refreshWorkflowTemplates = useCallback(async () => {
+    const requestId = ++workflowTemplateRequestIdRef.current
+    setWorkflowTemplatesLoading(true)
+    setWorkflowTemplatesLoadFailed(false)
 
-    sessionsApi.listWorkflowTemplates()
-      .then(({ templates, invalidTemplates }) => {
-        if (cancelled) return
-        setWorkflowTemplates(templates)
-        setInvalidWorkflowTemplates(invalidTemplates)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setWorkflowTemplates([])
-        setInvalidWorkflowTemplates([])
-        setSelectedWorkflowTemplate(null)
-      })
-
-    return () => {
-      cancelled = true
+    try {
+      const { templates, invalidTemplates } = await sessionsApi.listWorkflowTemplates()
+      if (requestId !== workflowTemplateRequestIdRef.current) return
+      setWorkflowTemplates(templates)
+      setInvalidWorkflowTemplates(invalidTemplates)
+    } catch {
+      if (requestId !== workflowTemplateRequestIdRef.current) return
+      setWorkflowTemplatesLoadFailed(true)
+    } finally {
+      if (requestId === workflowTemplateRequestIdRef.current) {
+        setWorkflowTemplatesLoading(false)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    void refreshWorkflowTemplates()
+    return () => {
+      workflowTemplateRequestIdRef.current += 1
+    }
+  }, [refreshWorkflowTemplates])
 
   useEffect(() => {
     if (!plusMenuOpen) return
@@ -253,6 +262,13 @@ export function EmptySession() {
     setRepositoryLaunchReady(!newWorkDir)
   }
 
+  const handleWorkflowWorkspaceChange = (newWorkDir: string) => {
+    setWorkDir(newWorkDir)
+    setSelectedBranch(null)
+    setUseWorktree(false)
+    setRepositoryLaunchReady(true)
+  }
+
   const filteredCommands = useMemo(() => {
     return filterSlashCommands(allSlashCommands, slashFilter)
   }, [allSlashCommands, slashFilter])
@@ -348,13 +364,18 @@ export function EmptySession() {
     try {
       const explicitDraftSelection = useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
       const sessionId = await createSession(
-        workDir || undefined,
+        selection.workspaceRoot || workDir || undefined,
         {
           ...(selectedBranch ? { repository: { branch: selectedBranch, worktree: useWorktree } } : {}),
           workflow: {
             templateId: selection.templateId,
             templateSource: selection.templateSource,
             initialPhaseId: selection.initialPhaseId,
+            request: selection.request || input,
+            labels: selection.labels,
+            effort: selection.effort,
+            routingMode: selection.routingMode,
+            brainstormingMode: selection.brainstormingMode,
           },
         },
       )
@@ -597,24 +618,32 @@ export function EmptySession() {
     setSlashMenuOpen(false)
     setFileSearchOpen(false)
     setWorkflowDialogOpen(true)
+    void refreshWorkflowTemplates()
   }
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-[var(--color-surface)]">
+    <div className="jiangxia-empty-stage relative flex flex-1 flex-col overflow-hidden bg-[var(--color-surface)]">
       <WorkflowStartDialog
         open={workflowDialogOpen}
         templates={workflowTemplates}
         invalidTemplates={invalidWorkflowTemplates}
+        templatesLoading={workflowTemplatesLoading}
+        templatesLoadFailed={workflowTemplatesLoadFailed}
+        onRetryTemplates={() => void refreshWorkflowTemplates()}
         selectedTemplateId={selectedWorkflowTemplate?.templateId ?? null}
+        selectedTemplateSource={selectedWorkflowTemplate?.templateSource ?? null}
         onSelect={setSelectedWorkflowTemplate}
         onStart={handleStartWorkflow}
         onClose={() => setWorkflowDialogOpen(false)}
         starting={isSubmitting}
+        requestText={input}
+        workspaceRoot={workDir}
+        onWorkspaceRootChange={handleWorkflowWorkspaceChange}
       />
       <div className={`flex flex-1 flex-col items-center justify-center ${
         isMobileComposer ? 'px-6 pb-[230px] pt-10' : 'p-8 pb-32'
       }`}>
-        <div className={`flex flex-col items-center text-center ${
+        <div className={`jiangxia-empty-hero flex flex-col items-center text-center ${
           isMobileComposer ? 'max-w-[300px]' : 'max-w-md'
         }`}>
           <img
@@ -643,7 +672,7 @@ export function EmptySession() {
 
       <div
         data-testid="empty-session-composer-shell"
-        className={`absolute left-0 right-0 z-30 flex justify-center ${
+        className={`jiangxia-empty-composer absolute left-0 right-0 z-30 flex justify-center ${
         isMobileComposer
           ? 'bottom-0 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)]'
           : 'bottom-4 px-8'

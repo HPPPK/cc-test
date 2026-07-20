@@ -3,6 +3,7 @@ import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { SubmitPhaseCompletionTool } from './tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
+import { RequestWorkflowRouteTool } from './tools/RequestWorkflowRouteTool/RequestWorkflowRouteTool.js'
 import { WorkflowTemplateAuthoringTool } from './tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.js'
 import { getJiangxiaEnvValue } from './utils/appIdentity.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
@@ -337,6 +338,15 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
 }
 
 /**
+ * Build the startup tool set for a headless CLI process. Desktop workflow
+ * protocol tools are discovered from the process binding here, before MCP
+ * discovery completes.
+ */
+export function getHeadlessToolPool(permissionContext: ToolPermissionContext): Tools {
+  return assembleToolPool(permissionContext, [])
+}
+
+/**
  * Assemble the full tool pool for a given permission context and MCP tools.
  *
  * This is the single source of truth for combining built-in tools with MCP tools.
@@ -384,7 +394,7 @@ export function assembleToolPool(
 
 function getDesktopWorkflowScopedTools(): Tools {
   const sessionId = getJiangxiaEnvValue('WORKFLOW_SESSION_ID')?.trim()
-  return sessionId ? [SubmitPhaseCompletionTool] : []
+  return sessionId ? [SubmitPhaseCompletionTool, RequestWorkflowRouteTool] : []
 }
 
 export function getWorkflowScopedTools(
@@ -392,7 +402,7 @@ export function getWorkflowScopedTools(
 ): Tools {
   const toolNames = new Set(getWorkflowScopedToolNames(state))
   if (!toolNames.size) return []
-  return [SubmitPhaseCompletionTool].filter(tool => toolNames.has(tool.name))
+  return [SubmitPhaseCompletionTool, RequestWorkflowRouteTool].filter(tool => toolNames.has(tool.name))
 }
 
 export function assembleWorkflowToolPool(

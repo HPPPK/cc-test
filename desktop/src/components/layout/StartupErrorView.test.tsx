@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+﻿import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -56,6 +56,56 @@ describe('StartupErrorView', () => {
         configurable: true,
         value: originalExecCommand,
       })
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      })
+    }
+  })
+
+  it('clears replacement timers, resets copied state, and clears pending copy timers on unmount', async () => {
+    const originalClipboard = navigator.clipboard
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    vi.useFakeTimers()
+
+    try {
+      const { unmount } = render(<StartupErrorView error="startup failed" />)
+      const copyButton = screen.getByRole('button', { name: '复制诊断信息' })
+
+      await act(async () => {
+        fireEvent.click(copyButton)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        fireEvent.click(copyButton)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1600)
+      })
+      expect(copyButton).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(copyButton)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledTimes(3)
+      expect(vi.getTimerCount()).toBe(1)
+      unmount()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+      clearTimeoutSpy.mockRestore()
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
         value: originalClipboard,

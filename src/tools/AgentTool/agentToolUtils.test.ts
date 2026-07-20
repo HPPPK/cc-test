@@ -79,11 +79,11 @@ describe('runAsyncAgentLifecycle', () => {
           cleanupStarted = true
           return new Promise(() => {})
         },
-      }).then(() => 'completed'),
+      }),
       new Promise(resolve => setTimeout(() => resolve('timed-out'), 50)),
     ])
 
-    expect(result).toBe('completed')
+    expect(result).toEqual({ status: 'succeeded' })
     expect(cleanupStarted).toBe(true)
     expect(appState.tasks[taskId]?.status).toBe('completed')
     expect(getCommandQueue()).toHaveLength(1)
@@ -91,5 +91,62 @@ describe('runAsyncAgentLifecycle', () => {
       '<status>completed</status>',
     )
     expect(String(getCommandQueue()[0]?.value)).toContain('Review complete.')
+  })
+
+  test('returns a failed outcome when the background agent stream fails', async () => {
+    const taskId = 'agent-failure-outcome'
+    const abortController = new AbortController()
+    const task: LocalAgentTaskState = {
+      ...createTaskStateBase(taskId, 'local_agent', 'Failing agent', 'toolu_failure'),
+      status: 'running',
+      agentId: taskId,
+      prompt: 'Fail deliberately',
+      agentType: 'general-purpose',
+      abortController,
+      retrieved: false,
+      lastReportedToolCount: 0,
+      lastReportedTokenCount: 0,
+      isBackgrounded: true,
+      pendingMessages: [],
+      retain: false,
+      diskLoaded: false,
+    }
+    let appState = {
+      tasks: { [taskId]: task },
+      toolPermissionContext: getEmptyToolPermissionContext(),
+      speculation: IDLE_SPECULATION_STATE,
+    } as unknown as AppState
+    const setAppState = (updater: (prev: AppState) => AppState): void => {
+      appState = updater(appState)
+    }
+
+    async function* makeStream(): AsyncGenerator<Message, void> {
+      throw new Error('stream failed')
+    }
+
+    await expect(runAsyncAgentLifecycle({
+      taskId,
+      abortController,
+      makeStream,
+      metadata: {
+        prompt: 'Fail deliberately',
+        resolvedAgentModel: 'test-model',
+        isBuiltInAgent: true,
+        startTime: Date.now(),
+        agentType: 'general-purpose',
+        isAsync: true,
+      },
+      description: 'Failing agent',
+      toolUseContext: {
+        options: { tools: [] },
+        toolUseId: 'toolu_failure',
+        getAppState: () => appState,
+      } as unknown as ToolUseContext,
+      rootSetAppState: setAppState,
+      agentIdForCleanup: taskId,
+      enableSummarization: false,
+      getWorktreeResult: async () => ({}),
+    })).resolves.toEqual({ status: 'failed', reason: 'stream failed' })
+    expect(appState.tasks[taskId]?.status).toBe('failed')
   })
 })

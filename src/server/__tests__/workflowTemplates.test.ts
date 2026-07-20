@@ -3,7 +3,9 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { resetWorkflowTemplateRegistryForTests } from '../services/workflowTemplateRegistryService.js'
+import { resetWorkflowTemplateRegistryForTests, WorkflowTemplateRegistryService } from '../services/workflowTemplateRegistryService.js'
+import { PackRegistryService } from '../services/packRegistryService.js'
+import { ZipPackAdapter } from '../services/zipPackAdapter.js'
 
 type WorkflowTemplateSummary = {
   id: string
@@ -30,6 +32,14 @@ let tmpDir: string
 let originalClaudeConfigDir: string | undefined
 let baseUrl: string
 let server: ReturnType<typeof Bun.serve> | null = null
+
+const editableDefaultTemplateIds = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
+
+const zipAdapter = new ZipPackAdapter()
 
 async function setupTmpConfigDir(): Promise<void> {
   tmpDir = path.join(os.tmpdir(), `workflow-template-api-${Date.now()}-${Math.random().toString(36).slice(2)}`)
@@ -81,6 +91,13 @@ async function writeWorkflowConfig(config: Record<string, unknown>): Promise<voi
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8')
   resetWorkflowTemplateRegistryForTests()
+  try {
+    await new WorkflowTemplateRegistryService().writeTemplates(
+      Array.isArray(config.templates) ? config.templates : [],
+    )
+  } catch {
+    resetWorkflowTemplateRegistryForTests()
+  }
 }
 
 async function writeUserSkill(name: string): Promise<void> {
@@ -101,6 +118,13 @@ async function writeUserSkill(name: string): Promise<void> {
 }
 
 async function readWorkflowConfig(): Promise<Record<string, unknown> | null> {
+  const storedTemplates = await readStoredUserWorkflowTemplates()
+  if (storedTemplates.length > 0 || await legacyMigrationMarkerExists()) {
+    return {
+      schemaVersion: 1,
+      templates: storedTemplates,
+    }
+  }
   try {
     return JSON.parse(await fs.readFile(workflowConfigPath(), 'utf-8')) as Record<string, unknown>
   } catch (error) {
@@ -109,6 +133,32 @@ async function readWorkflowConfig(): Promise<Record<string, unknown> | null> {
     }
     throw error
   }
+}
+
+async function legacyMigrationMarkerExists(): Promise<boolean> {
+  try {
+    await fs.access(path.join(tmpDir, 'cc-jiangxia', 'workflows', 'packs', '.legacy-workflows-json-migrated'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function readStoredUserWorkflowTemplates(): Promise<Record<string, unknown>[]> {
+  const packs = await new PackRegistryService().listStoredWorkflowPacks()
+  const templates: Record<string, unknown>[] = []
+  for (const pack of packs) {
+    for (const workflow of pack.workflows) {
+      if (editableDefaultTemplateIds.has(workflow.id)) continue
+      const zip = await zipAdapter.read(new Uint8Array(await fs.readFile(pack.storage.path)))
+      const template = await zip.readJson(workflow.entrypoint) as Record<string, unknown>
+      templates.push({
+        ...template,
+        source: 'user',
+      })
+    }
+  }
+  return templates.sort((a, b) => String(a.id).localeCompare(String(b.id)))
 }
 
 function expectWorkflowError(body: ErrorBody, expectedCode: string): void {
@@ -189,7 +239,7 @@ describe('Workflow template API contract', () => {
     await cleanupTmpConfigDir()
   })
 
-  it('GET /api/workflows/templates returns user templates only while reporting invalid user diagnostics', async () => {
+  it('GET /api/workflows/templates returns guided builder plus valid user templates while reporting invalid user diagnostics', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
       templates: [
@@ -205,7 +255,6 @@ describe('Workflow template API contract', () => {
     const { res, body } = await requestJson('/api/workflows/templates')
 
     expect(res.status).toBe(200)
-    expect(body.templates).toEqual([])
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'invalid-user-template')).toBe(false)
     expect(body.invalidTemplates).toContainEqual(expect.objectContaining({
       source: 'user-config',
@@ -216,11 +265,50 @@ describe('Workflow template API contract', () => {
     }))
   })
 
-  it('GET /api/workflows/templates/:source/:id returns not found for removed builtin presets', async () => {
+  it('GET /api/workflows/templates/:source/:id rejects builtin as an unsupported workflow source', async () => {
     const { res, body } = await requestJson('/api/workflows/templates/builtin/agent-development')
 
-    expect(res.status).toBe(404)
-    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_NOT_FOUND')
+    expect(res.status).toBe(400)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_INVALID_SOURCE')
+  })
+
+  it('GET and export support the efficient development workflow schemaVersion 2 user default', async () => {
+    const detail = await requestJson('/api/workflows/templates/user/efficient-constrained-dev-debug-workflow-v5')
+
+    expect(detail.res.status).toBe(200)
+    expect(detail.body.template).toMatchObject({
+      schemaVersion: 2,
+      id: 'efficient-constrained-dev-debug-workflow-v5',
+      source: 'user',
+      labels: expect.arrayContaining(['new-product', 'enhancement', 'documentation']),
+      routingPolicy: expect.objectContaining({
+        router: 'workflow-task-router-v1',
+      }),
+      phases: expect.arrayContaining([
+        expect.objectContaining({ id: 'route-context', transition: { authority: 'user-confirmation' } }),
+        expect.objectContaining({ id: 'scope-plan', appliesTo: expect.arrayContaining(['new-product', 'enhancement']) }),
+        expect.objectContaining({ id: 'delegate-implement', skipWhen: expect.objectContaining({ labels: expect.arrayContaining(['documentation']) }) }),
+      ]),
+    })
+
+    const exported = await requestJson('/api/workflows/templates/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        templates: [{ source: 'user', id: 'efficient-constrained-dev-debug-workflow-v5' }],
+      }),
+    })
+
+    expect(exported.res.status).toBe(200)
+    expect(exported.body).toMatchObject({
+      schemaVersion: 2,
+      templates: [
+        expect.objectContaining({
+          schemaVersion: 2,
+          id: 'efficient-constrained-dev-debug-workflow-v5',
+          labels: expect.arrayContaining(['new-product']),
+        }),
+      ],
+    })
   })
 
   it('GET /api/workflows/templates/:source/:id returns stable invalid source errors', async () => {
@@ -1129,12 +1217,19 @@ describe('Workflow template API contract', () => {
       nextAction: 'none',
       message: 'Workflow template deleted.',
     })
-    expect(body.templates).toEqual([])
+    expect((body.templates as WorkflowTemplateSummary[]).filter((template) => template.source === 'user')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'efficient-constrained-dev-debug-workflow-v5', source: 'user' }),
+      expect.objectContaining({ id: 'feature-extension-workflow-v8', source: 'user' }),
+      expect.objectContaining({ id: 'debug-repair-workflow-v8', source: 'user' }),
+    ]))
+    expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.source === 'builtin')).toBe(false)
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'deletable-workflow')).toBe(false)
-    expect(await readWorkflowConfig()).toEqual({
+    expect(await readWorkflowConfig()).toEqual(expect.objectContaining({
       schemaVersion: 1,
-      templates: [],
-    })
+      templates: expect.not.arrayContaining([
+        expect.objectContaining({ id: 'deletable-workflow' }),
+      ]),
+    }))
   })
 
   it('POST /api/workflows/templates/authoring rejects stale delete without writing', async () => {
@@ -1200,7 +1295,7 @@ describe('Workflow template API contract', () => {
     expect((body.affectedTemplate as Record<string, unknown>).basisHash).not.toBe(oldBasisHash)
   })
 
-  it('POST /api/workflows/templates/authoring rejects builtin and missing deletes without writing', async () => {
+  it('POST /api/workflows/templates/authoring rejects unsupported-source and missing deletes without writing', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
       templates: [validTemplate('existing-workflow')],
@@ -1242,12 +1337,12 @@ describe('Workflow template API contract', () => {
         valid: false,
         issues: [
           expect.objectContaining({
-            code: 'WORKFLOW_TEMPLATE_BUILTIN_READONLY',
+            code: 'WORKFLOW_TEMPLATE_INVALID_SOURCE',
             templateId: 'agent-development',
           }),
         ],
       },
-      nextAction: 'copy-builtin-first',
+      nextAction: 'inspect-and-retry',
     })
     expect(missingResult.res.status).toBe(200)
     expect(missingResult.body).toMatchObject({
@@ -1325,8 +1420,7 @@ describe('Workflow template API contract', () => {
       name: 'Updated Workflow',
     }))
     expect(await readWorkflowConfig()).toEqual(expect.objectContaining({
-      preservedTopLevel: 'keep-me',
-      templates: [expect.objectContaining({ unknownTemplateField: 'keep-template' })],
+      templates: expect.arrayContaining([expect.objectContaining({ unknownTemplateField: 'keep-template' })]),
     }))
   })
 
@@ -1345,17 +1439,17 @@ describe('Workflow template API contract', () => {
     expectWorkflowError(body, 'WORKFLOW_TEMPLATE_CONFLICT')
   })
 
-  it('PUT /api/workflows/templates/builtin/:id rejects builtin mutation without writing', async () => {
+  it('PUT /api/workflows/templates/builtin/:id rejects builtin as an unsupported workflow source', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/builtin/agent-development', {
       method: 'PUT',
       body: JSON.stringify({ template: validTemplate('agent-development') }),
     }))
 
-    expect(res.status).toBe(405)
-    expectWorkflowError(body, 'METHOD_NOT_ALLOWED')
+    expect(res.status).toBe(400)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_INVALID_SOURCE')
   })
 
-  it('DELETE /api/workflows/templates/user/:id deletes user templates without restoring default presets', async () => {
+  it('DELETE /api/workflows/templates/user/:id deletes user templates while preserving builtins', async () => {
     await writeWorkflowConfig({
       schemaVersion: 1,
       templates: [validTemplate('custom-workflow')],
@@ -1366,20 +1460,24 @@ describe('Workflow template API contract', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(body.templates).toEqual([])
+    expect((body.templates as WorkflowTemplateSummary[]).filter((template) => template.source === 'user')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'efficient-constrained-dev-debug-workflow-v5', source: 'user' }),
+      expect.objectContaining({ id: 'feature-extension-workflow-v8', source: 'user' }),
+      expect.objectContaining({ id: 'debug-repair-workflow-v8', source: 'user' }),
+    ]))
     expect((body.templates as WorkflowTemplateSummary[]).some((template) => template.id === 'custom-workflow')).toBe(false)
   })
 
-  it('DELETE /api/workflows/templates/builtin/:id rejects builtin deletion without writing', async () => {
+  it('DELETE /api/workflows/templates/builtin/:id rejects builtin as an unsupported workflow source', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/builtin/agent-development', {
       method: 'DELETE',
     }))
 
-    expect(res.status).toBe(405)
-    expectWorkflowError(body, 'METHOD_NOT_ALLOWED')
+    expect(res.status).toBe(400)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_INVALID_SOURCE')
   })
 
-  it('POST /api/workflows/templates/duplicate returns not found for removed builtin presets', async () => {
+  it('POST /api/workflows/templates/duplicate rejects builtin as an unsupported workflow source', async () => {
     const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/duplicate', {
       method: 'POST',
       body: JSON.stringify({
@@ -1390,8 +1488,8 @@ describe('Workflow template API contract', () => {
       }),
     }))
 
-    expect(res.status).toBe(404)
-    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_NOT_FOUND')
+    expect(res.status).toBe(400)
+    expectWorkflowError(body, 'WORKFLOW_TEMPLATE_INVALID')
   })
 
   it('POST /api/workflows/templates/duplicate allows user copies to use the former builtin id', async () => {
@@ -1663,28 +1761,26 @@ describe('Workflow template API contract', () => {
 
     expect(res.status).toBe(200)
     const persisted = await readWorkflowConfig()
-    expect(persisted).toMatchObject({
-      templates: [
-        {
-          id: 'preserve-missing-phase-skill-import',
-          phases: [
-            {
-              id: 'draft',
-              skills: [
-                {
-                  name: 'missing-skill',
-                  mode: 'recommended',
-                  source: 'plugin',
-                  pluginName: 'offline-plugin',
-                  referenceId: 'ref-missing-skill',
-                  ownerDefinedSkillField: 'keep-skill-field',
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    })
+    expect(persisted?.templates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'preserve-missing-phase-skill-import',
+        phases: [
+          expect.objectContaining({
+            id: 'draft',
+            skills: [
+              {
+                name: 'missing-skill',
+                mode: 'recommended',
+                source: 'plugin',
+                pluginName: 'offline-plugin',
+                referenceId: 'ref-missing-skill',
+                ownerDefinedSkillField: 'keep-skill-field',
+              },
+            ],
+          }),
+        ],
+      }),
+    ]))
     expect(body.templates).toContainEqual(expect.objectContaining({
       id: 'preserve-missing-phase-skill-import',
       source: 'user',
@@ -1864,6 +1960,8 @@ describe('Workflow template API contract', () => {
       schemaVersion: 1,
       templates: [],
     })
+    await new PackRegistryService().deleteStoredWorkflowPack('agent-development')
+    resetWorkflowTemplateRegistryForTests()
 
     const { res: previewRes, body: previewBody } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/import/preview', {
       method: 'POST',
@@ -1882,6 +1980,86 @@ describe('Workflow template API contract', () => {
       defaultResolution: 'add',
       selectable: true,
       issues: [],
+    }))
+  })
+
+  it('POST /api/workflows/templates/export returns ZIP pack bytes when requested', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [validTemplate('zip-export-workflow')],
+    })
+
+    const { res, body } = await expectConfigUnchanged(() => requestJson('/api/workflows/templates/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        templates: [{ source: 'user', id: 'zip-export-workflow' }],
+        mode: 'selected',
+        format: 'zip-pack',
+      }),
+    }))
+
+    expect(res.status).toBe(200)
+    const dataBase64 = body.dataBase64
+    expect(body).toMatchObject({
+      schemaVersion: 1,
+      format: 'zip-pack',
+      contentType: 'application/zip',
+      fileName: expect.stringMatching(/\.zip$/),
+      dataBase64: expect.any(String),
+    })
+    const archive = await new ZipPackAdapter().read(Buffer.from(String(dataBase64), 'base64'))
+    expect(archive.has('manifest.json')).toBe(true)
+    expect(archive.entries.some((entry) => entry.path.startsWith('workflows/') && entry.path.endsWith('.workflow.json'))).toBe(true)
+  })
+
+  it('POST /api/workflows/templates/import previews and commits ZIP workflow packs', async () => {
+    await writeWorkflowConfig({
+      schemaVersion: 1,
+      templates: [validTemplate('zip-import-source')],
+    })
+
+    const { body: exportBody } = await requestJson('/api/workflows/templates/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        templates: [{ source: 'user', id: 'zip-import-source' }],
+        mode: 'selected',
+        format: 'zip-pack',
+      }),
+    })
+    await writeWorkflowConfig({ schemaVersion: 1, templates: [] })
+    const payload = { format: 'zip-pack', dataBase64: exportBody.dataBase64 }
+
+    const { res: previewRes, body: previewBody } = await requestJson('/api/workflows/templates/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ payload }),
+    })
+    expect(previewRes.status).toBe(200)
+    expect(previewBody.format).toBe('zip-pack')
+    expect(previewBody.commitMode).toBe('pack')
+    expect(previewBody.pack).toEqual(expect.objectContaining({
+      packId: expect.any(String),
+      name: expect.any(String),
+      version: expect.any(String),
+    }))
+    expect(previewBody.packagedSkills).toEqual(expect.any(Array))
+    expect(previewBody.requiredHostTools).toEqual(expect.any(Array))
+    expect(previewBody.skillInstallPlan).toEqual(expect.any(Array))
+    expect(previewBody.candidates).toContainEqual(expect.objectContaining({
+      originalId: 'zip-import-source',
+      proposedId: 'zip-import-source',
+      defaultResolution: 'add',
+      selectable: true,
+    }))
+
+    const { res: commitRes, body: commitBody } = await requestJson('/api/workflows/templates/import', {
+      method: 'POST',
+      body: JSON.stringify({ payload, selections: [] }),
+    })
+    expect(commitRes.status).toBe(200)
+    expect(commitBody.templates).toContainEqual(expect.objectContaining({
+      id: 'zip-import-source',
+      source: 'user',
+      packId: expect.any(String),
     }))
   })
 

@@ -2035,6 +2035,16 @@ function runHeadlessStreaming(
             const resultMatch = notificationText.match(
               /<result>([\s\S]*?)<\/result>/,
             )
+            const worktreeMatch = notificationText.match(
+              /<worktree>([\s\S]*?)<\/worktree>/,
+            )
+            const worktreeContent = worktreeMatch?.[1] ?? ''
+            const worktreePathMatch = worktreeContent.match(
+              /<worktreePath>([\s\S]*?)<\/worktreePath>/,
+            )
+            const worktreeBranchMatch = worktreeContent.match(
+              /<worktreeBranch>([\s\S]*?)<\/worktreeBranch>/,
+            )
 
             const isValidStatus = (
               s: string | undefined,
@@ -2081,6 +2091,8 @@ function runHeadlessStreaming(
                 output_file: outputFileMatch?.[1] ?? '',
                 summary: summaryMatch?.[1] ?? '',
                 result: resultMatch?.[1],
+                worktree_path: worktreePathMatch?.[1],
+                worktree_branch: worktreeBranchMatch?.[1],
                 usage:
                   totalTokensMatch && toolUsesMatch
                     ? {
