@@ -1546,6 +1546,8 @@ type SessionStreamState = {
   workflowProtocolToolRegistryError?: 'submit_phase_completion' | 'request_workflow_route'
   workflowProtocolBindingRecoveryAttempts: number
   workflowProtocolBindingRecoveryInFlight: boolean
+  workflowProtocolInputValidationError?: WorkflowProtocolToolName
+  workflowProtocolInputRecoveryAttempts: number
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
@@ -1572,6 +1574,8 @@ function getStreamState(sessionId: string): SessionStreamState {
       workflowProtocolToolRegistryError: undefined,
       workflowProtocolBindingRecoveryAttempts: 0,
       workflowProtocolBindingRecoveryInFlight: false,
+      workflowProtocolInputValidationError: undefined,
+      workflowProtocolInputRecoveryAttempts: 0,
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
       lastApiError: undefined,
@@ -1714,6 +1718,7 @@ function recordAssistantText(streamState: SessionStreamState, text: unknown): vo
 
 function recordAssistantToolUse(streamState: SessionStreamState, toolName: unknown): void {
   if (toolName === 'AskUserQuestion') streamState.usedAskUserQuestion = true
+  if (WORKFLOW_PROTOCOL_TOOL_NAMES.has(toolName as WorkflowProtocolToolName)) streamState.workflowProtocolInputValidationError = undefined
 }
 
 const WORKFLOW_PROTOCOL_TOOL_NAMES = new Set([
@@ -1730,6 +1735,13 @@ function workflowProtocolToolNameFromError(value: unknown): WorkflowProtocolTool
   return match[1] as WorkflowProtocolToolName
 }
 
+function workflowProtocolInputValidationToolNameFromError(value: unknown): WorkflowProtocolToolName | null {
+  const text = typeof value === 'string' ? value : ''
+  const match = /InputValidationError:\s*(submit_phase_completion|request_workflow_route)\b/i.exec(text)
+  if (!match || !WORKFLOW_PROTOCOL_TOOL_NAMES.has(match[1] as WorkflowProtocolToolName)) return null
+  return match[1] as WorkflowProtocolToolName
+}
+
 function recordWorkflowProtocolToolRegistryError(
   streamState: SessionStreamState,
   toolResult: { is_error?: unknown; content?: unknown },
@@ -1737,6 +1749,8 @@ function recordWorkflowProtocolToolRegistryError(
   if (!toolResult.is_error) return
   const toolName = workflowProtocolToolNameFromError(toolResult.content)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
+  const validationToolName = workflowProtocolInputValidationToolNameFromError(toolResult.content)
+  if (validationToolName) streamState.workflowProtocolInputValidationError = validationToolName
 }
 
 function recordWorkflowProtocolToolRegistryErrorFromMessage(
@@ -1751,6 +1765,8 @@ function recordWorkflowProtocolToolRegistryErrorFromMessage(
   }
   const toolName = workflowProtocolToolNameFromError(text)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
+  const validationToolName = workflowProtocolInputValidationToolNameFromError(text)
+  if (validationToolName) streamState.workflowProtocolInputValidationError = validationToolName
 }
 
 function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
@@ -1766,6 +1782,7 @@ function finishWorkflowInteractionTurn(
   sessionId: string,
   resetRecoveryAttempts = true,
   resetBindingRecoveryAttempts = true,
+  resetInputValidationRecoveryAttempts = true,
 ): void {
   const streamState = getStreamState(sessionId)
   streamState.usedAskUserQuestion = false
@@ -1773,6 +1790,10 @@ function finishWorkflowInteractionTurn(
   streamState.workflowProtocolToolRegistryError = undefined
   if (resetRecoveryAttempts) streamState.structuredInteractionRecoveryAttempts = 0
   if (resetBindingRecoveryAttempts) streamState.workflowProtocolBindingRecoveryAttempts = 0
+  if (resetInputValidationRecoveryAttempts) {
+    streamState.workflowProtocolInputValidationError = undefined
+    streamState.workflowProtocolInputRecoveryAttempts = 0
+  }
 }
 
 function assistantTextRequestsUserDecision(text: string): boolean {
@@ -2825,8 +2846,135 @@ async function recoverWorkflowProtocolToolBinding(
   return true
 }
 
+function sendWorkflowProtocolInputValidationError(
+  sessionId: string,
+  state: WorkflowSessionState,
+): void {
+  const clients = activeSessions.get(sessionId)
+  if (!clients) return
+  const message = state.workflowLanguage === 'zh'
+    ? '工作流阶段工具的参数连续两次未通过校验。当前阶段没有推进；请重试当前阶段。'
+    : 'Workflow phase tool parameters failed validation twice. The workflow was not advanced; retry the current phase.'
+
+  for (const ws of clients) {
+    sendMessage(ws, {
+      type: 'error',
+      code: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
+      message,
+      retryable: true,
+    })
+  }
+}
+
+function buildWorkflowProtocolInputValidationRecoveryInstruction(
+  state: WorkflowSessionState,
+  toolName: WorkflowProtocolToolName,
+): string {
+  const isChinese = state.workflowLanguage === 'zh'
+  const contract = toolName === 'submit_phase_completion'
+    ? (isChinese
+      ? [
+          '立即重新调用 submit_phase_completion，并提供：status、handoff（对象）、rationale（非空字符串）和 evidence（数组）。',
+          'phaseId 与 stateVersion 如不确定可省略，让运行时使用当前工作流状态。',
+        ]
+      : [
+          'Immediately call submit_phase_completion again with status, handoff (an object), rationale (a non-empty string), and evidence (an array).',
+          'If phaseId or stateVersion is uncertain, omit it so the runtime uses the current workflow state.',
+        ])
+    : (isChinese
+      ? [
+          '立即重新调用 request_workflow_route，并提供：intent、rationale（非空字符串）和 evidence（数组）。',
+          '当 intent 为 jump_to_phase 时必须提供 targetPhaseId；当 intent 为 route_to_workflow 时必须提供 targetWorkflowId。',
+        ]
+      : [
+          'Immediately call request_workflow_route again with intent, rationale (a non-empty string), and evidence (an array).',
+          'targetPhaseId is required for jump_to_phase; targetWorkflowId is required for route_to_workflow.',
+        ])
+  const instruction = isChinese
+    ? [
+        `刚才的 ${toolName} 调用因参数校验失败而未执行。工具结果中已包含具体校验错误。`,
+        ...contract,
+        '不要把这次失败解释给用户，不要改用普通文本、AskUserQuestion 或等待用户在输入框发送“继续”。只修正参数后重试同一个结构化工具调用。',
+        '继续遵守当前阶段权限；所有用户可见文案使用中文。',
+      ]
+    : [
+        `The previous ${toolName} call was rejected by input validation and did not execute. The tool result contains the specific validation errors.`,
+        ...contract,
+        'Do not explain this failure to the user, replace it with prose or AskUserQuestion, or wait for the user to type continue. Correct the payload and retry the same structured tool call only.',
+        'Continue to obey the active phase permissions.',
+      ]
+
+  return [
+    '<workflow-protocol-input-recovery>',
+    ...instruction,
+    '</workflow-protocol-input-recovery>',
+  ].join('\n')
+}
+
+async function recoverWorkflowProtocolInputValidation(
+  sessionId: string,
+  cliMsg: any,
+): Promise<boolean> {
+  const streamState = getStreamState(sessionId)
+  const toolName = streamState.workflowProtocolInputValidationError
+    ?? workflowProtocolInputValidationToolNameFromError(cliMsg?.result)
+    ?? workflowProtocolInputValidationToolNameFromError(Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : undefined)
+  if (!toolName) return false
+
+  const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (
+    !state
+    || state.mode !== 'workflow'
+    || state.workflowStatus !== 'running'
+    || !getWorkflowScopedToolNames(state).includes(toolName)
+  ) {
+    return false
+  }
+
+  if (streamState.workflowProtocolInputRecoveryAttempts >= 1) {
+    sendWorkflowProtocolInputValidationError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  if (!conversationService.hasSession(sessionId)) {
+    sendWorkflowProtocolInputValidationError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  streamState.workflowProtocolInputRecoveryAttempts += 1
+  const clients = activeSessions.get(sessionId)
+  if (clients) {
+    for (const ws of clients) {
+      sendMessage(ws, {
+        type: 'status',
+        state: 'thinking',
+        verb: state.workflowLanguage === 'zh' ? '正在修正工作流工具参数' : 'Correcting workflow tool parameters',
+      })
+    }
+  }
+
+  const sent = conversationService.sendMessage(
+    sessionId,
+    buildWorkflowProtocolInputValidationRecoveryInstruction(state, toolName),
+  )
+  if (!sent) {
+    sendWorkflowProtocolInputValidationError(sessionId, state)
+    finishWorkflowInteractionTurn(sessionId)
+    return true
+  }
+
+  // Keep the bounded retry counter until the next protocol-tool attempt
+  // succeeds or fails. A missing/invalid payload must be regenerated by the
+  // model, so unlike a missing registry binding it must not restart the CLI.
+  finishWorkflowInteractionTurn(sessionId, true, true, false)
+  return true
+}
+
 async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
   if (await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
+  if (await recoverWorkflowProtocolInputValidation(sessionId, cliMsg)) return
 
   const turn = workflowInteractionTurnForResult(sessionId)
   const recovery = !cliMsg.is_error

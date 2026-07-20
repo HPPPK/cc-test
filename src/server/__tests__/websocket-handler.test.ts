@@ -962,6 +962,165 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
+  it('returns submit completion validation errors to the model for one corrected retry without restarting the CLI', async () => {
+    const sessionId = `workflow-submit-input-recovery-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    const invalidResult = {
+      type: 'user',
+      message: {
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'workflow-completion-tool',
+          is_error: true,
+          content: 'InputValidationError: submit_phase_completion failed due to:\n- handoff missing\n- rationale missing\n- evidence missing',
+        }],
+      },
+    }
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback(invalidResult)
+      callback({ type: 'result', is_error: true, result: invalidResult.message.content[0].content })
+
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('<workflow-protocol-input-recovery>'),
+      )
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('handoff (an object)')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('evidence (an array)')
+      expect(stopSessionAndWait).not.toHaveBeenCalled()
+      expect(startSession).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
+      }))
+
+      // The model receives the feedback and makes one corrected tool attempt.
+      // It is still invalid, so the runtime must fail visibly instead of looping.
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'workflow-completion-tool-retry',
+            name: 'submit_phase_completion',
+            input: {},
+          }],
+        },
+      })
+      callback(invalidResult)
+      callback({ type: 'result', is_error: true, result: invalidResult.message.content[0].content })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_INPUT_INVALID'
+      ))
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(stopSessionAndWait).not.toHaveBeenCalled()
+      expect(startSession).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
+        retryable: true,
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('returns route validation errors to the model with the target-phase contract in Chinese', async () => {
+    const sessionId = `workflow-route-input-recovery-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const state = makeWorkflowState(sessionId)
+    state.workflowLanguage = 'zh'
+    await stateService.writeState(sessionId, state)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'user',
+        message: {
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'workflow-route-tool',
+            is_error: true,
+            content: 'InputValidationError: request_workflow_route failed due to:\n- targetPhaseId missing',
+          }],
+        },
+      })
+      callback({
+        type: 'result', is_error: true, result: 'InputValidationError: request_workflow_route failed due to targetPhaseId missing' })
+
+      await waitForCondition(() => sendMessage.mock.calls.length === 1)
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('<workflow-protocol-input-recovery>'),
+      )
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('立即重新调用 request_workflow_route')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('targetPhaseId')
+      expect(stopSessionAndWait).not.toHaveBeenCalled()
+      expect(startSession).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: '正在修正工作流工具参数',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
   it('does not consume terminal recovery twice when the recovery turn ends with a tool-registration error', async () => {
     const sessionId = `workflow-tool-registration-recovery-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)

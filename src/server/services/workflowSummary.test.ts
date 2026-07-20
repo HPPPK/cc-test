@@ -120,6 +120,37 @@ describe('workflowSummaryFromState', () => {
     expect(summary).not.toHaveProperty('templateSnapshot')
   })
 
+
+  test('normalizes stale running state with pending confirmation into a waiting confirmation summary', () => {
+    const summary = workflowSummaryFromState(makeState({
+      status: 'running',
+      workflowStatus: 'running',
+      runStatus: 'active',
+      activePhaseId: 'delegate-implement',
+      phases: [
+        { id: 'requirements-clarification', index: 0, status: 'completed', artifactPointers: [] },
+        { id: 'delegate-implement', index: 1, status: 'running', artifactPointers: [] },
+      ],
+      pendingConfirmation: {
+        confirmationId: 'confirm-stale-running',
+        phaseId: 'delegate-implement',
+        fromPhaseId: 'delegate-implement',
+        toPhaseId: 'review',
+        completionCheckId: 'delegate-implement',
+        artifactRefs: [],
+        createdAt: '2026-05-20T00:00:00.000Z',
+        status: 'pending',
+      },
+    }))
+
+    expect(summary).toMatchObject({
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      activePhaseId: 'delegate-implement',
+      pendingConfirmation: true,
+    })
+  })
+
   test('reports the next active phase after confirmation', () => {
     const summary = workflowSummaryFromState(makeState({
       status: 'running',

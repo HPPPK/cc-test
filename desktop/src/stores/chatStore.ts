@@ -109,6 +109,7 @@ function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: stri
     workflowTransitionTimeouts.delete(sessionId)
     const pending = useChatStore.getState().sessions[sessionId]?.pendingWorkflowTransition
     if (pending?.transitionId !== transitionId) return
+
     useChatStore.setState((state) => ({
       sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
         pendingWorkflowTransition: null,
@@ -120,8 +121,29 @@ function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: stri
         workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
       })),
     }))
+
+    void refreshWorkflowSessionAfterTransitionTimeout(sessionId)
   }, WORKFLOW_TRANSITION_RESPONSE_TIMEOUT_MS)
   workflowTransitionTimeouts.set(sessionId, timeout)
+}
+
+async function refreshWorkflowSessionAfterTransitionTimeout(sessionId: string): Promise<void> {
+  try {
+    const { sessions } = await sessionsApi.list({ limit: 200 })
+    const refreshed = sessions.find((session) => session.id === sessionId)
+    if (!refreshed) return
+
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === sessionId
+          ? { ...session, ...refreshed }
+          : session,
+      ),
+    }))
+  } catch {
+    // The local unlock above is the primary recovery path. Refresh is best-effort
+    // so a transient API outage must not leave the confirmation controls locked.
+  }
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {

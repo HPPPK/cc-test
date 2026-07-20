@@ -124,14 +124,20 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     : 0
 
   const pendingConfirmation = Boolean(metadata.pendingConfirmation)
+  const publicStatus = pendingConfirmation
+    ? 'pending-confirmation'
+    : (metadata.status ?? metadata.workflowStatus) as WorkflowLifecycleStatus
+  const publicRunStatus = pendingConfirmation
+    ? 'waiting_for_user'
+    : metadata.runStatus
   const summary: WorkflowSessionSummary = {
     mode: 'workflow',
     templateId: metadata.templateId,
     templateVersion: String(metadata.templateVersion),
     templateSource: metadata.templateSource,
     templateSnapshotId: metadata.templateSnapshotId,
-    status: (metadata.status ?? metadata.workflowStatus) as WorkflowLifecycleStatus,
-    ...(typeof metadata.runStatus === 'string' ? { runStatus: metadata.runStatus as WorkflowSessionSummary['runStatus'] } : {}),
+    status: publicStatus,
+    ...(typeof publicRunStatus === 'string' ? { runStatus: publicRunStatus as WorkflowSessionSummary['runStatus'] } : {}),
     activePhaseId: metadata.activePhaseId,
     activePhaseIndex: activeIndex,
     phaseCount,

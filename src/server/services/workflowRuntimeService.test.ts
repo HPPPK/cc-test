@@ -1623,7 +1623,11 @@ describe('WorkflowRuntimeService', () => {
       runStatus: 'blocked',
       phases: [
         { id: 'requirements', index: 0, status: 'completed', artifactPointers: [] },
-        { id: 'implementation', index: 1, status: 'completed', artifactPointers: [] },
+        {
+          id: 'implementation', index: 1, status: 'completed', completedAt: '2026-05-19T00:00:00.000Z',
+          completion: { passed: true }, blockedReason: 'Old implementation state must not leak into repair.',
+          artifactPointers: [pointer('stale-implementation-artifact')],
+        },
         {
           id: 'verification', index: 2, status: 'running', artifactPointers: [],
           blockedReason: 'Verification found an implementation defect that requires a repair loop.',
@@ -1666,12 +1670,42 @@ describe('WorkflowRuntimeService', () => {
     })
 
     expect(confirmed.state.activePhaseId).toBe('implementation')
-    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')).toMatchObject({ status: 'running' })
+    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')).toMatchObject({ status: 'running', startedAt: NOW, artifactPointers: [] })
+    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')?.completedAt).toBeUndefined()
+    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')?.completion).toBeUndefined()
+    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')?.blockedReason).toBeUndefined()
     expect(confirmed.state.phases.find((phase) => phase.id === 'verification')?.blockedReason).toBeUndefined()
     expect(confirmed.state.pendingConfirmation).toBeNull()
     expect(confirmed.state.pendingRoute).toBeNull()
     expect(confirmed.state.runStatus).toBe('active')
     expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+
+    const repaired = await service.submitPhaseCompletion({
+      state: confirmed.state,
+      requestedAt: '2026-05-20T00:01:00.000Z',
+      transitionId: 'implementation-repair-complete',
+      submission: completionSubmission({
+        phaseId: 'implementation',
+        stateVersion: confirmed.state.stateVersion,
+        handoff: { summary: 'Implementation repair is ready.', artifacts: [], next: 'Verify the repaired implementation.' },
+        rationale: 'The routed repair is complete.',
+        evidence: [{ kind: 'repair', label: 'Implementation repair', ref: 'test:implementation:repair' }],
+      }),
+    })
+    expect(repaired.state.pendingRoute).toBeNull()
+    expect(repaired.state.pendingConfirmation).toMatchObject({ phaseId: 'implementation', toPhaseId: 'verification', status: 'pending' })
+
+    const advanced = await service.applyTransition({
+      state: repaired.state,
+      requestedAt: '2026-05-20T00:02:00.000Z',
+      request: { phaseId: 'implementation', action: 'confirm', stateVersion: repaired.state.stateVersion },
+    })
+    expect(advanced.state.activePhaseId).toBe('verification')
+    expect(advanced.state.pendingRoute).toBeNull()
+    expect(advanced.state.pendingConfirmation).toBeNull()
+    expect(advanced.state.phases.find((phase) => phase.id === 'verification')).toMatchObject({ status: 'running', artifactPointers: [] })
+    expect(advanced.state.phases.find((phase) => phase.id === 'verification')?.completedAt).toBeUndefined()
+    expect(advanced.state.phases.find((phase) => phase.id === 'verification')?.completion).toBeUndefined()
   })
 
   test('allows a blocked phase to confirm rework_current_phase without fabricating a completion', async () => {

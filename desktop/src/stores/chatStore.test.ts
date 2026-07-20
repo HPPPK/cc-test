@@ -75,6 +75,7 @@ vi.mock('../api/websocket', () => ({
 
 vi.mock('../api/sessions', () => ({
   sessionsApi: {
+    list: vi.fn(async () => ({ sessions: [], total: 0 })),
     getMessages: vi.fn(async () => ({ messages: [] })),
     getSlashCommands: vi.fn(async () => ({ commands: [] })),
   },
@@ -1263,9 +1264,55 @@ Phase instructions: collect inputs
     })
   })
 
-  it('unlocks a workflow confirmation if its server acknowledgement never arrives', () => {
+  it('unlocks and refreshes a workflow confirmation if its server acknowledgement never arrives', async () => {
     vi.useFakeTimers()
     try {
+      const refreshedWorkflow: WorkflowSessionSummary = {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'running',
+        runStatus: 'active',
+        activePhaseId: 'delegate-implement',
+        activePhaseIndex: 3,
+        phaseCount: 5,
+        stateVersion: 26,
+        pendingConfirmation: true,
+        transitionAuthority: 'user-confirmation',
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      }
+      sessionStoreSnapshot.sessions = [{
+        id: TEST_SESSION_ID,
+        title: 'Workflow Session',
+        createdAt: '2026-05-20T00:00:00.000Z',
+        modifiedAt: '2026-05-20T00:00:00.000Z',
+        messageCount: 1,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }]
+      vi.mocked(sessionsApi.list).mockResolvedValueOnce({
+        sessions: [{
+          id: TEST_SESSION_ID,
+          title: 'Workflow Session',
+          createdAt: '2026-05-20T00:00:00.000Z',
+          modifiedAt: '2026-05-20T00:01:00.000Z',
+          messageCount: 1,
+          projectPath: '/workspace/project',
+          workDir: '/workspace/project',
+          workDirExists: true,
+          workflow: refreshedWorkflow,
+        }],
+        total: 1,
+      })
       useChatStore.setState({
         sessions: { [TEST_SESSION_ID]: makeSession() },
       })
@@ -1278,8 +1325,9 @@ Phase instructions: collect inputs
       useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
       expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).not.toBeNull()
 
-      vi.advanceTimersByTime(15_000)
+      await vi.advanceTimersByTimeAsync(15_000)
 
+      expect(sessionsApi.list).toHaveBeenCalledWith({ limit: 200 })
       expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
         pendingWorkflowTransition: null,
         workflowTransitionError: expect.stringContaining('未收到服务端结果'),
@@ -1287,6 +1335,10 @@ Phase instructions: collect inputs
           phaseId: 'delegate-implement',
           stateVersion: 25,
         },
+      })
+      expect(sessionStoreSnapshot.sessions[0]?.workflow).toMatchObject({
+        activePhaseId: 'delegate-implement',
+        pendingConfirmation: true,
       })
     } finally {
       vi.useRealTimers()

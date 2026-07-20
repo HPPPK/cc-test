@@ -2104,8 +2104,16 @@ export class WorkflowRuntimeService {
     }
     const next = state.phases.find((phase) => phase.id === toPhaseId)
     if (next) {
+      // A confirmed repair route may re-enter a phase that completed or blocked
+      // earlier in this run. Keep the audit trail globally, but make the active
+      // phase a fresh execution so stale completion data cannot affect its next
+      // normal linear transition.
       next.status = 'running'
-      next.startedAt ||= requestedAt
+      next.startedAt = requestedAt
+      next.completedAt = undefined
+      next.completion = undefined
+      next.artifactPointers = []
+      delete next.blockedReason
     }
     state.activePhaseId = toPhaseId
     state.workflowStatus = 'running'
