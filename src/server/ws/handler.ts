@@ -3178,6 +3178,7 @@ function buildWorkflowRuntimeBindingInstruction(
     'The current process has registered submit_phase_completion and request_workflow_route for this active workflow phase.',
     'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
     'Use the actual current tool result as the only source of truth. When this phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
+    'Use request_workflow_route only for a true non-linear route, rework, workflow switch, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion; after a Stage 4 repair, a confirmed normal completion enters Stage 5 automatically.',
     'Obey the current phase tool policy even if an older transcript turn used a now-forbidden tool.',
     '</desktop-workflow-runtime-binding>',
   ].join('\n')

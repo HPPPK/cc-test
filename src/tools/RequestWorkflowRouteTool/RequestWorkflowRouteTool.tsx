@@ -107,7 +107,32 @@ function withState(input: Input, state: Record<string, unknown>): WorkflowRouteR
   }
 }
 
-function messageForRoute(result: Pick<Output, 'approvedTargetPhaseId' | 'requiresConfirmation'>): string {
+type RouteResultForMessage = Pick<Output, 'workflow' | 'approvedTargetPhaseId' | 'requiresConfirmation'>
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isSameTargetCompletionConfirmation(result: RouteResultForMessage): boolean {
+  const pendingConfirmation = isRecordValue(result.workflow.pendingConfirmation)
+    ? result.workflow.pendingConfirmation
+    : null
+  return Boolean(
+    result.requiresConfirmation
+    && !result.workflow.pendingRoute
+    && pendingConfirmation?.status === 'pending'
+    && pendingConfirmation.toPhaseId === result.approvedTargetPhaseId,
+  )
+}
+
+function messageForRoute(result: RouteResultForMessage): string {
+  if (isSameTargetCompletionConfirmation(result)) {
+    const target = result.approvedTargetPhaseId ?? 'the normal next phase'
+    const isChinese = result.workflow.workflowLanguage === 'zh'
+    return isChinese
+      ? `当前阶段的正常阶段完成确认正在等待用户确认；未创建额外路由。确认当前阶段后将进入 ${target}。`
+      : `The current phase's normal completion confirmation is already waiting for the user; no additional workflow route was created. Confirm the current phase to enter ${target}.`
+  }
   if (result.requiresConfirmation) return 'Workflow route is waiting for user confirmation.'
   return result.approvedTargetPhaseId
     ? `Workflow route applied to ${result.approvedTargetPhaseId}.`
@@ -165,9 +190,11 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
     return [
       'Request a structured workflow route; this tool does not submit phase completion.',
       'Call submit_phase_completion first with status, handoff, rationale, and evidence for the current phase.',
-      'Then use intent advance, rework_current_phase, or jump_to_phase. jump_to_phase requires targetPhaseId.',
+      'Use this tool only for a real route: rework_current_phase, a target different from the ordinary linear next phase, a workflow switch, pause/resume, or finish. jump_to_phase requires targetPhaseId.',
+      'Do not use this tool for ordinary linear progression. After a normal completion, submit_phase_completion alone creates the current phase confirmation and enters the immediate linear next phase after the user confirms.',
+      'In particular, after a repair returns to Stage 4, submit the Stage 4 completion and do not request a route merely to re-enter its normal Stage 5 validation phase.',
       'Do not describe a route only in plain text or hide it inside a completion handoff.',
-      'The server validates phase, stateVersion, route policy, and target existence. Model-requested routes require user confirmation by default.',
+      'The server validates phase, stateVersion, route policy, and target existence. Model-requested non-linear routes require user confirmation by default.',
     ].join('\n')
   },
   get inputSchema(): InputSchema { return inputSchema() },
