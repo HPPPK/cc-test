@@ -840,17 +840,27 @@ async function handleWorkflowChoiceAction(
   }
   const routeIntent = routeIntentForChoice(choice)
   if (routeIntent) {
-    if (!state.pendingConfirmation || state.pendingConfirmation.status !== 'pending') {
+    const hasPendingCompletion = state.pendingConfirmation?.status === 'pending'
+    const activePhase = state.activePhaseId
+      ? state.phases.find((phase) => phase.id === state.activePhaseId)
+      : null
+    const isBlockedRecovery = Boolean(
+      state.runStatus === 'blocked'
+      && !state.pendingConfirmation
+      && activePhase?.blockedReason
+      && (routeIntent === 'rework_current_phase' || routeIntent === 'jump_to_phase'),
+    )
+    if (!hasPendingCompletion && !isBlockedRecovery) {
       sendMessage(ws, {
         type: 'error',
         code: 'WORKFLOW_COMPLETION_REQUIRED',
-        message: 'This workflow choice requires a pending completion from submit_phase_completion.',
+        message: 'This workflow choice requires a pending completion or a blocked-phase recovery route.',
       })
       return
     }
     await applyWorkflowTransitionMessage(ws, {
       type: 'workflow_transition',
-      phaseId: state.activePhaseId ?? state.pendingConfirmation.phaseId,
+      phaseId: state.activePhaseId ?? state.pendingConfirmation?.phaseId ?? 'workflow',
       action: 'route',
       routeIntent,
       targetPhaseId: choice.targetPhaseId,

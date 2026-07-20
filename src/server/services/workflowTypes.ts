@@ -654,6 +654,7 @@ export type WorkflowPendingRoute = {
   requiresConfirmation: boolean
   approvedTargetPhaseId: string | null
   status: 'pending' | 'approved' | 'rejected'
+  origin?: 'blocked-recovery'
 }
 
 export type WorkflowPhaseRun = {

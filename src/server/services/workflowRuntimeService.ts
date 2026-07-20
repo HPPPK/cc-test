@@ -1371,10 +1371,26 @@ export class WorkflowRuntimeService {
       }
     }
 
-    if (!state.pendingConfirmation || state.pendingConfirmation.phaseId !== current.id || state.pendingConfirmation.status !== 'pending') {
+    const hasPendingCompletion = Boolean(
+      state.pendingConfirmation
+      && state.pendingConfirmation.phaseId === current.id
+      && state.pendingConfirmation.status === 'pending',
+    )
+    const isBlockedRecovery = Boolean(
+      state.runStatus === 'blocked'
+      && !state.pendingConfirmation
+      && current.blockedReason,
+    )
+    if (!hasPendingCompletion && !isBlockedRecovery) {
       throw workflowError(
         'WORKFLOW_ROUTE_COMPLETION_REQUIRED',
         'Submit the current phase completion before requesting a workflow route.',
+      )
+    }
+    if (isBlockedRecovery && !['rework_current_phase', 'jump_to_phase'].includes(input.request.intent)) {
+      throw workflowError(
+        'WORKFLOW_ROUTE_RECOVERY_INTENT_INVALID',
+        `Workflow route intent "${input.request.intent}" is not available while the current phase is blocked.`,
       )
     }
     if (state.pendingRoute?.status === 'pending') {
@@ -1391,8 +1407,9 @@ export class WorkflowRuntimeService {
     // ordinary completion confirmation as the single source of truth instead
     // of creating a second pending route for the exact same destination.
     if (
-      (input.request.intent === 'advance' || input.request.intent === 'jump_to_phase')
-      && targetPhaseId === state.pendingConfirmation.toPhaseId
+      hasPendingCompletion
+      && (input.request.intent === 'advance' || input.request.intent === 'jump_to_phase')
+      && targetPhaseId === state.pendingConfirmation?.toPhaseId
     ) {
       const requiresConfirmation = input.request.requireUserConfirmation !== false
       if (!requiresConfirmation) {
@@ -1435,6 +1452,7 @@ export class WorkflowRuntimeService {
       requiresConfirmation,
       approvedTargetPhaseId: targetPhaseId,
       status: 'pending',
+      ...(isBlockedRecovery ? { origin: 'blocked-recovery' as const } : {}),
     }
     state.workflowStatus = 'pending-confirmation'
     state.status = 'pending-confirmation'
@@ -1779,25 +1797,32 @@ export class WorkflowRuntimeService {
     current: WorkflowPhaseState,
   ): Promise<RuntimeResult> {
     const pending = state.pendingConfirmation
-    if (!pending || pending.phaseId !== current.id || pending.status !== 'pending') {
-      return this.blockTransition(state, input, 'Workflow confirmation is not pending.')
-    }
-
-    pending.status = 'approved'
     const route = state.pendingRoute?.phaseId === current.id && state.pendingRoute.status === 'pending'
       ? state.pendingRoute
       : null
-    const targetPhaseId = route?.approvedTargetPhaseId ?? pending.toPhaseId
-    const acceptedArtifacts = markArtifacts(
-      state,
-      current,
-      pending.artifactRefs.map((artifact) => artifact.artifactId),
-      route?.intent === 'rework_current_phase' ? 'superseded' : 'accepted',
-    )
+    const isBlockedRecoveryRoute = route?.origin === 'blocked-recovery'
+    if (
+      (!pending || pending.phaseId !== current.id || pending.status !== 'pending')
+      && !isBlockedRecoveryRoute
+    ) {
+      return this.blockTransition(state, input, 'Workflow confirmation is not pending.')
+    }
+
+    if (pending) pending.status = 'approved'
+    const targetPhaseId = route?.approvedTargetPhaseId ?? pending?.toPhaseId ?? null
+    const acceptedArtifacts = pending
+      ? markArtifacts(
+        state,
+        current,
+        pending.artifactRefs.map((artifact) => artifact.artifactId),
+        route?.intent === 'rework_current_phase' ? 'superseded' : 'accepted',
+      )
+      : []
     if (route?.intent === 'rework_current_phase') {
       route.status = 'approved'
       current.status = 'running'
       current.completedAt = undefined
+      delete current.blockedReason
       state.activePhaseId = current.id
       state.workflowStatus = 'running'
       state.status = 'running'
@@ -1807,6 +1832,7 @@ export class WorkflowRuntimeService {
       updateActiveWorkflowRun(state, input.requestedAt, { status: 'active', currentPhaseId: current.id })
     } else {
       if (route) route.status = 'approved'
+      if (isBlockedRecoveryRoute) delete current.blockedReason
       this.advanceToPhase(state, current, targetPhaseId, input.requestedAt)
       state.pendingRoute = null
       applyNextPhaseContextStrategy(state, targetPhaseId, input.request.nextPhaseContextStrategy)
@@ -1817,7 +1843,7 @@ export class WorkflowRuntimeService {
       fromPhaseId: current.id,
       toPhaseId: targetPhaseId,
       authority: route ? 'user-choice' : 'user-confirmation',
-      action: route ? 'route-confirmed' : 'confirmed',
+      action: route ? (isBlockedRecoveryRoute ? 'route-recovery-confirmed' : 'route-confirmed') : 'confirmed',
       result: 'accepted',
       requestedAt: input.requestedAt,
       stateVersion: nextState.stateVersion,

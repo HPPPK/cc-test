@@ -408,4 +408,66 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       expect(state.finalReportRef).not.toBeNull()
     }
   }, 90_000)
+
+  test('recovers every shipped validation phase from blocked state through a confirmed implementation route', async () => {
+    await initializeIsolatedPackRegistry()
+    const service = runtimeService()
+
+    for (const workflow of SHIPPED_WORKFLOWS) {
+      for (const [routeIndex, routeFromPhaseId] of workflow.routeFromPhaseIds.entries()) {
+        const reachedValidation = await advanceToPhase(
+          service,
+          await createRealWorkflowState(workflow),
+          routeFromPhaseId,
+        )
+        const blocked = await service.submitPhaseCompletion({
+          state: reachedValidation,
+          requestedAt: `2026-07-20T02:${String(routeIndex).padStart(2, '0')}:00.000Z`,
+          transitionId: `e2e-blocked-${workflow.id}-${routeFromPhaseId}`,
+          submission: completionFor(reachedValidation, 'blocked'),
+        })
+        expect(blocked.state.runStatus).toBe('blocked')
+        expect(blocked.state.pendingConfirmation).toBeNull()
+
+        const requested = await service.requestWorkflowRoute({
+          state: blocked.state,
+          requestedAt: `2026-07-20T02:${String(routeIndex).padStart(2, '0')}:10.000Z`,
+          transitionId: `e2e-blocked-route-${workflow.id}-${routeFromPhaseId}`,
+          request: {
+            phaseId: routeFromPhaseId,
+            stateVersion: blocked.state.stateVersion,
+            intent: 'jump_to_phase',
+            targetPhaseId: workflow.routeToPhaseId,
+            rationale: 'Verification found a repairable implementation defect; return through the controlled workflow route.',
+            evidence: [{ ref: `e2e:blocked-route:${routeFromPhaseId}`, summary: 'Validation defect requires implementation recovery.' }],
+            requireUserConfirmation: true,
+          },
+        })
+        expect(requested.state.pendingRoute).toMatchObject({
+          intent: 'jump_to_phase',
+          targetPhaseId: workflow.routeToPhaseId,
+          origin: 'blocked-recovery',
+          status: 'pending',
+        })
+        expect(requested.state.pendingConfirmation).toBeNull()
+        expect(requested.state.runStatus).toBe('waiting_for_user')
+
+        const confirmed = await service.applyTransition({
+          state: requested.state,
+          requestedAt: `2026-07-20T02:${String(routeIndex).padStart(2, '0')}:20.000Z`,
+          request: {
+            phaseId: routeFromPhaseId,
+            action: 'confirm',
+            stateVersion: requested.state.stateVersion,
+            transitionId: `e2e-blocked-route-confirm-${workflow.id}-${routeFromPhaseId}`,
+          },
+        })
+        expect(confirmed.state.activePhaseId).toBe(workflow.routeToPhaseId)
+        expect(confirmed.state.runStatus).toBe('active')
+        expect(confirmed.state.pendingConfirmation).toBeNull()
+        expect(confirmed.state.pendingRoute).toBeNull()
+        expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+      }
+    }
+  }, 90_000)
 })

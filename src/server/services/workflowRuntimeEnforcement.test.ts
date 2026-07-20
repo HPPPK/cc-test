@@ -553,6 +553,8 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('Workflow routing protocol:')
     expect(prompt).toContain('request_workflow_route in the same assistant turn')
     expect(prompt).toContain('Do not hide a route inside handoff')
+    expect(prompt).toContain('do not ask the user to bypass the workflow')
+    expect(prompt).toContain('rework_current_phase or jump_to_phase')
   })
 
   test('runtime prompt injects stable phase execution contract for questions, output, gates, handoff, and internal safety', () => {

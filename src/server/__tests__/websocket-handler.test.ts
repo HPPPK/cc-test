@@ -2462,6 +2462,70 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(parseSentMessages(ws).filter((message) => message.type === 'error')).toEqual([])
   })
 
+  it('routes and resumes from an AskUserQuestion jump_to_phase choice while the active phase is blocked', async () => {
+    const sessionId = `workflow-choice-blocked-route-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+
+    const state = makePendingWorkflowState(sessionId)
+    state.templateSnapshot.phases.push({
+      ...state.templateSnapshot.phases[0]!,
+      id: 'delegate-implement',
+      label: '分批实现与审查',
+      instructions: 'Repair the verified implementation defect.',
+    })
+    state.phases.push({ id: 'delegate-implement', index: 2, status: 'created', artifactPointers: [] })
+    state.workflowStatus = 'running'
+    state.status = 'running'
+    state.runStatus = 'blocked'
+    state.pendingConfirmation = null
+    state.phases[0]!.status = 'running'
+    state.phases[0]!.blockedReason = 'Validation found an implementation defect that requires a controlled repair route.'
+    await stateService.writeState(sessionId, state)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'ask-user-blocked-route-gate',
+      allowed: true,
+      updatedInput: {
+        questions: [{ id: 'route_blocked_validation' }],
+        answers: { route_blocked_validation: '返回 Stage 4 修复该问题' },
+        workflowChoiceActions: [{
+          questionId: 'route_blocked_validation',
+          choiceId: 'return-to-stage-4',
+          action: {
+            kind: 'workflow-route',
+            intent: 'jump_to_phase',
+            targetPhaseId: 'delegate-implement',
+          },
+        }],
+      },
+    }))
+
+    await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+      calledSessionId === sessionId
+      && typeof content === 'string'
+      && content.includes('Active phase: delegate-implement')
+    ))
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activePhaseId).toBe('delegate-implement')
+    expect(persisted.state?.runStatus).toBe('active')
+    expect(persisted.state?.pendingConfirmation).toBeNull()
+    expect(persisted.state?.pendingRoute).toBeNull()
+    expect(parseSentMessages(ws).filter((message) => message.type === 'error')).toEqual([])
+  })
+
   it('auto-resumes the next phase after a completed auto-transition submission without typed continue', async () => {
     const sessionId = `workflow-completed-auto-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)

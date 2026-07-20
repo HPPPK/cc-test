@@ -1595,6 +1595,212 @@ describe('WorkflowRuntimeService', () => {
     expect(reworked.state.pendingConfirmation).toBeNull()
   })
 
+  test('allows a blocked phase to request and confirm a jump_to_phase recovery without a pending completion', async () => {
+    const service = await makeService()
+    const template = makeTemplate({
+      phases: [
+        {
+          id: 'requirements', label: 'Requirements', instructions: 'Gather requirements.', requestedModel: null,
+          skillDeclarations: [], requiredArtifacts: [], completionCriteria: [], transitionAuthority: 'user-confirmation',
+        },
+        {
+          id: 'implementation', label: 'Implementation', instructions: 'Repair the implementation.', requestedModel: null,
+          skillDeclarations: [], requiredArtifacts: [], completionCriteria: [], transitionAuthority: 'user-confirmation',
+        },
+        {
+          id: 'verification', label: 'Verification', instructions: 'Verify the result.', requestedModel: null,
+          skillDeclarations: [], requiredArtifacts: [], completionCriteria: [], transitionAuthority: 'user-confirmation',
+        },
+      ],
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      activePhaseId: 'verification',
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'blocked',
+      phases: [
+        { id: 'requirements', index: 0, status: 'completed', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'completed', artifactPointers: [] },
+        {
+          id: 'verification', index: 2, status: 'running', artifactPointers: [],
+          blockedReason: 'Verification found an implementation defect that requires a repair loop.',
+        },
+      ],
+      pendingConfirmation: null,
+    })
+
+    const requested = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'verification',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'implementation',
+        rationale: 'Return to implementation to repair the verified defect.',
+        evidence: [{ kind: 'verification-failure', ref: 'test:verification:defect' }],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(requested.state.pendingConfirmation).toBeNull()
+    expect(requested.state.pendingRoute).toMatchObject({
+      phaseId: 'verification',
+      intent: 'jump_to_phase',
+      targetPhaseId: 'implementation',
+      status: 'pending',
+    })
+    expect(requested.state.runStatus).toBe('waiting_for_user')
+
+    const confirmed = await service.applyTransition({
+      state: requested.state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'verification',
+        action: 'confirm',
+        stateVersion: requested.state.stateVersion,
+      },
+    })
+
+    expect(confirmed.state.activePhaseId).toBe('implementation')
+    expect(confirmed.state.phases.find((phase) => phase.id === 'implementation')).toMatchObject({ status: 'running' })
+    expect(confirmed.state.phases.find((phase) => phase.id === 'verification')?.blockedReason).toBeUndefined()
+    expect(confirmed.state.pendingConfirmation).toBeNull()
+    expect(confirmed.state.pendingRoute).toBeNull()
+    expect(confirmed.state.runStatus).toBe('active')
+    expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+  })
+
+  test('allows a blocked phase to confirm rework_current_phase without fabricating a completion', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'blocked',
+      phases: [
+        {
+          id: 'requirements', index: 0, status: 'running', artifactPointers: [],
+          blockedReason: 'The requirements need a focused correction before completion.',
+        },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: null,
+    })
+
+    const requested = await service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion,
+        intent: 'rework_current_phase',
+        rationale: 'Rework the active phase using the recorded blocker.',
+        evidence: [{ kind: 'rework', ref: 'test:requirements:blocker' }],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(requested.state.pendingRoute).toMatchObject({
+      intent: 'rework_current_phase',
+      targetPhaseId: 'requirements',
+      origin: 'blocked-recovery',
+    })
+    expect(requested.state.pendingConfirmation).toBeNull()
+
+    const confirmed = await service.applyTransition({
+      state: requested.state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        action: 'confirm',
+        stateVersion: requested.state.stateVersion,
+      },
+    })
+
+    expect(confirmed.state.activePhaseId).toBe('requirements')
+    expect(confirmed.state.phases[0]).toMatchObject({ status: 'running' })
+    expect(confirmed.state.phases[0]?.completedAt).toBeUndefined()
+    expect(confirmed.state.phases[0]?.blockedReason).toBeUndefined()
+    expect(confirmed.state.pendingConfirmation).toBeNull()
+    expect(confirmed.state.pendingRoute).toBeNull()
+    expect(confirmed.state.runStatus).toBe('active')
+    expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+  })
+
+  test('keeps blocked recovery constrained to rework_current_phase or jump_to_phase', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'blocked',
+      phases: [
+        {
+          id: 'requirements', index: 0, status: 'running', artifactPointers: [],
+          blockedReason: 'The current phase needs a controlled recovery.',
+        },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: null,
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion,
+        intent: 'advance',
+        rationale: 'Advance must not bypass a blocked completion gate.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_RECOVERY_INTENT_INVALID' })
+  })
+
+  test('retains stale-version and target validation for blocked recovery routes', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'blocked',
+      phases: [
+        {
+          id: 'requirements', index: 0, status: 'running', artifactPointers: [],
+          blockedReason: 'A controlled recovery route is required.',
+        },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+      pendingConfirmation: null,
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion - 1,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'implementation',
+        rationale: 'A stale state must not create a blocked recovery route.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_STATE_STALE' })
+
+    await expect(service.requestWorkflowRoute({
+      state,
+      requestedAt: NOW,
+      request: {
+        phaseId: 'requirements',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'does-not-exist',
+        rationale: 'An unknown phase must not create a blocked recovery route.',
+        evidence: [],
+      },
+    })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_TARGET_INVALID' })
+    expect(state.pendingRoute).toBeUndefined()
+    expect(state.runStatus).toBe('blocked')
+  })
+
   test('rejects route_to_workflow instead of interpreting it as finish', async () => {
     const service = await makeService()
     const state = makeState({
