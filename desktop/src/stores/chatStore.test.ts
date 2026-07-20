@@ -1263,6 +1263,32 @@ Phase instructions: collect inputs
     })
   })
 
+  it('unlocks a workflow confirmation if its server acknowledgement never arrives', () => {
+    vi.useFakeTimers()
+    try {
+      useChatStore.setState({
+        sessions: { [TEST_SESSION_ID]: makeSession() },
+      })
+      const command = {
+        phaseId: 'delegate-implement',
+        action: 'confirm' as const,
+        stateVersion: 25,
+      }
+
+      useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).not.toBeNull()
+
+      vi.advanceTimersByTime(15_000)
+
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+        pendingWorkflowTransition: null,
+        workflowTransitionError: expect.stringContaining('未收到服务端结果'),
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('sends the UI language only for active workflow sessions', () => {
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,

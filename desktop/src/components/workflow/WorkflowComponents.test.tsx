@@ -2958,6 +2958,31 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
     expect(screen.queryByText(/正在提交阶段操作/)).not.toBeInTheDocument()
   })
+  it('does not indefinitely lock a confirmation card with an unversioned pending transition', () => {
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'delegate-implement',
+          pendingConfirmation: true,
+        }}
+        stateVersion={25}
+        pendingTransition={{
+          phaseId: 'delegate-implement',
+          action: 'confirm',
+          transitionId: 'legacy-transition-without-state-version',
+        }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
+    expect(screen.queryByText(/正在提交阶段操作/)).not.toBeInTheDocument()
+  })
+
   it('shows pending confirmation controls and sends idempotent transition context', () => {
     const onConfirm = vi.fn()
     const onReject = vi.fn()

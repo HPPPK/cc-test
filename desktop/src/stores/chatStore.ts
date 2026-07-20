@@ -93,6 +93,32 @@ export type PerSessionState = {
   workflowTransitionResetKey?: number
 }
 
+const WORKFLOW_TRANSITION_RESPONSE_TIMEOUT_MS = 15_000
+const workflowTransitionTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearWorkflowTransitionTimeout(sessionId: string): void {
+  const timeout = workflowTransitionTimeouts.get(sessionId)
+  if (timeout) clearTimeout(timeout)
+  workflowTransitionTimeouts.delete(sessionId)
+}
+
+function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: string): void {
+  clearWorkflowTransitionTimeout(sessionId)
+  const timeout = setTimeout(() => {
+    workflowTransitionTimeouts.delete(sessionId)
+    const pending = useChatStore.getState().sessions[sessionId]?.pendingWorkflowTransition
+    if (pending?.transitionId !== transitionId) return
+    useChatStore.setState((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+        pendingWorkflowTransition: null,
+        workflowTransitionError: '阶段操作未收到服务端结果，已解除等待状态。请先检查当前阶段状态，再重试、调整结果、暂停或退出工作流。',
+        workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+      })),
+    }))
+  }, WORKFLOW_TRANSITION_RESPONSE_TIMEOUT_MS)
+  workflowTransitionTimeouts.set(sessionId, timeout)
+}
+
 const DEFAULT_SESSION_STATE: PerSessionState = {
   messages: [],
   chatState: 'idle',
@@ -1016,6 +1042,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         workflowTransitionError: null,
       })),
     }))
+    scheduleWorkflowTransitionTimeout(sessionId, transition.transitionId)
     wsManager.send(sessionId, {
       type: 'workflow_transition',
       ...transition,
@@ -1507,6 +1534,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           restoreRuntimeSelectionAfterFailure(sessionId)
         }
         if (isWorkflowTransitionError(msg.code) && get().sessions[sessionId]?.pendingWorkflowTransition) {
+          clearWorkflowTransitionTimeout(sessionId)
           update((session) => ({
             pendingWorkflowTransition: null,
             workflowTransitionError: msg.code === 'WORKFLOW_STATE_STALE'
@@ -1560,6 +1588,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         break
       case 'system_notification':
         if (msg.subtype === 'workflow_state' && isWorkflowSummary(msg.data)) {
+          clearWorkflowTransitionTimeout(sessionId)
           const workflow = msg.data
           useSessionStore.setState((state) => ({
             sessions: state.sessions.map((item) =>

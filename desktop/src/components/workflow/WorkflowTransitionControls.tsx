@@ -77,11 +77,9 @@ export function WorkflowTransitionControls({
   const pendingTransitionMatchesCurrentConfirmation = Boolean(
     pendingTransition
       && pendingTransition.phaseId === phaseId
-      && (
-        typeof pendingTransition.stateVersion !== 'number'
-        || typeof stateVersion !== 'number'
-        || pendingTransition.stateVersion === stateVersion
-      ),
+      && typeof pendingTransition.stateVersion === 'number'
+      && typeof stateVersion === 'number'
+      && pendingTransition.stateVersion === stateVersion,
   )
   const transitionPending = localPending || pendingTransitionMatchesCurrentConfirmation
   const submitTransition = (
