@@ -2910,6 +2910,54 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
   })
 
+  it('unlocks a new phase confirmation when an older transition remains pending in the store', () => {
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation' as const,
+      activePhaseId: 'local-preview',
+      pendingConfirmation: true,
+    }
+    const { rerender } = render(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={17}
+        pendingTransition={{
+          phaseId: 'local-preview',
+          action: 'confirm',
+          transitionId: 'workflow-transition:local-preview:17:confirm',
+          stateVersion: 17,
+        }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeDisabled()
+
+    rerender(
+      <WorkflowTransitionControls
+        workflow={{
+          ...workflow,
+          activePhaseId: 'delegate-implement',
+          activePhaseIndex: 3,
+        }}
+        stateVersion={25}
+        pendingTransition={{
+          phaseId: 'local-preview',
+          action: 'confirm',
+          transitionId: 'workflow-transition:local-preview:17:confirm',
+          stateVersion: 17,
+        }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
+    expect(screen.queryByText(/正在提交阶段操作/)).not.toBeInTheDocument()
+  })
   it('shows pending confirmation controls and sends idempotent transition context', () => {
     const onConfirm = vi.fn()
     const onReject = vi.fn()

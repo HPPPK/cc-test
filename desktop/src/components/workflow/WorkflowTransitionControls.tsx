@@ -74,12 +74,21 @@ export function WorkflowTransitionControls({
     lastResetKeyRef.current = transitionResetKey
   }, [transitionResetKey, workflowStateKey])
 
-  const transitionPending = localPending || Boolean(pendingTransition)
+  const pendingTransitionMatchesCurrentConfirmation = Boolean(
+    pendingTransition
+      && pendingTransition.phaseId === phaseId
+      && (
+        typeof pendingTransition.stateVersion !== 'number'
+        || typeof stateVersion !== 'number'
+        || pendingTransition.stateVersion === stateVersion
+      ),
+  )
+  const transitionPending = localPending || pendingTransitionMatchesCurrentConfirmation
   const submitTransition = (
     handler: (command: WorkflowTransitionCommand) => void,
     action: WorkflowTransitionCommand['action'],
   ) => {
-    if (submissionLockRef.current || pendingTransition) return
+    if (submissionLockRef.current || pendingTransitionMatchesCurrentConfirmation) return
 
     submissionLockRef.current = true
     setLocalPending(true)

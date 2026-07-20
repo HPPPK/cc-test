@@ -8,6 +8,7 @@ import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { FileEditTool } from '../../tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import { FileWriteTool } from '../../tools/FileWriteTool/FileWriteTool.js'
+import { SubmitPhaseCompletionTool } from '../../tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import { createAssistantMessage } from '../../utils/messages.js'
 import { runToolUse } from './toolExecution.js'
@@ -87,6 +88,44 @@ describe('runToolUse file edit recovery', () => {
 
     expect(await fs.stat(filePath).catch(() => null)).toBeNull()
     expect(JSON.stringify(messages)).toContain('WORKFLOW_TOOL_FORBIDDEN')
+  })
+
+  test('returns one retryable submit schema error then blocks the phase on the second failure', async () => {
+    let appState: any = {
+      workflow: {
+        mode: 'workflow',
+        sessionId: 'workflow-submit-recovery',
+        workflowStatus: 'running',
+        status: 'running',
+        runStatus: 'active',
+        activePhaseId: 'requirements',
+        stateVersion: 3,
+        phases: [{ id: 'requirements', status: 'running', artifactPointers: [] }],
+        transitionHistory: [],
+        artifactIndex: {},
+      },
+      toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
+      tasks: {},
+      effortValue: undefined,
+      sessionHooks: new Map(),
+    }
+    const context = createContext()
+    context.options.tools = [FileReadTool, FileWriteTool, FileEditTool, SubmitPhaseCompletionTool]
+    context.getAppState = () => appState
+    context.setAppState = (updater) => { appState = updater(appState) }
+    const toolUse = {
+      type: 'tool_use',
+      name: 'submit_phase_completion',
+      input: { status: 'ready' },
+    } as ToolUseBlock
+
+    const first = await runSingleToolUse({ ...toolUse, id: 'toolu_submit_first' }, context)
+    expect(JSON.stringify(first)).toContain('WORKFLOW_SUBMIT_RETRY_ALLOWED')
+    expect(appState.workflow.runStatus).toBe('active')
+
+    const second = await runSingleToolUse({ ...toolUse, id: 'toolu_submit_second' }, context)
+    expect(JSON.stringify(second)).toContain('WORKFLOW_SUBMIT_BLOCKED')
+    expect(appState.workflow.runStatus).toBe('blocked')
   })
 
   test('auto-reads an existing file before retrying Edit validation', async () => {

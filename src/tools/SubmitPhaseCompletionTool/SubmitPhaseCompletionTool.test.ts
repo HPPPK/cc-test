@@ -140,6 +140,48 @@ describe('SubmitPhaseCompletionTool', () => {
     })).success).toBe(true)
   })
 
+  test('allows one recoverable submit schema retry then blocks the current phase', async () => {
+    const mod = await import('./SubmitPhaseCompletionTool.js') as typeof import('./SubmitPhaseCompletionTool.js')
+    let appState: any = {
+      workflow: {
+        mode: 'workflow',
+        sessionId: 'workflow-submit-recovery',
+        workflowStatus: 'running',
+        status: 'running',
+        runStatus: 'active',
+        activePhaseId: 'requirements',
+        stateVersion: 3,
+        phases: [{
+          id: 'requirements',
+          status: 'running',
+          artifactPointers: [],
+        }],
+        transitionHistory: [],
+        artifactIndex: {},
+      },
+      toolPermissionContext: getEmptyToolPermissionContext(),
+    }
+    const context = contextFor('workflow')
+    context.getAppState = () => appState
+    context.setAppState = (updater) => { appState = updater(appState) }
+
+    const first = await mod.handleSubmitPhaseCompletionFailure(
+      context,
+      'InputValidationError: handoff is required.',
+    )
+    expect(first.retryAllowed).toBe(true)
+    expect(appState.workflow.runStatus).toBe('active')
+
+    const second = await mod.handleSubmitPhaseCompletionFailure(
+      context,
+      'InputValidationError: handoff is required.',
+    )
+    expect(second.retryAllowed).toBe(false)
+    expect(second.message).toContain('WORKFLOW_SUBMIT_BLOCKED')
+    expect(appState.workflow.runStatus).toBe('blocked')
+    expect(appState.workflow.activePhaseId).toBe('requirements')
+  })
+
   test('uses strict structured output and explains the complete phase-completion payload', async () => {
     const SubmitPhaseCompletionTool = await loadTool()
 
@@ -225,17 +267,14 @@ describe('SubmitPhaseCompletionTool', () => {
     expect(result).toEqual({ result: true })
   })
 
-  test('still rejects stale stateVersion when phaseId is inferred', async () => {
+  test('refreshes a stale stateVersion from the active workflow state', async () => {
     const SubmitPhaseCompletionTool = await loadTool()
     const result = await SubmitPhaseCompletionTool.validateInput?.(
       validInput({ phaseId: undefined, stateVersion: 2 }),
       contextFor('workflow'),
     )
 
-    expect(result).toMatchObject({
-      result: false,
-      message: expect.stringContaining('stale'),
-    })
+    expect(result).toEqual({ result: true })
   })
 
   test('refreshes Desktop workflow state during validation before allowing completion submission', async () => {
