@@ -2800,7 +2800,7 @@ async function recoverWorkflowProtocolToolBinding(
 }
 
 async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
-  if (cliMsg.is_error && await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
+  if (await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
 
   const turn = workflowInteractionTurnForResult(sessionId)
   const recovery = !cliMsg.is_error

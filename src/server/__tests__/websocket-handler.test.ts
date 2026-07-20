@@ -1029,6 +1029,67 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
+  it('rebinds and retries when a submit tool-result error is followed by a successful CLI result', async () => {
+    const sessionId = `workflow-protocol-tool-result-retry-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'user',
+        message: {
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'workflow-completion-tool',
+            is_error: true,
+            content: 'No such tool available: submit_phase_completion',
+          }],
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => startSession.mock.calls.length === 1 && sendMessage.mock.calls.length === 1)
+
+      expect(stopSessionAndWait).toHaveBeenCalledWith(sessionId)
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('<workflow-protocol-binding-recovery>'),
+      )
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('submit_phase_completion')
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
   it('rebinds protocol tools and retries a Chinese route request without user-entered continue', async () => {
     const sessionId = `workflow-protocol-route-retry-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
