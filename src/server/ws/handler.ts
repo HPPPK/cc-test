@@ -1727,6 +1727,20 @@ function recordWorkflowProtocolToolRegistryError(
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
 }
 
+function recordWorkflowProtocolToolRegistryErrorFromMessage(
+  streamState: SessionStreamState,
+  message: unknown,
+): void {
+  let text = ''
+  try {
+    text = typeof message === 'string' ? message : JSON.stringify(message)
+  } catch {
+    return
+  }
+  const toolName = workflowProtocolToolNameFromError(text)
+  if (toolName) streamState.workflowProtocolToolRegistryError = toolName
+}
+
 function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
   const streamState = getStreamState(sessionId)
   return {
@@ -2863,11 +2877,13 @@ function createClientBroadcastCallback(
     if (options?.shouldForward && !options.shouldForward(cliMsg)) return
 
     if (cliMsg.type === 'result') {
+      recordWorkflowProtocolToolRegistryErrorFromMessage(getStreamState(sessionId), cliMsg)
       void finalizeClientResult(sessionId, cliMsg)
       return
     }
 
     broadcastCliMessagesToSession(sessionId, cliMsg)
+    recordWorkflowProtocolToolRegistryErrorFromMessage(getStreamState(sessionId), cliMsg)
   }
 }
 

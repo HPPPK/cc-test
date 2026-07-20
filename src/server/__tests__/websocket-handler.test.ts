@@ -1061,13 +1061,12 @@ describe('WebSocket handler session isolation', () => {
       handleWebSocket.open(ws)
       const callback = session.outputCallbacks[0]!
       callback({
-        type: 'user',
+        type: 'assistant',
         message: {
           content: [{
-            type: 'tool_result',
+            type: 'tool_use_error',
             tool_use_id: 'workflow-completion-tool',
-            is_error: true,
-            content: 'No such tool available: submit_phase_completion',
+            error: 'No such tool available: submit_phase_completion',
           }],
         },
       })
