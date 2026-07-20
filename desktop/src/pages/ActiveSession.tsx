@@ -1205,6 +1205,7 @@ export function ActiveSession() {
   const chatState = sessionState?.chatState ?? 'idle'
   const pendingWorkflowTransition = sessionState?.pendingWorkflowTransition ?? null
   const workflowTransitionError = sessionState?.workflowTransitionError ?? null
+  const workflowTransitionErrorScope = sessionState?.workflowTransitionErrorScope ?? null
   const workflowTransitionResetKey = sessionState?.workflowTransitionResetKey ?? 0
   const tokenUsage = sessionState?.tokenUsage ?? { input_tokens: 0, output_tokens: 0 }
   const backgroundAgentTasks = useMemo(
@@ -1489,6 +1490,7 @@ export function ActiveSession() {
       stateVersion={workflowStateVersion}
       pendingTransition={pendingWorkflowTransition}
       transitionError={workflowTransitionError}
+      transitionErrorScope={workflowTransitionErrorScope}
       transitionResetKey={workflowTransitionResetKey}
       onConfirm={handleWorkflowTransition}
       onReject={handleWorkflowTransition}

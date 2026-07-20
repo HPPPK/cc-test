@@ -90,6 +90,7 @@ export type PerSessionState = {
   } | null
   pendingWorkflowTransition?: WorkflowTransitionCommand | null
   workflowTransitionError?: string | null
+  workflowTransitionErrorScope?: Pick<WorkflowTransitionCommand, 'phaseId' | 'stateVersion'> | null
   workflowTransitionResetKey?: number
 }
 
@@ -112,6 +113,10 @@ function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: stri
       sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
         pendingWorkflowTransition: null,
         workflowTransitionError: '阶段操作未收到服务端结果，已解除等待状态。请先检查当前阶段状态，再重试、调整结果、暂停或退出工作流。',
+        workflowTransitionErrorScope: {
+          phaseId: pending.phaseId,
+          ...(typeof pending.stateVersion === 'number' ? { stateVersion: pending.stateVersion } : {}),
+        },
         workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
       })),
     }))
@@ -144,6 +149,7 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   undoableSubmittedMessage: null,
   pendingWorkflowTransition: null,
   workflowTransitionError: null,
+  workflowTransitionErrorScope: null,
   workflowTransitionResetKey: 0,
 }
 
@@ -1040,6 +1046,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       sessions: updateSessionIn(state.sessions, sessionId, () => ({
         pendingWorkflowTransition: transition,
         workflowTransitionError: null,
+        workflowTransitionErrorScope: null,
       })),
     }))
     scheduleWorkflowTransitionTimeout(sessionId, transition.transitionId)
@@ -1533,13 +1540,20 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (msg.code === 'CLI_RESTART_FAILED') {
           restoreRuntimeSelectionAfterFailure(sessionId)
         }
-        if (isWorkflowTransitionError(msg.code) && get().sessions[sessionId]?.pendingWorkflowTransition) {
+        const pendingWorkflowTransition = get().sessions[sessionId]?.pendingWorkflowTransition
+        if (isWorkflowTransitionError(msg.code) && pendingWorkflowTransition) {
           clearWorkflowTransitionTimeout(sessionId)
           update((session) => ({
             pendingWorkflowTransition: null,
             workflowTransitionError: msg.code === 'WORKFLOW_STATE_STALE'
               ? '工作流状态已更新，请根据最新状态重新选择操作。'
               : `阶段操作未完成：${msg.message}`,
+            workflowTransitionErrorScope: {
+              phaseId: pendingWorkflowTransition.phaseId,
+              ...(typeof pendingWorkflowTransition.stateVersion === 'number'
+                ? { stateVersion: pendingWorkflowTransition.stateVersion }
+                : {}),
+            },
             workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
           }))
         }
@@ -1600,6 +1614,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           update((session) => ({
             pendingWorkflowTransition: null,
             workflowTransitionError: null,
+            workflowTransitionErrorScope: null,
             workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
           }))
           const session = get().sessions[sessionId]

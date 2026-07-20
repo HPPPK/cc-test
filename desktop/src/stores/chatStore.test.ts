@@ -1283,6 +1283,10 @@ Phase instructions: collect inputs
       expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
         pendingWorkflowTransition: null,
         workflowTransitionError: expect.stringContaining('未收到服务端结果'),
+        workflowTransitionErrorScope: {
+          phaseId: 'delegate-implement',
+          stateVersion: 25,
+        },
       })
     } finally {
       vi.useRealTimers()

@@ -2910,6 +2910,42 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
   })
 
+  it('does not show a timeout error after workflow state advances to a new confirmation', () => {
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation' as const,
+      activePhaseId: 'verify',
+      pendingConfirmation: true,
+    }
+    const { rerender } = render(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={17}
+        transitionError="Stage operation did not receive a server acknowledgement."
+        transitionErrorScope={{ phaseId: 'verify', stateVersion: 17 }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Stage operation did not receive a server acknowledgement.')).toBeInTheDocument()
+
+    rerender(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={18}
+        transitionError="Stage operation did not receive a server acknowledgement."
+        transitionErrorScope={{ phaseId: 'verify', stateVersion: 17 }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Stage operation did not receive a server acknowledgement.')).not.toBeInTheDocument()
+  })
+
   it('unlocks a new phase confirmation when an older transition remains pending in the store', () => {
     const workflow = {
       ...WORKFLOW_SUMMARY,

@@ -27,6 +27,7 @@ type WorkflowTransitionControlsProps = {
   stateVersion?: number
   pendingTransition?: WorkflowTransitionCommand | null
   transitionError?: string | null
+  transitionErrorScope?: { phaseId: string; stateVersion?: number } | null
   transitionResetKey?: number
   embedded?: boolean
   onConfirm: (command: WorkflowTransitionCommand) => void
@@ -39,6 +40,7 @@ export function WorkflowTransitionControls({
   stateVersion,
   pendingTransition = null,
   transitionError = null,
+  transitionErrorScope = null,
   transitionResetKey = 0,
   embedded = false,
   onConfirm,
@@ -82,6 +84,14 @@ export function WorkflowTransitionControls({
       && pendingTransition.stateVersion === stateVersion,
   )
   const transitionPending = localPending || pendingTransitionMatchesCurrentConfirmation
+  const transitionErrorMatchesCurrentConfirmation = Boolean(
+    transitionError
+      && (!transitionErrorScope || (
+        transitionErrorScope.phaseId === phaseId
+        && typeof transitionErrorScope.stateVersion === 'number'
+        && transitionErrorScope.stateVersion === stateVersion
+      )),
+  )
   const submitTransition = (
     handler: (command: WorkflowTransitionCommand) => void,
     action: WorkflowTransitionCommand['action'],
@@ -97,7 +107,7 @@ export function WorkflowTransitionControls({
       stateVersion,
     })
   }
-  const transitionNotice = transitionError || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
+  const transitionNotice = (transitionErrorMatchesCurrentConfirmation ? transitionError : null) || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
   if (blocked && !pending) {
     return (
       <section
