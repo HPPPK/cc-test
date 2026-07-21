@@ -141,6 +141,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     activePhaseId: metadata.activePhaseId,
     activePhaseIndex: activeIndex,
     phaseCount,
+    ...(typeof metadata.stateRevision === 'number' ? { stateVersion: metadata.stateRevision } : {}),
     ...(Array.isArray(metadata.phaseNames) ? { phaseNames: metadata.phaseNames.filter((name): name is string => typeof name === 'string') } : {}),
     pendingConfirmation,
     ...(metadata.pendingRoute && typeof metadata.pendingRoute === 'object' ? { pendingRoute: metadata.pendingRoute } : {}),

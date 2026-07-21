@@ -58,6 +58,12 @@ describe('RequestWorkflowRouteTool', () => {
     }
     expect(tool.inputSchema.safeParse(valid).success).toBe(true)
     expect(tool.inputSchema.safeParse({ ...valid, targetPhaseId: undefined }).success).toBe(false)
+    expect(tool.inputSchema.safeParse({
+      intent: 'route_to_workflow',
+      targetWorkflowId: 'debug-repair-workflow-v8',
+      rationale: 'Switch workflows.',
+      evidence: [],
+    }).success).toBe(false)
     expect(tool.inputSchema.safeParse({ ...valid, unknown: true }).success).toBe(false)
   })
 
@@ -67,6 +73,9 @@ describe('RequestWorkflowRouteTool', () => {
 
     expect(prompt).toContain('Do not use this tool for ordinary linear progression')
     expect(prompt).toContain('immediate linear next phase')
+    expect(prompt).toContain('pause and resume may be called directly')
+    expect(prompt).not.toContain('workflow switch')
+    expect(prompt).not.toContain('route_to_workflow')
   })
 
   test('reports a same-target route as the existing normal completion confirmation, not a second pending route', async () => {

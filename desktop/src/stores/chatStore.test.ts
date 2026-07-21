@@ -4,6 +4,10 @@ import { useSessionRuntimeStore } from './sessionRuntimeStore'
 
 const {
   sendMock,
+  sendWorkflowTransitionMock,
+  isConnectedMock,
+  onConnectionStateMock,
+  clearConnectionStateHandlersMock,
   getMemberBySessionIdMock,
   sendMessageToMemberMock,
   handleTeamCreatedMock,
@@ -23,6 +27,10 @@ const {
   cliTaskStoreSnapshot,
 } = vi.hoisted(() => ({
   sendMock: vi.fn(),
+  sendWorkflowTransitionMock: vi.fn<(...args: unknown[]) => Promise<'sent' | 'unavailable'>>(async () => 'sent'),
+  isConnectedMock: vi.fn(() => false),
+  onConnectionStateMock: vi.fn<(sessionId: string, handler: (state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected') => void) => () => void>(() => () => {}),
+  clearConnectionStateHandlersMock: vi.fn(),
   getMemberBySessionIdMock: vi.fn<(sessionId: string) => any>(() => null),
   sendMessageToMemberMock: vi.fn(async () => {}),
   handleTeamCreatedMock: vi.fn(),
@@ -66,10 +74,14 @@ vi.mock('../api/websocket', () => ({
     `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`,
   wsManager: {
     connect: vi.fn(),
+    isConnected: isConnectedMock,
+    onConnectionState: onConnectionStateMock,
+    clearConnectionStateHandlers: clearConnectionStateHandlersMock,
     disconnect: vi.fn(),
     onMessage: vi.fn(() => () => {}),
     clearHandlers: vi.fn(),
     send: sendMock,
+    sendWorkflowTransition: sendWorkflowTransitionMock,
   },
 }))
 
@@ -171,6 +183,13 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
 describe('chatStore history mapping', () => {
   beforeEach(() => {
     sendMock.mockReset()
+    sendWorkflowTransitionMock.mockReset()
+    sendWorkflowTransitionMock.mockResolvedValue('sent')
+    isConnectedMock.mockReset()
+    isConnectedMock.mockReturnValue(false)
+    onConnectionStateMock.mockReset()
+    onConnectionStateMock.mockReturnValue(() => {})
+    clearConnectionStateHandlersMock.mockReset()
     getMemberBySessionIdMock.mockReset()
     getMemberBySessionIdMock.mockReturnValue(null)
     sendMessageToMemberMock.mockReset()
@@ -1186,7 +1205,7 @@ Phase instructions: collect inputs
     })
   })
 
-  it('deduplicates a pending workflow transition and clears the lock after stale errors or a newer workflow state', () => {
+  it('deduplicates a pending workflow transition and clears the lock after stale errors or a newer workflow state', async () => {
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,
       title: 'Workflow Session',
@@ -1213,7 +1232,8 @@ Phase instructions: collect inputs
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
 
-    expect(sendMock).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(1)
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
       pendingWorkflowTransition: command,
       workflowTransitionError: null,
@@ -1231,7 +1251,8 @@ Phase instructions: collect inputs
     })
 
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
-    expect(sendMock).toHaveBeenCalledTimes(2)
+    await Promise.resolve()
+    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(2)
 
     useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
       type: 'system_notification',
@@ -1261,6 +1282,136 @@ Phase instructions: collect inputs
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
       pendingWorkflowTransition: null,
       workflowTransitionError: null,
+    })
+  })
+
+  it('supersedes an older phase transition so a new confirmation can be sent', async () => {
+    const olderTransition = {
+      phaseId: 'local-preview',
+      action: 'confirm' as const,
+      transitionId: 'workflow-transition:local-preview:17:confirm',
+      stateVersion: 17,
+    }
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({ pendingWorkflowTransition: olderTransition }),
+      },
+    })
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, {
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 25,
+    })
+
+    await Promise.resolve()
+
+    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(1)
+    expect(sendWorkflowTransitionMock).toHaveBeenCalledWith(TEST_SESSION_ID, expect.objectContaining({
+      type: 'workflow_transition',
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 25,
+      transitionId: 'workflow-transition:delegate-implement:25:confirm',
+    }))
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).toMatchObject({
+      phaseId: 'delegate-implement',
+      stateVersion: 25,
+    })
+  })
+
+  it('keeps a pending transition when a reconnect snapshot has the same state version', async () => {
+    useChatStore.setState({ sessions: { [TEST_SESSION_ID]: makeSession() } })
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, {
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 25,
+    })
+    await Promise.resolve()
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        mode: 'workflow',
+        templateId: 'requirements-to-implementation',
+        templateVersion: '1',
+        templateSource: 'builtin',
+        templateSnapshotId: 'requirements-to-implementation-v1',
+        status: 'pending-confirmation',
+        activePhaseId: 'delegate-implement',
+        activePhaseIndex: 3,
+        phaseCount: 5,
+        stateVersion: 25,
+        pendingConfirmation: true,
+        statePointer: {
+          kind: 'workflow-state',
+          sessionId: TEST_SESSION_ID,
+          artifactId: 'state',
+          schemaVersion: 1,
+          createdAt: '2026-05-20T00:00:00.000Z',
+        },
+      },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).toMatchObject({
+      phaseId: 'delegate-implement',
+      stateVersion: 25,
+    })
+  })
+
+  it('does not send a transition with a missing state version and refreshes state instead', async () => {
+    useChatStore.setState({ sessions: { [TEST_SESSION_ID]: makeSession() } })
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, {
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+    })
+    await Promise.resolve()
+
+    expect(sendWorkflowTransitionMock).not.toHaveBeenCalled()
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: expect.stringContaining('正在同步工作流最新状态'),
+    })
+  })
+
+  it('reconnects when the store is stale-connected but the WebSocket is not open', () => {
+    let reportConnectionState: ((state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected') => void) | undefined
+    onConnectionStateMock.mockImplementation((_sessionId, handler) => {
+      reportConnectionState = handler
+      return () => {}
+    })
+    useChatStore.setState({ sessions: { [TEST_SESSION_ID]: makeSession({ connectionState: 'connected' }) } })
+    isConnectedMock.mockReturnValue(false)
+
+    useChatStore.getState().connectToSession(TEST_SESSION_ID)
+    reportConnectionState?.('reconnecting')
+
+    expect(onConnectionStateMock).toHaveBeenCalledWith(TEST_SESSION_ID, expect.any(Function))
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.connectionState).toBe('reconnecting')
+  })
+
+  it('does not leave a workflow confirmation pending when the transition cannot be delivered', async () => {
+    sendWorkflowTransitionMock.mockResolvedValueOnce('unavailable')
+    useChatStore.setState({
+      sessions: { [TEST_SESSION_ID]: makeSession() },
+    })
+
+    useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, {
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 25,
+    })
+
+    await Promise.resolve()
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: expect.stringContaining('尚未提交'),
+      workflowTransitionErrorScope: {
+        phaseId: 'delegate-implement',
+        stateVersion: 25,
+      },
     })
   })
 

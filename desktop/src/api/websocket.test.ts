@@ -98,6 +98,67 @@ describe('wsManager reconnect buffering', () => {
     ])
   })
 
+  it('reports socket close and reconnect lifecycle to subscribers', async () => {
+    const states: string[] = []
+    wsManager.onConnectionState('connection-lifecycle', (state) => states.push(state))
+
+    wsManager.connect('connection-lifecycle')
+    const firstSocket = FakeWebSocket.instances[0]!
+    expect(states).toEqual(['connecting'])
+
+    firstSocket.open()
+    firstSocket.fail()
+    await vi.advanceTimersByTimeAsync(1_000)
+    const secondSocket = FakeWebSocket.instances[1]!
+    secondSocket.open()
+
+    expect(states).toEqual(['connecting', 'connected', 'reconnecting', 'connecting', 'connected'])
+  })
+
+  it('does not enqueue a workflow transition indefinitely while the socket is unavailable', async () => {
+    wsManager.connect('workflow-transition-recovery')
+
+    const result = wsManager.sendWorkflowTransition('workflow-transition-recovery', {
+      type: 'workflow_transition',
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 22,
+      transitionId: 'workflow-transition:delegate-implement:22:confirm',
+    }, { timeoutMs: 1_000 })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    await expect(result).resolves.toBe('unavailable')
+    FakeWebSocket.instances[0]!.open()
+    expect(FakeWebSocket.instances[0]?.sent).toEqual([])
+  })
+
+  it('sends a workflow transition once when the socket opens during a bounded recovery window', async () => {
+    wsManager.connect('workflow-transition-recovery')
+
+    const result = wsManager.sendWorkflowTransition('workflow-transition-recovery', {
+      type: 'workflow_transition',
+      phaseId: 'delegate-implement',
+      action: 'confirm',
+      stateVersion: 22,
+      transitionId: 'workflow-transition:delegate-implement:22:confirm',
+    }, { timeoutMs: 1_000 })
+
+    await vi.advanceTimersByTimeAsync(200)
+    FakeWebSocket.instances[0]!.open()
+
+    await expect(result).resolves.toBe('sent')
+    expect(FakeWebSocket.instances[0]?.sent).toEqual([
+      JSON.stringify({
+        type: 'workflow_transition',
+        phaseId: 'delegate-implement',
+        action: 'confirm',
+        stateVersion: 22,
+        transitionId: 'workflow-transition:delegate-implement:22:confirm',
+      }),
+    ])
+  })
+
   it('creates deterministic workflow transition IDs from phase, state version, and action', () => {
     expect(createWorkflowTransitionId('technical-design', 17, 'confirm')).toBe(
       'workflow-transition:technical-design:17:confirm',

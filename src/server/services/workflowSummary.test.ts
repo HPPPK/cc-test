@@ -108,6 +108,7 @@ describe('workflowSummaryFromState', () => {
       activePhaseId: 'requirements-clarification',
       activePhaseIndex: 0,
       phaseCount: 2,
+      stateVersion: 2,
       pendingConfirmation: true,
       transitionAuthority: 'user-confirmation',
       statePointer: {

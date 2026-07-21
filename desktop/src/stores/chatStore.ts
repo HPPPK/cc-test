@@ -127,6 +127,26 @@ function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: stri
   workflowTransitionTimeouts.set(sessionId, timeout)
 }
 
+function releaseUnavailableWorkflowTransition(
+  sessionId: string,
+  transition: WorkflowTransitionCommand,
+): void {
+  const pending = useChatStore.getState().sessions[sessionId]?.pendingWorkflowTransition
+  if (pending?.transitionId !== transition.transitionId) return
+
+  useChatStore.setState((state) => ({
+    sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: '工作流连接暂不可用，阶段操作尚未提交。连接恢复后请基于当前阶段状态重试。',
+      workflowTransitionErrorScope: {
+        phaseId: transition.phaseId,
+        ...(typeof transition.stateVersion === 'number' ? { stateVersion: transition.stateVersion } : {}),
+      },
+      workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+    })),
+  }))
+}
+
 async function refreshWorkflowSessionAfterTransitionTimeout(sessionId: string): Promise<void> {
   try {
     const { sessions } = await sessionsApi.list({ limit: 200 })
@@ -789,22 +809,27 @@ export const useChatStore = create<ChatStore>((set, get) => {
     void useCLITaskStore.getState().fetchSessionTasks(sessionId)
 
     const existing = get().sessions[sessionId]
-    if (existing && existing.connectionState !== 'disconnected') return
+    if (existing && wsManager.isConnected(sessionId)) return
 
     set((s) => ({
-      sessions: {
-        ...s.sessions,
-        [sessionId]: {
-          ...createDefaultSessionState(),
-          connectionState: 'connecting',
-          messages: existing?.messages ?? [],
-          activeGoal: existing?.activeGoal ?? null,
-          composerDraft: existing?.composerDraft ?? null,
-        },
-      },
+      sessions: existing
+        ? updateSessionIn(s.sessions, sessionId, (session) => ({ ...session, connectionState: 'connecting' }))
+        : {
+            ...s.sessions,
+            [sessionId]: {
+              ...createDefaultSessionState(),
+              connectionState: 'connecting',
+            },
+          },
     }))
 
     wsManager.clearHandlers(sessionId)
+    wsManager.clearConnectionStateHandlers(sessionId)
+    wsManager.onConnectionState(sessionId, (connectionState) => {
+      set((s) => ({
+        sessions: updateSessionIn(s.sessions, sessionId, (session) => ({ ...session, connectionState })),
+      }))
+    })
     wsManager.connect(sessionId)
     wsManager.onMessage(sessionId, (msg) => {
       if (msg.type === 'connected') {
@@ -1058,11 +1083,32 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   sendWorkflowTransition: (sessionId, command) => {
-    if (get().sessions[sessionId]?.pendingWorkflowTransition) return
+    const stateVersion = command.stateVersion
+    if (typeof stateVersion !== 'number' || !Number.isInteger(stateVersion) || stateVersion < 0) {
+      set((state) => ({
+        sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+          pendingWorkflowTransition: null,
+          workflowTransitionError: '正在同步工作流最新状态，暂时无法提交阶段操作。请稍候后重试。',
+          workflowTransitionErrorScope: null,
+          workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+        })),
+      }))
+      void refreshWorkflowSessionAfterTransitionTimeout(sessionId)
+      return
+    }
+
+    const pendingTransition = get().sessions[sessionId]?.pendingWorkflowTransition
+    if (
+      pendingTransition
+      && pendingTransition.phaseId === command.phaseId
+      && pendingTransition.stateVersion === stateVersion
+    ) return
+    if (pendingTransition) clearWorkflowTransitionTimeout(sessionId)
 
     const transition = {
       ...command,
-      transitionId: createWorkflowTransitionId(command.phaseId, command.stateVersion, command.action),
+      transitionId: createWorkflowTransitionId(command.phaseId, stateVersion, command.action),
+      stateVersion,
     }
     set((state) => ({
       sessions: updateSessionIn(state.sessions, sessionId, () => ({
@@ -1071,10 +1117,21 @@ export const useChatStore = create<ChatStore>((set, get) => {
         workflowTransitionErrorScope: null,
       })),
     }))
-    scheduleWorkflowTransitionTimeout(sessionId, transition.transitionId)
-    wsManager.send(sessionId, {
+    void wsManager.sendWorkflowTransition(sessionId, {
       type: 'workflow_transition',
       ...transition,
+    }).then((result) => {
+      if (result !== 'sent') {
+        releaseUnavailableWorkflowTransition(sessionId, transition)
+        return
+      }
+
+      const pending = get().sessions[sessionId]?.pendingWorkflowTransition
+      if (pending?.transitionId === transition.transitionId) {
+        scheduleWorkflowTransitionTimeout(sessionId, transition.transitionId)
+      }
+    }).catch(() => {
+      releaseUnavailableWorkflowTransition(sessionId, transition)
     })
   },
 
@@ -1624,8 +1681,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         break
       case 'system_notification':
         if (msg.subtype === 'workflow_state' && isWorkflowSummary(msg.data)) {
-          clearWorkflowTransitionTimeout(sessionId)
           const workflow = msg.data
+          const pendingTransition = get().sessions[sessionId]?.pendingWorkflowTransition
+          const resolvesPendingTransition = !pendingTransition || (
+            typeof workflow.stateVersion === 'number'
+            && workflow.stateVersion !== pendingTransition.stateVersion
+          )
+          if (resolvesPendingTransition) clearWorkflowTransitionTimeout(sessionId)
           useSessionStore.setState((state) => ({
             sessions: state.sessions.map((item) =>
               item.id === sessionId
@@ -1633,12 +1695,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 : item,
             ),
           }))
-          update((session) => ({
-            pendingWorkflowTransition: null,
-            workflowTransitionError: null,
-            workflowTransitionErrorScope: null,
-            workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
-          }))
+          if (resolvesPendingTransition) {
+            update((session) => ({
+              pendingWorkflowTransition: null,
+              workflowTransitionError: null,
+              workflowTransitionErrorScope: null,
+              workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+            }))
+          }
           const session = get().sessions[sessionId]
           if (
             session &&

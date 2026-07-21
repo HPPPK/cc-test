@@ -503,6 +503,8 @@ export type WorkflowSessionSummary = {
   activePhaseId: string | null
   activePhaseIndex: number
   phaseCount: number
+  /** Optimistic-concurrency version required for workflow transition commands. */
+  stateVersion?: number
   pendingConfirmation: boolean
   pendingRoute?: WorkflowPendingRoute | null
   pendingTargetPhaseId?: string | null
@@ -622,7 +624,6 @@ export const WORKFLOW_ROUTE_INTENTS = [
   'advance',
   'rework_current_phase',
   'jump_to_phase',
-  'route_to_workflow',
   'pause',
   'resume',
   'finish',
@@ -635,7 +636,6 @@ export type WorkflowRouteRequest = {
   stateVersion?: number
   intent: WorkflowRouteIntent
   targetPhaseId?: string
-  targetWorkflowId?: string
   rationale: string
   evidence: Array<JsonObject>
   requireUserConfirmation?: boolean
@@ -646,7 +646,6 @@ export type WorkflowPendingRoute = {
   phaseId: string
   fromPhaseId: string
   targetPhaseId: string | null
-  targetWorkflowId?: string
   intent: WorkflowRouteIntent
   rationale: string
   evidence: Array<JsonObject>
@@ -952,7 +951,6 @@ export type WorkflowTransitionRequest = {
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   routeIntent?: WorkflowRouteIntent
   targetPhaseId?: string
-  targetWorkflowId?: string
   rationale?: string
   evidence?: Array<JsonObject>
   requireUserConfirmation?: boolean

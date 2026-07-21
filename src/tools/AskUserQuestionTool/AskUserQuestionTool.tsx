@@ -13,15 +13,11 @@ import { lazySchema } from '../../utils/lazySchema.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
 const workflowRouteActionSchema = z.strictObject({
   kind: z.literal('workflow-route'),
-  intent: z.enum(['advance', 'rework_current_phase', 'jump_to_phase', 'route_to_workflow', 'pause', 'resume', 'finish']),
+  intent: z.enum(['advance', 'rework_current_phase', 'jump_to_phase', 'pause', 'resume', 'finish']),
   targetPhaseId: z.string().min(1).optional(),
-  targetWorkflowId: z.string().min(1).optional(),
 }).superRefine((value, ctx) => {
   if (value.intent === 'jump_to_phase' && !value.targetPhaseId) {
     ctx.addIssue({ code: 'custom', path: ['targetPhaseId'], message: 'jump_to_phase requires targetPhaseId.' })
-  }
-  if (value.intent === 'route_to_workflow' && !value.targetWorkflowId) {
-    ctx.addIssue({ code: 'custom', path: ['targetWorkflowId'], message: 'route_to_workflow requires targetWorkflowId.' })
   }
 })
 

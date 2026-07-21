@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   getTasksForList: vi.fn(),
   resetTaskList: vi.fn(),
   wsClearHandlers: vi.fn(),
+  wsClearConnectionStateHandlers: vi.fn(),
+  wsIsConnected: vi.fn(() => true),
+  wsOnConnectionState: vi.fn(() => () => {}),
   wsConnect: vi.fn(),
   wsOnMessage: vi.fn(),
   wsSend: vi.fn(),
@@ -60,6 +63,9 @@ vi.mock('../api/cliTasks', () => ({
 vi.mock('../api/websocket', () => ({
   wsManager: {
     clearHandlers: mocks.wsClearHandlers,
+    clearConnectionStateHandlers: mocks.wsClearConnectionStateHandlers,
+    isConnected: mocks.wsIsConnected,
+    onConnectionState: mocks.wsOnConnectionState,
     connect: mocks.wsConnect,
     onMessage: mocks.wsOnMessage,
     send: mocks.wsSend,

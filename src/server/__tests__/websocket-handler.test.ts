@@ -15,6 +15,7 @@ import {
 } from '../ws/handler.js'
 import { conversationService } from '../services/conversationService.js'
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
+import { diagnosticsService } from '../services/diagnosticsService.js'
 import { sessionService } from '../services/sessionService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import type { WorkflowSessionState, WorkflowTemplate } from '../services/workflowTypes.js'
@@ -49,8 +50,16 @@ afterEach(() => {
   setWorkflowRuntimeTemplateLoaderForTests(null)
 })
 
-function makeClientSocket(sessionId: string) {
+type TestClientSocket = ServerWebSocket<WebSocketData> & {
+  sent: string[]
+  setSendResult: (result: number) => void
+  setSendError: (error: Error | null) => void
+}
+
+function makeClientSocket(sessionId: string): TestClientSocket {
   const sent: string[] = []
+  let sendResult = 1
+  let sendError: Error | null = null
   return {
     data: {
       sessionId,
@@ -61,11 +70,19 @@ function makeClientSocket(sessionId: string) {
       serverHost: '127.0.0.1',
     },
     send: mock((payload: string) => {
+      if (sendError) throw sendError
       sent.push(payload)
+      return sendResult
     }),
     close: mock(() => {}),
     sent,
-  } as unknown as ServerWebSocket<WebSocketData> & { sent: string[] }
+    setSendResult: (result: number) => {
+      sendResult = result
+    },
+    setSendError: (error: Error | null) => {
+      sendError = error
+    },
+  } as unknown as TestClientSocket
 }
 
 async function flushAsyncHandlers() {
@@ -503,6 +520,134 @@ describe('WebSocket handler session isolation', () => {
     expect(getActiveSessionIds()).toContain(sessionId)
     expect(clearCallbacks).not.toHaveBeenCalled()
     expect(cancelComputerUse).not.toHaveBeenCalled()
+  })
+
+  it('records structured client WebSocket lifecycle diagnostics and cleans output callbacks on close', () => {
+    const sessionId = `lifecycle-75f257d8-fa64-4cd4-a696-ed6dfe58ea59`
+    const ws = makeClientSocket(sessionId)
+    const recordEvent = spyOn(diagnosticsService, 'recordEvent').mockResolvedValue()
+    const removeOutputCallback = spyOn(conversationService, 'removeOutputCallback').mockImplementation(() => {})
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+
+    handleWebSocket.open(ws)
+    handleWebSocket.close(ws, 1006, 'abnormal closure')
+
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'ws_client_open',
+      severity: 'info',
+      sessionId,
+      details: expect.objectContaining({ channel: 'client' }),
+    }))
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'ws_client_close',
+      severity: 'warn',
+      sessionId,
+      details: expect.objectContaining({
+        channel: 'client',
+        code: 1006,
+        reason: 'abnormal closure',
+      }),
+    }))
+    expect(removeOutputCallback).toHaveBeenCalledWith(sessionId, expect.any(Function))
+    expect(getActiveSessionIds()).not.toContain(sessionId)
+  })
+
+  it('drops a stale client when a session broadcast send returns zero', () => {
+    const sessionId = `send-dropped-11f24348-37a3-4647-aa89-bd050edae407`
+    const ws = makeClientSocket(sessionId)
+    const recordEvent = spyOn(diagnosticsService, 'recordEvent').mockResolvedValue()
+
+    handleWebSocket.open(ws)
+    recordEvent.mockClear()
+    ws.setSendResult(0)
+
+    expect(sendToSession(sessionId, {
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    })).toBe(false)
+
+    expect(getActiveSessionIds()).not.toContain(sessionId)
+    expect(ws.close).toHaveBeenCalledWith(1011, 'WebSocket send failed')
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'ws_client_send_failed',
+      severity: 'warn',
+      sessionId,
+      details: expect.objectContaining({
+        channel: 'client',
+        reason: 'send_dropped',
+        sendResult: 0,
+      }),
+    }))
+  })
+
+  it('keeps a backpressured client active when a session broadcast send returns minus one', () => {
+    const sessionId = `send-backpressure-7495941a-4193-4b43-8dab-8f8cc4d1afbd`
+    const ws = makeClientSocket(sessionId)
+
+    handleWebSocket.open(ws)
+    ws.setSendResult(-1)
+
+    expect(sendToSession(sessionId, {
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    })).toBe(true)
+
+    expect(getActiveSessionIds()).toContain(sessionId)
+    expect(ws.close).not.toHaveBeenCalled()
+  })
+
+  it('removes only dropped clients while preserving delivery to healthy clients', () => {
+    const sessionId = `send-multi-3cc11bfd-7d59-4a6e-a50f-f3880ca1b395`
+    const dropped = makeClientSocket(sessionId)
+    const healthy = makeClientSocket(sessionId)
+
+    handleWebSocket.open(dropped)
+    handleWebSocket.open(healthy)
+    dropped.setSendResult(0)
+
+    expect(sendToSession(sessionId, {
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    })).toBe(true)
+
+    expect(dropped.close).toHaveBeenCalledWith(1011, 'WebSocket send failed')
+    expect(healthy.close).not.toHaveBeenCalled()
+    expect(parseSentMessages(healthy)).toContainEqual(expect.objectContaining({
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+    }))
+  })
+
+  it('drops a stale client when a session broadcast send throws', () => {
+    const sessionId = `send-threw-568f2b9c-cd20-4594-9a35-265e1c2089d8`
+    const ws = makeClientSocket(sessionId)
+    const recordEvent = spyOn(diagnosticsService, 'recordEvent').mockResolvedValue()
+
+    handleWebSocket.open(ws)
+    recordEvent.mockClear()
+    ws.setSendError(new Error('broken pipe'))
+
+    expect(sendToSession(sessionId, {
+      type: 'system_notification',
+      subtype: 'test_broadcast',
+      data: { ok: true },
+    })).toBe(false)
+
+    expect(getActiveSessionIds()).not.toContain(sessionId)
+    expect(ws.close).toHaveBeenCalledWith(1011, 'WebSocket send failed')
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'ws_client_send_failed',
+      severity: 'warn',
+      sessionId,
+      details: expect.objectContaining({
+        channel: 'client',
+        reason: 'broken pipe',
+      }),
+    }))
   })
 
   it('closes and removes an active client socket when a session is deleted', () => {
@@ -1806,6 +1951,50 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(resetTurn).toContain('Expert Mode is exited')
     expect(resetTurn).toContain('Continue as normal chat.')
     expect(resetTurn).not.toContain('<expert-runtime>')
+  })
+
+  it('sends an authoritative workflow state snapshot when a running workflow client reconnects', async () => {
+    const sessionId = `workflow-reconnect-${crypto.randomUUID()}`
+    const first = makeClientSocket(sessionId)
+    const reconnected = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const state = makeWorkflowState(sessionId)
+    state.status = 'pending-confirmation'
+    state.workflowStatus = 'pending-confirmation'
+    state.runStatus = 'waiting_for_user'
+    state.pendingConfirmation = {
+      status: 'pending',
+      phaseId: 'requirements-clarification',
+      nextPhaseId: 'technical-design',
+      stateVersion: state.stateVersion,
+      createdAt: '2026-05-20T00:00:00.000Z',
+    }
+    await stateService.writeState(sessionId, state)
+
+    handleWebSocket.open(first)
+    handleWebSocket.close(first, 1006, 'network interrupted')
+    handleWebSocket.open(reconnected)
+    await waitForCondition(() => parseSentMessages(reconnected).some((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    ))
+
+    const snapshots = parseSentMessages(reconnected).filter((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    )
+    expect(snapshots).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        mode: 'workflow',
+        status: 'pending-confirmation',
+        runStatus: 'waiting_for_user',
+        activePhaseId: 'requirements-clarification',
+        stateVersion: state.stateVersion,
+        pendingConfirmation: true,
+      }),
+    }))
+    expect(parseSentMessages(reconnected)).not.toContainEqual(expect.objectContaining({
+      type: 'system_notification',
+      subtype: 'workflow_welcome',
+    }))
   })
 
   it('assembles workflow-only phase guidance before sending a workflow session user turn', async () => {

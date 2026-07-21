@@ -7,9 +7,8 @@ import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 
 type WorkflowRouteOptionAction = {
   kind: 'workflow-route'
-  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'pause' | 'resume' | 'finish'
   targetPhaseId?: string
-  targetWorkflowId?: string
 }
 
 type QuestionOption = {

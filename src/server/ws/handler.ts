@@ -188,6 +188,109 @@ function hasActiveClients(sessionId: string): boolean {
   return (activeSessions.get(sessionId)?.size ?? 0) > 0
 }
 
+function scheduleSessionCleanupAfterClientDisconnect(sessionId: string): void {
+  if (hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId)) return
+
+  computerUseApprovalService.cancelSession(sessionId)
+  const cleanupTimer = setTimeout(() => {
+    sessionCleanupTimers.delete(sessionId)
+    if (!hasActiveClients(sessionId)) {
+      console.log(`[WS] Session ${sessionId} not reconnected after 30s, stopping CLI subprocess`)
+      conversationService.stopSession(sessionId)
+      cleanupSessionRuntimeState(sessionId)
+    }
+  }, 30_000)
+  sessionCleanupTimers.set(sessionId, cleanupTimer)
+}
+
+function removeDisconnectedClient(
+  sessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): boolean {
+  const removed = removeActiveClient(sessionId, ws)
+  // Always clear the callback mapping, including duplicate close notifications.
+  removeClientOutputCallback(ws)
+  if (removed) {
+    scheduleSessionCleanupAfterClientDisconnect(sessionId)
+  }
+  return removed
+}
+
+function removeStaleClientAfterSendFailure(
+  ws: ServerWebSocket<WebSocketData>,
+  messageType: string,
+  details: Record<string, unknown>,
+): void {
+  const { sessionId, channel } = ws.data
+  void diagnosticsService.recordEvent({
+    type: 'ws_client_send_failed',
+    severity: 'warn',
+    sessionId,
+    summary: 'Client WebSocket send failed; removing stale client',
+    details: {
+      channel,
+      messageType,
+      ...details,
+    },
+  })
+
+  removeDisconnectedClient(sessionId, ws)
+  try {
+    ws.close(1011, 'WebSocket send failed')
+  } catch (error) {
+    void diagnosticsService.recordEvent({
+      type: 'ws_client_close_failed',
+      severity: 'warn',
+      sessionId,
+      summary: 'Failed to close stale client WebSocket after send failure',
+      details: {
+        channel,
+        messageType,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+  }
+}
+
+type ClientSendOutcome = 'sent' | 'backpressured' | 'dropped'
+
+function sendToClient(
+  ws: ServerWebSocket<WebSocketData>,
+  payload: string,
+  messageType: string,
+): ClientSendOutcome {
+  try {
+    const sendResult = ws.send(payload)
+    if (sendResult === 0) {
+      removeStaleClientAfterSendFailure(ws, messageType, {
+        reason: 'send_dropped',
+        sendResult,
+      })
+      return 'dropped'
+    }
+    if (sendResult === -1) {
+      void diagnosticsService.recordEvent({
+        type: 'ws_client_backpressure',
+        severity: 'warn',
+        sessionId: ws.data.sessionId,
+        summary: 'Client WebSocket send queued because of backpressure',
+        details: {
+          channel: ws.data.channel,
+          messageType,
+          sendResult,
+        },
+      })
+      return 'backpressured'
+    }
+    return 'sent'
+  } catch (error) {
+    removeStaleClientAfterSendFailure(ws, messageType, {
+      reason: error instanceof Error ? error.message : String(error),
+    })
+    return 'dropped'
+  }
+}
+
 export const handleWebSocket = {
   open(ws: ServerWebSocket<WebSocketData>) {
     const { sessionId, channel, sdkToken } = ws.data
@@ -218,6 +321,19 @@ export const handleWebSocket = {
     }
 
     console.log(`[WS] Client connected for session: ${sessionId}`)
+    void diagnosticsService.recordEvent({
+      type: 'ws_client_open',
+      severity: 'info',
+      sessionId,
+      summary: 'Client WebSocket connected',
+      details: {
+        channel,
+        connectedAt: ws.data.connectedAt,
+      },
+    })
+
+    // A second socket or a pending cleanup timer means this client is reconnecting.
+    const isReconnect = hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId)
 
     // Cancel pending cleanup timer if client reconnects
     const pendingTimer = sessionCleanupTimers.get(sessionId)
@@ -234,7 +350,16 @@ export const handleWebSocket = {
     }
 
     const msg: ServerMessage = { type: 'connected', sessionId }
-    ws.send(JSON.stringify(msg))
+    if (sendMessage(ws, msg) === 'dropped') return
+    if (isReconnect) {
+      sendWorkflowStateSnapshotIfAvailable(ws, sessionId).catch((err) => {
+        console.warn(
+          `[WS] Failed to send workflow state snapshot for ${sessionId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        )
+      })
+    }
     sendWorkflowWelcomeIfNeeded(ws, sessionId).catch((err) => {
       console.warn(
         `[WS] Failed to send workflow welcome for ${sessionId}: ${
@@ -300,7 +425,7 @@ export const handleWebSocket = {
           break
 
         case 'ping':
-          ws.send(JSON.stringify({ type: 'pong' } satisfies ServerMessage))
+          sendMessage(ws, { type: 'pong' } satisfies ServerMessage)
           break
 
         default:
@@ -321,27 +446,21 @@ export const handleWebSocket = {
     }
 
     console.log(`[WS] Client disconnected from session: ${sessionId} (${code}: ${reason})`)
-    if (!removeActiveClient(sessionId, ws)) {
+    void diagnosticsService.recordEvent({
+      type: 'ws_client_close',
+      severity: code === 1000 ? 'info' : 'warn',
+      sessionId,
+      summary: `Client WebSocket disconnected (${code}: ${reason || 'no reason'})`,
+      details: {
+        channel,
+        code,
+        reason,
+        connectedAt: ws.data.connectedAt,
+      },
+    })
+    if (!removeDisconnectedClient(sessionId, ws)) {
       console.log(`[WS] Ignoring stale client disconnect for session: ${sessionId}`)
-      return
     }
-    removeClientOutputCallback(ws)
-    if (hasActiveClients(sessionId)) {
-      return
-    }
-    computerUseApprovalService.cancelSession(sessionId)
-
-    // Schedule delayed cleanup: if the client doesn't reconnect within 30 seconds,
-    // stop the CLI subprocess to avoid leaking resources.
-    const cleanupTimer = setTimeout(() => {
-      sessionCleanupTimers.delete(sessionId)
-      if (!hasActiveClients(sessionId)) {
-        console.log(`[WS] Session ${sessionId} not reconnected after 30s, stopping CLI subprocess`)
-        conversationService.stopSession(sessionId)
-        cleanupSessionRuntimeState(sessionId)
-      }
-    }, 30_000)
-    sessionCleanupTimers.set(sessionId, cleanupTimer)
   },
 
   drain(ws: ServerWebSocket<WebSocketData>) {
@@ -512,6 +631,23 @@ async function handleDesktopClearCommand(
     type: 'message_complete',
     usage: { input_tokens: 0, output_tokens: 0 },
   })
+}
+
+async function sendWorkflowStateSnapshotIfAvailable(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+): Promise<void> {
+  const workflow = await getWorkflowMetadata(sessionId)
+  if (!workflow && !sessionId.startsWith('workflow-')) return
+
+  const state = await loadWorkflowStateForWebSocket(sessionId, workflow ?? undefined)
+  if (!state) return
+
+  sendMessage(ws, workflowNotificationForDesktop({
+    type: 'system_notification',
+    subtype: 'workflow_state',
+    data: state,
+  }) as ServerMessage)
 }
 
 async function sendWorkflowWelcomeIfNeeded(
@@ -767,9 +903,8 @@ async function handlePermissionResponse(
 
 type WorkflowRouteChoiceAction = {
   kind: 'workflow-route'
-  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+  intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'pause' | 'resume' | 'finish'
   targetPhaseId?: string
-  targetWorkflowId?: string
 }
 
 type WorkflowChoiceAction = {
@@ -1031,7 +1166,6 @@ async function applyWorkflowBoundaryTransition(
         stateVersion: message.stateVersion,
         intent: message.routeIntent,
         targetPhaseId: message.targetPhaseId,
-        targetWorkflowId: message.targetWorkflowId,
         rationale: message.rationale,
         evidence: message.evidence,
         requireUserConfirmation: message.requireUserConfirmation,
@@ -2414,9 +2548,9 @@ function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessa
   }
 }
 
-function sendMessage(ws: ServerWebSocket<WebSocketData>, message: ServerMessage) {
+function sendMessage(ws: ServerWebSocket<WebSocketData>, message: ServerMessage): ClientSendOutcome {
   syncSessionChatStateFromMessage(ws.data.sessionId, message)
-  ws.send(JSON.stringify(message))
+  return sendToClient(ws, JSON.stringify(message), message.type)
 }
 
 function sendError(ws: ServerWebSocket<WebSocketData>, message: string, code: string) {
@@ -2704,9 +2838,9 @@ function broadcastCliMessagesToSession(sessionId: string, cliMsg: any): void {
   const serverMsgs = translateCliMessage(cliMsg, sessionId)
   const clients = activeSessions.get(sessionId)
   if (clients) {
-    for (const ws of clients) {
+    for (const ws of [...clients]) {
       for (const msg of serverMsgs) {
-        sendMessage(ws, msg)
+        if (sendMessage(ws, msg) === 'dropped') break
       }
     }
   }
@@ -2884,11 +3018,11 @@ function buildWorkflowProtocolInputValidationRecoveryInstruction(
     : (isChinese
       ? [
           '立即重新调用 request_workflow_route，并提供：intent、rationale（非空字符串）和 evidence（数组）。',
-          '当 intent 为 jump_to_phase 时必须提供 targetPhaseId；当 intent 为 route_to_workflow 时必须提供 targetWorkflowId。',
+          '当 intent 为 jump_to_phase 时必须提供 targetPhaseId。',
         ]
       : [
           'Immediately call request_workflow_route again with intent, rationale (a non-empty string), and evidence (an array).',
-          'targetPhaseId is required for jump_to_phase; targetWorkflowId is required for route_to_workflow.',
+          'targetPhaseId is required for jump_to_phase.',
         ])
   const instruction = isChinese
     ? [
@@ -3178,7 +3312,7 @@ function buildWorkflowRuntimeBindingInstruction(
     'The current process has registered submit_phase_completion and request_workflow_route for this active workflow phase.',
     'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
     'Use the actual current tool result as the only source of truth. When this phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
-    'Use request_workflow_route only for a true non-linear route, rework, workflow switch, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion; after a Stage 4 repair, a confirmed normal completion enters Stage 5 automatically.',
+    'Use request_workflow_route only for a true non-linear route, rework, jump_to_phase, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion; after a Stage 4 repair, a confirmed normal completion enters Stage 5 automatically.',
     'Obey the current phase tool policy even if an older transcript turn used a now-forbidden tool.',
     '</desktop-workflow-runtime-binding>',
   ].join('\n')
@@ -3605,11 +3739,15 @@ function isWorkflowSessionState(value: unknown): value is WorkflowSessionState {
 export function sendToSession(sessionId: string, message: ServerMessage): boolean {
   const clients = activeSessions.get(sessionId)
   if (!clients || clients.size === 0) return false
+
   const payload = JSON.stringify(message)
-  for (const ws of clients) {
-    ws.send(payload)
+  let delivered = false
+  for (const ws of [...clients]) {
+    if (sendToClient(ws, payload, message.type) !== 'dropped') {
+      delivered = true
+    }
   }
-  return true
+  return delivered
 }
 
 export function updateSessionSlashCommands(

@@ -69,9 +69,8 @@ type WorkflowRuntimeServiceContract = {
     request: {
       phaseId?: string
       stateVersion?: number
-      intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      intent: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'pause' | 'resume' | 'finish'
       targetPhaseId?: string
-      targetWorkflowId?: string
       rationale: string
       evidence: Array<Record<string, unknown>>
       requireUserConfirmation?: boolean
@@ -1837,7 +1836,7 @@ describe('WorkflowRuntimeService', () => {
     expect(state.runStatus).toBe('blocked')
   })
 
-  test('rejects route_to_workflow instead of interpreting it as finish', async () => {
+  test('defensively rejects a legacy cross-workflow route received outside the typed contract', async () => {
     const service = await makeService()
     const state = makeState({
       workflowStatus: 'pending-confirmation', status: 'pending-confirmation', runStatus: 'waiting_for_user',
@@ -1855,7 +1854,7 @@ describe('WorkflowRuntimeService', () => {
       request: {
         phaseId: 'requirements', stateVersion: state.stateVersion, intent: 'route_to_workflow',
         targetWorkflowId: 'debug-repair-workflow-v8', rationale: 'This needs a dedicated debug workflow.', evidence: [],
-      },
+      } as never,
     })).rejects.toMatchObject({ code: 'WORKFLOW_ROUTE_UNSUPPORTED' })
     expect(state.activePhaseId).toBe('requirements')
   })

@@ -22,9 +22,8 @@ export type ClientMessage =
       handoff?: Record<string, unknown>
       rationale?: string
       evidence?: Array<Record<string, unknown>>
-      routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'route_to_workflow' | 'pause' | 'resume' | 'finish'
+      routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'pause' | 'resume' | 'finish'
       targetPhaseId?: string
-      targetWorkflowId?: string
       requireUserConfirmation?: boolean
     }
   | {

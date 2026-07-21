@@ -3,6 +3,9 @@ import { getAuthToken, getBaseUrl } from './client'
 
 type MessageHandler = (msg: ServerMessage) => void
 
+export type WebSocketConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
+type ConnectionStateHandler = (state: WebSocketConnectionState) => void
+
 type WorkflowTransitionAction = Extract<ClientMessage, { type: 'workflow_transition' }>['action']
 
 export function createWorkflowTransitionId(
@@ -16,6 +19,7 @@ export function createWorkflowTransitionId(
 type Connection = {
   ws: WebSocket
   handlers: Set<MessageHandler>
+  openWaiters: Set<() => void>
   reconnectTimer: ReturnType<typeof setTimeout> | null
   reconnectAttempt: number
   pingInterval: ReturnType<typeof setInterval> | null
@@ -25,6 +29,11 @@ type Connection = {
 
 class WebSocketManager {
   private connections = new Map<string, Connection>()
+  private connectionStateHandlers = new Map<string, Set<ConnectionStateHandler>>()
+
+  private emitConnectionState(sessionId: string, state: WebSocketConnectionState) {
+    for (const handler of this.connectionStateHandlers.get(sessionId) ?? []) handler(state)
+  }
 
   isConnected(sessionId: string): boolean {
     const conn = this.connections.get(sessionId)
@@ -54,6 +63,7 @@ class WebSocketManager {
     const conn: Connection = {
       ws,
       handlers: existing?.handlers ?? new Set(),
+      openWaiters: existing?.openWaiters ?? new Set(),
       reconnectTimer: null,
       reconnectAttempt: existing?.reconnectAttempt ?? 0,
       pingInterval: null,
@@ -61,10 +71,13 @@ class WebSocketManager {
       pendingMessages: existing?.pendingMessages ?? [],
     }
     this.connections.set(sessionId, conn)
+    this.emitConnectionState(sessionId, 'connecting')
 
     ws.onopen = () => {
       conn.reconnectAttempt = 0
+      this.emitConnectionState(sessionId, 'connected')
       this.startPingLoop(sessionId)
+      for (const waiter of conn.openWaiters) waiter()
       while (conn.pendingMessages.length > 0) {
         const msg = conn.pendingMessages.shift()!
         ws.send(JSON.stringify(msg))
@@ -85,7 +98,10 @@ class WebSocketManager {
     ws.onclose = () => {
       this.stopPingLoop(sessionId)
       if (!conn.intentionalClose && this.connections.get(sessionId) === conn) {
+        this.emitConnectionState(sessionId, 'reconnecting')
         this.scheduleReconnect(sessionId, conn)
+      } else {
+        this.emitConnectionState(sessionId, 'disconnected')
       }
     }
 
@@ -105,15 +121,72 @@ class WebSocketManager {
       conn.reconnectTimer = null
     }
     conn.pendingMessages = []
+    this.emitConnectionState(sessionId, 'disconnected')
 
     conn.ws.close()
     this.connections.delete(sessionId)
+    this.connectionStateHandlers.delete(sessionId)
   }
 
   disconnectAll() {
     for (const sessionId of [...this.connections.keys()]) {
       this.disconnect(sessionId)
     }
+  }
+
+  /**
+   * Workflow transitions are concurrency-sensitive protocol actions. Unlike ordinary
+   * chat messages, they must never be added to the unbounded reconnect queue: after
+   * a delayed reconnect, an old confirm/reject could mutate a newer workflow state.
+   */
+  async sendWorkflowTransition(
+    sessionId: string,
+    message: Extract<ClientMessage, { type: 'workflow_transition' }>,
+    options: { timeoutMs?: number } = {},
+  ): Promise<'sent' | 'unavailable'> {
+    const conn = await this.waitForOpen(sessionId, options.timeoutMs ?? 5_000)
+    if (!conn) return 'unavailable'
+
+    try {
+      conn.ws.send(JSON.stringify(message))
+      return 'sent'
+    } catch {
+      return 'unavailable'
+    }
+  }
+
+  private waitForOpen(sessionId: string, timeoutMs: number): Promise<Connection | null> {
+    let conn = this.connections.get(sessionId)
+    if (!conn) {
+      this.connect(sessionId)
+      conn = this.connections.get(sessionId)
+    }
+    if (!conn) return Promise.resolve(null)
+    if (conn.ws.readyState === WebSocket.OPEN) return Promise.resolve(conn)
+
+    if (conn.ws.readyState === WebSocket.CLOSED || conn.ws.readyState === WebSocket.CLOSING) {
+      if (!conn.intentionalClose && !conn.reconnectTimer) {
+        this.scheduleReconnect(sessionId, conn)
+      }
+    }
+
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = (value: Connection | null) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        const current = this.connections.get(sessionId)
+        current?.openWaiters.delete(onOpen)
+        resolve(value)
+      }
+      const onOpen = () => {
+        const current = this.connections.get(sessionId)
+        finish(current?.ws.readyState === WebSocket.OPEN ? current : null)
+      }
+      const timeout = setTimeout(() => finish(null), timeoutMs)
+      conn.openWaiters.add(onOpen)
+    })
   }
 
   send(sessionId: string, message: ClientMessage) {
@@ -139,6 +212,20 @@ class WebSocketManager {
         this.scheduleReconnect(sessionId, conn)
       }
     }
+  }
+
+  onConnectionState(sessionId: string, handler: ConnectionStateHandler): () => void {
+    const handlers = this.connectionStateHandlers.get(sessionId) ?? new Set<ConnectionStateHandler>()
+    handlers.add(handler)
+    this.connectionStateHandlers.set(sessionId, handlers)
+    return () => {
+      handlers.delete(handler)
+      if (handlers.size === 0) this.connectionStateHandlers.delete(sessionId)
+    }
+  }
+
+  clearConnectionStateHandlers(sessionId: string) {
+    this.connectionStateHandlers.delete(sessionId)
   }
 
   onMessage(sessionId: string, handler: MessageHandler): () => void {

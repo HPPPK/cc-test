@@ -433,7 +433,6 @@ const WORKFLOW_ROUTE_INTENT_ACTION_RULES: Record<WorkflowRouteIntent, ReadonlySe
     'return to phase',
   ]),
   jump_to_phase: new Set(['jump_to_phase', 'jump to phase']),
-  route_to_workflow: new Set(['route_to_workflow', 'route to workflow']),
   pause: new Set(['pause', 'pause_workflow', 'pause workflow']),
   resume: new Set(['resume', 'resume_workflow', 'resume workflow']),
   finish: new Set(['finish', 'finish_workflow', 'finish workflow']),
@@ -1348,11 +1347,8 @@ export class WorkflowRuntimeService {
     const current = assertActivePhase(state, phaseId)
     isRouteAllowedForCurrentPhase(state, template, input.request.intent)
 
-    if (input.request.intent === 'route_to_workflow' && !input.request.targetWorkflowId?.trim()) {
-      throw workflowError('WORKFLOW_ROUTE_TARGET_REQUIRED', 'route_to_workflow requires targetWorkflowId.')
-    }
-    if (input.request.intent === 'route_to_workflow') {
-      throw workflowError('WORKFLOW_ROUTE_UNSUPPORTED', 'route_to_workflow is not available in this runtime; keep the current workflow active and select a workflow explicitly.')
+    if ((input.request as { intent?: string }).intent === 'route_to_workflow') {
+      throw workflowError('WORKFLOW_ROUTE_UNSUPPORTED', 'Cross-workflow routing is not supported. Keep the current workflow active and select another workflow explicitly.')
     }
     if (input.request.intent === 'pause' || input.request.intent === 'resume') {
       const result = input.request.intent === 'pause'
@@ -1445,7 +1441,6 @@ export class WorkflowRuntimeService {
       phaseId: current.id,
       fromPhaseId: current.id,
       targetPhaseId,
-      ...(input.request.targetWorkflowId ? { targetWorkflowId: input.request.targetWorkflowId } : {}),
       intent: input.request.intent,
       rationale: input.request.rationale.trim(),
       evidence: input.request.evidence,

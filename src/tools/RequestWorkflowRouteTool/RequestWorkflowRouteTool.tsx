@@ -18,7 +18,6 @@ const routeIntentSchema = z.enum([
   'advance',
   'rework_current_phase',
   'jump_to_phase',
-  'route_to_workflow',
   'pause',
   'resume',
   'finish',
@@ -32,16 +31,12 @@ const inputSchema = lazySchema(() =>
     stateVersion: z.number().int().nonnegative().optional().describe('Current workflow state version. Omit to refresh it from the runtime.'),
     intent: routeIntentSchema.describe('Requested workflow route intent.'),
     targetPhaseId: z.string().min(1).optional().describe('Required only for jump_to_phase.'),
-    targetWorkflowId: z.string().min(1).optional().describe('Required only for route_to_workflow.'),
     rationale: z.string().min(1).describe('Non-empty explanation for the requested route.'),
     evidence: z.array(evidenceSchema).describe('Structured evidence supporting this route.'),
     requireUserConfirmation: z.boolean().default(true).describe('Whether the route must be shown to the user before execution.'),
   }).superRefine((value, ctx) => {
     if (value.intent === 'jump_to_phase' && !value.targetPhaseId?.trim()) {
       ctx.addIssue({ code: 'custom', path: ['targetPhaseId'], message: 'jump_to_phase requires targetPhaseId.' })
-    }
-    if (value.intent === 'route_to_workflow' && !value.targetWorkflowId?.trim()) {
-      ctx.addIssue({ code: 'custom', path: ['targetWorkflowId'], message: 'route_to_workflow requires targetWorkflowId.' })
     }
   }),
 )
@@ -184,13 +179,13 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
-    return 'Request a validated workflow route after submitting the current phase completion.'
+    return 'Request a validated non-linear workflow route.'
   },
   async prompt() {
     return [
       'Request a structured workflow route; this tool does not submit phase completion.',
-      'Call submit_phase_completion first with status, handoff, rationale, and evidence for the current phase.',
-      'Use this tool only for a real route: rework_current_phase, a target different from the ordinary linear next phase, a workflow switch, pause/resume, or finish. jump_to_phase requires targetPhaseId.',
+      'Before requesting rework_current_phase, jump_to_phase, advance, or finish, call submit_phase_completion first with status, handoff, rationale, and evidence for the current phase. pause and resume may be called directly.',
+      'Use this tool only for a real route: rework_current_phase, a target different from the ordinary linear next phase, pause/resume, or finish. jump_to_phase requires targetPhaseId.',
       'Do not use this tool for ordinary linear progression. After a normal completion, submit_phase_completion alone creates the current phase confirmation and enters the immediate linear next phase after the user confirms.',
       'In particular, after a repair returns to Stage 4, submit the Stage 4 completion and do not request a route merely to re-enter its normal Stage 5 validation phase.',
       'Do not describe a route only in plain text or hide it inside a completion handoff.',

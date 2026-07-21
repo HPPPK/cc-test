@@ -72,4 +72,15 @@ test('requires stable IDs and valid structured targets for workflow route option
       choices: [{ id: 'broken', label: 'Broken', action: { kind: 'workflow-route', intent: 'jump_to_phase' } }, base.questions[0].choices[1]],
     }],
   }).success).toBe(false)
+  expect(tool.inputSchema.safeParse({
+    ...base,
+    questions: [{
+      ...base.questions[0],
+      choices: [{
+        id: 'unsupported-workflow-switch',
+        label: 'Switch workflow',
+        action: { kind: 'workflow-route', intent: 'route_to_workflow', targetWorkflowId: 'debug-repair-workflow-v8' },
+      }, base.questions[0].choices[1]],
+    }],
+  }).success).toBe(false)
 })

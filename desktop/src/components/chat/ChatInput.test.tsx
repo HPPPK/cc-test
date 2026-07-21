@@ -87,6 +87,9 @@ vi.mock('../../api/modelCapabilities', () => ({
 vi.mock('../../api/websocket', () => ({
   wsManager: {
     connect: vi.fn(),
+    isConnected: vi.fn(() => true),
+    onConnectionState: vi.fn(() => () => {}),
+    clearConnectionStateHandlers: vi.fn(),
     disconnect: vi.fn(),
     onMessage: vi.fn(() => () => {}),
     clearHandlers: vi.fn(),

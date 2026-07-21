@@ -1390,7 +1390,6 @@ async function applyWorkflowBoundaryTransition(
         stateVersion: request.stateVersion,
         intent: request.routeIntent,
         targetPhaseId: request.targetPhaseId,
-        targetWorkflowId: request.targetWorkflowId,
         rationale: request.rationale,
         evidence: request.evidence as Array<Record<string, unknown>>,
         requireUserConfirmation: request.requireUserConfirmation,
