@@ -11,7 +11,10 @@ const excludedFiles = quarantinedPathSet(loadQuarantineManifest(undefined, { enf
 // Keep a finite default aligned with the coverage gate; callers can still override it.
 const testTimeoutMs = process.env.CC_JIANGXIA_SERVER_TEST_TIMEOUT_MS?.trim() || '60000'
 const maxConcurrency = process.env.CC_JIANGXIA_SERVER_TEST_MAX_CONCURRENCY?.trim() || '1'
-const isolateFiles = process.env.CC_JIANGXIA_SERVER_TEST_ISOLATE_FILES === '1'
+// Test files mutate process-wide state such as CLAUDE_CONFIG_DIR and singleton loaders.
+// Bun's --isolate resets module scopes but does not prevent that state leaking between files.
+// Run each file in its own Bun process by default; callers can opt into the faster shared process locally.
+const isolateFiles = process.env.CC_JIANGXIA_SERVER_TEST_ISOLATE_FILES !== '0'
 
 function normalize(path: string) {
   return relative(root, path).split(sep).join('/')

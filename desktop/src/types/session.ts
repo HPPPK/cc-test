@@ -1,4 +1,4 @@
-﻿// Source: src/server/services/sessionService.ts
+// Source: src/server/services/sessionService.ts
 
 export type SessionMode = 'dialogue' | 'workflow' | 'expert'
 export type WorkflowTemplateSource = 'builtin' | 'user' | 'pack'
@@ -165,6 +165,8 @@ export type WorkflowSessionSummary = {
   phaseCount: number
   stateVersion?: number
   pendingConfirmation: boolean
+  /** Server-issued identity for the one confirmation card currently allowed to act. */
+  pendingConfirmationId?: string
   pendingRoute?: {
     routeId: string
     phaseId: string
@@ -904,6 +906,7 @@ export type WorkflowTransitionRequest = {
   stateVersion?: number
   action: WorkflowTransitionAction
   transitionId?: string
+  confirmationId?: string
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   handoff?: WorkflowTransitionHandoff
   rationale?: string

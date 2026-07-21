@@ -131,6 +131,7 @@ export type WorkflowTransitionRequest = {
   stateVersion?: number
   action: WorkflowTransitionAction
   transitionId?: string
+  confirmationId?: string
   nextPhaseContextStrategy?: 'inherit' | 'clear'
   handoff?: WorkflowTransitionHandoff
   rationale?: string

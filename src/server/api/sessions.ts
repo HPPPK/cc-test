@@ -1312,7 +1312,20 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
     assertWorkflowStateTrustedForTransition(stateRead.state)
 
     const requestedAt = new Date().toISOString()
-    const result = await applyWorkflowBoundaryTransition(stateRead.state, body, requestedAt)
+    let result: WorkflowBoundaryTransitionResult
+    try {
+      result = await applyWorkflowBoundaryTransition(stateRead.state, body, requestedAt)
+    } catch (error) {
+      if (isAuthoritativeWorkflowTransitionError(error)) {
+        return Response.json({
+          error: error.code || 'WORKFLOW_TRANSITION_INVALID',
+          message: error.message,
+          state: stateRead.state,
+          workflow: workflowSummaryFromState(stateRead.state),
+        }, { status: error.statusCode })
+      }
+      throw error
+    }
     const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state)
     await persistWorkflowFinalReportIfReady(result.state)
     const detail = await sessionService.getSession(sessionId)
@@ -1340,6 +1353,10 @@ async function persistWorkflowFinalReportIfReady(state: WorkflowSessionState): P
   await workflowReportStore.createFinalReport(state.sessionId, buildWorkflowFinalReport(state))
 }
 
+function isAuthoritativeWorkflowTransitionError(error: unknown): error is ApiError {
+  return error instanceof ApiError
+    && (error.code === 'WORKFLOW_STATE_STALE' || error.code === 'WORKFLOW_CONFIRMATION_SUPERSEDED')
+}
 function assertWorkflowStateTrustedForTransition(state: WorkflowSessionState): void {
   if (
     state.sourceTemplateStatus === 'stale-template' ||

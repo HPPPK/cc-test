@@ -1753,6 +1753,7 @@ describe('ActiveSession task polling', () => {
       ...WORKFLOW_SUMMARY,
       status: 'pending-confirmation',
       pendingConfirmation: true,
+      pendingConfirmationId: 'confirm-specify-12',
       activePhaseId: 'specify',
       statePointer: {
         ...WORKFLOW_SUMMARY.statePointer,
@@ -1815,6 +1816,8 @@ describe('ActiveSession task polling', () => {
       expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
         phaseId: 'specify',
         action: 'confirm',
+        confirmationId: 'confirm-specify-12',
+        transitionId: 'workflow-transition:specify:12:confirm:confirm-specify-12',
         stateVersion: 12,
       }))
     })
@@ -1828,6 +1831,7 @@ describe('ActiveSession task polling', () => {
       ...WORKFLOW_SUMMARY,
       status: 'pending-confirmation',
       pendingConfirmation: true,
+      pendingConfirmationId: 'confirm-plan-21',
       activePhaseId: 'plan',
       activePhaseIndex: 2,
       stateVersion: 21,
@@ -1902,7 +1906,8 @@ describe('ActiveSession task polling', () => {
         expect(sendWorkflowTransition).toHaveBeenCalledWith(sessionId, expect.objectContaining({
           phaseId: 'plan',
           action: 'confirm',
-          transitionId: 'workflow-transition:plan:21:confirm',
+          confirmationId: 'confirm-plan-21',
+          transitionId: 'workflow-transition:plan:21:confirm:confirm-plan-21',
           stateVersion: 21,
         }))
       })

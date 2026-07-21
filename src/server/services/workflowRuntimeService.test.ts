@@ -1206,7 +1206,12 @@ describe('WorkflowRuntimeService', () => {
     const confirmed = await service.applyTransition({
       state: pending.state,
       requestedAt: '2026-05-20T00:04:00.000Z',
-      request: { phaseId: 'requirements', action: 'confirm', transitionId: 'confirm-requirements' },
+      request: {
+        phaseId: 'requirements',
+        action: 'confirm',
+        transitionId: 'confirm-requirements',
+        confirmationId: pending.state.pendingConfirmation!.confirmationId,
+      },
     })
     expect(confirmed.state.workflowStatus).toBe('running')
     expect(confirmed.state.activePhaseId).toBe('implementation')
@@ -1291,6 +1296,7 @@ describe('WorkflowRuntimeService', () => {
         phaseId: 'validate',
         action: 'confirm',
         transitionId: 'confirm-route-back-to-stage-4',
+        confirmationId: routed.state.pendingRoute!.routeId,
         expectedStateVersion: routed.state.stateVersion,
       },
     })
@@ -1361,6 +1367,7 @@ describe('WorkflowRuntimeService', () => {
       request: {
         phaseId: 'delegate-implement',
         action: 'confirm',
+        confirmationId: routed.state.pendingConfirmation!.confirmationId,
         transitionId: 'confirm-repaired-stage-4',
         expectedStateVersion: routed.state.stateVersion,
       },
@@ -1573,7 +1580,12 @@ describe('WorkflowRuntimeService', () => {
     const advanced = await service.applyTransition({
       state: advanceRoute.state,
       requestedAt: NOW,
-      request: { phaseId: 'requirements', action: 'confirm', stateVersion: advanceRoute.state.stateVersion },
+      request: {
+        phaseId: 'requirements',
+        action: 'confirm',
+        confirmationId: advanceRoute.state.pendingConfirmation!.confirmationId,
+        stateVersion: advanceRoute.state.stateVersion,
+      },
     })
     expect(advanced.state.activePhaseId).toBe('implementation')
 
@@ -1589,7 +1601,12 @@ describe('WorkflowRuntimeService', () => {
     const reworked = await service.applyTransition({
       state: reworkRoute.state,
       requestedAt: NOW,
-      request: { phaseId: 'requirements', action: 'confirm', stateVersion: reworkRoute.state.stateVersion },
+      request: {
+        phaseId: 'requirements',
+        action: 'confirm',
+        confirmationId: reworkRoute.state.pendingRoute!.routeId,
+        stateVersion: reworkRoute.state.stateVersion,
+      },
     })
     expect(reworked.state.activePhaseId).toBe('requirements')
     expect(reworked.state.phases[0]?.status).toBe('running')
@@ -1664,6 +1681,7 @@ describe('WorkflowRuntimeService', () => {
       request: {
         phaseId: 'verification',
         action: 'confirm',
+        confirmationId: requested.state.pendingRoute!.routeId,
         stateVersion: requested.state.stateVersion,
       },
     })
@@ -1697,7 +1715,12 @@ describe('WorkflowRuntimeService', () => {
     const advanced = await service.applyTransition({
       state: repaired.state,
       requestedAt: '2026-05-20T00:02:00.000Z',
-      request: { phaseId: 'implementation', action: 'confirm', stateVersion: repaired.state.stateVersion },
+      request: {
+        phaseId: 'implementation',
+        action: 'confirm',
+        confirmationId: repaired.state.pendingConfirmation!.confirmationId,
+        stateVersion: repaired.state.stateVersion,
+      },
     })
     expect(advanced.state.activePhaseId).toBe('verification')
     expect(advanced.state.pendingRoute).toBeNull()
@@ -1748,6 +1771,7 @@ describe('WorkflowRuntimeService', () => {
       request: {
         phaseId: 'requirements',
         action: 'confirm',
+        confirmationId: requested.state.pendingRoute!.routeId,
         stateVersion: requested.state.stateVersion,
       },
     })
@@ -2401,6 +2425,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'confirm',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'confirm-ready-1',
         } as unknown as WorkflowTransitionRequest,
@@ -2436,6 +2461,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'confirm',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'confirm-clear-context-1',
           nextPhaseContextStrategy: 'clear',
@@ -2473,6 +2499,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'confirm',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'confirm-inherit-context-1',
         } as unknown as WorkflowTransitionRequest,
@@ -2498,6 +2525,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'reject',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'reject-ready-1',
         } as unknown as WorkflowTransitionRequest,
@@ -2642,6 +2670,9 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action,
+          ...(action === 'confirm' || action === 'reject'
+            ? { confirmationId: state.pendingConfirmation!.confirmationId }
+            : {}),
           stateVersion: state.stateVersion - 1,
           transitionId,
         } as unknown as WorkflowTransitionRequest,
@@ -2660,6 +2691,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'confirm',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'confirm-idempotent-1',
         } as unknown as WorkflowTransitionRequest,
@@ -2670,7 +2702,8 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'requirements',
           action: 'confirm',
-          stateVersion: first.state.stateVersion,
+          confirmationId: pending.pendingConfirmation!.confirmationId,
+          stateVersion: first.state.stateVersion - 1,
           transitionId: 'confirm-idempotent-1',
         } as unknown as WorkflowTransitionRequest,
       })
@@ -2681,6 +2714,67 @@ describe('WorkflowRuntimeService', () => {
       expect(second.state.transitionHistory.filter((transition) =>
         transition.transitionId === 'confirm-idempotent-1'
       )).toHaveLength(1)
+      expect(second.notifications).toEqual([
+        expect.objectContaining({ subtype: 'workflow_state', data: first.state }),
+      ])
+    })
+
+    test.each(['confirm', 'reject'] as const)('requires the current confirmation token for pending %s actions', async (action) => {
+      const service = await makeService()
+      const pending = pendingReadyState()
+
+      await expect(service.applyTransition({
+        state: pending,
+        requestedAt: '2026-05-20T00:15:15.000Z',
+        request: {
+          phaseId: 'requirements',
+          action,
+          stateVersion: pending.stateVersion,
+          transitionId: `missing-confirmation-token-${action}`,
+        } as WorkflowTransitionRequest,
+      })).rejects.toMatchObject({
+        code: 'WORKFLOW_CONFIRMATION_SUPERSEDED',
+        statusCode: 409,
+      })
+
+      expect(pending.pendingConfirmation?.confirmationId).toBe('confirm-ready-1')
+      expect(pending.activePhaseId).toBe('requirements')
+      expect(pending.transitionHistory).toHaveLength(0)
+    })
+
+    test('rejects a superseded confirmation token without mutating the newer pending confirmation', async () => {
+      const service = await makeService()
+      const pending = pendingReadyState({
+        pendingConfirmation: {
+          confirmationId: 'current-confirmation',
+          phaseId: 'requirements',
+          fromPhaseId: 'requirements',
+          toPhaseId: 'implementation',
+          completionCheckId: 'current-confirmation',
+          artifactRefs: [],
+          createdAt: NOW,
+          status: 'pending',
+        },
+      })
+
+      await expect(service.applyTransition({
+        state: pending,
+        requestedAt: '2026-05-20T00:15:30.000Z',
+        request: {
+          phaseId: 'requirements',
+          action: 'confirm',
+          confirmationId: 'superseded-confirmation',
+          stateVersion: pending.stateVersion,
+          transitionId: 'superseded-confirmation-attempt',
+        } as WorkflowTransitionRequest,
+      })).rejects.toMatchObject({
+        code: 'WORKFLOW_CONFIRMATION_SUPERSEDED',
+        statusCode: 409,
+      })
+
+      expect(pending.pendingConfirmation?.confirmationId).toBe('current-confirmation')
+      expect(pending.activePhaseId).toBe('requirements')
+      expect(pending.transitionHistory).toHaveLength(0)
     })
 
     test('final phase confirmation creates a final report pointer and workflow_report_ready notification', async () => {
@@ -2749,6 +2843,7 @@ describe('WorkflowRuntimeService', () => {
         request: {
           phaseId: 'implementation',
           action: 'confirm',
+          confirmationId: pending.pendingConfirmation!.confirmationId,
           stateVersion: pending.stateVersion,
           transitionId: 'confirm-final-ready-1',
         } as unknown as WorkflowTransitionRequest,

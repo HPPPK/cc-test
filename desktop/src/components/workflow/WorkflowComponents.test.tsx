@@ -1805,7 +1805,7 @@ describe('WorkflowTemplateEditor', () => {
               runtimeState: {
                 status: 'running',
                 pendingConfirmation: true,
-                activeTransitionId: 'transition-session-owned',
+          activeTransitionId: 'transition-session-owned',
               },
             },
           ],
@@ -2852,6 +2852,7 @@ describe('WorkflowTransitionControls', () => {
           status: 'pending-confirmation',
           activePhaseId: 'specify',
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
         }}
         stateVersion={7}
         onConfirm={onConfirm}
@@ -2866,7 +2867,7 @@ describe('WorkflowTransitionControls', () => {
 
     expect(onConfirm).toHaveBeenCalledTimes(1)
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({
-      transitionId: 'workflow-transition:specify:7:confirm',
+      transitionId: 'workflow-transition:specify:7:confirm:confirmation-specify-v7',
     }))
     expect(screen.getByText('正在提交阶段操作，请稍候…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /I want to adjust it/i })).toBeDisabled()
@@ -2880,6 +2881,7 @@ describe('WorkflowTransitionControls', () => {
       status: 'pending-confirmation' as const,
       activePhaseId: 'specify',
       pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
     }
     const { rerender } = render(
       <WorkflowTransitionControls
@@ -2910,12 +2912,41 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeEnabled()
   })
 
+  it('keeps stale confirmation actions disabled while the latest workflow state is syncing', () => {
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'pending-confirmation' as const,
+      activePhaseId: 'specify',
+      pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
+    }
+
+    render(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={7}
+        transitionSyncing
+        transitionError="工作流状态已更新，正在同步最新阶段信息。"
+        transitionErrorScope={{ phaseId: 'specify', stateVersion: 7 }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent('工作流状态已更新，正在同步最新阶段信息。')
+    expect(screen.getByRole('button', { name: /Continue with this result/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /I want to adjust it/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Pause workflow/i })).toBeDisabled()
+  })
+
   it('does not show a timeout error after workflow state advances to a new confirmation', () => {
     const workflow = {
       ...WORKFLOW_SUMMARY,
       status: 'pending-confirmation' as const,
       activePhaseId: 'verify',
       pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
     }
     const { rerender } = render(
       <WorkflowTransitionControls
@@ -2952,6 +2983,7 @@ describe('WorkflowTransitionControls', () => {
       status: 'pending-confirmation' as const,
       activePhaseId: 'local-preview',
       pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-local-preview-v17',
     }
     const { rerender } = render(
       <WorkflowTransitionControls
@@ -2960,7 +2992,8 @@ describe('WorkflowTransitionControls', () => {
         pendingTransition={{
           phaseId: 'local-preview',
           action: 'confirm',
-          transitionId: 'workflow-transition:local-preview:17:confirm',
+          transitionId: 'workflow-transition:local-preview:17:confirm:confirmation-local-preview-v17',
+          confirmationId: 'confirmation-local-preview-v17',
           stateVersion: 17,
         }}
         onConfirm={vi.fn()}
@@ -2977,12 +3010,14 @@ describe('WorkflowTransitionControls', () => {
           ...workflow,
           activePhaseId: 'delegate-implement',
           activePhaseIndex: 3,
+          pendingConfirmationId: 'confirmation-delegate-implement-v25',
         }}
         stateVersion={25}
         pendingTransition={{
           phaseId: 'local-preview',
           action: 'confirm',
-          transitionId: 'workflow-transition:local-preview:17:confirm',
+          transitionId: 'workflow-transition:local-preview:17:confirm:confirmation-local-preview-v17',
+          confirmationId: 'confirmation-local-preview-v17',
           stateVersion: 17,
         }}
         onConfirm={vi.fn()}
@@ -3002,6 +3037,7 @@ describe('WorkflowTransitionControls', () => {
           status: 'pending-confirmation',
           activePhaseId: 'delegate-implement',
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
         }}
         stateVersion={25}
         pendingTransition={{
@@ -3031,6 +3067,7 @@ describe('WorkflowTransitionControls', () => {
           status: 'pending-confirmation',
           activePhaseId: 'specify',
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
@@ -3057,7 +3094,8 @@ describe('WorkflowTransitionControls', () => {
     expect(onConfirm).toHaveBeenCalledWith({
       phaseId: 'specify',
       action: 'confirm',
-      transitionId: 'workflow-transition:specify:7:confirm',
+      confirmationId: 'confirmation-specify-v7',
+      transitionId: 'workflow-transition:specify:7:confirm:confirmation-specify-v7',
       stateVersion: 7,
     })
     expect(onReject).not.toHaveBeenCalled()
@@ -3077,6 +3115,7 @@ describe('WorkflowTransitionControls', () => {
           phaseCount: 2,
           phaseNames: ['需求范围', '技术计划'],
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
@@ -3140,6 +3179,7 @@ describe('WorkflowTransitionControls', () => {
           activePhaseIndex: 0,
           phaseCount: 2,
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={7}
@@ -3157,7 +3197,8 @@ describe('WorkflowTransitionControls', () => {
     expect(onConfirm).toHaveBeenLastCalledWith({
       phaseId: 'specify',
       action: 'confirm',
-      transitionId: 'workflow-transition:specify:7:confirm',
+      confirmationId: 'confirmation-specify-v7',
+      transitionId: 'workflow-transition:specify:7:confirm:confirmation-specify-v7',
       stateVersion: 7,
     })
   })
@@ -3172,6 +3213,7 @@ describe('WorkflowTransitionControls', () => {
           activePhaseIndex: 1,
           phaseCount: 2,
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={8}
@@ -3194,6 +3236,7 @@ describe('WorkflowTransitionControls', () => {
           status: 'running',
           activePhaseId: 'plan',
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           transitionAuthority: 'user-confirmation',
         }}
         stateVersion={8}
@@ -3372,6 +3415,7 @@ describe('WorkflowTransitionControls route targets', () => {
           activePhaseIndex: 5,
           phaseCount: 7,
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           phaseNames: ['Discover', 'Shape', 'Specify', '分批实现与审查', 'Build', 'Validate', 'Release'],
           pendingTargetPhaseId: 'delegate-implement',
           pendingTargetPhaseIndex: 3,
@@ -3405,6 +3449,7 @@ describe('WorkflowTransitionControls Chinese route cards', () => {
           activePhaseIndex: 5,
           phaseCount: 7,
           pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
           pendingRoute: {
             routeId: 'route-stage-4', phaseId: 'validate', fromPhaseId: 'validate',
             targetPhaseId: 'delegate-implement', approvedTargetPhaseId: 'delegate-implement',

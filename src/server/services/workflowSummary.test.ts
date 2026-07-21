@@ -97,7 +97,10 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
 
 describe('workflowSummaryFromState', () => {
   test('projects internal workflow state into the desktop workflow summary contract', () => {
-    const summary = workflowSummaryFromState(makeState())
+    const summary = workflowSummaryFromState(makeState({
+      stateVersion: 7,
+      revision: 2,
+    }))
 
     expect(summary).toMatchObject({
       mode: 'workflow',
@@ -108,8 +111,9 @@ describe('workflowSummaryFromState', () => {
       activePhaseId: 'requirements-clarification',
       activePhaseIndex: 0,
       phaseCount: 2,
-      stateVersion: 2,
+      stateVersion: 7,
       pendingConfirmation: true,
+      pendingConfirmationId: 'confirm-1',
       transitionAuthority: 'user-confirmation',
       statePointer: {
         kind: 'workflow-state',
@@ -211,6 +215,7 @@ describe('workflowSummaryFromState', () => {
       pendingTargetPhaseId: 'delegate-implement',
       pendingTargetPhaseIndex: 3,
       pendingTargetPhaseLabel: '分批实现与审查',
+      pendingConfirmationId: 'route-stage-4',
       routeReason: 'Return to implementation for a repair.',
       requiresConfirmation: true,
     })

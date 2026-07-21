@@ -37,6 +37,7 @@ type WorkflowTransitionCommand = {
   phaseId: string
   action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop'
   transitionId?: string
+  confirmationId?: string
   stateVersion?: number
   nextPhaseContextStrategy?: 'inherit' | 'clear'
   handoff?: { summary: string; artifacts: unknown[] }
@@ -90,8 +91,9 @@ export type PerSessionState = {
   } | null
   pendingWorkflowTransition?: WorkflowTransitionCommand | null
   workflowTransitionError?: string | null
-  workflowTransitionErrorScope?: Pick<WorkflowTransitionCommand, 'phaseId' | 'stateVersion'> | null
+  workflowTransitionErrorScope?: Pick<WorkflowTransitionCommand, 'phaseId' | 'stateVersion' | 'confirmationId'> | null
   workflowTransitionResetKey?: number
+  workflowTransitionSyncing?: boolean
 }
 
 const WORKFLOW_TRANSITION_RESPONSE_TIMEOUT_MS = 15_000
@@ -117,6 +119,7 @@ function scheduleWorkflowTransitionTimeout(sessionId: string, transitionId: stri
         workflowTransitionErrorScope: {
           phaseId: pending.phaseId,
           ...(typeof pending.stateVersion === 'number' ? { stateVersion: pending.stateVersion } : {}),
+        ...(pending.confirmationId ? { confirmationId: pending.confirmationId } : {}),
         },
         workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
       })),
@@ -141,10 +144,69 @@ function releaseUnavailableWorkflowTransition(
       workflowTransitionErrorScope: {
         phaseId: transition.phaseId,
         ...(typeof transition.stateVersion === 'number' ? { stateVersion: transition.stateVersion } : {}),
+        ...(transition.confirmationId ? { confirmationId: transition.confirmationId } : {}),
       },
       workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
     })),
   }))
+}
+
+function isWorkflowRefreshAtLeastAsNew(
+  current: WorkflowSessionSummary,
+  incoming: WorkflowSessionSummary,
+): boolean {
+  if (
+    typeof current.stateVersion === 'number'
+    && typeof incoming.stateVersion === 'number'
+  ) {
+    return incoming.stateVersion >= current.stateVersion
+  }
+
+  const currentUpdatedAt = current.statePointer.updatedAt ?? current.statePointer.createdAt
+  const incomingUpdatedAt = incoming.statePointer.updatedAt ?? incoming.statePointer.createdAt
+  return incomingUpdatedAt >= currentUpdatedAt
+}
+
+function transitionMatchesCurrentWorkflowSummary(
+  sessionId: string,
+  transition: WorkflowTransitionCommand,
+): boolean {
+  const workflow = useSessionStore.getState().sessions.find((session) => session.id === sessionId)?.workflow
+  if (!workflow) return true
+  if (workflow.activePhaseId !== transition.phaseId || workflow.stateVersion !== transition.stateVersion) {
+    return false
+  }
+
+  if (transition.action === 'confirm' || transition.action === 'reject') {
+    return Boolean(
+      transition.confirmationId
+      && workflow.pendingConfirmationId === transition.confirmationId
+      && (workflow.pendingConfirmation || workflow.status === 'pending-confirmation' || workflow.pendingRoute?.status === 'pending'),
+    )
+  }
+
+  return true
+}
+
+function rejectStaleWorkflowTransitionBeforeSend(
+  sessionId: string,
+  transition: WorkflowTransitionCommand,
+): void {
+  clearWorkflowTransitionTimeout(sessionId)
+  useChatStore.setState((state) => ({
+    sessions: updateSessionIn(state.sessions, sessionId, (session) => ({
+      pendingWorkflowTransition: null,
+      workflowTransitionError: '工作流状态已更新，正在同步最新阶段信息。',
+      workflowTransitionSyncing: true,
+      workflowTransitionErrorScope: {
+        phaseId: transition.phaseId,
+        ...(typeof transition.stateVersion === 'number' ? { stateVersion: transition.stateVersion } : {}),
+        ...(transition.confirmationId ? { confirmationId: transition.confirmationId } : {}),
+      },
+      workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
+    })),
+  }))
+  void refreshWorkflowSessionAfterTransitionTimeout(sessionId)
 }
 
 async function refreshWorkflowSessionAfterTransitionTimeout(sessionId: string): Promise<void> {
@@ -154,18 +216,29 @@ async function refreshWorkflowSessionAfterTransitionTimeout(sessionId: string): 
     if (!refreshed) return
 
     useSessionStore.setState((state) => ({
-      sessions: state.sessions.map((session) =>
-        session.id === sessionId
-          ? { ...session, ...refreshed }
-          : session,
-      ),
+      sessions: state.sessions.map((session) => {
+        if (session.id !== sessionId) return session
+        if (
+          session.workflow
+          && refreshed.workflow
+          && !isWorkflowRefreshAtLeastAsNew(session.workflow, refreshed.workflow)
+        ) {
+          return session
+        }
+        return { ...session, ...refreshed }
+      }),
     }))
   } catch {
     // The local unlock above is the primary recovery path. Refresh is best-effort
     // so a transient API outage must not leave the confirmation controls locked.
+  } finally {
+    useChatStore.setState((state) => ({
+      sessions: updateSessionIn(state.sessions, sessionId, () => ({
+        workflowTransitionSyncing: false,
+      })),
+    }))
   }
 }
-
 const DEFAULT_SESSION_STATE: PerSessionState = {
   messages: [],
   chatState: 'idle',
@@ -1097,17 +1170,26 @@ export const useChatStore = create<ChatStore>((set, get) => {
       return
     }
 
+    if (!transitionMatchesCurrentWorkflowSummary(sessionId, command)) {
+      rejectStaleWorkflowTransitionBeforeSend(sessionId, command)
+      return
+    }
+
     const pendingTransition = get().sessions[sessionId]?.pendingWorkflowTransition
     if (
       pendingTransition
       && pendingTransition.phaseId === command.phaseId
       && pendingTransition.stateVersion === stateVersion
+      && (
+        (pendingTransition.action !== 'confirm' && pendingTransition.action !== 'reject')
+        || pendingTransition.confirmationId === command.confirmationId
+      )
     ) return
     if (pendingTransition) clearWorkflowTransitionTimeout(sessionId)
 
     const transition = {
       ...command,
-      transitionId: createWorkflowTransitionId(command.phaseId, stateVersion, command.action),
+      transitionId: createWorkflowTransitionId(command.phaseId, stateVersion, command.action, command.confirmationId),
       stateVersion,
     }
     set((state) => ({
@@ -1115,6 +1197,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         pendingWorkflowTransition: transition,
         workflowTransitionError: null,
         workflowTransitionErrorScope: null,
+      workflowTransitionSyncing: false,
       })),
     }))
     void wsManager.sendWorkflowTransition(sessionId, {
@@ -1625,16 +1708,22 @@ export const useChatStore = create<ChatStore>((set, get) => {
           update((session) => ({
             pendingWorkflowTransition: null,
             workflowTransitionError: msg.code === 'WORKFLOW_STATE_STALE'
-              ? '工作流状态已更新，请根据最新状态重新选择操作。'
+              ? '工作流状态已更新，正在同步最新阶段信息。'
               : `阶段操作未完成：${msg.message}`,
             workflowTransitionErrorScope: {
               phaseId: pendingWorkflowTransition.phaseId,
               ...(typeof pendingWorkflowTransition.stateVersion === 'number'
                 ? { stateVersion: pendingWorkflowTransition.stateVersion }
                 : {}),
+              ...(pendingWorkflowTransition.confirmationId ? { confirmationId: pendingWorkflowTransition.confirmationId } : {}),
             },
+            workflowTransitionSyncing: msg.code === 'WORKFLOW_STATE_STALE',
             workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
           }))
+
+          if (msg.code === 'WORKFLOW_STATE_STALE') {
+            void refreshWorkflowSessionAfterTransitionTimeout(sessionId)
+          }
         }
         update((s) => {
           const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
@@ -1685,7 +1774,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
           const pendingTransition = get().sessions[sessionId]?.pendingWorkflowTransition
           const resolvesPendingTransition = !pendingTransition || (
             typeof workflow.stateVersion === 'number'
-            && workflow.stateVersion !== pendingTransition.stateVersion
+            && (
+              workflow.stateVersion !== pendingTransition.stateVersion
+              || (
+                (pendingTransition.action === 'confirm' || pendingTransition.action === 'reject')
+                && workflow.pendingConfirmationId !== pendingTransition.confirmationId
+              )
+            )
           )
           if (resolvesPendingTransition) clearWorkflowTransitionTimeout(sessionId)
           useSessionStore.setState((state) => ({
@@ -1700,6 +1795,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               pendingWorkflowTransition: null,
               workflowTransitionError: null,
               workflowTransitionErrorScope: null,
+              workflowTransitionSyncing: false,
               workflowTransitionResetKey: (session.workflowTransitionResetKey ?? 0) + 1,
             }))
           }

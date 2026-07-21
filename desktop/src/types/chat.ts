@@ -13,6 +13,7 @@ export type ClientMessage =
       phaseId: string
       action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'route' | 'ready' | 'needs_user' | 'completed' | 'blocked' | 'unable'
       transitionId?: string
+      confirmationId?: string
       expectedStateVersion?: number
       stateVersion?: number
       nextPhaseContextStrategy?: 'inherit' | 'clear'

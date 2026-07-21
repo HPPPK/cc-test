@@ -49,8 +49,11 @@ export function stateToWorkflowMetadata(
   const template = state.templateIdentity
   const model = visibleModelResolution(state)
   const recommendedSkillStatus = recommendedSkillStatusFromState(state)
-  const pendingConfirmation = Boolean(state.pendingConfirmation)
+  const pendingConfirmation = state.pendingConfirmation?.status === 'pending'
+    ? state.pendingConfirmation
+    : null
   const pendingRoute = state.pendingRoute?.status === 'pending' ? state.pendingRoute : null
+  const pendingConfirmationId = pendingRoute?.routeId ?? pendingConfirmation?.confirmationId
   const pendingTarget = pendingRoute?.approvedTargetPhaseId
     ? state.phases.find((phase) => phase.id === pendingRoute.approvedTargetPhaseId) ?? null
     : null
@@ -78,11 +81,13 @@ export function stateToWorkflowMetadata(
     reportRef: state.finalReportRef,
     sourceTemplateStatus: state.sourceTemplateStatus,
     stateRevision: state.revision,
+    stateVersion: state.stateVersion,
     updatedAt: state.updatedAt,
     activePhaseIndex: activePhaseIndex(state),
     phaseCount: state.phaseRuns.length || state.phases.length,
     phaseNames: state.phases.map((phase) => phase.label ?? phase.id),
-    pendingConfirmation,
+    pendingConfirmation: Boolean(pendingConfirmation),
+    ...(pendingConfirmationId ? { pendingConfirmationId } : {}),
     ...(pendingRoute ? {
       pendingRoute,
       pendingTargetPhaseId: pendingRoute.approvedTargetPhaseId,
@@ -141,9 +146,12 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     activePhaseId: metadata.activePhaseId,
     activePhaseIndex: activeIndex,
     phaseCount,
-    ...(typeof metadata.stateRevision === 'number' ? { stateVersion: metadata.stateRevision } : {}),
+    ...(typeof metadata.stateVersion === 'number'
+      ? { stateVersion: metadata.stateVersion }
+      : typeof metadata.stateRevision === 'number' ? { stateVersion: metadata.stateRevision } : {}),
     ...(Array.isArray(metadata.phaseNames) ? { phaseNames: metadata.phaseNames.filter((name): name is string => typeof name === 'string') } : {}),
     pendingConfirmation,
+    ...(typeof metadata.pendingConfirmationId === 'string' ? { pendingConfirmationId: metadata.pendingConfirmationId } : {}),
     ...(metadata.pendingRoute && typeof metadata.pendingRoute === 'object' ? { pendingRoute: metadata.pendingRoute } : {}),
     ...(typeof metadata.pendingTargetPhaseId === 'string' || metadata.pendingTargetPhaseId === null
       ? { pendingTargetPhaseId: metadata.pendingTargetPhaseId }

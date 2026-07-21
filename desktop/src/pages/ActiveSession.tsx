@@ -1207,6 +1207,7 @@ export function ActiveSession() {
   const workflowTransitionError = sessionState?.workflowTransitionError ?? null
   const workflowTransitionErrorScope = sessionState?.workflowTransitionErrorScope ?? null
   const workflowTransitionResetKey = sessionState?.workflowTransitionResetKey ?? 0
+  const workflowTransitionSyncing = sessionState?.workflowTransitionSyncing ?? false
   const tokenUsage = sessionState?.tokenUsage ?? { input_tokens: 0, output_tokens: 0 }
   const backgroundAgentTasks = useMemo(
     () => Object.values(sessionState?.backgroundAgentTasks ?? {}),
@@ -1492,6 +1493,7 @@ export function ActiveSession() {
       transitionError={workflowTransitionError}
       transitionErrorScope={workflowTransitionErrorScope}
       transitionResetKey={workflowTransitionResetKey}
+      transitionSyncing={workflowTransitionSyncing}
       onConfirm={handleWorkflowTransition}
       onReject={handleWorkflowTransition}
       onRetry={handleWorkflowTransition}

@@ -207,6 +207,13 @@ function stateVersion(value: JsonRecord): number {
   return version
 }
 
+function pendingConfirmationId(workflow: WorkflowSummary): string {
+  if (typeof workflow.pendingConfirmationId !== 'string' || workflow.pendingConfirmationId.length === 0) {
+    throw new Error('Workflow pending confirmation did not include a confirmation ID')
+  }
+  return workflow.pendingConfirmationId
+}
+
 async function websocketTransition(
   wsUrl: string,
   sessionId: string,
@@ -339,6 +346,7 @@ export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promis
       let current = await transitionWorkflow(started.baseUrl, workflowCreated.sessionId, {
         phaseId: 'discussion',
         action: 'confirm',
+        confirmationId: pendingConfirmationId(transitionedWorkflow.workflow),
         stateVersion: stateVersion(transitionedWorkflow.state),
         transitionId: `smoke-confirm-discussion-${Date.now()}`,
       })

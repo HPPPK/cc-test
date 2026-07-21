@@ -70,8 +70,15 @@ vi.mock('../lib/desktopNotifications', () => ({
 }))
 
 vi.mock('../api/websocket', () => ({
-  createWorkflowTransitionId: (phaseId: string, stateVersion: number | undefined, action: string) =>
-    `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`,
+  createWorkflowTransitionId: (
+    phaseId: string,
+    stateVersion: number | undefined,
+    action: string,
+    confirmationId?: string,
+  ) => {
+    const base = `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`
+    return confirmationId ? `${base}:${encodeURIComponent(confirmationId)}` : base
+  },
   wsManager: {
     connect: vi.fn(),
     isConnected: isConnectedMock,
@@ -1205,7 +1212,39 @@ Phase instructions: collect inputs
     })
   })
 
-  it('deduplicates a pending workflow transition and clears the lock after stale errors or a newer workflow state', async () => {
+  it('deduplicates a pending workflow transition and refreshes after a stale response', async () => {
+    const currentWorkflow: WorkflowSessionSummary = {
+      mode: 'workflow',
+      templateId: 'requirements-to-implementation',
+      templateVersion: '1',
+      templateSource: 'builtin',
+      templateSnapshotId: 'requirements-to-implementation-v1',
+      status: 'pending-confirmation',
+      activePhaseId: 'technical-design',
+      activePhaseIndex: 1,
+      phaseCount: 5,
+      stateVersion: 7,
+      pendingConfirmation: true,
+      pendingConfirmationId: 'confirmation-technical-design-v7',
+      statePointer: {
+        kind: 'workflow-state',
+        sessionId: TEST_SESSION_ID,
+        artifactId: 'state',
+        schemaVersion: 1,
+        createdAt: '2026-05-20T00:00:00.000Z',
+      },
+    }
+    const refreshedWorkflow: WorkflowSessionSummary = {
+      ...currentWorkflow,
+      stateVersion: 8,
+      activePhaseId: 'delegate-implement',
+      activePhaseIndex: 2,
+      pendingConfirmationId: 'confirmation-delegate-implement-v8',
+      statePointer: {
+        ...currentWorkflow.statePointer,
+        createdAt: '2026-05-20T00:01:00.000Z',
+      },
+    }
     sessionStoreSnapshot.sessions = [{
       id: TEST_SESSION_ID,
       title: 'Workflow Session',
@@ -1215,7 +1254,16 @@ Phase instructions: collect inputs
       projectPath: '/workspace/project',
       workDir: '/workspace/project',
       workDirExists: true,
+      workflow: currentWorkflow,
     }]
+    vi.mocked(sessionsApi.list).mockResolvedValueOnce({
+      sessions: [{
+        ...sessionStoreSnapshot.sessions[0]!,
+        modifiedAt: '2026-05-20T00:01:00.000Z',
+        workflow: refreshedWorkflow,
+      }],
+      total: 1,
+    })
     useChatStore.setState({
       sessions: {
         [TEST_SESSION_ID]: makeSession(),
@@ -1226,7 +1274,8 @@ Phase instructions: collect inputs
       phaseId: 'technical-design',
       action: 'confirm' as const,
       stateVersion: 7,
-      transitionId: 'workflow-transition:technical-design:7:confirm',
+      confirmationId: 'confirmation-technical-design-v7',
+      transitionId: 'workflow-transition:technical-design:7:confirm:confirmation-technical-design-v7',
     }
 
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
@@ -1245,78 +1294,104 @@ Phase instructions: collect inputs
       message: 'Workflow state version is stale.',
     })
 
+    await Promise.resolve()
+    expect(sessionsApi.list).toHaveBeenCalledWith({ limit: 200 })
+    expect(sessionStoreSnapshot.sessions[0]?.workflow).toMatchObject({
+      activePhaseId: 'delegate-implement',
+      stateVersion: 8,
+    })
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
       pendingWorkflowTransition: null,
-      workflowTransitionError: '工作流状态已更新，请根据最新状态重新选择操作。',
     })
 
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, command)
     await Promise.resolve()
-    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(2)
-
-    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
-      type: 'system_notification',
-      subtype: 'workflow_state',
-      data: {
-        mode: 'workflow',
-        templateId: 'requirements-to-implementation',
-        templateVersion: '1',
-        templateSource: 'builtin',
-        templateSnapshotId: 'requirements-to-implementation-v1',
-        status: 'pending-confirmation',
-        activePhaseId: 'technical-design',
-        activePhaseIndex: 1,
-        phaseCount: 5,
-        stateVersion: 8,
-        pendingConfirmation: true,
-        statePointer: {
-          kind: 'workflow-state',
-          sessionId: TEST_SESSION_ID,
-          artifactId: 'state',
-          schemaVersion: 1,
-          createdAt: '2026-05-20T00:00:00.000Z',
-        },
-      },
-    })
-
-    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
-      pendingWorkflowTransition: null,
-      workflowTransitionError: null,
-    })
+    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(1)
   })
 
-  it('supersedes an older phase transition so a new confirmation can be sent', async () => {
-    const olderTransition = {
-      phaseId: 'local-preview',
-      action: 'confirm' as const,
-      transitionId: 'workflow-transition:local-preview:17:confirm',
-      stateVersion: 17,
+  it('does not send a confirmation from a stale card or overwrite a newer workflow state during refresh', async () => {
+    const currentWorkflow: WorkflowSessionSummary = {
+      mode: 'workflow',
+      templateId: 'requirements-to-implementation',
+      templateVersion: '1',
+      templateSource: 'builtin',
+      templateSnapshotId: 'requirements-to-implementation-v1',
+      status: 'pending-confirmation',
+      activePhaseId: 'delegate-implement',
+      activePhaseIndex: 3,
+      phaseCount: 5,
+      stateVersion: 25,
+      pendingConfirmation: true,
+      statePointer: {
+        kind: 'workflow-state',
+        sessionId: TEST_SESSION_ID,
+        artifactId: 'state',
+        schemaVersion: 1,
+        createdAt: '2026-05-20T00:02:00.000Z',
+      },
     }
+    const staleRefresh: WorkflowSessionSummary = {
+      ...currentWorkflow,
+      activePhaseId: 'local-preview',
+      activePhaseIndex: 5,
+      stateVersion: 17,
+      statePointer: {
+        ...currentWorkflow.statePointer,
+        createdAt: '2026-05-20T00:01:00.000Z',
+      },
+    }
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      title: 'Workflow Session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:02:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      workflow: currentWorkflow,
+    }]
+    vi.mocked(sessionsApi.list).mockResolvedValueOnce({
+      sessions: [{
+        ...sessionStoreSnapshot.sessions[0]!,
+        modifiedAt: '2026-05-20T00:01:00.000Z',
+        workflow: staleRefresh,
+      }],
+      total: 1,
+    })
     useChatStore.setState({
       sessions: {
-        [TEST_SESSION_ID]: makeSession({ pendingWorkflowTransition: olderTransition }),
+        [TEST_SESSION_ID]: makeSession({
+          pendingWorkflowTransition: {
+            phaseId: 'local-preview',
+            action: 'confirm',
+            transitionId: 'workflow-transition:local-preview:17:confirm',
+            stateVersion: 17,
+          },
+        }),
       },
     })
 
     useChatStore.getState().sendWorkflowTransition(TEST_SESSION_ID, {
-      phaseId: 'delegate-implement',
+      phaseId: 'local-preview',
       action: 'confirm',
-      stateVersion: 25,
+      stateVersion: 17,
     })
 
     await Promise.resolve()
 
-    expect(sendWorkflowTransitionMock).toHaveBeenCalledTimes(1)
-    expect(sendWorkflowTransitionMock).toHaveBeenCalledWith(TEST_SESSION_ID, expect.objectContaining({
-      type: 'workflow_transition',
-      phaseId: 'delegate-implement',
-      action: 'confirm',
+    expect(sendWorkflowTransitionMock).not.toHaveBeenCalled()
+    expect(sessionsApi.list).toHaveBeenCalledWith({ limit: 200 })
+    expect(sessionStoreSnapshot.sessions[0]?.workflow).toMatchObject({
+      activePhaseId: 'delegate-implement',
       stateVersion: 25,
-      transitionId: 'workflow-transition:delegate-implement:25:confirm',
-    }))
-    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingWorkflowTransition).toMatchObject({
-      phaseId: 'delegate-implement',
-      stateVersion: 25,
+    })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingWorkflowTransition: null,
+      workflowTransitionErrorScope: {
+        phaseId: 'local-preview',
+        stateVersion: 17,
+      },
     })
   })
 

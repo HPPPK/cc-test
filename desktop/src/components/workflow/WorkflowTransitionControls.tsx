@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createWorkflowTransitionId } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
@@ -8,6 +8,7 @@ export type WorkflowTransitionCommand = {
   phaseId: string
   action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop'
   transitionId?: string
+  confirmationId?: string
   stateVersion?: number
   nextPhaseContextStrategy?: 'inherit' | 'clear'
   handoff?: {
@@ -27,8 +28,9 @@ type WorkflowTransitionControlsProps = {
   stateVersion?: number
   pendingTransition?: WorkflowTransitionCommand | null
   transitionError?: string | null
-  transitionErrorScope?: { phaseId: string; stateVersion?: number } | null
+  transitionErrorScope?: { phaseId: string; stateVersion?: number; confirmationId?: string } | null
   transitionResetKey?: number
+  transitionSyncing?: boolean
   embedded?: boolean
   onConfirm: (command: WorkflowTransitionCommand) => void
   onReject: (command: WorkflowTransitionCommand) => void
@@ -42,6 +44,7 @@ export function WorkflowTransitionControls({
   transitionError = null,
   transitionErrorScope = null,
   transitionResetKey = 0,
+  transitionSyncing = false,
   embedded = false,
   onConfirm,
   onReject,
@@ -63,7 +66,8 @@ export function WorkflowTransitionControls({
 
   const routeTarget = workflowRouteTarget(workflow, t)
   const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
-  const workflowStateKey = `${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}`
+  const confirmationId = workflow.pendingConfirmationId
+  const workflowStateKey = `${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
 
   useEffect(() => {
     const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
@@ -81,15 +85,24 @@ export function WorkflowTransitionControls({
       && pendingTransition.phaseId === phaseId
       && typeof pendingTransition.stateVersion === 'number'
       && typeof stateVersion === 'number'
-      && pendingTransition.stateVersion === stateVersion,
+      && pendingTransition.stateVersion === stateVersion
+      && (
+        (pendingTransition.action !== 'confirm' && pendingTransition.action !== 'reject')
+        || pendingTransition.confirmationId === confirmationId
+      ),
   )
-  const transitionPending = localPending || pendingTransitionMatchesCurrentConfirmation
+  const confirmationCredentialMissing = pending && !confirmationId
+  const transitionPending = transitionSyncing || confirmationCredentialMissing || localPending || pendingTransitionMatchesCurrentConfirmation
   const transitionErrorMatchesCurrentConfirmation = Boolean(
     transitionError
       && (!transitionErrorScope || (
         transitionErrorScope.phaseId === phaseId
         && typeof transitionErrorScope.stateVersion === 'number'
         && transitionErrorScope.stateVersion === stateVersion
+        && (
+          !transitionErrorScope.confirmationId
+          || transitionErrorScope.confirmationId === confirmationId
+        )
       )),
   )
   const submitTransition = (
@@ -97,17 +110,21 @@ export function WorkflowTransitionControls({
     action: WorkflowTransitionCommand['action'],
   ) => {
     if (submissionLockRef.current || pendingTransitionMatchesCurrentConfirmation) return
+    if ((action === 'confirm' || action === 'reject') && !confirmationId) return
 
     submissionLockRef.current = true
     setLocalPending(true)
     handler({
       phaseId,
       action,
-      transitionId: createWorkflowTransitionId(phaseId, stateVersion, action),
+      transitionId: createWorkflowTransitionId(phaseId, stateVersion, action, confirmationId),
+      ...(action === 'confirm' || action === 'reject' ? { confirmationId } : {}),
       stateVersion,
     })
   }
-  const transitionNotice = (transitionErrorMatchesCurrentConfirmation ? transitionError : null) || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
+  const transitionNotice = confirmationCredentialMissing
+    ? '正在同步最新阶段确认信息，请稍候…'
+    : (transitionErrorMatchesCurrentConfirmation ? transitionError : null) || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
   if (blocked && !pending) {
     return (
       <section

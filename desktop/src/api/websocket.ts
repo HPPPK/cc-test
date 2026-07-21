@@ -12,8 +12,10 @@ export function createWorkflowTransitionId(
   phaseId: string,
   stateVersion: number | undefined,
   action: WorkflowTransitionAction,
+  confirmationId?: string,
 ): string {
-  return `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`
+  const base = `workflow-transition:${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${action}`
+  return confirmationId ? `${base}:${encodeURIComponent(confirmationId)}` : base
 }
 
 type Connection = {

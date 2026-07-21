@@ -13,6 +13,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     css: true,
+    // Desktop test files share mutable Zustand stores and mocked Tauri globals.
+    // Serial file execution prevents cross-file state from making coverage results nondeterministic.
+    fileParallelism: false,
     setupFiles: [],
     coverage: {
       include: ['src/**/*.{ts,tsx}'],

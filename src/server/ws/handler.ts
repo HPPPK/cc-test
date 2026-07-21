@@ -1076,7 +1076,7 @@ async function handleWorkflowTransition(
       applyWorkflowTransitionMessage(ws, normalizeWorkflowTransitionMessage(message)),
     )
   } catch (error) {
-    sendWorkflowError(ws, error)
+    await sendWorkflowErrorWithAuthoritativeState(ws, error)
   }
 }
 
@@ -1335,6 +1335,24 @@ async function sendWorkflowResumeTurn(
     })
     sendMessage(ws, { type: 'status', state: 'idle' })
   }
+}
+
+async function sendWorkflowErrorWithAuthoritativeState(
+  ws: ServerWebSocket<WebSocketData>,
+  error: unknown,
+): Promise<void> {
+  const code = error instanceof ApiError ? error.code : undefined
+  if (code === 'WORKFLOW_STATE_STALE' || code === 'WORKFLOW_CONFIRMATION_SUPERSEDED') {
+    const state = await loadWorkflowStateForWebSocket(ws.data.sessionId)
+    if (state) {
+      sendMessage(ws, workflowNotificationForDesktop({
+        type: 'system_notification',
+        subtype: 'workflow_state',
+        data: state,
+      }) as ServerMessage)
+    }
+  }
+  sendWorkflowError(ws, error)
 }
 
 function sendWorkflowError(ws: ServerWebSocket<WebSocketData>, error: unknown): void {
@@ -3608,8 +3626,8 @@ function makeEphemeralWorkflowState(
     transitionHistory: [],
     artifactIndex: [],
     finalReportRef: null,
-    stateVersion: workflow?.stateRevision ?? 1,
-    revision: workflow?.stateRevision ?? 1,
+    stateVersion: workflow?.stateVersion ?? workflow?.stateRevision ?? 1,
+    revision: workflow?.stateRevision ?? workflow?.stateVersion ?? 1,
     createdAt: now,
     updatedAt: now,
     pendingConfirmation: null,

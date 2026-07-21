@@ -506,6 +506,8 @@ export type WorkflowSessionSummary = {
   /** Optimistic-concurrency version required for workflow transition commands. */
   stateVersion?: number
   pendingConfirmation: boolean
+  /** Identity of the effective pending confirmation card; pending routes take precedence. */
+  pendingConfirmationId?: string
   pendingRoute?: WorkflowPendingRoute | null
   pendingTargetPhaseId?: string | null
   pendingTargetPhaseIndex?: number
@@ -552,6 +554,8 @@ export type WorkflowSessionMetadata = {
   reportPointer?: WorkflowArtifactPointer
   sourceTemplateStatus?: WorkflowTemplateSourceStatus
   stateRevision?: number
+  /** Optimistic-concurrency version sent back to workflow transition clients. */
+  stateVersion?: number
   lastTransitionId?: string | null
   lastError?: string
   updatedAt: string
@@ -568,6 +572,7 @@ export type WorkflowSessionMetadata = {
   preview?: WorkflowPreviewState
   skillBindingStatus?: WorkflowSkillBindingResolution[]
   phaseNames?: string[]
+  pendingConfirmationId?: string
   pendingRoute?: WorkflowPendingRoute | null
   pendingTargetPhaseId?: string | null
   pendingTargetPhaseIndex?: number
@@ -946,6 +951,7 @@ export type WorkflowTransitionRequest = {
   phaseId: string
   action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'cancelled' | 'route'
   transitionId?: string
+  confirmationId?: string
   expectedStateVersion?: number
   stateVersion?: number
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy

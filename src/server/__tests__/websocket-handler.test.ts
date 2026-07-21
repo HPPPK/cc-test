@@ -2686,6 +2686,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action,
+      ...(action === 'confirm' || action === 'reject' ? { confirmationId: 'submit-requirements-ready' } : {}),
       stateVersion: 3,
       transitionId: `${action}-requirements-ready`,
     }))
@@ -2957,6 +2958,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 3,
       transitionId: 'confirm-auto-continue',
     }))
@@ -3009,6 +3011,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'reject',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 3,
       transitionId: 'reject-and-adjust',
     }))
@@ -3053,6 +3056,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 3,
       transitionId: 'confirm-auto-continue-recover',
     }))
@@ -3127,6 +3131,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 3,
       transitionId: 'confirm-auto-clear-context',
       nextPhaseContextStrategy: 'clear',
@@ -3390,6 +3395,7 @@ describe('WebSocket handler workflow runtime gating', () => {
         type: 'workflow_transition',
         phaseId: 'requirements-clarification',
         action,
+        confirmationId: 'submit-requirements-ready',
         stateVersion: 3,
         transitionId: `${action}-no-auto-continue`,
       }))
@@ -3414,25 +3420,47 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 2,
       transitionId: 'stale-requirements-ready',
     }))
     await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'error'))
 
     const messages = parseSentMessages(ws)
-    expect(messages).toContainEqual(expect.objectContaining({
-      type: 'error',
-      code: 'WORKFLOW_STATE_STALE',
-    }))
+    const authoritativeStateIndex = messages.findIndex((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    )
+    const staleErrorIndex = messages.findIndex((message) =>
+      message.type === 'error' && message.code === 'WORKFLOW_STATE_STALE'
+    )
+    expect(authoritativeStateIndex).toBeGreaterThanOrEqual(0)
+    expect(staleErrorIndex).toBeGreaterThan(authoritativeStateIndex)
+    expect(messages[authoritativeStateIndex]).toMatchObject({
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        activePhaseId: 'requirements-clarification',
+        stateVersion: 3,
+        pendingConfirmation: true,
+        pendingConfirmationId: 'submit-requirements-ready',
+      },
+    })
     const persisted = await stateService.readState(sessionId)
     expect(persisted.state?.activePhaseId).toBe('requirements-clarification')
     expect(persisted.state?.pendingConfirmation).toMatchObject({ status: 'pending' })
   })
 
-  it('replays duplicate websocket transitionId without duplicate advancement or notifications', async () => {
+  it('replays duplicate websocket transitionId without duplicate advancement and returns the authoritative state', async () => {
     const sessionId = `workflow-duplicate-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
+    spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
     spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
     await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
@@ -3442,6 +3470,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 3,
       transitionId: 'confirm-requirements-idempotent',
     }))
@@ -3453,21 +3482,82 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: 'submit-requirements-ready',
       stateVersion: 4,
       transitionId: 'confirm-requirements-idempotent',
     }))
-    await flushAsyncHandlers()
+    await waitForCondition(() => parseSentMessages(ws).filter((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    ).length >= 2)
 
-    const transitions = parseSentMessages(ws).filter((message) =>
+    const messages = parseSentMessages(ws)
+    const transitions = messages.filter((message) =>
       message.type === 'system_notification'
       && message.subtype === 'workflow_transition'
+    )
+    const workflowStates = messages.filter((message) =>
+      message.type === 'system_notification'
+      && message.subtype === 'workflow_state'
     )
     const persisted = await stateService.readState(sessionId)
     expect(transitions.filter((message) =>
       (message.data as { transitionId?: string }).transitionId === 'confirm-requirements-idempotent'
     )).toHaveLength(1)
+    expect(workflowStates).toHaveLength(2)
+    expect(workflowStates.at(-1)).toMatchObject({
+      data: {
+        activePhaseId: 'technical-design',
+        pendingConfirmation: false,
+      },
+    })
     expect(persisted.state?.activePhaseId).toBe('technical-design')
     expect(persisted.state?.phases[0]?.artifactPointers).toHaveLength(1)
+  })
+
+  it('rejects a superseded websocket confirmation after sending the current authoritative card', async () => {
+    const sessionId = `workflow-superseded-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'workflow_transition',
+      phaseId: 'requirements-clarification',
+      action: 'confirm',
+      confirmationId: 'superseded-requirements-ready',
+      stateVersion: 3,
+      transitionId: 'superseded-requirements-confirm',
+    }))
+    await waitForCondition(() => parseSentMessages(ws).some((message) =>
+      message.type === 'error' && message.code === 'WORKFLOW_CONFIRMATION_SUPERSEDED'
+    ))
+
+    const messages = parseSentMessages(ws)
+    const authoritativeStateIndex = messages.findIndex((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    )
+    const supersededErrorIndex = messages.findIndex((message) =>
+      message.type === 'error' && message.code === 'WORKFLOW_CONFIRMATION_SUPERSEDED'
+    )
+    expect(authoritativeStateIndex).toBeGreaterThanOrEqual(0)
+    expect(supersededErrorIndex).toBeGreaterThan(authoritativeStateIndex)
+    expect(messages[authoritativeStateIndex]).toMatchObject({
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: {
+        activePhaseId: 'requirements-clarification',
+        stateVersion: 3,
+        pendingConfirmation: true,
+        pendingConfirmationId: 'submit-requirements-ready',
+      },
+    })
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activePhaseId).toBe('requirements-clarification')
+    expect(persisted.state?.pendingConfirmation).toMatchObject({
+      confirmationId: 'submit-requirements-ready',
+      status: 'pending',
+    })
   })
 
   it('rejects websocket ready submissions when a pending confirmation already exists', async () => {
@@ -3675,6 +3765,7 @@ describe('WebSocket handler workflow runtime gating', () => {
         type: 'workflow_transition',
         phaseId: 'requirements-clarification',
         action: 'confirm',
+        confirmationId: 'submit-final-ready',
         stateVersion: 3,
         transitionId: 'confirm-final-ready',
       }))
@@ -3765,10 +3856,23 @@ describe('WebSocket handler workflow runtime gating', () => {
       message.type === 'system_notification'
       && message.subtype === 'workflow_state'
     ))
+    const pendingWorkflowState = parseSentMessages(ws).find((message) =>
+      message.type === 'system_notification'
+      && message.subtype === 'workflow_state'
+    )
+    const pendingWorkflow = pendingWorkflowState?.data as {
+      pendingConfirmationId?: string
+      stateVersion?: number
+    } | undefined
+    expect(pendingWorkflow?.pendingConfirmationId).toBeTruthy()
+    expect(pendingWorkflow?.stateVersion).toBeTypeOf('number')
+
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
       action: 'confirm',
+      confirmationId: pendingWorkflow?.pendingConfirmationId,
+      stateVersion: pendingWorkflow?.stateVersion,
       transitionId: 'confirm-ready',
     }))
     await waitForCondition(() => parseSentMessages(ws).filter((message) =>

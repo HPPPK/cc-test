@@ -129,6 +129,8 @@ export type WorkflowStatusPanelSummary = {
   activePhaseIndex: number
   phaseCount: number
   pendingConfirmation: boolean
+  /** Server-issued identity for the one confirmation card currently allowed to act. */
+  pendingConfirmationId?: string
   pendingRoute?: {
     routeId: string
     phaseId: string

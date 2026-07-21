@@ -3636,7 +3636,7 @@ describe('Sessions API', () => {
       })
       expect(retryRes.status).toBe(200)
       const retryBody = (await retryRes.json()) as {
-        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean }
+        workflow: { status: string; activePhaseId: string; stateVersion?: number; pendingConfirmation: boolean; pendingConfirmationId?: string }
       }
       expect(retryBody.workflow).toMatchObject({
         status: 'pending-confirmation',
@@ -3650,6 +3650,8 @@ describe('Sessions API', () => {
         body: JSON.stringify({
           phaseId: 'discussion',
           action: 'confirm',
+          stateVersion: retryBody.workflow.stateVersion,
+          confirmationId: retryBody.workflow.pendingConfirmationId,
           transitionId: 'confirm-requirements-ready',
         }),
       })
@@ -3914,6 +3916,11 @@ describe('Sessions API', () => {
         }),
       })
       expect(retryRes.status).toBe(200)
+      const retryBody = (await retryRes.json()) as {
+        workflow: { stateVersion?: number; pendingConfirmationId?: string }
+      }
+      expect(retryBody.workflow.pendingConfirmationId).toBeTruthy()
+      expect(retryBody.workflow.stateVersion).toBeTypeOf('number')
 
       const confirmRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
         method: 'POST',
@@ -3921,6 +3928,8 @@ describe('Sessions API', () => {
         body: JSON.stringify({
           phaseId: 'discussion',
           action: 'confirm',
+          stateVersion: retryBody.workflow.stateVersion,
+          confirmationId: retryBody.workflow.pendingConfirmationId,
           transitionId: 'confirm-clear-context-ready',
           nextPhaseContextStrategy: 'clear',
         }),
@@ -3980,6 +3989,7 @@ describe('Sessions API', () => {
         body: JSON.stringify({
           phaseId: 'discussion',
           action,
+          ...(action === 'confirm' || action === 'reject' ? { confirmationId: 'submit-discussion-ready' } : {}),
           stateVersion: 3,
           transitionId: `${action}-discussion-ready`,
         }),
@@ -4099,14 +4109,30 @@ describe('Sessions API', () => {
         body: JSON.stringify({
           phaseId: 'discussion',
           action: 'confirm',
+          confirmationId: 'submit-discussion-ready',
           stateVersion: 2,
           transitionId: 'stale-discussion-ready',
         }),
       })
-      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      const body = (await res.json()) as {
+        error?: unknown
+        code?: unknown
+        message?: unknown
+        state?: { activePhaseId: string; pendingConfirmation?: { confirmationId?: string } | null }
+        workflow?: { activePhaseId: string; pendingConfirmation: boolean; pendingConfirmationId?: string }
+      }
       expect(res.status).toBe(409)
       expectWorkflowErrorShape(body, 'WORKFLOW_STATE_STALE')
       expectNoAbsolutePathLeak(body)
+      expect(body.state).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: { confirmationId: 'submit-discussion-ready' },
+      })
+      expect(body.workflow).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: true,
+        pendingConfirmationId: 'submit-discussion-ready',
+      })
 
       const stateRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
       const stateBody = (await stateRes.json()) as {
@@ -4117,6 +4143,54 @@ describe('Sessions API', () => {
       expect(stateBody.workflow.pendingConfirmation).toBe(true)
     })
 
+    it('POST /api/sessions/:id/workflow/transition should reject a superseded confirmation and return the current authoritative card', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-111111111118'
+      const workDir = path.join(tmpDir, 'api-workflow-superseded-confirmation')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+      ])
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          action: 'confirm',
+          confirmationId: 'superseded-discussion-ready',
+          stateVersion: 3,
+          transitionId: 'superseded-discussion-confirm',
+        }),
+      })
+      const body = (await res.json()) as {
+        error?: unknown
+        state?: { activePhaseId: string; pendingConfirmation?: { confirmationId?: string } | null }
+        workflow?: { activePhaseId: string; pendingConfirmation: boolean; pendingConfirmationId?: string }
+      }
+
+      expect(res.status).toBe(409)
+      expectWorkflowErrorShape(body, 'WORKFLOW_CONFIRMATION_SUPERSEDED')
+      expect(body.state).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: { confirmationId: 'submit-discussion-ready' },
+      })
+      expect(body.workflow).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: true,
+        pendingConfirmationId: 'submit-discussion-ready',
+      })
+      expectNoAbsolutePathLeak(body)
+    })
     it('POST /api/sessions/:id/workflow/transition should replay duplicate transitionId without advancing twice', async () => {
       const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-121212121217'
       const workDir = path.join(tmpDir, 'api-workflow-duplicate-transition')
@@ -4138,6 +4212,7 @@ describe('Sessions API', () => {
       const requestBody = {
         phaseId: 'discussion',
         action: 'confirm',
+        confirmationId: 'submit-discussion-ready',
         stateVersion: 3,
         transitionId: 'confirm-discussion-idempotent',
       }
@@ -4503,10 +4578,25 @@ describe('Sessions API', () => {
           evidence: [],
         }),
       })
-      const body = (await res.json()) as { error?: unknown; code?: unknown; message?: unknown }
+      const body = (await res.json()) as {
+        error?: unknown
+        code?: unknown
+        message?: unknown
+        state?: { activePhaseId: string; pendingConfirmation?: { confirmationId?: string } | null }
+        workflow?: { activePhaseId: string; pendingConfirmation: boolean; pendingConfirmationId?: string }
+      }
       expect(res.status).toBe(409)
       expectWorkflowErrorShape(body, 'WORKFLOW_STATE_STALE')
       expectNoAbsolutePathLeak(body)
+      expect(body.state).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: null,
+      })
+      expect(body.workflow).toMatchObject({
+        activePhaseId: 'discussion',
+        pendingConfirmation: false,
+      })
+      expect(body.workflow).not.toHaveProperty('pendingConfirmationId')
 
       const stateRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/workflow`)
       const stateBody = (await stateRes.json()) as {
@@ -4583,6 +4673,7 @@ describe('Sessions API', () => {
         body: JSON.stringify({
           phaseId: 'discussion',
           action: 'confirm',
+          confirmationId: 'submit-discussion-final-ready',
           stateVersion: 3,
           transitionId: 'confirm-final-discussion-ready',
         }),

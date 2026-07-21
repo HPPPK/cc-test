@@ -148,6 +148,7 @@ async function completeCurrentPhase(
     request: {
       phaseId,
       action: 'confirm',
+      confirmationId: submitted.state.pendingConfirmation!.confirmationId,
       stateVersion: submitted.state.stateVersion,
       transitionId: `e2e-confirm-${phaseId}-${sequence}`,
     },
@@ -357,6 +358,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
           request: {
             phaseId: routeFromPhaseId,
             action: 'confirm',
+            confirmationId: requestedRoute.state.pendingRoute!.routeId,
             stateVersion: requestedRoute.state.stateVersion,
             transitionId: `e2e-route-confirm-${workflow.id}-${routeFromPhaseId}`,
           },
@@ -391,6 +393,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
             request: {
               phaseId: workflow.routeToPhaseId,
               action: 'confirm',
+              confirmationId: reworkRequested.state.pendingRoute!.routeId,
               stateVersion: reworkRequested.state.stateVersion,
               transitionId: `e2e-rework-confirm-${workflow.id}`,
             },
@@ -458,6 +461,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
           request: {
             phaseId: routeFromPhaseId,
             action: 'confirm',
+            confirmationId: requested.state.pendingRoute!.routeId,
             stateVersion: requested.state.stateVersion,
             transitionId: `e2e-blocked-route-confirm-${workflow.id}-${routeFromPhaseId}`,
           },

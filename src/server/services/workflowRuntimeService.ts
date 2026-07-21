@@ -367,7 +367,11 @@ function blockedNotification(
 function workflowError(
   code: string,
   message: string,
-  statusCode = code === 'WORKFLOW_STATE_STALE' || code === 'WORKFLOW_PENDING_CONFLICT' ? 409 : 400,
+  statusCode = code === 'WORKFLOW_STATE_STALE'
+    || code === 'WORKFLOW_PENDING_CONFLICT'
+    || code === 'WORKFLOW_CONFIRMATION_SUPERSEDED'
+    ? 409
+    : 400,
 ): ApiError {
   return new ApiError(statusCode, message, code)
 }
@@ -389,6 +393,33 @@ function assertFreshStateVersion(
   if (typeof expectedVersion !== 'number') return
   if (expectedVersion !== state.stateVersion) {
     throw workflowError('WORKFLOW_STATE_STALE', 'Workflow state version is stale.')
+  }
+}
+
+function effectivePendingConfirmationId(state: WorkflowSessionState): string | null {
+  const route = state.pendingRoute
+  if (route?.status === 'pending') return route.routeId
+  const confirmation = state.pendingConfirmation
+  return confirmation?.status === 'pending' ? confirmation.confirmationId : null
+}
+
+function assertCurrentConfirmationId(
+  state: WorkflowSessionState,
+  request: WorkflowTransitionRequest | WorkflowClientMessage,
+): void {
+  const action = requestAction(request)
+  if (action !== 'confirm' && action !== 'reject') return
+
+  const pendingConfirmationId = effectivePendingConfirmationId(state)
+  // Internal direct confirms have no pending card to consume. Once a pending
+  // confirmation or route exists, the caller must present its exact identity.
+  if (!pendingConfirmationId) return
+
+  if (request.confirmationId !== pendingConfirmationId) {
+    throw workflowError(
+      'WORKFLOW_CONFIRMATION_SUPERSEDED',
+      'Workflow confirmation has been superseded by a newer pending confirmation.',
+    )
   }
 }
 
@@ -1259,12 +1290,10 @@ export class WorkflowRuntimeService {
     }
     const existing = existingTransition(input.state, input.request.transitionId)
     if (existing) {
-      if (existing.fromPhaseId === input.request.phaseId && input.state.activePhaseId !== input.request.phaseId) {
-        return { state: input.state, notifications: [] }
-      }
-      return { state: input.state, notifications: [] }
+      return { state: input.state, notifications: [stateNotification(input.state)] }
     }
 
+    assertCurrentConfirmationId(input.state, input.request)
     assertFreshStateVersion(input.state, requestStateVersion(input.request))
     const state = cloneState(input.state)
     const template = await this.loadWorkflowTemplate(state)
