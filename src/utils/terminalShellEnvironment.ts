@@ -285,6 +285,17 @@ export async function getTerminalShellEnvironment(
   return cachedTerminalShellEnv
 }
 
+const SHELL_MANAGED_RUNTIME_ENV_KEYS = [
+  'NVM_DIR',
+  'NODENV_ROOT',
+  'ASDF_DIR',
+  'VOLTA_HOME',
+  'PNPM_HOME',
+  'PYENV_ROOT',
+  'RUSTUP_HOME',
+  'CARGO_HOME',
+] as const
+
 export function mergeTerminalShellEnvironment(
   baseEnv: Record<string, string>,
   shellEnv: Record<string, string> | null,
@@ -297,6 +308,9 @@ export function mergeTerminalShellEnvironment(
   const merged = {
     ...shellEnv,
     ...baseEnv,
+  }
+  for (const key of SHELL_MANAGED_RUNTIME_ENV_KEYS) {
+    if (shellEnv[key]) merged[key] = shellEnv[key]
   }
   return mergedPath ? withPathEnv(merged, mergedPath) : merged
 }

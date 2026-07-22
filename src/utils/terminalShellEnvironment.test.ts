@@ -75,6 +75,7 @@ describe('terminal shell environment', () => {
     const merged = mergeTerminalShellEnvironment(
       {
         PATH: '/usr/bin:/bin',
+        NVM_DIR: '/runner/.nvm',
         CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456',
         TOOL_HOME: '/base/tool',
       },
