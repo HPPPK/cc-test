@@ -30,4 +30,14 @@ describe('tauri security config', () => {
     expect(cargoToml).toContain('reqwest = { version = "0.13"')
     expect(cargoToml).toContain('features = ["system-proxy"]')
   })
+
+  it('does not package default workflow ZIP resources', () => {
+    const config = JSON.parse(
+      readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'),
+    ) as {
+      bundle?: { resources?: string[] }
+    }
+
+    expect(config.bundle?.resources ?? []).not.toContain('binaries/packs')
+  })
 })
