@@ -24,6 +24,18 @@ describe('PR quality workflow', () => {
     expect(workflow.slice(installDependencies, runPolicyTests)).toContain('bun install --frozen-lockfile')
   })
 
+  test('builds the desktop frontend before native checks require its dist resource', () => {
+    const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
+    const nativeJob = workflow.indexOf('desktop-native-checks:')
+    const buildDesktop = workflow.indexOf('name: Build desktop frontend', nativeJob)
+    const runNative = workflow.indexOf('name: Run desktop native checks', nativeJob)
+
+    expect(buildDesktop).toBeGreaterThan(nativeJob)
+    expect(buildDesktop).toBeLessThan(runNative)
+    expect(workflow.slice(buildDesktop, runNative)).toContain('working-directory: desktop')
+    expect(workflow.slice(buildDesktop, runNative)).toContain('bun run build')
+  })
+
   test('keeps coverage artifacts observable in CI', () => {
     const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
 

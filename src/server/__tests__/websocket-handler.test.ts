@@ -363,6 +363,15 @@ function makePendingWorkflowState(sessionId: string): WorkflowSessionState {
       state.phases[1],
     ],
     artifactIndex: [artifact],
+    activeModelResolution: {
+      requestedModel: null,
+      actualModel: 'main-session-sonnet',
+      providerId: null,
+      source: 'main-session-default',
+      fallbackApplied: false,
+      fallbackReason: null,
+      resolvedAt: '2026-05-20T00:00:00.000Z',
+    },
     transitionHistory: [
       {
         transitionId: 'submit-requirements-ready',
@@ -3049,6 +3058,9 @@ describe('WebSocket handler workflow runtime gating', () => {
     spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
     spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+    const tempConfigDir = path.join(os.tmpdir(), `cc-jiangxia-workflow-auto-resume-${crypto.randomUUID()}`)
+    process.env.CLAUDE_CONFIG_DIR = tempConfigDir
     await stateService.writeState(sessionId, makePendingWorkflowState(sessionId))
 
     handleWebSocket.open(ws)
@@ -3068,10 +3080,28 @@ describe('WebSocket handler workflow runtime gating', () => {
     ))
 
     expect(startSession).toHaveBeenCalledTimes(1)
+    expect(startSession).toHaveBeenCalledWith(
+      sessionId,
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ model: 'main-session-sonnet' }),
+    )
     expect(sendMessage).toHaveBeenCalledWith(
       sessionId,
       expect.stringContaining('Active phase: technical-design'),
     )
+    const persisted = await stateService.readState(sessionId)
+    expect(persisted.state?.activeModelResolution).toMatchObject({
+      actualModel: 'main-session-sonnet',
+      source: 'active-session',
+      fallbackApplied: true,
+    })
+    if (originalConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+    }
+    await fs.rm(tempConfigDir, { recursive: true, force: true })
   })
 
   it('reports when a structured question answer cannot be delivered to the CLI session', async () => {

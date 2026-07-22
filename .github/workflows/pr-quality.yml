@@ -167,6 +167,10 @@ jobs:
         working-directory: adapters
         run: bun install
 
+      - name: Build desktop frontend
+        working-directory: desktop
+        run: bun run build
+
       - name: Run desktop native checks
         run: bun run check:native
 

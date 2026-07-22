@@ -55,10 +55,14 @@ type ModelSelector = {
   modelId: string | null
 }
 
+type ResolvedDefaultModel = ModelSelector & {
+  source?: 'main-session-default' | 'active-session'
+}
+
 type StartPhaseInput = {
   state: WorkflowSessionState
   requestedAt: string
-  resolveDefaultModel: () => Promise<ModelSelector>
+  resolveDefaultModel: () => Promise<ResolvedDefaultModel>
   isRequestedModelAvailable: (modelId: string) => Promise<boolean>
 }
 
@@ -1116,6 +1120,8 @@ export class WorkflowRuntimeService {
     let actualModel: string | null = null
     let providerId: string | null = null
     let fallbackReason: string | undefined
+    let modelResolutionSource: 'phase-request' | 'main-session-default' | 'active-session' = 'phase-request'
+    let fallbackApplied = false
 
     if (requestedModel && await input.isRequestedModelAvailable(requestedModel)) {
       actualModel = requestedModel
@@ -1124,7 +1130,15 @@ export class WorkflowRuntimeService {
       providerId = fallback.providerId
       actualModel = fallback.modelId
       if (requestedModel && actualModel) {
-        fallbackReason = `Requested model ${requestedModel} is unavailable; using main session default ${actualModel}.`
+        fallbackApplied = true
+        modelResolutionSource = fallback.source ?? 'main-session-default'
+        fallbackReason = fallback.source === 'active-session'
+          ? `Requested model ${requestedModel} is unavailable; reusing the active session model ${actualModel}.`
+          : `Requested model ${requestedModel} is unavailable; using main session default ${actualModel}.`
+      } else if (!requestedModel && actualModel && fallback.source === 'active-session') {
+        fallbackApplied = true
+        modelResolutionSource = 'active-session'
+        fallbackReason = `No configured runtime model is available; reusing the active session model ${actualModel}.`
       }
     }
 
@@ -1170,8 +1184,8 @@ export class WorkflowRuntimeService {
         requestedModel: requestedModel ?? null,
         actualModel,
         providerId,
-        source: fallbackReason ? 'main-session-default' : 'phase-request',
-        fallbackApplied: Boolean(fallbackReason),
+        source: modelResolutionSource,
+        fallbackApplied,
         fallbackReason: fallbackReason ?? null,
         resolvedAt: input.requestedAt,
       },

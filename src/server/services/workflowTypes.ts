@@ -213,7 +213,7 @@ export type WorkflowModelResolution = {
   requestedModel: WorkflowModelSelector | null
   actualModel: WorkflowModelSelector | null
   providerId: string | null
-  source: 'phase-request' | 'main-session-default' | 'none'
+  source: 'phase-request' | 'main-session-default' | 'active-session' | 'none'
   fallbackApplied: boolean
   fallbackReason: string | null
   resolvedAt: string

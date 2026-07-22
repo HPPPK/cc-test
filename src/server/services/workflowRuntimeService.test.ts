@@ -355,6 +355,44 @@ describe('WorkflowRuntimeService', () => {
     }))
   })
 
+  test('reuses the active session model when a resumed workflow phase has no configured default', async () => {
+    const service = await makeService()
+    const state = makeState()
+    state.activeModelResolution = {
+      requestedModel: null,
+      actualModel: 'claude-sonnet-4',
+      providerId: 'anthropic',
+      source: 'main-session-default',
+      fallbackApplied: false,
+      fallbackReason: null,
+      resolvedAt: '2026-05-20T00:00:00.000Z',
+    }
+
+    const result = await service.startPhase({
+      state,
+      requestedAt: '2026-05-20T00:01:00.000Z',
+      isRequestedModelAvailable: async () => false,
+      resolveDefaultModel: async () => ({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4',
+        source: 'active-session',
+      }),
+    })
+
+    expect(result.state.workflowStatus).toBe('running')
+    expect(result.state.phases[0]).toMatchObject({
+      status: 'running',
+      actualModel: 'claude-sonnet-4',
+      fallbackReason: expect.stringContaining('reusing the active session model'),
+    })
+    expect(result.state.activeModelResolution).toMatchObject({
+      actualModel: 'claude-sonnet-4',
+      providerId: 'anthropic',
+      source: 'active-session',
+      fallbackApplied: true,
+    })
+  }, 10_000)
+
   test('blocks without advancing when neither requested nor fallback model can be resolved', async () => {
     const service = await makeService()
 

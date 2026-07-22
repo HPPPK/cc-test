@@ -768,7 +768,7 @@ async function resolveWorkflowUserMessage(
   const state = await loadWorkflowStateForWebSocket(sessionId, workflow)
   if (!state) return content
   if (state.workflowStatus === 'cancelled' || state.status === 'cancelled') return content
-  const defaultModel = await resolveWorkflowDefaultModel(sessionId)
+  const defaultModel = await resolveWorkflowDefaultModel(sessionId, state)
   if (workflowLanguage) state.workflowLanguage = workflowLanguage
 
   const started = await workflowRuntimeService.startPhase({
@@ -793,14 +793,52 @@ async function resolveWorkflowUserMessage(
   return augmentWorkflowPrompt(started.state, prompt.content)
 }
 
-async function resolveWorkflowDefaultModel(sessionId: string): Promise<{
+type WorkflowDefaultModel = {
   providerId: string | null
   modelId: string | null
-}> {
-  const runtime = await getRuntimeSettings(sessionId)
+  source?: 'main-session-default' | 'active-session'
+}
+
+async function resolveReusableWorkflowModel(
+  state: WorkflowSessionState | null | undefined,
+): Promise<WorkflowDefaultModel | null> {
+  const resolution = state ? getVisibleWorkflowModelResolution(state) : undefined
+  if (!resolution?.actualModel) return null
+
+  if (resolution.providerId) {
+    try {
+      const { providers } = await providerService.listProviders()
+      if (!providers.some((provider) => provider.id === resolution.providerId)) {
+        return null
+      }
+    } catch {
+      return null
+    }
+  }
+
   return {
-    providerId: runtime.providerId ?? null,
-    modelId: runtime.model ?? null,
+    providerId: resolution.providerId,
+    modelId: resolution.actualModel,
+    source: 'active-session',
+  }
+}
+
+async function resolveWorkflowDefaultModel(
+  sessionId: string,
+  state?: WorkflowSessionState | null,
+): Promise<WorkflowDefaultModel> {
+  const runtime = await getRuntimeSettings(sessionId)
+  if (runtime.model) {
+    return {
+      providerId: runtime.providerId ?? null,
+      modelId: runtime.model,
+      source: 'main-session-default',
+    }
+  }
+
+  return await resolveReusableWorkflowModel(state) ?? {
+    providerId: null,
+    modelId: null,
   }
 }
 
@@ -863,6 +901,7 @@ function isWorkflowModelResolution(value: unknown): value is WorkflowModelResolu
     (
       record.source === 'phase-request' ||
       record.source === 'main-session-default' ||
+      record.source === 'active-session' ||
       record.source === 'none'
     ) &&
     typeof record.fallbackApplied === 'boolean' &&
@@ -1303,7 +1342,7 @@ async function sendWorkflowResumeTurn(
   sendMessage(ws, { type: 'status', state: 'thinking', verb: 'Thinking' })
   bindAllClientSessionOutputs(sessionId)
 
-  const defaultModel = await resolveWorkflowDefaultModel(sessionId)
+  const defaultModel = await resolveWorkflowDefaultModel(sessionId, state)
   const started = await workflowRuntimeService.startPhase({
     state,
     requestedAt: new Date().toISOString(),
@@ -3303,8 +3342,18 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   runtimeSettings?: RuntimeSettings,
   state?: WorkflowSessionState,
 ): Promise<RuntimeSettings> {
-  const settings = runtimeSettings ?? await getRuntimeSettings(sessionId)
+  const runtimeSettingsValue = runtimeSettings ?? await getRuntimeSettings(sessionId)
   const workflowState = state ?? await loadWorkflowStateForWebSocket(sessionId)
+  const reusableModel = runtimeSettingsValue.model
+    ? null
+    : await resolveReusableWorkflowModel(workflowState)
+  const settings = reusableModel
+    ? {
+        ...runtimeSettingsValue,
+        providerId: reusableModel.providerId,
+        model: reusableModel.modelId ?? undefined,
+      }
+    : runtimeSettingsValue
   const disallowedTools = getWorkflowPhaseDisallowedTools(workflowState)
   const workflowSystemPrompt = buildWorkflowRuntimeBindingInstruction(sessionId, workflowState)
   const workflowSettings = getWorkflowScopedToolNames(workflowState).length > 0
