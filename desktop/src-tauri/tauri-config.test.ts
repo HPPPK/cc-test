@@ -40,4 +40,20 @@ describe('tauri security config', () => {
 
     expect(config.bundle?.resources ?? []).not.toContain('binaries/packs')
   })
+
+  it('uses the canonical repository release manifest for updater checks', () => {
+    const config = JSON.parse(
+      readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'),
+    ) as {
+      plugins?: {
+        updater?: {
+          endpoints?: string[]
+        }
+      }
+    }
+
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/chenziyang110/cc-jiangxia/releases/latest/download/latest.json',
+    ])
+  })
 })

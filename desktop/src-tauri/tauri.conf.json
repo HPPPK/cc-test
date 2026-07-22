@@ -33,7 +33,7 @@
                     "updater":  {
                                     "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1MUI5Q0QxNjlENDI2MDIKUldRQ0p0UnAwWndiSmJmYmQwbERQbWpBSWFTMXp6S3M0QXRqRmY0N0ttRnhsUlNwQUZGSUlTVGQK",
                                     "endpoints":  [
-                                                      "https://github.com/HPPPK/cc-test/releases/latest/download/latest.json"
+                                                      "https://github.com/chenziyang110/cc-jiangxia/releases/latest/download/latest.json"
                                                   ],
                                     "windows":  {
                                                     "installMode":  "passive"

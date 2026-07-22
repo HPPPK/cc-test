@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 import { Settings } from './Settings'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { zh } from '../i18n/locales/zh'
+
+const { openExternal } = vi.hoisted(() => ({
+  openExternal: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@tauri-apps/plugin-shell', () => ({
+  open: openExternal,
+}))
 
 vi.mock('../stores/providerStore', () => ({
   useProviderStore: () => ({
@@ -134,6 +142,7 @@ describe('Settings Workflows tab', () => {
   beforeEach(() => {
     useSettingsStore.setState({ locale: 'en' })
     useUIStore.setState({ pendingSettingsTab: null })
+    openExternal.mockClear()
   })
 
   it('routes to the Workflows tab without removing existing Settings tabs', () => {
@@ -186,5 +195,16 @@ describe('Settings Workflows tab', () => {
   it('uses localized Chinese labels for the Workflows and Experts tabs', () => {
     expect(zh['settings.tab.workflows']).toBe('工作流')
     expect(zh['settings.tab.experts']).toBe('专家')
+  })
+
+  it('opens the canonical repository from the About page', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByRole('button', { name: /About/ }))
+    fireEvent.click(screen.getByRole('button', { name: /chenziyang110\/cc-jiangxia/i }))
+
+    await waitFor(() => {
+      expect(openExternal).toHaveBeenCalledWith('https://github.com/chenziyang110/cc-jiangxia')
+    })
   })
 })
