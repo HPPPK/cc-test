@@ -13,6 +13,17 @@ describe('PR quality workflow', () => {
     expect(workflow).toContain("if: needs.change-policy.outputs.coverage_checks == 'true'")
   })
 
+  test('installs root dependencies before loading policy tests', () => {
+    const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
+    const setupBun = workflow.indexOf('name: Setup Bun')
+    const installDependencies = workflow.indexOf('name: Install root dependencies', setupBun)
+    const runPolicyTests = workflow.indexOf('name: Run policy tests')
+
+    expect(installDependencies).toBeGreaterThan(setupBun)
+    expect(installDependencies).toBeLessThan(runPolicyTests)
+    expect(workflow.slice(installDependencies, runPolicyTests)).toContain('bun install --frozen-lockfile')
+  })
+
   test('keeps coverage artifacts observable in CI', () => {
     const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
 
