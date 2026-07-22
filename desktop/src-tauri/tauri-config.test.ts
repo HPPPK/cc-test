@@ -30,4 +30,20 @@ describe('tauri security config', () => {
     expect(cargoToml).toContain('reqwest = { version = "0.13"')
     expect(cargoToml).toContain('features = ["system-proxy"]')
   })
+
+  it('uses the canonical repository release manifest for updater checks', () => {
+    const config = JSON.parse(
+      readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'),
+    ) as {
+      plugins?: {
+        updater?: {
+          endpoints?: string[]
+        }
+      }
+    }
+
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/chenziyang110/cc-jiangxia/releases/latest/download/latest.json',
+    ])
+  })
 })
