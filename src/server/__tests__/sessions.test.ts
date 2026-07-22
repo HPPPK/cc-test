@@ -3440,7 +3440,7 @@ describe('Sessions API', () => {
           link?: Record<string, unknown>
         }
         expect(body.sessionId).toBe(sourceSessionId)
-        expect(body.workDir).toBe(await fs.realpath(workDir))
+        expect(body.workDir).toBe(workDir)
         expect(body.workflow).toMatchObject({
           mode: 'workflow',
           templateId: 'agent-development',

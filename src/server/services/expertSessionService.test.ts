@@ -1,5 +1,5 @@
 ﻿import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { sessionService } from './sessionService.js'
@@ -53,7 +53,7 @@ describe('ExpertSessionService', () => {
 
     const written = await service.writeMaterialPackage(sessionId, { title: 'Session result' })
     const afterWrite = await sessionService.getSession(sessionId)
-    const expectedRoot = path.resolve(projectRoot, '.workflow', 'intake', 'expert-runs')
+    const expectedRoot = path.resolve(await realpath(projectRoot), '.workflow', 'intake', 'expert-runs')
 
     expect(written.materialRef.summaryPath.startsWith(expectedRoot + path.sep)).toBe(true)
     expect(afterWrite?.expert?.materialRefs[0]?.runId).toBe(written.materialRef.runId)

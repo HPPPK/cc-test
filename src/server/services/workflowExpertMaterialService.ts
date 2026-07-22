@@ -70,10 +70,9 @@ function bounded(text: string, limit: number): string {
   return `${normalized.slice(0, Math.max(0, limit - 18)).trimEnd()} [truncated]`
 }
 
-function assertInsideWorkspace(workDir: string, filePath: string, runId: string): string {
-  const expertRunsRoot = path.resolve(workDir, '.workflow', 'intake', 'expert-runs')
-  const expectedRunRoot = path.resolve(expertRunsRoot, runId)
-  const resolved = path.resolve(filePath)
+async function assertInsideWorkspace(workDir: string, filePath: string, runId: string): Promise<string> {
+  const expectedRunRoot = await fs.realpath(path.resolve(workDir, '.workflow', 'intake', 'expert-runs', runId))
+  const resolved = await fs.realpath(path.resolve(filePath))
   const relative = path.relative(expectedRunRoot, resolved)
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error('Expert material path is outside the selected run directory')
@@ -101,9 +100,11 @@ export async function collectWorkflowExpertMaterials(
   if (refs.length === 0) return null
 
   const materials = await Promise.all(refs.map(async (ref) => {
-    const summaryPath = assertInsideWorkspace(workDir, ref.summaryPath, ref.runId)
-    const materialJsonPath = assertInsideWorkspace(workDir, ref.materialJsonPath, ref.runId)
-    const evidencePath = assertInsideWorkspace(workDir, ref.evidencePath, ref.runId)
+    const [summaryPath, materialJsonPath, evidencePath] = await Promise.all([
+      assertInsideWorkspace(workDir, ref.summaryPath, ref.runId),
+      assertInsideWorkspace(workDir, ref.materialJsonPath, ref.runId),
+      assertInsideWorkspace(workDir, ref.evidencePath, ref.runId),
+    ])
     const [summaryContent, evidenceExcerpt] = await Promise.all([
       readRequiredFile(summaryPath, 'summary', MAX_SUMMARY_CHARACTERS),
       readRequiredFile(evidencePath, 'evidence', MAX_EVIDENCE_CHARACTERS),

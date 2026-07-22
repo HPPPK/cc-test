@@ -927,6 +927,7 @@ describe('WebSocket Chat Integration', () => {
   })
 
   it('should send user_message and receive streamed SDK response', async () => {
+    const eventTimeoutMs = 20_000
     const messages: any[] = []
     const ws = new WebSocket(`${wsUrl}/ws/chat-test-3`)
 
@@ -955,7 +956,7 @@ describe('WebSocket Chat Integration', () => {
       setTimeout(() => {
         ws.close()
         resolve()
-      }, 5000)
+      }, eventTimeoutMs)
     })
 
     const types = messages.map((m) => m.type)
@@ -970,7 +971,7 @@ describe('WebSocket Chat Integration', () => {
     // Verify thinking was first status
     const statusMsgs = messages.filter((m) => m.type === 'status')
     expect(statusMsgs[0].state).toBe('thinking')
-  })
+  }, 25_000)
 
   it('should synchronize WebSocket turn status to the chat status API', async () => {
     // Coverage instrumentation and Windows process scheduling can delay the

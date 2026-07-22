@@ -2,6 +2,29 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 describe('release desktop workflow', () => {
+  test('publishes signed Windows and Apple Silicon updater artifacts without racing latest.json', () => {
+    const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
+
+    expect(workflow).toContain('max-parallel: 1')
+    expect(workflow).toContain('platform: windows-latest')
+    expect(workflow).toContain('rust_target: x86_64-pc-windows-msvc')
+    expect(workflow).toContain('platform: macos-latest')
+    expect(workflow).toContain('rust_target: aarch64-apple-darwin')
+    expect(workflow).toContain("tauri_args: '--target aarch64-apple-darwin --bundles app,dmg'")
+    expect(workflow).toContain("apple_signing_identity: '-'")
+    expect(workflow).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}')
+    expect(workflow).toContain('APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}')
+    expect(workflow).toContain('uploadUpdaterJson: true')
+    expect(workflow).toContain('uploadUpdaterSignatures: true')
+    expect(workflow).toContain('releaseAssetNamePattern: ${{ matrix.asset_name_pattern }}')
+    expect(workflow).not.toContain('assetNamePattern:')
+
+    const windowsIndex = workflow.indexOf('platform: windows-latest')
+    const macosIndex = workflow.indexOf('platform: macos-latest')
+    expect(windowsIndex).toBeGreaterThan(-1)
+    expect(macosIndex).toBeGreaterThan(windowsIndex)
+  })
+
   test('build job runs directly without quality preflight dependency', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
 
