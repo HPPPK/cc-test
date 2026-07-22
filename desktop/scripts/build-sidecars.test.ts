@@ -32,14 +32,14 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(externalModules).not.toContain('dingtalk-stream')
   })
 
-  it('removes stale bundled workflow packs so desktop builds require user imports', () => {
+  it('stages bundled workflow ZIPs as installer payload', () => {
     const source = readBuildScript()
 
-    expect(source).toContain('clearBundledWorkflowPacks')
+    expect(source).toContain('copyBundledWorkflowPacks')
+    expect(source).toContain("path.join(repoRoot, 'src', 'server', 'packs')")
     expect(source).toContain("path.join(binariesDir, 'packs')")
-    expect(source).toContain('await rm(targetDir, { recursive: true, force: true })')
-    expect(source).not.toContain("path.join(repoRoot, 'src', 'server', 'packs')")
-    expect(source).not.toContain('copyBundledWorkflowPacks')
+    expect(source).toContain('await cp(sourceDir, targetDir, { recursive: true })')
+    expect(source).not.toContain('clearBundledWorkflowPacks')
   })
 
   it('copies bundled skill resources next to the compiled sidecar', () => {

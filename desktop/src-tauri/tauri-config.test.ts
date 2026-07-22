@@ -31,14 +31,14 @@ describe('tauri security config', () => {
     expect(cargoToml).toContain('features = ["system-proxy"]')
   })
 
-  it('does not package default workflow ZIP resources', () => {
+  it('packages workflow ZIPs only as an installer payload', () => {
     const config = JSON.parse(
       readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'),
     ) as {
       bundle?: { resources?: string[] }
     }
 
-    expect(config.bundle?.resources ?? []).not.toContain('binaries/packs')
+    expect(config.bundle?.resources ?? []).toContain('binaries/packs')
   })
 
   it('uses the canonical repository release manifest for updater checks', () => {

@@ -25,7 +25,7 @@ if (scanExit !== 0) {
 }
 
 await mkdir(binariesDir, { recursive: true })
-await clearBundledWorkflowPacks()
+await copyBundledWorkflowPacks()
 await copyBundledSkills()
 
 // 单一合并 sidecar：server / cli 共享一份 bun runtime + 共享依赖代码。
@@ -42,16 +42,17 @@ console.log(`[build-sidecars] Built desktop sidecar for ${targetTriple} (${bunTa
 
 
 /**
- * Workflow ZIPs are deliberately user-imported only.
- *
- * Remove any stale local sidecar copy so a release build cannot accidentally
- * retain workflow packs from an older build. The server continues to load ZIPs
- * that the user explicitly imports into their workflow storage.
+ * Stage the repository workflow ZIPs as installer payload. Windows NSIS moves
+ * them into the user-owned workflow store after installation and then deletes
+ * this staged directory from the application install directory. Other bundle
+ * formats retain the payload so the runtime can seed the same canonical store.
  */
-async function clearBundledWorkflowPacks() {
+async function copyBundledWorkflowPacks() {
+  const sourceDir = path.join(repoRoot, 'src', 'server', 'packs')
   const targetDir = path.join(binariesDir, 'packs')
   await rm(targetDir, { recursive: true, force: true })
-  console.log('[build-sidecars] No bundled workflow packs are included in desktop builds.')
+  await cp(sourceDir, targetDir, { recursive: true })
+  console.log('[build-sidecars] Staged workflow installer payload -> ' + targetDir)
 }
 
 
