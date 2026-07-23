@@ -54,6 +54,7 @@
                                    ],
                    "resources":  [
                                      "../dist",
+                                     "binaries/packs",
                                      "binaries/skills"
                                  ],
                    "icon":  [
