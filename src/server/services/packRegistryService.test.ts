@@ -11,6 +11,7 @@ import { ZipPackAdapter } from './zipPackAdapter.js'
 
 let tempConfigDir: string
 let originalConfigDir: string | undefined
+let originalPacksDir: string | undefined
 
 const encoder = new TextEncoder()
 
@@ -109,8 +110,10 @@ async function makeWorkflowPackZip(overrides: {
 
 beforeEach(async () => {
   originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+  originalPacksDir = process.env.CLAUDE_PACKS_DIR
   tempConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-pack-registry-'))
   process.env.CLAUDE_CONFIG_DIR = tempConfigDir
+  delete process.env.CLAUDE_PACKS_DIR
   resetPackRegistryForTests()
 })
 
@@ -119,6 +122,11 @@ afterEach(async () => {
     delete process.env.CLAUDE_CONFIG_DIR
   } else {
     process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+  }
+  if (originalPacksDir === undefined) {
+    delete process.env.CLAUDE_PACKS_DIR
+  } else {
+    process.env.CLAUDE_PACKS_DIR = originalPacksDir
   }
   resetPackRegistryForTests()
   await fs.rm(tempConfigDir, { recursive: true, force: true })
@@ -141,6 +149,62 @@ describe('PackRegistryService', () => {
     expect(listed?.editable).toBe(true)
     expect(listed?.packId).toBe('guided-development')
     expect(await fileExists(path.join(getWorkflowPackStorageDir(), 'guided-development.zip'))).toBe(true)
+  })
+
+  test('seeds a bundled default workflow into a new user profile by workflow ID', async () => {
+    const service = new PackRegistryService()
+    const bundledDir = path.join(tempConfigDir, 'bundled-defaults')
+    const bundledZip = await makeWorkflowPackZip({
+      manifest: { packId: 'fresh-default-pack', name: 'Fresh Default Pack', version: '2.0.0' },
+      workflow: { id: 'fresh-default', name: 'Fresh Default', version: '2.0.0' },
+    })
+    await fs.mkdir(bundledDir, { recursive: true })
+    await fs.writeFile(path.join(bundledDir, 'renamed-release-payload.zip'), bundledZip)
+    process.env.CLAUDE_PACKS_DIR = bundledDir
+
+    await service.seedBundledWorkflowPacks()
+
+    const storedPath = path.join(getWorkflowPackStorageDir(), 'fresh-default.zip')
+    expect(await fileExists(storedPath)).toBe(true)
+    expect((await service.loadStoredWorkflowTemplate('fresh-default')).name).toBe('Fresh Default')
+    expect((await service.loadStoredWorkflowTemplate('fresh-default')).version).toBe('2.0.0')
+  })
+
+  test('updates a bundled default by workflow ID without removing a different user workflow', async () => {
+    const service = new PackRegistryService()
+    await service.importWorkflowPackZip(await makeWorkflowPackZip({
+      manifest: { packId: 'old-default-pack', name: 'Old Default Pack', version: '1.0.0' },
+      workflow: { id: 'updated-default', name: 'Old Default', version: '1.0.0' },
+    }))
+    await service.importWorkflowPackZip(await makeWorkflowPackZip({
+      manifest: { packId: 'custom-workflow-pack', name: 'Custom Workflow Pack', version: '1.0.0' },
+      workflow: { id: 'custom-user-workflow', name: 'Custom User Workflow', version: '1.0.0' },
+    }))
+    const staleDuplicatePath = path.join(getWorkflowPackStorageDir(), 'renamed-stale-default.zip')
+    await fs.writeFile(staleDuplicatePath, await makeWorkflowPackZip({
+      manifest: { packId: 'stale-default-pack', name: 'Stale Default Pack', version: '1.0.0' },
+      workflow: { id: 'updated-default', name: 'Stale Default', version: '1.0.0' },
+    }))
+    const future = new Date('2030-01-01T00:00:00.000Z')
+    await fs.utimes(staleDuplicatePath, future, future)
+
+    const bundledDir = path.join(tempConfigDir, 'bundled-defaults')
+    const latestDefaultZip = await makeWorkflowPackZip({
+      manifest: { packId: 'latest-default-pack', name: 'Latest Default Pack', version: '2.0.0' },
+      workflow: { id: 'updated-default', name: 'Latest Default', version: '2.0.0' },
+    })
+    await fs.mkdir(bundledDir, { recursive: true })
+    await fs.writeFile(path.join(bundledDir, 'different-file-name.zip'), latestDefaultZip)
+    process.env.CLAUDE_PACKS_DIR = bundledDir
+
+    await service.seedBundledWorkflowPacks()
+
+    expect((await service.loadStoredWorkflowTemplate('updated-default')).name).toBe('Latest Default')
+    expect((await service.loadStoredWorkflowTemplate('updated-default')).version).toBe('2.0.0')
+    expect((await service.listWorkflows()).find((workflow) => workflow.id === 'updated-default')?.name).toBe('Latest Default')
+    expect(await fileExists(staleDuplicatePath)).toBe(false)
+    expect(await fileExists(path.join(getWorkflowPackStorageDir(), 'custom-user-workflow.zip'))).toBe(true)
+    expect((await service.loadStoredWorkflowTemplate('custom-user-workflow')).name).toBe('Custom User Workflow')
   })
 
   test('loads the latest same-id workflow directly from the canonical ZIP after overwrite', async () => {
