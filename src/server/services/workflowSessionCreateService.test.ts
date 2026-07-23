@@ -92,11 +92,11 @@ describe('workflow session creation routing', () => {
 
     expect(summary.labels).toContain('bug')
     expect(summary.effort).toBe('standard')
-    expect(summary.phaseNames).toContain('Problem Investigation')
-    expect(summary.phaseNames).toContain('Regression Scenario Validation + Preview')
+    expect(summary.phaseNames).toContain('Root-Cause Investigation / 根因调查')
+    expect(summary.phaseNames).toContain('Quality Validation + Preview Decision / 质量验证与预览决策')
     expect(state.state?.phases.map((phase) => phase.id)).toContain('debug-investigate')
     expect(state.state?.phases.find((phase) => phase.id === 'debug-quality-preview')?.label)
-      .toBe('Regression Scenario Validation + Preview')
+      .toBe('Quality Validation + Preview Decision / 质量验证与预览决策')
   })
 
   test('documentation light route skips implementation-heavy phases', async () => {

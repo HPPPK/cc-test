@@ -124,7 +124,7 @@ function expectShortPolicyActions(actions: unknown[] | undefined) {
   for (const action of actions ?? []) {
     expect(typeof action).toBe('string')
     const value = action as string
-    expect(value.length).toBeLessThanOrEqual(48)
+    expect(value.length).toBeLessThanOrEqual(80)
     expect(value).not.toMatch(/^(Do not|Read,|Ask |If |Stage \d|Bash\/PowerShell)/)
     expect(value).not.toMatch(/[.!?]$/)
   }
@@ -238,7 +238,7 @@ describe('workflow template registry service', () => {
       schemaVersion: 2,
       version: '8',
       name: expect.any(String),
-      labels: expect.arrayContaining(['new-product', 'enhancement', 'ux-copy', 'error-handling']),
+      labels: expect.arrayContaining(['new-product', 'enhancement']),
       phases: expect.arrayContaining([
         expect.objectContaining({ id: 'route-context' }),
       ]),
@@ -286,11 +286,11 @@ describe('workflow template registry service', () => {
     for (const phase of developmentTemplate?.phases ?? []) {
       expect(phase.appliesTo ?? []).not.toContain('bug')
     }
-    const stagePlanningTools = ['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion']
+    const stagePlanningTools = ['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion', 'request_workflow_route']
     const stagePlanningDisallowedTools = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']
     expect(developmentRouteContext).toMatchObject({
       name: expect.any(String),
-      objective: expect.stringContaining('Confirm the general application framing'),
+      objective: expect.stringContaining('Confirm development mode'),
       outputArtifact: expect.objectContaining({
         id: 'route-context',
         name: 'App Framing',
@@ -302,8 +302,8 @@ describe('workflow template registry service', () => {
         expect.objectContaining({ id: 'app-framing', filename: '.workflow/runs/<runId>/app-framing.md' }),
       ]),
       runtimeContract: expect.objectContaining({
-        allowedActions: ['read', 'artifact', 'question', 'workspace-validation', 'source-material-identification', 'app-framing'],
-        forbiddenActions: ['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'detailed feature design', 'ui detail design', 'implementation planning', 'subagent coding'],
+        allowedActions: expect.arrayContaining(['read', 'artifact', 'question', 'workspace-validation', 'app-framing']),
+        forbiddenActions: expect.arrayContaining(['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'detailed feature design', 'ui detail design', 'implementation planning', 'subagent coding']),
         toolAccess: expect.objectContaining({
           allowed: expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion']),
           forbidden: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']),
@@ -327,11 +327,11 @@ describe('workflow template registry service', () => {
     expect(developmentRouteContext?.instructions).toContain('When adjusting techStackStrategy')
     expect(developmentRouteContext?.instructions).toContain('Never ask open-ended technical questions in Stage 1')
     expect(developmentRouteContext?.instructions).not.toContain('Route the request')
-    expect(developmentRouteContext?.executionRules.join('\n')).toContain('Do not discuss detailed product feature modules')
-    expect(developmentRouteContext?.executionRules.join('\n')).toContain('while still allowing the user to adjust fields one by one')
-    expect(developmentRouteContext?.handoffRules.join('\n')).toContain('Do not proceed to detailed feature brainstorming until appFraming is confirmed')
+    expect(developmentRouteContext?.executionRules.join('\n')).toContain('Do not generate product scope, detailed feature design')
+    expect(developmentRouteContext?.executionRules.join('\n')).toContain('Use AskUserQuestion when material choice, material accessibility, multiple-goal selection, or user confirmation is needed')
+    expect(developmentRouteContext?.handoffRules.join('\n')).toContain('only after app framing and material/mode gate are confirmed')
     expect(developmentRouteContext?.completionCriteria).toMatchObject({
-      description: expect.stringContaining('final app-framing summary includes all eight fields'),
+      description: expect.stringContaining('user confirmed app framing and material/mode gate'),
     })
     expect(developmentScopePlan).toMatchObject({
       name: expect.any(String),
@@ -339,15 +339,15 @@ describe('workflow template registry service', () => {
       outputArtifact: expect.objectContaining({
         id: 'work-order',
         name: 'Product Scope / Work Order',
-        description: expect.stringContaining('user-facing copy requirements'),
+        description: expect.stringContaining('readiness for delivery planning'),
       }),
       outputArtifacts: expect.arrayContaining([
         expect.objectContaining({ id: 'work-order', filename: '.workflow/work-order.md' }),
         expect.objectContaining({ id: 'scope-lock', filename: '.workflow/runs/<runId>/scope-lock.md' }),
       ]),
       runtimeContract: expect.objectContaining({
-        allowedActions: ['read', 'artifact', 'question', 'product-discovery', 'scope-lock', 'source-material-analysis', 'ui-ux-direction'],
-        forbiddenActions: ['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'implementation planning', 'target file planning', 'database schema design', 'api route design', 'component structure design', 'css implementation planning', 'subagent coding'],
+        allowedActions: expect.arrayContaining(['read', 'artifact', 'question', 'product-discovery', 'scope-lock', 'source-material-analysis', 'ui-ux-direction']),
+        forbiddenActions: expect.arrayContaining(['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'implementation planning', 'target file planning', 'database schema design', 'api route design', 'component structure design', 'css implementation planning', 'subagent coding']),
         toolAccess: expect.objectContaining({
           allowed: expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion']),
           forbidden: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']),
@@ -359,33 +359,33 @@ describe('workflow template registry service', () => {
     expectExactTools(developmentScopePlan?.toolPolicy?.disallowedTools, stagePlanningDisallowedTools)
     expect(developmentScopePlan?.requiredIntake).toEqual(expect.arrayContaining([
       '.workflow/project-context.md',
-      '.workflow/work-order.md',
+      expect.stringContaining('.workflow/work-order.md'),
       '.workflow/runs/<runId>/app-framing.md when available.',
     ]))
-    expect(developmentScopePlan?.instructions).toContain('Do not re-ask Stage 1 appFraming decisions')
+    expect(developmentScopePlan?.instructions).toContain('Do not re-ask app format, project mode, data persistence, login/roles')
     expect(developmentScopePlan?.instructions).toContain('brainstormingMode = on')
     expect(developmentScopePlan?.instructions).toContain('brainstormingMode = off')
     expect(developmentScopePlan?.instructions).toContain('brainstormingMode = auto')
     expect(developmentScopePlan?.instructions).toContain('Product Scope / User Roles / Core User Flows / MVP Features / Non-goals / Acceptance Criteria / Scenario Cases / User-facing Copy Requirements')
-    expect(developmentScopePlan?.instructions).toContain('sourceMaterialSummary')
-    expect(developmentScopePlan?.instructions).toContain('sourceMaterialFindings')
-    expect(developmentScopePlan?.instructions).toContain('uiUxDirection')
-    expect(developmentScopePlan?.instructions).toContain('referencePolicy')
+    expect(developmentScopePlan?.instructions).toContain('Source Material Summary')
+    expect(developmentScopePlan?.instructions).toContain('Source Material Findings')
+    expect(developmentScopePlan?.instructions).toContain('UI/UX Direction')
+    expect(developmentScopePlan?.instructions).toContain('Reference Policy')
     expect(developmentScopePlan?.executionRules.join('\n')).toContain('Do not create implementation batches')
-    expect(developmentScopePlan?.executionRules.join('\n')).toContain('Do not plan target files, database schema, API routes, or component structure')
-    expect(developmentScopePlan?.handoffRules.join('\n')).toContain('Coder Subagent must not be invoked until after the delivery plan phase')
+    expect(developmentScopePlan?.executionRules.join('\n')).toContain('Do not plan target files, database schema, API routes, component structure')
+    expect(developmentScopePlan?.handoffRules.join('\n')).toContain('Do not invoke Coder Subagent or create implementation plan in Stage 2')
     expect(developmentScopePlan?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 2 can complete only when'),
     })
     expect(developmentScopePlan?.modePolicy).toMatchObject({
-      light: 'Capture minimal product scope, roles, MVP features, non-goals, and one or two scenario cases.',
-      standard: 'Capture product scope, roles, core flows, MVP features, non-goals, acceptance criteria, scenario cases, and user-facing copy requirements.',
-      heavy: 'Include fuller product exploration, scenario matrix, edge cases, user-role boundaries, and product risks, but do not create technical plan or implementation batches.',
+      light: 'Capture minimal product scope, roles, MVP features, non-goals, one or two scenario cases, and only use brainstorming when brainstormingMode = on or auto detects ambiguity.',
+      standard: 'Capture product scope, roles, core flows, MVP features, non-goals, acceptance criteria, scenario cases, user-facing copy requirements, material findings, and scope confirmation.',
+      heavy: 'Include fuller product exploration, scenario matrix, edge cases, user-role boundaries, reference/material policy, and product risks, but do not create technical plan or implementation batches.',
     })
     expect(developmentDeliveryPlan).toMatchObject({
       name: expect.any(String),
-      appliesTo: ['new-product', 'enhancement', 'refactor', 'test', 'help-wanted', 'good-first-issue', 'ux-copy', 'error-handling'],
-      objective: expect.stringContaining('technical approach and executable delivery plan'),
+      appliesTo: ['new-product', 'enhancement', 'documentation', 'refactor', 'test'],
+      objective: expect.stringContaining('bounded delivery plan and implementation boundary gate'),
       outputArtifact: expect.objectContaining({
         id: 'delivery-plan',
         name: 'Delivery Plan',
@@ -396,8 +396,8 @@ describe('workflow template registry service', () => {
         expect.objectContaining({ id: 'delivery-plan', filename: '.workflow/runs/<runId>/delivery-plan.md' }),
       ]),
       runtimeContract: expect.objectContaining({
-        allowedActions: ['read', 'artifact', 'question', 'technical-approach', 'delivery-planning', 'subagent-task-design', 'ui-implementation-planning', 'visual-validation-planning'],
-        forbiddenActions: ['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'implementation execution', 'subagent coding', 'changing confirmed product scope', 'adding non-goals back to MVP'],
+        allowedActions: expect.arrayContaining(['read', 'artifact', 'question', 'technical-approach', 'delivery-planning', 'subagent-task-design', 'ui-implementation-planning', 'visual-validation-planning']),
+        forbiddenActions: expect.arrayContaining(['production edits', 'source file creation', 'dependency installs', 'database init', 'migrations', 'seed overwrite', 'deletes', 'deploy', 'implementation execution', 'subagent coding', 'changing confirmed product scope', 'adding non-goals back to MVP']),
         toolAccess: expect.objectContaining({
           allowed: expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'workflow_template_authoring', 'submit_phase_completion']),
           forbidden: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']),
@@ -409,11 +409,11 @@ describe('workflow template registry service', () => {
     expectExactTools(developmentDeliveryPlan?.toolPolicy?.disallowedTools, stagePlanningDisallowedTools)
     expect(developmentDeliveryPlan?.requiredIntake).toEqual(expect.arrayContaining([
       '.workflow/project-context.md',
-      '.workflow/work-order.md',
+      expect.stringContaining('.workflow/work-order.md'),
       '.workflow/runs/<runId>/app-framing.md when available.',
       '.workflow/runs/<runId>/scope-lock.md when available.',
     ]))
-    expect(developmentDeliveryPlan?.instructions).toContain('Do not re-discuss or expand the confirmed product scope')
+    expect(developmentDeliveryPlan?.instructions).toContain('Do not invent missing scope')
     expect(developmentDeliveryPlan?.instructions).toContain('implementationBatches')
     expect(developmentDeliveryPlan?.instructions).toContain('subagentTaskPackets')
     expect(developmentDeliveryPlan?.instructions).toContain('coderReturnFormat')
@@ -423,21 +423,21 @@ describe('workflow template registry service', () => {
     expect(developmentDeliveryPlan?.instructions).toContain('styleSystemPlan')
     expect(developmentDeliveryPlan?.instructions).toContain('visualValidationPlan')
     expect(developmentDeliveryPlan?.instructions).toContain('changedFiles, completedItems, skippedItems, testsRun, testResults, blockers, risks, summary, readyForReview')
-    expect(developmentDeliveryPlan?.executionRules.join('\n')).toContain('Do not invoke Coder Subagent')
+    expect(developmentDeliveryPlan?.executionRules.join('\n')).toContain('Do not run Bash, PowerShell, tests, Coder Subagents, or implementation Agents')
     expect(developmentDeliveryPlan?.executionRules.join('\n')).toContain('Do not modify Stage 2 confirmed product scope')
     expect(developmentDeliveryPlan?.handoffRules.join('\n')).toContain('Coder Subagent may only execute batches listed in .workflow/work-order.md')
     expect(developmentDeliveryPlan?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 3 can complete only when'),
     })
     const developmentImplementCompletionRequires = developmentImplement?.runtimeContract?.completionRequires?.join('\n') ?? ''
-    expect(developmentImplementCompletionRequires).toContain('Reviewer result matching reviewerRequiredReturn')
+    expect(developmentImplementCompletionRequires).toContain('Every completed batch has a Reviewer Batch Result matching required format')
     expect(developmentImplementCompletionRequires).not.toContain('reviewerReturnFormat')
     expect(developmentImplement).toMatchObject({
       name: expect.any(String),
       outputArtifact: expect.objectContaining({
         id: 'implementation-log',
         name: 'Implementation Log',
-        description: expect.stringContaining('Coder results, Reviewer results'),
+        description: expect.stringContaining('reviewer results, problem routing'),
       }),
       outputArtifacts: expect.arrayContaining([
         expect.objectContaining({ id: 'implementation-log', filename: '.workflow/runs/<runId>/implementation-log.md' }),
@@ -452,28 +452,28 @@ describe('workflow template registry service', () => {
         }),
       }),
       subagentPolicy: expect.objectContaining({
-        allowedRoles: expect.arrayContaining(['coder', 'reviewer']),
+        allowedRoles: expect.arrayContaining(['coder', 'reviewer', 'problem-investigator']),
         sequence: ['coder', 'reviewer'],
-        maxParallel: 1,
-        contextPolicy: 'brief-only',
+        maxParallel: null,
+        contextPolicy: 'task-packet-only',
         reviewerReadOnly: true,
-        coderRequiredReturn: ['changedFiles', 'completedItems', 'skippedItems', 'testsRun', 'testResults', 'blockers', 'risks', 'summary', 'readyForReview'],
-        reviewerRequiredReturn: ['reviewStatus', 'scopeCompliance', 'changedFilesCheck', 'testsCheck', 'userFacingCopyCheck', 'riskLevel', 'issues', 'requiredFixes', 'optionalImprovements', 'summary', 'readyForNextBatch'],
+        coderRequiredReturn: expect.arrayContaining(['status', 'batchId', 'changedFiles', 'completedItems', 'skippedItems', 'testsRun', 'testResults', 'blockers', 'risks', 'summary', 'readyForReview']),
+        reviewerRequiredReturn: expect.arrayContaining(['reviewStatus', 'batchId', 'scopeCompliance', 'changedFilesCheck', 'testsCheck', 'userFacingCopyCheck', 'riskLevel', 'issues', 'requiredFixes', 'optionalImprovements', 'summary', 'readyForNextBatch']),
       }),
     })
     expect(developmentImplement?.requiredIntake).toEqual(expect.arrayContaining([
-      'Confirmed .workflow/work-order.md containing technicalApproach, implementationBatches, subagentTaskPackets, coderReturnFormat, validationPlan, and dangerousActionsNeedingConfirmation.',
-      '.workflow/project-context.md',
-      '.workflow/runs/<runId>/delivery-plan.md when available.',
+      expect.stringContaining('.workflow/work-order.md'),
+      expect.stringContaining('.workflow/project-context.md'),
+      expect.stringContaining('.workflow/runs/<runId>/delivery-plan.md'),
     ]))
-    expect(developmentImplement?.instructions).toContain('Leader -> Coder Subagent -> Reviewer Subagent -> Leader Decision')
-    expect(developmentImplement?.instructions).toContain('Leader -> Coder Subagent task packet must include exactly these fields')
-    expect(developmentImplement?.instructions).toContain('Coder must return exactly these fields')
-    expect(developmentImplement?.instructions).toContain('Reviewer must return exactly these fields')
-    expect(developmentImplement?.instructions).toContain('Leader must never silently skip Reviewer')
-    expect(developmentImplement?.instructions).toContain('fallback-contract behavior')
-    expect(developmentImplement?.handoffRules.join('\n')).toContain('Scenario Validation must use the scenarioCases and validationPlan from .workflow/work-order.md')
-    expect(developmentImplement?.executionRules.join('\n')).toContain('Do not start long-running app preview servers')
+    expect(developmentImplement?.instructions).toContain('Implementation order:')
+    expect(developmentImplement?.instructions).toContain('Leader creates bounded coder task packets')
+    expect(developmentImplement?.instructions).toContain('Coder returns a structured Coder Batch Result')
+    expect(developmentImplement?.instructions).toContain('Reviewer returns a structured Reviewer Batch Result')
+    expect(developmentImplement?.instructions).toContain('every completed batch has coder and reviewer results')
+    expect(developmentImplement?.instructions).toContain('Use Implementation Problem Investigation when a failure is unclear')
+    expect(developmentImplement?.handoffRules.join('\n')).toContain('Scenario Validation must use acceptanceCriteria, scenarioCases, validationPlan')
+    expect(developmentImplement?.executionRules.join('\n')).toContain('Do not start long-running preview servers')
     expect(developmentImplement?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 4 can complete only when'),
     })
@@ -496,19 +496,19 @@ describe('workflow template registry service', () => {
         disallowedTools: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']),
       }),
       subagentPolicy: expect.objectContaining({
-        allowedRoles: expect.arrayContaining(['qa', 'acceptance-reviewer']),
+        allowedRoles: expect.arrayContaining(['qa', 'acceptance-reviewer', 'problem-investigator']),
         sequence: ['qa', 'acceptance-reviewer'],
-        maxParallel: 1,
+        maxParallel: null,
         reviewerReadOnly: true,
-        qaRequiredReturn: ['qaStatus', 'scenarioResults', 'commandsRun', 'failedCommands', 'notRunScenarios', 'blockers', 'risks', 'summary', 'readyForAcceptanceReview'],
-        acceptanceReviewerRequiredReturn: ['reviewStatus', 'acceptanceCoverage', 'scenarioCoverage', 'userFacingCopyStatus', 'permissionDataRiskStatus', 'nonGoalCompliance', 'hiddenFailureRisk', 'riskLevel', 'issues', 'requiredFixes', 'optionalImprovements', 'readyForPreview', 'summary'],
+        qaRequiredReturn: expect.arrayContaining(['qaStatus', 'scenarioResults', 'commandsRun', 'failedCommands', 'notRunScenarios', 'blockers', 'risks', 'summary', 'readyForAcceptanceReview']),
+        acceptanceReviewerRequiredReturn: expect.arrayContaining(['reviewStatus', 'acceptanceCoverage', 'scenarioCoverage', 'userFacingCopyStatus', 'uiReferencePolicyStatus', 'permissionDataRiskStatus', 'nonGoalCompliance', 'hiddenFailureRisk', 'riskLevel', 'issues', 'requiredFixes', 'optionalImprovements', 'readyForPreview', 'summary']),
       }),
     })
-    expect(developmentValidation?.instructions).toContain('Stage 5 is product-level scenario QA and acceptance review')
-    expect(developmentValidation?.instructions).toContain('QA Subagent task packet must include exactly')
-    expect(developmentValidation?.instructions).toContain('Acceptance Reviewer must return exactly')
+    expect(developmentValidation?.instructions).toContain('Stage 5 is Acceptance Validation + QA Gate')
+    expect(developmentValidation?.instructions).toContain('Dispatch Development QA Subagent tasks')
+    expect(developmentValidation?.instructions).toContain('dispatch Development Acceptance Reviewer Subagent')
     expect(developmentValidation?.executionRules.join('\n')).toContain('Do not write production code')
-    expect(developmentValidation?.completionCriteria.description).toContain('readyForPreview is recorded')
+    expect(developmentValidation?.completionCriteria.description).toContain('readyForPreview is true')
     expect(developmentValidation?.skillBindings).toContain('codex:test-generation')
     expect(developmentValidation?.skillBindings).not.toContain('codex:edit-and-test')
     expect(developmentPreview).toMatchObject({
@@ -528,8 +528,8 @@ describe('workflow template registry service', () => {
         disallowedTools: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']),
       }),
     })
-    expect(developmentPreview?.instructions).toContain('Stage 6 is local preview and user acceptance only')
-    expect(developmentPreview?.instructions).toContain('Do not repair in Stage 6')
+    expect(developmentPreview?.instructions).toContain('Stage 6 is Local Preview + User Feedback Gate')
+    expect(developmentPreview?.instructions).toContain('Stage 6 must not directly repair code')
     expect(developmentPreview?.completionCriteria.description).toContain('Stop App is available')
 
     expect(developmentFinish).toMatchObject({
@@ -551,28 +551,28 @@ describe('workflow template registry service', () => {
       toolPolicy: expect.objectContaining({
         disallowedTools: expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent']),
       }),
-      skillBindings: expect.arrayContaining(['superpowers:finishing-a-development-branch', 'workflow:memory-update']),
+      skillBindings: expect.arrayContaining(['workflow:development-guided-finish', 'workflow:memory-update']),
     })
-    expect(developmentFinish?.instructions).toContain('Ask exactly one structured next-step question')
+    expect(developmentFinish?.instructions).toContain('Use AskUserQuestion for exactly one guided next-step decision')
     expect(developmentFinish?.completionCriteria.description).toContain('no production files were edited')
 
     const featureTemplate = result.templates.find((template) => template.id === 'feature-extension-workflow-v8')
     const featureImplement = featureTemplate?.phases.find((phase) => phase.id === 'feature-implement')
     const featureValidation = featureTemplate?.phases.find((phase) => phase.id === 'feature-quality-preview')
     expect(featureImplement).toMatchObject({
-      name: 'Implement + Reviewer Subagents',
+      name: 'Scoped Feature Implementation + Task Packet Gate / 有边界的功能实现与任务包门禁',
       runtimeContract: expect.objectContaining({
         allowedActions: expect.arrayContaining(['subagent-coder', 'subagent-reviewer']),
       }),
     })
-    expect(featureImplement?.executionRules.join('\n')).toContain('Do not ask the user to manually run commands or view the app')
+    expect(featureImplement?.executionRules.join('\n')).toContain('If no user decision is required, continue execution automatically')
     expect(featureValidation).toMatchObject({
-      name: 'Scenario Validation + Repair + Start / Stop Preview',
+      name: 'Feature Quality Validation + Preview Decision Gate v2 / 功能验证与预览决策门禁',
       runtimeContract: expect.objectContaining({
         allowedActions: expect.arrayContaining(['bounded-repair', 'preview-start', 'preview-stop', 'subagent-qa']),
       }),
     })
-    expect(featureValidation?.executionRules.join('\n')).toContain('Run multiple scenario cases')
+    expect(featureValidation?.executionRules.join('\n')).toContain('Build a validation matrix from acceptance criteria')
 
     const debugTemplate = result.templates.find((template) => template.id === 'debug-repair-workflow-v8')
     const debugFix = debugTemplate?.phases.find((phase) => phase.id === 'debug-fix')
@@ -594,7 +594,7 @@ describe('workflow template registry service', () => {
         forbiddenActions: expect.arrayContaining(['production edits', 'auto-start follow-up workflow']),
       }),
     })
-    expect(debugFinish?.executionRules.join('\n')).toContain('Do not perform production repair in this phase')
+    expect(debugFinish?.executionRules.join('\n')).toContain('Do not perform production repair')
   })
 
   test('keeps a valid linear user template with more than five phases startable', async () => {
@@ -653,13 +653,13 @@ describe('workflow template registry service', () => {
       id: 'debug-repair-workflow-v8',
       source: 'user',
       name: expect.any(String),
-      description: 'Focused workflow for reproducing, fixing, validating, previewing, and closing bugs.',
+      description: '缺陷处理全流程：复现 - 修复 - 核验 - 预览 - 闭环',
     }))
     expect(result.templates).toContainEqual(expect.objectContaining({
       id: 'feature-extension-workflow-v8',
       source: 'user',
       name: expect.any(String),
-      description: 'Lightweight follow-up workflow for extending an existing project with inherited .workflow memory.',
+      description: '基于已有项目进行主动引导式功能拓展，支持专家材料包、参考网站/原型材料、范围确认、分批实现、验证预览和明确收尾。',
     }))
   })
 

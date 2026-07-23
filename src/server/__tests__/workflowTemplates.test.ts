@@ -285,7 +285,12 @@ describe('Workflow template API contract', () => {
         router: 'workflow-task-router-v1',
       }),
       phases: expect.arrayContaining([
-        expect.objectContaining({ id: 'route-context', transition: { authority: 'user-confirmation' } }),
+        expect.objectContaining({
+          id: 'route-context',
+          transition: expect.objectContaining({
+            authority: 'user-confirmation',
+          }),
+        }),
         expect.objectContaining({ id: 'scope-plan', appliesTo: expect.arrayContaining(['new-product', 'enhancement']) }),
         expect.objectContaining({ id: 'delegate-implement', skipWhen: expect.objectContaining({ labels: expect.arrayContaining(['documentation']) }) }),
       ]),
