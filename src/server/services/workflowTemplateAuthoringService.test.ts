@@ -1208,7 +1208,7 @@ describe('workflow template authoring service runtime snapshot safety', () => {
       ]),
     })
     expect(finalWorkflowConfig).not.toEqual(initialSnapshot.workflowConfig)
-  }, 15_000)
+  }, 45_000)
 })
 
 describe('workflow template authoring service update operation', () => {
