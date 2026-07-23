@@ -112,6 +112,7 @@ const PACK_REGISTRY_SCHEMA_VERSION = 1
 const adapter = new ZipPackAdapter()
 let cachedIndex: PackRegistryIndex | null = null
 let cachedIndexPath: string | null = null
+const bundledWorkflowPackSeedTasks = new Map<string, Promise<void>>()
 
 function getConfigDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
@@ -186,6 +187,11 @@ function getWorkflowPackStoragePath(fileName: string): string {
   return path.join(getWorkflowPackStorageDir(), fileName)
 }
 
+function isCanonicalStoredWorkflowPathForId(storagePath: string, workflowId: string): boolean {
+  if (!path.isAbsolute(storagePath)) return false
+  return path.resolve(storagePath) === path.resolve(getWorkflowPackStoragePath(workflowPackFileName(workflowId)))
+}
+
 function workflowPackFileName(workflowId: string): string {
   return `${safeFileSegment(workflowId)}.zip`
 }
@@ -219,6 +225,7 @@ function errnoCode(error: unknown): string | undefined {
 export function resetPackRegistryForTests(): void {
   cachedIndex = null
   cachedIndexPath = null
+  bundledWorkflowPackSeedTasks.clear()
 }
 
 export class PackRegistryService {
@@ -644,7 +651,7 @@ export class PackRegistryService {
    */
   async listWorkflows(): Promise<WorkflowTemplateRegistryTemplate[]> {
     const allPacks = await this.listAllPacks()
-    const workflows: WorkflowTemplateRegistryTemplate[] = []
+    const workflowsById = new Map<string, { workflow: WorkflowTemplateRegistryTemplate; canonical: boolean }>()
     for (const pack of allPacks) {
       try {
         let zip: ZipPackArchive
@@ -665,7 +672,7 @@ export class PackRegistryService {
           )
           if (!validation.template || validation.issues.some((issue) => issue.severity === 'error')) continue
           const editable = isCanonicalWorkflowPackPath(pack.storage.path)
-          workflows.push({
+          const workflow = {
             ...validation.template,
             source: editable ? 'user' as const : 'pack' as const,
             packId: pack.packId,
@@ -673,13 +680,20 @@ export class PackRegistryService {
             packVersion: pack.version,
             packEntrypoint: entry.entrypoint,
             editable,
-          })
+          }
+          const canonical = isCanonicalStoredWorkflowPathForId(pack.storage.path, workflow.id)
+          const existing = workflowsById.get(workflow.id)
+          // Keep the normal latest-in-list behavior among equal candidates, but
+          // never let a renamed stale ZIP override the canonical <workflow-id>.zip.
+          if (!existing || canonical || !existing.canonical) {
+            workflowsById.set(workflow.id, { workflow, canonical })
+          }
         }
       } catch {
         continue
       }
     }
-    return dedupeWorkflowsById(workflows).map(clone)
+    return Array.from(workflowsById.values(), ({ workflow }) => clone(workflow))
   }
 
   /**
@@ -837,30 +851,45 @@ export class PackRegistryService {
     await fs.rm(zipPath, { force: true })
   }
 
+  /**
+   * Reconcile the packaged default workflow ZIPs into the user's canonical
+   * workflow store. The ZIP manifest is parsed by importWorkflowPackZip(), so
+   * the workflow ID—not the bundled ZIP file name—is the replacement key.
+   *
+   * Every bundled workflow is authoritative for its own ID. A package update
+   * therefore replaces the canonical <workflow-id>.zip, while ZIPs that only
+   * contain other workflow IDs remain untouched in the user's packs directory.
+   */
   async seedBundledWorkflowPacks(): Promise<void> {
     const storageDir = getWorkflowPackStorageDir()
-    await fs.mkdir(storageDir, { recursive: true })
-    const bundledPacks = await this.listBundledPacks()
-    for (const pack of bundledPacks) {
-      for (const workflow of pack.workflows) {
-        const target = path.join(storageDir, workflowPackFileName(workflow.id))
-        try {
-          await fs.access(target)
-          continue
-        } catch {
-          // seed missing workflows only; user edits in the fixed ZIP store win
-        }
+    const existingSeed = bundledWorkflowPackSeedTasks.get(storageDir)
+    if (existingSeed) return existingSeed
+
+    const seedTask = (async () => {
+      const bundledPacks = await this.listBundledPacks()
+      const bundledWorkflowIds = new Set(bundledPacks.flatMap((pack) => pack.workflows.map((workflow) => workflow.id)))
+      for (const pack of bundledPacks) {
         const sourceZip = new Uint8Array(await fs.readFile(pack.storage.path))
-        const zip = await adapter.read(sourceZip)
-        if (!zip.has(workflow.entrypoint)) continue
-        const rawWorkflow = await zip.readJson(workflow.entrypoint)
-        const validation = validateAndNormalizeWorkflowTemplate(
-          isRecord(rawWorkflow) ? { ...rawWorkflow, source: 'pack' } : rawWorkflow,
-          { basePath: `bundled:${pack.packId}:${workflow.entrypoint}`, source: 'import' },
-        )
-        if (!validation.template || validation.issues.some((issue) => issue.severity === 'error')) continue
-        await this.writeSingleWorkflowPack(validation.template, validation.template.id)
+        await this.importWorkflowPackZip(sourceZip)
       }
+
+      // The canonical ZIPs have now been written. Remove old renamed ZIPs only
+      // when every workflow they contain is one of the shipped defaults: a ZIP
+      // that also contains a user-defined workflow is intentionally preserved.
+      for (const storedPack of await this.listStoredWorkflowPacks()) {
+        const workflowIds = storedPack.workflows.map((workflow) => workflow.id)
+        if (workflowIds.length === 0 || !workflowIds.every((id) => bundledWorkflowIds.has(id))) continue
+        if (workflowIds.every((id) => isCanonicalStoredWorkflowPathForId(storedPack.storage.path, id))) continue
+        await fs.rm(storedPack.storage.path, { force: true })
+      }
+    })()
+    bundledWorkflowPackSeedTasks.set(storageDir, seedTask)
+
+    try {
+      await seedTask
+    } catch (error) {
+      bundledWorkflowPackSeedTasks.delete(storageDir)
+      throw error
     }
   }
 
@@ -985,14 +1014,6 @@ function normalizePackIndex(value: unknown): PackRegistryIndex {
       }
     }),
   }
-}
-
-function dedupeWorkflowsById(workflows: WorkflowTemplateRegistryTemplate[]): WorkflowTemplateRegistryTemplate[] {
-  const byId = new Map<string, WorkflowTemplateRegistryTemplate>()
-  for (const workflow of workflows) {
-    byId.set(workflow.id, workflow)
-  }
-  return Array.from(byId.values())
 }
 
 function indexWorkflow(

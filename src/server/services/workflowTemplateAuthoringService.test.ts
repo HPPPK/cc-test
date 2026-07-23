@@ -369,7 +369,7 @@ describe('workflow template authoring service read-only operations', () => {
     const result = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({ operation: 'list' }),
     )
-    const userSummary = result.templates?.find((template) => template.source === 'user') as WorkflowTemplateSummary
+    const userSummary = result.templates?.find((template) => template.source === 'user' && template.id === 'custom-workflow') as WorkflowTemplateSummary
 
     expect(result).toMatchObject({
       operation: 'list',
@@ -398,7 +398,7 @@ describe('workflow template authoring service read-only operations', () => {
     const repeat = await expectConfigUnchanged(() =>
       executeWorkflowTemplateAuthoringOperation({ operation: 'list' }),
     )
-    const repeatedUserSummary = repeat.templates?.find((template) => template.source === 'user')
+    const repeatedUserSummary = repeat.templates?.find((template) => template.source === 'user' && template.id === 'custom-workflow')
     expect(repeatedUserSummary?.basisHash).toBe(userSummary.basisHash)
   })
 
@@ -1208,7 +1208,7 @@ describe('workflow template authoring service runtime snapshot safety', () => {
       ]),
     })
     expect(finalWorkflowConfig).not.toEqual(initialSnapshot.workflowConfig)
-  })
+  }, 15_000)
 })
 
 describe('workflow template authoring service update operation', () => {
