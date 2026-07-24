@@ -1863,6 +1863,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
                 <ModelSelector runtimeKey={activeTabId} disabled={isActive} compact={useCompactControls} />
               )}
               <button
+                data-testid="chat-submit-button"
                 onClick={showStopAction ? () => stopGeneration(activeTabId!) : handleSubmit}
                 disabled={showStopAction ? false : !canSubmit}
                 aria-label={showStopAction ? t('common.stop') : isMemberSession ? t('common.send') : t('common.run')}

@@ -1,4 +1,4 @@
-﻿export const WORKFLOW_LIFECYCLE_STATUSES = [
+export const WORKFLOW_LIFECYCLE_STATUSES = [
   'created',
   'running',
   'pending-confirmation',
@@ -493,6 +493,27 @@ export type WorkflowSessionCreateOptions = {
   brainstormingMode?: WorkflowBrainstormingMode
 }
 
+export type WorkflowCompletionSummary = {
+  migrationStatus: 'current' | 'needs-rebuild'
+  phaseId: string | null
+  eligibility: WorkflowCompletionEligibilityStatus
+  workStatus: WorkflowPhaseWorkStatus | null
+  blockerReasons: string[]
+  issues: Array<{
+    id: string
+    status: WorkflowPhaseIssueStatus
+    blocksCompletion: boolean
+    question?: string
+    blockingReason: string
+    answerReceivedAt?: string
+    artifactIds?: string[]
+    checkIds?: string[]
+    followUp?: string
+  }>
+  artifactRequirements: WorkflowPhaseArtifactRequirementState[]
+  checks: WorkflowPhaseCheckState[]
+}
+
 export type WorkflowSessionSummary = {
   mode: WorkflowMode
   templateId: string
@@ -534,6 +555,7 @@ export type WorkflowSessionSummary = {
   statePointer: WorkflowArtifactPointer
   reportPointer?: WorkflowArtifactPointer
   transitionAuthority?: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
+  completion?: WorkflowCompletionSummary
 }
 
 export type WorkflowSessionMetadata = {
@@ -579,6 +601,7 @@ export type WorkflowSessionMetadata = {
   pendingTargetPhaseLabel?: string
   routeReason?: string
   requiresConfirmation?: boolean
+  completion?: WorkflowCompletionSummary
   [key: string]: unknown
 }
 
@@ -747,6 +770,133 @@ export type WorkflowTransitionRecord = {
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
 }
 
+export const WORKFLOW_COMPLETION_ELIGIBILITY_STATUSES = [
+  'eligible',
+  'ineligible',
+] as const
+
+export const WORKFLOW_PHASE_WORK_STATUSES = [
+  'not-started',
+  'in-progress',
+  'ready-for-review',
+  'completed',
+  'interrupted',
+] as const
+
+export const WORKFLOW_PHASE_ISSUE_STATUSES = [
+  'open',
+  'answered-pending-processing',
+  'requires-artifact-update',
+  'requires-check',
+  'needs-clarification',
+  'conflict',
+  'deferred-with-user-approval',
+  'resolved',
+  'stale',
+] as const
+
+export const WORKFLOW_PHASE_CHECK_STATUSES = [
+  'pending',
+  'passed',
+  'failed',
+  'stale',
+] as const
+
+export type WorkflowCompletionEligibilityStatus = (typeof WORKFLOW_COMPLETION_ELIGIBILITY_STATUSES)[number]
+export type WorkflowPhaseWorkStatus = (typeof WORKFLOW_PHASE_WORK_STATUSES)[number]
+export type WorkflowPhaseIssueStatus = (typeof WORKFLOW_PHASE_ISSUE_STATUSES)[number]
+export type WorkflowPhaseCheckStatus = (typeof WORKFLOW_PHASE_CHECK_STATUSES)[number]
+
+export type WorkflowPhaseIssue = {
+  id: string
+  phaseId: string
+  sessionId: string
+  createdAt: string
+  updatedAt: string
+  source: 'ask-user-question' | 'user-feedback' | 'runtime' | 'agent-task' | 'migration' | (string & {})
+  status: WorkflowPhaseIssueStatus
+  blocksCompletion: boolean
+  question?: string
+  blockingReason: string
+  questionRequestId?: string
+  questionId?: string
+  toolUseId?: string
+  createdStateVersion: number
+  answeredStateVersion?: number
+  answer?: unknown
+  answerReceivedAt?: string
+  processing?: {
+    status: WorkflowPhaseIssueStatus
+    rationale: string
+    processedAt: string
+    processedBy: 'runtime' | 'user' | 'agent' | (string & {})
+  }
+  artifactIds?: string[]
+  checkIds?: string[]
+  followUp?: string
+  [key: string]: unknown
+}
+
+export type WorkflowPhaseArtifactRequirementState = {
+  id: string
+  required: boolean
+  description?: string
+  status: 'pending' | 'satisfied' | 'stale'
+  artifactIds: string[]
+  updatedAt: string
+}
+
+export type WorkflowPhaseCheckState = {
+  id: string
+  description?: string
+  required: boolean
+  status: WorkflowPhaseCheckStatus
+  evidenceArtifactIds: string[]
+  updatedAt: string
+  failureReason?: string
+}
+
+export type WorkflowTaskSnapshot = {
+  taskId: string
+  runId?: string
+  sessionId: string
+  phaseId: string
+  stateVersion: number
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'interrupted' | 'stale'
+  executionMode?: 'read' | 'write'
+  integrationStatus?: 'not-required' | 'pending' | 'handoff-ready' | 'integrated' | 'verified' | 'stale'
+  updatedAt: string
+  reason?: string
+}
+
+export type WorkflowPhaseCompletionState = {
+  phaseId: string
+  workStatus: WorkflowPhaseWorkStatus
+  eligibility: WorkflowCompletionEligibilityStatus
+  blockerReasons: string[]
+  issues: WorkflowPhaseIssue[]
+  artifactRequirements: WorkflowPhaseArtifactRequirementState[]
+  checks: WorkflowPhaseCheckState[]
+  taskSnapshots: WorkflowTaskSnapshot[]
+  evaluatedAt: string
+  lastRebuiltAt?: string
+}
+
+export type WorkflowRuntimeContractState = {
+  schemaVersion: 1
+  migrationStatus: 'current' | 'needs-rebuild'
+  migratedAt?: string
+  phaseStates: Record<string, WorkflowPhaseCompletionState>
+  audit: Array<{
+    at: string
+    type: string
+    phaseId?: string
+    summary: string
+    [key: string]: unknown
+  }>
+  [key: string]: unknown
+}
+
 export type WorkflowSessionState = {
   schemaVersion: number
   sessionId: string
@@ -804,6 +954,7 @@ export type WorkflowSessionState = {
   workflowLanguage?: 'zh' | 'en'
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   blockedReason?: string | JsonObject
+  runtimeContract?: WorkflowRuntimeContractState
   unknown?: JsonObject
   [key: string]: unknown
 }

@@ -66,6 +66,11 @@ export type PerSessionState = {
     input: unknown
     description?: string
   } | null
+  permissionResponse?: {
+    requestId: string
+    status: 'submitting' | 'accepted' | 'rejected' | 'stale'
+    message?: string
+  }
   pendingComputerUsePermission: {
     requestId: string
     request: ComputerUsePermissionRequest
@@ -1138,7 +1143,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
       ...(options?.rule ? { rule: options.rule } : {}),
       ...(options?.updatedInput ? { updatedInput: options.updatedInput } : {}),
     })
-    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ pendingPermission: null, chatState: allowed ? 'tool_executing' : 'idle' })) }))
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
+        ...session,
+        permissionResponse: { requestId, status: 'submitting' },
+        chatState: 'permission_pending',
+      })),
+    }))
   },
 
   respondToComputerUsePermission: (sessionId, requestId, response) => {
@@ -1590,6 +1601,29 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (consumePendingTaskToolUseId(sessionId, msg.toolUseId)) {
           useCLITaskStore.getState().refreshTasks(sessionId)
         }
+        break
+      }
+
+      case 'permission_response_ack': {
+        update((session) => {
+          const pendingMatches = session.pendingPermission?.requestId === msg.requestId
+          const permissionResponse = {
+            requestId: msg.requestId,
+            status: msg.status,
+            ...(msg.message ? { message: msg.message } : {}),
+          } as const
+          if (msg.status === 'rejected') {
+            return {
+              permissionResponse,
+              chatState: pendingMatches ? 'permission_pending' : session.chatState,
+            }
+          }
+          return {
+            permissionResponse,
+            pendingPermission: pendingMatches ? null : session.pendingPermission,
+            chatState: msg.status === 'accepted' ? 'tool_executing' : 'idle',
+          }
+        })
         break
       }
 

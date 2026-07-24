@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -29,6 +29,37 @@ export function desktopViteCommand() {
   return bunCommand(['run', 'dev'])
 }
 
+function nativeAgentBrowserPath() {
+  if (process.platform !== 'win32') return null
+  const configured = process.env.AGENT_BROWSER_BINARY
+  if (configured && existsSync(configured)) return configured
+  const appData = process.env.APPDATA
+  if (!appData) return null
+  const candidate = join(appData, 'npm', 'node_modules', 'agent-browser', 'bin', 'agent-browser-win32-x64.exe')
+  return existsSync(candidate) ? candidate : null
+}
+
+function quotePowerShellArgument(value: string) {
+  return "'" + value.replace(/'/g, "''") + "'"
+}
+
+export function agentBrowserCommand(...args: string[]) {
+  const executablePath = process.env.AGENT_BROWSER_EXECUTABLE_PATH
+  const browserArgs = executablePath
+    ? ['--executable-path', executablePath, ...args]
+    : args
+  const nativeBinary = nativeAgentBrowserPath()
+  if (nativeBinary) return [nativeBinary, ...browserArgs]
+  if (process.platform === 'win32') {
+    const powerShell = process.env.SystemRoot
+      ? process.env.SystemRoot + '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+      : 'powershell.exe'
+    const command = '& agent-browser.cmd ' + browserArgs.map(quotePowerShellArgument).join(' ')
+    return [powerShell, '-NoProfile', '-Command', command]
+  }
+  return ['agent-browser', ...browserArgs]
+}
+
 async function getPort(): Promise<number> {
   return await new Promise((resolve, reject) => {
     const server = createServer()
@@ -55,6 +86,15 @@ async function pipeToFile(stream: ReadableStream<Uint8Array> | null, path: strin
   }
 }
 
+async function terminateSmokeProcessTree(pid: number): Promise<void> {
+  if (process.platform !== 'win32') return
+  const taskkill = Bun.spawn(['taskkill', '/PID', String(pid), '/T', '/F'], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  await taskkill.exited
+}
+
 async function waitForHttp(url: string, timeoutMs: number) {
   const deadline = Date.now() + timeoutMs
   let lastError = ''
@@ -71,6 +111,19 @@ async function waitForHttp(url: string, timeoutMs: number) {
   throw new Error(`Timed out waiting for ${url}${lastError ? ` (${lastError})` : ''}`)
 }
 
+function withAgentBrowserIsolation(command: string[], env?: Record<string, string>): string[] {
+  const executable = command[0]?.toLowerCase() ?? ''
+  if (!executable.includes('agent-browser')) return command
+  const session = env?.AGENT_BROWSER_SESSION
+  const profile = env?.AGENT_BROWSER_PROFILE
+  return [
+    command[0]!,
+    ...(session ? ['--session', session] : []),
+    ...(profile ? ['--profile', profile] : []),
+    ...command.slice(1),
+  ]
+}
+
 async function runLoggedCommand(
   command: string[],
   options: {
@@ -82,23 +135,34 @@ async function runLoggedCommand(
     maxLogChars?: number
   },
 ) {
-  appendFileSync(options.logPath, `\n$ ${command.join(' ')}\n`)
-  const proc = Bun.spawn(command, {
+  const effectiveCommand = withAgentBrowserIsolation(command, options.env)
+  appendFileSync(options.logPath, `\n$ ${effectiveCommand.join(' ')}\n`)
+  // The Windows native agent-browser daemon inherits stdout/stderr. Capturing those
+  // pipes keeps Bun alive after the CLI itself exits, so do not pipe its output.
+  const nativeAgentBrowser = process.platform === 'win32'
+    && effectiveCommand[0]?.toLowerCase().endsWith('agent-browser-win32-x64.exe')
+  // The native launcher detaches its inherited pipes for navigation commands,
+  // but read commands must retain stdout or the smoke cannot detect a rendered
+  // API/CLI failure and will wait for the full project-verification timeout.
+  const capturesBrowserOutput = !nativeAgentBrowser || effectiveCommand.includes('get')
+  const proc = Bun.spawn(effectiveCommand, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdout: capturesBrowserOutput ? 'pipe' : 'ignore',
+    stderr: capturesBrowserOutput ? 'pipe' : 'ignore',
   })
 
-  const outputPromise = Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
+  const outputPromise = capturesBrowserOutput
+    ? Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    : proc.exited.then((exitCode) => ['', '', exitCode] as const)
   const timeout = options.timeoutMs
     ? Bun.sleep(options.timeoutMs).then(() => {
       proc.kill()
-      throw new Error(`Command timed out after ${options.timeoutMs}ms: ${command.join(' ')}`)
+      throw new Error(`Command timed out after ${options.timeoutMs}ms: ${effectiveCommand.join(' ')}`)
     })
     : null
 
@@ -148,7 +212,7 @@ async function waitForVerifiedProject(
   const deadline = Date.now() + timeoutMs
   let lastVerificationError = 'project verification has not run yet'
   while (Date.now() < deadline) {
-    const body = await runLoggedCommand(['agent-browser', 'get', 'text', '#content-area'], {
+    const body = await runLoggedCommand(agentBrowserCommand('get', 'text', '#content-area'), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
@@ -283,11 +347,20 @@ export async function executeDesktopSmoke(
       ? { source: 'explicit-target', ...runtimeSelection }
       : { source: 'default-runtime' }, null, 2) + '\n')
 
-    await runLoggedCommand(['agent-browser', 'open', appUrl], {
+    await runLoggedCommand(agentBrowserCommand('open', appUrl), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 30_000,
+    })
+    // Let the first AppShell boot finish before replacing its persisted tab
+    // state. Otherwise its asynchronous restore can overwrite the smoke tab
+    // and send the test prompt to a stale, cleaned-up session.
+    await runLoggedCommand(agentBrowserCommand('wait', '1500'), {
+      cwd: rootDir,
+      env: browserEnv,
+      logPath: browserLogPath,
+      timeoutMs: 10_000,
     })
     const browserSetup = [
       `localStorage.setItem('cc-jiangxia-open-tabs', ${JSON.stringify(JSON.stringify({
@@ -299,43 +372,72 @@ export async function executeDesktopSmoke(
           [session.sessionId]: runtimeSelection,
         }))})`
         : `localStorage.removeItem('cc-jiangxia-session-runtime')`,
+      `localStorage.removeItem('cc-haha-open-tabs')`,
+      `localStorage.removeItem('cc-haha-session-runtime')`,
     ]
-    await runLoggedCommand([
-      'agent-browser',
-      'eval',
-      browserSetup.join(';'),
-    ], {
+    await runLoggedCommand(agentBrowserCommand('eval', browserSetup.join(';')), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 15_000,
     })
-    await runLoggedCommand(['agent-browser', 'reload'], {
+    await runLoggedCommand(agentBrowserCommand('reload'), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 30_000,
     })
-    await runLoggedCommand(['agent-browser', 'wait', 'textarea'], {
+    // AppShell restores persisted tabs asynchronously after the initial shell is
+    // interactive. Wait for that restoration before targeting the chat input.
+    await runLoggedCommand(agentBrowserCommand('wait', '1500'), {
+      cwd: rootDir,
+      env: browserEnv,
+      logPath: browserLogPath,
+      timeoutMs: 10_000,
+    })
+    await runLoggedCommand(agentBrowserCommand('wait', 'textarea'), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 30_000,
     })
-    await runLoggedCommand(['agent-browser', 'screenshot', join(artifactDir, 'initial.png')], {
+    await runLoggedCommand(agentBrowserCommand(
+      'wait',
+      '--fn',
+      `document.body.innerText.includes(${JSON.stringify(projectDir)})`,
+    ), {
+      cwd: rootDir,
+      env: browserEnv,
+      logPath: browserLogPath,
+      timeoutMs: 30_000,
+    })
+    await runLoggedCommand(agentBrowserCommand('screenshot', join(artifactDir, 'initial.png')), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 20_000,
       allowFailure: true,
     })
-    await runLoggedCommand(['agent-browser', 'fill', 'textarea', PROMPT], {
+    await runLoggedCommand(agentBrowserCommand('fill', 'textarea', PROMPT), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 20_000,
     })
-    await runLoggedCommand(['agent-browser', 'press', 'Enter'], {
+    await runLoggedCommand(agentBrowserCommand(
+      'wait',
+      '--fn',
+      "!!document.querySelector('[data-testid=\"chat-submit-button\"]:not([disabled])')",
+    ), {
+      cwd: rootDir,
+      env: browserEnv,
+      logPath: browserLogPath,
+      timeoutMs: 30_000,
+    })
+    await runLoggedCommand(agentBrowserCommand(
+      'click',
+      '[data-testid="chat-submit-button"]:not([disabled])',
+    ), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
@@ -351,7 +453,7 @@ export async function executeDesktopSmoke(
       artifactDir,
       360_000,
     )
-    await runLoggedCommand(['agent-browser', 'screenshot', join(artifactDir, 'final.png')], {
+    await runLoggedCommand(agentBrowserCommand('screenshot', join(artifactDir, 'final.png')), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
@@ -381,15 +483,22 @@ export async function executeDesktopSmoke(
         appendFileSync(serverLogPath, `\n[quality-gate] Failed to restore permission mode: ${error instanceof Error ? error.message : String(error)}\n`)
       })
     }
-    await runLoggedCommand(['agent-browser', 'close'], {
+    await runLoggedCommand(agentBrowserCommand('close'), {
       cwd: rootDir,
       env: browserEnv,
       logPath: browserLogPath,
       timeoutMs: 10_000,
       allowFailure: true,
     }).catch(() => {})
-    server.kill()
-    vite.kill()
+    if (process.platform === 'win32') {
+      await Promise.all([
+        terminateSmokeProcessTree(server.pid),
+        terminateSmokeProcessTree(vite.pid),
+      ])
+    } else {
+      server.kill()
+      vite.kill()
+    }
     rmSync(workRoot, { recursive: true, force: true })
   }
 }

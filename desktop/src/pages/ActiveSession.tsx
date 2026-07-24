@@ -37,8 +37,9 @@ import {
   type WorkflowStatusPanelSummary,
 } from '../components/workflow/WorkflowComponents'
 import { WorkflowTransitionControls } from '../components/workflow/WorkflowTransitionControls'
+import { WorkflowCompletionStatusCard } from '../components/workflow/WorkflowCompletionStatusCard'
 import { formatWorkflowPhaseSummary } from '../components/workflow/workflowPhaseDisplay'
-import { sessionsApi } from '../api/sessions'
+import { sessionsApi, type WorkflowCompletionProgressUpdate } from '../api/sessions'
 import { expertsApi, type ExpertDefinition } from '../api/experts'
 import type {
   ExpertMaterialRef,
@@ -1260,6 +1261,8 @@ export function ActiveSession() {
   const [workflowPreviewBusy, setWorkflowPreviewBusy] = useState<'start' | 'stop' | null>(null)
   const [workflowExitDialogOpen, setWorkflowExitDialogOpen] = useState(false)
   const [workflowExitBusy, setWorkflowExitBusy] = useState(false)
+  const [workflowCompletionPending, setWorkflowCompletionPending] = useState(false)
+  const [workflowCompletionError, setWorkflowCompletionError] = useState<string | null>(null)
   const [expertIntakeOpen, setExpertIntakeOpen] = useState(false)
   const [expertMaterialsOpen, setExpertMaterialsOpen] = useState(false)
   const [expertMaterialDownloadingRunId, setExpertMaterialDownloadingRunId] = useState<string | null>(null)
@@ -1499,6 +1502,30 @@ export function ActiveSession() {
       onRetry={handleWorkflowTransition}
     />
   ) : null
+
+  const handleWorkflowCompletionProgress = useCallback(async (update: WorkflowCompletionProgressUpdate) => {
+    if (!activeTabId || !workflowDisplay?.activePhaseId || workflowDisplay.stateVersion === undefined) return
+    setWorkflowCompletionPending(true)
+    setWorkflowCompletionError(null)
+    try {
+      const result = await sessionsApi.updateWorkflowCompletionProgress(activeTabId, {
+        phaseId: workflowDisplay.activePhaseId,
+        stateVersion: workflowDisplay.stateVersion,
+        update,
+      })
+      useSessionStore.setState((state) => ({
+        sessions: state.sessions.map((candidate) =>
+          candidate.id === activeTabId
+            ? { ...candidate, workflow: result.workflow, modifiedAt: new Date().toISOString() }
+            : candidate,
+        ),
+      }))
+    } catch (error) {
+      setWorkflowCompletionError(error instanceof Error ? error.message : '阶段完成状态更新失败')
+    } finally {
+      setWorkflowCompletionPending(false)
+    }
+  }, [activeTabId, workflowDisplay])
 
   const loadWorkflowCheckpoints = useCallback(async () => {
     if (!activeTabId || !workflowDisplay || isMemberSession) return
@@ -1807,6 +1834,12 @@ export function ActiveSession() {
                           onRestore={(checkpointId) => { void handleRestoreWorkflowCheckpoint(checkpointId) }}
                         />
                       )}
+                    />
+                    <WorkflowCompletionStatusCard
+                      workflow={workflowDisplay}
+                      pending={workflowCompletionPending}
+                      error={workflowCompletionError}
+                      onUpdate={handleWorkflowCompletionProgress}
                     />
                     {canShowWorkflowPreviewControls ? (
                       <WorkflowPreviewControls

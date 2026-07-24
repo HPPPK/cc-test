@@ -1,5 +1,6 @@
 ﻿import type { WorkflowPhaseActionPolicy, WorkflowPhaseDefinition, WorkflowSessionState, WorkflowTemplate } from './workflowTypes.js'
 import { getRipgrepStatus } from '../../utils/ripgrep.js'
+import { getWorkflowCompletionEligibility } from './workflowCompletionGate.js'
 
 type WorkflowRipgrepStatus = ReturnType<typeof getRipgrepStatus>
 
@@ -329,6 +330,13 @@ export function isWorkflowPhaseToolDenied(
   toolName: string,
   state: WorkflowSessionState | null | undefined,
 ): boolean {
+  if (
+    (toolName === SUBMIT_PHASE_COMPLETION_TOOL_NAME || toolName === REQUEST_WORKFLOW_ROUTE_TOOL_NAME)
+    && state?.runtimeContract
+    && !getWorkflowScopedToolNames(state).includes(toolName)
+  ) {
+    return true
+  }
   return getWorkflowPhaseDisallowedTools(state).includes(toolName)
 }
 
@@ -410,7 +418,15 @@ export function getWorkflowScopedToolNames(
   state: WorkflowSessionState | null | undefined,
 ): string[] {
   if (!isActiveWorkflowState(state)) return []
-  return [...WORKFLOW_PHASE_SCOPED_TOOL_NAMES]
+
+  // Legacy in-memory callers may not have crossed the persisted migration
+  // boundary yet. They remain service-guarded; persisted workflow state is
+  // migrated fail-closed before normal tool-pool assembly.
+  if (!state.runtimeContract) return [...WORKFLOW_PHASE_SCOPED_TOOL_NAMES]
+
+  return getWorkflowCompletionEligibility(state).status === 'eligible'
+    ? [...WORKFLOW_PHASE_SCOPED_TOOL_NAMES]
+    : []
 }
 
 export function getWorkflowPromptToolGuidance(

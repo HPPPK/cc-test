@@ -84,6 +84,12 @@ export type ServerMessage =
       description?: string
     }
   | {
+      type: 'permission_response_ack'
+      requestId: string
+      status: 'accepted' | 'rejected' | 'stale'
+      message?: string
+    }
+  | {
       type: 'computer_use_permission_request'
       requestId: string
       request: ComputerUsePermissionRequest

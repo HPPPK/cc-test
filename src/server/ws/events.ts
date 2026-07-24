@@ -42,6 +42,9 @@ export type ClientMessage =
   | { type: 'set_permission_mode'; mode: string }
   | { type: 'set_runtime_config'; providerId: string | null; modelId: string; force?: boolean }
   | { type: 'stop_generation' }
+  // Test-only wire controls. The server rejects these unless its explicit local E2E mode is enabled.
+  | { type: 'e2e_test_permission_request'; requestId: string; toolUseId: string; input: Record<string, unknown> }
+  | { type: 'e2e_test_permission_response_ack'; requestId: string; status: 'rejected' | 'stale'; message?: string }
   | { type: 'ping' }
 
 export type AttachmentRef = {
@@ -70,6 +73,12 @@ export type ServerMessage =
       toolUseId?: string
       input: unknown
       description?: string
+    }
+  | {
+      type: 'permission_response_ack'
+      requestId: string
+      status: 'accepted' | 'rejected' | 'stale'
+      message?: string
     }
   | {
       type: 'computer_use_permission_request'

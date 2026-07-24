@@ -12,6 +12,7 @@ import type { WorkflowPhaseSkillCatalogEntry } from './workflowPhaseSkillResolve
 
 const NOW = '2026-05-20T00:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-service-test'
+const workflowRuntimeServiceModule = import('./workflowRuntimeService.js')
 
 type WorkflowRuntimeServiceContract = {
   startPhase(input: {
@@ -90,7 +91,7 @@ async function makeService(input: {
   skillCatalog?: () => Promise<WorkflowPhaseSkillCatalogEntry[]>
   templateLoader?: (state: WorkflowSessionState) => Promise<WorkflowTemplate | null>
 } = {}): Promise<WorkflowRuntimeServiceContract> {
-  const mod = await import('./workflowRuntimeService.js')
+  const mod = await workflowRuntimeServiceModule
   return new mod.WorkflowRuntimeService(
     input.skillCatalog,
     input.templateLoader ?? (async (state: WorkflowSessionState) => state.templateSnapshot ?? null),
@@ -178,18 +179,37 @@ function completionSubmission(
   }
 }
 
+function readyRuntimeContract(phases: WorkflowSessionState['phases']) {
+  return {
+    schemaVersion: 1 as const,
+    migrationStatus: 'current' as const,
+    phaseStates: Object.fromEntries(phases.map((phase) => [phase.id, {
+      phaseId: phase.id,
+      workStatus: 'ready-for-review' as const,
+      eligibility: 'eligible' as const,
+      blockerReasons: [],
+      issues: [],
+      artifactRequirements: [],
+      checks: [],
+      taskSnapshots: [],
+      evaluatedAt: NOW,
+    }])),
+    audit: [],
+  }
+}
+
 function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessionState {
   const template = makeTemplate()
-  return {
+  const state = {
     schemaVersion: 1,
     sessionId: SESSION_ID,
-    mode: 'workflow',
+    mode: 'workflow' as const,
     template: {
       id: template.id,
       version: String(template.version),
       source: template.source,
       snapshotId: 'snapshot-1',
-      sourceState: 'current',
+      sourceState: 'current' as const,
     },
     templateSnapshot: template,
     templateIdentity: {
@@ -199,23 +219,13 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
       registryKey: 'builtin:requirements-to-implementation',
       contentHash: 'fixture-hash',
     },
-    sourceTemplateStatus: 'current',
-    status: 'created',
-    workflowStatus: 'created',
+    sourceTemplateStatus: 'current' as const,
+    status: 'created' as const,
+    workflowStatus: 'created' as const,
     activePhaseId: 'requirements',
     phases: [
-      {
-        id: 'requirements',
-        index: 0,
-        status: 'created',
-        artifactPointers: [],
-      },
-      {
-        id: 'implementation',
-        index: 1,
-        status: 'created',
-        artifactPointers: [],
-      },
+      { id: 'requirements', index: 0, status: 'created' as const, artifactPointers: [] },
+      { id: 'implementation', index: 1, status: 'created' as const, artifactPointers: [] },
     ],
     phaseRuns: [],
     transitionHistory: [],
@@ -226,6 +236,10 @@ function makeState(overrides: Partial<WorkflowSessionState> = {}): WorkflowSessi
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
+  } as WorkflowSessionState
+  return {
+    ...state,
+    runtimeContract: overrides.runtimeContract ?? readyRuntimeContract(state.phases),
   }
 }
 

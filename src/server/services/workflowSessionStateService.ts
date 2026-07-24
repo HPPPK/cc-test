@@ -11,6 +11,7 @@ import type {
   WorkflowSessionState,
 } from './workflowTypes.js'
 import { ensureWorkflowArtifactStorage } from './workflowArtifactStorage.js'
+import { migrateWorkflowRuntimeContract } from './workflowCompletionGate.js'
 
 export type WorkflowStateReadResult = {
   exists: boolean
@@ -22,6 +23,11 @@ export type WorkflowStateReadResult = {
 export type WorkflowStateWriteResult = {
   state: WorkflowSessionState
   pointer: WorkflowArtifactPointer
+}
+
+export type WorkflowStateUpdateOptions = {
+  expectedStateVersion?: number
+  expectedRevision?: number
 }
 
 export type WorkflowPhaseArtifactWriteResult = {
@@ -133,6 +139,18 @@ async function atomicWriteJson(filePath: string, value: unknown): Promise<void> 
   }
 }
 
+function assertExpectedVersion(
+  current: WorkflowSessionState,
+  options: WorkflowStateUpdateOptions,
+): void {
+  if (options.expectedStateVersion !== undefined && current.stateVersion !== options.expectedStateVersion) {
+    throw new ApiError(409, 'Workflow state version is stale.', 'WORKFLOW_STATE_STALE')
+  }
+  if (options.expectedRevision !== undefined && current.revision !== options.expectedRevision) {
+    throw new ApiError(409, 'Workflow state revision is stale.', 'WORKFLOW_STATE_STALE')
+  }
+}
+
 export class WorkflowSessionStateService {
   private static writeLocks = new Map<string, Promise<void>>()
 
@@ -161,7 +179,7 @@ export class WorkflowSessionStateService {
     }
   }
 
-  async readState(sessionId: string): Promise<WorkflowStateReadResult> {
+  private async readStoredState(sessionId: string): Promise<WorkflowStateReadResult> {
     const filePath = this.statePath(sessionId)
     let raw: string
 
@@ -197,9 +215,51 @@ export class WorkflowSessionStateService {
     }
   }
 
-  async writeState(sessionId: string, stateInput: unknown): Promise<WorkflowStateWriteResult> {
+  /**
+   * Reads persisted state and durably installs the fail-closed completion
+   * contract for legacy sessions. The lock re-reads the file before writing so
+   * a concurrent transition cannot be overwritten by a stale migration read.
+   */
+  async readState(sessionId: string): Promise<WorkflowStateReadResult> {
+    const initial = await this.readStoredState(sessionId)
+    if (!initial.exists || !initial.state) return initial
+
+    const migrated = migrateWorkflowRuntimeContract(initial.state, undefined, new Date().toISOString())
+    if (migrated === initial.state) return initial
+
     return this.withWriteLock(this.statePath(sessionId), async () => {
-      const state = normalizeJsonObject<WorkflowSessionState>(stateInput, 'workflow state')
+      const current = await this.readStoredState(sessionId)
+      if (!current.exists || !current.state) return current
+      const currentMigrated = migrateWorkflowRuntimeContract(current.state, undefined, new Date().toISOString())
+      if (currentMigrated === current.state) return current
+
+      await syncProjectWorkflowArtifacts(currentMigrated)
+      await atomicWriteJson(this.statePath(sessionId), currentMigrated)
+      return {
+        exists: true,
+        state: projectReadableState(currentMigrated),
+        recoveryStatus: 'ok',
+        errorCode: null,
+      }
+    })
+  }
+
+  async writeState(
+    sessionId: string,
+    stateInput: unknown,
+    options: WorkflowStateUpdateOptions = {},
+  ): Promise<WorkflowStateWriteResult> {
+    return this.withWriteLock(this.statePath(sessionId), async () => {
+      const current = await this.readStoredState(sessionId)
+      if (current.exists && current.state) {
+        assertExpectedVersion(current.state, options)
+      }
+
+      const state = migrateWorkflowRuntimeContract(
+        normalizeJsonObject<WorkflowSessionState>(stateInput, 'workflow state'),
+        undefined,
+        new Date().toISOString(),
+      )
 
       if (state.sessionId !== sessionId) {
         throw ApiError.badRequest('Workflow state sessionId must match the owning session')
@@ -218,20 +278,34 @@ export class WorkflowSessionStateService {
   async updateState(
     sessionId: string,
     update: (current: WorkflowSessionState) => WorkflowSessionState | Promise<WorkflowSessionState>,
+    options: WorkflowStateUpdateOptions = {},
   ): Promise<WorkflowStateWriteResult> {
     return this.withWriteLock(this.statePath(sessionId), async () => {
-      const current = await this.readState(sessionId)
+      const current = await this.readStoredState(sessionId)
       if (!current.exists || !current.state) {
         throw ApiError.notFound('Workflow state is unavailable for update')
       }
 
-      const previousRevision = typeof current.state.revision === 'number' ? current.state.revision : 0
+      const migrated = migrateWorkflowRuntimeContract(current.state, undefined, new Date().toISOString())
+      assertExpectedVersion(migrated, options)
+      const previousRevision = typeof migrated.revision === 'number' ? migrated.revision : 0
+      const previousStateVersion = typeof migrated.stateVersion === 'number' ? migrated.stateVersion : 0
       const nextState = normalizeJsonObject<WorkflowSessionState>(
-        await update(current.state),
+        await update(migrated),
         'workflow state update',
       )
+      const requestedStateVersion = typeof nextState.stateVersion === 'number'
+        ? nextState.stateVersion
+        : previousStateVersion
       const state = {
         ...nextState,
+        // Every persisted mutation advances the state version. Runtime paths
+        // that already called touchState keep their newer version; auxiliary
+        // persistence paths (for example AskUserQuestion issue updates) cannot
+        // silently reuse a stale stateVersion.
+        stateVersion: requestedStateVersion > previousStateVersion
+          ? requestedStateVersion
+          : previousStateVersion + 1,
         revision: previousRevision + 1,
       }
 

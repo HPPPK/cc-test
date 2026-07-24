@@ -32,6 +32,12 @@ import {
   type WorkflowPhaseSkillCatalogEntry,
 } from './workflowPhaseSkillResolver.js'
 import { getWorkflowPhaseActionPolicy } from './workflowToolPolicy.js'
+import {
+  applyWorkflowPhaseProgress,
+  getWorkflowCompletionEligibility,
+  markWorkflowPhaseStarted,
+  migrateWorkflowRuntimeContract,
+} from './workflowCompletionGate.js'
 import { loadCurrentWorkflowTemplate } from './workflowRuntimeTemplateService.js'
 import {
   buildWorkflowRuntimePrompt,
@@ -1043,6 +1049,28 @@ export class WorkflowRuntimeService {
     private readonly loadWorkflowTemplate: WorkflowRuntimeTemplateLoader = loadCurrentWorkflowTemplate,
   ) {}
 
+  async updatePhaseProgress(input: {
+    state: WorkflowSessionState
+    phaseId: string
+    stateVersion: number
+    update: import('./workflowCompletionGate.js').WorkflowPhaseProgressUpdate
+    requestedAt: string
+  }): Promise<RuntimeResult> {
+    const state = migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt)
+    assertFreshStateVersion(state, input.stateVersion)
+    if (state.activePhaseId !== input.phaseId) {
+      throw workflowError('WORKFLOW_PHASE_MISMATCH', 'Phase progress can only update the active workflow phase.')
+    }
+    const template = await this.loadWorkflowTemplate(state) ?? state.templateSnapshot ?? null
+    if (!template) return this.missingTemplateResult(state, input.requestedAt)
+    const updated = applyWorkflowPhaseProgress(state, input.phaseId, input.update, input.requestedAt)
+    const nextState = touchState(updated, input.requestedAt)
+    return {
+      state: nextState,
+      notifications: [stateNotification(nextState)],
+    }
+  }
+
   async exitWorkflow(input: {
     state: WorkflowSessionState
     requestedAt: string
@@ -1099,12 +1127,16 @@ export class WorkflowRuntimeService {
       return { state: input.state, notifications: [] }
     }
 
-    const state = cloneState(input.state)
-    const phase = activePhase(state)
-    if (!phase) return { state: input.state, notifications: [] }
-
+    let state = cloneState(input.state)
     const template = await this.loadWorkflowTemplate(state)
     if (!template) return this.missingTemplateResult(state, input.requestedAt)
+    state = markWorkflowPhaseStarted(
+      migrateWorkflowRuntimeContract(state, template, input.requestedAt),
+      state.activePhaseId ?? '',
+      input.requestedAt,
+    )
+    const phase = activePhase(state)
+    if (!phase) return { state: input.state, notifications: [] }
 
     const definition = phaseDefinition(template, phase.id)
     const requestedModel = definition?.requestedModel ?? phase.requestedModel
@@ -1285,6 +1317,10 @@ export class WorkflowRuntimeService {
   }
 
   async applyTransition(input: TransitionInput): Promise<RuntimeResult> {
+    input = {
+      ...input,
+      state: migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt),
+    }
     if (!isWorkflowState(input.state)) {
       return { state: input.state, notifications: [] }
     }
@@ -1327,6 +1363,10 @@ export class WorkflowRuntimeService {
   }
 
   async submitPhaseCompletion(input: SubmitPhaseCompletionInput): Promise<SubmitPhaseCompletionResult> {
+    input = {
+      ...input,
+      state: migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt),
+    }
     const authority = completionTransitionAuthority(input.state, input.submission.phaseId)
     const advanceReady = input.submission.status === 'completed' && authority === 'auto'
     return this.recordCompletionSubmission(input, {
@@ -1339,6 +1379,10 @@ export class WorkflowRuntimeService {
   }
 
   async submitManualCompletion(input: SubmitPhaseCompletionInput): Promise<SubmitPhaseCompletionResult> {
+    input = {
+      ...input,
+      state: migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt),
+    }
     return this.recordCompletionSubmission(input, {
       readyLifecycleStatus: 'accepted',
       advanceReady: true,
@@ -1360,7 +1404,7 @@ export class WorkflowRuntimeService {
       throw workflowError('WORKFLOW_ROUTE_INVALID', 'Workflow route evidence must be an array.')
     }
 
-    const state = cloneState(input.state)
+    let state = cloneState(input.state)
     const template = await this.loadWorkflowTemplate(state)
     if (!template) {
       const missing = this.missingTemplateResult(state, input.requestedAt)
@@ -1371,6 +1415,7 @@ export class WorkflowRuntimeService {
         requiresConfirmation: true,
       }
     }
+    state = migrateWorkflowRuntimeContract(state, template, input.requestedAt)
     const phaseId = input.request.phaseId ?? state.activePhaseId
     if (!phaseId) throw workflowError('WORKFLOW_PHASE_MISMATCH', 'Workflow has no active phase to route from.')
     const current = assertActivePhase(state, phaseId)
@@ -1379,6 +1424,16 @@ export class WorkflowRuntimeService {
     if ((input.request as { intent?: string }).intent === 'route_to_workflow') {
       throw workflowError('WORKFLOW_ROUTE_UNSUPPORTED', 'Cross-workflow routing is not supported. Keep the current workflow active and select another workflow explicitly.')
     }
+    if (input.request.intent !== 'pause' && input.request.intent !== 'resume') {
+      const eligibility = getWorkflowCompletionEligibility(state)
+      if (eligibility.status !== 'eligible') {
+        throw workflowError(
+          'WORKFLOW_COMPLETION_INELIGIBLE',
+          'Current workflow phase is not completion-eligible: ' + eligibility.reasons.join(' '),
+        )
+      }
+    }
+
     if (input.request.intent === 'pause' || input.request.intent === 'resume') {
       const result = input.request.intent === 'pause'
         ? await this.pauseTransition(state, {
@@ -1564,6 +1619,10 @@ export class WorkflowRuntimeService {
     input: SubmitPhaseCompletionInput,
     options: RecordCompletionSubmissionOptions,
   ): SubmitPhaseCompletionResult {
+    input = {
+      ...input,
+      state: migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt),
+    }
     if (!isWorkflowState(input.state)) {
       throw workflowError('WORKFLOW_TOOL_UNAVAILABLE', 'Workflow completion is available only in workflow sessions.')
     }
@@ -1581,6 +1640,15 @@ export class WorkflowRuntimeService {
     }
 
     validateCompletionSubmission(input.state, input.submission)
+    if (isReadyCompletionStatus(input.submission.status)) {
+      const eligibility = getWorkflowCompletionEligibility(input.state)
+      if (eligibility.status !== 'eligible') {
+        throw workflowError(
+          'WORKFLOW_COMPLETION_INELIGIBLE',
+          'Current workflow phase is not completion-eligible: ' + eligibility.reasons.join(' '),
+        )
+      }
+    }
     if (
       isReadyCompletionStatus(input.submission.status)
       && input.state.pendingConfirmation?.status === 'pending'

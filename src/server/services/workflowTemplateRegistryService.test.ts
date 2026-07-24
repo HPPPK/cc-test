@@ -236,7 +236,7 @@ describe('workflow template registry service', () => {
       id: 'efficient-constrained-dev-debug-workflow-v5',
       source: 'user',
       schemaVersion: 2,
-      version: '8',
+      version: '10',
       name: expect.any(String),
       labels: expect.arrayContaining(['new-product', 'enhancement', 'ux-copy', 'error-handling']),
       phases: expect.arrayContaining([
@@ -313,20 +313,19 @@ describe('workflow template registry service', () => {
     })
     expectExactTools(developmentRouteContext?.toolPolicy?.allowedTools, stagePlanningTools)
     expectExactTools(developmentRouteContext?.toolPolicy?.disallowedTools, stagePlanningDisallowedTools)
-    expect(developmentRouteContext?.instructions).toContain('general application framing')
+    expect(developmentRouteContext?.instructions).toContain('application framing')
     expect(developmentRouteContext?.instructions).toContain('sourceMaterialType')
     expect(developmentRouteContext?.instructions).toContain('sourceMaterialAccessStatus')
     expect(developmentRouteContext?.instructions).toContain('sourceMaterialHandlingHint')
     expect(developmentRouteContext?.instructions).toContain('uiDirectionNeeded')
-    expect(developmentRouteContext?.instructions).toContain('fixed low-randomness app-framing checklist')
-    expect(developmentRouteContext?.instructions).toContain('appFormat -> usageMode -> runtimeExpectation -> dataPersistence -> authAndRoles -> projectMode -> allowedOperations -> techStackStrategy')
-    expect(developmentRouteContext?.instructions).toContain('Recommended app setup:')
-    expect(developmentRouteContext?.instructions).toContain('fieldKey, recommendedValue, plainLanguageMeaning, whyRecommended, and adjustable')
-    expect(developmentRouteContext?.instructions).toContain('Recommended')
-    expect(developmentRouteContext?.instructions).toContain('When adjusting appFormat')
-    expect(developmentRouteContext?.instructions).toContain('When adjusting techStackStrategy')
-    expect(developmentRouteContext?.instructions).toContain('Never ask open-ended technical questions in Stage 1')
-    expect(developmentRouteContext?.instructions).not.toContain('Route the request')
+    expect(developmentRouteContext?.instructions).toContain("Work dynamically from the user's request")
+    expect(developmentRouteContext?.instructions).toContain('Do not use a fixed question sequence')
+    expect(developmentRouteContext?.instructions).toContain('Each question is part of the current stage work')
+    expect(developmentRouteContext?.instructions).toContain('Do not begin detailed product discovery or UI/UX work')
+    expect(developmentRouteContext?.instructions).toContain("Update the current stage's progress/artifact")
+    expect(developmentRouteContext?.instructions).toContain('all blocking stage issues are explicitly processed')
+    expect(developmentRouteContext?.instructions).not.toContain('微信定时发送任务小程序')
+    expect(developmentRouteContext?.instructions).not.toContain('fixed low-randomness app-framing checklist')
     expect(developmentRouteContext?.executionRules.join('\n')).toContain('Do not discuss detailed product feature modules')
     expect(developmentRouteContext?.executionRules.join('\n')).toContain('while still allowing the user to adjust fields one by one')
     expect(developmentRouteContext?.handoffRules.join('\n')).toContain('Do not proceed to detailed feature brainstorming until appFraming is confirmed')

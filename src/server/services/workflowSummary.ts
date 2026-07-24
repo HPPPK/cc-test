@@ -13,6 +13,7 @@ import type {
   WorkflowSessionMetadata,
   WorkflowSessionState,
   WorkflowSessionSummary,
+  WorkflowCompletionSummary,
 } from './workflowTypes.js'
 
 type WorkflowRecommendedSkillStatusSummary = {
@@ -27,6 +28,33 @@ type WorkflowRecommendedSkillStatusSummary = {
     source?: WorkflowPhaseSkillSource
     pluginName?: string
   }>
+}
+
+function completionSummaryFromState(state: WorkflowSessionState): WorkflowCompletionSummary | null {
+  const contract = state.runtimeContract
+  const phaseId = state.activePhaseId
+  const phaseState = phaseId ? contract?.phaseStates[phaseId] : null
+  if (!contract || !phaseState) return null
+  return {
+    migrationStatus: contract.migrationStatus,
+    phaseId,
+    eligibility: phaseState.eligibility,
+    workStatus: phaseState.workStatus,
+    blockerReasons: [...phaseState.blockerReasons],
+    issues: phaseState.issues.map((issue) => ({
+      id: issue.id,
+      status: issue.status,
+      blocksCompletion: issue.blocksCompletion,
+      ...(issue.question ? { question: issue.question } : {}),
+      blockingReason: issue.blockingReason,
+      ...(issue.answerReceivedAt ? { answerReceivedAt: issue.answerReceivedAt } : {}),
+      ...(issue.artifactIds?.length ? { artifactIds: [...issue.artifactIds] } : {}),
+      ...(issue.checkIds?.length ? { checkIds: [...issue.checkIds] } : {}),
+      ...(issue.followUp ? { followUp: issue.followUp } : {}),
+    })),
+    artifactRequirements: phaseState.artifactRequirements.map((requirement) => ({ ...requirement, artifactIds: [...requirement.artifactIds] })),
+    checks: phaseState.checks.map((check) => ({ ...check, evidenceArtifactIds: [...check.evidenceArtifactIds] })),
+  }
 }
 
 export function workflowSummaryFromState(state: WorkflowSessionState): WorkflowSessionSummary {
@@ -114,6 +142,7 @@ export function stateToWorkflowMetadata(
     ...(activePhaseTransitionAuthority(state)
       ? { transitionAuthority: activePhaseTransitionAuthority(state) }
       : {}),
+    ...(completionSummaryFromState(state) ? { completion: completionSummaryFromState(state)! } : {}),
     ...(model ? { model } : {}),
     ...(recommendedSkillStatus ? { recommendedSkillStatus } : {}),
     ...(!pendingConfirmation && typeof state.blockedReason === 'string' ? { blockedReason: state.blockedReason } : {}),
@@ -160,6 +189,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     ...(typeof metadata.pendingTargetPhaseLabel === 'string' ? { pendingTargetPhaseLabel: metadata.pendingTargetPhaseLabel } : {}),
     ...(typeof metadata.routeReason === 'string' ? { routeReason: metadata.routeReason } : {}),
     ...(typeof metadata.requiresConfirmation === 'boolean' ? { requiresConfirmation: metadata.requiresConfirmation } : {}),
+    ...(metadata.completion ? { completion: metadata.completion } : {}),
     ...(Array.isArray(metadata.labels) ? { labels: metadata.labels as WorkflowSessionSummary['labels'] } : {}),
     ...(Array.isArray(metadata.secondaryLabels) ? { secondaryLabels: metadata.secondaryLabels as WorkflowSessionSummary['secondaryLabels'] } : {}),
     ...(typeof metadata.effort === 'string' ? { effort: metadata.effort as WorkflowSessionSummary['effort'] } : {}),

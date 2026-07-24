@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 const { sendMock } = vi.hoisted(() => ({
   sendMock: vi.fn(),
@@ -118,6 +118,13 @@ describe('AskUserQuestion', () => {
       <AskUserQuestion
         toolUseId="tool-1"
         input={{
+          workflowQuestionContext: {
+            sessionId: ACTIVE_TAB,
+            phaseId: 'requirements',
+            stateVersion: 3,
+            requestId: 'perm-1',
+            issues: [{ issueId: 'ask:perm-1:0', questionId: 'confirm_next_action' }],
+          },
           questions: [{
             id: 'confirm_next_action',
             prompt: '进入下一阶段？',
@@ -138,7 +145,7 @@ describe('AskUserQuestion', () => {
     expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
       type: 'permission_response',
       updatedInput: expect.objectContaining({
-        answers: { '进入下一阶段？': '进入下一阶段' },
+        answers: { confirm_next_action: '进入下一阶段' },
         workflowChoiceActions: [{
           questionId: 'confirm_next_action',
           choiceId: 'enter_next_stage',
@@ -154,6 +161,13 @@ describe('AskUserQuestion', () => {
       <AskUserQuestion
         toolUseId="tool-1"
         input={{
+          workflowQuestionContext: {
+            sessionId: ACTIVE_TAB,
+            phaseId: 'requirements',
+            stateVersion: 3,
+            requestId: 'perm-1',
+            issues: [{ issueId: 'ask:perm-1:0', questionId: 'route_after_validation' }],
+          },
           questions: [{
             id: 'route_after_validation',
             prompt: '发现问题后要怎么做？',
@@ -182,7 +196,7 @@ describe('AskUserQuestion', () => {
     expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
       type: 'permission_response',
       updatedInput: expect.objectContaining({
-        answers: { '发现问题后要怎么做？': '返回 Stage 4 修复该问题' },
+        answers: { route_after_validation: '返回 Stage 4 修复该问题' },
         workflowChoiceActions: [{
           questionId: 'route_after_validation',
           choiceId: 'return-to-stage-4',
@@ -644,6 +658,49 @@ describe('AskUserQuestion', () => {
         },
       },
     })
+  })
+
+  it('keeps a question non-terminal until acknowledgement and restores it after a rejected response', async () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{
+            question: 'Which scope should be used?',
+            options: [{ label: 'Current scope' }, { label: 'Expanded scope' }],
+          }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Current scope' }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(screen.queryByText(/answered/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+
+    await act(async () => {
+      useChatStore.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [ACTIVE_TAB]: {
+            ...state.sessions[ACTIVE_TAB]!,
+            permissionResponse: {
+              requestId: 'perm-1',
+              status: 'rejected',
+              message: 'The selected action was rejected. Please choose again.',
+            },
+            pendingPermission: state.sessions[ACTIVE_TAB]!.pendingPermission,
+            chatState: 'permission_pending',
+          },
+        },
+      }))
+    })
+
+    expect(screen.getByRole('alert').textContent).toContain('Please choose again')
+    expect(screen.getByRole('button', { name: /submit/i })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(sendMock).toHaveBeenCalledTimes(2)
   })
 
   it('renders aborted permission results as terminal instead of asking again', () => {

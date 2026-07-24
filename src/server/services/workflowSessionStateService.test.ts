@@ -174,7 +174,9 @@ describe('WorkflowSessionStateService', () => {
     const persisted = await readJson(statePath())
 
     expect(updates.map((update) => update.state.revision).sort()).toEqual([4, 5])
+    expect(updates.map((update) => update.state.stateVersion).sort()).toEqual([4, 5])
     expect(persisted.revision).toBe(5)
+    expect(persisted.stateVersion).toBe(5)
     expect(persisted.futureStateField).toEqual({ preserved: true })
     expect(((persisted.phaseRuns as Array<Record<string, unknown>>)[0]).futurePhaseField).toBe('preserve me')
   })
@@ -452,4 +454,60 @@ describe('WorkflowSessionStateService', () => {
       expect(await fs.readFile(file, 'utf-8')).toBe('protected-content')
     }
   })
+
+  test('persists a fail-closed migration contract when a legacy state is first read', async () => {
+    const service = new WorkflowSessionStateService()
+    const legacy = makeState({ stateVersion: 5, revision: 8 })
+    await fs.mkdir(path.dirname(statePath()), { recursive: true })
+    await fs.writeFile(statePath(), JSON.stringify(legacy, null, 2), 'utf-8')
+
+    const read = await service.readState(SESSION_ID)
+    const persisted = await readJson(statePath())
+    const runtimeContract = persisted.runtimeContract as Record<string, unknown>
+    const phaseStates = runtimeContract.phaseStates as Record<string, Record<string, unknown>>
+
+    expect(read.state?.runtimeContract).toMatchObject({ migrationStatus: 'needs-rebuild' })
+    expect(runtimeContract.migrationStatus).toBe('needs-rebuild')
+    expect(phaseStates['requirements-clarification']).toMatchObject({
+      workStatus: 'interrupted',
+      eligibility: 'ineligible',
+      issues: [expect.objectContaining({
+        id: 'migration:requirements-clarification',
+        blocksCompletion: true,
+        status: 'open',
+      })],
+    })
+  })
+
+  test('rejects a stale expected state version without overwriting persisted state', async () => {
+    const service = new WorkflowSessionStateService()
+    await service.writeState(SESSION_ID, makeState({ stateVersion: 3, revision: 7 }))
+    const before = await fs.readFile(statePath(), 'utf-8')
+
+    await expect(service.updateState(SESSION_ID, (current) => ({
+      ...current,
+      workflowStatus: 'completed',
+    }), { expectedStateVersion: 2 })).rejects.toMatchObject({
+      code: 'WORKFLOW_STATE_STALE',
+    })
+
+    expect(await fs.readFile(statePath(), 'utf-8')).toBe(before)
+  })
+
+  test('rejects a stale expected revision on direct writes without overwriting persisted state', async () => {
+    const service = new WorkflowSessionStateService()
+    const current = makeState({ stateVersion: 3, revision: 7 })
+    await service.writeState(SESSION_ID, current)
+    const before = await fs.readFile(statePath(), 'utf-8')
+
+    await expect(service.writeState(SESSION_ID, {
+      ...current,
+      workflowStatus: 'completed',
+    }, { expectedRevision: 6 })).rejects.toMatchObject({
+      code: 'WORKFLOW_STATE_STALE',
+    })
+
+    expect(await fs.readFile(statePath(), 'utf-8')).toBe(before)
+  })
+
 })

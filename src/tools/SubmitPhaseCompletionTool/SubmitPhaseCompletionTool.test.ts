@@ -193,8 +193,8 @@ describe('SubmitPhaseCompletionTool', () => {
     expect(prompt).toContain('rationale must be a non-empty string')
     expect(prompt).toContain('evidence must be an array')
     expect(prompt).toContain('Plain assistant text does not satisfy')
-    expect(prompt).toContain('request_workflow_route')
-    expect(prompt).toContain('same assistant turn')
+    expect(prompt).toContain('wait for the controlled user confirmation')
+    expect(prompt).toContain('do not initiate a route or begin another phase in the same turn')
     expect(prompt).toContain('Do not hide a route inside handoff')
   })
 
@@ -374,8 +374,8 @@ describe('SubmitPhaseCompletionTool', () => {
         rationale: 'The required requirements artifact was produced.',
       })
       expect(result.data.message).toContain('user confirmation')
-      expect(result.data.message).toContain('request_workflow_route')
-      expect(result.data.message).toContain('same assistant turn')
+      expect(result.data.message).toContain('stop current-phase business progression')
+      expect(result.data.message).toContain('Do not produce next-phase questions')
       expect(result.data.message).toContain('Do not hide a route inside handoff')
     } finally {
       server.stop(true)

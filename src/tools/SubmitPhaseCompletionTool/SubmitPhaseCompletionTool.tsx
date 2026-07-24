@@ -106,8 +106,8 @@ function messageForStatus(status: Output['status']): string {
 
   return [
     'Completion is recorded and is waiting for user confirmation.',
-    'Do not stop solely because completion is waiting for confirmation.',
-    'If the current phase requires a non-linear route, call request_workflow_route in the same assistant turn before waiting for the user.',
+    'While confirmation is pending, stop current-phase business progression and wait for the user.',
+    'Do not produce next-phase questions, plans, artifacts, operations, or nonessential tool calls while confirmation is pending.',
     'Do not hide a route inside handoff or ordinary assistant text; submit_phase_completion records completion only and never creates a workflow route.',
   ].join(' ')
 }
@@ -348,7 +348,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
       'rationale must be a non-empty string explaining why the selected completion status is appropriate.',
       'evidence must be an array of evidence objects. Use an empty array only when no evidence can be recorded, and explain that limitation in rationale.',
       'Plain assistant text does not satisfy handoff, rationale, or evidence: put all three values in this tool input before calling the tool.',
-      'If you determine that the completed phase must take a non-linear route, call request_workflow_route in the same assistant turn after this tool succeeds and before waiting for user confirmation.',
+      'After status ready succeeds, wait for the controlled user confirmation, rejection, retry, pause, stop, or other explicitly supported recovery action; do not initiate a route or begin another phase in the same turn.',
       'Do not hide a route inside handoff or ordinary assistant text: submit_phase_completion records completion only; request_workflow_route is the only tool that creates a pending route.',
       'phaseId and stateVersion may be omitted; the active workflow phase and latest workflow state are inferred at call time.',
     ].join('\n')

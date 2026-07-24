@@ -137,6 +137,28 @@ export type WorkflowTransitionRequest = {
   rationale?: string
   evidence?: unknown[]
 }
+export type WorkflowCompletionProgressUpdate =
+  | { type: 'rebuild'; actor: 'user'; rationale: string }
+  | { type: 'work-ready-for-review'; actor: 'user'; rationale: string }
+  | { type: 'artifact-satisfied'; actor: 'user'; artifactRequirementId: string; artifactIds: string[]; rationale: string }
+  | { type: 'check-passed'; actor: 'user'; checkId: string; evidenceArtifactIds?: string[]; rationale: string }
+  | {
+      type: 'process-issue'
+      actor: 'user'
+      issueId: string
+      status: 'resolved' | 'requires-artifact-update' | 'requires-check' | 'needs-clarification' | 'conflict' | 'deferred-with-user-approval'
+      rationale: string
+      artifactIds?: string[]
+      checkIds?: string[]
+      followUp?: string
+    }
+
+export type WorkflowCompletionProgressResponse = {
+  ok: true
+  state: Record<string, unknown>
+  workflow: WorkflowSessionSummary
+}
+
 export type RepositoryBranchInfo = {
   name: string
   current: boolean
@@ -510,6 +532,17 @@ export const sessionsApi = {
 
   transitionWorkflow(sessionId: string, body: WorkflowTransitionRequest) {
     return api.post<WorkflowTransitionResponse>(`/api/sessions/${sessionId}/workflow/transition`, body)
+  },
+
+  updateWorkflowCompletionProgress(sessionId: string, body: {
+    phaseId: string
+    stateVersion: number
+    update: WorkflowCompletionProgressUpdate
+  }) {
+    return api.post<WorkflowCompletionProgressResponse>(
+      `/api/sessions/${sessionId}/workflow/completion-progress`,
+      body,
+    )
   },
 
   getWorkflowReport(sessionId: string) {

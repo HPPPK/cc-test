@@ -4,6 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import {
   PackRegistryService,
+  isKnownBundledWorkflowUpgradeFingerprint,
   getWorkflowPackStorageDir,
   resetPackRegistryForTests,
 } from './packRegistryService.js'
@@ -122,6 +123,15 @@ afterEach(async () => {
   }
   resetPackRegistryForTests()
   await fs.rm(tempConfigDir, { recursive: true, force: true })
+})
+
+describe('bundled workflow migration fingerprints', () => {
+  test('recognizes only exact canonical V5 migration fingerprints', () => {
+    expect(isKnownBundledWorkflowUpgradeFingerprint('efficient-constrained-dev-debug-workflow-v5', '8', 'c77fe7e43cad6343f1002a3f988362980cfc11de4d6964375fa573621a99da01')).toBe(true)
+    expect(isKnownBundledWorkflowUpgradeFingerprint('efficient-constrained-dev-debug-workflow-v5', '9', '078573febf09165e6cb12517ad7c10abdaff113e0a3af00b1634fc0e622944c5')).toBe(true)
+    expect(isKnownBundledWorkflowUpgradeFingerprint('efficient-constrained-dev-debug-workflow-v5', '8', 'c77fe7e43cad6343f1002a3f988362980cfc11de4d6964375fa573621a99da00')).toBe(false)
+    expect(isKnownBundledWorkflowUpgradeFingerprint('efficient-constrained-dev-debug-workflow-v5', '10', '790e18ed75110651b555146f9af9edd9923517952911d93386b1e955c8541d7b')).toBe(false)
+  })
 })
 
 describe('PackRegistryService', () => {

@@ -153,6 +153,42 @@ export type WorkflowPreviewState = {
   error?: string
 }
 
+export type WorkflowCompletionSummary = {
+  migrationStatus: 'current' | 'needs-rebuild'
+  phaseId: string | null
+  eligibility: 'eligible' | 'ineligible'
+  workStatus: 'not-started' | 'in-progress' | 'ready-for-review' | 'completed' | 'blocked' | 'interrupted' | null
+  blockerReasons: string[]
+  issues: Array<{
+    id: string
+    status: 'open' | 'answered-pending-processing' | 'requires-artifact-update' | 'requires-check' | 'needs-clarification' | 'conflict' | 'deferred-with-user-approval' | 'resolved' | 'stale'
+    blocksCompletion: boolean
+    question?: string
+    blockingReason: string
+    answerReceivedAt?: string
+    artifactIds?: string[]
+    checkIds?: string[]
+    followUp?: string
+  }>
+  artifactRequirements: Array<{
+    id: string
+    required: boolean
+    description?: string
+    status: 'pending' | 'satisfied' | 'stale'
+    artifactIds: string[]
+    updatedAt: string
+  }>
+  checks: Array<{
+    id: string
+    description?: string
+    required: boolean
+    status: 'pending' | 'passed' | 'failed' | 'stale'
+    evidenceArtifactIds: string[]
+    updatedAt: string
+    failureReason?: string
+  }>
+}
+
 export type WorkflowSessionSummary = {
   mode: 'workflow'
   templateId: string
@@ -211,6 +247,7 @@ export type WorkflowSessionSummary = {
   artifactHistory?: WorkflowPhaseArtifact[]
   recommendedSkillStatus?: WorkflowRecommendedSkillStatusSummary
   recommendedSkillEvidence?: WorkflowPhaseSkillEvidence[]
+  completion?: WorkflowCompletionSummary
 }
 
 

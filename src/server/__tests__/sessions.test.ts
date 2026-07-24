@@ -18,10 +18,12 @@ import { sanitizePath } from '../../utils/sessionStoragePortable.js'
 import { clearInstalledPluginsCache } from '../../utils/plugins/installedPluginsManager.js'
 import { clearPluginCache } from '../../utils/plugins/pluginLoader.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
-import { updateSessionSlashCommands } from '../ws/handler.js'
+import { __resetWebSocketHandlerStateForTests, handleWebSocket, updateSessionSlashCommands } from '../ws/handler.js'
 import { WorkflowSessionCreateService } from '../services/workflowSessionCreateService.js'
 import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
+import { setWorkflowRuntimeTemplateLoaderForTests } from '../services/workflowRuntimeTemplateService.js'
+import { recalculateWorkflowCompletionEligibility } from '../services/workflowCompletionGate.js'
 import { getSessionChatState, setSessionChatState } from '../api/conversations.js'
 import { PackRegistryService, resetPackRegistryForTests } from '../services/packRegistryService.js'
 import { resetWorkflowTemplateRegistryForTests } from '../services/workflowTemplateRegistryService.js'
@@ -591,6 +593,45 @@ async function readWorkflowSessionState(sessionId: string): Promise<Record<strin
   return JSON.parse(await fs.readFile(statePath, 'utf-8')) as Record<string, unknown>
 }
 
+function withCompletionEligibleRuntimeContract(state: Record<string, unknown>): Record<string, unknown> {
+  const phases = state.phases as Array<Record<string, unknown>>
+  const activePhaseId = state.activePhaseId as string
+  const now = state.updatedAt as string
+  return recalculateWorkflowCompletionEligibility({
+    ...(state as any),
+    runtimeContract: {
+      schemaVersion: 1,
+      migrationStatus: 'current',
+      phaseStates: Object.fromEntries(phases.map((phase) => {
+        const phaseId = phase.id as string
+        return [phaseId, {
+          phaseId,
+          workStatus: phaseId === activePhaseId ? 'ready-for-review' : 'not-started',
+          eligibility: 'ineligible',
+          blockerReasons: [],
+          issues: [],
+          artifactRequirements: [],
+          checks: [{
+            id: 'completion-criteria',
+            description: 'Fixture completion review.',
+            required: true,
+            status: phaseId === activePhaseId ? 'passed' : 'pending',
+            evidenceArtifactIds: [],
+            updatedAt: now,
+          }],
+          taskSnapshots: [],
+          evaluatedAt: now,
+        }]
+      })),
+      audit: [{
+        at: now,
+        type: 'runtime-contract-created',
+        summary: 'Fixture workflow completion contract.',
+      }],
+    },
+  }, state.templateSnapshot as any, now) as unknown as Record<string, unknown>
+}
+
 function makePendingWorkflowTransitionState(
   sessionId: string,
   overrides: Record<string, unknown> = {},
@@ -610,7 +651,7 @@ function makePendingWorkflowTransitionState(
     lifecycleStatus: 'pending',
   }
 
-  return {
+  const state = {
     schemaVersion: 1,
     sessionId,
     mode: 'workflow',
@@ -727,6 +768,7 @@ function makePendingWorkflowTransitionState(
     },
     ...overrides,
   }
+  return withCompletionEligibleRuntimeContract(state)
 }
 
 function makeFinalPendingWorkflowTransitionState(sessionId: string): Record<string, unknown> {
@@ -7383,5 +7425,162 @@ describe('Sessions API', () => {
     const statusRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/status`)
     const status = (await statusRes.json()) as { state: string }
     expect(status.state).toBe('idle')
+
   })
+
+    it('persists explicit user artifact evidence before verifying a completion requirement', async () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+      const workDir = path.join(tmpDir, 'api-workflow-artifact-evidence')
+      const state = withCompletionEligibleRuntimeContract(makePendingWorkflowTransitionState(sessionId)) as any
+      const phaseState = state.runtimeContract.phaseStates.discussion
+      phaseState.artifactRequirements = [{
+        id: 'review-evidence',
+        required: true,
+        status: 'pending',
+        artifactIds: [],
+        updatedAt: state.updatedAt,
+      }]
+      phaseState.eligibility = 'ineligible'
+      phaseState.blockerReasons = ['Required artifact is not verified: review-evidence']
+      await writeWorkflowSessionState(sessionId, state)
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          activePhaseId: 'discussion',
+          stateRevision: state.stateVersion,
+          reportPointer: undefined,
+          reportRef: undefined,
+        }),
+        makeUserEntry('Record explicit artifact evidence before completion.'),
+      ])
+
+      const response = await fetch(baseUrl + '/api/sessions/' + sessionId + '/workflow/completion-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          stateVersion: state.stateVersion,
+          update: {
+            type: 'artifact-satisfied',
+            actor: 'user',
+            artifactRequirementId: 'review-evidence',
+            artifactIds: ['review-evidence-v1'],
+            rationale: 'Recorded the review output as session-scoped evidence before verification.',
+          },
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      const body = await response.json() as { state: Record<string, any> }
+      expect(body.state.runtimeContract.phaseStates.discussion.artifactRequirements).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: 'review-evidence',
+          status: 'satisfied',
+          artifactIds: ['review-evidence-v1'],
+        }),
+      ]))
+      expect(body.state.artifactIndex).toEqual(expect.arrayContaining([
+        expect.objectContaining({ artifactId: 'review-evidence-v1' }),
+      ]))
+
+      const artifactPath = path.join(tmpDir, 'cc-jiangxia', 'workflow-sessions', sessionId, 'artifacts', 'review-evidence-v1.json')
+      const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf-8')) as Record<string, any>
+      expect(artifact).toMatchObject({
+        sessionId,
+        phaseId: 'discussion',
+        artifactId: 'review-evidence-v1',
+        lifecycleStatus: 'pending',
+        content: expect.objectContaining({
+          requirementId: 'review-evidence',
+          recordedBy: 'user',
+        }),
+      })
+    })
+
+    it('serializes a concurrent HTTP progress update and WebSocket transition for one session', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+    const workDir = path.join(tmpDir, 'api-workflow-http-ws-cas')
+    await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+    await writeSessionFile(sanitizePath(workDir), sessionId, [
+      makeSnapshotEntry(),
+      makeWorkflowSessionMetaEntry(sessionId, workDir, {
+        templateId: 'agent-development',
+        templateSnapshotId: 'agent-development-v1',
+        status: 'pending-confirmation',
+        workflowStatus: 'pending-confirmation',
+        activePhaseId: 'discussion',
+        stateRevision: 3,
+        reportPointer: undefined,
+        reportRef: undefined,
+      }),
+      makeUserEntry('Concurrent workflow mutation fixture'),
+    ])
+
+    const sent: string[] = []
+    const ws = {
+      data: {
+        sessionId,
+        connectedAt: Date.now(),
+        channel: 'client',
+        sdkToken: null,
+        serverPort: 0,
+        serverHost: '127.0.0.1',
+      },
+      send(payload: string) {
+        sent.push(payload)
+        return 1
+      },
+      close() {},
+    } as any
+
+    try {
+      setWorkflowRuntimeTemplateLoaderForTests(async (state) => state.templateSnapshot ?? null)
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'workflow_transition',
+        phaseId: 'discussion',
+        action: 'pause',
+        stateVersion: 3,
+        transitionId: 'ws-pause-racing-progress',
+      }))
+      const httpResponse = await fetch(baseUrl + '/api/sessions/' + sessionId + '/workflow/completion-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId: 'discussion',
+          stateVersion: 3,
+          update: {
+            type: 'rebuild',
+            actor: 'user',
+            rationale: 'Rebuild the legacy completion contract before review.',
+          },
+        }),
+      })
+      const httpBody = await httpResponse.json() as { error?: string; code?: string }
+
+      const deadline = Date.now() + 2_000
+      while (Date.now() < deadline) {
+        const messages = sent.map((payload) => JSON.parse(payload) as { type?: string; code?: string; subtype?: string })
+        if (messages.some((message) => message.code === 'WORKFLOW_STATE_STALE' || message.subtype === 'workflow_state')) break
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      const wsMessages = sent.map((payload) => JSON.parse(payload) as { type?: string; code?: string; subtype?: string })
+      const wsStale = wsMessages.some((message) => message.type === 'error' && message.code === 'WORKFLOW_STATE_STALE')
+      const wsApplied = wsMessages.some((message) => message.type === 'system_notification' && message.subtype === 'workflow_state')
+
+      expect(
+        (httpResponse.status === 200 && wsStale)
+        || (httpResponse.status === 409 && (httpBody.error ?? httpBody.code) === 'WORKFLOW_STATE_STALE' && wsApplied),
+      ).toBe(true)
+
+      const persisted = await new WorkflowSessionStateService().readState(sessionId)
+      expect(persisted.state?.stateVersion).toBe(4)
+    } finally {
+      setWorkflowRuntimeTemplateLoaderForTests(null)
+      __resetWebSocketHandlerStateForTests()
+    }
+  })
+
 })

@@ -12,6 +12,7 @@ import {
 } from './workflowTemplateRegistryService.js'
 import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
+import { createWorkflowRuntimeContract } from './workflowCompletionGate.js'
 import type {
   EffortMode,
   WorkflowLabel,
@@ -434,7 +435,11 @@ export class WorkflowSessionCreateService {
         },
       ],
     } satisfies WorkflowSessionState
-    const state = ensureMandatoryWorkflowArtifacts(initialState, {
+    const initialStateWithRuntimeContract: WorkflowSessionState = {
+      ...initialState,
+      runtimeContract: createWorkflowRuntimeContract(initialState, runtimeTemplate, now),
+    }
+    const state = ensureMandatoryWorkflowArtifacts(initialStateWithRuntimeContract, {
       request: workflowOptions?.request ?? '',
       selectedFiles: workflowOptions?.selectedFiles,
       repoMetadata: workflowOptions?.repoMetadata,

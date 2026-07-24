@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { desktopViteCommand, resolveDesktopSmokeRuntimeSelection } from './execute'
+import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection } from './execute'
 
 describe('desktop smoke runtime selection', () => {
   test('lets current-runtime use the desktop default active provider', () => {
@@ -34,5 +34,19 @@ describe('desktop smoke runtime selection', () => {
 describe('desktop smoke Vite launcher', () => {
   test('uses the current Bun runtime and package script instead of platform-specific node_modules shims', () => {
     expect(desktopViteCommand()).toEqual([process.execPath, 'run', 'dev'])
+  })
+})
+
+
+describe('desktop smoke browser launcher', () => {
+  test('uses a direct native executable on Windows when the installed agent-browser package provides one', () => {
+    const command = agentBrowserCommand('open', 'http://127.0.0.1')
+    if (process.platform === 'win32') {
+      expect(command.at(-2)).toBe('open')
+      expect(command.at(-1)).toBe('http://127.0.0.1')
+      expect(command[0]).toMatch(/agent-browser-win32-x64\.exe$/i)
+      return
+    }
+    expect(command).toEqual(['agent-browser', 'open', 'http://127.0.0.1'])
   })
 })
