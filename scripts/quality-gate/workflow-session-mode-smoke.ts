@@ -130,6 +130,106 @@ async function transitionWorkflow(
   })
 }
 
+type CompletionPhaseState = {
+  artifactRequirements?: Array<{ id: string; required: boolean; status: string; artifactIds?: string[] }>
+  checks?: Array<{ id: string; required: boolean; status: string }>
+}
+
+function currentCompletionPhaseState(state: JsonRecord, phaseId: string): CompletionPhaseState {
+  const runtimeContract = state.runtimeContract
+  if (!runtimeContract || typeof runtimeContract !== 'object' || Array.isArray(runtimeContract)) {
+    throw new Error('Workflow state does not include a runtime completion contract')
+  }
+  const phaseStates = (runtimeContract as JsonRecord).phaseStates
+  if (!phaseStates || typeof phaseStates !== 'object' || Array.isArray(phaseStates)) {
+    throw new Error('Workflow completion contract does not include phase states')
+  }
+  const phaseState = (phaseStates as Record<string, unknown>)[phaseId]
+  if (!phaseState || typeof phaseState !== 'object' || Array.isArray(phaseState)) {
+    throw new Error('Workflow completion contract does not include active phase ' + phaseId)
+  }
+  return phaseState as CompletionPhaseState
+}
+
+async function markPhaseCompletionEligible(
+  baseUrl: string,
+  sessionId: string,
+  initialState: JsonRecord,
+): Promise<JsonRecord> {
+  const phaseId = typeof initialState.activePhaseId === 'string' ? initialState.activePhaseId : null
+  if (!phaseId) throw new Error('Cannot prepare a terminal workflow phase for completion')
+  let state = initialState
+  let phaseState = currentCompletionPhaseState(state, phaseId)
+
+  for (const requirement of phaseState.artifactRequirements ?? []) {
+    if (!requirement.required || requirement.status === 'satisfied') continue
+    const artifactId = 'workflow-session-smoke-' + phaseId + '-' + requirement.id + '-' + Date.now()
+    const response = await fetchJson<{ state: JsonRecord }>(
+      `${baseUrl}/api/sessions/${sessionId}/workflow/completion-progress`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId,
+          stateVersion: stateVersion(state),
+          update: {
+            type: 'artifact-satisfied',
+            actor: 'user',
+            artifactRequirementId: requirement.id,
+            artifactIds: [artifactId],
+            rationale: 'Recorded deterministic non-live smoke artifact evidence before completion.',
+          },
+        }),
+      },
+    )
+    state = response.state
+    phaseState = currentCompletionPhaseState(state, phaseId)
+  }
+
+  const evidenceArtifactIds = (phaseState.artifactRequirements ?? []).flatMap((requirement) => requirement.artifactIds ?? [])
+  for (const check of phaseState.checks ?? []) {
+    if (!check.required || check.status === 'passed') continue
+    const response = await fetchJson<{ state: JsonRecord }>(
+      `${baseUrl}/api/sessions/${sessionId}/workflow/completion-progress`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phaseId,
+          stateVersion: stateVersion(state),
+          update: {
+            type: 'check-passed',
+            actor: 'user',
+            checkId: check.id,
+            ...(evidenceArtifactIds.length ? { evidenceArtifactIds } : {}),
+            rationale: 'Verified deterministic non-live smoke completion criteria.',
+          },
+        }),
+      },
+    )
+    state = response.state
+    phaseState = currentCompletionPhaseState(state, phaseId)
+  }
+
+  const response = await fetchJson<{ state: JsonRecord }>(
+    `${baseUrl}/api/sessions/${sessionId}/workflow/completion-progress`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phaseId,
+        stateVersion: stateVersion(state),
+        update: {
+          type: 'work-ready-for-review',
+          actor: 'user',
+          rationale: 'Marked non-live workflow smoke phase ready for completion review after deterministic evidence.',
+        },
+      }),
+    },
+  )
+  return response.state
+}
+
 function completionTransition(
   phaseId: string,
   stateVersion: number,
@@ -222,15 +322,17 @@ async function websocketTransition(
 ): Promise<string[]> {
   const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
   const notifications: string[] = []
+  const observations: string[] = []
 
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       ws.close()
-      reject(new Error('Timed out waiting for workflow WebSocket observations'))
+      reject(new Error(`Timed out waiting for workflow WebSocket observations: ${observations.join(' | ') || 'none'}`))
     }, 10_000)
 
     ws.onmessage = (event) => {
       const message = JSON.parse(String(event.data)) as JsonRecord
+      observations.push(JSON.stringify(message))
       if (message.type === 'connected') {
         ws.send(JSON.stringify({ type: 'workflow_transition', ...body }))
         return
@@ -323,9 +425,14 @@ export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promis
         throw new Error('Workflow session did not start in discussion')
       }
 
+      const readyState = await markPhaseCompletionEligible(
+        started.baseUrl,
+        workflowCreated.sessionId,
+        initialWorkflow.state,
+      )
       const readyTransition = completionTransition(
         'discussion',
-        stateVersion(initialWorkflow.state),
+        stateVersion(readyState),
         'ready',
         `smoke-ready-${Date.now()}`,
       )
@@ -352,12 +459,17 @@ export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promis
       })
 
       for (const phaseId of ['specify', 'plan', 'tasks']) {
+        const eligibleState = await markPhaseCompletionEligible(
+          started.baseUrl,
+          workflowCreated.sessionId,
+          current.state,
+        )
         current = await transitionWorkflow(
           started.baseUrl,
           workflowCreated.sessionId,
           completionTransition(
             phaseId,
-            stateVersion(current.state),
+            stateVersion(eligibleState),
             'manual_complete',
             `smoke-manual-${phaseId}-${Date.now()}`,
           ),
@@ -368,12 +480,17 @@ export async function runWorkflowSessionModeSmoke(options: SmokeOptions): Promis
         throw new Error(`Workflow did not advance to implement before final report check: ${current.workflow.activePhaseId}`)
       }
 
+      const finalReadyState = await markPhaseCompletionEligible(
+        started.baseUrl,
+        workflowCreated.sessionId,
+        current.state,
+      )
       const finalNotifications = await websocketTransition(
         started.wsUrl,
         workflowCreated.sessionId,
         completionTransition(
           'implement',
-          stateVersion(current.state),
+          stateVersion(finalReadyState),
           'manual_complete',
           `smoke-final-${Date.now()}`,
         ),

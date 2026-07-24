@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection } from './execute'
+import { agentBrowserCommand, desktopViteCommand, normalizeDesktopSmokeChangedFiles, resolveDesktopSmokeRuntimeSelection } from './execute'
 
 describe('desktop smoke runtime selection', () => {
   test('lets current-runtime use the desktop default active provider', () => {
@@ -48,5 +48,11 @@ describe('desktop smoke browser launcher', () => {
       return
     }
     expect(command).toEqual(['agent-browser', 'open', 'http://127.0.0.1'])
+  })
+})
+
+describe('desktop smoke changed-file validation', () => {
+  test('normalizes Windows separators before comparing expected fixture paths', () => {
+    expect(normalizeDesktopSmokeChangedFiles(['src\\greeting.ts'])).toEqual(['src/greeting.ts'])
   })
 })

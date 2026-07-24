@@ -1,9 +1,9 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, writeDiffPatch } from '../baseline/execute'
+import { changedFiles, cleanupBaselineWorkRoot, writeDiffPatch } from '../baseline/execute'
 import type { BaselineTarget, LaneResult } from '../types'
 import { bunCommand } from '../bunRuntime'
 
@@ -27,6 +27,10 @@ export function resolveDesktopSmokeRuntimeSelection(target: BaselineTarget | und
 
 export function desktopViteCommand() {
   return bunCommand(['run', 'dev'])
+}
+
+export function normalizeDesktopSmokeChangedFiles(changed: string[]): string[] {
+  return changed.map((file) => file.replaceAll('\\', '/'))
 }
 
 function nativeAgentBrowserPath() {
@@ -250,7 +254,7 @@ async function waitForVerifiedProject(
 
 async function verifyProject(originalDir: string, projectDir: string, artifactDir: string) {
   await writeDiffPatch(originalDir, projectDir, join(artifactDir, 'diff.patch'))
-  const changed = changedFiles(originalDir, projectDir)
+  const changed = normalizeDesktopSmokeChangedFiles(changedFiles(originalDir, projectDir))
   const unexpected = changed.filter((file) => file !== 'src/greeting.ts')
   if (unexpected.length > 0) {
     throw new Error(`desktop smoke changed unexpected files: ${unexpected.join(', ')}`)
@@ -499,6 +503,6 @@ export async function executeDesktopSmoke(
       server.kill()
       vite.kill()
     }
-    rmSync(workRoot, { recursive: true, force: true })
+    await cleanupBaselineWorkRoot(workRoot, serverLogPath)
   }
 }

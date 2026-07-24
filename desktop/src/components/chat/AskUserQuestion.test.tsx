@@ -703,6 +703,65 @@ describe('AskUserQuestion', () => {
     expect(sendMock).toHaveBeenCalledTimes(2)
   })
 
+  it('renders a stale acknowledgement after a retry and disables the expired question', async () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{
+            question: 'Which scope should be used?',
+            options: [{ label: 'Current scope' }, { label: 'Expanded scope' }],
+          }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Current scope' }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    await act(async () => {
+      useChatStore.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [ACTIVE_TAB]: {
+            ...state.sessions[ACTIVE_TAB]!,
+            permissionResponse: {
+              requestId: 'perm-1',
+              status: 'rejected',
+              message: 'The structured answer could not be delivered. Please choose again.',
+            },
+            pendingPermission: state.sessions[ACTIVE_TAB]!.pendingPermission,
+            chatState: 'permission_pending',
+          },
+        },
+      }))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(sendMock).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      useChatStore.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [ACTIVE_TAB]: {
+            ...state.sessions[ACTIVE_TAB]!,
+            permissionResponse: {
+              requestId: 'perm-1',
+              status: 'stale',
+              message: 'This workflow question has expired.',
+            },
+            pendingPermission: state.sessions[ACTIVE_TAB]!.pendingPermission,
+            chatState: 'idle',
+          },
+        },
+      }))
+    })
+
+    expect(screen.getByRole('alert').textContent).toContain('expired')
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+    expect((screen.getByRole('button', { name: 'Current scope' }) as HTMLButtonElement).disabled).toBe(true)
+  })
   it('renders aborted permission results as terminal instead of asking again', () => {
     useChatStore.setState((state) => ({
       sessions: {

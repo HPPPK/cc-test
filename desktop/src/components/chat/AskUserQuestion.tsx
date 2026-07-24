@@ -501,13 +501,13 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
                   key={optIndex}
                   data-testid={`ask-user-option-${safeActiveTab}-${opt.id ?? opt.label}`}
                   onClick={() => handleSelect(safeActiveTab, opt.id ?? opt.label)}
-                  disabled={submitted || fakePermissionGrant}
-                  aria-disabled={fakePermissionGrant || undefined}
+                  disabled={interactionLocked || fakePermissionGrant}
+                  aria-disabled={interactionLocked || fakePermissionGrant || undefined}
                   className={`w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer ${
                     isSelected
                       ? 'border-[var(--color-brand)] bg-[var(--color-primary-fixed)]/35 ring-1 ring-[var(--color-brand)]/25'
                       : 'border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]'
-                  } ${submitted || fakePermissionGrant ? 'cursor-not-allowed opacity-60 hover:border-[var(--color-outline-variant)]/40 hover:bg-[var(--color-surface)]' : ''}`}
+                  } ${interactionLocked || fakePermissionGrant ? 'cursor-not-allowed opacity-60 hover:border-[var(--color-outline-variant)]/40 hover:bg-[var(--color-surface)]' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Selection indicator */}

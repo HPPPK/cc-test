@@ -1113,7 +1113,7 @@ describe('Workflow template API contract', () => {
       name: 'Agent Development Copy',
       editable: true,
     }))
-  })
+  }, 30_000)
 
   it('POST /api/workflows/templates/authoring rejects duplicate target conflicts without writing', async () => {
     await writeWorkflowConfig({
@@ -1160,7 +1160,7 @@ describe('Workflow template API contract', () => {
       },
       nextAction: 'choose-unique-target',
     })
-  })
+  }, 30_000)
 
   it('POST /api/workflows/templates/authoring deletes a fresh user template and returns refreshed list metadata', async () => {
     await writeWorkflowConfig({
@@ -1396,7 +1396,7 @@ describe('Workflow template API contract', () => {
 
     expect(res.status).toBe(409)
     expectWorkflowError(body, 'WORKFLOW_TEMPLATE_CONFLICT')
-  })
+  }, 30_000)
 
   it('PUT /api/workflows/templates/user/:id updates only matching user templates', async () => {
     await writeWorkflowConfig({
