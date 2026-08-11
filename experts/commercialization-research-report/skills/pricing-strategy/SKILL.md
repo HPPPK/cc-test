@@ -11,7 +11,7 @@ Design a pricing strategy grounded in value delivery, competitive positioning, a
 
 You are developing a pricing strategy for **$ARGUMENTS**.
 
-If the user provides files (competitor pricing, survey data, financial models, or usage data), read them first. Build candidate URLs from trusted product entry points and use BrowserResearch to verify competitor pricing if needed.
+If the user provides files (competitor pricing, survey data, financial models, or usage data), read them first. Build candidate URLs from trusted product entry points and use Playwright to verify competitor pricing if needed.
 
 ### Instructions
 

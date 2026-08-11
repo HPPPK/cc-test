@@ -27,9 +27,9 @@ import {
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { isProviderManagedEnvVar } from '../../utils/managedEnvConstants.js'
 import {
-  getBrowserResearchExecutablePath,
-  getBrowserResearchExecutablePathFromRuntimeDir,
-} from '../../tools/BrowserResearchTool/runtime.js'
+  getPlaywrightExecutablePath,
+  getPlaywrightExecutablePathFromRuntimeDir,
+} from '../../tools/PlaywrightTool/runtime.js'
 import { findCanonicalGitRoot } from '../../utils/git.js'
 import { sanitizePath } from '../../utils/path.js'
 import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
@@ -97,6 +97,34 @@ type SessionStartOptions = {
   expertSystemPrompt?: string
   appendSystemPromptFile?: string
   expertSessionId?: string
+  /**
+   * Optional, package-scoped browser context key. Only an active Expert ZIP
+   * that declares the researchBrowser policy receives this value.
+   */
+  expertSharedPlaywrightSessionId?: string
+  /** A package-allowed, user-authorized local Chrome/Edge CDP endpoint. */
+  expertPlaywrightCdpEndpoint?: string
+  /** Session-scoped managed Chromium presentation; never applied to a CDP browser. */
+  expertManagedPlaywrightPresentation?: 'assistable_background' | 'always_visible'
+  /** Force this Expert's Playwright research window to remain visible. */
+  expertForceVisiblePlaywright?: boolean
+  /** Enable Desktop-owned CAPTCHA/login handoff for this package-scoped Expert session. */
+  expertBrowserHumanVerificationHandoff?: boolean
+  /** Package-declared ordered public search fallbacks for an explicit verification refusal. */
+  expertBrowserVerificationFallbackSearchEngines?: Array<'Google' | '百度' | 'Bing' | '360'>
+  /** Close this Expert's delegated-agent Playwright browser after its task reaches a terminal state. */
+  expertClosePlaywrightWhenAgentDone?: boolean
+  /** Remove AskUserQuestion from delegated agents only for this package-scoped session. */
+  expertForbidSubagentAskUserQuestion?: boolean
+  /** Final template output is rendered only by the Expert template-fill CLI. */
+  expertTemplateFillWrite?: boolean
+  /** ZIP-declared final-delivery question and choice IDs for this active Expert only. */
+  expertResearchDeliveryPolicy?: {
+    questionId: string
+    acceptedChoiceId: string
+    continueChoiceIds: string[]
+    pauseChoiceIds: string[]
+  }
   /**
    * Host-only marker preserved when expertSystemPrompt is moved into a hidden
    * prompt file before spawning the CLI. It is never sent as a CLI argument.
@@ -1106,6 +1134,28 @@ export class ConversationService {
     delete cleanEnv.CC_HAHA_EXPERT_OUTPUT_TEMPLATE_GUARD
     delete cleanEnv.CC_JIANGXIA_EXPERT_SESSION_ID
     delete cleanEnv.CC_HAHA_EXPERT_SESSION_ID
+    delete cleanEnv.CC_JIANGXIA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID
+    delete cleanEnv.CC_HAHA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID
+    delete cleanEnv.CC_JIANGXIA_EXPERT_PLAYWRIGHT_CDP_ENDPOINT
+    delete cleanEnv.CC_HAHA_EXPERT_PLAYWRIGHT_CDP_ENDPOINT
+    delete cleanEnv.CC_JIANGXIA_EXPERT_FORCE_VISIBLE_PLAYWRIGHT
+    delete cleanEnv.CC_HAHA_EXPERT_FORCE_VISIBLE_PLAYWRIGHT
+    delete cleanEnv.CC_JIANGXIA_EXPERT_MANAGED_PLAYWRIGHT_PRESENTATION
+    delete cleanEnv.CC_HAHA_EXPERT_MANAGED_PLAYWRIGHT_PRESENTATION
+    delete cleanEnv.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+    delete cleanEnv.CC_HAHA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+    delete cleanEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES
+    delete cleanEnv.CC_HAHA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES
+    delete cleanEnv.CC_JIANGXIA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE
+    delete cleanEnv.CC_HAHA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE
+    delete cleanEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
+    delete cleanEnv.CC_HAHA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
+    delete cleanEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+    delete cleanEnv.CC_HAHA_EXPERT_RESEARCH_DELIVERY_POLICY
+    // The desktop server binds image requests to this session-scoped Provider.
+    // Never inherit a stale binding when a child process is resumed or reused.
+    delete cleanEnv.CC_JIANGXIA_PROVIDER_ID
+    delete cleanEnv.CC_HAHA_PROVIDER_ID
     // Workflow sessions persist their final handoff in <workspace>/.workflow.
     // Never inherit or inject the global auto-memory override here: it prompts
     // the CLI to write ~/.claude/projects/.../memory/MEMORY.md, which is
@@ -1163,8 +1213,21 @@ export class ConversationService {
       // Diagnostics must never block session startup.
     }
 
+    // The server sidecar receives these portable paths from Tauri, but the
+    // terminal-shell environment intentionally does not retain sidecar-only
+    // variables. Forward them explicitly to every Desktop CLI session so the
+    // generic Playwright tool is enabled outside Expert mode too.
+    const bundledBrowserRuntimeDir = process.env.CLAUDE_BROWSER_RUNTIME_DIR?.trim()
+    const bundledNodeExecutable = process.env.CLAUDE_BUNDLED_NODE_EXECUTABLE?.trim()
+
     const childEnv: Record<string, string> = {
       ...cleanEnv,
+      ...(bundledBrowserRuntimeDir
+        ? { CLAUDE_BROWSER_RUNTIME_DIR: bundledBrowserRuntimeDir }
+        : {}),
+      ...(bundledNodeExecutable
+        ? { CLAUDE_BUNDLED_NODE_EXECUTABLE: bundledNodeExecutable }
+        : {}),
       CLAUDE_CODE_ENABLE_TASKS: '1',
       CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1',
       CLAUDE_CODE_DIAGNOSTICS_FILE: cliDiagnosticsPath,
@@ -1197,6 +1260,11 @@ export class ConversationService {
     }
 
     setJiangxiaEnvAliases(childEnv, 'SKIP_DOTENV', '1')
+    if (typeof options?.providerId === 'string' && options.providerId.trim()) {
+      // Non-secret session routing only. The image tool forwards this opaque id
+      // to the desktop server, which resolves the saved credential itself.
+      setJiangxiaEnvAliases(childEnv, 'PROVIDER_ID', options.providerId.trim())
+    }
     if (sdkUrl) {
       setJiangxiaEnvAliases(childEnv, 'COMPUTER_USE_HOST_BUNDLE_ID', APP_DESKTOP_BUNDLE_ID)
       setJiangxiaEnvAliases(childEnv, 'DESKTOP_AWAIT_MCP', '1')
@@ -1204,7 +1272,7 @@ export class ConversationService {
       if (options?.workflowSessionId) {
         setJiangxiaEnvAliases(childEnv, 'WORKFLOW_SESSION_ID', options.workflowSessionId)
       }
-      // A BrowserResearch-installed Chromium is also the approved local
+      // A Playwright-installed Chromium is also the approved local
       // visual-QA renderer for Expert HTML. This applies to every active Expert
       // runtime, not only template-fill Experts: UIUX redesign packs use the
       // normal Expert output protocol and still must render their QA screenshots.
@@ -1214,18 +1282,64 @@ export class ConversationService {
       // back to that bundled runtime explicitly before passing it to the CLI.
       if (options?.expertRuntimeActive || options?.expertSystemPrompt || options?.expertSessionId) {
         const bundledBrowserRuntimeDir = process.env.CLAUDE_BROWSER_RUNTIME_DIR
-        const visualQaBrowserExecutable = getBrowserResearchExecutablePath()
+        const visualQaBrowserExecutable = getPlaywrightExecutablePath()
           ?? (bundledBrowserRuntimeDir
-            ? getBrowserResearchExecutablePathFromRuntimeDir(bundledBrowserRuntimeDir)
+            ? getPlaywrightExecutablePathFromRuntimeDir(bundledBrowserRuntimeDir)
             : null)
         if (visualQaBrowserExecutable) {
           setJiangxiaEnvAliases(childEnv, 'VISUAL_QA_BROWSER_EXECUTABLE', visualQaBrowserExecutable)
         }
       }
 
+      if (options?.expertSharedPlaywrightSessionId) {
+        setJiangxiaEnvAliases(
+          childEnv,
+          'EXPERT_SHARED_PLAYWRIGHT_SESSION_ID',
+          options.expertSharedPlaywrightSessionId,
+        )
+      }
+      if (options?.expertPlaywrightCdpEndpoint) {
+        setJiangxiaEnvAliases(
+          childEnv,
+          'EXPERT_PLAYWRIGHT_CDP_ENDPOINT',
+          options.expertPlaywrightCdpEndpoint,
+        )
+      }
+      if (options?.expertManagedPlaywrightPresentation) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_MANAGED_PLAYWRIGHT_PRESENTATION', options.expertManagedPlaywrightPresentation)
+      }
+      if (options?.expertForceVisiblePlaywright) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_FORCE_VISIBLE_PLAYWRIGHT', '1')
+      }
+      if (options?.expertBrowserHumanVerificationHandoff) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF', '1')
+      }
+      if (options?.expertBrowserVerificationFallbackSearchEngines?.length) {
+        setJiangxiaEnvAliases(
+          childEnv,
+          'EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES',
+          JSON.stringify(options.expertBrowserVerificationFallbackSearchEngines),
+        )
+      }
+      if (options?.expertClosePlaywrightWhenAgentDone) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE', '1')
+      }
+      if (options?.expertForbidSubagentAskUserQuestion) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION', '1')
+      }
+
       if (options?.expertSessionId) {
         setJiangxiaEnvAliases(childEnv, 'EXPERT_SESSION_ID', options.expertSessionId)
-        setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_WRITE', '1')
+        if (options.expertTemplateFillWrite) {
+          setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_WRITE', '1')
+        }
+        if (options.expertResearchDeliveryPolicy) {
+          setJiangxiaEnvAliases(
+            childEnv,
+            'EXPERT_RESEARCH_DELIVERY_POLICY',
+            JSON.stringify(options.expertResearchDeliveryPolicy),
+          )
+        }
 
         // Final Expert template filling must re-enter this application's CLI,
         // not an unrelated claude executable inherited from PATH. A packaged

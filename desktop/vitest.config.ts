@@ -11,12 +11,22 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: { url: 'http://localhost/' },
+    },
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/cypress/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      'src-tauri/**',
+    ],
     globals: true,
     css: true,
     // Desktop test files share mutable Zustand stores and mocked Tauri globals.
     // Serial file execution prevents cross-file state from making coverage results nondeterministic.
     fileParallelism: false,
-    setupFiles: [],
+    setupFiles: ['./src/test/setup.ts'],
     coverage: {
       include: ['src/**/*.{ts,tsx}'],
       exclude: [

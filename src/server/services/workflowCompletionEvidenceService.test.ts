@@ -238,3 +238,121 @@ test('does not resolve an answered question when the evidence belongs to a no-lo
     await fs.rm(workspaceRoot, { recursive: true, force: true })
   }
 })
+
+function stateForCoreFlowEvidence(workspaceRoot: string): WorkflowSessionState {
+  const state = stateFor(workspaceRoot)
+  const phase = (state.template as WorkflowTemplate).phases[0]
+  phase.evidencePolicy = {
+    ...phase.evidencePolicy!,
+    coreFlowEvidence: {
+      type: 'core-flow-evidence-v1',
+      outputArtifactId: 'core-flow-evidence',
+      qualityReportArtifactId: 'quality-report',
+      requireLogDisposition: true,
+    },
+  }
+  phase.outputArtifacts = [
+    {
+      id: 'quality-report',
+      filename: '.workflow/runs/<runId>/quality-report.md',
+      kind: 'markdown',
+      required: true,
+    },
+    {
+      id: 'core-flow-evidence',
+      filename: '.workflow/runs/<runId>/core-flow-evidence.json',
+      kind: 'json',
+      required: true,
+    },
+  ]
+  return state
+}
+
+test('rejects a static core-flow pass and prevents it from becoming runtime completion evidence', async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-runtime-evidence-'))
+  try {
+    const runDir = path.join(workspaceRoot, '.workflow', 'runs', 'run-001')
+    await fs.mkdir(runDir, { recursive: true })
+    await fs.writeFile(path.join(runDir, 'quality-report.md'), '# Quality\n\nRuntime Preview — PASS\n', 'utf8')
+    await fs.writeFile(path.join(runDir, 'core-flow-evidence.json'), JSON.stringify({
+      schemaVersion: 1,
+      flows: [{
+        coreFlowId: 'import-and-process',
+        entryBoundary: 'DropZone -> queue state -> start action',
+        expectedCheckpoints: ['queue count becomes 1'],
+        observedCheckpoints: ['code inspection only'],
+        logEvidence: { status: 'not-applicable', reason: 'Static fixture only.' },
+        execution: { status: 'pass', method: 'static', visibleResult: 'Claimed result' },
+      }],
+    }, null, 2) + '\n', 'utf8')
+
+    const state = stateForCoreFlowEvidence(workspaceRoot)
+    const result = await collectRuntimeVerifiedOutputEvidence({
+      sessionId: state.sessionId,
+      state,
+      workspaceRoot,
+      requestedAt: '2026-08-05T00:01:00.000Z',
+      stateService: { async writePhaseArtifact() { throw new Error('invalid semantic evidence must not persist audit artifacts') } } as never,
+    })
+
+    expect(result?.semanticValidationError).toEqual({
+      code: 'WORKFLOW_CORE_FLOW_EVIDENCE_INVALID',
+      message: 'Core-flow evidence entry 1 cannot claim pass from static inspection or without observed checkpoints and a visible result.',
+    })
+    expect(result?.outputPointersById.size).toBe(0)
+  } finally {
+    await fs.rm(workspaceRoot, { recursive: true, force: true })
+  }
+})
+
+test('allows incomplete core-flow evidence to reach preview only when it is honest and has a next action', async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-runtime-evidence-'))
+  try {
+    const runDir = path.join(workspaceRoot, '.workflow', 'runs', 'run-001')
+    await fs.mkdir(runDir, { recursive: true })
+    await fs.writeFile(path.join(runDir, 'quality-report.md'), '# Quality\n\nRuntime Preview — NOT RUN\n', 'utf8')
+    await fs.writeFile(path.join(runDir, 'core-flow-evidence.json'), JSON.stringify({
+      schemaVersion: 1,
+      flows: [{
+        coreFlowId: 'import-and-process',
+        entryBoundary: 'DropZone -> queue state -> start action',
+        expectedCheckpoints: ['queue count becomes 1', 'start action is enabled'],
+        observedCheckpoints: [],
+        logEvidence: { status: 'unavailable', reason: 'The application was not started in this environment.' },
+        execution: { status: 'not-run', method: 'static', nextAction: 'Run the application and repeat the import path in preview.' },
+      }],
+    }, null, 2) + '\n', 'utf8')
+
+    const written: unknown[] = []
+    const state = stateForCoreFlowEvidence(workspaceRoot)
+    const result = await collectRuntimeVerifiedOutputEvidence({
+      sessionId: state.sessionId,
+      state,
+      workspaceRoot,
+      requestedAt: '2026-08-05T00:02:00.000Z',
+      stateService: {
+        async writePhaseArtifact(_sessionId: string, artifact: unknown) {
+          written.push(artifact)
+          const record = artifact as { artifactId: string; sessionId: string; schemaVersion: number; createdAt: string; title: string }
+          return {
+            artifact: artifact as never,
+            pointer: {
+              kind: 'phase-artifact' as const,
+              sessionId: record.sessionId,
+              artifactId: record.artifactId,
+              schemaVersion: record.schemaVersion,
+              createdAt: record.createdAt,
+              label: record.title,
+            },
+          }
+        },
+      } as never,
+    })
+
+    expect(result?.semanticValidationError).toBeNull()
+    expect([...result!.outputPointersById.keys()]).toEqual(['quality-report', 'core-flow-evidence'])
+    expect(written).toHaveLength(2)
+  } finally {
+    await fs.rm(workspaceRoot, { recursive: true, force: true })
+  }
+})

@@ -52,22 +52,40 @@ export function WorkflowTransitionControls({
 }: WorkflowTransitionControlsProps) {
   const t = useTranslation()
   const [localPending, setLocalPending] = useState(false)
+  const [clockNow, setClockNow] = useState(() => Date.now())
   const submissionLockRef = useRef(false)
   const lastWorkflowStateRef = useRef<string | null>(null)
   const lastResetKeyRef = useRef(transitionResetKey)
-
-  if (!workflow) return null
-
-  const phaseId = workflow.activePhaseId
-  const pending = workflow.status === 'pending-confirmation' || workflow.pendingConfirmation
-  const blocked = workflow.status === 'failed' || Boolean(workflow.blockedStatus) || Boolean(workflow.blockedReason)
-
-  if (!phaseId || (!pending && !blocked)) return null
-
-  const routeTarget = workflowRouteTarget(workflow, t)
-  const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
-  const confirmationId = workflow.pendingConfirmationId
-  const workflowStateKey = `${phaseId}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
+  const phaseId = workflow?.activePhaseId ?? null
+  const pending = Boolean(
+    workflow
+    && (
+      workflow.status === 'pending-confirmation'
+      || workflow.pendingConfirmation
+      || workflow.pendingRoute?.status === 'pending'
+    ),
+  )
+  const blocked = Boolean(
+    workflow
+    && !pending
+    && (
+      workflow.status === 'failed'
+      || workflow.runStatus === 'blocked'
+      || Boolean(workflow.blockedStatus)
+      || Boolean(workflow.blockedReason)
+    ),
+  )
+  const automaticRecoveryExpiresAt = workflow?.autoRecovery?.expiresAt
+  const automaticRecoveryIsActive = Boolean(
+    blocked
+    && phaseId
+    && workflow?.autoRecovery?.phaseId === phaseId
+    && typeof automaticRecoveryExpiresAt === 'string'
+    && !Number.isNaN(Date.parse(automaticRecoveryExpiresAt))
+    && Date.parse(automaticRecoveryExpiresAt) > clockNow,
+  )
+  const confirmationId = workflow?.pendingConfirmationId
+  const workflowStateKey = `${phaseId ?? 'missing'}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
 
   useEffect(() => {
     const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
@@ -79,6 +97,19 @@ export function WorkflowTransitionControls({
     lastWorkflowStateRef.current = workflowStateKey
     lastResetKeyRef.current = transitionResetKey
   }, [transitionResetKey, workflowStateKey])
+
+  useEffect(() => {
+    if (!automaticRecoveryExpiresAt) return undefined
+    const expiresAt = Date.parse(automaticRecoveryExpiresAt)
+    if (Number.isNaN(expiresAt)) return undefined
+    const timeout = window.setTimeout(() => setClockNow(Date.now()), Math.max(0, expiresAt - Date.now()))
+    return () => window.clearTimeout(timeout)
+  }, [automaticRecoveryExpiresAt])
+
+  if (!workflow || !phaseId || (!pending && !blocked) || automaticRecoveryIsActive) return null
+
+  const routeTarget = workflowRouteTarget(workflow, t)
+  const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
 
   const pendingTransitionMatchesCurrentConfirmation = Boolean(
     pendingTransition
@@ -125,7 +156,9 @@ export function WorkflowTransitionControls({
   const transitionNotice = confirmationCredentialMissing
     ? '正在同步最新阶段确认信息，请稍候…'
     : (transitionErrorMatchesCurrentConfirmation ? transitionError : null) || (transitionPending ? '正在提交阶段操作，请稍候…' : null)
-  if (blocked && !pending) {
+  // Fail closed for a legacy contradictory snapshot: a blocked phase must
+  // never expose the next-phase confirmation action.
+  if (blocked) {
     return (
       <section
         data-testid="workflow-phase-confirmation-card"

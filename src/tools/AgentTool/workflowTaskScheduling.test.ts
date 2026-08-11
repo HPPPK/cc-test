@@ -38,7 +38,7 @@ function plan(taskId: string): WorkflowTaskSchedulePlan {
 }
 
 describe('workflow task scheduling bridge', () => {
-  test('normalizes declared write tasks as worktree-isolated and preserves read tasks', async () => {
+  test('normalizes declared write tasks and preserves read tasks', async () => {
     const writePlan = normalizeWorkflowTaskSchedulePlan({
       task_id: 'implementation',
       tasks: [
@@ -234,6 +234,33 @@ describe('workflow task scheduling bridge', () => {
     release!()
     await running
   })
+  test('releases the scheduler and blocks dependent work when setup fails before an agent starts', async () => {
+    let rejectSetup: ((error: Error) => void) | undefined
+    let blockedReason: string | undefined
+
+    const implementation = runWithinWorkflowTaskSchedule(
+      workflow,
+      plan('implementation'),
+      () => new Promise((_, reject) => {
+        rejectSetup = reject
+      }),
+    )
+    await Promise.resolve()
+
+    const verification = runWithinWorkflowTaskSchedule(
+      workflow,
+      plan('verification'),
+      async () => ({ status: 'succeeded' as const }),
+      { onBlocked: reason => { blockedReason = reason } },
+    )
+
+    rejectSetup!(new Error('worktree initialization failed'))
+    await expect(implementation).rejects.toThrow('worktree initialization failed')
+    await expect(verification).resolves.toBeUndefined()
+
+    expect(blockedReason).toBe('Dependency implementation failed: worktree initialization failed')
+  })
+
   test('requires a workflow phase with an explicit concurrency policy', async () => {
     await expect(runWithinWorkflowTaskSchedule(
       undefined,

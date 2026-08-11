@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Tool } from '../../Tool.js'
+import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js'
 
 async function loadTool(): Promise<Tool> {
   const mod = await import('./AskUserQuestionTool.js') as { AskUserQuestionTool?: Tool }
@@ -24,6 +25,27 @@ describe('AskUserQuestionTool workflow contract', () => {
     expect(parsed.error.issues.some((issue) => issue.message.includes('Question card requires 2–4 choices'))).toBe(true)
     expect(parsed.error.issues.some((issue) => issue.message.includes('open-ended answer, use a normal assistant message'))).toBe(true)
     expect(parsed.error.issues.some((issue) => issue.message.includes('retry AskUserQuestion with 2–4 user-answer choices'))).toBe(true)
+  })
+
+  test('accepts a legacy top-level multiSelect flag without breaking the provider-facing schema', async () => {
+    const tool = await loadTool()
+    const parsed = tool.inputSchema.safeParse({
+      multiSelect: true,
+      questions: [{
+        id: 'verification',
+        prompt: 'How should verification continue?',
+        choices: [{ id: 'continue', label: 'Continue' }, { id: 'skip', label: 'Skip' }],
+      }],
+    })
+
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.multiSelect).toBe(true)
+    expect(parsed.data.questions[0]?.multiSelect).toBeUndefined()
+
+    const jsonSchema = zodToJsonSchema(tool.inputSchema)
+    expect(jsonSchema.type).toBe('object')
+    expect(Object.prototype.hasOwnProperty.call(jsonSchema.properties ?? {}, 'multiSelect')).toBe(true)
   })
 
   test('accepts explicit workflow completion blocking semantics without adding a new tool', async () => {
@@ -77,10 +99,208 @@ describe('AskUserQuestionTool workflow contract', () => {
     }).success).toBe(false)
   })
 
+  test('preserves question-scoped delivery metadata from the provider payload', async () => {
+    const tool = await loadTool()
+    const parsed = tool.inputSchema.safeParse({
+      questions: [{
+        id: 'research-delivery:commercialization-report',
+        prompt: '当前范围是否可以交付？',
+        choices: [{ id: 'accept_current_scope', label: '按当前范围交付' }, { id: 'continue', label: '继续补充' }],
+        metadata: {
+          question_id: 'research-delivery:commercialization-report',
+          unresolved_evidence: ['Google needs a user verification retry'],
+        },
+      }],
+    })
+
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) throw new Error('Question-scoped metadata should remain available')
+    expect(parsed.data.questions[0].metadata).toEqual({
+      question_id: 'research-delivery:commercialization-report',
+      unresolved_evidence: ['Google needs a user verification retry'],
+    })
+  })
   test('retains ordinary legacy question/options calls without workflow actions', async () => {
     const tool = await loadTool()
     expect(tool.inputSchema.safeParse({
       questions: [{ question: 'Continue?', options: [{ label: 'Yes' }, { label: 'No' }] }],
     }).success).toBe(true)
   })
+
+  test('normalizes an invalid formal research-delivery card before it is shown to the user', async () => {
+    const previousPolicy = process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+    process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = '{"questionId":"research-delivery:commercialization-report","acceptedChoiceId":"accept_current_scope","continueChoiceIds":["provide_material_and_continue"],"pauseChoiceIds":["pause_research"]}'
+    try {
+      const tool = await loadTool()
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'delivery_confirm_markdown_reader',
+          prompt: 'Can the current report be delivered?',
+          choices: [
+            { id: 'deliver_accept', label: 'Deliver now' },
+            { id: 'continue', label: 'Continue research' },
+          ],
+        }],
+        metadata: {
+          expert_research_delivery: { question_id: 'delivery_confirm_markdown_reader' },
+        },
+      })).resolves.toMatchObject({
+        behavior: 'ask',
+        updatedInput: expect.objectContaining({
+          metadata: expect.objectContaining({
+            expert_research_delivery: expect.objectContaining({ question_id: 'research-delivery:commercialization-report' }),
+          }),
+          questions: [expect.objectContaining({
+            id: 'research-delivery:commercialization-report',
+            choices: [
+              expect.objectContaining({ id: 'accept_current_scope' }),
+              expect.objectContaining({ id: 'provide_material_and_continue' }),
+              expect.objectContaining({ id: 'pause_research' }),
+            ],
+          })],
+        }),
+      })
+    } finally {
+      if (previousPolicy === undefined) delete process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+      else process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = previousPolicy
+    }
+  })
+
+  test('allows the exact package-scoped formal research-delivery contract', async () => {
+    const previousPolicy = process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+    process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = '{"questionId":"research-delivery:commercialization-report","acceptedChoiceId":"accept_current_scope","continueChoiceIds":["provide_material_and_continue"],"pauseChoiceIds":["pause_research"]}'
+    try {
+      const tool = await loadTool()
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'research-delivery:commercialization-report',
+          prompt: 'Can the current report be delivered?',
+          choices: [
+            { id: 'accept_current_scope', label: 'Deliver now' },
+            { id: 'provide_material_and_continue', label: 'Provide material' },
+            { id: 'pause_research', label: 'Pause' },
+          ],
+          metadata: { question_id: 'research-delivery:commercialization-report' },
+        }],
+        metadata: {
+          expert_research_delivery: { question_id: 'research-delivery:commercialization-report' },
+        },
+      })).resolves.toMatchObject({ behavior: 'ask' })
+    } finally {
+      if (previousPolicy === undefined) delete process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+      else process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = previousPolicy
+    }
+  })
+
+  test('normalizes an unmarked evidence-gap delivery card before it consumes a user response', async () => {
+    const previousPolicy = process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+    process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = '{"questionId":"research-delivery:commercialization-report","acceptedChoiceId":"accept_current_scope","continueChoiceIds":["provide_material_and_continue"],"pauseChoiceIds":["pause_research"]}'
+    try {
+      const tool = await loadTool()
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'evidence_gap_delivery',
+          prompt: '是否保留证据缺口并交付当前范围报告？',
+          choices: [
+            { id: 'accept_gap', label: '保留证据缺口，交付当前范围报告' },
+            { id: 'provide_material', label: '先补充材料' },
+            { id: 'pause', label: '暂停输出' },
+          ],
+        }],
+      })).resolves.toMatchObject({
+        behavior: 'ask',
+        updatedInput: expect.objectContaining({
+          metadata: expect.objectContaining({
+            expert_research_delivery: expect.objectContaining({ question_id: 'research-delivery:commercialization-report' }),
+          }),
+          questions: [expect.objectContaining({
+            id: 'research-delivery:commercialization-report',
+            choices: [
+              expect.objectContaining({ id: 'accept_current_scope' }),
+              expect.objectContaining({ id: 'provide_material_and_continue' }),
+              expect.objectContaining({ id: 'pause_research' }),
+            ],
+          })],
+        }),
+      })
+    } finally {
+      if (previousPolicy === undefined) delete process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+      else process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = previousPolicy
+    }
+  })
+
+  test('blocks model-generated CAPTCHA Ask cards so the dedicated Desktop modal remains the only verification UI', async () => {
+    const previousHandoff = process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+    const previousServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    const previousSessionId = process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+    process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = '1'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
+    process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'expert-session'
+    try {
+      const tool = await loadTool()
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'baidu_captcha',
+          prompt: '百度搜索触发了滑块验证码，请用户处理。',
+          choices: [
+            { id: 'verify_done', label: '我已完成验证' },
+            { id: 'switch_entry', label: '改查其他入口' },
+            { id: 'record_gap', label: '记录证据缺口' },
+          ],
+        }],
+      })).resolves.toMatchObject({
+        behavior: 'deny',
+        message: expect.stringContaining('dedicated Playwright verification result'),
+      })
+
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'browser-verification',
+          prompt: 'Complete the browser verification.',
+          choices: [
+            { id: 'verification_completed', label: 'Verified' },
+            { id: 'switch_public_entry', label: 'Switch source' },
+            { id: 'record_evidence_gap', label: 'Record gap' },
+          ],
+        }],
+      })).resolves.toMatchObject({ behavior: 'deny' })
+    } finally {
+      if (previousHandoff === undefined) delete process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+      else process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = previousHandoff
+      if (previousServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+      else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = previousServerUrl
+      if (previousSessionId === undefined) delete process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+      else process.env.CC_JIANGXIA_EXPERT_SESSION_ID = previousSessionId
+    }
+  })
+
+  test('keeps ordinary Expert decision questions interactive when they are not browser verification requests', async () => {
+    const previousHandoff = process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+    const previousServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    const previousSessionId = process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+    process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = '1'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
+    process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'expert-session'
+    try {
+      const tool = await loadTool()
+      await expect(tool.checkPermissions({
+        questions: [{
+          id: 'target-user',
+          prompt: '这次立项优先验证哪类目标用户？',
+          choices: [
+            { id: 'individual', label: '个人用户' },
+            { id: 'team', label: '小团队' },
+          ],
+        }],
+      })).resolves.toMatchObject({ behavior: 'ask' })
+    } finally {
+      if (previousHandoff === undefined) delete process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
+      else process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = previousHandoff
+      if (previousServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+      else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = previousServerUrl
+      if (previousSessionId === undefined) delete process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+      else process.env.CC_JIANGXIA_EXPERT_SESSION_ID = previousSessionId
+    }
+  })
+
 })

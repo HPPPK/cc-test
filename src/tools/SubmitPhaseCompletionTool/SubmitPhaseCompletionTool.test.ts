@@ -7,6 +7,8 @@ const TOOL_NAME = 'submit_phase_completion'
 const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
 const originalWorkflowSessionId = process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
+const originalEmbeddedSearchTools = process.env.EMBEDDED_SEARCH_TOOLS
+const originalClaudeCodeEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT
 
 afterEach(() => {
   if (originalDesktopServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
@@ -17,6 +19,12 @@ afterEach(() => {
 
   if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
   else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
+
+  if (originalEmbeddedSearchTools === undefined) delete process.env.EMBEDDED_SEARCH_TOOLS
+  else process.env.EMBEDDED_SEARCH_TOOLS = originalEmbeddedSearchTools
+
+  if (originalClaudeCodeEntrypoint === undefined) delete process.env.CLAUDE_CODE_ENTRYPOINT
+  else process.env.CLAUDE_CODE_ENTRYPOINT = originalClaudeCodeEntrypoint
 })
 
 async function loadTool(): Promise<Tool> {
@@ -98,6 +106,28 @@ describe('SubmitPhaseCompletionTool', () => {
     expect(findToolByName(getAllBaseTools(), TOOL_NAME)).toBeUndefined()
   })
 
+  test('removes mutation and delegation tools from reviewer workflow child pools', () => {
+    const reviewerTools = assembleWorkflowToolPool(
+      getEmptyToolPermissionContext(),
+      [],
+      {
+        mode: 'workflow',
+        activePhaseId: 'delegate-implement',
+        workflowStatus: 'running',
+        status: 'running',
+      } as any,
+      'reviewer',
+    )
+
+    expect(findToolByName(reviewerTools, 'Read')).toBeDefined()
+    expect(findToolByName(reviewerTools, 'Write')).toBeUndefined()
+    expect(findToolByName(reviewerTools, 'Edit')).toBeUndefined()
+    expect(findToolByName(reviewerTools, 'MultiEdit')).toBeUndefined()
+    expect(findToolByName(reviewerTools, 'NotebookEdit')).toBeUndefined()
+    expect(findToolByName(reviewerTools, 'Agent')).toBeUndefined()
+    expect(findToolByName(reviewerTools, 'AskUserQuestion')).toBeUndefined()
+  })
+
   test('does not expose retired report-rendering tools to dialogue or workflow pools', () => {
     expect(findToolByName(getAllBaseTools(), 'EvidenceReport')).toBeUndefined()
 
@@ -113,6 +143,17 @@ describe('SubmitPhaseCompletionTool', () => {
     )
 
     expect(findToolByName(workflowTools, 'EvidenceReport')).toBeUndefined()
+  })
+
+  test('retains dedicated read-only discovery tools for an active workflow when embedded shell search is enabled', () => {
+    process.env.EMBEDDED_SEARCH_TOOLS = '1'
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'cli'
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-read-only-discovery'
+
+    const tools = getAllBaseTools()
+
+    expect(findToolByName(tools, 'Glob')?.name).toBe('Glob')
+    expect(findToolByName(tools, 'Grep')?.name).toBe('Grep')
   })
 
   test('is included in the initial headless tool pool when Desktop supplies a workflow binding', () => {
@@ -459,6 +500,54 @@ describe('SubmitPhaseCompletionTool', () => {
       expect(result.data.message).toContain('stop current-phase business progression')
       expect(result.data.message).toContain('Do not produce next-phase questions')
       expect(result.data.message).toContain('Do not hide a route inside handoff')
+    } finally {
+      server.stop(true)
+    }
+  })
+
+
+
+  test('instructs the model to request the constrained repair route during a silent recovery window', async () => {
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      async fetch(req) {
+        const url = new URL(req.url)
+        if (req.method === 'GET') {
+          return Response.json({
+            state: { mode: 'workflow', activePhaseId: 'requirements', stateVersion: 8 },
+          })
+        }
+        expect(url.pathname).toBe('/api/sessions/workflow-session-123/workflow/transition')
+        return Response.json({
+          workflow: {
+            mode: 'workflow',
+            activePhaseId: 'requirements',
+            autoRecovery: {
+              phaseId: 'requirements',
+              startedAt: '2026-05-20T00:00:00.000Z',
+              expiresAt: '2026-05-20T00:00:10.000Z',
+              attempt: 1,
+              source: 'phase-completion-blocked',
+            },
+          },
+          state: { mode: 'workflow', activePhaseId: 'requirements', stateVersion: 9 },
+        })
+      },
+    })
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session-123'
+
+    try {
+      const SubmitPhaseCompletionTool = await loadTool()
+      const result = await SubmitPhaseCompletionTool.call(validInput({
+        status: 'blocked',
+        rationale: 'A repairable defect requires a focused correction.',
+      }), contextFor('workflow'))
+
+      expect(result.data.message).toContain('10-second silent recovery window')
+      expect(result.data.message).toContain('Immediately call request_workflow_route')
+      expect(result.data.message).toContain('Do not wait for the user')
     } finally {
       server.stop(true)
     }

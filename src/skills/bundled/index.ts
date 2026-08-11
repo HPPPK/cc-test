@@ -20,6 +20,7 @@ export function initBundledSkills(): void {
   require('./skillify.js').registerSkillifySkill()
   require('./remember.js').registerRememberSkill()
   require('./simplify.js').registerSimplifySkill()
+  require('./hallmark.js').registerHallmarkSkill()
   require('./batch.js').registerBatchSkill()
   require('./stuck.js').registerStuckSkill()
   if (feature('KAIROS') || feature('KAIROS_DREAM')) {

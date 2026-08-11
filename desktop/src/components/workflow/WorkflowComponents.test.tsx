@@ -57,7 +57,7 @@ if (!('mocked' in vi)) {
   })
 }
 
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
 await import('@testing-library/jest-dom/vitest')
 
 vi.mock('../../api/sessions', () => ({
@@ -3344,6 +3344,97 @@ describe('WorkflowTransitionControls', () => {
       transitionId: `workflow-transition:plan:10:retry`,
       stateVersion: 10,
     })
+  })
+
+
+  it('keeps the first repairable blocker silent for 10 seconds, shows it on timeout, and clears it when state recovers', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-20T00:00:00.000Z'))
+    const workflow = {
+      ...WORKFLOW_SUMMARY,
+      status: 'failed' as const,
+      runStatus: 'blocked' as const,
+      activePhaseId: 'plan',
+      pendingConfirmation: false,
+      blockedReason: 'A repairable validation defect needs correction.',
+      autoRecovery: {
+        phaseId: 'plan',
+        startedAt: '2026-05-20T00:00:00.000Z',
+        expiresAt: '2026-05-20T00:00:10.000Z',
+        attempt: 1,
+        source: 'phase-completion-blocked' as const,
+      },
+    }
+    const { rerender } = render(
+      <WorkflowTransitionControls
+        workflow={workflow}
+        stateVersion={42}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999) })
+    expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.getByTestId('workflow-phase-confirmation-card')).toHaveTextContent('A repairable validation defect needs correction.')
+
+    rerender(
+      <WorkflowTransitionControls
+        workflow={{
+          ...workflow,
+          status: 'running',
+          runStatus: 'active',
+          blockedReason: undefined,
+          autoRecovery: undefined,
+        }}
+        stateVersion={43}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it('gives a pending recovery route priority over stale blocked evidence', () => {
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'failed',
+          runStatus: 'blocked',
+          activePhaseId: 'plan',
+          pendingConfirmation: false,
+          pendingConfirmationId: 'route-recovery-1',
+          pendingRoute: {
+            routeId: 'route-recovery-1',
+            phaseId: 'plan',
+            fromPhaseId: 'plan',
+            targetPhaseId: 'implementation',
+            approvedTargetPhaseId: 'implementation',
+            intent: 'jump_to_phase',
+            rationale: 'Return to implementation and repair the defect.',
+            evidence: [],
+            createdAt: '2026-05-20T00:00:00.000Z',
+            requiresConfirmation: true,
+            status: 'pending',
+          },
+          blockedReason: 'Stale blocked reason must not replace the route confirmation.',
+        }}
+        stateVersion={44}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('workflow-phase-confirmation-card')).not.toHaveTextContent('Stale blocked reason must not replace the route confirmation.')
+    expect(screen.getByRole('button', { name: /Go back to designated stage|Go to next stage/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Retry this step/i })).not.toBeInTheDocument()
   })
 })
 

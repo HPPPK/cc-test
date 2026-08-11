@@ -138,6 +138,8 @@ export type WorkflowStatusPanelSummary = {
     targetPhaseId: string | null
     intent: string
     rationale: string
+    evidence?: Array<Record<string, unknown>>
+    createdAt?: string
     requiresConfirmation: boolean
     approvedTargetPhaseId: string | null
     status: 'pending' | 'approved' | 'rejected'
@@ -148,6 +150,13 @@ export type WorkflowStatusPanelSummary = {
   routeReason?: string
   requiresConfirmation?: boolean
   runStatus?: 'draft' | 'active' | 'waiting_for_user' | 'paused' | 'completed' | 'cancelled' | 'stopped' | 'blocked'
+  autoRecovery?: {
+    phaseId: string
+    startedAt: string
+    expiresAt: string
+    attempt: number
+    source: 'phase-completion-blocked' | 'phase-completion-unable'
+  }
   labels?: string[]
   secondaryLabels?: string[]
   effort?: 'auto' | 'light' | 'standard' | 'heavy' | string

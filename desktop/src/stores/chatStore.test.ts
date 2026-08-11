@@ -262,6 +262,52 @@ describe('chatStore history mapping', () => {
     expect(mapped[3]).toMatchObject({ parentToolUseId: 'agent-1' })
   })
 
+  it('merges persisted nested agent tool activity into an already-live parent Agent card', async () => {
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({
+      messages: [
+        {
+          id: 'history-agent-use',
+          type: 'assistant',
+          timestamp: '2026-04-06T00:00:00.000Z',
+          content: [{ type: 'tool_use', name: 'Agent', id: 'agent-parent', input: { description: 'Verify competitor evidence' } }],
+        },
+        {
+          id: 'history-playwright-use',
+          type: 'assistant',
+          timestamp: '2026-04-06T00:00:01.000Z',
+          parentToolUseId: 'agent-parent',
+          content: [{ type: 'tool_use', name: 'Playwright', id: 'browser-child', input: { actions: [{ type: 'navigate', url: 'https://www.bing.com/' }] } }],
+        },
+        {
+          id: 'history-playwright-result',
+          type: 'user',
+          timestamp: '2026-04-06T00:00:02.000Z',
+          parentToolUseId: 'agent-parent',
+          content: [{ type: 'tool_result', tool_use_id: 'browser-child', content: 'opened Bing', is_error: false }],
+        },
+      ],
+    })
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [
+            { id: 'live-agent-use', type: 'tool_use', toolName: 'Agent', toolUseId: 'agent-parent', input: { description: 'Verify competitor evidence' }, timestamp: 0 },
+            { id: 'live-agent-result', type: 'tool_result', toolUseId: 'agent-parent', content: 'status: partial', isError: false, timestamp: 3_000 },
+          ],
+        }),
+      },
+    })
+
+    await useChatStore.getState().loadHistory(TEST_SESSION_ID)
+
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages.filter((message) => message.type === 'tool_use' && message.toolUseId === 'agent-parent')).toHaveLength(1)
+    expect(messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'tool_use', toolName: 'Playwright', toolUseId: 'browser-child', parentToolUseId: 'agent-parent' }),
+      expect.objectContaining({ type: 'tool_result', toolUseId: 'browser-child', parentToolUseId: 'agent-parent', content: 'opened Bing' }),
+    ]))
+  })
+
   it('restores saved memory system events from transcript history', () => {
     const messages: MessageEntry[] = [
       {
@@ -3964,5 +4010,46 @@ Phase instructions: collect inputs
       content: '开始优化UI',
       attachments: undefined,
     })
+  })
+
+  it('keeps Expert browser activity ephemeral, validates it, and clears it with the session', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'expert_browser_activity',
+      data: {
+        status: 'awaiting_verification',
+        currentTarget: 'baidu.com/s',
+        checkedTargets: ['typora.io/pricing', 'obsidian.md/pricing'],
+        connectionKind: 'managed',
+        updatedAt: '2026-08-07T08:00:00.000Z',
+      },
+    } as never)
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.expertBrowserActivity).toEqual({
+      status: 'awaiting_verification',
+      currentTarget: 'baidu.com/s',
+      checkedTargets: ['typora.io/pricing', 'obsidian.md/pricing'],
+      connectionKind: 'managed',
+      updatedAt: '2026-08-07T08:00:00.000Z',
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'expert_browser_activity',
+      data: { status: 'unknown', checkedTargets: [] },
+    } as never)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.expertBrowserActivity?.status).toBe('awaiting_verification')
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'expert_browser_activity_cleared',
+    } as never)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.expertBrowserActivity).toBeNull()
   })
 })

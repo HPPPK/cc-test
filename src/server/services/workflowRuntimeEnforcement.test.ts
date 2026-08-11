@@ -667,6 +667,7 @@ describe('workflow runtime enforcement v5', () => {
     expect(brief.disallowedTools).toContain('NotebookEdit')
     expect(brief.content).toContain('Callable Agent tool subagent_type: general-purpose')
     expect(brief.content).toContain('coder/reviewer/qa are workflow roles, not Agent tool subagent_type values')
+    expect(brief.content).toContain('workflow_role=coder')
     expect(brief.content).toContain('batch-1')
     expect(brief.content).toContain('desktop/src/pages/Students.tsx')
     expect(brief.content).toContain('changedFiles')
@@ -687,7 +688,8 @@ describe('workflow runtime enforcement v5', () => {
     })
     expect(reviewerBrief.agentType).toBe('general-purpose')
     expect(reviewerBrief.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS', 'Bash']))
-    expect(reviewerBrief.disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']))
+    expect(reviewerBrief.disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'AskUserQuestion']))
+    expect(reviewerBrief.content).toContain('workflow_role=reviewer')
   })
 
   test('runtime prompt requires native Agent delegation for subagent phases', () => {
@@ -720,6 +722,7 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('requires native Agent delegation')
     expect(prompt).toContain('leader must not perform production Write/Edit/MultiEdit/NotebookEdit')
     expect(prompt).toContain('Callable Agent tool subagent_type: general-purpose')
+    expect(prompt).toContain('matching top-level workflow_role')
     expect(prompt).toContain('Required workflow roles: coder, reviewer')
     expect(prompt).toContain('summaryForLeader')
   })

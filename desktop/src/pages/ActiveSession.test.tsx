@@ -198,7 +198,7 @@ import {
   TERMINAL_PANEL_MIN_HEIGHT,
 } from '../stores/terminalPanelStore'
 import type { ExpertDefinition } from '../api/experts'
-import type { ExpertSessionSummary, WorkflowSessionSummary } from '../types/session'
+import type { ExpertSessionSummary, WorkflowGitCheckpointListResponse, WorkflowSessionSummary } from '../types/session'
 
 type WorkflowPhaseArtifact = {
   artifactId: string
@@ -661,6 +661,123 @@ describe('ActiveSession task polling', () => {
   })
 
 
+
+  it('shows the Expert verification modal even when the session list has not hydrated Expert metadata', () => {
+    const sessionId = 'verification-without-session-expert'
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Commercialization research',
+        createdAt: '2026-08-05T00:00:00.000Z',
+        modifiedAt: '2026-08-05T00:00:00.000Z',
+        messageCount: 0,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Commercialization research', type: 'session', status: 'running' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          chatState: 'permission_pending',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: {
+            requestId: 'verification-request',
+            toolName: 'Playwright',
+            toolUseId: 'research-agent-1',
+            input: {
+              kind: 'expert-playwright-verification',
+              verification: {
+                engine: 'Google',
+                url: 'https://www.google.com/search?q=markdown+reader',
+                detail: 'CAPTCHA',
+              },
+            },
+          },
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    expect(screen.getByRole('dialog', { name: 'Google 需要验证' })).toBeInTheDocument()
+    expect(screen.getByText('请完成：页面显示的安全验证')).toBeInTheDocument()
+  })
+
+  it('does not show the Expert verification modal for an ordinary Playwright permission request', () => {
+    const sessionId = 'ordinary-playwright-permission'
+
+    useSessionStore.setState({
+      sessions: [{
+        id: sessionId,
+        title: 'Ordinary browser task',
+        createdAt: '2026-08-05T00:00:00.000Z',
+        modifiedAt: '2026-08-05T00:00:00.000Z',
+        messageCount: 0,
+        projectPath: '/workspace/project',
+        workDir: '/workspace/project',
+        workDirExists: true,
+      }],
+      activeSessionId: sessionId,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [{ sessionId, title: 'Ordinary browser task', type: 'session', status: 'running' }],
+      activeTabId: sessionId,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          chatState: 'permission_pending',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: {
+            requestId: 'ordinary-playwright-request',
+            toolName: 'Playwright',
+            input: { actions: [{ type: 'goto', url: 'https://example.com' }] },
+          },
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ActiveSession />)
+
+    expect(screen.queryByRole('dialog', { name: '需要你协助完成网站验证' })).not.toBeInTheDocument()
+  })
 
   it('renders one expert session header without retired intake or material controls', async () => {
     const sessionId = 'expert-session'
@@ -2147,11 +2264,12 @@ describe('ActiveSession task polling', () => {
     }
   })
 
-  it('keeps pending confirmation controls ahead of stale blocked recovery in active session', () => {
+  it('prioritizes a pending confirmation over stale blocker fields in a legacy snapshot', () => {
     const sessionId = 'workflow-pending-stale-blocked-session'
     const workflow = {
       ...WORKFLOW_SUMMARY,
       status: 'pending-confirmation',
+      runStatus: 'blocked',
       pendingConfirmation: true,
       activePhaseId: 'plan',
       activePhaseIndex: 2,
@@ -2210,9 +2328,11 @@ describe('ActiveSession task polling', () => {
 
     const panel = screen.getByTestId('workflow-status-panel')
     expect(panel).toHaveTextContent(/\u5f00\u53d1\u6d41\u7a0b/)
-    expect(panel).not.toHaveTextContent(/old blocked recovery reason/i)
+    const confirmationCard = screen.getByTestId('workflow-phase-confirmation-card')
+    expect(confirmationCard).toHaveTextContent('确认当前阶段')
+    expect(confirmationCard).not.toHaveTextContent('Old blocked recovery reason.')
     expect(screen.getByRole('button', { name: /^进入下一阶段$/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /我要调整当前结果/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /重试当前阶段/ })).not.toBeInTheDocument()
   })
 
   it('treats a persisted historical session as non-empty before messages finish loading', () => {
@@ -3242,4 +3362,117 @@ describe('ActiveSession task polling', () => {
     expect(terminalTab?.terminalCwd).toBe('/tmp/project-root/packages/app')
     expect(useTabStore.getState().activeTabId).toBe(terminalTab?.sessionId)
   })
+
+  it('keeps the active workflow checkpoint state when an older session request resolves late', async () => {
+    const sessionA = 'workflow-checkpoint-session-a'
+    const sessionB = 'workflow-checkpoint-session-b'
+    let resolveA: (value: WorkflowGitCheckpointListResponse) => void
+    let resolveB: (value: WorkflowGitCheckpointListResponse) => void
+    const checkpointsA = new Promise<WorkflowGitCheckpointListResponse>((resolve) => {
+      resolveA = resolve
+    })
+    const checkpointsB = new Promise<WorkflowGitCheckpointListResponse>((resolve) => {
+      resolveB = resolve
+    })
+
+    apiMocks.listWorkflowGitCheckpoints.mockImplementation((sessionId: string) => {
+      return sessionId === sessionA ? checkpointsA : checkpointsB
+    })
+
+    const createWorkflowSession = (sessionId: string, title: string) => ({
+      id: sessionId,
+      title,
+      createdAt: '2026-08-04T00:00:00.000Z',
+      modifiedAt: '2026-08-04T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: '/workspace/project',
+      workDir: '/workspace/project',
+      workDirExists: true,
+      workflow: {
+        ...WORKFLOW_SUMMARY,
+        statePointer: { ...WORKFLOW_SUMMARY.statePointer, sessionId },
+      },
+    })
+    const createChatSession = (content: string) => ({
+      messages: [{ id: content, type: 'assistant_text' as const, content, timestamp: 1 }],
+      chatState: 'idle' as const,
+      connectionState: 'connected' as const,
+      streamingText: '',
+      streamingToolInput: '',
+      activeToolUseId: null,
+      activeToolName: null,
+      activeThinkingId: null,
+      pendingPermission: null,
+      pendingComputerUsePermission: null,
+      tokenUsage: { input_tokens: 0, output_tokens: 0 },
+      elapsedSeconds: 0,
+      statusVerb: '',
+      slashCommands: [],
+      agentTaskNotifications: {},
+      elapsedTimer: null,
+    })
+
+    useSessionStore.setState({
+      sessions: [
+        createWorkflowSession(sessionA, 'Checkpoint Session A'),
+        createWorkflowSession(sessionB, 'Checkpoint Session B'),
+      ],
+      activeSessionId: sessionA,
+      isLoading: false,
+      error: null,
+    })
+    useTabStore.setState({
+      tabs: [
+        { sessionId: sessionA, title: 'Checkpoint Session A', type: 'session', status: 'running' },
+        { sessionId: sessionB, title: 'Checkpoint Session B', type: 'session', status: 'running' },
+      ],
+      activeTabId: sessionA,
+    })
+    useChatStore.setState({
+      sessions: {
+        [sessionA]: createChatSession('session a'),
+        [sessionB]: createChatSession('session b'),
+      },
+    })
+
+    render(<ActiveSession />)
+
+    await waitFor(() => expect(apiMocks.listWorkflowGitCheckpoints).toHaveBeenCalledWith(sessionA))
+    expect(screen.getByText('正在读取检查点状态…')).toBeInTheDocument()
+
+    act(() => {
+      useTabStore.setState((state) => ({ ...state, activeTabId: sessionB }))
+    })
+    await waitFor(() => expect(apiMocks.listWorkflowGitCheckpoints).toHaveBeenCalledWith(sessionB))
+
+    await act(async () => {
+      resolveB!({
+        enabled: true,
+        latestVersion: 2,
+        checkpoints: [{
+          id: 'session-b-v2',
+          ref: 'refs/cc-jiangxia/workflow/session-b/v2',
+          version: 2,
+          commit: 'commit-b2',
+          phaseId: 'specify',
+          phaseIndex: 1,
+          label: 'Session B checkpoint',
+          createdAt: '2026-08-04T00:01:00.000Z',
+          message: 'checkpoint b2',
+        }],
+      })
+      await checkpointsB
+    })
+    await waitFor(() => expect(screen.getByTestId('workflow-git-checkpoint-latest')).toHaveTextContent('最近 v2'))
+
+    await act(async () => {
+      resolveA!({ enabled: false, latestVersion: null, checkpoints: [] })
+      await checkpointsA
+    })
+
+    expect(screen.getByTestId('workflow-git-checkpoint-latest')).toHaveTextContent('最近 v2')
+    expect(screen.queryByText('Workflow checkpoints are unavailable for this workspace.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '存档' })).toBeEnabled()
+  })
+
 })

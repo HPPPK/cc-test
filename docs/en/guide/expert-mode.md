@@ -27,12 +27,21 @@ Use Expert settings to inspect, import, export, and edit packs, and to manage ca
 
 A pack declares the tools it recommends. The runtime exposes only the tools that are genuinely available for the current turn; a declaration cannot enable a missing tool or bypass normal permissions.
 
-Experts that need public web evidence should prefer **BrowserResearch**. It opens pages through locally managed Chromium/Playwright and returns visible text, actual links, screenshot paths, and restriction or failure details to the model.
+Experts that need public web evidence should prefer **Playwright**. It opens pages through locally managed Chromium/Playwright and returns visible text, actual links, screenshot paths, and restriction or failure details to the model.
 
 - Login walls, CAPTCHA, regional restrictions, robots rules, and rate limits must be recorded as access limitations.
 - An inaccessible page must not be presented as verified evidence.
 - If web discovery is unavailable for the current model/runtime, the expert should ask for links, screenshots, exported pages, or internal materials.
-- BrowserResearch cannot guarantee automated access to every third-party website; follow applicable site terms and rules.
+- Playwright cannot guarantee automated access to every third-party website; follow applicable site terms and rules.
+
+### User-authorized Chrome or Edge (optional)
+
+A pack may declare an optional user-authorized browser connection. Managed Chromium remains the default even for that pack. A connection is made only after you explicitly choose Chrome or Edge while entering the Expert, enter a **local** debugging endpoint, and acknowledge the permission.
+
+- Only local HTTP endpoints on `localhost`, `127.0.0.1`, or `::1` are accepted. Remote endpoints, proxies, credentials, and user-profile paths are not supported.
+- The app does not scan, copy, or directly open the default Chrome or Edge profile you use every day. Start a dedicated debugging browser window, then log in or complete any verification yourself there.
+- The Expert can read and operate tabs in that dedicated debugging browser. Do not place day-to-day or sensitive tabs in it. Leaving Expert Mode clears the session connection setting.
+- This does not bypass CAPTCHA, login walls, or site restrictions. Complete a verification yourself in the visible window or record the source as an evidence gap.
 
 ## Skill discovery
 

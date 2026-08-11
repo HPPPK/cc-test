@@ -421,7 +421,6 @@ function appendChildToolCall(
 }
 
 const WORKFLOW_QUESTION_CONTRACT_VIOLATION = 'WORKFLOW_QUESTION_CONTRACT_VIOLATION'
-const ANSWERED_QUESTION_RESULT_PREFIX = 'User has answered your questions:'
 
 function toolResultContentToText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -447,19 +446,11 @@ function isWorkflowQuestionContractFailure(result: ToolResult | undefined): bool
   )
 }
 
-function isAnsweredAskUserQuestion(result: ToolResult | undefined): boolean {
-  return Boolean(
-    result
-      && !result.isError
-      && toolResultContentToText(result.content).includes(ANSWERED_QUESTION_RESULT_PREFIX),
-  )
-}
-
 /**
  * A workflow can reject an invalid AskUserQuestion card and then retry with a
  * valid card in the same user turn. Keep the transcript intact, but hide the
- * superseded failed card and its internal contract error once the retry has
- * actually received a user answer.
+ * superseded failed card and its internal contract error as soon as the valid
+ * replacement card is available for the user to answer.
  */
 export function filterRecoveredWorkflowQuestionContractFailures(messages: UIMessage[]): UIMessage[] {
   const toolResultsById = new Map<string, ToolResult>()
@@ -482,11 +473,10 @@ export function filterRecoveredWorkflowQuestionContractFailures(messages: UIMess
     for (let index = start + 1; index < messages.length; index += 1) {
       const message = messages[index]!
       if (message.type === 'user_text') break
-      if (message.type !== 'tool_result') continue
+      if (message.type !== 'tool_use' || message.toolName !== 'AskUserQuestion') continue
 
-      const retriedQuestionIndex = askUserQuestionIndexesById.get(message.toolUseId)
-      if (retriedQuestionIndex === undefined || retriedQuestionIndex <= start) continue
-      if (isAnsweredAskUserQuestion(message)) {
+      const retryResult = toolResultsById.get(message.toolUseId)
+      if (!isWorkflowQuestionContractFailure(retryResult)) {
         recoveredRanges.push({ start, end: index, toolUseId })
         break
       }
@@ -654,11 +644,9 @@ export function getTurnChangeDisplayMode(
       : 'deferred'
   }
 
-  if (session?.expert) {
-    return ['completed', 'exited', 'failed'].includes(session.expert.status)
-      ? 'final-summary'
-      : 'deferred'
-  }
+  // Expert deliverables are reports or other user artifacts, not source-code changes.
+  // Do not request the development-only turn-checkpoint API after an Expert ends.
+  if (session?.expert) return 'deferred'
 
   return 'per-turn'
 }

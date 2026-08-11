@@ -1,4 +1,5 @@
 import type {
+  WorkflowAutoRecovery,
   WorkflowCompletionEligibilityStatus,
   WorkflowPhaseArtifactRequirementState,
   WorkflowPhaseCheckState,
@@ -251,12 +252,70 @@ function migrateLegacyDebugIntakeArtifactBinding(
   }
 }
 
+function normalizedAutoRecoveryAttempts(value: unknown): Record<string, Record<string, number>> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const normalized: Record<string, Record<string, number>> = {}
+  for (const [runId, phaseAttempts] of Object.entries(value as Record<string, unknown>)) {
+    if (!runId || !phaseAttempts || typeof phaseAttempts !== 'object' || Array.isArray(phaseAttempts)) continue
+    const phases = Object.fromEntries(
+      Object.entries(phaseAttempts as Record<string, unknown>)
+        .filter((entry): entry is [string, number] => (
+          Boolean(entry[0]) && typeof entry[1] === 'number' && Number.isInteger(entry[1]) && entry[1] > 0
+        )),
+    )
+    if (Object.keys(phases).length) normalized[runId] = phases
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizedAutoRecovery(
+  value: unknown,
+  state: WorkflowSessionState,
+): WorkflowAutoRecovery | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const recovery = value as Partial<WorkflowAutoRecovery>
+  if (
+    typeof recovery.phaseId !== 'string'
+    || !state.phases.some((phase) => phase.id === recovery.phaseId)
+    || typeof recovery.startedAt !== 'string'
+    || Number.isNaN(Date.parse(recovery.startedAt))
+    || typeof recovery.expiresAt !== 'string'
+    || Number.isNaN(Date.parse(recovery.expiresAt))
+    || typeof recovery.attempt !== 'number'
+    || !Number.isInteger(recovery.attempt)
+    || recovery.attempt <= 0
+    || (recovery.source !== 'phase-completion-blocked' && recovery.source !== 'phase-completion-unable')
+  ) return undefined
+  return {
+    phaseId: recovery.phaseId,
+    startedAt: recovery.startedAt,
+    expiresAt: recovery.expiresAt,
+    attempt: recovery.attempt,
+    source: recovery.source,
+  }
+}
+
+function migrateWorkflowAutoRecoveryState(state: WorkflowSessionState): WorkflowSessionState {
+  const autoRecovery = normalizedAutoRecovery(state.autoRecovery, state)
+  const autoRecoveryAttempts = normalizedAutoRecoveryAttempts(state.autoRecoveryAttempts)
+  const recoveryChanged = JSON.stringify(state.autoRecovery ?? null) !== JSON.stringify(autoRecovery ?? null)
+  const attemptsChanged = JSON.stringify(state.autoRecoveryAttempts ?? null) !== JSON.stringify(autoRecoveryAttempts ?? null)
+  if (!recoveryChanged && !attemptsChanged) return state
+
+  const next = { ...state }
+  if (autoRecovery) next.autoRecovery = autoRecovery
+  else delete next.autoRecovery
+  if (autoRecoveryAttempts) next.autoRecoveryAttempts = autoRecoveryAttempts
+  else delete next.autoRecoveryAttempts
+  return next
+}
+
 export function migrateWorkflowRuntimeContract(
   inputState: WorkflowSessionState,
   template: WorkflowTemplate | null | undefined,
   now: string,
 ): WorkflowSessionState {
-  const state = migrateLegacyDebugIntakeArtifactBinding(inputState, template, now)
+  const state = migrateWorkflowAutoRecoveryState(migrateLegacyDebugIntakeArtifactBinding(inputState, template, now))
   if (state.runtimeContract?.schemaVersion === CONTRACT_SCHEMA_VERSION) {
     const resolvedTemplate = templateFromState(state, template)
     const missingPhaseStates = Object.fromEntries(
@@ -440,7 +499,21 @@ export function rebuildWorkflowCompletionContract(
 
 export function recordAskUserQuestionIssue(
   state: WorkflowSessionState,
-  input: { requestId: string; toolUseId?: string; questions: Array<{ id?: string; question?: string; prompt?: string; header?: string; blocksCompletion?: boolean }>; now: string },
+  input: {
+    requestId: string
+    toolUseId?: string
+    questions: Array<{
+      id?: string
+      question?: string
+      prompt?: string
+      header?: string
+      blocksCompletion?: boolean
+      [key: string]: unknown
+    }>
+    questionInput?: Record<string, unknown>
+    questionDescription?: string
+    now: string
+  },
 ): WorkflowSessionState {
   if (!state.activePhaseId || !state.runtimeContract || !input.questions.length) return state
   const phaseState = state.runtimeContract.phaseStates[state.activePhaseId]
@@ -459,8 +532,12 @@ export function recordAskUserQuestionIssue(
       updatedAt: input.now,
       source: 'ask-user-question',
       status: 'open',
-      blocksCompletion: question.blocksCompletion !== false,
+      blocksCompletion: question.blocksCompletion === true,
       question: question.question ?? question.prompt ?? question.header ?? 'Workflow question',
+      questionInput: input.questionInput
+        ? { ...input.questionInput }
+        : { questions: input.questions.map((entry) => ({ ...entry })) },
+      ...(input.questionDescription ? { questionDescription: input.questionDescription } : {}),
       blockingReason: 'A workflow question requires an answer and explicit processing.',
       questionRequestId: input.requestId,
       questionId,
@@ -470,6 +547,7 @@ export function recordAskUserQuestionIssue(
   }
   return recalculateWorkflowCompletionEligibility({
     ...state,
+    runStatus: 'waiting_for_user',
     runtimeContract: {
       ...state.runtimeContract,
       phaseStates: {
@@ -481,6 +559,58 @@ export function recordAskUserQuestionIssue(
         type: 'workflow-question-recorded',
         phaseId: phaseState.phaseId,
         summary: 'Recorded workflow question(s) as blocking phase issues.',
+      }],
+    },
+  }, undefined, input.now)
+}
+
+export function markAskUserQuestionIssuesStale(
+  state: WorkflowSessionState,
+  input: { requestId?: string; toolUseId?: string; now: string; rationale: string },
+): WorkflowSessionState {
+  if (!state.runtimeContract || (!input.requestId && !input.toolUseId)) return state
+
+  let changed = false
+  const phaseStates = Object.fromEntries(Object.entries(state.runtimeContract.phaseStates).map(([phaseId, phaseState]) => {
+    let phaseChanged = false
+    const issues = phaseState.issues.map((issue) => {
+      const matchesRequest = Boolean(input.requestId && issue.questionRequestId === input.requestId)
+      const matchesToolUse = Boolean(input.toolUseId && issue.toolUseId === input.toolUseId)
+      if (
+        issue.source !== 'ask-user-question'
+        || issue.status !== 'open'
+        || (!matchesRequest && !matchesToolUse)
+      ) return issue
+
+      changed = true
+      phaseChanged = true
+      return {
+        ...issue,
+        status: 'stale' as const,
+        blocksCompletion: false,
+        updatedAt: input.now,
+        processing: {
+          status: 'stale' as const,
+          rationale: input.rationale,
+          processedAt: input.now,
+          processedBy: 'runtime' as const,
+        },
+      }
+    })
+    return [phaseId, phaseChanged ? { ...phaseState, issues } : phaseState]
+  })) as Record<string, WorkflowPhaseCompletionState>
+  if (!changed) return state
+
+  return recalculateWorkflowCompletionEligibility({
+    ...state,
+    runtimeContract: {
+      ...state.runtimeContract,
+      phaseStates,
+      audit: [...state.runtimeContract.audit, {
+        at: input.now,
+        type: 'workflow-question-staled',
+        phaseId: state.activePhaseId ?? undefined,
+        summary: input.rationale,
       }],
     },
   }, undefined, input.now)
@@ -513,6 +643,7 @@ export function recordAskUserQuestionAnswer(
   if (!changed) return state
   return recalculateWorkflowCompletionEligibility({
     ...state,
+    runStatus: 'active',
     runtimeContract: {
       ...state.runtimeContract,
       phaseStates,

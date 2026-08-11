@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { getBrowserResearchExecutablePathFromRuntimeDir } from '../../tools/BrowserResearchTool/runtime.js'
+import { getPlaywrightExecutablePathFromRuntimeDir } from '../../tools/PlaywrightTool/runtime.js'
 import {
   ConversationService,
   removeSessionRuntimePromptFile,
@@ -30,6 +30,20 @@ type ChildEnvBuilder = {
     options?: {
       expertSystemPrompt?: string
       expertSessionId?: string
+      expertSharedPlaywrightSessionId?: string
+      expertPlaywrightCdpEndpoint?: string
+      expertForceVisiblePlaywright?: boolean
+      expertBrowserHumanVerificationHandoff?: boolean
+      expertBrowserVerificationFallbackSearchEngines?: Array<'Google' | '百度' | 'Bing' | '360'>
+      expertClosePlaywrightWhenAgentDone?: boolean
+      expertForbidSubagentAskUserQuestion?: boolean
+      expertTemplateFillWrite?: boolean
+      expertResearchDeliveryPolicy?: {
+        questionId: string
+        acceptedChoiceId: string
+        continueChoiceIds: string[]
+        pauseChoiceIds: string[]
+      }
       appendSystemPromptFile?: string
       expertRuntimeActive?: boolean
     },
@@ -63,10 +77,35 @@ describe('ConversationService expert tool policy', () => {
     expect(args).not.toContain(expertSystemPrompt)
   })
 
+  test('forwards the bundled Playwright runtime to ordinary Desktop CLI sessions', async () => {
+    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-playwright-child-env-'))
+    const nodeExecutable = path.join(runtimeDir, process.platform === 'win32' ? 'node.exe' : 'node')
+    const previousRuntimeDir = process.env.CLAUDE_BROWSER_RUNTIME_DIR
+    const previousNodeExecutable = process.env.CLAUDE_BUNDLED_NODE_EXECUTABLE
+
+    try {
+      await fs.writeFile(nodeExecutable, '')
+      process.env.CLAUDE_BROWSER_RUNTIME_DIR = runtimeDir
+      process.env.CLAUDE_BUNDLED_NODE_EXECUTABLE = nodeExecutable
+
+      const service = new ConversationService() as unknown as ChildEnvBuilder
+      const childEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+
+      expect(childEnv.CLAUDE_BROWSER_RUNTIME_DIR).toBe(runtimeDir)
+      expect(childEnv.CLAUDE_BUNDLED_NODE_EXECUTABLE).toBe(nodeExecutable)
+    } finally {
+      if (previousRuntimeDir === undefined) delete process.env.CLAUDE_BROWSER_RUNTIME_DIR
+      else process.env.CLAUDE_BROWSER_RUNTIME_DIR = previousRuntimeDir
+      if (previousNodeExecutable === undefined) delete process.env.CLAUDE_BUNDLED_NODE_EXECUTABLE
+      else process.env.CLAUDE_BUNDLED_NODE_EXECUTABLE = previousNodeExecutable
+      await fs.rm(runtimeDir, { recursive: true, force: true })
+    }
+  })
+
   test('keeps the visual-QA renderer environment when an Expert prompt is moved to a hidden file', async () => {
     const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-browser-runtime-'))
-    const chromiumDir = path.join(runtimeDir, 'chromium_headless_shell-test', 'chrome-headless-shell-win64')
-    const executable = path.join(chromiumDir, process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell')
+    const chromiumDir = path.join(runtimeDir, 'chromium-test', 'chrome-win')
+    const executable = path.join(chromiumDir, process.platform === 'win32' ? 'chrome.exe' : 'chrome')
     const configDir = path.join(runtimeDir, 'empty-config')
     const previousRuntimeDir = process.env.CLAUDE_BROWSER_RUNTIME_DIR
     const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -87,7 +126,7 @@ describe('ConversationService expert tool policy', () => {
         expertRuntimeActive: true,
       })
 
-      const expectedExecutable = getBrowserResearchExecutablePathFromRuntimeDir(runtimeDir)
+      const expectedExecutable = getPlaywrightExecutablePathFromRuntimeDir(runtimeDir)
       expect(expectedExecutable).toBe(executable)
       expect(childEnv.CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE).toBe(expectedExecutable)
     } finally {
@@ -98,6 +137,66 @@ describe('ConversationService expert tool policy', () => {
       await fs.rm(runtimeDir, { recursive: true, force: true })
     }
   })
+  test('forwards a shared Playwright session key only when an Expert explicitly opts in', async () => {
+    const service = new ConversationService() as unknown as ChildEnvBuilder
+    const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+    const optedInEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', {
+      expertSharedPlaywrightSessionId: 'expert-session-123',
+    })
+
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID).toBeUndefined()
+    expect(ordinaryEnv.CC_HAHA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID).toBeUndefined()
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID).toBe('expert-session-123')
+    expect(optedInEnv.CC_HAHA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID).toBe('expert-session-123')
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE).toBeUndefined()
+  })
+  test('forwards a research-delivery policy only for the active Expert child process', async () => {
+    const service = new ConversationService() as unknown as ChildEnvBuilder
+    const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+    const expertEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', {
+      expertSessionId: 'expert-session-123',
+      expertResearchDeliveryPolicy: {
+        questionId: 'research-delivery:commercialization-report',
+        acceptedChoiceId: 'accept_current_scope',
+        continueChoiceIds: ['provide_material_and_continue'],
+        pauseChoiceIds: ['pause_research'],
+      },
+    })
+
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY).toBeUndefined()
+    expect(ordinaryEnv.CC_HAHA_EXPERT_RESEARCH_DELIVERY_POLICY).toBeUndefined()
+    expect(JSON.parse(expertEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY ?? '')).toEqual({
+      questionId: 'research-delivery:commercialization-report',
+      acceptedChoiceId: 'accept_current_scope',
+      continueChoiceIds: ['provide_material_and_continue'],
+      pauseChoiceIds: ['pause_research'],
+    })
+    expect(expertEnv.CC_HAHA_EXPERT_RESEARCH_DELIVERY_POLICY).toBe(expertEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY)
+  })
+  test('forwards browser-verification handoff and delegated-Ask isolation only when an Expert package opts in', async () => {
+    const service = new ConversationService() as unknown as ChildEnvBuilder
+    const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+    const optedInEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', {
+      expertSessionId: 'expert-session-123',
+      expertBrowserHumanVerificationHandoff: true,
+      expertBrowserVerificationFallbackSearchEngines: ['Google', '百度', 'Bing', '360'],
+      expertClosePlaywrightWhenAgentDone: true,
+      expertForbidSubagentAskUserQuestion: true,
+    })
+
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION).toBeUndefined()
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_SESSION_ID).toBe('expert-session-123')
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF).toBe('1')
+    expect(JSON.parse(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES ?? '')).toEqual(['Google', '百度', 'Bing', '360'])
+    expect(optedInEnv.CC_HAHA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES).toBe(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES)
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE).toBe('1')
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION).toBe('1')
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE).toBeUndefined()
+  })
+
   test('pins Desktop-managed providers to the local proxy instead of stale alternate cloud routing', async () => {
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-provider-env-'))
     const managedRouteKeys = [
@@ -154,6 +253,24 @@ describe('ConversationService expert tool policy', () => {
       }
       await fs.rm(configDir, { recursive: true, force: true })
     }
+  })
+
+
+  test('forwards CDP only when the active Expert session supplied a local authorized endpoint', async () => {
+    const service = new ConversationService() as unknown as ChildEnvBuilder
+    const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_PLAYWRIGHT_CDP_ENDPOINT).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_FORCE_VISIBLE_PLAYWRIGHT).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_MANAGED_PLAYWRIGHT_PRESENTATION).toBeUndefined()
+
+    const expertEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', {
+      expertPlaywrightCdpEndpoint: 'http://127.0.0.1:9222',
+      expertManagedPlaywrightPresentation: 'assistable_background',
+      expertForceVisiblePlaywright: true,
+    })
+    expect(expertEnv.CC_JIANGXIA_EXPERT_PLAYWRIGHT_CDP_ENDPOINT).toBe('http://127.0.0.1:9222')
+    expect(expertEnv.CC_JIANGXIA_EXPERT_MANAGED_PLAYWRIGHT_PRESENTATION).toBe('assistable_background')
+    expect(expertEnv.CC_JIANGXIA_EXPERT_FORCE_VISIBLE_PLAYWRIGHT).toBe('1')
   })
 
   test('writes and removes a session-scoped hidden runtime prompt file', async () => {

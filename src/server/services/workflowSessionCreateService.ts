@@ -193,6 +193,7 @@ function resolveWorkflowRoute(
     const result = phaseAppliesToRoute({
       phase,
       labels,
+      primaryLabel: labels[0],
       effort,
     })
     if (!result.applies) {

@@ -194,7 +194,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
       'Do not use advance for ordinary linear progression. After a normal completion, submit_phase_completion alone creates the current phase confirmation and enters the immediate linear next phase after the user confirms.',
       'In particular, after a repair returns to Stage 4, submit the Stage 4 completion and do not request a route merely to re-enter its normal Stage 5 validation phase.',
       'Do not describe a route only in plain text or hide it inside a completion handoff.',
-      'The server validates phase, stateVersion, route policy, and target existence. Every model-requested route waits for an explicit user confirmation before it is executed.',
+      'The server validates phase, stateVersion, route policy, and target existence. Every normal model-requested route waits for explicit user confirmation. The only exception is an active 10-second silent recovery window returned by submit_phase_completion: immediately request rework_current_phase or jump_to_phase with requireUserConfirmation true, and the server may apply that first constrained repair without a user click.',
     ].join('\n')
   },
   get inputSchema(): InputSchema { return inputSchema() },

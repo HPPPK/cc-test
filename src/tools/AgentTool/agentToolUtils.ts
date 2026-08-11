@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { BROWSER_RESEARCH_SEARCH_ENGINES, type BrowserResearchSearchEngine } from '../BrowserResearchTool/searchEngines.js'
 import { clearInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
   ALL_AGENT_DISALLOWED_TOOLS,
@@ -14,6 +13,8 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { clearDumpState } from '../../services/api/dumpPrompts.js'
+import { closeCompletedExpertAgentPlaywrightBrowser } from '../../services/tools/expertAgentPlaywrightLifecycle.js'
+import { recordExpertSubagentResearchAudit } from '../../services/tools/expertSubagentSkillRuntime.js'
 import type { AppState } from '../../state/AppState.js'
 import type {
   Tool,
@@ -58,6 +59,7 @@ import { emitTaskProgress as emitTaskProgressEvent } from '../../utils/task/sdkP
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
+import { ASK_USER_QUESTION_TOOL_NAME } from '../AskUserQuestionTool/prompt.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 export type ResolvedAgentTools = {
@@ -68,16 +70,24 @@ export type ResolvedAgentTools = {
   allowedAgentTypes?: string[]
 }
 
+export function isExpertSubagentQuestionForbidden(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION === '1'
+    || env.CC_HAHA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION === '1'
+}
+
 export function filterToolsForAgent({
   tools,
   isBuiltIn,
   isAsync = false,
   permissionMode,
+  allowExplicitUserQuestion = false,
 }: {
   tools: Tools
   isBuiltIn: boolean
   isAsync?: boolean
   permissionMode?: PermissionMode
+  /** Only built-in agents that explicitly list AskUserQuestion may opt in. */
+  allowExplicitUserQuestion?: boolean
 }): Tools {
   return tools.filter(tool => {
     // Allow MCP tools for all agents
@@ -92,13 +102,14 @@ export function filterToolsForAgent({
     ) {
       return true
     }
-    if (ALL_AGENT_DISALLOWED_TOOLS.has(tool.name)) {
+    const isExplicitUserQuestion = allowExplicitUserQuestion && toolMatchesName(tool, ASK_USER_QUESTION_TOOL_NAME)
+    if (ALL_AGENT_DISALLOWED_TOOLS.has(tool.name) && !isExplicitUserQuestion) {
       return false
     }
     if (!isBuiltIn && CUSTOM_AGENT_DISALLOWED_TOOLS.has(tool.name)) {
       return false
     }
-    if (isAsync && !ASYNC_AGENT_ALLOWED_TOOLS.has(tool.name)) {
+    if (isAsync && !ASYNC_AGENT_ALLOWED_TOOLS.has(tool.name) && !isExplicitUserQuestion) {
       if (isAgentSwarmsEnabled() && isInProcessTeammate()) {
         // Allow AgentTool for in-process teammates to spawn sync subagents.
         // Validation in AgentTool.call() prevents background agents and teammate spawning.
@@ -135,6 +146,12 @@ export function resolveAgentTools(
     source,
     permissionMode,
   } = agentDefinition
+  // AskUserQuestion is normally excluded from every subagent. A reviewed built-in
+  // agent can opt in only by explicitly declaring the existing tool in its own
+  // definition; custom/plugin agents cannot gain this interaction channel.
+  const allowExplicitUserQuestion = !isExpertSubagentQuestionForbidden()
+    && source === 'built-in'
+    && Boolean(agentTools?.some((toolSpec) => permissionRuleValueFromString(toolSpec).toolName === ASK_USER_QUESTION_TOOL_NAME))
   // When isMainThread is true, skip filterToolsForAgent entirely — the main
   // thread's tool pool is already properly assembled by useMergedTools(), so
   // the sub-agent disallow lists shouldn't apply.
@@ -145,6 +162,7 @@ export function resolveAgentTools(
         isBuiltIn: source === 'built-in',
         isAsync,
         permissionMode,
+        allowExplicitUserQuestion,
       })
 
   // Create a set of disallowed tool names for quick lookup
@@ -225,45 +243,48 @@ export function resolveAgentTools(
   }
 }
 
-export const browserResearchAuditStatusSchema = z.enum([
-  'opened',
-  'access_limited',
-  'search_irrelevant',
-  'target_unavailable',
-  'failed',
-  'pending',
-])
-
-export const browserResearchAuditEntrySchema = z.object({
-  target: z.string(),
-  kind: z.enum(['url', 'search']),
-  searchEngine: z.enum(BROWSER_RESEARCH_SEARCH_ENGINES).optional(),
-  status: browserResearchAuditStatusSchema,
-  finalUrl: z.string().optional(),
-  detail: z.string().optional(),
-})
-
-export type BrowserResearchAuditStatus = z.infer<typeof browserResearchAuditStatusSchema>
-export type BrowserResearchAuditEntry = z.infer<typeof browserResearchAuditEntrySchema>
-
-const EXPERT_BROWSER_RESEARCH_AUDIT_AGENT_TYPES = new Set([
+const EXPERT_PLAYWRIGHT_AUDIT_AGENT_TYPES = new Set([
   'expert-evidence-researcher',
   'expert-evidence-reviewer',
 ])
 
+/** Evidence subagents may return partial messages before an upstream/tool failure.
+ * Those partial messages are not completed research and must reach the parent as
+ * an error instead of a misleading completed Agent result. */
+export function shouldSurfaceExpertEvidenceAgentFailure(agentType: string | undefined): boolean {
+  return agentType === 'expert-evidence-researcher' || agentType === 'expert-evidence-reviewer'
+}
+
+export const playwrightAuditStatusSchema = z.enum([
+  'opened',
+  'access_limited',
+  'failed',
+  'pending',
+])
+
+export const playwrightAuditEntrySchema = z.object({
+  target: z.string(),
+  /** Present only when the actual navigation was a recognised search-engine entry. */
+  kind: z.enum(['search', 'url']).optional(),
+  searchEngine: z.enum(['Google', '百度', 'Bing', '360']).optional(),
+  query: z.string().optional(),
+  searchUrl: z.string().url().optional(),
+  status: playwrightAuditStatusSchema,
+  finalUrl: z.string().optional(),
+  detail: z.string().optional(),
+})
+
+export type PlaywrightAuditStatus = z.infer<typeof playwrightAuditStatusSchema>
+export type PlaywrightAuditEntry = z.infer<typeof playwrightAuditEntrySchema>
+
 export const agentToolResultSchema = lazySchema(() =>
   z.object({
     agentId: z.string(),
-    // Optional: older persisted sessions won't have this (resume replays
-    // results verbatim without re-validation). Used to gate the sync
-    // result trailer — one-shot built-ins skip the SendMessage hint.
     agentType: z.string().optional(),
     content: z.array(z.object({ type: z.literal('text'), text: z.string() })),
     totalToolUseCount: z.number(),
-    // Optional for persisted Agent results created before tool-specific auditing.
-    browserResearchToolUseCount: z.number().optional(),
-    // Optional for persisted Agent results created before BrowserResearch target-level auditing.
-    browserResearchAudit: z.array(browserResearchAuditEntrySchema).optional(),
+    playwrightToolUseCount: z.number().optional(),
+    playwrightAudit: z.array(playwrightAuditEntrySchema).optional(),
     totalDurationMs: z.number(),
     totalTokens: z.number(),
     usage: z.object({
@@ -271,19 +292,9 @@ export const agentToolResultSchema = lazySchema(() =>
       output_tokens: z.number(),
       cache_creation_input_tokens: z.number().nullable(),
       cache_read_input_tokens: z.number().nullable(),
-      server_tool_use: z
-        .object({
-          web_search_requests: z.number(),
-          web_fetch_requests: z.number(),
-        })
-        .nullable(),
+      server_tool_use: z.object({ web_search_requests: z.number(), web_fetch_requests: z.number() }).nullable(),
       service_tier: z.enum(['standard', 'priority', 'batch']).nullable(),
-      cache_creation: z
-        .object({
-          ephemeral_1h_input_tokens: z.number(),
-          ephemeral_5m_input_tokens: z.number(),
-        })
-        .nullable(),
+      cache_creation: z.object({ ephemeral_1h_input_tokens: z.number(), ephemeral_5m_input_tokens: z.number() }).nullable(),
     }),
   }),
 )
@@ -292,228 +303,233 @@ export type AgentToolResult = z.input<ReturnType<typeof agentToolResultSchema>>
 
 export function countToolUses(messages: MessageType[]): number {
   let count = 0
-  for (const m of messages) {
-    if (m.type === 'assistant') {
-      for (const block of m.message.content) {
-        if (block.type === 'tool_use') {
-          count++
-        }
-      }
-    }
+  for (const message of messages) {
+    if (message.type !== 'assistant') continue
+    for (const block of message.message.content) if (block.type === 'tool_use') count++
   }
   return count
 }
 
 /** Counts real SDK tool_use blocks for one exact tool name; never infer usage from text or URLs. */
-export function countToolUsesByName(
-  messages: MessageType[],
-  toolName: string,
-): number {
+export function countToolUsesByName(messages: MessageType[], toolName: string): number {
   let count = 0
   for (const message of messages) {
     if (message.type !== 'assistant') continue
-    for (const block of message.message.content) {
-      if (block.type === 'tool_use' && block.name === toolName) {
-        count++
-      }
-    }
+    for (const block of message.message.content) if (block.type === 'tool_use' && block.name === toolName) count++
   }
   return count
 }
 
-
-function truncateBrowserResearchAuditDetail(value: string, maxLength = 280): string {
+function truncatePlaywrightAuditDetail(value: string, maxLength = 280): string {
   const normalized = value.replace(/\s+/g, ' ').trim()
-  return normalized.length <= maxLength
-    ? normalized
-    : `${normalized.slice(0, Math.max(0, maxLength - 1))}…`
+  return normalized.length <= maxLength ? normalized : normalized.slice(0, Math.max(0, maxLength - 1)) + '…'
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object'
-    ? value as Record<string, unknown>
-    : undefined
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined
 }
 
-function browserResearchAuditTarget(input: unknown): {
-  target: string
-  kind: 'url' | 'search'
-} | undefined {
-  const record = asRecord(input)
-  if (!record) return undefined
-  if (typeof record.search_query === 'string' && record.search_query.trim()) {
-    return {
-      target: record.search_query.trim(),
-      kind: 'search',
-    }
-  }
-  if (typeof record.url === 'string' && record.url.trim()) {
-    return { target: record.url.trim(), kind: 'url' }
+type PlaywrightAuditTarget = Pick<PlaywrightAuditEntry, 'target' | 'kind' | 'searchEngine' | 'query' | 'searchUrl'> & {
+  actionIndex?: number
+}
+
+function searchEngineForAuditUrl(value: string): PlaywrightAuditEntry['searchEngine'] | undefined {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase()
+    if (hostname.includes('google.')) return 'Google'
+    if (hostname.includes('baidu.')) return '百度'
+    if (hostname.includes('bing.')) return 'Bing'
+    if (hostname === 'so.com' || hostname.endsWith('.so.com')) return '360'
+  } catch {
+    // A malformed navigation is still retained as a normal failed target below.
   }
   return undefined
 }
 
-type BrowserResearchLedgerAttempt = {
-  url?: string
+function searchQueryFromUrl(value: string): string | undefined {
+  try {
+    const query = new URL(value).searchParams
+    for (const name of ['q', 'wd', 'query', 'word']) {
+      const candidate = query.get(name)?.trim()
+      if (candidate) return candidate
+    }
+  } catch {
+    // The caller keeps the original target for a malformed URL.
+  }
+  return undefined
+}
+
+function searchQueryFromActions(actions: Record<string, unknown>[]): string | undefined {
+  for (const action of actions) {
+    if ((action.type === 'fill' || action.type === 'type') && typeof action.text === 'string' && action.text.trim()) {
+      return action.text.trim()
+    }
+  }
+  return undefined
+}
+
+function playwrightAuditTargets(input: unknown): PlaywrightAuditTarget[] {
+  const rawActions = asRecord(input)?.actions
+  if (!Array.isArray(rawActions)) return []
+  const actions = rawActions.map(asRecord).filter((action): action is Record<string, unknown> => Boolean(action))
+  const targets = actions.flatMap((action, actionIndex) => {
+    if ((action.type !== 'navigate' && action.type !== 'new_tab') || typeof action.url !== 'string') return []
+    const searchEngine = searchEngineForAuditUrl(action.url)
+    if (!searchEngine) return [{ target: action.url, kind: 'url' as const, actionIndex }]
+    const query = searchQueryFromUrl(action.url) ?? searchQueryFromActions(actions)
+    return [{
+      target: query ?? action.url,
+      kind: 'search' as const,
+      searchEngine,
+      ...(query ? { query } : {}),
+      searchUrl: action.url,
+      actionIndex,
+    }]
+  })
+  return targets.length > 0 ? targets : [{ target: 'Playwright action sequence' }]
+}
+
+type PlaywrightLedgerStep = {
+  index?: number
+  type?: string
   outcome?: 'success' | 'failed'
-  failureKind?: string
-  searchEngine?: BrowserResearchSearchEngine
-  error?: string
-}
-
-type BrowserResearchLedger = {
   url?: string
-  attempts?: BrowserResearchLedgerAttempt[]
+  detail?: string
 }
 
-function decodeBrowserResearchLedger(content: unknown): BrowserResearchLedger | undefined {
+type PlaywrightLedger = {
+  url?: string
+  accessLimited?: boolean
+  error?: string
+  steps?: PlaywrightLedgerStep[]
+}
+
+function decodePlaywrightLedger(content: unknown): PlaywrightLedger | undefined {
   const text = typeof content === 'string'
     ? content
     : Array.isArray(content)
-      ? content.map(block => {
-        const record = asRecord(block)
-        return typeof record?.text === 'string' ? record.text : ''
-      }).join('\n')
+      ? content.map((block) => typeof asRecord(block)?.text === 'string' ? asRecord(block)?.text : '').join('\n')
       : ''
-  const match = text.match(/<browser-research-ledger\s+encoding=["']base64["']>([A-Za-z0-9+/=]+)<\/browser-research-ledger>/i)
+  const match = text.match(/<playwright-action-ledger\s+encoding=\"base64\">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/i)
   if (!match?.[1]) return undefined
   try {
     const parsed = asRecord(JSON.parse(Buffer.from(match[1], 'base64').toString('utf8')))
     if (!parsed) return undefined
-    const attempts = Array.isArray(parsed.attempts)
-      ? parsed.attempts.map(entry => {
-        const record = asRecord(entry)
-        return {
-          ...(typeof record?.url === 'string' ? { url: record.url } : {}),
-          ...(record?.outcome === 'success' || record?.outcome === 'failed'
-            ? { outcome: record.outcome }
-            : {}),
-          ...(typeof record?.failureKind === 'string' ? { failureKind: record.failureKind } : {}),
-          ...(BROWSER_RESEARCH_SEARCH_ENGINES.includes(record?.searchEngine as BrowserResearchSearchEngine) ? { searchEngine: record?.searchEngine as BrowserResearchSearchEngine } : {}),
-          ...(typeof record?.error === 'string' ? { error: record.error } : {}),
-        } satisfies BrowserResearchLedgerAttempt
-      })
-      : undefined
     return {
       ...(typeof parsed.url === 'string' ? { url: parsed.url } : {}),
-      ...(attempts ? { attempts } : {}),
+      ...(typeof parsed.accessLimited === 'boolean' ? { accessLimited: parsed.accessLimited } : {}),
+      ...(typeof parsed.error === 'string' ? { error: parsed.error } : {}),
+      ...(Array.isArray(parsed.steps) ? { steps: parsed.steps.map(asRecord).filter((step): step is PlaywrightLedgerStep => Boolean(step)) } : {}),
     }
-  } catch {
-    return undefined
+  } catch { return undefined }
+}
+
+function isHumanVerificationUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  return /(?:wappass\.baidu\.com|captcha|recaptcha|hcaptcha|verify|verification)/i.test(value)
+}
+
+function firstHumanVerificationStepIndex(ledger: PlaywrightLedger): number | undefined {
+  for (const step of ledger.steps ?? []) {
+    if (
+      typeof step.index === 'number'
+      && (isHumanVerificationUrl(step.url) || /captcha|human verification|安全验证|滑块/i.test(step.detail ?? ''))
+    ) return step.index
   }
+  return undefined
 }
 
-function browserResearchAuditStatus(
-  ledger: BrowserResearchLedger | undefined,
-  isError: boolean,
-): BrowserResearchAuditStatus {
-  const attempts = ledger?.attempts ?? []
-  if (attempts.some(attempt => attempt.outcome === 'success')) return 'opened'
-  const failureKind = attempts.find(attempt => attempt.outcome === 'failed')?.failureKind
-  if (failureKind === 'access_limited') return 'access_limited'
-  if (failureKind === 'search_irrelevant') return 'search_irrelevant'
-  if (failureKind === 'target_unavailable') return 'target_unavailable'
-  return isError || attempts.length > 0 ? 'failed' : 'pending'
-}
-
-/** Returns an engine only when the BrowserResearch runtime recorded that it actually ran. */
-function observedBrowserResearchSearchEngine(
-  requested: { kind: 'url' | 'search' },
-  ledger: BrowserResearchLedger | undefined,
-): BrowserResearchSearchEngine | undefined {
-  if (requested.kind !== 'search') return undefined
-  return ledger?.attempts?.find(
-    attempt => BROWSER_RESEARCH_SEARCH_ENGINES.includes(attempt.searchEngine as BrowserResearchSearchEngine),
-  )?.searchEngine
-}
-
-/**
- * Reads actual BrowserResearch tool_use blocks and their paired raw tool_result ledger.
- * It deliberately ignores the subagent's natural-language prose, so an agent cannot
- * claim that a URL was opened when the transcript says otherwise.
- */
-export function buildBrowserResearchAudit(
-  messages: MessageType[],
-): BrowserResearchAuditEntry[] {
-  const toolResultsByUseId = new Map<string, { content: unknown; isError: boolean }>()
+/** Reads actual Playwright action traces, never natural-language claims, for evidence-agent auditing. */
+export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEntry[] {
+  const resultsByUseId = new Map<string, { content: unknown; isError: boolean }>()
   for (const message of messages) {
     if (message.type !== 'user') continue
-    for (const block of message.message.content) {
-      if (block.type !== 'tool_result') continue
-      toolResultsByUseId.set(block.tool_use_id, {
-        content: block.content,
-        isError: Boolean(block.is_error),
-      })
-    }
+    for (const block of message.message.content) if (block.type === 'tool_result') resultsByUseId.set(block.tool_use_id, { content: block.content, isError: Boolean(block.is_error) })
   }
-
-  const audit: BrowserResearchAuditEntry[] = []
+  const audit: PlaywrightAuditEntry[] = []
   for (const message of messages) {
     if (message.type !== 'assistant') continue
     for (const block of message.message.content) {
-      if (block.type !== 'tool_use' || block.name !== 'BrowserResearch') continue
-      const requested = browserResearchAuditTarget(block.input)
-      if (!requested) continue
-      const result = toolResultsByUseId.get(block.id)
+      if (block.type !== 'tool_use' || block.name !== 'Playwright') continue
+      const targets = playwrightAuditTargets(block.input)
+      const result = resultsByUseId.get(block.id)
       if (!result) {
-        audit.push({
-          ...requested,
-          status: 'pending',
-          detail: 'No paired BrowserResearch tool result was recorded.',
-        })
+        audit.push(...targets.map(({ actionIndex: _actionIndex, ...target }) => ({ ...target, status: 'pending' as const, detail: 'No paired Playwright tool result was recorded.' })))
         continue
       }
-      const ledger = decodeBrowserResearchLedger(result.content)
-      const attempts = ledger?.attempts ?? []
-      const firstFailure = attempts.find(attempt => attempt.outcome === 'failed')
-      const successes = attempts.filter(attempt => attempt.outcome === 'success').length
-      const status = browserResearchAuditStatus(ledger, result.isError)
-      const observedSearchEngine = observedBrowserResearchSearchEngine(requested, ledger)
-      const detail = status === 'opened' && attempts.length > successes
-        ? `Opened after ${attempts.length - successes} unsuccessful attempt(s).`
-        : firstFailure?.error
-          ? truncateBrowserResearchAuditDetail(firstFailure.error)
-          : ledger
-            ? undefined
-            : 'BrowserResearch returned no machine-readable research ledger.'
-      audit.push({
-        ...requested,
-        ...(observedSearchEngine ? { searchEngine: observedSearchEngine } : {}),
-        status,
-        ...(typeof ledger?.url === 'string' && ledger.url ? { finalUrl: ledger.url } : {}),
-        ...(detail ? { detail } : {}),
-      })
+      const ledger = decodePlaywrightLedger(result.content)
+      if (!ledger) {
+        audit.push(...targets.map(({ actionIndex: _actionIndex, ...target }) => ({ ...target, status: 'pending' as const, detail: 'Playwright returned no machine-readable action ledger.' })))
+        continue
+      }
+      const hasIndexedSteps = ledger.steps?.some((step) => typeof step.index === 'number') ?? false
+      for (const { actionIndex, ...target } of targets) {
+        const actionStep = actionIndex === undefined || !hasIndexedSteps
+          ? undefined
+          : ledger.steps?.find((step) => step.index === actionIndex)
+        const failure = actionStep?.outcome === 'failed' ? actionStep : undefined
+        const actionDidNotRun = actionIndex !== undefined && hasIndexedSteps && !actionStep
+        const verificationStepIndex = firstHumanVerificationStepIndex(ledger)
+        const accessLimitedForTarget = Boolean(ledger.accessLimited) && (
+          actionIndex === undefined
+          || verificationStepIndex === undefined
+          || actionIndex >= verificationStepIndex
+        )
+        const errorAppliesToTarget = !ledger.accessLimited || accessLimitedForTarget
+        const status: PlaywrightAuditStatus = actionDidNotRun
+          ? 'pending'
+          : accessLimitedForTarget
+            ? 'access_limited'
+            : errorAppliesToTarget && (ledger.error || result.isError || failure)
+              ? 'failed'
+              : 'opened'
+        const actionUrl = actionStep?.url
+        const finalUrl = actionUrl && !(isHumanVerificationUrl(actionUrl) && !accessLimitedForTarget)
+          ? actionUrl
+          : ledger.url
+        audit.push({
+          ...target,
+          status,
+          ...(finalUrl ? { finalUrl } : {}),
+          ...(actionDidNotRun
+            ? { detail: 'This navigation did not run because the Playwright action sequence stopped earlier.' }
+            : errorAppliesToTarget && ledger.error
+              ? { detail: truncatePlaywrightAuditDetail(ledger.error) }
+              : failure?.detail
+                ? { detail: truncatePlaywrightAuditDetail(failure.detail) }
+                : {}),
+        })
+      }
     }
   }
   return audit
 }
 
-export function requiresBrowserResearchAudit(agentType: string | undefined): boolean {
-  return Boolean(agentType && EXPERT_BROWSER_RESEARCH_AUDIT_AGENT_TYPES.has(agentType))
+/** Keeps browser audit provenance available to parent Expert agents; it enforces no pack-specific business rule. */
+export function requiresPlaywrightAudit(agentType: string | undefined): boolean {
+  return Boolean(agentType && EXPERT_PLAYWRIGHT_AUDIT_AGENT_TYPES.has(agentType))
 }
 
 /** Formats bounded, transcript-derived browser outcomes for the parent agent. */
-export function formatBrowserResearchAudit(
-  audit: BrowserResearchAuditEntry[] | undefined,
+export function formatPlaywrightAudit(
+  audit: PlaywrightAuditEntry[] | undefined,
   maxEntries = 32,
 ): string {
   const entries = audit ?? []
   if (entries.length === 0) {
-    return '<browser-research-audit>\nNo BrowserResearch tool result was recorded. Do not treat the subagent prose as public-web evidence.\n</browser-research-audit>'
+    return '<playwright-browser-audit>\nNo Playwright tool result was recorded. Do not treat the subagent prose as public-web evidence.\n</playwright-browser-audit>'
   }
   const lines = entries.slice(0, maxEntries).map(entry => {
     const target = entry.kind === 'search'
-      ? `query ${JSON.stringify(entry.target)}${entry.searchEngine ? ` [engine=${entry.searchEngine}]` : ''}`
+      ? `query ${JSON.stringify(entry.query ?? entry.target)}${entry.searchEngine ? ` [engine=${entry.searchEngine}]` : ''}${entry.searchUrl ? ` [search_url=${entry.searchUrl}]` : ''}`
       : entry.target
-    const finalUrl = entry.finalUrl && entry.finalUrl !== entry.target
-      ? ` → ${entry.finalUrl}`
-      : ''
+    const finalUrl = entry.finalUrl ? ` [final_url=${entry.finalUrl}]` : ''
     return `- ${entry.status}: ${target}${finalUrl}${entry.detail ? ` — ${entry.detail}` : ''}`
   })
   if (entries.length > maxEntries) {
-    lines.push(`- truncated: ${entries.length - maxEntries} additional BrowserResearch call(s) are retained in the transcript.`)
+    lines.push(`- truncated: ${entries.length - maxEntries} additional Playwright call(s) are retained in the transcript.`)
   }
-  return `<browser-research-audit>\n${lines.join('\n')}\n</browser-research-audit>`
+  return `<playwright-browser-audit>\n${lines.join('\n')}\n</playwright-browser-audit>`
 }
 
 export function finalizeAgentTool(
@@ -561,25 +577,11 @@ export function finalizeAgentTool(
 
   const totalTokens = getTokenCountFromUsage(lastAssistantMessage.message.usage)
   const totalToolUseCount = countToolUses(agentMessages)
-  const browserResearchToolUseCount = countToolUsesByName(
+  const playwrightToolUseCount = countToolUsesByName(
     agentMessages,
-    'BrowserResearch',
+    'Playwright',
   )
-  const browserResearchAudit = buildBrowserResearchAudit(agentMessages)
-
-  // This applies only to the built-in Expert Mode evidence researcher. It turns
-  // the browser-research Skill into a verifiable delivery condition without
-  // constraining normal agents, reviewers, or other Expert packs. A failed
-  // BrowserResearch call still counts: the subagent must return its real URL and
-  // error as an evidence gap rather than claiming it researched the web.
-  if (
-    agentType === 'expert-evidence-researcher'
-    && browserResearchToolUseCount === 0
-  ) {
-    throw new Error(
-      'EXPERT_BROWSER_RESEARCH_REQUIRED: This commercial-research subagent returned without a real BrowserResearch call. Retry the assigned section with BrowserResearch before using any public-web claim.',
-    )
-  }
+  const playwrightAudit = buildPlaywrightAudit(agentMessages)
 
   logEvent('tengu_agent_tool_completed', {
     agent_type:
@@ -590,7 +592,7 @@ export function finalizeAgentTool(
     response_char_count: content.length,
     assistant_message_count: agentMessages.length,
     total_tool_uses: totalToolUseCount,
-    browser_research_tool_uses: browserResearchToolUseCount,
+    browser_research_tool_uses: playwrightToolUseCount,
     duration_ms: Date.now() - startTime,
     total_tokens: totalTokens,
     is_built_in_agent: isBuiltInAgent,
@@ -615,10 +617,27 @@ export function finalizeAgentTool(
     totalDurationMs: Date.now() - startTime,
     totalTokens,
     totalToolUseCount,
-    browserResearchToolUseCount,
-    browserResearchAudit,
+    playwrightToolUseCount,
+    playwrightAudit,
     usage: lastAssistantMessage.message.usage,
   }
+}
+
+/**
+ * Persists transcript-derived browser provenance for Expert researchers after
+ * either synchronous or asynchronous Agent completion. This remains a no-op
+ * for ordinary agents and never exposes another model-callable tool.
+ */
+export async function recordFinalizedExpertAgentResearchAudit(
+  agentResult: Pick<AgentToolResult, 'agentId' | 'agentType' | 'playwrightAudit'>,
+  fallbackAgentType: string,
+  recordAudit: typeof recordExpertSubagentResearchAudit = recordExpertSubagentResearchAudit,
+): Promise<void> {
+  await recordAudit({
+    agentId: agentResult.agentId,
+    agentType: agentResult.agentType ?? fallbackAgentType,
+    entries: agentResult.playwrightAudit ?? [],
+  })
 }
 
 /**
@@ -864,6 +883,7 @@ export async function runAsyncAgentLifecycle({
     stopSummarization?.()
 
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
+    await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType)
 
     // Mark task completed FIRST so TaskOutput(block=true) unblocks
     // immediately, then notify the parent before any optional cleanup. The
@@ -957,6 +977,9 @@ export async function runAsyncAgentLifecycle({
     )
     return { status: 'failed', reason: msg }
   } finally {
+    void closeCompletedExpertAgentPlaywrightBrowser(agentIdForCleanup).catch((cleanupError) =>
+      logForDebugging(`Expert agent browser cleanup failed: ${errorMessage(cleanupError)}`),
+    )
     clearInvokedSkillsForAgent(agentIdForCleanup)
     clearDumpState(agentIdForCleanup)
   }

@@ -14,6 +14,8 @@ import {
   conversationService,
 } from '../services/conversationService.js'
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
+import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
+import { expertBrowserActivityService } from '../services/expertBrowserActivityService.js'
 import { sessionService } from '../services/sessionService.js'
 import { ApiError } from '../middleware/errorHandler.js'
 import { SettingsService } from '../services/settingsService.js'
@@ -28,6 +30,7 @@ import {
   enqueueWorkflowSessionTransition,
 } from '../services/workflowTransitionCoordinator.js'
 import {
+  markAskUserQuestionIssuesStale,
   recordAskUserQuestionAnswer,
   recordAskUserQuestionIssue,
 } from '../services/workflowCompletionGate.js'
@@ -50,6 +53,7 @@ import type {
   WorkflowModelResolution,
   WorkflowSessionMetadata,
   WorkflowSessionSummary,
+  WorkflowPhaseIssue,
   WorkflowSessionState,
   WorkflowTransitionRequest,
 } from '../services/workflowTypes.js'
@@ -68,6 +72,11 @@ import {
   resolveExpertRuntimeToolPolicy,
 } from '../services/expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
+import {
+  resolveExpertResearchDeliveryTerminalRecovery,
+  type ExpertResearchDeliveryTerminalRecovery,
+} from '../services/expertResearchDeliveryTerminalService.js'
+
 import { setSessionChatState } from '../api/conversations.js'
 
 const settingsService = new SettingsService()
@@ -210,6 +219,7 @@ function scheduleSessionCleanupAfterClientDisconnect(sessionId: string): void {
   if (hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId)) return
 
   computerUseApprovalService.cancelSession(sessionId)
+  expertHumanVerificationService.cancelSession(sessionId, 'Desktop session disconnected before browser verification was resolved.')
   const cleanupTimer = setTimeout(() => {
     sessionCleanupTimers.delete(sessionId)
     if (!hasActiveClients(sessionId)) {
@@ -391,6 +401,11 @@ export const handleWebSocket = {
       )
     })
     replayPendingPermissionRequests(ws, sessionId)
+    void replayPersistedWorkflowAskUserQuestion(ws, sessionId).catch((error) => {
+      console.warn('[WS] Failed to restore persisted workflow AskUserQuestion for ' + sessionId + ': ' + (
+        error instanceof Error ? error.message : String(error)
+      ))
+    })
   },
 
   message(ws: ServerWebSocket<WebSocketData>, rawMessage: string | Buffer) {
@@ -997,12 +1012,37 @@ async function rejectUnsafeWorkflowArtifactWrite(
   return 'This workflow phase may write only session-internal .workflow artifacts. Production files and unknown paths remain blocked until a phase explicitly grants normal edit capability.'
 }
 
+function persistedWorkflowQuestionRecoveryPrompt(answered: boolean): string {
+  return answered
+    ? [
+        '<workflow-persisted-question-recovery>',
+        'A restored workflow AskUserQuestion card was answered after the former CLI runtime no longer existed.',
+        'The authoritative workflow state now contains that answer. Continue the active phase using the persisted answer and do not repeat the question.',
+        'Only ask a new AskUserQuestion if a separate, still-unresolved decision is necessary.',
+        '</workflow-persisted-question-recovery>',
+      ].join('\n')
+    : [
+        '<workflow-persisted-question-dismissed>',
+        'The user dismissed or denied a restored workflow AskUserQuestion card after the former CLI runtime no longer existed.',
+        'The old card was marked stale and is not approval. Reassess the active phase from persisted state; ask one fresh structured question only if a decision is still necessary.',
+        '</workflow-persisted-question-dismissed>',
+      ].join('\n')
+}
+
 async function handlePermissionResponse(
   ws: ServerWebSocket<WebSocketData>,
   message: Extract<ClientMessage, { type: 'permission_response' }>
 ) {
   const { sessionId } = ws.data
   if (isE2ETestModeEnabled() && e2eTestPermissionRequestIds.has(message.requestId)) {
+    return
+  }
+  if (expertHumanVerificationService.resolveVerification(
+    message.requestId,
+    message.allowed,
+    message.updatedInput,
+  )) {
+    sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
     return
   }
   const artifactWriteDenial = await rejectUnsafeWorkflowArtifactWrite(
@@ -1025,7 +1065,55 @@ async function handlePermissionResponse(
     })
     return
   }
-  const askUserQuestionAnswer = isAskUserQuestionAnswer(message.updatedInput)
+  const pendingAskUserQuestion = conversationService.getPendingPermissionRequests(sessionId)
+    .find((request) => request.requestId === message.requestId && request.toolName === 'AskUserQuestion')
+  const askUserQuestionAnswer = message.allowed && isAskUserQuestionAnswer(message.updatedInput)
+  const restoredPersistedQuestion = !pendingAskUserQuestion
+    && !conversationService.hasSession(sessionId)
+    && await hasPersistedOpenWorkflowQuestionRequest(sessionId, message.requestId)
+
+  if (restoredPersistedQuestion && (askUserQuestionAnswer || !message.allowed)) {
+    const resumed = await enqueueWorkflowSessionTransition(sessionId, async () => {
+      if (askUserQuestionAnswer) {
+        await recordWorkflowAskUserQuestionAnswer(
+          sessionId,
+          message.requestId,
+          message.updatedInput as Record<string, unknown>,
+        )
+      } else {
+        await staleWorkflowAskUserQuestionIssues(sessionId, {
+          requestId: message.requestId,
+          rationale: 'The user dismissed or denied a restored AskUserQuestion card after its original CLI runtime was gone; the stale card must not block workflow recovery.',
+        })
+      }
+      if (!conversationService.hasSession(sessionId)) {
+        await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
+      }
+      return conversationService.sendMessage(
+        sessionId,
+        persistedWorkflowQuestionRecoveryPrompt(askUserQuestionAnswer),
+      )
+    })
+    if (!resumed) {
+      sendMessage(ws, {
+        type: 'permission_response_ack',
+        requestId: message.requestId,
+        status: 'rejected',
+        message: 'The structured answer was saved, but the workflow CLI could not be resumed.',
+      })
+      sendMessage(ws, {
+        type: 'error',
+        message: 'The structured answer was saved, but the workflow CLI could not be resumed.',
+        code: 'CLI_NOT_RUNNING',
+      })
+      sendMessage(ws, { type: 'status', state: 'idle' })
+      return
+    }
+    sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
+    console.log(`[WS] Restored workflow question response for ${message.requestId}: ${message.allowed}`)
+    return
+  }
+
   const delivered = askUserQuestionAnswer
     ? await enqueueWorkflowSessionTransition(sessionId, async () => {
         await recordWorkflowAskUserQuestionAnswer(sessionId, message.requestId, message.updatedInput as Record<string, unknown>)
@@ -1037,13 +1125,28 @@ async function handlePermissionResponse(
           message.updatedInput,
         )
       })
-    : conversationService.respondToPermission(
-        sessionId,
-        message.requestId,
-        message.allowed,
-        message.rule,
-        message.updatedInput,
-      )
+    : pendingAskUserQuestion
+      ? await enqueueWorkflowSessionTransition(sessionId, async () => {
+          await staleWorkflowAskUserQuestionIssues(sessionId, {
+            requestId: message.requestId,
+            toolUseId: pendingAskUserQuestion.toolUseId,
+            rationale: 'The user dismissed or denied the AskUserQuestion card before providing an answer; the stale question must not block the workflow.',
+          })
+          return conversationService.respondToPermission(
+            sessionId,
+            message.requestId,
+            message.allowed,
+            message.rule,
+            message.updatedInput,
+          )
+        })
+      : conversationService.respondToPermission(
+          sessionId,
+          message.requestId,
+          message.allowed,
+          message.rule,
+          message.updatedInput,
+        )
   if (!delivered && askUserQuestionAnswer) {
     sendMessage(ws, {
       type: 'permission_response_ack',
@@ -1063,7 +1166,14 @@ async function handlePermissionResponse(
   console.log(`[WS] Permission response for ${message.requestId}: ${message.allowed}`)
 }
 
-function askUserQuestionPrompts(input: unknown): Array<{ id?: string; question?: string; prompt?: string; header?: string; blocksCompletion?: boolean }> {
+function askUserQuestionPrompts(input: unknown): Array<{
+  id?: string
+  question?: string
+  prompt?: string
+  header?: string
+  blocksCompletion?: boolean
+  [key: string]: unknown
+}> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return []
   const questions = (input as Record<string, unknown>).questions
   if (!Array.isArray(questions)) return []
@@ -1078,6 +1188,7 @@ function askUserQuestionPrompts(input: unknown): Array<{ id?: string; question?:
       ? record.blocksCompletion
       : undefined
     return id || question || prompt || header ? [{
+      ...record,
       id,
       question,
       prompt,
@@ -1149,6 +1260,26 @@ async function recordWorkflowAskUserQuestion(
 ): Promise<Extract<ServerMessage, { type: 'permission_request' }> | null> {
   if (request.toolName !== 'AskUserQuestion') return request
 
+  const researchDeliveryCardDenial = await getExpertResearchDeliveryCardDenial(sessionId, request.input)
+  if (researchDeliveryCardDenial) {
+    const delivered = conversationService.respondToPermission(
+      sessionId,
+      request.requestId,
+      false,
+      undefined,
+      undefined,
+      researchDeliveryCardDenial,
+    )
+    broadcastServerMessageToSession(sessionId, {
+      type: 'error',
+      code: 'EXPERT_RESEARCH_DELIVERY_PREMATURE',
+      message: delivered
+        ? researchDeliveryCardDenial
+        : researchDeliveryCardDenial + ' The CLI session is not running, so the card was not delivered.',
+    })
+    return null
+  }
+
   const stateRead = await workflowSessionStateService.readState(sessionId)
   if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return request
 
@@ -1203,6 +1334,85 @@ async function recordWorkflowAskUserQuestion(
     data: written.state,
   }) as ServerMessage)
   return requestWithWorkflowQuestionContext(request, workflowQuestionContextForRequest(written.state, request))
+}
+
+function expertResearchDeliveryQuestionReferences(input: unknown): {
+  hasDeliveryMetadata: boolean
+  questionIds: string[]
+} {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { hasDeliveryMetadata: false, questionIds: [] }
+  }
+
+  const record = input as Record<string, unknown>
+  const metadata = record.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
+    ? record.metadata as Record<string, unknown>
+    : undefined
+  const rootDelivery = metadata?.expert_research_delivery
+  const rootDeliveryRecord = rootDelivery && typeof rootDelivery === 'object' && !Array.isArray(rootDelivery)
+    ? rootDelivery as Record<string, unknown>
+    : undefined
+  const questionIds = new Set<string>()
+  if (typeof rootDeliveryRecord?.question_id === 'string' && rootDeliveryRecord.question_id.trim()) {
+    questionIds.add(rootDeliveryRecord.question_id.trim())
+  }
+
+  const questions = Array.isArray(record.questions) ? record.questions : []
+  for (const question of questions) {
+    if (!question || typeof question !== 'object' || Array.isArray(question)) continue
+    const questionRecord = question as Record<string, unknown>
+    if (typeof questionRecord.id === 'string' && questionRecord.id.trim()) {
+      questionIds.add(questionRecord.id.trim())
+    }
+    const questionMetadata = questionRecord.metadata
+    if (!questionMetadata || typeof questionMetadata !== 'object' || Array.isArray(questionMetadata)) continue
+    const questionId = (questionMetadata as Record<string, unknown>).question_id
+    if (typeof questionId === 'string' && questionId.trim()) questionIds.add(questionId.trim())
+  }
+
+  return {
+    hasDeliveryMetadata: Boolean(rootDeliveryRecord),
+    questionIds: [...questionIds],
+  }
+}
+
+async function getExpertResearchDeliveryCardDenial(
+  _sessionId: string,
+  input: unknown,
+): Promise<string | null> {
+  // Research-delivery cards must always reach the user. Incomplete browser
+  // audits (for example a Google CAPTCHA/VPN failure) are listed as unresolved
+  // evidence; the user's explicit accept/continue/pause choice is authoritative.
+  // Contract shape is still validated elsewhere before the answer is recorded.
+  void input
+  return null
+}
+
+async function staleWorkflowAskUserQuestionIssues(
+  sessionId: string,
+  input: { requestId?: string; toolUseId?: string; rationale: string },
+): Promise<boolean> {
+  const stateRead = await workflowSessionStateService.readState(sessionId)
+  if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return false
+
+  const candidate = markAskUserQuestionIssuesStale(stateRead.state, {
+    ...input,
+    now: new Date().toISOString(),
+  })
+  if (candidate === stateRead.state) return false
+
+  const written = await workflowSessionStateService.updateState(
+    sessionId,
+    () => candidate,
+    { expectedStateVersion: stateRead.state.stateVersion },
+  )
+  await appendWorkflowStateMetadata(sessionId, written.state, written.pointer)
+  sendToSession(sessionId, workflowNotificationForDesktop({
+    type: 'system_notification',
+    subtype: 'workflow_state',
+    data: written.state,
+  }) as ServerMessage)
+  return true
 }
 
 async function recordWorkflowAskUserQuestionAnswer(
@@ -1312,6 +1522,7 @@ async function reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId: strin
 
   const askInputsByToolUseId = new Map<string, Record<string, unknown>>()
   const resultsByToolUseId = new Map<string, string>()
+  const failedToolUseIds = new Set<string>()
   for (const message of messages) {
     if (!Array.isArray(message.content)) continue
     for (const block of message.content) {
@@ -1336,6 +1547,8 @@ async function reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId: strin
         const text = textFromToolResultContent(record.content)
         if (text.includes('User has answered your questions:')) {
           resultsByToolUseId.set(record.tool_use_id, text)
+        } else if (record.is_error === true) {
+          failedToolUseIds.add(record.tool_use_id)
         }
       }
     }
@@ -1343,6 +1556,14 @@ async function reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId: strin
 
   let candidate = state
   for (const issue of openIssues) {
+    if (issue.toolUseId && failedToolUseIds.has(issue.toolUseId)) {
+      candidate = markAskUserQuestionIssuesStale(candidate, {
+        toolUseId: issue.toolUseId,
+        now: new Date().toISOString(),
+        rationale: 'Recovered a persisted AskUserQuestion that ended with an error before an answer was delivered; the stale question no longer blocks the workflow.',
+      })
+      continue
+    }
     const input = askInputsByToolUseId.get(issue.toolUseId!)
     const resultText = resultsByToolUseId.get(issue.toolUseId!)
     if (!input || !resultText) continue
@@ -1482,11 +1703,11 @@ async function applyWorkflowTransitionMessage(
   }
   const workflowResumeInstruction = getWorkflowResumeInstructionAfterTransition(state, result.state, message)
     ?? getWorkflowResumeInstructionAfterCompletion(result.state, message)
-  if (message.action !== 'pause' && conversationService.hasSession(sessionId)) {
-    await enqueueRuntimeTransition(sessionId, () =>
-      restartSessionWithWorkflowPolicy(ws, sessionId, result.state),
-    )
-  } else if (workflowResumeInstruction) {
+  // A normal phase transition keeps the same workflow leader process alive.
+  // The next turn contains only the newly active phase contract; tool execution
+  // refreshes persisted Desktop state immediately before each real tool call.
+  // Restarting remains reserved for a workflow binding/model/permission change.
+  if (workflowResumeInstruction && !conversationService.hasSession(sessionId)) {
     await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
   }
   if (workflowResumeInstruction) {
@@ -1631,6 +1852,18 @@ function getWorkflowResumeInstructionAfterTransition(
     && !nextState.pendingRoute
   ) {
     return `Continue automatically with the workflow route target phase: ${phaseId}.`
+  }
+
+  if (
+    message.action === 'retry'
+    && previousState.runStatus === 'blocked'
+    && nextState.workflowStatus === 'running'
+    && nextState.runStatus === 'active'
+    && Boolean(phaseId)
+    && phaseId === previousState.activePhaseId
+    && !nextState.pendingConfirmation
+  ) {
+    return `Continue automatically with the retried current workflow phase: ${phaseId}. Repair the recorded blocker before attempting any next-phase completion.`
   }
 
   if (
@@ -2054,6 +2287,10 @@ type SessionStreamState = {
   pendingLocalCommand?: { name: string; args: string }
   usedAskUserQuestion: boolean
   assistantText: string
+  terminalRecoveryHandledForTurn: boolean
+  terminalTurnSequence: number
+  terminalFallbackTimer?: ReturnType<typeof setTimeout>
+  failedAskUserQuestionToolUseIds: Set<string>
   strictVisualIntroductionTurn: boolean
   wroteStrictVisualHtml: boolean
   strictVisualHtmlWriteCount: number
@@ -2088,10 +2325,13 @@ type SessionStreamState = {
   strictVisualRenderRecoveryAttempts: number
   strictVisualReviewRecoveryAttempts: number
   structuredInteractionRecoveryAttempts: number
+  expertResearchDeliveryRecoveryAttempts: number
+  /** A delivery card reached the model turn; a transient record failure is not prose-only completion. */
+  expertResearchDeliveryCardAttempted: boolean
   workflowProtocolToolRegistryError?: 'submit_phase_completion' | 'request_workflow_route'
   workflowProtocolBindingRecoveryAttempts: number
   workflowProtocolBindingRecoveryInFlight: boolean
-  workflowProtocolInputValidationError?: WorkflowProtocolToolName
+  workflowProtocolInputValidationError?: WorkflowRecoverableInputToolName
   workflowProtocolInputRecoveryAttempts: number
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input — defer to that. */
@@ -2115,6 +2355,10 @@ function getStreamState(sessionId: string): SessionStreamState {
       pendingLocalCommand: undefined,
       usedAskUserQuestion: false,
       assistantText: '',
+      terminalRecoveryHandledForTurn: false,
+      terminalTurnSequence: 0,
+      terminalFallbackTimer: undefined,
+      failedAskUserQuestionToolUseIds: new Set(),
       strictVisualIntroductionTurn: false,
       wroteStrictVisualHtml: false,
       strictVisualHtmlWriteCount: 0,
@@ -2142,6 +2386,8 @@ function getStreamState(sessionId: string): SessionStreamState {
       strictVisualRenderRecoveryAttempts: 0,
       strictVisualReviewRecoveryAttempts: 0,
       structuredInteractionRecoveryAttempts: 0,
+      expertResearchDeliveryRecoveryAttempts: 0,
+      expertResearchDeliveryCardAttempted: false,
       workflowProtocolToolRegistryError: undefined,
       workflowProtocolBindingRecoveryAttempts: 0,
       workflowProtocolBindingRecoveryInFlight: false,
@@ -2286,6 +2532,8 @@ type WorkflowTerminalRecovery = {
   kind: 'ask-user-question' | 'continue-workflow'
 }
 
+type ExpertResearchDeliveryTerminalRecoveryResult = ExpertResearchDeliveryTerminalRecovery
+
 type StrictVisualTerminalRecovery = {
   kind: 'ask-user-question' | 'design-direction' | 'visual-reference-research' | 'render-qa' | 'visual-review'
   expertId: string
@@ -2293,8 +2541,13 @@ type StrictVisualTerminalRecovery = {
 }
 
 function beginStreamedAssistantTurn(streamState: SessionStreamState): void {
+  if (streamState.terminalFallbackTimer) clearTimeout(streamState.terminalFallbackTimer)
+  streamState.terminalFallbackTimer = undefined
+  streamState.terminalRecoveryHandledForTurn = false
+  streamState.terminalTurnSequence += 1
   streamState.usedAskUserQuestion = false
   streamState.assistantText = ''
+  streamState.failedAskUserQuestionToolUseIds.clear()
   streamState.workflowProtocolToolRegistryError = undefined
 }
 
@@ -2326,8 +2579,8 @@ function inputRequestsStrictVisualInspirationSources(inputText: string): boolean
     || /\binspiration_sources\b/.test(inputText)
 }
 
-function browserResearchRequestsScreenshot(inputText: string): boolean {
-  return /(?:"|')includeScreenshot(?:"|')\s*:\s*true/i.test(inputText)
+function playwrightRequestsScreenshot(inputText: string): boolean {
+  return /(?:"|')include_screenshot(?:"|')\s*:\s*true/i.test(inputText)
     || /(?:"|')include_screenshot(?:"|')\s*:\s*true/i.test(inputText)
 }
 
@@ -2336,7 +2589,7 @@ function normalizeStrictVisualImagePath(value: string): string {
 }
 
 /**
- * BrowserResearch screenshots are often too large for the model image reader.
+ * Playwright screenshots are often too large for the model image reader.
  * A same-directory PNG derived from the returned name (for example
  * reference-scaled.png) is safe evidence for that source; arbitrary PNGs are not.
  */
@@ -2411,7 +2664,7 @@ function containsStrictVisualUnsupportedPriceAnalogy(inputText: string): boolean
   return hasPrice && hasComparison && (hasNamedLifestyleReference || hasFoodOrRideUnit)
 }
 
-function localScreenshotPathsFromBrowserResearchResult(content: unknown): string[] {
+function localScreenshotPathsFromPlaywrightResult(content: unknown): string[] {
   const text = textFromToolResultContent(content)
   const matches = [...text.matchAll(/Local screenshot path:\s*([^\r\n]+)/gi)]
   return [...new Set(matches
@@ -2441,7 +2694,7 @@ export function strictVisualPublicReferenceUrls(content: string): string[] {
   return urls
 }
 
-function browserResearchTargetUrl(input: unknown, inputText: string): string | null {
+function playwrightTargetUrl(input: unknown, inputText: string): string | null {
   const direct = input && typeof input === 'object' && typeof (input as { url?: unknown }).url === 'string'
     ? (input as { url: string }).url
     : null
@@ -2498,6 +2751,12 @@ function recordAssistantToolUse(
   toolUseId?: unknown,
 ): void {
   if (toolName === 'AskUserQuestion') streamState.usedAskUserQuestion = true
+  if (toolName === 'AskUserQuestion') {
+    const serialized = typeof input === 'string' ? input : JSON.stringify(input ?? '')
+    if (/expert_research_delivery|research-delivery:|证据缺口.{0,40}(?:交付|报告)|accept_current_scope/i.test(serialized)) {
+      streamState.expertResearchDeliveryCardAttempted = true
+    }
+  }
   if (WORKFLOW_PROTOCOL_TOOL_NAMES.has(toolName as WorkflowProtocolToolName)) streamState.workflowProtocolInputValidationError = undefined
 
   let inputText = ''
@@ -2509,18 +2768,18 @@ function recordAssistantToolUse(
   if (toolName === 'AskUserQuestion' && typeof toolUseId === 'string' && inputRequestsStrictVisualInspirationSources(inputText)) {
     streamState.strictVisualInspirationQuestionToolUseIds.add(toolUseId)
   }
-  if (toolName === 'BrowserResearch') {
-    // Any BrowserResearch use in this strict UIUX workflow is a claimed public
+  if (toolName === 'Playwright') {
+    // Any Playwright use in this strict UIUX workflow is a claimed public
     // visual reference attempt. It must therefore finish as screenshot-backed
     // visual research rather than a text-only detour, including user-supplied
     // reference URLs that bypass the built-in choice card.
     streamState.strictVisualReferenceResearchRequired = true
-    const referenceTargetUrl = browserResearchTargetUrl(input, inputText)
+    const referenceTargetUrl = playwrightTargetUrl(input, inputText)
     // content_block_start can arrive before the SDK has streamed the complete
-    // BrowserResearch input. Do not turn that partial/empty JSON into a false
+    // Playwright input. Do not turn that partial/empty JSON into a false
     // “third-site” violation; evaluate only a complete URL or search request.
     const hasCompleteReferenceTarget = referenceTargetUrl !== null
-      || /(?:"|')search_query(?:"|')\s*:/i.test(inputText)
+      || /(?:"|')显式浏览器动作(?:"|')\s*:/i.test(inputText)
     if (streamState.strictVisualLockedReferenceUrls.length >= 2 && hasCompleteReferenceTarget) {
       if (!referenceTargetUrl || !streamState.strictVisualLockedReferenceUrls.includes(referenceTargetUrl)) {
         // The tool has already been requested by the model, so this is a
@@ -2531,14 +2790,14 @@ function recordAssistantToolUse(
         streamState.strictVisualLockedReferenceAttemptUrls.add(referenceTargetUrl)
       }
     }
-    if (typeof toolUseId === 'string' && browserResearchRequestsScreenshot(inputText)) {
+    if (typeof toolUseId === 'string' && playwrightRequestsScreenshot(inputText)) {
       streamState.strictVisualReferenceResearchToolUseIds.add(toolUseId)
     }
   }
   if (toolName === 'Read' && typeof toolUseId === 'string') {
     for (const screenshotPath of streamState.strictVisualReferenceScreenshotPathsByToolUseId.values()) {
       if (readTargetsStrictVisualReferenceScreenshot(inputText, screenshotPath)) {
-        // Preserve the original BrowserResearch screenshot as provenance even if
+        // Preserve the original Playwright screenshot as provenance even if
         // the model reads its safe resized derivative.
         streamState.strictVisualReferenceReadPathsByToolUseId.set(toolUseId, screenshotPath)
         break
@@ -2587,6 +2846,14 @@ function toolResultContainsImage(content: unknown): boolean {
   return toolResultContainsImage(block.content)
 }
 
+function recordFailedAskUserQuestionToolResult(
+  streamState: SessionStreamState,
+  toolResult: { tool_use_id?: unknown; is_error?: unknown },
+): void {
+  if (toolResult.is_error !== true || typeof toolResult.tool_use_id !== 'string') return
+  streamState.failedAskUserQuestionToolUseIds.add(toolResult.tool_use_id)
+}
+
 function recordStrictVisualQaToolResult(
   streamState: SessionStreamState,
   toolResult: { tool_use_id?: unknown; is_error?: unknown; content?: unknown },
@@ -2598,7 +2865,7 @@ function recordStrictVisualQaToolResult(
     if (requiresResearch !== null) streamState.strictVisualReferenceResearchRequired = requiresResearch
   }
   if (streamState.strictVisualReferenceResearchToolUseIds.has(toolResult.tool_use_id)) {
-    for (const screenshotPath of localScreenshotPathsFromBrowserResearchResult(toolResult.content)) {
+    for (const screenshotPath of localScreenshotPathsFromPlaywrightResult(toolResult.content)) {
       streamState.strictVisualReferenceScreenshotPathsByToolUseId.set(toolResult.tool_use_id, screenshotPath)
     }
   }
@@ -2656,6 +2923,8 @@ const WORKFLOW_PROTOCOL_TOOL_NAMES = new Set([
 ] as const)
 
 type WorkflowProtocolToolName = typeof WORKFLOW_PROTOCOL_TOOL_NAMES extends Set<infer T> ? T : never
+const WORKFLOW_AGENT_TOOL_NAME = 'Agent' as const
+type WorkflowRecoverableInputToolName = WorkflowProtocolToolName | typeof WORKFLOW_AGENT_TOOL_NAME
 
 function workflowProtocolToolNameFromError(value: unknown): WorkflowProtocolToolName | null {
   const text = typeof value === 'string' ? value : ''
@@ -2664,11 +2933,20 @@ function workflowProtocolToolNameFromError(value: unknown): WorkflowProtocolTool
   return match[1] as WorkflowProtocolToolName
 }
 
-function workflowProtocolInputValidationToolNameFromError(value: unknown): WorkflowProtocolToolName | null {
+function workflowProtocolInputValidationToolNameFromError(value: unknown): WorkflowRecoverableInputToolName | null {
   const text = typeof value === 'string' ? value : ''
   const match = /InputValidationError:\s*(submit_phase_completion|request_workflow_route)\b/i.exec(text)
-  if (!match || !WORKFLOW_PROTOCOL_TOOL_NAMES.has(match[1] as WorkflowProtocolToolName)) return null
-  return match[1] as WorkflowProtocolToolName
+  if (match && WORKFLOW_PROTOCOL_TOOL_NAMES.has(match[1] as WorkflowProtocolToolName)) {
+    return match[1] as WorkflowProtocolToolName
+  }
+
+  // An empty Agent({}) call is a model payload error, not an executed worker
+  // failure. Recover once only when the normal formatter confirms that the
+  // required description and/or prompt fields were absent.
+  const missingAgentLaunchField = /The required parameter `(description|prompt)` is missing/i.test(text)
+  return /InputValidationError:\s*Agent\b/i.test(text) && missingAgentLaunchField
+    ? WORKFLOW_AGENT_TOOL_NAME
+    : null
 }
 
 function recordWorkflowProtocolToolRegistryError(
@@ -2744,12 +3022,17 @@ function finishWorkflowInteractionTurn(
   resetInputValidationRecoveryAttempts = true,
 ): void {
   const streamState = getStreamState(sessionId)
+  if (streamState.terminalFallbackTimer) clearTimeout(streamState.terminalFallbackTimer)
+  streamState.terminalFallbackTimer = undefined
   streamState.usedAskUserQuestion = false
   streamState.assistantText = ''
+  streamState.failedAskUserQuestionToolUseIds.clear()
   streamState.strictVisualIntroductionTurn = false
   streamState.workflowProtocolToolRegistryError = undefined
   resetStrictVisualQaEvidence(streamState)
   if (resetRecoveryAttempts) streamState.structuredInteractionRecoveryAttempts = 0
+  if (resetRecoveryAttempts) streamState.expertResearchDeliveryRecoveryAttempts = 0
+  streamState.expertResearchDeliveryCardAttempted = false
   if (resetBindingRecoveryAttempts) streamState.workflowProtocolBindingRecoveryAttempts = 0
   if (resetInputValidationRecoveryAttempts) {
     streamState.workflowProtocolInputValidationError = undefined
@@ -2875,7 +3158,7 @@ function buildStrictVisualTerminalRecoveryInstruction(
       '<strict-visual-reference-research-recovery>',
       'The user selected public visual-reference research, but this strict UIUX turn has not produced two distinct web screenshots that were actually read as images.',
       'Before any design direction, HTML, or final delivery, lock exactly two concrete public URLs: one structure reference for the current page type and one visual-language reference for the desired density, hierarchy, or material.',
-      'For each URL call BrowserResearch with includeScreenshot: true. From each successful result, immediately Read the returned Local screenshot path. If the PNG is too large for Read, use Bash once to create a safe -scaled.png or -review.jpg derivative in that same screenshot directory, then Read it; do not move it into the session workDir. Browser text, candidate URLs, summaries, access failures, or screenshots that were not Read do not count as visual research.',
+      'For each URL call Playwright with include_screenshot: true. From each successful result, immediately Read the returned Local screenshot path. If the PNG is too large for Read, use Bash once to create a safe -scaled.png or -review.jpg derivative in that same screenshot directory, then Read it; do not move it into the session workDir. Browser text, candidate URLs, summaries, access failures, or screenshots that were not Read do not count as visual research.',
       'If the user explicitly supplied a closed pair of concrete URLs or said not to use a third site, that pair is the complete research scope: if either site is blocked or times out, record it as unavailable, do not WebSearch or substitute another URL, and continue only from the supplied screenshot plus the successful locked evidence. Never claim that an unavailable URL was visually read. If the user did not lock a closed pair, record a blocked site and replace it with a different concrete public URL; do not retry the same normalized URL.',
       'After both PNGs are read, write <visual-reference-receipt> with both URLs, visible observations, original application, and one thing not copied from each. Apply package-local visual-reference-lock; do not write HTML or end early.',
       'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
@@ -2902,7 +3185,7 @@ function buildStrictVisualTerminalRecoveryInstruction(
       '<strict-visual-render-qa-recovery>',
       'An intermediate HTML artifact was written, but this turn did not run a detected local visual-QA renderer command.',
       'Immediately call Bash to render that existing HTML into PNG screenshots at 1440x1000, 1024x900, and 390x844.',
-      'Use the installed browser executable from $env:CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE. Do not use BrowserResearch, do not write another HTML file, do not ask the user for a path, and do not end this turn.',
+      'Use the installed browser executable from $env:CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE. Do not use Playwright, do not write another HTML file, do not ask the user for a path, and do not end this turn.',
       'The Bash command must create PNG files in the active session workDir. After the command succeeds, inspect the screenshots before claiming delivery.',
       'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
       '</strict-visual-render-qa-recovery>',
@@ -2971,6 +3254,133 @@ function hasPendingAskUserQuestion(sessionId: string): boolean {
   )
 }
 
+function persistedWorkflowQuestionInput(issue: WorkflowPhaseIssue): Record<string, unknown> | null {
+  const input = issue.questionInput
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const questions = input.questions
+  return Array.isArray(questions) && questions.length > 0 ? { ...input } : null
+}
+
+async function hasPersistedOpenWorkflowQuestionRequest(sessionId: string, requestId: string): Promise<boolean> {
+  const stateRead = await workflowSessionStateService.readState(sessionId)
+  if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return false
+  const phaseId = stateRead.state.activePhaseId
+  const issues = phaseId ? stateRead.state.runtimeContract?.phaseStates[phaseId]?.issues ?? [] : []
+  return issues.some((issue) => (
+    issue.source === 'ask-user-question'
+    && issue.status === 'open'
+    && issue.blocksCompletion
+    && issue.questionRequestId === requestId
+    && persistedWorkflowQuestionInput(issue) !== null
+  ))
+}
+
+async function replayPersistedWorkflowAskUserQuestion(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+): Promise<void> {
+  const stateRead = await workflowSessionStateService.readState(sessionId)
+  if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return
+
+  const phaseId = stateRead.state.activePhaseId
+  const phaseState = phaseId ? stateRead.state.runtimeContract?.phaseStates[phaseId] : null
+  if (!phaseState) return
+
+  const inMemoryRequestIds = new Set(conversationService.getPendingPermissionRequests(sessionId)
+    .filter((request) => request.toolName === 'AskUserQuestion')
+    .map((request) => request.requestId))
+  const openIssues = phaseState.issues.filter((issue) => (
+    issue.source === 'ask-user-question'
+    && issue.status === 'open'
+    && issue.blocksCompletion
+    && typeof issue.questionRequestId === 'string'
+  ))
+  const activeInMemoryRequestId = openIssues.find((issue) => (
+    inMemoryRequestIds.has(issue.questionRequestId!)
+  ))?.questionRequestId ?? null
+  const restorableIssue = activeInMemoryRequestId
+    ? null
+    : openIssues.find((issue) => persistedWorkflowQuestionInput(issue) !== null) ?? null
+  const activeRequestId = activeInMemoryRequestId ?? restorableIssue?.questionRequestId ?? null
+  let candidate = stateRead.state
+  const staleRequestIds = new Set<string>()
+
+  for (const issue of openIssues) {
+    const requestId = issue.questionRequestId!
+    // Several phase issues can belong to one AskUserQuestion call. Preserve all
+    // entries for the single active request and stale only genuinely separate
+    // request ids so a reconnect can never surface two blocking cards.
+    if (requestId === activeRequestId || staleRequestIds.has(requestId)) continue
+    const input = persistedWorkflowQuestionInput(issue)
+    candidate = markAskUserQuestionIssuesStale(candidate, {
+      requestId,
+      toolUseId: issue.toolUseId,
+      now: new Date().toISOString(),
+      rationale: input
+        ? 'A duplicate persisted blocking question was discarded; only one workflow question card may remain active after reconnect.'
+        : 'This legacy workflow question cannot be restored because its card payload was not persisted. It was marked stale so the workflow can ask one fresh necessary question instead of waiting forever.',
+    })
+    staleRequestIds.add(requestId)
+  }
+
+  if (candidate !== stateRead.state) {
+    const written = await workflowSessionStateService.updateState(
+      sessionId,
+      () => candidate,
+      { expectedStateVersion: stateRead.state.stateVersion },
+    )
+    candidate = written.state
+    await appendWorkflowStateMetadata(sessionId, written.state, written.pointer)
+    sendToSession(sessionId, workflowNotificationForDesktop({
+      type: 'system_notification',
+      subtype: 'workflow_state',
+      data: written.state,
+    }) as ServerMessage)
+  }
+
+  // A live in-memory request is already replayed by the normal permission
+  // channel. Never emit a second persisted copy of it.
+  if (activeInMemoryRequestId || !restorableIssue) return
+  const input = persistedWorkflowQuestionInput(restorableIssue)
+  if (!input || !restorableIssue.questionRequestId) return
+  const rawRequest: Extract<ServerMessage, { type: 'permission_request' }> = {
+    type: 'permission_request',
+    requestId: restorableIssue.questionRequestId,
+    toolName: 'AskUserQuestion',
+    ...(restorableIssue.toolUseId ? { toolUseId: restorableIssue.toolUseId } : {}),
+    input,
+    ...(restorableIssue.questionDescription ? { description: restorableIssue.questionDescription } : {}),
+  }
+  const request = requestWithWorkflowQuestionContext(
+    rawRequest,
+    workflowQuestionContextForRequest(candidate, rawRequest),
+  )
+  sendMessage(ws, request)
+}
+
+function hasPersistedOpenWorkflowQuestion(state: WorkflowSessionState): boolean {
+  const phaseId = state.activePhaseId
+  return Boolean(phaseId && state.runtimeContract?.phaseStates[phaseId]?.issues.some((issue) => (
+    issue.source === 'ask-user-question'
+    && issue.status === 'open'
+    && issue.blocksCompletion
+  )))
+}
+
+async function staleFailedWorkflowAskUserQuestions(
+  sessionId: string,
+  failedToolUseIds: Set<string>,
+): Promise<boolean> {
+  let changed = false
+  for (const toolUseId of failedToolUseIds) {
+    changed = (await staleWorkflowAskUserQuestionIssues(sessionId, {
+      toolUseId,
+      rationale: 'The AskUserQuestion tool request ended with an error before a user answer was delivered; the stale question must not block the workflow.',
+    })) || changed
+  }
+  return changed
+}
+
 function buildWorkflowTerminalRecoveryInstruction(
   recovery: WorkflowTerminalRecovery,
   assistantText: string,
@@ -2982,13 +3392,13 @@ function buildWorkflowTerminalRecoveryInstruction(
           '你刚才用普通文本向用户提出了需要选择、确认或决定的问题，但当前活跃工作流禁止在自由输入框等待回答。',
           '现在必须立即调用 AskUserQuestion；不得再输出普通文本问题，也不得结束本轮。',
           '调用必须包含顶层 questions 数组、稳定的 question id 和 option id，以及 2 至 4 个有界选项。',
-          '选项必须忠实表达你刚才提出的决定；若一个选项会触发 workflow route，使用结构化 action/targetPhaseId，而不是只写在标签文本中。',
+          '选项只能使用 AskUserQuestion 支持的字段：id、label、description、preview。当前阶段完成、非线性跳转和恢复必须分别使用对应的工作流工具，不能把路由字段塞进业务选项。',
         ]
       : [
           'Your previous response asked the user for a decision in prose, but an active workflow must not wait at the free-form composer.',
           'Immediately call AskUserQuestion. Do not ask another prose question and do not end this turn.',
           'The call must include a top-level questions array, stable question and option ids, and 2-4 bounded choices.',
-          'The choices must faithfully represent the decision you just asked. For workflow routing, use structured action/targetPhaseId rather than only label text.',
+          'Choices may use only AskUserQuestion-supported fields: id, label, description, and preview. Keep phase completion, non-linear routes, and recovery in their dedicated workflow tools; never put route fields into a business choice.',
         ]
     : isChinese
       ? [
@@ -3027,6 +3437,11 @@ async function workflowTerminalRecoveryForResult(
   const state = await loadWorkflowStateForWebSocket(sessionId)
   if (!state || state.mode !== 'workflow' || !state.activePhaseId) return null
   if (state.workflowStatus !== 'running' || state.pendingConfirmation || state.pendingRoute) return null
+  // A persisted blocking question without a live permission request can be a
+  // reconnect or aborted-tool state. Do not force the model into a second
+  // AskUserQuestion call; reconciliation either restores its answer or marks
+  // the failed request stale before the user retries the phase.
+  if (hasPersistedOpenWorkflowQuestion(state)) return null
   return {
     state,
     kind: assistantTextRequestsUserDecision(turn.assistantText)
@@ -3035,6 +3450,99 @@ async function workflowTerminalRecoveryForResult(
   }
 }
 
+const WORKFLOW_TERMINAL_RESULT_FALLBACK_MS = 300
+// One reminder can be missed by a live model turn. Allow one additional
+// bounded recovery before surfacing a retryable protocol error to the user.
+const WORKFLOW_TERMINAL_RECOVERY_ATTEMPTS = 2
+
+function assistantEndedTurnWithoutResult(cliMsg: any): boolean {
+  if (cliMsg?.type !== 'assistant' || cliMsg?.is_error || cliMsg?.error) return false
+  const stopReason = cliMsg?.message?.stop_reason ?? cliMsg?.stop_reason
+  return stopReason === 'end_turn'
+}
+
+function clearWorkflowTerminalFallback(streamState: SessionStreamState): void {
+  if (streamState.terminalFallbackTimer) clearTimeout(streamState.terminalFallbackTimer)
+  streamState.terminalFallbackTimer = undefined
+}
+
+function scheduleWorkflowTerminalFallback(sessionId: string, cliMsg: any): void {
+  if (!assistantEndedTurnWithoutResult(cliMsg)) return
+  const streamState = getStreamState(sessionId)
+  clearWorkflowTerminalFallback(streamState)
+  const turnSequence = streamState.terminalTurnSequence
+  streamState.terminalFallbackTimer = setTimeout(() => {
+    const latest = getStreamState(sessionId)
+    if (
+      latest.terminalTurnSequence !== turnSequence
+      || latest.terminalRecoveryHandledForTurn
+    ) return
+    latest.terminalFallbackTimer = undefined
+    void finalizeClientResult(sessionId, {
+      type: 'result',
+      is_error: false,
+      usage: {},
+      __workflowTerminalFallbackTurn: turnSequence,
+    })
+  }, WORKFLOW_TERMINAL_RESULT_FALLBACK_MS)
+}
+
+function buildExpertResearchDeliveryTerminalRecoveryInstruction(
+  recovery: ExpertResearchDeliveryTerminalRecoveryResult,
+  assistantText: string,
+): string {
+  const expectedChoiceIds = [
+    recovery.policy.acceptedChoiceId,
+    ...recovery.policy.continueChoiceIds,
+    ...recovery.policy.pauseChoiceIds,
+  ]
+  const auditSummary = recovery.completion.complete
+    ? '当前浏览审计已达到该专家包声明的最小覆盖门槛。'
+    : `当前浏览审计仍有以下缺口：${recovery.completion.missing.join('；')}`
+
+  // Incomplete audits (Google CAPTCHA/VPN, partial subagents) are disclosed on
+  // the card as unresolved evidence. The user may still accept current scope.
+  return [
+    '<expert-research-delivery-terminal-recovery>',
+    '这是 Expert Runtime 的内部续办指令，不能作为普通答复展示给用户。',
+    '本轮已经有研究子代理回传可审计的浏览记录，但你刚才以普通阶段总结结束，尚未完成该专家声明的研究交付流程。',
+    auditSummary,
+    '现在必须继续当前专家任务，不能再用“初步取证完成”“证据不足”或“还可以继续做”作为本轮结束。',
+    '先复用已有审计、已打开来源和证据缺口；若仍有高价值且可公开访问的证据可补，可做有限补证。',
+    'Google/百度等入口若因验证码、VPN 或访问限制无法取得完整 SERP，记为该入口的证据缺口即可，不要反复卡在同一入口。',
+    `若补证已无实质价值、被访问限制阻断，或需要用户决定是否接受当前证据范围，必须立即调用一次 AskUserQuestion 的正式研究交付卡。唯一问题 ID 必须为 ${recovery.policy.questionId}。`,
+    `这张卡的选项 ID 必须且只能使用：${expectedChoiceIds.join('、')}；必须包含 ${recovery.policy.acceptedChoiceId}。`,
+    '交付卡必须携带该专家包要求的 expert_research_delivery metadata，并列出当前真实未解决的证据缺口（含未取得的搜索入口）。不要创建别的 delivery 问题 ID。',
+    `用户的最终选择优先：若用户选择 ${recovery.policy.acceptedChoiceId}，即使仍有审计/搜索入口缺口，也视为已确认交付范围，随后可询问输出路径并执行 expert-template-fill --data-stdin。`,
+    '不要用 Write、Edit、手写 HTML 或普通文本绕过这个交付流程。',
+    assistantText ? `刚才的普通阶段总结：${assistantText}` : '',
+    '</expert-research-delivery-terminal-recovery>',
+  ].filter(Boolean).join('\n')
+}
+
+function sendExpertResearchDeliveryTerminalProtocolError(sessionId: string): void {
+  sendToSession(sessionId, {
+    type: 'error',
+    code: 'EXPERT_RESEARCH_DELIVERY_PROTOCOL_REQUIRED',
+    message: '该研究专家已两次在已有浏览证据后以普通文本结束，但没有继续补证、发出交付范围选择卡或生成报告。本次没有把普通总结当作正式完成；请重试当前专家任务。',
+    retryable: true,
+  })
+}
+
+async function expertResearchDeliveryTerminalRecoveryForResult(
+  sessionId: string,
+  turn: WorkflowInteractionTurn,
+): Promise<ExpertResearchDeliveryTerminalRecoveryResult | null> {
+  const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
+  const expert = hasActiveExpertRuntime(transcriptExpert)
+    ? transcriptExpert
+    : await expertRuntimeSessionStore.get(sessionId)
+  return resolveExpertResearchDeliveryTerminalRecovery({
+    expert,
+    usedAskUserQuestion: turn.usedAskUserQuestion,
+    hasPendingAskUserQuestion: hasPendingAskUserQuestion(sessionId),
+  })
+}
 function isDuplicateOfLastApiError(
   lastApiError: SessionStreamState['lastApiError'],
   resultMessage: string,
@@ -3216,6 +3724,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
         for (const block of cliMsg.message.content) {
           if (block.type === 'tool_result') {
             recordWorkflowProtocolToolRegistryError(streamState, block)
+            recordFailedAskUserQuestionToolResult(streamState, block)
             recordStrictVisualQaToolResult(streamState, block)
             const rememberedParentToolUseId = consumeToolParentUseId(streamState, block.tool_use_id)
             const parentToolUseId =
@@ -4049,10 +4558,20 @@ function sendWorkflowProtocolInputValidationError(
 
 function buildWorkflowProtocolInputValidationRecoveryInstruction(
   state: WorkflowSessionState,
-  toolName: WorkflowProtocolToolName,
+  toolName: WorkflowRecoverableInputToolName,
 ): string {
   const isChinese = state.workflowLanguage === 'zh'
-  const contract = toolName === 'submit_phase_completion'
+  const contract = toolName === WORKFLOW_AGENT_TOOL_NAME
+    ? (isChinese
+      ? [
+          '立即重新调用 Agent，并提供非空 description 和非空 prompt。',
+          '若这是工作流委派，使用 subagent_type=general-purpose，并在顶层提供 workflow_role（coder、reviewer 或 qa）；不要把 role 只写在 prompt 里。',
+        ]
+      : [
+          'Immediately call Agent again with a non-empty description and a non-empty prompt.',
+          'For workflow delegation, use subagent_type=general-purpose and a top-level workflow_role (coder, reviewer, or qa); do not place the role only in prompt text.',
+        ])
+    : toolName === 'submit_phase_completion'
     ? (isChinese
       ? [
           '立即重新调用 submit_phase_completion，并提供：status、handoff（对象）、rationale（非空字符串）和 evidence（数组）。',
@@ -4107,7 +4626,8 @@ async function recoverWorkflowProtocolInputValidation(
     !state
     || state.mode !== 'workflow'
     || state.workflowStatus !== 'running'
-    || !getWorkflowScopedToolNames(state).includes(toolName)
+    || (toolName !== WORKFLOW_AGENT_TOOL_NAME && !getWorkflowScopedToolNames(state).includes(toolName))
+    || (toolName === WORKFLOW_AGENT_TOOL_NAME && getWorkflowPhaseDisallowedTools(state).includes(WORKFLOW_AGENT_TOOL_NAME))
   ) {
     return false
   }
@@ -4154,8 +4674,32 @@ async function recoverWorkflowProtocolInputValidation(
 }
 
 async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
+  const streamState = getStreamState(sessionId)
+  const fallbackTurn = cliMsg?.__workflowTerminalFallbackTurn
+  if (
+    typeof fallbackTurn === 'number'
+    && fallbackTurn !== streamState.terminalTurnSequence
+  ) return
+  if (streamState.terminalRecoveryHandledForTurn) {
+    if (typeof fallbackTurn !== 'number') broadcastCliMessagesToSession(sessionId, cliMsg)
+    return
+  }
+  streamState.terminalRecoveryHandledForTurn = true
+  clearWorkflowTerminalFallback(streamState)
   if (await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
   if (await recoverWorkflowProtocolInputValidation(sessionId, cliMsg)) return
+
+  const questionDeliveryFailed = await staleFailedWorkflowAskUserQuestions(
+    sessionId,
+    streamState.failedAskUserQuestionToolUseIds,
+  )
+  if (questionDeliveryFailed) {
+    // The failing AskUserQuestion tool result is already visible to the user.
+    // Finish cleanly after unblocking state; do not inject a second model turn.
+    broadcastCliMessagesToSession(sessionId, cliMsg)
+    finishWorkflowInteractionTurn(sessionId)
+    return
+  }
 
   const turn = workflowInteractionTurnForResult(sessionId)
   const workflowRecovery = !cliMsg.is_error
@@ -4164,6 +4708,47 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   const strictVisualRecovery = !cliMsg.is_error && !workflowRecovery
     ? await strictVisualTerminalRecoveryForResult(sessionId, turn)
     : null
+  const expertResearchDeliveryRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery
+    ? await expertResearchDeliveryTerminalRecoveryForResult(sessionId, turn)
+    : null
+
+  if (expertResearchDeliveryRecovery) {
+    // A real delivery card can fail after the user selects it if the local
+    // Desktop HTTP connection resets. That is not a prose-only model exit, so
+    // give the contract recovery a fresh attempt instead of showing the final
+    // “twice ended in prose” error.
+    if (streamState.expertResearchDeliveryCardAttempted) {
+      streamState.expertResearchDeliveryCardAttempted = false
+      streamState.expertResearchDeliveryRecoveryAttempts = 0
+    }
+    if (streamState.expertResearchDeliveryRecoveryAttempts >= 1) {
+      sendExpertResearchDeliveryTerminalProtocolError(sessionId)
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    if (!conversationService.hasSession(sessionId)) {
+      sendExpertResearchDeliveryTerminalProtocolError(sessionId)
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    streamState.expertResearchDeliveryRecoveryAttempts += 1
+    sendToSession(sessionId, {
+      type: 'status',
+      state: 'thinking',
+      verb: '正在继续补证或准备交付确认',
+    })
+    const sent = conversationService.sendMessage(
+      sessionId,
+      buildExpertResearchDeliveryTerminalRecoveryInstruction(expertResearchDeliveryRecovery, turn.assistantText),
+    )
+    if (sent) return
+
+    sendExpertResearchDeliveryTerminalProtocolError(sessionId)
+    finishWorkflowInteractionTurn(sessionId)
+    return
+  }
 
   if (strictVisualRecovery) {
     const strictVisualRecoveryAttempts = strictVisualRecovery.kind === 'visual-reference-research'
@@ -4236,7 +4821,7 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
 
   if (workflowRecovery) {
     const recovery = workflowRecovery
-    if (turn.recoveryAttempts >= 1) {
+    if (turn.recoveryAttempts >= WORKFLOW_TERMINAL_RECOVERY_ATTEMPTS) {
       sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED')
       finishWorkflowInteractionTurn(sessionId)
       return
@@ -4331,6 +4916,7 @@ function createClientBroadcastCallback(
     }
 
     broadcastCliMessagesToSession(sessionId, cliMsg)
+    if (cliMsg.type === 'assistant') scheduleWorkflowTerminalFallback(sessionId, cliMsg)
   }
 }
 
@@ -4366,6 +4952,10 @@ type RuntimeSettings = {
   workflowSystemPrompt?: string
   expertSystemPrompt?: string
   expertSessionId?: string
+  expertSharedPlaywrightSessionId?: string
+  expertPlaywrightCdpEndpoint?: string
+  expertManagedPlaywrightPresentation?: 'assistable_background' | 'always_visible'
+  expertForceVisiblePlaywright?: boolean
 }
 
 async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> {
@@ -4409,7 +4999,6 @@ async function getRuntimeSettingsWithWorkflowPolicy(
 ): Promise<RuntimeSettings> {
   const settings = runtimeSettings ?? await getRuntimeSettings(sessionId)
   const workflowState = state ?? await loadWorkflowStateForWebSocket(sessionId)
-  const workflowDisallowedTools = getWorkflowPhaseDisallowedTools(workflowState)
   const workflowIsActive = getWorkflowScopedToolNames(workflowState).length > 0
 
   // Workflow and Expert Mode have independent runtime contracts. A persisted
@@ -4434,14 +5023,53 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const expertSystemPrompt = workflowIsActive
     ? null
     : buildExpertRuntimeTurnInstruction(expert, { modelId: settings.model })
-  const expertSessionId = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+  const expertTemplateFillWrite = !workflowIsActive && hasActiveExpertRuntime(expert) &&
     expert.runtimeBinding.outputMode === 'template-fill'
+    ? true
+    : undefined
+  const expertResearchDeliveryPolicy = !workflowIsActive && hasActiveExpertRuntime(expert)
+    ? expert.runtimeBinding.researchDeliveryPolicy
+    : undefined
+  const expertBrowserHumanVerificationHandoff = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.runtimeBinding.researchBrowserPolicy?.desktopHumanVerificationHandoff === true
+    ? true
+    : undefined
+  const expertBrowserVerificationFallbackSearchEngines = !workflowIsActive && hasActiveExpertRuntime(expert)
+    ? expert.runtimeBinding.researchBrowserPolicy?.verificationFallbackSearchEngines
+    : undefined
+  const expertForbidSubagentAskUserQuestion = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.runtimeBinding.researchBrowserPolicy?.forbidSubagentAskUserQuestion === true
+    ? true
+    : undefined
+  const expertClosePlaywrightWhenAgentDone = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.runtimeBinding.researchBrowserPolicy?.closePlaywrightWhenAgentDone === true
+    ? true
+    : undefined
+  const expertSessionId = expertTemplateFillWrite || expertBrowserHumanVerificationHandoff || expertResearchDeliveryPolicy
     ? sessionId
     : undefined
-  const disallowedTools = [...new Set([
-    ...workflowDisallowedTools,
-    ...expertToolPolicy.disallowedTools,
-  ])]
+  const expertSharedPlaywrightSessionId = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.runtimeBinding.researchBrowserPolicy?.sharePlaywrightSessionAcrossAgents === true
+    ? sessionId
+    : undefined
+  const expertPlaywrightCdpEndpoint = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.researchBrowserConnection?.kind === 'cdp'
+    ? expert.researchBrowserConnection.endpoint
+    : undefined
+  const expertManagedPlaywrightPresentation = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.researchBrowserConnection?.kind !== 'cdp'
+    ? expert.researchBrowserPresentation
+      ?? expert.runtimeBinding.researchBrowserPolicy?.managedPresentationDefault
+      ?? (expert.runtimeBinding.researchBrowserPolicy?.forceVisiblePlaywright === true ? 'always_visible' : undefined)
+    : undefined
+  const expertForceVisiblePlaywright = expertManagedPlaywrightPresentation === 'always_visible'
+    ? true
+    : undefined
+  // Workflow phases share one long-lived leader process. Do not encode a
+  // phase-specific deny list into CLI launch arguments: it would make tools
+  // permanently disappear after the phase changes. The execution boundary
+  // refreshes the persisted Desktop phase and enforces it for every tool call.
+  const disallowedTools = [...new Set(expertToolPolicy.disallowedTools)]
   const workflowSystemPrompt = buildWorkflowRuntimeBindingInstruction(sessionId, workflowState)
   const workflowSettings = workflowIsActive
     ? {
@@ -4453,6 +5081,18 @@ async function getRuntimeSettingsWithWorkflowPolicy(
     ? {
         expertSystemPrompt,
         ...(expertSessionId ? { expertSessionId } : {}),
+        ...(expertTemplateFillWrite ? { expertTemplateFillWrite: true } : {}),
+        ...(expertResearchDeliveryPolicy ? { expertResearchDeliveryPolicy } : {}),
+        ...(expertSharedPlaywrightSessionId ? { expertSharedPlaywrightSessionId } : {}),
+        ...(expertPlaywrightCdpEndpoint ? { expertPlaywrightCdpEndpoint } : {}),
+        ...(expertManagedPlaywrightPresentation ? { expertManagedPlaywrightPresentation } : {}),
+        ...(expertForceVisiblePlaywright ? { expertForceVisiblePlaywright: true } : {}),
+        ...(expertBrowserHumanVerificationHandoff ? { expertBrowserHumanVerificationHandoff: true } : {}),
+        ...(expertBrowserVerificationFallbackSearchEngines?.length
+          ? { expertBrowserVerificationFallbackSearchEngines }
+          : {}),
+        ...(expertClosePlaywrightWhenAgentDone ? { expertClosePlaywrightWhenAgentDone: true } : {}),
+        ...(expertForbidSubagentAskUserQuestion ? { expertForbidSubagentAskUserQuestion: true } : {}),
       }
     : {}
   return disallowedTools.length > 0
@@ -4464,24 +5104,26 @@ function buildWorkflowRuntimeBindingInstruction(
   sessionId: string,
   state: WorkflowSessionState | null | undefined,
 ): string | null {
-  if (!state || getWorkflowScopedToolNames(state).length === 0 || !state.activePhaseId) return null
+  if (!state || getWorkflowScopedToolNames(state).length === 0) return null
 
   const startupPrompt = typeof state.startupPrompt === 'string' ? state.startupPrompt.trim() : ''
 
   return [
     '<desktop-workflow-runtime-binding>',
-    `This CLI process is authoritatively bound to Desktop workflow session ${sessionId} and active phase ${state.activePhaseId}.`,
-    'The current process has registered submit_phase_completion and request_workflow_route for this active workflow phase.',
+    `This CLI process is authoritatively bound to Desktop workflow session ${sessionId}.`,
+    'The current process has registered submit_phase_completion and request_workflow_route for this workflow session.',
+    'Phase-specific instructions are supplied only by the latest Desktop workflow control turn. Treat an earlier phase contract as historical after a newer control turn arrives; do not carry its implementation, review, or completion instructions into the new phase.',
+    'Do not infer, request, or execute future-phase instructions before Desktop supplies that phase. Historical workflow text is project context, not permission to work outside the current phase.',
+    'The persisted Desktop workflow state and the tool execution result are authoritative. Each tool call is checked against that latest state, even if this transcript contains a different earlier phase.',
     'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
-    'Use the actual current tool result as the only source of truth. When this phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
-    'Use request_workflow_route only for a true non-linear route, rework, jump_to_phase, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion; after a Stage 4 repair, a confirmed normal completion enters Stage 5 automatically.',
-    'Obey the current phase tool policy even if an older transcript turn used a now-forbidden tool.',
+    'When the current phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
+    'Use request_workflow_route only for a true non-linear route, rework, jump_to_phase, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion.',
     ...(startupPrompt
       ? [
-          '<desktop-workflow-startup-context>',
-          'Use this persisted workflow handoff before relying on workflow artifacts. The current user request and resumed conversation take precedence over stale or conflicting .workflow notes.',
+          '<desktop-workflow-project-context>',
+          'This persisted handoff is project context only. It does not define the current phase, authorize tools, or override the latest Desktop workflow control turn.',
           startupPrompt,
-          '</desktop-workflow-startup-context>',
+          '</desktop-workflow-project-context>',
         ]
       : []),
     '</desktop-workflow-runtime-binding>',
@@ -4960,6 +5602,8 @@ export function closeSessionConnection(sessionId: string, reason = 'session clos
     sessionCleanupTimers.delete(sessionId)
   }
   computerUseApprovalService.cancelSession(sessionId)
+  expertHumanVerificationService.cancelSession(sessionId)
+  expertBrowserActivityService.clear(sessionId)
   conversationService.clearOutputCallbacks(sessionId)
   cleanupSessionRuntimeState(sessionId)
 

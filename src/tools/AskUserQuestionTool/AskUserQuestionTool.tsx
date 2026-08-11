@@ -10,6 +10,12 @@ import { Box, Text } from '../../ink.js';
 import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
+import {
+  normalizeExpertResearchDeliveryQuestionContract,
+  syncExpertResearchDeliveryDecision,
+  validateExpertResearchDeliveryQuestionContract,
+} from '../../services/tools/expertResearchDeliveryRuntime.js';
+import { isExpertBrowserVerificationQuestionAttempt } from '../../utils/expertHumanVerification.js';
 import { ASK_USER_QUESTION_TOOL_CHIP_WIDTH, ASK_USER_QUESTION_TOOL_NAME, ASK_USER_QUESTION_TOOL_PROMPT, DESCRIPTION, PREVIEW_FEATURE_PROMPT } from './prompt.js';
 const questionOptionSchema = lazySchema(() => z.strictObject({
   id: z.string().min(1).optional().describe('Stable option ID used to preserve the selected answer across the current-phase question and response.'),
@@ -28,7 +34,11 @@ const questionSchema = lazySchema(() => z.object({
   answerImpact: z.string().min(1).optional().describe('Workflow-only context for a necessary blocking question: state the specific implementation, investigation, or acceptance decision that the answer will change. Omit outside workflows that require this context.'),
   choices: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Canonical choices for this question. Choices represent only user answers; never include workflow actions, route commands, or phase targets.'),
   options: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Legacy alias for choices. New workflow questions should use choices.'),
-  multiSelect: z.boolean().default(false).describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.')
+  multiSelect: z.boolean().optional().describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'),
+  metadata: z.strictObject({
+    question_id: z.string().min(1).optional().describe('Expert-only stable question ID for metadata attached to this question. When present, it must match this question id.'),
+    unresolved_evidence: z.array(z.string().min(1)).max(12).optional().describe('Expert-only remaining evidence gaps attached to this delivery-decision question.'),
+  }).optional().describe('Expert-only question-scoped delivery metadata. It is not displayed to the user.')
 }).superRefine((value, ctx) => {
   if (!value.prompt && !value.question) {
     ctx.addIssue({ code: 'custom', message: 'Question requires prompt (or legacy question).' })
@@ -73,11 +83,19 @@ const commonFields = lazySchema(() => ({
     source: z.string().optional().describe('Optional identifier for the source of this question (e.g., "remember" for /remember command). Used for analytics tracking.'),
     research_recovery_field: z.string().min(1).optional().describe('Trusted commercial research recovery field identifier.'),
     research_recovery_state: z.enum(['access_limited', 'needs_user_material']).optional().describe('Trusted commercial research recovery state.'),
-    attempted_urls: z.array(z.string().url()).max(8).optional().describe('Public URLs actually attempted by BrowserResearch when access was limited.'),
+    attempted_urls: z.array(z.string().url()).max(8).optional().describe('Public URLs actually attempted by Playwright when access was limited.'),
+    expert_research_delivery: z.object({
+      question_id: z.string().min(1).describe('Stable research-delivery question ID that the Desktop service must record before final Expert output.'),
+      unresolved_evidence: z.array(z.string().min(1)).max(12).optional().describe('Remaining evidence gaps the user is explicitly accepting, continuing, or pausing.'),
+    }).optional().describe('Expert-only delivery confirmation metadata. It is not displayed to the user.'),
   }).passthrough().optional().describe('Optional metadata for tracking and runtime validation. Not displayed to user.')
 }));
 const inputSchema = lazySchema(() => z.strictObject({
   questions: z.array(questionSchema()).min(1).max(4).describe('Questions to ask the user (1-4 questions)'),
+  // Compatibility alias: older providers sometimes emit multiSelect at the
+  // tool root. Keep this serializable in the provider-facing JSON schema so
+  // an already-issued question does not fail before Desktop can display it.
+  multiSelect: z.boolean().optional().describe('Legacy tool-level alias. Prefer setting multiSelect inside each question; when supplied here it applies to questions that do not set their own value.'),
   ...commonFields()
 }).refine(UNIQUENESS_REFINE.check, {
   message: UNIQUENESS_REFINE.message
@@ -198,10 +216,28 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     };
   },
   async checkPermissions(input) {
+    if (expertBrowserVerificationHandoffEnabled() && isExpertBrowserVerificationQuestionAttempt(input)) {
+      return {
+        behavior: 'deny' as const,
+        message: 'Browser verification is handled by the Expert Desktop modal. Do not call AskUserQuestion for CAPTCHA, slider, login, or human-verification decisions; wait for the dedicated Playwright verification result instead.',
+        updatedInput: input,
+      }
+    }
+
+    const normalizedInput = normalizeExpertResearchDeliveryQuestionContract(input)
+    const researchDeliveryContractError = validateExpertResearchDeliveryQuestionContract(normalizedInput)
+    if (researchDeliveryContractError) {
+      return {
+        behavior: 'deny' as const,
+        message: researchDeliveryContractError,
+        updatedInput: normalizedInput,
+      }
+    }
+
     return {
       behavior: 'ask' as const,
       message: 'Answer questions?',
-      updatedInput: input
+      updatedInput: normalizedInput
     };
   },
   renderToolUseMessage() {
@@ -228,11 +264,19 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     questions,
     answers = {},
     answerChoiceIds,
-    annotations
-  }, _context) {
+    annotations,
+    metadata,
+    multiSelect,
+  }) {
+    const normalizedQuestions = multiSelect === undefined
+      ? questions
+      : questions.map((question) => (
+        question.multiSelect === undefined ? { ...question, multiSelect } : question
+      ))
+    await syncExpertResearchDeliveryDecision({ questions: normalizedQuestions, answers, answerChoiceIds, metadata })
     return {
       data: {
-        questions,
+        questions: normalizedQuestions,
         answers,
         ...(answerChoiceIds && { answerChoiceIds }),
         ...(annotations && {
@@ -263,6 +307,18 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     };
   }
 } satisfies ToolDef<InputSchema, Output>);
+
+
+
+function expertBrowserVerificationHandoffEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const handoffEnabled = env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF === '1'
+    || env.CC_HAHA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF === '1'
+  if (!handoffEnabled) return false
+
+  const serverUrl = (env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? env.CC_HAHA_DESKTOP_SERVER_URL)?.trim()
+  const sessionId = (env.CC_JIANGXIA_EXPERT_SESSION_ID ?? env.CC_HAHA_EXPERT_SESSION_ID)?.trim()
+  return Boolean(serverUrl && sessionId)
+}
 
 // Lightweight HTML fragment check. Not a parser — HTML5 parsers are
 // error-recovering by spec and accept anything. We're checking model intent

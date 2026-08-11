@@ -107,6 +107,22 @@ describe('workflow task router', () => {
 
     expect(phaseAppliesToRoute({
       phase: {
+        id: 'implement',
+        appliesTo: ['new-product', 'enhancement', 'bug'],
+        skipWhen: {
+          labels: ['documentation'],
+        },
+      },
+      labels: ['new-product', 'documentation'],
+      primaryLabel: 'new-product',
+      effort: 'standard',
+    })).toEqual({
+      applies: true,
+      reason: null,
+    })
+
+    expect(phaseAppliesToRoute({
+      phase: {
         id: 'verify-review',
         appliesTo: ['documentation', 'bug'],
         modePolicy: {

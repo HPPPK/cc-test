@@ -31,10 +31,12 @@ export function WorkflowGitCheckpointControls({
     }
     return checkpoints[0]?.id ?? ''
   }, [checkpoints, selectedCheckpointId])
-  const disabledReason = !enabled ? reason ?? 'Workflow checkpoints are unavailable for this workspace.' : undefined
+  const disabledReason = !loading && !enabled
+    ? reason ?? 'Workflow checkpoints are unavailable for this workspace.'
+    : undefined
   const isBusy = busy !== null
-  const createDisabled = isBusy || !enabled
-  const restoreDisabled = isBusy || checkpoints.length === 0 || !selectedId
+  const createDisabled = isBusy || loading || !enabled
+  const restoreDisabled = isBusy || loading || checkpoints.length === 0 || !selectedId
 
   return (
     <div
@@ -62,7 +64,7 @@ export function WorkflowGitCheckpointControls({
         aria-label="历史版本"
         value={selectedId}
         onChange={(event) => setSelectedCheckpointId(event.target.value)}
-        disabled={isBusy || checkpoints.length === 0}
+        disabled={isBusy || loading || checkpoints.length === 0}
         className="h-8 max-w-[130px] rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {checkpoints.length === 0 ? <option value="">历史版本</option> : null}
@@ -81,7 +83,7 @@ export function WorkflowGitCheckpointControls({
         <span className="material-symbols-outlined text-[15px]" aria-hidden="true">history</span>
         {busy === 'restore' ? '回退中…' : '回退'}
       </button>
-      {loading ? <span className="text-[var(--color-text-tertiary)]">加载中…</span> : null}
+      {loading ? <span className="text-[var(--color-text-tertiary)]">正在读取检查点状态…</span> : null}
       {disabledReason ? (
         <span className="max-w-[220px] truncate text-[var(--color-text-tertiary)]" title={disabledReason}>
           {disabledReason}

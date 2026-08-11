@@ -1699,6 +1699,8 @@ export const zh: Record<TranslationKey, string> = {
   'agentStatus.starting': '开始中',
   'agentStatus.running': '进行中',
   'agentStatus.done': '完成',
+  'agentStatus.partial': '部分完成',
+  'agentStatus.blocked': '受阻',
   'agentStatus.failed': '失败',
   'agentStatus.stopped': '已停止',
   'agentStatus.noActivity': '暂时还没有工具活动',

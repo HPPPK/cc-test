@@ -90,7 +90,9 @@ describe('RequestWorkflowRouteTool', () => {
     expect(prompt).toContain('status blocked or needs_user')
     expect(prompt).toContain('route_to_workflow requires targetWorkflowId')
     expect(prompt).toContain('structured unsupported error')
-    expect(prompt).toContain('Every model-requested route waits for an explicit user confirmation')
+    expect(prompt).toContain('Every normal model-requested route waits for explicit user confirmation')
+    expect(prompt).toContain('10-second silent recovery window')
+    expect(prompt).toContain('server may apply that first constrained repair without a user click')
   })
 
   test('reports a same-target route as the existing normal completion confirmation, not a second pending route', async () => {

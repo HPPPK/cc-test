@@ -688,4 +688,40 @@ describe('AskUserQuestion', () => {
       }),
     }))
   })
+
+  it('returns stable option IDs for a research delivery confirmation question', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          metadata: {
+            expert_research_delivery: {
+              question_id: 'research-delivery:commercialization-report',
+              unresolved_evidence: ['Need a user-provided App Store screenshot'],
+            },
+          },
+          questions: [{
+            id: 'research-delivery:commercialization-report',
+            prompt: '是否接受当前证据缺口并交付？',
+            choices: [
+              { id: 'accept_current_scope', label: '交付当前范围' },
+              { id: 'provide_material_and_continue', label: '继续补证' },
+              { id: 'pause_research', label: '暂不交付' },
+            ],
+          }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^交付当前范围$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
+      updatedInput: expect.objectContaining({
+        answers: { 'research-delivery:commercialization-report': '交付当前范围' },
+        answerChoiceIds: { 'research-delivery:commercialization-report': ['accept_current_scope'] },
+      }),
+    }))
+  })
+
 })

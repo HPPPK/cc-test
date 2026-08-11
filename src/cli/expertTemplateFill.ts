@@ -5,7 +5,8 @@ import { EXPERT_TEMPLATE_FILL_FORMAT, type ExpertTemplateFillPayload } from '../
 type RecordValue = Record<string, unknown>
 
 export type ExpertTemplateFillCliOptions = {
-  dataPath: string
+  dataPath?: string
+  dataFromStdin?: true
   outputPath: string
   serverUrl?: string
   sessionId?: string
@@ -20,12 +21,15 @@ export type ExpertTemplateFillCliResult = {
 export type ExpertTemplateFillCliDependencies = {
   env: Record<string, string | undefined>
   readFile: typeof fs.readFile
+  readStdin?: () => Promise<string>
   mkdir: typeof fs.mkdir
+  /** Optional only to keep tests able to model Bun/Windows EEXIST behaviour. */
+  stat?: typeof fs.stat
   writeFile: typeof fs.writeFile
   fetch: typeof fetch
 }
 
-const usage = 'Usage: cc-jiangxia expert-template-fill --data <report-fields.json> --output <final-report.html> [--server-url <url>] [--session-id <id>]'
+const usage = 'Usage: cc-jiangxia expert-template-fill (--data <report-fields.json> | --data-stdin) --output <final-report.html> [--server-url <url>] [--session-id <id>]'
 
 function isRecord(value: unknown): value is RecordValue {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -43,9 +47,14 @@ export function parseExpertTemplateFillCliArgs(args: string[]): ExpertTemplateFi
     const arg = args[index]
     if (arg === '--help' || arg === '-h') throw new Error(usage)
     if (arg === '--data') {
-      if (options.dataPath) throw new Error(`--data may only be provided once. ${usage}`)
+      if (options.dataPath || options.dataFromStdin) throw new Error(`Provide exactly one of --data or --data-stdin. ${usage}`)
       options.dataPath = optionValue(args, index, arg)
       index += 1
+      continue
+    }
+    if (arg === '--data-stdin') {
+      if (options.dataPath || options.dataFromStdin) throw new Error(`Provide exactly one of --data or --data-stdin. ${usage}`)
+      options.dataFromStdin = true
       continue
     }
     if (arg === '--output') {
@@ -68,7 +77,9 @@ export function parseExpertTemplateFillCliArgs(args: string[]): ExpertTemplateFi
     }
     throw new Error(`Unknown option: ${arg}. ${usage}`)
   }
-  if (!options.dataPath || !options.outputPath) throw new Error(`Both --data and --output are required. ${usage}`)
+  if ((!options.dataPath && !options.dataFromStdin) || !options.outputPath) {
+    throw new Error(`One data source (--data or --data-stdin) and --output are required. ${usage}`)
+  }
   if (!/\.html?$/i.test(options.outputPath)) throw new Error('--output must be an .html or .htm file.')
   return options as ExpertTemplateFillCliOptions
 }
@@ -106,6 +117,16 @@ async function responseMessage(response: Response): Promise<string> {
   return `Template renderer returned HTTP ${response.status}.`
 }
 
+function readExpertTemplateFillStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let content = ''
+    process.stdin.setEncoding('utf8')
+    process.stdin.on('data', (chunk) => { content += chunk })
+    process.stdin.once('error', reject)
+    process.stdin.once('end', () => resolve(content))
+  })
+}
+
 function resolveServerUrl(value: string | undefined): string {
   const normalized = value?.trim()
   if (!normalized) throw new Error('Missing Desktop Expert renderer URL. Run this command from the active Expert session, or pass --server-url.')
@@ -116,17 +137,37 @@ function resolveServerUrl(value: string | undefined): string {
   }
 }
 
+function isAlreadyExistsError(error: unknown): error is NodeJS.ErrnoException {
+  return Boolean(error) && typeof error === 'object' && (error as NodeJS.ErrnoException).code === 'EEXIST'
+}
+
+async function ensureOutputDirectory(directory: string, dependencies: Pick<ExpertTemplateFillCliDependencies, 'mkdir' | 'stat'>): Promise<void> {
+  try {
+    await dependencies.mkdir(directory, { recursive: true })
+  } catch (error) {
+    if (!isAlreadyExistsError(error)) throw error
+    const entry = await (dependencies.stat ?? fs.stat)(directory)
+    if (!entry.isDirectory()) throw error
+  }
+}
+
 export async function runExpertTemplateFillCli(
   options: ExpertTemplateFillCliOptions,
   dependencies: ExpertTemplateFillCliDependencies = {
     env: process.env,
     readFile: fs.readFile,
     mkdir: fs.mkdir,
+    stat: fs.stat,
     writeFile: fs.writeFile,
     fetch: globalThis.fetch,
   },
 ): Promise<ExpertTemplateFillCliResult> {
-  const fieldsDocument = await dependencies.readFile(options.dataPath, 'utf8')
+  if ((options.dataPath ? 1 : 0) + (options.dataFromStdin ? 1 : 0) !== 1) {
+    throw new Error(`Provide exactly one of --data or --data-stdin. ${usage}`)
+  }
+  const fieldsDocument = options.dataFromStdin
+    ? await (dependencies.readStdin ?? readExpertTemplateFillStdin)()
+    : await dependencies.readFile(options.dataPath!, 'utf8')
   const payload = parseFieldsDocument(fieldsDocument)
   const serverUrl = resolveServerUrl(options.serverUrl ?? dependencies.env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? dependencies.env.DESKTOP_SERVER_URL)
   const sessionId = (options.sessionId ?? dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID)?.trim()
@@ -150,7 +191,7 @@ export async function runExpertTemplateFillCli(
   }
 
   const outputPath = path.resolve(options.outputPath)
-  await dependencies.mkdir(path.dirname(outputPath), { recursive: true })
+  await ensureOutputDirectory(path.dirname(outputPath), dependencies)
   await dependencies.writeFile(outputPath, body.content, 'utf8')
   return { outputPath, templateId: body.templateId, bytes: Buffer.byteLength(body.content, 'utf8') }
 }

@@ -120,4 +120,24 @@ describe('WorkflowGitCheckpointControls', () => {
     expect(screen.getByRole('button', { name: '回退' })).toBeDisabled()
     expect(screen.getByTestId('workflow-git-checkpoint-latest')).toHaveTextContent('尚未存储')
   })
+  it('shows a loading state instead of an unavailable-workspace error', () => {
+    render(
+      <WorkflowGitCheckpointControls
+        enabled={false}
+        latestVersion={null}
+        checkpoints={[]}
+        loading
+        onCreate={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('正在读取检查点状态…')).toBeInTheDocument()
+    expect(screen.queryByText('Workflow checkpoints are unavailable for this workspace.')).not.toBeInTheDocument()
+    expect(screen.getByTestId('workflow-git-checkpoint-controls')).not.toHaveAttribute('title')
+    expect(screen.getByRole('button', { name: '存档' })).toBeDisabled()
+    expect(screen.getByLabelText('历史版本')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '回退' })).toBeDisabled()
+  })
+
 })

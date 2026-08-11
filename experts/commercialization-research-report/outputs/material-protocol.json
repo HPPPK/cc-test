@@ -1,9 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "primaryOutput": {
     "kind": "html",
     "templatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
-    "delivery": "Use Write to create a compact report-fields.json document, then run the built-in expert-template-fill CLI once to render the fixed HTML template.",
+    "delivery": "Use one Bash invocation to pass a compact { templateId, fields } JSON payload through standard input to the built-in expert-template-fill CLI; do not use Write for report-fields.json or final HTML.",
     "fieldsDocument": {
       "requiredKeys": [
         "templateId",
@@ -12,21 +12,23 @@
       "writeTool": "Write",
       "content": "JSON only; never HTML, CSS, headings, table headers, or a template copy."
     },
-    "renderCommand": "\"$CLAUDE_CLI_PATH\" expert-template-fill --data \"<report-fields.json>\" --output \"<final-report.html>\"",
+    "renderCommand": "cat <<'EXPERT_FIELDS' | \"$CLAUDE_CLI_PATH\" expert-template-fill --data-stdin --output \"<final-report.html>\"",
     "destination": "Only the user-confirmed output folder and filename."
   },
   "requiredBeforeWrite": [
     "All report claims are marked as verified, inference, hypothesis, or evidence gap.",
-    "A candidate-and-access ledger records every BrowserResearch URL with date, source type, target field, result or access limitation, and whether the final report uses it.",
-    "Every final HTML claim, number, observation, access limitation, or no-result statement maps to at least one BrowserResearch-opened URL or user-provided material.",
+    "A candidate-and-access ledger records every Playwright URL with date, source type, target field, result or access limitation, and whether the final report uses it.",
+    "Every final HTML claim, number, observation, access limitation, or no-result statement maps to at least one Playwright-opened URL or user-provided material.",
     "Every URL actually used by the final HTML is listed in the final sources table with a source type, date, and field coverage; accessed but unused URLs remain only in the research ledger.",
     "The evidence-review subagent has completed claim-by-claim and source-coverage review.",
+    "All public research that can be completed without the user is complete, and the user has explicitly selected accept_current_scope for the remaining evidence gaps and current report scope.",
     "The user has confirmed the output path.",
-    "The fields JSON is complete and the expert-template-fill CLI will render the session-bound fixed HTML template."
+    "The inline fields JSON is complete and the expert-template-fill CLI will render the session-bound fixed HTML template without a generic Write call.",
+    "The final source table contains at least six distinct, actually used public URLs. They must cover at least four independent source domains whenever the public evidence allows it. Named competitors, price facts, channel facts, user/market signals, and SERP snapshots in final fields must each map to their own source row; do not replace a successfully opened source with a generic pending placeholder."
   ],
   "supportingArtifacts": [
-    "Candidate-and-access ledger: candidate or discovered URL, source type, discovery method, BrowserResearch status, date, field coverage, result or limitation, and final-report usage.",
-    "Claim-to-source map: final claim or table row -> source number -> BrowserResearch-opened URL or user-provided material.",
+    "Candidate-and-access ledger: candidate or discovered URL, source type, discovery method, Playwright status, date, field coverage, result or limitation, and final-report usage. This is an internal audit artifact; raw query URLs, final redirects, and engine-by-engine execution traces are not rendered in the final HTML.",
+    "Claim-to-source map: final claim or table row -> source number -> Playwright-opened URL or user-provided material.",
     "Evidence-review findings and unresolved evidence gaps."
   ],
   "templateFieldGuide": {
@@ -59,8 +61,8 @@
       },
       {
         "field": "DATA_DECLARATION",
-        "meaning": "数据来源和可靠性总说明。区分已核验公开信息、观察、方向性推演和证据缺口。",
-        "example": "公开页面与社区讨论已在来源表列出；用户付费频次暂无一手数据，以下相关判断为待验证假设。"
+        "meaning": "数据来源和可靠性总说明。区分已核验公开信息、公开观察、（AI推断）方向性判断和证据缺口；推断须有依据且不得伪装成已验证事实。",
+        "example": "已核验事实来自本轮打开的官网/定价页/SERP（见来源表）；公开观察含内容平台供给；标（AI推断）的内容为有依据的方向性判断，非一手验证；用户付费与权威市场规模为本轮证据缺口。"
       },
       {
         "field": "PRODUCT_ONE_SENTENCE_DEFINITION",
@@ -80,12 +82,12 @@
       {
         "field": "MARKET_WINDOW_CONTENT",
         "meaning": "为什么是现在值得关注的外部变化，例如能力、平台、政策、内容供给或竞品空缺；没有明确变化就写待验证。",
-        "example": "推演：生成式配音和自动字幕降低了基础制作门槛；依据为相关产品公开功能更新，仍需验证其是否带来独立付费需求。"
+        "example": "（AI推断）生成式配音和自动字幕降低了基础制作门槛；依据为相关产品公开功能更新；仍需验证是否带来独立付费需求。"
       },
       {
         "field": "USER_NEEDS_AND_PAIN_POINTS",
-        "meaning": "按任务链描述需求、卡点、现有替代方案和未验证处；不要把竞品功能数当成高频需求。",
-        "example": "待验证假设：跨语种短视频复用时，术语校对与音画同步会造成反复返工；现有替代方案是剪辑软件加翻译/配音服务。"
+        "meaning": "按任务链描述需求、卡点、现有替代方案和未验证处；不要把竞品功能数当成高频需求。查不到一手材料时可用（AI推断）并写依据，不可写成已验证高频痛点。",
+        "example": "（AI推断）跨语种短视频复用时，术语校对与音画同步可能造成反复返工；依据为竞品工作流公开描述；现有替代方案是剪辑软件加翻译/配音服务；仍需访谈验证。"
       },
       {
         "field": "MARKET_TIMING_CONTENT",
@@ -109,8 +111,8 @@
       },
       {
         "field": "SEARCH_ACQUISITION_NOTE",
-        "meaning": "解释这张搜索获客表的采集范围、日期、查询词或限制；不是重复表中数据。",
-        "example": "本轮仅核验公开可访问搜索结果页和官网落地页；未取得广告后台数据，因此 SEM 项均按“未公开确认”处理。"
+        "meaning": "用最多两句说明采集日期、实际获得普通结果的入口和必要的受限状态；它不是执行台账。Google、百度、Bing、360 的逐引擎查询 URL、最终 URL、状态和限制原因必须保留在内部渠道证据包与运行日志中，但不得写进最终 HTML。Google 受限时只简短说明“Google 本轮受限，未据其 SERP 作出判断”；如该限制影响正文结论，可在来源表保留一条简短受限记录及链接。",
+        "example": "本轮于 2026-08-05 核验百度、Bing、360 的公开 SERP 与具体落地页；Google 受限，未据 Google SERP 作出 SEO 或 SEM 判断。SEO 仅统计普通自然结果，AI 总结和应用商店卡仅作为 SERP 特殊模块说明。"
       },
       {
         "field": "SEARCH_ACQUISITION_CONCLUSION",
@@ -426,7 +428,7 @@
       },
       {
         "field": "SEARCH_ACQUISITION_ROWS",
-        "meaning": "每行是一个关键词方向上的搜索格局。SEM 与 SEO 必须分别填写，避免把自然结果误当广告。",
+        "meaning": "每行是一个关键词方向上的搜索格局。SEM、普通自然结果（SEO）与搜索页特殊模块必须分开填写；不能把自然结果误当广告，也不能把 AI 总结、展示卡或知识卡误当自然 SEO。",
         "columns": [
           [
             "关键词方向",
@@ -440,20 +442,40 @@
           ],
           [
             "自然搜索占位（SEO）",
-            "可见的自然结果类型或站点。",
-            "工具官网、教程页与内容平台结果"
+            "仅填写普通自然结果列表中可点击的结果类型或站点；AI 总结块、应用商店展示卡、富媒体卡、知识卡和地图卡不属于自然 SEO。",
+            "Typora 官网、CSDN 教程、知乎问答等普通自然结果"
           ],
           [
             "竞争强度评估",
-            "基于结果数量、品牌占位或广告观察的工作判断，并说明依据。",
-            "中；依据为多类结果并存，广告强度仍需同口径快照验证"
+            "基于普通结果数量、品牌占位、广告观察及已标明的 SERP 特殊模块作出工作判断，并说明依据。",
+            "中；普通结果多类并存。SERP 特殊模块：可见 App Store 展示卡，不计为自然排名"
           ]
         ],
         "rowExample": [
           "视频翻译",
           "未取得完整搜索结果快照，未公开确认",
-          "工具官网、教程页与内容平台结果",
-          "中；依据为多类结果并存，广告强度仍需同口径快照验证"
+          "工具官网、教程页与内容平台的普通自然结果",
+          "中；依据为多类普通结果并存；广告强度仍需同口径快照验证"
+        ],
+        "writingExamples": [
+          {
+            "scenario": "Quicker 替代（字段写法示范，不是未经本轮 SERP 核验的事实）",
+            "seo": "只有当次 SERP 的普通结果列表确实出现 Quicker 官网、具体对比文章、知乎回答或 B 站具体视频页时，才写“普通自然结果：Quicker 官网、具体对比文章、知乎回答……[来源编号]”。",
+            "specialModules": "若同页还出现 AI 总结、应用商店展示卡或知识卡，写进“竞争强度评估”： “SERP 特殊模块（非自然 SEO）：……；不计入自然排名”。",
+            "notAllowed": "不能把搜索词“Quicker 替代”、单个已知页面或搜索摘要写成“排名第一/全面占位”。"
+          },
+          {
+            "scenario": "Typora 替代（字段写法示范，不是未经本轮 SERP 核验的事实）",
+            "seo": "若完整普通结果快照不可得，但已单独打开官网、教程或问答页面，可写“未取得完整排名快照；已核验的公开候选页面：……”，不得称其为 SEO 排名。",
+            "specialModules": "AI Overview、App Store 展示卡、富媒体推荐卡只说明 SERP 页面存在特殊模块，不说明某一产品的自然排名。",
+            "notAllowed": "不能用应用商店展示位替代自然结果，也不能由单个教程页面推导全部关键词竞争格局。"
+          },
+          {
+            "scenario": "AI 老照片修复（字段写法示范，不是未经本轮 SERP 核验的事实）",
+            "seo": "当次普通结果若有修复工具官网、具体教程文章、知乎回答或 B 站具体视频页，写这些已打开的具体页面类型和来源编号。",
+            "specialModules": "图片搜索、广告卡、AI 总结和应用商店推荐属于“SERP 特殊模块（非自然 SEO）”；广告主只能写进 SEM 列。",
+            "notAllowed": "不能把图片/视频推荐卡当自然 SEO，也不能把“有相关内容”写成“高排名”或“有稳定转化”。"
+          }
         ]
       },
       {
@@ -495,5 +517,52 @@
         ]
       }
     ]
+  },
+  "researchBrowser": {
+    "sharePlaywrightSessionAcrossAgents": false,
+    "closePlaywrightWhenAgentDone": true,
+    "allowUserAuthorizedCdp": true,
+    "managedPresentationDefault": "assistable_background",
+    "allowManagedPresentationChoice": true,
+    "desktopHumanVerificationHandoff": true,
+    "verificationFallbackSearchEngines": ["Google", "百度", "Bing", "360"],
+    "forbidSubagentAskUserQuestion": true
+  },
+  "researchDelivery": {
+    "requireExplicitUserDecisionBeforeFinalOutput": true,
+    "questionId": "research-delivery:commercialization-report",
+    "acceptedChoiceId": "accept_current_scope",
+    "continueChoiceIds": [
+      "provide_material_and_continue"
+    ],
+    "pauseChoiceIds": [
+      "pause_research"
+    ]
+  },
+  "researchCompletion": {
+    "finalOutputBehavior": "allow-with-evidence-gaps",
+    "trackedAgentTypes": [
+      "expert-evidence-researcher",
+      "expert-evidence-reviewer"
+    ],
+    "minimumCompletedAgents": 4,
+    "minimumCompletedAgentsByType": {
+      "expert-evidence-researcher": 3,
+      "expert-evidence-reviewer": 1
+    },
+    "requiredSearchEngines": [
+      "Google",
+      "百度",
+      "Bing",
+      "360"
+    ],
+    "minimumDistinctSearchQueries": 2,
+    "minimumOpenedSpecificPublicPages": 8,
+    "minimumDistinctOpenedSourceDomains": 4,
+    "requireConcreteSourcePerAgent": true,
+    "finalSourceCoverage": {
+      "fieldId": "SOURCE_ROWS",
+      "minimumRows": 6
+    }
   }
 }

@@ -64,15 +64,15 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(source).toContain('buildBundledBrowserRuntime')
     expect(source).toContain("path.join(binariesDir, 'browser-runtime', 'playwright')")
     expect(source).toContain('PLAYWRIGHT_BROWSERS_PATH')
-    expect(source).toContain("'playwright', 'install', 'chromium-headless-shell'")
+    expect(source).toContain("'playwright', 'install', 'chromium'")
   })
 
   it('ships Playwright JavaScript packages beside a portable Node-executed runner', () => {
     const source = readBuildScript()
 
-    expect(source).toContain('buildBundledBrowserResearchRunner')
-    expect(source).toContain("browser-research-playwright-runner.cjs")
-    expect(source).toContain("browser-research-playwright-runner.ts")
+    expect(source).toContain('buildBundledPlaywrightRunner')
+    expect(source).toContain("playwright-browser-runner.cjs")
+    expect(source).toContain("playwright-browser-runner.ts")
     expect(source).toContain("const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core'] as const")
     expect(source).toContain("path.join(runtimeDir, 'node_modules')")
     expect(source).toContain("path.join(repoRoot, 'node_modules', packageName)")
@@ -118,6 +118,9 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(source).toContain('copyBundledSkills')
     expect(source).toContain("path.join(repoRoot, 'src', 'skills', 'bundled')")
     expect(source).toContain("path.join(binariesDir, 'skills', 'bundled')")
+    expect(source).toContain('shouldCopyBundledRuntimeSource')
+    expect(source).toContain('filter: shouldCopyBundledRuntimeSource')
+    expect(source).toContain('/\\.(?:test|spec)\\.[cm]?[jt]sx?$/i')
   })
 
 })

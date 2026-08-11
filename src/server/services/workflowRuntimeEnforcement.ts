@@ -65,6 +65,9 @@ const WORKFLOW_PHASE_EXECUTION_CONTRACT_TITLE = 'Stable phase execution contract
 
 export type WorkflowSubagentRole = 'leader' | 'coder' | 'reviewer' | 'qa'
 
+export const WORKFLOW_DELEGATED_AGENT_ROLES = ['coder', 'reviewer', 'qa'] as const
+export type WorkflowDelegatedAgentRole = typeof WORKFLOW_DELEGATED_AGENT_ROLES[number]
+
 export type WorkflowSubagentBriefInput = {
   run: WorkflowRun
   phase: WorkflowPhaseDefinition
@@ -373,7 +376,7 @@ export function selectFollowUpWorkflowTemplate<T extends { labels?: WorkflowLabe
 }
 
 export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowSubagentBrief {
-  const rolePolicy = subagentRoleToolPolicy(input.role)
+  const rolePolicy = getWorkflowSubagentRoleToolPolicy(input.role)
   const availability = input.nativeAgentAvailable ? 'native-agent' : 'fallback-contract'
   const agentType = workflowSubagentAgentType(input.role)
   const compactArtifacts = (input.artifacts ?? []).map((artifact) => {
@@ -395,7 +398,7 @@ export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowS
     content: [
       `Workflow subagent role: ${input.role}`,
       `Callable Agent tool subagent_type: ${agentType}`,
-      'Important: coder/reviewer/qa are workflow roles, not Agent tool subagent_type values. When delegating with the Agent tool, use the callable subagent_type above and put this workflow role inside the delegated prompt.',
+      `Important: coder/reviewer/qa are workflow roles, not Agent tool subagent_type values. When delegating with the Agent tool, use the callable subagent_type above and set the top-level workflow_role=${input.role}. The runtime applies that role's tool boundary; do not rely on prompt text alone.`,
       `Availability: ${availability}`,
       `Run: ${input.run.id} phase=${input.phase.id}`,
       `Workspace: ${input.run.workspaceRoot ?? 'unknown'}`,
@@ -436,7 +439,7 @@ function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInpu
     'Subagent dispatch requirement',
     '- This phase requires native Agent delegation when the Agent tool is visible.',
     '- The leader must not perform production Write/Edit/MultiEdit/NotebookEdit before launching the required subagent brief.',
-    '- Use Agent with subagent_type=general-purpose. Put the workflow role, task, scope, forbidden actions, required evidence, and required return shape inside the delegated prompt.',
+    '- Use Agent with non-empty description and prompt, subagent_type=general-purpose, and the matching top-level workflow_role (coder, reviewer, or qa). Put task, scope, evidence, and return shape in the delegated prompt. The runtime enforces the reviewer tool boundary from workflow_role.',
     '- If Agent is not available, record fallback-contract explicitly before any leader-owned implementation or repair.',
     '- After every subagent return, the leader must summarize changedFiles/testsRun/findings/blockers/risks and decide whether bounded fixes, validation, or phase completion is next.',
     `Required workflow roles: ${requiredRoles.join(', ')}`,
@@ -811,7 +814,7 @@ function inheritedRunForFollowUp(state: WorkflowSessionState): WorkflowRun | nul
   ) ?? null
 }
 
-function subagentRoleToolPolicy(role: WorkflowSubagentRole): { allowedTools: string[]; disallowedTools: string[] } {
+export function getWorkflowSubagentRoleToolPolicy(role: WorkflowSubagentRole): { allowedTools: string[]; disallowedTools: string[] } {
   if (role === 'coder') {
     return {
       allowedTools: ['Read', 'Glob', 'Grep', 'LS', 'Edit', 'MultiEdit', 'Write', 'Bash', 'PowerShell', 'TodoWrite'],
@@ -821,7 +824,7 @@ function subagentRoleToolPolicy(role: WorkflowSubagentRole): { allowedTools: str
   if (role === 'reviewer') {
     return {
       allowedTools: ['Read', 'Glob', 'Grep', 'LS', 'Bash', 'PowerShell', 'TodoWrite'],
-      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'],
+      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'AskUserQuestion'],
     }
   }
   if (role === 'qa') {
@@ -850,7 +853,7 @@ function roleContract(role: WorkflowSubagentRole): string {
     return sanitizeWorkflowToolNameText([
       'Reviewer contract:',
       '- Read-only review against plan, acceptance criteria, diffs, and scenario results.',
-      '- Do not use Write/Edit/MultiEdit/NotebookEdit.',
+      '- Do not use Write/Edit/MultiEdit/NotebookEdit/Agent/AskUserQuestion. Shell use is limited to read-only inspection and test execution; do not use it to modify files.',
       '- Classify findings as critical, major, or minor and mark approval/blocking status.',
     ].join('\n'))
   }

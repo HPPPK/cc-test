@@ -31,6 +31,9 @@ import { handleOpenTargetsApi } from './api/open-targets.js'
 import { handleMemoryApi } from './api/memory.js'
 import { handleDesktopUiApi } from './api/desktop-ui.js'
 import { handleExpertsApi } from './api/experts.js'
+import { handleImagesApi } from './api/images.js'
+import { handleExpertHumanVerificationsApi } from './api/expert-human-verifications.js'
+import { handleExpertBrowserActivityApi } from './api/expert-browser-activity.js'
 
 export async function handleApiRequest(req: Request, url: URL): Promise<Response> {
   const path = url.pathname
@@ -142,6 +145,15 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'experts':
       return handleExpertsApi(req, url, segments)
+
+    case 'images':
+      return handleImagesApi(req, url, segments)
+
+    case 'expert-human-verifications':
+      return handleExpertHumanVerificationsApi(req, url, segments)
+
+    case 'expert-browser-activity':
+      return handleExpertBrowserActivityApi(req, url, segments)
 
     case 'filesystem':
       return handleFilesystemRoute(url.pathname, url)

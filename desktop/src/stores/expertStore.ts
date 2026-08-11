@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { expertsApi, fallbackExpertCategories, type ExpertCategory, type ExpertDefinition, type ExpertPackSummary, type ExpertPackUpdateInput } from '../api/experts'
+import { expertsApi, fallbackExpertCategories, type ExpertCategory, type ExpertDefinition, type ExpertPackSummary, type ExpertPackUpdateInput, type ExpertResearchBrowserStartOptions } from '../api/experts'
 import type { ExpertMaterialRef, ExpertSessionSummary } from '../types/session'
 import { isTauriRuntime } from '../lib/desktopRuntime'
 
@@ -16,7 +16,7 @@ type ExpertStore = {
   modeError: string | null
   lastMaterialRef: ExpertMaterialRef | null
   loadExperts: () => Promise<void>
-  enterExpertMode: (sessionId: string, expertId: string) => Promise<ExpertSessionSummary>
+  enterExpertMode: (sessionId: string, expertId: string, researchBrowserOptions?: ExpertResearchBrowserStartOptions) => Promise<ExpertSessionSummary>
   exitExpertMode: (sessionId: string) => Promise<ExpertSessionSummary>
   submitIntakeStep: (sessionId: string, input: { stepId?: string; answer?: unknown; answers?: Record<string, unknown> }) => Promise<ExpertSessionSummary>
   runExpertAgent: (sessionId: string, input: { expertId?: string; projectRoot?: string; title?: string; notes?: string }, onProgress?: (content: string) => void) => Promise<{ expert: ExpertSessionSummary; materialRef: ExpertMaterialRef }>
@@ -79,10 +79,10 @@ export const useExpertStore = create<ExpertStore>((set, get) => ({
     }
   },
 
-  enterExpertMode: async (sessionId, expertId) => {
+  enterExpertMode: async (sessionId, expertId, researchBrowserOptions) => {
     set({ modePhase: 'entering', modeMessage: 'Entering Expert Mode', modeError: null })
     try {
-      const response = await expertsApi.enterSessionExpertMode(sessionId, expertId)
+      const response = await expertsApi.enterSessionExpertMode(sessionId, expertId, researchBrowserOptions)
       set({ modePhase: 'collecting', modeMessage: 'Expert Mode is ready.', modeError: null })
       return response.expert
     } catch (error) {

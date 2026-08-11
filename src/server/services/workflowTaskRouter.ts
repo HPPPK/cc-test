@@ -25,6 +25,8 @@ type PhaseApplicabilityInput = {
     modePolicy?: WorkflowPhaseModePolicy
   }
   labels: WorkflowLabel[]
+  /** Primary task classification. Secondary labels add context but cannot skip a required phase. */
+  primaryLabel?: WorkflowLabel
   effort: EffortMode
 }
 
@@ -76,11 +78,12 @@ export function routeWorkflowTask(input: WorkflowTaskRouterInput): WorkflowTaskR
 
 export function phaseAppliesToRoute(input: PhaseApplicabilityInput): PhaseApplicabilityResult {
   const labelSet = new Set(input.labels)
-  const skippedByLabel = input.phase.skipWhen?.labels?.find((label) => labelSet.has(label))
+  const primaryLabel = input.primaryLabel ?? input.labels[0]
+  const skippedByLabel = primaryLabel && input.phase.skipWhen?.labels?.includes(primaryLabel)
   if (skippedByLabel) {
     return {
       applies: false,
-      reason: `Skipped because route includes label ${skippedByLabel}.`,
+      reason: `Skipped because primary route label is ${skippedByLabel}.`,
     }
   }
 

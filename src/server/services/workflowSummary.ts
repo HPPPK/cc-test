@@ -77,7 +77,10 @@ export function stateToWorkflowMetadata(
   const template = state.templateIdentity
   const model = visibleModelResolution(state)
   const recommendedSkillStatus = recommendedSkillStatusFromState(state)
-  const pendingConfirmation = state.pendingConfirmation?.status === 'pending'
+  // A blocked run and a next-phase confirmation are mutually exclusive.
+  // Treat legacy state that contains both as blocked so it cannot surface an
+  // unsafe advance action while the server is recovering it.
+  const pendingConfirmation = state.runStatus !== 'blocked' && state.pendingConfirmation?.status === 'pending'
     ? state.pendingConfirmation
     : null
   const pendingRoute = state.pendingRoute?.status === 'pending' ? state.pendingRoute : null
@@ -102,6 +105,7 @@ export function stateToWorkflowMetadata(
     workflowStatus: state.workflowStatus,
     status: state.status,
     runStatus: state.runStatus,
+    ...(state.autoRecovery ? { autoRecovery: state.autoRecovery } : {}),
     activePhaseId: state.activePhaseId,
     statePointer,
     stateRef: statePointer,
@@ -157,13 +161,18 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     ? metadata.phaseCount
     : 0
 
-  const pendingConfirmation = Boolean(metadata.pendingConfirmation)
-  const publicStatus = pendingConfirmation
-    ? 'pending-confirmation'
-    : (metadata.status ?? metadata.workflowStatus) as WorkflowLifecycleStatus
-  const publicRunStatus = pendingConfirmation
-    ? 'waiting_for_user'
-    : metadata.runStatus
+  const blocked = metadata.runStatus === 'blocked'
+  const pendingConfirmation = !blocked && Boolean(metadata.pendingConfirmation)
+  const publicStatus = blocked
+    ? 'failed'
+    : pendingConfirmation
+      ? 'pending-confirmation'
+      : (metadata.status ?? metadata.workflowStatus) as WorkflowLifecycleStatus
+  const publicRunStatus = blocked
+    ? 'blocked'
+    : pendingConfirmation
+      ? 'waiting_for_user'
+      : metadata.runStatus
   const summary: WorkflowSessionSummary = {
     mode: 'workflow',
     templateId: metadata.templateId,
@@ -172,6 +181,7 @@ export function workflowSummaryFromMetadata(metadata: WorkflowSessionMetadata): 
     templateSnapshotId: metadata.templateSnapshotId,
     status: publicStatus,
     ...(typeof publicRunStatus === 'string' ? { runStatus: publicRunStatus as WorkflowSessionSummary['runStatus'] } : {}),
+    ...(metadata.autoRecovery ? { autoRecovery: metadata.autoRecovery } : {}),
     activePhaseId: metadata.activePhaseId,
     activePhaseIndex: activeIndex,
     phaseCount,

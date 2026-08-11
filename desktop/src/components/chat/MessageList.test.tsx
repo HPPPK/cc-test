@@ -195,6 +195,17 @@ describe('recovered workflow question contract failures', () => {
     expect(model.toolResultMap.get('retried-question-tool')?.isError).toBe(false)
   })
 
+  it('hides a contract failure as soon as a valid retry card is ready for the user', () => {
+    const model = buildRenderModel(recoveredQuestionMessages('feature-extension-workflow-v8').slice(0, 4))
+
+    expect(model.renderItems).toHaveLength(1)
+    expect(model.renderItems[0]).toMatchObject({
+      kind: 'message',
+      message: { id: 'retried-question', toolUseId: 'retried-question-tool' },
+    })
+    expect(model.toolResultMap.has('failed-question-tool')).toBe(false)
+  })
+
   it('keeps an unrecovered workflow question contract failure visible', () => {
     const model = buildRenderModel(recoveredQuestionMessages('feature-extension-workflow-v8').slice(0, 3))
 
@@ -248,7 +259,7 @@ describe('mode-aware change card display', () => {
     } as never)).toBe('deferred')
   })
 
-  it('shows one final summary only after workflow or expert reaches a terminal status', () => {
+  it('shows one final summary after a terminal workflow but keeps experts deferred', () => {
     expect(getTurnChangeDisplayMode({
       workflow: { status: 'completed' },
     } as never)).toBe('final-summary')
@@ -257,7 +268,10 @@ describe('mode-aware change card display', () => {
     } as never)).toBe('final-summary')
     expect(getTurnChangeDisplayMode({
       expert: { status: 'exited' },
-    } as never)).toBe('final-summary')
+    } as never)).toBe('deferred')
+    expect(getTurnChangeDisplayMode({
+      expert: { status: 'failed' },
+    } as never)).toBe('deferred')
 
     expect(buildModeChangeSummary([
       {
@@ -1201,6 +1215,46 @@ describe('MessageList nested tool calls', () => {
 
     expect(screen.getByText('Failed')).toBeTruthy()
     expect(screen.getByText('Explore agent unavailable in this session')).toBeTruthy()
+  })
+
+  it('shows partial Agent status instead of a green completion badge when the worker reports partial work', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'tool-agent',
+              type: 'tool_use',
+              toolName: 'Agent',
+              toolUseId: 'agent-1',
+              input: { description: 'Verify product and competitors' },
+              timestamp: 1,
+            },
+            {
+              id: 'result-agent',
+              type: 'tool_result',
+              toolUseId: 'agent-1',
+              content: 'status: partial\ncompletion_confidence: low\nThe search input timed out before opening a source page.',
+              isError: false,
+              timestamp: 2,
+            },
+          ],
+          agentTaskNotifications: {
+            'agent-1': {
+              taskId: 'agent-task-1',
+              toolUseId: 'agent-1',
+              status: 'completed',
+              summary: 'Agent completed with partial evidence',
+            },
+          },
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText('Partially done')).toBeTruthy()
+    expect(screen.queryByText('Done')).toBeNull()
   })
 
   it('shows completed agent output when no nested tool activity is available', () => {

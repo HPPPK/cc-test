@@ -1,10 +1,12 @@
-﻿import * as fs from 'node:fs/promises'
+import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { getAppStoragePath } from '../../utils/appIdentity.js'
 import { ZipPackAdapter, assertSafeZipPath, type ZipPackArchive } from './zipPackAdapter.js'
 import { deriveExpertTemplateFillSchema } from '../../utils/expertTemplateFill.js'
+import { resolveExpertResearchBrowserPolicy, type ExpertResearchBrowserConnection, type ExpertResearchBrowserPolicy, type ExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
+import type { ExpertResearchCompletionPolicy, ExpertResearchCompletionState } from './expertResearchCompletionService.js'
 
 export type ExpertSessionStatus = 'active' | 'collecting' | 'running' | 'completed' | 'exited' | 'failed'
 
@@ -60,7 +62,7 @@ export type ExpertOutputMode = 'template-fill'
  * only; it never changes another Expert's tool policy.
  */
 export type ExpertRuntimePolicy = {
-  mode: 'strict-visual-workflow'
+  mode: 'strict-visual-workflow' | 'package-local-skills'
   allowedToolNames: string[]
   requiredSkillIds: string[]
 }
@@ -80,11 +82,16 @@ export type ExpertRuntimeBinding = {
     sha256: string
     content: string
   }>
+  /** Package-declared Skill IDs that must be injected into each matching delegated Expert agent. */
+  subagentSkillIdsByAgentType?: Record<string, string[]>
   hostTools: ExpertHostTool[]
   tools: ExpertToolManifest[]
   permissions: ExpertPermission[]
   runtimePolicy?: ExpertRuntimePolicy
   outputProtocol?: { path: string; content: string }
+  researchDeliveryPolicy?: ExpertResearchDeliveryPolicy
+  researchBrowserPolicy?: ExpertResearchBrowserPolicy
+  researchCompletionPolicy?: ExpertResearchCompletionPolicy
   outputMode?: ExpertOutputMode
   outputTemplate?: { path: string; content: string }
   activatedAt: string
@@ -101,6 +108,12 @@ export type ExpertSessionMetadata = {
   activeRunId?: string
   runtimeBinding?: ExpertRuntimeBinding
   intakeState?: ExpertIntakeState
+  researchDelivery?: ExpertResearchDeliveryState
+  researchCompletion?: ExpertResearchCompletionState
+  /** Session-scoped browser choice; never persists a profile path or credentials. */
+  researchBrowserConnection?: ExpertResearchBrowserConnection
+  /** Session-scoped managed Chromium presentation; omitted for legacy or CDP sessions. */
+  researchBrowserPresentation?: ExpertResearchBrowserPresentation
   materialRefs: ExpertMaterialRef[]
   startedAt: string
   updatedAt: string
@@ -186,10 +199,13 @@ export type ExpertDefinition = {
   formPaths: string[]
   outputProtocolPath?: string
   outputProtocolContent?: string
+  researchBrowserPolicy?: ExpertResearchBrowserPolicy
   outputMode?: ExpertOutputMode
   outputTemplatePath?: string
   outputTemplateContent?: string
   skillIds: string[]
+  /** Optional package-local Skill bindings for delegated Expert agent types. */
+  subagentSkillIdsByAgentType?: Record<string, string[]>
   hostTools: NonNullable<ExpertPackManifest['hostTools']>
   permissions: NonNullable<ExpertPackManifest['permissions']>
   runtimePolicy?: ExpertRuntimePolicy
@@ -872,15 +888,18 @@ export class ExpertPackRegistryService {
           const skillPath = skillEntryPath(skillId)
           return [skillId, await zip.readText(skillPath)] as const
         })))
+      const outputProtocolContent = expert.outputProtocolPath && zip.has(expert.outputProtocolPath)
+        ? await zip.readText(expert.outputProtocolPath)
+        : undefined
+      const researchBrowserPolicy = resolveExpertResearchBrowserPolicy(outputProtocolContent)
       experts.push({
         ...expert,
         intakeFlow: await readExpertIntakeFlow(zip, expert),
         ...(expert.promptPaths.system && zip.has(expert.promptPaths.system)
           ? { systemPromptContent: await zip.readText(expert.promptPaths.system) }
           : {}),
-        ...(expert.outputProtocolPath && zip.has(expert.outputProtocolPath)
-          ? { outputProtocolContent: await zip.readText(expert.outputProtocolPath) }
-          : {}),
+        ...(outputProtocolContent ? { outputProtocolContent } : {}),
+        ...(researchBrowserPolicy ? { researchBrowserPolicy } : {}),
         ...(expert.outputTemplatePath && zip.has(expert.outputTemplatePath)
           ? { outputTemplateContent: await zip.readText(expert.outputTemplatePath) }
           : {}),
@@ -960,11 +979,11 @@ function normalizeManifest(raw: unknown): ExpertPackManifest {
 }
 
 function normalizeRuntimePolicy(value: unknown): ExpertRuntimePolicy | undefined {
-  if (!isRecord(value) || value.mode !== 'strict-visual-workflow') return undefined
+  if (!isRecord(value) || (value.mode !== 'strict-visual-workflow' && value.mode !== 'package-local-skills')) return undefined
   const allowedToolNames = normalizeStringArray(value.allowedToolNames)
   const requiredSkillIds = normalizeStringArray(value.requiredSkillIds)
   return {
-    mode: 'strict-visual-workflow',
+    mode: value.mode,
     allowedToolNames: [...new Set(allowedToolNames)],
     requiredSkillIds: [...new Set(requiredSkillIds)],
   }
@@ -1086,6 +1105,10 @@ function normalizeExpert(raw: unknown, manifest: ExpertPackManifest, entrypoint:
     throw new ExpertPackValidationError('专家包声明 template-fill 输出模式时必须提供 outputTemplatePath。')
   }
   const skillIds = normalizeStringArray(raw.skillIds)
+  const subagentSkillIdsByAgentType = normalizeSubagentSkillIdsByAgentType(
+    raw.subagentSkillIds,
+    skillIds,
+  )
   const intakeFlow = normalizeIntakeFlow(raw.intakeFlow)
   const profile = normalizeExpertProfile(raw.profile)
   return {
@@ -1106,6 +1129,7 @@ function normalizeExpert(raw: unknown, manifest: ExpertPackManifest, entrypoint:
     ...(outputMode ? { outputMode } : {}),
     outputTemplatePath,
     skillIds,
+    ...(Object.keys(subagentSkillIdsByAgentType).length > 0 ? { subagentSkillIdsByAgentType } : {}),
     hostTools: manifest.hostTools ?? [],
     permissions: manifest.permissions ?? [],
     ...(manifest.runtimePolicy ? { runtimePolicy: manifest.runtimePolicy } : {}),
@@ -1117,6 +1141,36 @@ function normalizeExpert(raw: unknown, manifest: ExpertPackManifest, entrypoint:
 
 function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(isNonEmptyString) : []
+}
+
+function normalizeSubagentSkillIdsByAgentType(
+  value: unknown,
+  declaredSkillIds: readonly string[],
+): Record<string, string[]> {
+  if (value === undefined) return {}
+  if (!isRecord(value)) {
+    throw new ExpertPackValidationError('subagentSkillIds 必须是“子代理类型 -> Skill ID 数组”的对象。')
+  }
+
+  const declared = new Set(declaredSkillIds)
+  const normalized: Record<string, string[]> = {}
+  for (const [agentType, rawSkillIds] of Object.entries(value)) {
+    const safeAgentType = agentType.trim()
+    if (!/^[a-z][a-z0-9-]{0,95}$/.test(safeAgentType)) {
+      throw new ExpertPackValidationError(`subagentSkillIds 包含无效子代理类型：${agentType}`)
+    }
+    if (!Array.isArray(rawSkillIds) || rawSkillIds.some((skillId) => !isNonEmptyString(skillId))) {
+      throw new ExpertPackValidationError(`subagentSkillIds.${safeAgentType} 必须是非空 Skill ID 数组。`)
+    }
+    const skillIds = [...new Set(rawSkillIds.map((skillId) => (skillId as string).trim()))]
+    for (const skillId of skillIds) {
+      if (!declared.has(skillId)) {
+        throw new ExpertPackValidationError(`subagentSkillIds.${safeAgentType} 引用了未声明的 Skill：${skillId}`)
+      }
+    }
+    normalized[safeAgentType] = skillIds
+  }
+  return normalized
 }
 
 function normalizeProfileEntries(value: unknown): ExpertProfileMemory[] {

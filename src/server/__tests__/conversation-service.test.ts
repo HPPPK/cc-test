@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { ConversationService } from '../services/conversationService.js'
 import { ProviderService } from '../services/providerService.js'
 import { resetTerminalShellEnvironmentCacheForTests } from '../../utils/terminalShellEnvironment.js'
-import { getBrowserResearchRuntimeDir } from '../../tools/BrowserResearchTool/runtime.js'
+import { getPlaywrightRuntimeDir } from '../../tools/PlaywrightTool/runtime.js'
 
 describe('ConversationService', () => {
   let tmpDir: string
@@ -373,6 +373,8 @@ describe('ConversationService', () => {
     expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('kimi-k2.6')
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('kimi-k2.6')
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
+    expect(env.CC_JIANGXIA_PROVIDER_ID).toBe(provider.id)
+    expect(env.CC_HAHA_PROVIDER_ID).toBe(provider.id)
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined()
   })
 
@@ -648,11 +650,11 @@ describe('ConversationService', () => {
     }
   })
 
-  test('buildChildEnv exposes the installed BrowserResearch renderer to standard Expert sessions only', async () => {
+  test('buildChildEnv exposes the installed Playwright renderer to standard Expert sessions only', async () => {
     const browserExecutable = path.join(
-      getBrowserResearchRuntimeDir(tmpDir),
+      getPlaywrightRuntimeDir(tmpDir),
       'chromium-test',
-      'chrome-headless-shell.exe',
+      'chrome.exe',
     )
     await fs.mkdir(path.dirname(browserExecutable), { recursive: true })
     await fs.writeFile(browserExecutable, 'placeholder browser executable')
@@ -678,7 +680,7 @@ describe('ConversationService', () => {
     const browserExecutable = path.join(
       bundledRuntimeDir,
       'chromium-test',
-      'chrome-headless-shell.exe',
+      'chrome.exe',
     )
     await fs.mkdir(path.dirname(browserExecutable), { recursive: true })
     await fs.writeFile(browserExecutable, 'placeholder bundled browser executable')

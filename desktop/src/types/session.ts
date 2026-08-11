@@ -210,6 +210,8 @@ export type WorkflowSessionSummary = {
     targetPhaseId: string | null
     intent: string
     rationale: string
+    evidence?: Array<Record<string, unknown>>
+    createdAt?: string
     requiresConfirmation: boolean
     approvedTargetPhaseId: string | null
     status: 'pending' | 'approved' | 'rejected'
@@ -220,6 +222,13 @@ export type WorkflowSessionSummary = {
   routeReason?: string
   requiresConfirmation?: boolean
   runStatus?: WorkflowRunStatus
+  autoRecovery?: {
+    phaseId: string
+    startedAt: string
+    expiresAt: string
+    attempt: number
+    source: 'phase-completion-blocked' | 'phase-completion-unable'
+  }
   labels?: WorkflowLabel[]
   secondaryLabels?: WorkflowLabel[]
   effort?: WorkflowEffortMode
@@ -242,7 +251,7 @@ export type WorkflowSessionSummary = {
   statePointer: WorkflowArtifactPointer
   reportPointer?: WorkflowArtifactPointer
   phaseNames?: string[]
-  transitionAuthority?: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice'
+  transitionAuthority?: 'auto' | 'user-confirmation' | 'artifact-gate' | 'user-choice' | 'recovery'
   pendingArtifact?: WorkflowPhaseArtifact | null
   artifactHistory?: WorkflowPhaseArtifact[]
   recommendedSkillStatus?: WorkflowRecommendedSkillStatusSummary
@@ -301,6 +310,8 @@ export type ExpertSessionSummary = {
   packId: string
   packVersion: string
   status: ExpertSessionStatus
+  /** Session-only managed browser presentation selected when this Expert started. */
+  researchBrowserPresentation?: 'assistable_background' | 'always_visible'
   activeRunId?: string
   intakeState?: ExpertIntakeState
   materialRefs: ExpertMaterialRef[]

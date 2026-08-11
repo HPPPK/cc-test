@@ -2,7 +2,7 @@
   "id": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
   "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。按字段研究，使用包内浏览器信息检索方法发现候选链接、通过 Playwright 逐页取证，并以多源渠道证据包支撑 SEO/SEM/内容渠道判断；先生成紧凑字段 JSON，再由内置 CLI 填充最终 HTML。资料不足时如实标注，不把业务规则当作市场证据。",
-  "statusLabel": "分章节子代理 + 零 Key 多入口浏览器检索 + 多源渠道证据包 + 证据复核 + 固定母版 CLI 填充 v0.11.2-local",
+  "statusLabel": "分章节子代理 + 注入式检索 Skill + 即时 CAPTCHA 人工接力 + 零 Key 多入口浏览器检索 + 多源渠道证据包 + 证据复核 + 交付确认 + 固定母版 CLI 填充 v0.13.0-local",
   "promptPaths": {
     "system": "experts/commercialization-research-report/prompts/system.md"
   },
@@ -16,19 +16,10 @@
     "browser-information-retrieval",
     "external-demand-evidence",
     "channel-acquisition-evidence",
-    "identify-assumptions-new",
-    "prioritize-assumptions",
-    "brainstorm-experiments-new",
     "competitor-analysis",
     "market-sizing",
-    "market-segments",
-    "user-segmentation",
-    "sentiment-analysis",
     "pricing-strategy",
-    "monetization-strategy",
-    "beachhead-segment",
-    "gtm-strategy",
-    "strategy-red-team"
+    "monetization-strategy"
   ],
   "intakeFlow": {
     "version": 1,
@@ -139,13 +130,13 @@
       "boundaries": [
         "业务规则来源优先级为：真实运行时边界 > 本轮用户明确输入 > 本次 AGENTS.md 风格规则文档 > 可编辑默认业务规则 > 通用 Skill 方法 > 模型既有知识。",
         "包内方法 Skill 是通用方法；没有匹配证据时只给假设和验证计划，不因默认金舟预设而强行套用 C 端、国内、应用商店、SEM 或自媒体逻辑。",
-        "规则文件不能授予当前会话不存在的 Read、BrowserResearch、WebFetch 或 Write 能力；无 Read 时要求粘贴文本，无 BrowserResearch 时要求 URL、截图、文本或文件。",
+        "规则文件不能授予当前会话不存在的 Read、Playwright、WebFetch 或 Write 能力；无 Read 时要求粘贴文本，无 Playwright 时要求 URL、截图、文本或文件。",
         "没有真实用户数据时不伪造情绪分析、分群或精确市场规模。",
         "用户确认结论并提供目录后，才在 Write 可用时写 HTML 报告。"
       ]
     },
     "starterPrompts": [
-      "使用当前会话可用的 BrowserResearch，调研一个新品方向并给出立项建议；每项关键结论都要标明来源与时效。",
+      "使用当前会话可用的 Playwright，调研一个新品方向并给出立项建议；每项关键结论都要标明来源与时效。",
       "我会提供竞品链接、价格截图和应用商店评论；请先建立证据台账，再给出平台、定价与渠道建议。",
       "先只做立项预审：列出最大的不确定性、最低成本验证实验和继续调研所需资料。"
     ],
@@ -188,7 +179,7 @@
       {
         "id": "delivery",
         "title": "字段 JSON + CLI 输出固定 HTML",
-        "description": "用户确认输出路径后先用 Write 创建字段 JSON，再由内置 CLI 填充并校验固定 HTML；仅必要时用 Bash 执行该命令或检查结果。"
+        "description": "用户确认输出路径后先汇总字段 JSON 与来源表，再由内置 CLI 填充并校验固定 HTML；不由 Write 手写或拼接 HTML。"
       },
       {
         "id": "evidence-review",
@@ -198,13 +189,21 @@
     ],
     "knowledgeBase": {
       "version": "v1.0.6-local",
-      "notes": "16 个商业化研究 Skill：按产品与竞品、需求与市场、商业化与渠道三类子代理分工；从网页链接扩展来源图谱；字段教学指南帮助模型理解固定 HTML 表格含义；独立证据复核完成前不输出最终 HTML。"
+      "notes": "启动时只注入 9 个核心商业化研究 Skill，避免研究代理被无关方法淹没；ZIP 仍保留其余可扩展 Skill 资源。三个子代理分别取证、主代理汇总来源图谱，独立复核完成前不输出最终 HTML。"
     },
     "version": "v1.0.8-local",
-    "notes": "16 个商业化研究 Skill：模型从可信来源范围动态构造候选 URL，BrowserResearch 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，字段 JSON 经内置 CLI 校验并填充固定母版。"
+    "notes": "模型从可信来源范围动态构造候选 URL，Playwright 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，字段 JSON 经内置 CLI 校验并填充固定母版。"
   },
-  "version": "0.11.2-local",
-  "status": "零 Key 多入口候选发现 + BrowserResearch 来源发现/访问台账 + 四子代理复核 + 固定 HTML CLI 填充 v1.0.8-local",
+  "version": "0.13.0-local",
+  "status": "即时 CAPTCHA 人工接力 + ZIP 子代理检索 Skill 注入 + 可见 Playwright 调研 + 可选用户授权本机 Chrome/Edge 连接 + 四子代理复核 + 用户确认范围后固定 HTML CLI 填充 v0.13.0-local",
   "outputTemplatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
-  "outputMode": "template-fill"
+  "outputMode": "template-fill",
+  "subagentSkillIds": {
+    "expert-evidence-researcher": [
+      "browser-information-retrieval"
+    ],
+    "expert-evidence-reviewer": [
+      "browser-information-retrieval"
+    ]
+  }
 }

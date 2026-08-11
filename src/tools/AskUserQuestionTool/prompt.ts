@@ -37,7 +37,7 @@ export const ASK_USER_QUESTION_TOOL_PROMPT = `Use this tool when you need to ask
 
 Usage notes:
 - Users will always be able to select "Other" to provide custom text input
-- Use multiSelect: true to allow multiple answers to be selected for a question
+- Set multiSelect inside the specific question object (never at the top level) to allow multiple answers for that question. Omit it for normal single-choice questions.
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 - In an active workflow, use this tool only to collect information or an explicit authorization that is needed to continue the current phase. A submitted answer always returns to the same active phase; it never confirms, pauses, resumes, advances, returns, jumps, or routes the workflow.
 - In an active workflow, set blocksCompletion: true only when the answer must be incorporated into current-phase work before submit_phase_completion. After such an answer, update the relevant phase output before submitting completion. Set blocksCompletion: false for an informational status check or acknowledgement that must not add a completion blocker. Never rely on the question text to infer this.

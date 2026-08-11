@@ -191,11 +191,11 @@ function activePhaseDefinition(
 }
 
 const SKILLS_DEVELOPMENT_TEMPLATE_ID = 'skills-development'
-const WORKFLOWS_ALLOWING_FOLLOW_UP_QUESTIONS_BEFORE_EVIDENCE = new Set([
+const SINGLE_QUESTION_WORKFLOW_TEMPLATE_IDS = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
 ])
-
 type SkillsDevelopmentScopePlanQuestionPolicy = {
   exactQuestionCount: number
   minChoices: number
@@ -271,12 +271,61 @@ function getNecessaryWorkflowQuestionPolicy(
 
   return {
     requireNecessaryQuestion: true,
-    // Existing sessions retain their template snapshot. Keep Feature/Debug
-    // sessions created from older packs from reviving the retired per-question
-    // hard stop after the application is updated.
-    requireAnswerProcessingBeforeNextQuestion: policy.requireAnswerProcessingBeforeNextQuestion === true
-      && !WORKFLOWS_ALLOWING_FOLLOW_UP_QUESTIONS_BEFORE_EVIDENCE.has(workflowTemplateId(state) ?? ''),
+    requireAnswerProcessingBeforeNextQuestion: policy.requireAnswerProcessingBeforeNextQuestion === true,
   }
+}
+
+function hasOpenWorkflowQuestion(state: WorkflowSessionState): boolean {
+  const phaseId = state.activePhaseId
+  if (!phaseId) return false
+
+  return state.runtimeContract?.phaseStates[phaseId]?.issues.some((issue) => (
+    issue.source === 'ask-user-question'
+    && issue.status === 'open'
+  )) ?? false
+}
+
+function getSingleWorkflowQuestionViolation(
+  input: unknown,
+  state: WorkflowSessionState,
+  templateId: string,
+): string | null {
+  const phaseLabel = state.activePhaseId ?? 'active phase'
+  const contractLabel = templateId + '/' + phaseLabel
+  const questions = input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as Record<string, unknown>).questions
+    : undefined
+
+  if (!Array.isArray(questions) || questions.length !== 1) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' allows exactly one question per AskUserQuestion call. Reissue one question only.'
+  }
+
+  const question = questions[0]
+  if (!question || typeof question !== 'object' || Array.isArray(question)) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' requires one structured question.'
+  }
+
+  if (hasOpenWorkflowQuestion(state)) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' already has an unanswered question. Restore or wait for that existing card; do not create a second AskUserQuestion.'
+  }
+
+  const context = question as Record<string, unknown>
+  if (context.blocksCompletion !== true) return null
+
+  if (typeof context.blockingReason !== 'string' || !context.blockingReason.trim()) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' requires a non-empty blockingReason when blocksCompletion is true.'
+  }
+
+  if (typeof context.answerImpact !== 'string' || !context.answerImpact.trim()) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' requires a non-empty answerImpact when blocksCompletion is true.'
+  }
+
+  return null
 }
 
 function hasAnsweredQuestionPendingProcessing(state: WorkflowSessionState): boolean {
@@ -327,6 +376,11 @@ function getNecessaryWorkflowQuestionViolation(
       + ' requires a non-empty answerImpact explaining the concrete implementation, investigation, or acceptance decision the answer will change.'
   }
 
+  if (hasOpenWorkflowQuestion(state)) {
+    return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
+      + ' already has an unanswered blocking question. Restore or wait for that existing card; do not create a second AskUserQuestion.'
+  }
+
   if (policy.requireAnswerProcessingBeforeNextQuestion && hasAnsweredQuestionPendingProcessing(state)) {
     return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: ' + contractLabel
       + ' already has an answered question pending processing. Apply the user answer to current-phase work and update current-phase evidence before asking another question.'
@@ -341,6 +395,11 @@ export function getWorkflowQuestionCardContractViolation(
   state: WorkflowSessionState | null | undefined,
 ): string | null {
   if (toolName !== 'AskUserQuestion') return null
+
+  const templateId = state && isActiveWorkflowState(state) ? workflowTemplateId(state) : null
+  if (templateId && SINGLE_QUESTION_WORKFLOW_TEMPLATE_IDS.has(templateId)) {
+    return getSingleWorkflowQuestionViolation(input, state, templateId)
+  }
 
   const policy = getSkillsDevelopmentScopePlanQuestionPolicy(state)
   if (!policy) {

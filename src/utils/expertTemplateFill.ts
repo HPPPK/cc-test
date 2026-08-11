@@ -121,9 +121,25 @@ function renderParagraphs(value: unknown, fieldId: string): string {
   return paragraphs.map((paragraph) => `<p>${escapeHtml(String(paragraph).trim()).replace(/\r?\n/g, '<br>')}</p>`).join('\n')
 }
 
+function tableCellsFromRow(value: unknown): unknown {
+  if (Array.isArray(value)) return value
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+
+  // Some providers serialize a row as { value: ["…"], Count: 3 } instead of a
+  // raw JSON array. This wrapper is unambiguous and contains no report content
+  // outside `value`, so unwrap it before applying the normal strict cell checks.
+  const row = value as Record<string, unknown>
+  const keys = Object.keys(row)
+  if (!Array.isArray(row.value) || keys.some((key) => key !== 'value' && key !== 'count' && key !== 'Count')) return value
+  const declaredCount = row.count ?? row.Count
+  if (declaredCount !== undefined && declaredCount !== row.value.length) return value
+  return row.value
+}
+
 function renderTableRows(value: unknown, field: Extract<ExpertTemplateFillField, { kind: 'table-rows' }>): string {
   if (!Array.isArray(value) || value.length === 0) throw new Error(`表格区域 ${field.id} 至少需要一行数据；资料不足时请填写“未取得，需一手验证”。`)
-  return value.map((row, rowIndex) => {
+  return value.map((rawRow, rowIndex) => {
+    const row = tableCellsFromRow(rawRow)
     if (!Array.isArray(row) || row.length !== field.columns.length || row.some((cell) => typeof cell !== 'string' || !cell.trim())) {
       throw new Error(`表格区域 ${field.id} 第 ${rowIndex + 1} 行必须恰好填写 ${field.columns.length} 个非空单元格。`)
     }

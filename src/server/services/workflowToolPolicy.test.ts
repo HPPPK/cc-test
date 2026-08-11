@@ -1006,9 +1006,9 @@ describe('skills-development scope-plan question-card contract', () => {
   })
 })
 
-describe('Feature and Debug necessary-question contract', () => {
+describe('Workflow question card contract', () => {
   function stateWithNecessaryQuestionPolicy(
-    templateId = 'feature-extension-workflow-v8',
+    templateId = 'strict-custom-workflow',
     phaseId = 'feature-implement',
     issues: WorkflowPhaseIssue[] = [],
     requireAnswerProcessingBeforeNextQuestion = true,
@@ -1025,7 +1025,7 @@ describe('Feature and Debug necessary-question contract', () => {
       source: 'user',
       version: '8',
       displayName: templateId,
-      description: 'Necessary question policy fixture',
+      description: 'Question policy fixture',
       phases: [{
         id: phaseId,
         label: phaseId,
@@ -1077,7 +1077,17 @@ describe('Feature and Debug necessary-question contract', () => {
     }],
   }
 
-  test('requires an explicit reason and impact for Feature and Debug questions', () => {
+  const optionalQuestionCard = {
+    questions: [{
+      prompt: 'Which distribution format should the first preview use?',
+      choices: [
+        { label: 'Portable package', description: 'Offer a self-contained download for a fast evaluation.' },
+        { label: 'Installer', description: 'Offer the standard installation experience.' },
+      ],
+    }],
+  }
+
+  test('keeps explicit reason and impact requirements for legacy strict workflows', () => {
     const state = stateWithNecessaryQuestionPolicy()
 
     expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
@@ -1095,11 +1105,59 @@ describe('Feature and Debug necessary-question contract', () => {
     expect(getWorkflowQuestionCardContractViolation(
       'AskUserQuestion',
       necessaryQuestionCard,
-      stateWithNecessaryQuestionPolicy('debug-repair-workflow-v8', 'debug-investigate'),
+      state,
     )).toBeNull()
   })
 
-  test('requires the current answer to be processed before the next question card for a workflow that retains the hard-stop policy', () => {
+  test.each([
+    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
+    ['feature-extension-workflow-v8', 'feature-memory-plan'],
+    ['debug-repair-workflow-v8', 'debug-memory-intake'],
+  ])('allows optional single-question cards without blocking metadata for %s', (templateId, phaseId) => {
+    const state = stateWithNecessaryQuestionPolicy(templateId, phaseId)
+
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', optionalQuestionCard, state)).toBeNull()
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
+      questions: [{ ...optionalQuestionCard.questions[0], blocksCompletion: false }],
+    }, state)).toBeNull()
+  })
+
+  test('requires reason and impact only when a shipped workflow question explicitly blocks completion', () => {
+    const state = stateWithNecessaryQuestionPolicy('feature-extension-workflow-v8', 'feature-memory-plan')
+
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
+      questions: [{ ...necessaryQuestionCard.questions[0], blockingReason: '' }],
+    }, state)).toContain('blockingReason')
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
+      questions: [{ ...necessaryQuestionCard.questions[0], answerImpact: '' }],
+    }, state)).toContain('answerImpact')
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', necessaryQuestionCard, state)).toBeNull()
+  })
+
+  test('rejects a second question while an earlier optional question is still open', () => {
+    const state = stateWithNecessaryQuestionPolicy('feature-extension-workflow-v8', 'feature-memory-plan', [{
+      id: 'open-question',
+      phaseId: 'feature-memory-plan',
+      sessionId: 'session-1',
+      createdAt: '2026-08-06T00:00:00.000Z',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+      source: 'ask-user-question',
+      status: 'open',
+      blocksCompletion: false,
+      blockingReason: 'The user has not answered the existing optional question.',
+      questionRequestId: 'open-request',
+      questionId: 'distribution-format',
+      createdStateVersion: 1,
+    }])
+
+    expect(getWorkflowQuestionCardContractViolation(
+      'AskUserQuestion',
+      optionalQuestionCard,
+      state,
+    )).toContain('unanswered question')
+  })
+
+  test('requires the current answer to be processed before the next question card for a legacy hard-stop workflow', () => {
     const state = stateWithNecessaryQuestionPolicy('strict-custom-workflow', 'feature-implement', [{
       id: 'previous-question',
       phaseId: 'feature-implement',
@@ -1122,46 +1180,46 @@ describe('Feature and Debug necessary-question contract', () => {
     )).toContain('answered question pending processing')
   })
 
-  test('keeps necessary-question validation while allowing Feature and Debug follow-up questions before answer evidence is finalized', () => {
+  test.each([
+    ['feature-extension-workflow-v8', 'feature-memory-plan'],
+    ['debug-repair-workflow-v8', 'debug-investigate'],
+  ])('allows another optional card after the earlier %s answer is delivered', (templateId, phaseId) => {
     const pendingIssue: WorkflowPhaseIssue = {
       id: 'previous-question',
-      phaseId: 'feature-memory-plan',
+      phaseId,
       sessionId: 'session-1',
       createdAt: '2026-08-02T00:00:00.000Z',
       updatedAt: '2026-08-02T00:01:00.000Z',
       source: 'ask-user-question',
       status: 'answered-pending-processing',
-      blocksCompletion: true,
-      blockingReason: 'Previous necessary question.',
-      answer: { selected: 'Integration A' },
+      blocksCompletion: false,
+      blockingReason: 'Previous optional question.',
+      answer: { selected: 'Portable package' },
       answerReceivedAt: '2026-08-02T00:01:00.000Z',
       createdStateVersion: 1,
     }
-    const state = stateWithNecessaryQuestionPolicy(
-      'feature-extension-workflow-v8',
-      'feature-memory-plan',
-      [pendingIssue],
-      true,
-    )
 
     expect(getWorkflowQuestionCardContractViolation(
       'AskUserQuestion',
-      necessaryQuestionCard,
-      state,
+      optionalQuestionCard,
+      stateWithNecessaryQuestionPolicy(templateId, phaseId, [pendingIssue], true),
     )).toBeNull()
-    expect(getWorkflowQuestionCardContractViolation(
-      'AskUserQuestion',
-      necessaryQuestionCard,
-      stateWithNecessaryQuestionPolicy(
-        'debug-repair-workflow-v8',
-        'debug-investigate',
-        [{ ...pendingIssue, phaseId: 'debug-investigate' }],
-        true,
-      ),
-    )).toBeNull()
+  })
+
+  test.each([
+    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
+    ['feature-extension-workflow-v8', 'feature-memory-plan'],
+    ['debug-repair-workflow-v8', 'debug-memory-intake'],
+  ])('allows only one AskUserQuestion card at a time for %s', (templateId, phaseId) => {
+    const state = stateFor(phaseId)
+    state.templateIdentity = { id: templateId, source: 'user', version: 'current' }
+
     expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
-      questions: [{ ...necessaryQuestionCard.questions[0], answerImpact: '' }],
-    }, state)).toContain('answerImpact')
+      questions: [
+        { prompt: 'First decision?' },
+        { prompt: 'Second decision?' },
+      ],
+    }, state)).toContain('allows exactly one question per AskUserQuestion call')
   })
 
   test('leaves workflows without the necessary-question policy unchanged', () => {

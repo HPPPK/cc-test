@@ -24,7 +24,7 @@ const MANAGED_NODE_DIRECTORY = `node-v${MANAGED_NODE_VERSION}-win-x64`
 const MANAGED_NODE_ARCHIVE = `${MANAGED_NODE_DIRECTORY}.zip`
 const MANAGED_NODE_URL = `https://nodejs.org/dist/v${MANAGED_NODE_VERSION}/${MANAGED_NODE_ARCHIVE}`
 const MANAGED_NODE_SHA256 = '7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29'
-const BROWSER_RESEARCH_PLAYWRIGHT_RUNNER_FILE = 'browser-research-playwright-runner.cjs'
+const PLAYWRIGHT_BROWSER_RUNNER_FILE = 'playwright-browser-runner.cjs'
 const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core'] as const
 const PLAYWRIGHT_NODE_RUNNER_EXTERNALS = [
   'playwright',
@@ -55,7 +55,7 @@ await buildBundledExpertPacks()
 await buildBundledGitRuntime()
 await buildBundledNodeRuntime()
 await buildBundledBrowserRuntime()
-await buildBundledBrowserResearchRunner()
+await buildBundledPlaywrightRunner()
 await copyBundledWorkflowPacks()
 await copyBundledSkills()
 
@@ -90,7 +90,7 @@ async function buildBundledBrowserRuntime() {
   if (!hasManagedBrowserExecutable(cacheDir)) {
     await rm(cacheDir, { recursive: true, force: true })
     await mkdir(cacheDir, { recursive: true })
-    const proc = Bun.spawn(['bunx', 'playwright', 'install', 'chromium-headless-shell'], {
+    const proc = Bun.spawn(['bunx', 'playwright', 'install', 'chromium'], {
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -113,10 +113,10 @@ async function buildBundledBrowserRuntime() {
   console.log(`[build-sidecars] Copied managed Chromium runtime -> ${targetDir}`)
 }
 
-async function buildBundledBrowserResearchRunner() {
+async function buildBundledPlaywrightRunner() {
   const runtimeDir = path.join(binariesDir, 'browser-runtime', 'playwright')
-  const entrypoint = path.join(repoRoot, 'src', 'tools', 'BrowserResearchTool', 'browser-research-playwright-runner.ts')
-  const runnerPath = path.join(runtimeDir, BROWSER_RESEARCH_PLAYWRIGHT_RUNNER_FILE)
+  const entrypoint = path.join(repoRoot, 'src', 'tools', 'PlaywrightTool', 'playwright-browser-runner.ts')
+  const runnerPath = path.join(runtimeDir, PLAYWRIGHT_BROWSER_RUNNER_FILE)
   const runtimeNodeModulesDir = path.join(runtimeDir, 'node_modules')
 
   // Do not bundle Playwright itself. Bun inlines its internal __dirname and
@@ -138,7 +138,7 @@ async function buildBundledBrowserResearchRunner() {
   const result = await Bun.build({
     entrypoints: [entrypoint],
     outdir: runtimeDir,
-    naming: BROWSER_RESEARCH_PLAYWRIGHT_RUNNER_FILE,
+    naming: PLAYWRIGHT_BROWSER_RUNNER_FILE,
     target: 'node',
     format: 'cjs',
     // Playwright serializes locator.evaluate/evaluateAll callbacks into the
@@ -168,7 +168,7 @@ function getPlaywrightHostPlatform(triple: string): string {
 function hasManagedBrowserExecutable(runtimeDir: string): boolean {
   if (!existsSync(runtimeDir)) return false
   try {
-    return readdirSync(runtimeDir, { recursive: true }).some((entry) => /(?:headless_shell|chrome-headless-shell|chrome)(?:\.exe)?$/i.test(entry.replaceAll('\\', '/')))
+    return readdirSync(runtimeDir, { recursive: true }).some((entry) => /(?:^|[\\/])chrome(?:\.exe)?$/i.test(entry.replaceAll('\\', '/')))
   } catch {
     return false
   }
@@ -321,11 +321,15 @@ async function copyBundledWorkflowPacks() {
 }
 
 
+function shouldCopyBundledRuntimeSource(source: string): boolean {
+  return !/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(source)
+}
+
 async function copyBundledSkills() {
   const sourceDir = path.join(repoRoot, 'src', 'skills', 'bundled')
   const targetDir = path.join(binariesDir, 'skills', 'bundled')
   await rm(targetDir, { recursive: true, force: true })
-  await cp(sourceDir, targetDir, { recursive: true })
+  await cp(sourceDir, targetDir, { recursive: true, filter: shouldCopyBundledRuntimeSource })
   console.log(`[build-sidecars] Copied bundled skills -> ${targetDir}`)
 }
 

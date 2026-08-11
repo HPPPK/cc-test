@@ -101,7 +101,27 @@ function errorToValidationResult(error: unknown) {
   }
 }
 
-function messageForStatus(status: Output['status']): string {
+function hasAutomaticRecoveryWindow(workflow: Record<string, unknown>, submissionStatus?: Input['status']): boolean {
+  if (submissionStatus !== 'blocked' && submissionStatus !== 'unable') return false
+  const recovery = workflow.autoRecovery
+  return isRecord(recovery)
+    && typeof recovery.phaseId === 'string'
+    && typeof recovery.expiresAt === 'string'
+}
+
+function messageForStatus(
+  status: Output['status'],
+  workflow: Record<string, unknown> = {},
+  submissionStatus?: Input['status'],
+): string {
+  if (hasAutomaticRecoveryWindow(workflow, submissionStatus)) {
+    return [
+      'The current phase was recorded as repairable and the server opened a 10-second silent recovery window.',
+      'Immediately call request_workflow_route in this same turn with rework_current_phase or jump_to_phase to the actual repair phase.',
+      'Keep requireUserConfirmation true; the server applies only this constrained first recovery without a user click.',
+      'Do not wait for the user, do not call the UI retry action, and do not advance normally.',
+    ].join(' ')
+  }
   if (status !== 'pending') return 'Workflow remains on the current phase'
 
   return [
@@ -194,7 +214,7 @@ async function submitThroughDesktopApi(
       status,
       workflow,
       artifact,
-      message: messageForStatus(status),
+      message: messageForStatus(status, workflow, submission.status),
     },
   }
 }
@@ -356,7 +376,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
   },
   async prompt() {
     return [
-      'Submit the active workflow phase completion. Use status ready only after the current phase is complete; it always requests user confirmation. Use blocked or unable only to record why the workflow must stay on the current phase.',
+      'Submit the active workflow phase completion. Use status ready only after the current phase is complete; it always requests user confirmation. Use blocked or unable only for a repairable ordinary workflow failure. For permission, login, credential, model-environment, or data-safety problems, record the explicit human blocker instead of treating it as a silent repair.',
       'Required input: status, handoff, rationale, and evidence.',
       'handoff must be an object containing the phase summary, key decisions, evidence or artifact references, remaining risks, and next-phase inputs.',
       'rationale must be a non-empty string explaining why the selected completion status is appropriate.',
@@ -436,7 +456,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
         status: result.status,
         workflow: result.state as unknown as Record<string, unknown>,
         artifact: result.artifact,
-        message: messageForStatus(result.status),
+        message: messageForStatus(result.status, result.state as unknown as Record<string, unknown>, input.status),
       },
     }
   },

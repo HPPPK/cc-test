@@ -46,6 +46,22 @@ describe('expert template fill', () => {
     expect(content).not.toContain('SLOT:')
   })
 
+  test('renders the unambiguous value/Count table wrapper emitted by some providers', () => {
+    const { content } = renderExpertTemplateFill(template, {
+      format: EXPERT_TEMPLATE_FILL_FORMAT,
+      templateId: 'demo-v1',
+      fields: {
+        REPORT_TITLE: '新品',
+        REPORT_DATE: '2026-08-04',
+        SOURCE_ROWS: [{ value: ['官网', 'https://example.com/pricing'], Count: 2 }],
+        NOTES: ['第一条说明'],
+      },
+    })
+
+    expect(content).toContain('<td>官网</td>')
+    expect(content).toContain('<a href="https://example.com/pricing">https://example.com/pricing</a>')
+  })
+
   test('does not duplicate a title suffix already supplied by the report field', () => {
     const titledTemplate = '<html data-template-id="title-v1"><body><h1>{{REPORT_TITLE}} · 商业化调研报告</h1></body></html>'
     const { content } = renderExpertTemplateFill(titledTemplate, {

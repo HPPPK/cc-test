@@ -26,6 +26,11 @@ export const WORKFLOW_ARTIFACT_POINTER_KINDS = ['workflow-state', 'phase-artifac
 
 export const WORKFLOW_COMPLETION_SUBMISSION_STATUSES = ['ready', 'needs_user', 'completed', 'blocked', 'unable'] as const
 
+export const WORKFLOW_AUTO_RECOVERY_SOURCES = [
+  'phase-completion-blocked',
+  'phase-completion-unable',
+] as const
+
 export const WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES = ['pending', 'accepted', 'rejected', 'superseded'] as const
 
 export const WORKFLOW_LABELS = [
@@ -119,6 +124,7 @@ export type WorkflowPhaseStatus = (typeof WORKFLOW_PHASE_STATUSES)[number]
 export type WorkflowTemplateSourceStatus = (typeof WORKFLOW_TEMPLATE_SOURCE_STATUSES)[number]
 export type WorkflowArtifactPointerKind = (typeof WORKFLOW_ARTIFACT_POINTER_KINDS)[number]
 export type WorkflowCompletionSubmissionStatus = (typeof WORKFLOW_COMPLETION_SUBMISSION_STATUSES)[number]
+export type WorkflowAutoRecoverySource = (typeof WORKFLOW_AUTO_RECOVERY_SOURCES)[number]
 export type WorkflowArtifactLifecycleStatus = (typeof WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES)[number]
 export type WorkflowLabel = (typeof WORKFLOW_LABELS)[number]
 export type EffortMode = (typeof WORKFLOW_EFFORT_MODES)[number]
@@ -394,6 +400,15 @@ export type WorkflowPhaseExecutionContract = {
   [key: string]: unknown
 }
 
+export type WorkflowCoreFlowEvidencePolicy = {
+  /** Opt-in semantic contract for a JSON core-flow evidence artifact. */
+  type: 'core-flow-evidence-v1'
+  outputArtifactId: string
+  qualityReportArtifactId?: string
+  requireLogDisposition?: boolean
+  [key: string]: unknown
+}
+
 export type WorkflowPhaseEvidencePolicy = {
   outputArtifact: WorkflowRequiredArtifact & {
     name: string
@@ -408,6 +423,7 @@ export type WorkflowPhaseEvidencePolicy = {
     strength?: WorkflowPhaseConstraintStrength
   }
   handoffRules: string[]
+  coreFlowEvidence?: WorkflowCoreFlowEvidencePolicy
   [key: string]: unknown
 }
 
@@ -504,6 +520,9 @@ export type WorkflowCompletionSummary = {
     status: WorkflowPhaseIssueStatus
     blocksCompletion: boolean
     question?: string
+    /** Full AskUserQuestion payload retained so a blocking card can be restored after runtime memory is lost. */
+    questionInput?: Record<string, unknown>
+    questionDescription?: string
     blockingReason: string
     answerReceivedAt?: string
     artifactIds?: string[]
@@ -512,6 +531,14 @@ export type WorkflowCompletionSummary = {
   }>
   artifactRequirements: WorkflowPhaseArtifactRequirementState[]
   checks: WorkflowPhaseCheckState[]
+}
+
+export type WorkflowAutoRecovery = {
+  phaseId: string
+  startedAt: string
+  expiresAt: string
+  attempt: number
+  source: WorkflowAutoRecoverySource
 }
 
 export type WorkflowSessionSummary = {
@@ -536,6 +563,7 @@ export type WorkflowSessionSummary = {
   routeReason?: string
   requiresConfirmation?: boolean
   runStatus?: WorkflowRunStatus
+  autoRecovery?: WorkflowAutoRecovery
   labels?: WorkflowLabel[]
   secondaryLabels?: WorkflowLabel[]
   effort?: EffortMode
@@ -601,6 +629,7 @@ export type WorkflowSessionMetadata = {
   pendingTargetPhaseLabel?: string
   routeReason?: string
   requiresConfirmation?: boolean
+  autoRecovery?: WorkflowAutoRecovery
   completion?: WorkflowCompletionSummary
   [key: string]: unknown
 }
@@ -760,7 +789,7 @@ export type WorkflowTransitionRecord = {
     | 'stopped'
     | 'stale-template'
     | 'missing-template'
-  action?: 'auto-advance' | 'confirmation-requested' | 'route-requested' | 'route-confirmed' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
+  action?: 'auto-advance' | 'confirmation-requested' | 'route-requested' | 'route-confirmed' | 'route-recovery-auto-applied' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
   result?: 'accepted' | 'rejected' | 'superseded' | 'blocked' | 'unable' | 'noop'
   completionCheckId: string | null
   artifactRefs?: WorkflowArtifactPointer[]
@@ -953,6 +982,9 @@ export type WorkflowSessionState = {
   lastRecoveryStatus?: 'ok' | 'state-missing' | 'state-corrupt' | 'report-missing' | 'metadata-only'
   pendingConfirmation?: WorkflowPendingConfirmation | null
   pendingRoute?: WorkflowPendingRoute | null
+  autoRecovery?: WorkflowAutoRecovery
+  /** Attempts are scoped by active workflow run id, then by phase execution plus blocker fingerprint. */
+  autoRecoveryAttempts?: Record<string, Record<string, number>>
   workflowLanguage?: 'zh' | 'en'
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   blockedReason?: string | JsonObject

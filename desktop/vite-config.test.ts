@@ -33,4 +33,12 @@ describe('desktop build compatibility', () => {
     expect(packageJson.scripts?.['dev:desktop']).toBe('tauri dev --no-watch')
   })
 
+  it('uses a deterministic jsdom localStorage setup and ignores packaged native resources', () => {
+    const config = readFileSync(join(desktopRoot, 'vitest.config.ts'), 'utf8')
+
+    expect(config).toContain("jsdom: { url: 'http://localhost/' }")
+    expect(config).toContain("'src-tauri/**'")
+    expect(config).toContain("setupFiles: ['./src/test/setup.ts']")
+  })
+
 })

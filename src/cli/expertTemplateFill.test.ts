@@ -17,6 +17,11 @@ describe('expert-template-fill CLI', () => {
       dataPath: 'report-fields.json',
       outputPath: 'final.html',
     })
+    expect(parseExpertTemplateFillCliArgs(['--data-stdin', '--output', 'final.html'])).toEqual({
+      dataFromStdin: true,
+      outputPath: 'final.html',
+    })
+    expect(() => parseExpertTemplateFillCliArgs(['--data', 'report-fields.json', '--data-stdin', '--output', 'final.html'])).toThrow('exactly one')
     expect(() => parseExpertTemplateFillCliArgs(['--data', 'report-fields.json', '--output', 'final.txt'])).toThrow('.html')
     expect(() => parseExpertTemplateFillCliArgs(['--wat'])).toThrow('Unknown option')
   })
@@ -70,6 +75,37 @@ describe('expert-template-fill CLI', () => {
     })
   })
 
+  test('submits compact fields from standard input without creating a report-fields file', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
+    roots.push(root)
+    const outputPath = path.join(root, 'report.html')
+    let requestedBody: unknown
+
+    await runExpertTemplateFillCli(
+      { dataFromStdin: true, outputPath },
+      {
+        env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-stdin' },
+        readFile: fs.readFile,
+        readStdin: async () => JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'stdin report' } }),
+        mkdir: fs.mkdir,
+        writeFile: fs.writeFile,
+        fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
+          requestedBody = JSON.parse(String(init?.body))
+          return new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>stdin</html>' }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }) as typeof fetch,
+      },
+    )
+
+    expect(requestedBody).toEqual({
+      payload: {
+        format: EXPERT_TEMPLATE_FILL_FORMAT,
+        templateId: 'commercialization-research-classic-v1',
+        fields: { REPORT_TITLE: 'stdin report' },
+      },
+    })
+    expect(await fs.readFile(outputPath, 'utf8')).toBe('<html>stdin</html>')
+  })
+
   test('surfaces field validation returned by the bound template renderer', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
     roots.push(root)
@@ -87,4 +123,48 @@ describe('expert-template-fill CLI', () => {
       },
     )).rejects.toThrow('缺少模板字段：REPORT_TITLE')
   })
+  test('writes the report when Bun on Windows reports EEXIST for an existing output directory', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
+    roots.push(root)
+    const dataPath = path.join(root, 'report-fields.json')
+    const outputPath = path.join(root, 'report.html')
+    await fs.writeFile(dataPath, JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'Windows output' } }))
+    const existsError = Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' })
+
+    await expect(runExpertTemplateFillCli(
+      { dataPath, outputPath },
+      {
+        env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-eexist' },
+        readFile: fs.readFile,
+        mkdir: (async () => { throw existsError }) as typeof fs.mkdir,
+        stat: (async () => ({ isDirectory: () => true })) as typeof fs.stat,
+        writeFile: fs.writeFile,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>windows</html>' }), { status: 200 })) as typeof fetch,
+      },
+    )).resolves.toMatchObject({ outputPath: path.resolve(outputPath) })
+
+    expect(await fs.readFile(outputPath, 'utf8')).toBe('<html>windows</html>')
+  })
+
+  test('does not treat EEXIST as success when the output parent is a file', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
+    roots.push(root)
+    const dataPath = path.join(root, 'report-fields.json')
+    const outputPath = path.join(root, 'report.html')
+    await fs.writeFile(dataPath, JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'Blocked output' } }))
+    const existsError = Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' })
+
+    await expect(runExpertTemplateFillCli(
+      { dataPath, outputPath },
+      {
+        env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-eexist-file' },
+        readFile: fs.readFile,
+        mkdir: (async () => { throw existsError }) as typeof fs.mkdir,
+        stat: (async () => ({ isDirectory: () => false })) as typeof fs.stat,
+        writeFile: fs.writeFile,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as typeof fetch,
+      },
+    )).rejects.toThrow('EEXIST')
+  })
+
 })

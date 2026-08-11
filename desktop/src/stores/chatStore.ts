@@ -50,6 +50,31 @@ export type ComposerDraftState = {
   attachments: ComposerAttachment[]
 }
 
+export type ExpertBrowserResearchActivity = {
+  status: 'researching' | 'awaiting_verification' | 'resumed' | 'completed' | 'access_limited'
+  currentTarget?: string
+  checkedTargets: string[]
+  connectionKind?: 'managed' | 'cdp'
+  updatedAt: string
+}
+
+function normalizeExpertBrowserResearchActivity(value: unknown): ExpertBrowserResearchActivity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const status = record.status
+  if (status !== 'researching' && status !== 'awaiting_verification' && status !== 'resumed' && status !== 'completed' && status !== 'access_limited') return null
+  const checkedTargets = Array.isArray(record.checkedTargets)
+    ? record.checkedTargets.filter((target): target is string => typeof target === 'string' && Boolean(target.trim())).slice(-3)
+    : []
+  return {
+    status,
+    ...(typeof record.currentTarget === 'string' && record.currentTarget.trim() ? { currentTarget: record.currentTarget } : {}),
+    checkedTargets,
+    ...(record.connectionKind === 'managed' || record.connectionKind === 'cdp' ? { connectionKind: record.connectionKind } : {}),
+    updatedAt: typeof record.updatedAt === 'string' && record.updatedAt.trim() ? record.updatedAt : new Date().toISOString(),
+  }
+}
+
 export type PerSessionState = {
   messages: UIMessage[]
   chatState: ChatState
@@ -82,6 +107,7 @@ export type PerSessionState = {
   agentTaskNotifications: Record<string, AgentTaskNotification>
   backgroundAgentTasks?: Record<string, BackgroundAgentTask>
   activeGoal?: ActiveGoalState | null
+  expertBrowserActivity?: ExpertBrowserResearchActivity | null
   elapsedTimer: ReturnType<typeof setInterval> | null
   composerPrefill?: {
     text: string
@@ -262,6 +288,7 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   agentTaskNotifications: {},
   backgroundAgentTasks: {},
   activeGoal: null,
+  expertBrowserActivity: null,
   elapsedTimer: null,
   composerPrefill: null,
   composerDraft: null,
@@ -696,6 +723,39 @@ function mergeRestoredTerminalGoalEvents(
 
   return missingTerminalEvents.length > 0
     ? [...messages, ...missingTerminalEvents]
+    : messages
+}
+
+function isNestedToolActivity(
+  message: UIMessage,
+): message is Extract<UIMessage, { type: 'tool_use' | 'tool_result' }> {
+  return (message.type === 'tool_use' || message.type === 'tool_result') && !!message.parentToolUseId
+}
+
+function nestedToolActivityKey(
+  message: Extract<UIMessage, { type: 'tool_use' | 'tool_result' }>,
+): string {
+  return `${message.type}:${message.toolUseId}:${message.parentToolUseId}`
+}
+
+/**
+ * A live parent Agent result can arrive before its persisted child-tool
+ * transcript is replayed. Preserve the live stream, then add only the missing
+ * nested activities so the Agent card shows what the subagent actually did.
+ */
+function mergeRestoredNestedToolActivities(
+  messages: UIMessage[],
+  restoredMessages: UIMessage[],
+): UIMessage[] {
+  const existingKeys = new Set(messages
+    .filter(isNestedToolActivity)
+    .map(nestedToolActivityKey))
+  const missingNestedActivities = restoredMessages
+    .filter(isNestedToolActivity)
+    .filter((message) => !existingKeys.has(nestedToolActivityKey(message)))
+
+  return missingNestedActivities.length > 0
+    ? [...messages, ...missingNestedActivities].sort((a, b) => a.timestamp - b.timestamp)
     : messages
 }
 
@@ -1321,8 +1381,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
               s.backgroundAgentTasks ?? {},
               restoredBackgroundTasks,
             ),
-            messages: mergeRestoredTerminalGoalEvents(
-              mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks),
+            messages: mergeRestoredNestedToolActivities(
+              mergeRestoredTerminalGoalEvents(
+                mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks),
+                uiMessages,
+              ),
               uiMessages,
             ),
           })) }
@@ -1601,6 +1664,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       case 'tool_result': {
         if (isLocallyStopped(get().sessions[sessionId])) break
+        const sessionBeforeResult = get().sessions[sessionId]
+        const completedToolUse = [...(sessionBeforeResult?.messages ?? [])]
+          .reverse()
+          .find((message): message is Extract<UIMessage, { type: 'tool_use' }> =>
+            message.type === 'tool_use' && message.toolUseId === msg.toolUseId)
+        const shouldReconcileNestedAgentActivity = completedToolUse?.toolName === 'Agent'
         const pendingParentToolUseId = consumePendingToolParentUseId(sessionId, msg.toolUseId)
         const parentToolUseId = msg.parentToolUseId ?? pendingParentToolUseId
         update((s) => ({
@@ -1612,6 +1681,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }))
         if (consumePendingTaskToolUseId(sessionId, msg.toolUseId)) {
           useCLITaskStore.getState().refreshTasks(sessionId)
+        }
+        if (shouldReconcileNestedAgentActivity) {
+          setTimeout(() => {
+            if (get().sessions[sessionId]) void get().loadHistory(sessionId)
+          }, 125)
         }
         break
       }
@@ -1639,16 +1713,25 @@ export const useChatStore = create<ChatStore>((set, get) => {
         break
       }
 
-      case 'permission_request':
+      case 'permission_request': {
         if (isLocallyStopped(get().sessions[sessionId])) break
+        const input = msg.input && typeof msg.input === 'object' && !Array.isArray(msg.input)
+          ? msg.input as Record<string, unknown>
+          : null
+        const isExpertBrowserVerification = msg.toolName === 'Playwright'
+          && input?.kind === 'expert-playwright-verification'
         notifyDesktop({
           dedupeKey: `permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
           requestAttention: true,
-          title: 'Claude Code Jiangxia 需要你的确认',
-          body: msg.toolName
-            ? `${msg.toolName} 请求执行，正在等待允许。`
-            : '有一个工具请求正在等待允许。',
+          title: isExpertBrowserVerification
+            ? '需要协助完成网站验证'
+            : 'Claude Code Jiangxia 需要你的确认',
+          body: isExpertBrowserVerification
+            ? '请在前台浏览器完成网站的正常验证，然后回到应用选择下一步。'
+            : msg.toolName
+              ? `${msg.toolName} 请求执行，正在等待允许。`
+              : '有一个工具请求正在等待允许。',
           target: { type: 'session', sessionId },
         })
         update((s) => ({
@@ -1664,7 +1747,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           activeThinkingId: null,
           undoableSubmittedMessage: null,
           messages:
-            msg.toolName === 'AskUserQuestion'
+            msg.toolName === 'AskUserQuestion' || isExpertBrowserVerification
               ? s.messages
               : [...s.messages, {
                   id: nextId(),
@@ -1678,6 +1761,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 }],
         }))
         break
+      }
 
       case 'computer_use_permission_request':
         if (isLocallyStopped(get().sessions[sessionId])) break
@@ -1815,6 +1899,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         useTabStore.getState().updateTabTitle(msg.sessionId, msg.title)
         break
       case 'system_notification':
+        if (msg.subtype === 'expert_browser_activity') {
+          const activity = normalizeExpertBrowserResearchActivity(msg.data)
+          if (activity) update(() => ({ expertBrowserActivity: activity }))
+        }
+        if (msg.subtype === 'expert_browser_activity_cleared') {
+          update(() => ({ expertBrowserActivity: null }))
+        }
         if (msg.subtype === 'workflow_state' && isWorkflowSummary(msg.data)) {
           const workflow = msg.data
           const pendingTransition = get().sessions[sessionId]?.pendingWorkflowTransition
@@ -1892,6 +1983,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             tokenUsage: { input_tokens: 0, output_tokens: 0 },
             slashCommands: [],
             activeGoal: null,
+            expertBrowserActivity: null,
             backgroundAgentTasks: {},
             agentTaskNotifications: {},
           }))

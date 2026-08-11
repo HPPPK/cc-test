@@ -24,6 +24,7 @@ import { useTranslation } from '../i18n'
 import { MessageList } from '../components/chat/MessageList'
 import { ChatInput } from '../components/chat/ChatInput'
 import { ComputerUsePermissionModal } from '../components/chat/ComputerUsePermissionModal'
+import { ExpertHumanVerificationModal, isExpertHumanVerificationRequest } from '../components/chat/ExpertHumanVerificationModal'
 import { SessionTaskBar } from '../components/chat/SessionTaskBar'
 import { WorkspacePanel } from '../components/workspace/WorkspacePanel'
 import { TeamStatusBar } from '../components/teams/TeamStatusBar'
@@ -782,6 +783,9 @@ export function ActiveSession() {
     .some((task) => task.status === 'queued' || task.status === 'running')
 
   const session = sessions.find((s) => s.id === activeTabId)
+  const pendingExpertVerification = isExpertHumanVerificationRequest(sessionState?.pendingPermission ?? null)
+    ? sessionState?.pendingPermission ?? null
+    : null
   const expertModePhase = useExpertStore((state) => state.modePhase)
   const expertDefinitions = useExpertStore((state) => state.experts)
   const activeExpertDefinition = useMemo(
@@ -832,9 +836,10 @@ export function ActiveSession() {
     latestVersion: null,
     checkpoints: [],
   })
-  const [workflowCheckpointsLoading, setWorkflowCheckpointsLoading] = useState(false)
+  const [workflowCheckpointsLoading, setWorkflowCheckpointsLoading] = useState(true)
   const [workflowCheckpointBusy, setWorkflowCheckpointBusy] = useState<'create' | 'restore' | null>(null)
   const [workflowCheckpointError, setWorkflowCheckpointError] = useState<string | null>(null)
+  const workflowCheckpointRequestRef = useRef(0)
   useEffect(() => {
     setWorkflowCompletionStatusOpen(false)
     setWorkflowCompletionError(null)
@@ -1021,6 +1026,7 @@ export function ActiveSession() {
     if (
       workflowDisplay.pendingConfirmation ||
       workflowDisplay.status === 'pending-confirmation' ||
+      workflowDisplay.pendingRoute?.status === 'pending' ||
       !workflowDisplay.blockedStatus
     ) {
       return workflowDisplay
@@ -1040,9 +1046,11 @@ export function ActiveSession() {
     (
       workflowDisplay.pendingConfirmation ||
       workflowDisplay.status === 'pending-confirmation' ||
+      workflowDisplay.pendingRoute?.status === 'pending' ||
       workflowDisplay.status === 'failed' ||
       Boolean(workflowDisplay.blockedStatus) ||
-      Boolean(workflowDisplay.blockedReason)
+      Boolean(workflowDisplay.blockedReason) ||
+      Boolean(workflowDisplay.autoRecovery)
     )
   const canShowWorkflowPreviewControls = workflowDisplay !== null &&
     workflowDisplay.status !== 'completed' &&
@@ -1088,31 +1096,47 @@ export function ActiveSession() {
     }
   }, [activeTabId, workflowDisplay])
 
-  const loadWorkflowCheckpoints = useCallback(async () => {
+  const loadWorkflowCheckpoints = useCallback(async (existingRequestId?: number) => {
     if (!activeTabId || !workflowDisplay || isMemberSession) return
+
+    const requestId = existingRequestId ?? ++workflowCheckpointRequestRef.current
+    if (requestId !== workflowCheckpointRequestRef.current) return
+
+    setWorkflowCheckpoints({ enabled: false, latestVersion: null, checkpoints: [] })
     setWorkflowCheckpointsLoading(true)
     setWorkflowCheckpointError(null)
     try {
-      setWorkflowCheckpoints(await sessionsApi.listWorkflowGitCheckpoints(activeTabId))
+      const checkpoints = await sessionsApi.listWorkflowGitCheckpoints(activeTabId)
+      if (requestId !== workflowCheckpointRequestRef.current) return
+      setWorkflowCheckpoints(checkpoints)
     } catch (error) {
+      if (requestId !== workflowCheckpointRequestRef.current) return
       setWorkflowCheckpointError(error instanceof Error ? error.message : 'Workflow checkpoint list failed')
     } finally {
-      setWorkflowCheckpointsLoading(false)
+      if (requestId === workflowCheckpointRequestRef.current) {
+        setWorkflowCheckpointsLoading(false)
+      }
     }
   }, [activeTabId, isMemberSession, workflowDisplay])
 
   useEffect(() => {
     if (!activeTabId || !workflowDisplay || isMemberSession) {
+      workflowCheckpointRequestRef.current += 1
       setWorkflowCheckpoints({ enabled: false, latestVersion: null, checkpoints: [] })
+      setWorkflowCheckpointsLoading(false)
+      setWorkflowCheckpointBusy(null)
       setWorkflowCheckpointError(null)
       return
     }
 
+    setWorkflowCheckpointBusy(null)
     void loadWorkflowCheckpoints()
   }, [activeTabId, isMemberSession, loadWorkflowCheckpoints, workflowDisplay])
 
   const handleCreateWorkflowCheckpoint = useCallback(async () => {
     if (!activeTabId || !workflowDisplay) return
+
+    const requestId = ++workflowCheckpointRequestRef.current
     setWorkflowCheckpointBusy('create')
     setWorkflowCheckpointError(null)
     try {
@@ -1121,24 +1145,31 @@ export function ActiveSession() {
         phaseIndex: workflowDisplay.activePhaseIndex,
         label: formatWorkflowPhaseSummary(workflowDisplay),
       })
+      if (requestId !== workflowCheckpointRequestRef.current) return
       setWorkflowCheckpoints({
         enabled: true,
         latestVersion: result.latestVersion,
         checkpoints: result.checkpoints,
       })
     } catch (error) {
+      if (requestId !== workflowCheckpointRequestRef.current) return
       setWorkflowCheckpointError(error instanceof Error ? error.message : 'Workflow checkpoint save failed')
     } finally {
-      setWorkflowCheckpointBusy(null)
+      if (requestId === workflowCheckpointRequestRef.current) {
+        setWorkflowCheckpointBusy(null)
+      }
     }
   }, [activeTabId, workflowDisplay])
 
   const handleRestoreWorkflowCheckpoint = useCallback(async (checkpointId: string) => {
     if (!activeTabId) return
+
+    const requestId = ++workflowCheckpointRequestRef.current
     setWorkflowCheckpointBusy('restore')
     setWorkflowCheckpointError(null)
     try {
       const result = await sessionsApi.restoreWorkflowGitCheckpoint(activeTabId, { checkpointId })
+      if (requestId !== workflowCheckpointRequestRef.current) return
       if (result.workflow) {
         useSessionStore.setState((state) => ({
           sessions: state.sessions.map((candidate) =>
@@ -1151,11 +1182,14 @@ export function ActiveSession() {
       if (result.transcriptRestored) {
         await reloadHistory(activeTabId)
       }
-      await loadWorkflowCheckpoints()
+      await loadWorkflowCheckpoints(requestId)
     } catch (error) {
+      if (requestId !== workflowCheckpointRequestRef.current) return
       setWorkflowCheckpointError(error instanceof Error ? error.message : 'Workflow checkpoint rollback failed')
     } finally {
-      setWorkflowCheckpointBusy(null)
+      if (requestId === workflowCheckpointRequestRef.current) {
+        setWorkflowCheckpointBusy(null)
+      }
     }
   }, [activeTabId, loadWorkflowCheckpoints, reloadHistory])
 
@@ -1535,6 +1569,7 @@ export function ActiveSession() {
 
           <TeamStatusBar />
 
+
           <ChatInput
             variant={showEmptyHero && !isMemberSession && !showWorkspacePanel ? 'hero' : 'default'}
             compact={showWorkspacePanel}
@@ -1578,6 +1613,13 @@ export function ActiveSession() {
         <ComputerUsePermissionModal
           sessionId={activeTabId}
           request={pendingComputerUsePermission?.request ?? null}
+        />
+      ) : null}
+
+      {!isMemberSession && activeTabId && pendingExpertVerification ? (
+        <ExpertHumanVerificationModal
+          sessionId={activeTabId}
+          request={pendingExpertVerification}
         />
       ) : null}
     </div>

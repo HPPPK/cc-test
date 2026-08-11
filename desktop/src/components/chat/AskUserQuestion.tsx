@@ -46,7 +46,13 @@ function parseInput(input: unknown): Question[] {
 
   // Shape 1: { questions: [...] }
   if (Array.isArray(obj.questions)) {
-    return obj.questions
+    // Older providers sometimes placed multiSelect at the tool root. Preserve
+    // that already-issued choice for rendering while newer calls keep it on
+    // the individual question.
+    return obj.questions.map((question) => ({
+      ...question,
+      multiSelect: question.multiSelect ?? obj.multiSelect,
+    }))
   }
 
   // Shape 2: { question: "...", options: [...] }
@@ -319,7 +325,8 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
 
     const answerChoiceIds = questions.reduce<Record<string, string[]>>((acc, question, index) => {
       const key = questionKey(question)
-      if (!key.startsWith('research-recovery:') || freeTexts[index]?.trim()) return acc
+      const isRuntimeBoundResearchQuestion = key.startsWith('research-recovery:') || key.startsWith('research-delivery:')
+      if (!isRuntimeBoundResearchQuestion || freeTexts[index]?.trim()) return acc
       const selected = selections[index] ?? []
       if (selected.length > 0) acc[key] = selected
       return acc

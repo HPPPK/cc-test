@@ -342,6 +342,7 @@ function AgentToolGroup({
       isStreaming: !!isStreaming && !resultMap.has(toolCall.toolUseId),
       childCount: (childToolCallsByParent.get(toolCall.toolUseId) ?? []).length,
       taskStatus: agentTaskNotifications[toolCall.toolUseId]?.status,
+      reportedStatus: getAgentReportedStatus(resultMap.get(toolCall.toolUseId)?.content),
     }),
   )
   const isAnyRunning = statuses.some((status) => status === 'running' || status === 'starting')
@@ -502,6 +503,7 @@ function AgentCallCard({
     isStreaming,
     childCount: childToolCalls.length,
     taskStatus: agentTaskNotification?.status,
+    reportedStatus: getAgentReportedStatus(result?.content),
   })
   const statusClassName = getAgentStatusClassName(status)
   const statusLabel = getAgentStatusLabel(status, t)
@@ -775,8 +777,24 @@ function extractLineHint(text: string): string | undefined {
   return match?.[1] ? `${match[1]} lines` : undefined
 }
 
-type AgentStatus = 'starting' | 'running' | 'done' | 'failed' | 'stopped'
+type AgentStatus = 'starting' | 'running' | 'done' | 'partial' | 'blocked' | 'failed' | 'stopped'
 type AgentTaskStatus = AgentTaskNotification['status']
+type AgentReportedStatus = 'completed' | 'partial' | 'blocked' | 'failed'
+
+function getAgentReportedStatus(content: unknown): AgentReportedStatus | undefined {
+  const text = extractTextContent(content)
+  const englishStatus = text.match(/(?:^|[\s{,])status\s*(?::|=)\s*["']?(partial|blocked|failed|completed)\b/i)?.[1]?.toLowerCase()
+  if (englishStatus === 'partial' || englishStatus === 'blocked' || englishStatus === 'failed' || englishStatus === 'completed') {
+    return englishStatus
+  }
+
+  const chineseStatus = text.match(/(?:^|\n)\s*状态\s*[：:]\s*(部分完成|受阻|失败|完成)/)?.[1]
+  if (chineseStatus === '部分完成') return 'partial'
+  if (chineseStatus === '受阻') return 'blocked'
+  if (chineseStatus === '失败') return 'failed'
+  if (chineseStatus === '完成') return 'completed'
+  return undefined
+}
 
 function getAgentStatus({
   hasResult,
@@ -785,6 +803,7 @@ function getAgentStatus({
   isStreaming,
   childCount,
   taskStatus,
+  reportedStatus,
 }: {
   hasResult: boolean
   isError: boolean
@@ -792,10 +811,14 @@ function getAgentStatus({
   isStreaming: boolean
   childCount: number
   taskStatus?: AgentTaskStatus
+  reportedStatus?: AgentReportedStatus
 }): AgentStatus {
   if (taskStatus === 'failed') return 'failed'
   if (taskStatus === 'stopped') return 'stopped'
-  if (taskStatus === 'completed') return 'done'
+  if (reportedStatus === 'failed') return 'failed'
+  if (reportedStatus === 'blocked') return 'blocked'
+  if (reportedStatus === 'partial') return 'partial'
+  if (taskStatus === 'completed' || reportedStatus === 'completed') return 'done'
   if (hasResult && isError && !isLaunchResult) return 'failed'
   if (hasResult && !isLaunchResult) return 'done'
   if (isStreaming || childCount > 0 || isLaunchResult) return 'running'
@@ -813,6 +836,10 @@ function getAgentStatusLabel(
       return t('agentStatus.stopped')
     case 'done':
       return t('agentStatus.done')
+    case 'partial':
+      return t('agentStatus.partial')
+    case 'blocked':
+      return t('agentStatus.blocked')
     case 'running':
       return t('agentStatus.running')
     case 'starting':
@@ -829,6 +856,10 @@ function getAgentStatusClassName(status: AgentStatus): string {
       return 'bg-[var(--color-surface-container-high)] text-[var(--color-text-secondary)]'
     case 'done':
       return 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+    case 'partial':
+      return 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]'
+    case 'blocked':
+      return 'bg-[var(--color-error)]/10 text-[var(--color-error)]'
     case 'running':
       return 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]'
     case 'starting':

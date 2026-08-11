@@ -132,6 +132,32 @@ describe('workflow session creation routing', () => {
     expect(phaseIds).not.toContain('local-preview')
   })
 
+  test('keeps implementation for a new-product route with documentation as a secondary label', async () => {
+    const createService = new WorkflowSessionCreateService()
+    const workflow = {
+      templateId: 'efficient-constrained-dev-debug-workflow-v5',
+      templateSource: 'builtin' as const,
+      labels: ['new-product', 'documentation'] as const,
+      request: 'Build the confirmed Windows desktop product and keep its user documentation current.',
+    }
+    const template = await createService.resolveTemplate(workflow)
+
+    await createService.createWorkflowSessionMetadata(
+      'session-new-product-with-docs',
+      '/tmp/workflow-new-product-with-docs',
+      template,
+      workflow,
+    )
+    const state = await new WorkflowSessionStateService().readState('session-new-product-with-docs')
+    const phaseIds = state.state?.phases.map((phase) => phase.id) ?? []
+
+    expect(state.state?.labels).toEqual(expect.arrayContaining(['new-product', 'documentation']))
+    expect(phaseIds).toContain('delegate-implement')
+    expect(state.state?.skippedPhases).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ phaseId: 'delegate-implement' }),
+    ]))
+  })
+
   test('preserves selected brainstorming mode in workflow metadata and state', async () => {
     const createService = new WorkflowSessionCreateService()
     const workflow = {

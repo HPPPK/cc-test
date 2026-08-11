@@ -20,7 +20,7 @@ Conduct web research to identify direct competitors. If the user provides market
 ### Analysis Steps (Think Step by Step)
 
 1. **Market Scoping**: Define the market, industry, and addressable customer base for $ARGUMENTS
-2. **Competitor Identification**: Build candidate URLs from trusted public entry points, then use BrowserResearch to identify 5 primary direct competitors
+2. **Competitor Identification**: Build candidate URLs from trusted public entry points, then use Playwright to identify 5 primary direct competitors
 3. **Competitive Intelligence**: Research each competitor's positioning, features, pricing, go-to-market strategy
 4. **Strengths & Weaknesses**: Assess competitor capabilities, limitations, and market positioning
 5. **Differentiation Mapping**: Identify gaps, overlaps, and opportunities for $ARGUMENTS to differentiate
@@ -93,7 +93,7 @@ For each of the 5 competitors:
 ## Best Practices
 
 - Research current competitor websites, pricing pages, and customer reviews
-- Use candidate URLs and BrowserResearch to verify product launches, funding, executive moves
+- Use candidate URLs and Playwright to verify product launches, funding, executive moves
 - Distinguish between direct competitors and adjacent alternatives
 - Validate competitive insights across multiple sources
 - Identify both obvious and subtle differentiation opportunities

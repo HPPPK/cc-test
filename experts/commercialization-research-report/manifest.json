@@ -1,7 +1,7 @@
 {
   "packId": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
-  "version": "0.11.2-local",
+  "version": "0.13.0-local",
   "schemaVersion": 1,
   "type": "expert-pack",
   "description": "基于可编辑业务规则、固定 HTML 母版、分章节研究子代理、浏览器多入口检索、多源渠道证据包、字段示例教学和内置 CLI 填充的新品商业化调研专家。",
@@ -48,8 +48,8 @@
       "supported": true
     },
     {
-      "id": "BrowserResearch",
-      "name": "BrowserResearch",
+      "id": "Playwright",
+      "name": "Playwright",
       "purpose": "使用隔离的 Playwright 浏览器读取和核验公开网页证据。",
       "supported": true
     },
@@ -96,5 +96,12 @@
   "portability": {
     "selfContained": true,
     "notes": "The ZIP includes the system prompt, HTML template, intake form, output protocol, all declared package-local Skills, a source-coverage protocol, a multi-source channel-evidence protocol, and a mandatory independent evidence-review step. Runtime host tools still depend on the active desktop runtime."
+  },
+  "runtimePolicy": {
+    "mode": "package-local-skills",
+    "allowedToolNames": [],
+    "requiredSkillIds": [
+      "browser-information-retrieval"
+    ]
   }
 }

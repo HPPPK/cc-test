@@ -303,4 +303,49 @@ describe('workflowSummaryFromState', () => {
     })
     expect(summary).not.toHaveProperty('recommendedSkillChecklist')
   })
+
+
+  test('projects an active automatic recovery window for the Desktop silent period', () => {
+    const summary = workflowSummaryFromState(makeState({
+      status: 'running',
+      workflowStatus: 'running',
+      runStatus: 'blocked',
+      pendingConfirmation: null,
+      autoRecovery: {
+        phaseId: 'requirements-clarification',
+        startedAt: '2026-05-20T00:00:00.000Z',
+        expiresAt: '2026-05-20T00:00:10.000Z',
+        attempt: 1,
+        source: 'phase-completion-blocked',
+      },
+    }))
+
+    expect(summary).toMatchObject({
+      status: 'failed',
+      runStatus: 'blocked',
+      autoRecovery: {
+        phaseId: 'requirements-clarification',
+        attempt: 1,
+        source: 'phase-completion-blocked',
+      },
+    })
+  })
+
+  test('fails closed for a legacy state that contains both a blocker and a next-phase confirmation', () => {
+    const summary = workflowSummaryFromState(makeState({
+      status: 'pending-confirmation',
+      workflowStatus: 'pending-confirmation',
+      runStatus: 'blocked',
+      blockedReason: 'B4 verification is blocked and must be retried.',
+    }))
+
+    expect(summary).toMatchObject({
+      status: 'failed',
+      runStatus: 'blocked',
+      pendingConfirmation: false,
+      blockedReason: 'B4 verification is blocked and must be retried.',
+    })
+    expect(summary).not.toHaveProperty('pendingConfirmationId')
+  })
+
 })

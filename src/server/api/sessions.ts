@@ -465,12 +465,44 @@ async function handleSessionExpertRoute(
     const body = await readOptionalObjectBody(req)
     const expertId = typeof body.expertId === 'string' ? body.expertId : ''
     if (!expertId) throw ApiError.badRequest('请选择一个专家。')
-    return Response.json({ expert: await expertSessionService.enterExpertMode(sessionId, expertId) })
+    return Response.json({ expert: await expertSessionService.enterExpertMode(sessionId, expertId, body.researchBrowserConnection, body.researchBrowserPresentation) })
   }
   if (action === 'template-fill') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const body = await readOptionalObjectBody(req)
     return Response.json(await expertSessionService.renderTemplateFill(sessionId, body.payload))
+  }
+  if (action === 'subagent-skill-context') {
+    if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const agentType = url.searchParams.get('agentType') ?? ''
+    if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
+    return Response.json(await expertSessionService.getSubagentSkillContext(sessionId, agentType))
+  }
+  if (action === 'research-audit') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    return Response.json(await expertSessionService.recordResearchAudit(sessionId, {
+      agentId: body.agentId,
+      agentType: body.agentType,
+      entries: body.entries,
+    }))
+  }
+  if (action === 'research-delivery') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    const questionId = typeof body.questionId === 'string' ? body.questionId : ''
+    const choiceIds = Array.isArray(body.choiceIds)
+      ? body.choiceIds.filter((choiceId): choiceId is string => typeof choiceId === 'string')
+      : []
+    const unresolvedEvidence = Array.isArray(body.unresolvedEvidence)
+      ? body.unresolvedEvidence.filter((item): item is string => typeof item === 'string')
+      : undefined
+    if (!questionId) throw ApiError.badRequest('研究交付确认缺少问题 ID。')
+    return Response.json(await expertSessionService.recordResearchDeliveryDecision(sessionId, {
+      questionId,
+      choiceIds,
+      unresolvedEvidence,
+    }))
   }
   if (action === 'intake') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
@@ -1588,6 +1620,9 @@ async function prepareRuntimeVerifiedCompletionEvidence(
     stateService: workflowSessionStateService,
   })
   if (!verified) return { state }
+  if (verified.semanticValidationError) {
+    throw workflowError(409, verified.semanticValidationError.code, verified.semanticValidationError.message)
+  }
 
   let next = verified.state
   const evidenceArtifactIds = [...verified.outputPointersById.values()].map((pointer) => pointer.artifactId)

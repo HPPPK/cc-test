@@ -455,6 +455,134 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       }
     }
   })
+  test('ships development continuity and compact Feature/Debug clarification guidance without requiring project-owned files', async () => {
+    const adapter = new ZipPackAdapter()
+    const loadTemplate = async (packFile: string) => {
+      const source = path.join(process.cwd(), 'src', 'server', 'packs', packFile)
+      const archive = await adapter.read(new Uint8Array(await fs.readFile(source)))
+      const workflowEntry = archive.entries.find((entry) => entry.path.startsWith('workflows/') && entry.path.endsWith('.workflow.json'))
+      if (!workflowEntry) throw new Error('Workflow entry is missing from ' + packFile)
+      return archive.readJson<{
+        version: string
+        phases: Array<{
+          id: string
+          instructions?: string
+          executionRules?: string[]
+          toolPolicy?: { allowedTools?: string[] }
+          runtimeContract?: {
+            toolAccess?: { allowed?: string[] }
+            questionPolicy?: { maxQuestionCount?: number; requireAnswerProcessingBeforeNextQuestion?: boolean }
+          }
+          evidencePolicy?: {
+            requiredArtifacts?: Array<{ id: string; required?: boolean }>
+          }
+        }>
+      }>(workflowEntry.path)
+    }
+
+    const development = await loadTemplate('efficient-constrained-dev-debug-workflow-v5.zip')
+    const developmentIntake = development.phases.find((phase) => phase.id === 'route-context')
+    const developmentPhase = (id: string) => development.phases.find((phase) => phase.id === id)?.instructions ?? ''
+    expect(development.version).toBe('20')
+    expect(developmentIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
+      requireNecessaryQuestion: true,
+      requireAnswerProcessingBeforeNextQuestion: false,
+    }))
+    expect(developmentPhase('route-context')).toContain('Continue this one-question-at-a-time clarification until every material current-phase decision is settled')
+    expect(developmentPhase('route-context')).toContain('AGENTS.md')
+    expect(developmentPhase('route-context')).toContain('not a precondition')
+    expect(developmentPhase('route-context')).toContain('### Focused clarification')
+    expect(developmentPhase('route-context')).not.toContain('AskUserQuestion packet')
+    expect(developmentPhase('route-context')).not.toContain('Mandatory multi-outcome clarification prerequisite')
+    expect(developmentPhase('delivery-plan')).not.toContain('.workflow/engineering-log.md')
+    expect(developmentPhase('delivery-plan')).toContain('application-appropriate logging/diagnostic design')
+    expect(developmentPhase('delegate-implement')).toContain('Treat continuity and diagnostics as normal implementation work')
+    expect(developmentPhase('scenario-review')).toContain('redaction/safety expectations')
+    expect(developmentPhase('delivery-plan')).toContain('### Core User-Flow Verification Plan (mandatory)')
+    expect(developmentPhase('delegate-implement')).toContain('### Core User-Flow Implementation and Review Contract (mandatory)')
+    expect(developmentPhase('delegate-implement')).toContain('### Executable batch-parallelism contract')
+    expect(developmentPhase('delegate-implement')).toContain('workflow_parallel_plan.tasks contains every task in the active phase')
+    expect(developmentPhase('delegate-implement')).toContain('Do not create an investigation-only Debug Subagent merely because')
+    expect(developmentPhase('delivery-plan')).toContain('### Executable batch-parallelism contract')
+    expect(developmentPhase('scenario-review')).toContain('### Core-Flow Acceptance Evidence (mandatory)')
+    expect(developmentPhase('local-preview')).toContain('### Preview Failure Diagnostic Loop (mandatory)')
+    const developmentScenarioReview = development.phases.find((phase) => phase.id === 'scenario-review')
+    expect(developmentScenarioReview?.evidencePolicy?.requiredArtifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'core-flow-evidence', required: true }),
+    ]))
+
+    const feature = await loadTemplate('feature-extension-workflow-v8.zip')
+    const featureIntake = feature.phases.find((phase) => phase.id === 'feature-memory-plan')
+    const featurePhase = (id: string) => feature.phases.find((phase) => phase.id === id)?.instructions ?? ''
+    expect(feature.version).toBe('20')
+    expect(featureIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
+    expect(featureIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
+    expect(featureIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
+    expect(featurePhase('feature-memory-plan')).toContain('one structured AskUserQuestion')
+    expect(featurePhase('feature-memory-plan')).toContain('Continue sequentially until every material decision in that existing checklist is settled')
+    expect(featurePhase('feature-memory-plan')).toContain('decision coverage checklist')
+    expect(featurePhase('feature-memory-plan')).toContain('Do not require the user to resolve every possible implementation detail before work can proceed.')
+    expect(featurePhase('feature-memory-plan')).toContain('clarification ledger')
+    expect(featureIntake?.runtimeContract?.questionPolicy).not.toHaveProperty('maxQuestionCount')
+    expect(featureIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
+      requireAnswerProcessingBeforeNextQuestion: false,
+    }))
+    expect(featurePhase('feature-memory-plan')).not.toContain('consolidated clarification packet')
+    expect(featurePhase('feature-memory-plan')).toContain('read-only discovery: Glob')
+    expect(featurePhase('feature-memory-plan')).toContain('optional sources, not required project structure')
+    expect(featurePhase('feature-implement')).toContain('Do not stop to ask whether to continue')
+    expect(featurePhase('feature-memory-plan')).toContain('### One-question workflow clarification contract')
+    expect(featurePhase('feature-memory-plan')).toContain('### Executable batch-parallelism contract')
+    expect(featurePhase('feature-implement')).toContain('### Executable batch-parallelism contract')
+    expect(featurePhase('feature-quality-preview')).toContain('Compact validation and handoff')
+    expect(featurePhase('feature-finish-memory')).toContain('Non-blocking archive')
+
+    const debug = await loadTemplate('debug-repair-workflow-v8.zip')
+    const debugIntake = debug.phases.find((phase) => phase.id === 'debug-memory-intake')
+    const debugPhase = (id: string) => debug.phases.find((phase) => phase.id === id)?.instructions ?? ''
+    expect(debug.version).toBe('21')
+    expect(debugIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
+    expect(debugIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
+    expect(debugIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
+    expect(debugPhase('debug-memory-intake')).toContain('one structured AskUserQuestion')
+    expect(debugPhase('debug-memory-intake')).toContain('Continue sequentially until every material diagnostic or repair-policy decision in that existing checklist is settled')
+    expect(debugPhase('debug-memory-intake')).toContain('diagnostic decision coverage checklist')
+    expect(debugPhase('debug-memory-intake')).toContain('Do not require a complete preflight questionnaire before investigation or repair can proceed.')
+    expect(debugPhase('debug-memory-intake')).toContain('### Multi-symptom focused clarification')
+    expect(debugPhase('debug-memory-intake')).toContain('Before creating the authoritative debug-context.md or debug-work-order.md')
+    expect(debugPhase('debug-memory-intake')).toContain('clarification ledger')
+    expect(debugIntake?.runtimeContract?.questionPolicy).not.toHaveProperty('maxQuestionCount')
+    expect(debugIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
+      requireAnswerProcessingBeforeNextQuestion: false,
+    }))
+    expect(debugPhase('debug-memory-intake')).not.toContain('consolidated clarification packet')
+    expect(debugPhase('debug-memory-intake')).toContain('### Focused problem clarification and first evidence pass')
+    expect(debugPhase('debug-memory-intake')).toContain('read-only discovery: Glob')
+    expect(debugPhase('debug-memory-intake')).toContain('optional sources, not required project structure')
+    expect(debugPhase('debug-investigate')).toContain('Investigate without progress prompts')
+    expect(debugPhase('debug-fix')).toContain('Coder -> Reviewer -> bounded Coder fix sequence')
+    expect(debugPhase('debug-investigate')).toContain('### One-question workflow clarification contract')
+    expect(debugPhase('debug-investigate')).toContain('### Executable batch-parallelism contract')
+    expect(debugPhase('debug-fix')).toContain('### Executable batch-parallelism contract')
+    expect(debugPhase('debug-quality-preview')).toContain('Compact regression closeout')
+    expect(debugPhase('debug-finish-memory')).toContain('Non-blocking debug archive')
+
+    for (const template of [development, feature, debug]) {
+      for (const phase of template.phases) expect(phase.instructions ?? '').not.toContain('engineering-log')
+    }
+
+    for (const phaseInstructions of [
+      developmentPhase('delegate-implement'),
+      featurePhase('feature-implement'),
+      debugPhase('debug-fix'),
+    ]) {
+      expect(phaseInstructions).toContain('### Evidence-based batch-parallelism review')
+      expect(phaseInstructions).toContain('explicit batch-parallelism assessment')
+      expect(phaseInstructions).toContain('Never choose serial-by-default merely to avoid analysis')
+      expect(phaseInstructions).toContain('Launch every qualifying independent group in parallel')
+    }
+  })
+
   test('runs every actual ZIP workflow through stage permissions, malformed completion rejection, pause/resume, invalid routes, repair loops, and final completion', async () => {
     await initializeIsolatedPackRegistry()
     const service = runtimeService()
@@ -767,4 +895,54 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       }
     }
   }, 90_000)
+})
+
+
+test('ships Feature and Debug core-flow review and evidence contracts without changing the development pack', async () => {
+  const adapter = new ZipPackAdapter()
+  const load = async (packFile: string) => {
+    const source = path.join(process.cwd(), 'src', 'server', 'packs', packFile)
+    const archive = await adapter.read(new Uint8Array(await fs.readFile(source)))
+    const entry = archive.entries.find((item) => item.path.startsWith('workflows/') && item.path.endsWith('.workflow.json'))
+    if (!entry) throw new Error('Workflow entry is missing from ' + packFile)
+    return await archive.readJson<any>(entry.path)
+  }
+
+  const feature = await load('feature-extension-workflow-v8.zip')
+  const featureImplement = feature.phases.find((item: any) => item.id === 'feature-implement')
+  const featureQuality = feature.phases.find((item: any) => item.id === 'feature-quality-preview')
+  expect(feature.version).toBe('20')
+  expect(featureImplement.instructions).toContain('### Core User-Flow Implementation and Review Contract (mandatory)')
+  expect(featureImplement.instructions).toContain('actualEntryBoundaryCovered')
+  expect(featureQuality.instructions).toContain('### Core-Flow Acceptance Evidence (mandatory)')
+  expect(featureQuality.outputArtifacts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: 'quality-report', filename: '.workflow/runs/<runId>/quality-report.md', required: true }),
+    expect.objectContaining({ id: 'core-flow-evidence', filename: '.workflow/runs/<runId>/core-flow-evidence.json', required: true }),
+  ]))
+  expect(featureQuality.evidencePolicy.coreFlowEvidence).toEqual({
+    type: 'core-flow-evidence-v1',
+    outputArtifactId: 'core-flow-evidence',
+    qualityReportArtifactId: 'quality-report',
+    requireLogDisposition: false,
+  })
+
+  const debug = await load('debug-repair-workflow-v8.zip')
+  const debugInvestigate = debug.phases.find((item: any) => item.id === 'debug-investigate')
+  const debugFix = debug.phases.find((item: any) => item.id === 'debug-fix')
+  const debugQuality = debug.phases.find((item: any) => item.id === 'debug-quality-preview')
+  expect(debug.version).toBe('21')
+  expect(debugInvestigate.instructions).toContain('### Diagnostic Evidence Discipline (mandatory)')
+  expect(debugFix.instructions).toContain('### Core Repair Flow and Reviewer Contract (mandatory)')
+  expect(debugFix.instructions).toContain('logEvidenceDisposition')
+  expect(debugQuality.instructions).toContain('### Debug Core-Flow Evidence and Honest Runtime Status (mandatory)')
+  expect(debugQuality.outputArtifacts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: 'quality-report', filename: '.workflow/runs/<runId>/quality-report.md', required: true }),
+    expect.objectContaining({ id: 'core-flow-evidence', filename: '.workflow/runs/<runId>/core-flow-evidence.json', required: true }),
+  ]))
+  expect(debugQuality.evidencePolicy.coreFlowEvidence).toEqual({
+    type: 'core-flow-evidence-v1',
+    outputArtifactId: 'core-flow-evidence',
+    qualityReportArtifactId: 'quality-report',
+    requireLogDisposition: true,
+  })
 })

@@ -16,6 +16,7 @@ import { checkRemoteAgentEligibility, formatPreconditionError, getRemoteTaskSess
 import { assembleToolPool, assembleWorkflowToolPool } from '../../tools.js';
 import { asAgentId } from '../../types/ids.js';
 import { runWithAgentContext } from '../../utils/agentContext.js';
+import { resolveWorkflowRuntimeState } from '../../services/tools/workflowRuntimeStateBridge.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from '../../utils/cwd.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -45,7 +46,7 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
-import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, formatBrowserResearchAudit, getLastToolUseName, requiresBrowserResearchAudit, runAsyncAgentLifecycle } from './agentToolUtils.js';
+import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, formatPlaywrightAudit, getLastToolUseName, recordFinalizedExpertAgentResearchAudit, requiresPlaywrightAudit, runAsyncAgentLifecycle, shouldSurfaceExpertEvidenceAgentFailure } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
@@ -55,6 +56,7 @@ import { getPrompt } from './prompt.js';
 import { runAgent } from './runAgent.js';
 import { getWorkflowTaskExecutionMode, hasActiveWorkflowTaskSchedule, normalizeWorkflowTaskSchedulePlan, runWithinWorkflowTaskSchedule, validateWorkflowTaskSchedule } from './workflowTaskScheduling.js';
 import { runWithinWorkflowParallelism } from './workflowParallelism.js';
+import type { WorkflowSessionState } from '../../server/services/workflowTypes.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -94,6 +96,8 @@ const workflowParallelPlanInputSchema = z.object({
   tasks: z.array(workflowParallelTaskInputSchema).min(1).describe('The complete structured task plan for the active workflow phase'),
 })
 
+const workflowRoleInputSchema = z.enum(['coder', 'reviewer', 'qa'])
+
 const baseInputSchema = lazySchema(() => z.object({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
@@ -102,7 +106,8 @@ const baseInputSchema = lazySchema(() => z.object({
   provider_id: z.string().nullable().optional().describe('Optional provider ID for a spawned teammate. Required with model_id. Use null for the official/default provider. If the provider roster shows provider_id=null, pass JSON null, not the string "null".'),
   model_id: z.string().optional().describe('Optional exact model ID for a spawned teammate. Requires provider_id so the runtime provider is explicit. This is passed through without alias parsing.'),
   run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.'),
-  workflow_parallel_plan: workflowParallelPlanInputSchema.optional().describe('Optional structured workflow task plan. All background Agents in this phase must use the same complete plan.')
+  workflow_parallel_plan: workflowParallelPlanInputSchema.optional().describe('Optional structured workflow task plan. All background Agents in this phase must use the same complete plan.'),
+  workflow_role: workflowRoleInputSchema.optional().describe('Workflow-only worker role. Use coder, reviewer, or qa when an active workflow delegates work. Reviewer calls receive a non-editing child tool pool.')
 }));
 
 // Full schema combining base + multi-agent params + isolation
@@ -146,6 +151,42 @@ type InputSchema = ReturnType<typeof inputSchema>;
 export function normalizeSubagentType(value: string | undefined): string | undefined {
   const normalized = value?.trim()
   return normalized || undefined
+}
+
+export function resolveWorkflowSubagentType(
+  workflowRole: 'coder' | 'reviewer' | 'qa' | undefined,
+  normalizedSubagentType: string | undefined,
+): string | undefined {
+  if (!workflowRole) return normalizedSubagentType
+  // Older workflow prompts used the role itself as subagent_type. Keep that
+  // narrow legacy spelling compatible while still rejecting unrelated workers.
+  if (
+    normalizedSubagentType
+    && normalizedSubagentType !== GENERAL_PURPOSE_AGENT.agentType
+    && normalizedSubagentType !== workflowRole
+  ) {
+    throw new Error('workflow_role requires subagent_type=general-purpose.')
+  }
+  return GENERAL_PURPOSE_AGENT.agentType
+}
+
+/**
+ * Workflow task scheduling already prevents overlapping writes with declared
+ * scopes and resource claims. Keep those tasks in the current project by
+ * default; a worktree is an opt-in tool-call choice, not an execution-mode
+ * side effect. Non-workflow Agent calls retain the selected agent default.
+ */
+export function resolveWorkflowTaskIsolation(
+  hasWorkflowTaskPlan: boolean,
+  explicitIsolation: AgentDefinition['isolation'],
+  selectedAgentIsolation: AgentDefinition['isolation'],
+): AgentDefinition['isolation'] {
+  return hasWorkflowTaskPlan ? explicitIsolation : explicitIsolation ?? selectedAgentIsolation
+}
+
+export async function resolveAgentWorkflowState(workflow: unknown): Promise<WorkflowSessionState | undefined> {
+  const resolution = await resolveWorkflowRuntimeState(workflow)
+  return resolution.source === 'desktop-unavailable' ? undefined : resolution.state
 }
 
 // Explicit type widens the schema inference to always include all optional
@@ -280,7 +321,8 @@ export const AgentTool = buildTool({
     model_id,
     isolation,
     cwd,
-    workflow_parallel_plan
+    workflow_parallel_plan,
+    workflow_role
   }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
     const startTime = Date.now();
     const model = isCoordinatorMode() ? undefined : modelParam;
@@ -312,6 +354,13 @@ export const AgentTool = buildTool({
     // can manage their own background agents.
     if (isInProcessTeammate() && teamName && run_in_background === true) {
       throw new Error('In-process teammates cannot spawn background agents. Use run_in_background=false for synchronous subagents.');
+    }
+
+    // workflow_role deliberately uses the normal general-purpose worker path so
+    // its child tool pool can enforce the role boundary. Teammates and forked
+    // workers bypass that pool construction.
+    if (workflow_role && teamName && name) {
+      throw new Error('workflow_role is supported only for a normal workflow subagent, not a teammate.')
     }
 
     // Check if this is a multi-agent spawn request
@@ -358,11 +407,11 @@ export const AgentTool = buildTool({
       };
     }
 
-    // Fork subagent experiment routing:
-    // - subagent_type set: use it (explicit wins)
-    // - subagent_type omitted, gate on: fork path (undefined)
-    // - subagent_type omitted, gate off: default general-purpose
-    const effectiveType = normalizedSubagentType ?? (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType);
+    // Workflow roles deliberately select the normal general-purpose worker path.
+    // This prevents a fork from inheriting the parent tool pool and bypassing the
+    // role-specific restrictions below.
+    const effectiveType = resolveWorkflowSubagentType(workflow_role, normalizedSubagentType)
+      ?? (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType);
     const isForkPath = effectiveType === undefined;
     let selectedAgent: AgentDefinition;
     if (isForkPath) {
@@ -473,16 +522,11 @@ export const AgentTool = buildTool({
     const workflowTaskPlan = workflow_parallel_plan ? normalizeWorkflowTaskSchedulePlan(workflow_parallel_plan) : undefined;
     const workflowTaskExecutionMode = workflowTaskPlan ? getWorkflowTaskExecutionMode(workflowTaskPlan) : undefined;
     const workflowTask = workflowTaskPlan?.tasks.find(task => task.id === workflowTaskPlan.taskId);
-    if (workflowTaskExecutionMode === 'write' && cwd) {
-      throw new Error('A workflow write task cannot use cwd; it must run in its isolated worktree.');
-    }
-    if (workflowTaskExecutionMode === 'write' && isolation && isolation !== 'worktree') {
-      throw new Error('A workflow write task requires isolation: "worktree".');
-    }
-
-    // Structured workflow write tasks always use their own worktree. Existing
-    // non-workflow Agent isolation semantics remain unchanged.
-    const effectiveIsolation = workflowTaskExecutionMode === 'write' ? 'worktree' : isolation ?? selectedAgent.isolation;
+    const effectiveIsolation = resolveWorkflowTaskIsolation(
+      Boolean(workflowTaskPlan),
+      isolation,
+      selectedAgent.isolation,
+    );
 
     // Remote isolation: delegate to CCR. Gated ant-only 鈥?the guard enables
     // dead code elimination of the entire block for external builds.
@@ -619,7 +663,15 @@ export const AgentTool = buildTool({
     // below (registerAsyncAgentTask + notifyOnCompletion).
     const assistantForceAsync = feature('KAIROS') ? appState.kairosEnabled : false;
     const shouldRunAsync = (run_in_background === true || selectedAgent.background === true || isCoordinator || forceAsync || assistantForceAsync || (proactiveModule?.isProactiveActive() ?? false)) && !isBackgroundTasksDisabled;
-    const activeWorkflow = (appState as { workflow?: unknown }).workflow;
+    const workflowResolution = await resolveWorkflowRuntimeState(
+      (appState as { workflow?: unknown }).workflow,
+    );
+    if (workflowResolution.source === 'desktop-unavailable') {
+      throw new Error(
+        `WORKFLOW_STATE_UNAVAILABLE: ${workflowResolution.reason} No Coder or Reviewer was started.`,
+      );
+    }
+    const activeWorkflow = workflowResolution.state;
     if (workflowTaskPlan) {
       if (!shouldRunAsync) {
         throw new Error('workflow_parallel_plan requires asynchronous Agent execution');
@@ -637,11 +689,14 @@ export const AgentTool = buildTool({
       ...appState.toolPermissionContext,
       mode: selectedAgent.permissionMode ?? 'acceptEdits'
     };
-    const workerTools = assembleWorkflowToolPool(workerPermissionContext, appState.mcp.tools, (appState as {
-      workflow?: import('../../server/services/workflowTypes.js').WorkflowSessionState;
-    }).workflow);
+    const workerTools = assembleWorkflowToolPool(
+      workerPermissionContext,
+      appState.mcp.tools,
+      activeWorkflow,
+      activeWorkflow ? workflow_role : undefined,
+    );
 
-    // Create a stable agent ID early so it can be used for worktree slug
+    // Create a stable agent ID early so an explicitly requested worktree can use it as a slug
     const earlyAgentId = createAgentId();
 
     // Worktree allocation is intentionally lazy. For queued workflow tasks this
@@ -668,9 +723,9 @@ export const AgentTool = buildTool({
           content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
         }));
       }
-      if (workflowTaskExecutionMode === 'write') {
+      if (workflowTaskPlan) {
         promptMessages.push(createUserMessage({
-          content: `You are executing a workflow write task in an isolated worktree: ${worktreeInfo.worktreePath}. Do not merge or rebase this worktree into the source branch. Finish the assigned changes, run relevant validation, and report the worktree handoff for the coordinator to review and integrate.`
+          content: `You are executing a workflow task in an explicitly requested isolated worktree: ${worktreeInfo.worktreePath}. Do not merge or rebase this worktree into the source branch. Finish the assigned changes, run relevant validation, and report the worktree handoff for the coordinator to review and integrate.`
         }));
       }
     };
@@ -716,8 +771,9 @@ export const AgentTool = buildTool({
     // Helper to wrap execution with a cwd override: explicit cwd arg (KAIROS)
     // takes precedence over worktree isolation path. Awaiting the lazy setup
     // here puts allocation inside the scheduler-controlled lifecycle.
-    const wrapWithCwd = async <T,>(fn: () => T): Promise<Awaited<T>> => {
+    const wrapWithCwd = async <T,>(fn: () => T, onPrepared?: () => void): Promise<Awaited<T>> => {
       await ensureWorktreeIfNeeded();
+      onPrepared?.();
       const cwdOverridePath = cwd ?? worktreeInfo?.worktreePath;
       return cwdOverridePath
         ? await runWithCwdOverride(cwdOverridePath, fn)
@@ -783,7 +839,7 @@ export const AgentTool = buildTool({
         executionMode: workflowTaskExecutionMode,
         writeScopes: workflowTask?.writeScopes,
         resourceClaims: workflowTask?.resourceClaims,
-        worktreeIsolation: workflowTaskExecutionMode === 'write'
+        worktreeIsolation: effectiveIsolation === 'worktree'
       });
 
       // Register name 鈫?agentId for SendMessage routing. Post-registerAsyncAgent
@@ -814,9 +870,33 @@ export const AgentTool = buildTool({
         invocationEmitted: false
       };
 
+      const runAsyncAgentInPreparedDirectory = () => wrapWithCwd(
+        () => runAsyncAgentLifecycle({
+          taskId: agentBackgroundTask.agentId,
+          abortController: agentBackgroundTask.abortController!,
+          makeStream: onCacheSafeParams => runAgent({
+            ...runAgentParams,
+            override: {
+              ...runAgentParams.override,
+              agentId: asAgentId(agentBackgroundTask.agentId),
+              abortController: agentBackgroundTask.abortController!
+            },
+            onCacheSafeParams
+          }),
+          metadata,
+          description,
+          toolUseContext,
+          rootSetAppState,
+          agentIdForCleanup: asyncAgentId,
+          enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
+          getWorktreeResult: cleanupWorktreeIfNeeded
+        }),
+        () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
+      );
+
       // Workload propagation: handlePromptSubmit wraps the entire turn in
       // runWithWorkload (AsyncLocalStorage). ALS context is captured at
-      // invocation time 鈥?when this `void` fires 鈥?and survives every await
+      // invocation time — when this `void` fires — and survives every await
       // inside. No capture/restore needed; the detached closure sees the
       // parent turn's workload automatically, isolated from its finally.
       void runWithAgentContext(
@@ -825,29 +905,9 @@ export const AgentTool = buildTool({
           ? runWithinWorkflowTaskSchedule(
             activeWorkflow,
             workflowTaskPlan,
-            () => wrapWithCwd(() => runAsyncAgentLifecycle({
-            taskId: agentBackgroundTask.agentId,
-            abortController: agentBackgroundTask.abortController!,
-            makeStream: onCacheSafeParams => runAgent({
-              ...runAgentParams,
-              override: {
-                ...runAgentParams.override,
-                agentId: asAgentId(agentBackgroundTask.agentId),
-                abortController: agentBackgroundTask.abortController!
-              },
-              onCacheSafeParams
-            }),
-            metadata,
-            description,
-            toolUseContext,
-            rootSetAppState,
-            agentIdForCleanup: asyncAgentId,
-            enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
-            getWorktreeResult: cleanupWorktreeIfNeeded
-            })),
+            runAsyncAgentInPreparedDirectory,
             {
               signal: agentBackgroundTask.abortController!.signal,
-              onStarted: () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
               onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
               onBlocked: reason => {
                 const error = `Workflow task ${workflowTaskPlan.taskId} was blocked: ${reason}`;
@@ -866,33 +926,29 @@ export const AgentTool = buildTool({
           )
           : runWithinWorkflowParallelism(
             activeWorkflow,
-            () => wrapWithCwd(() => runAsyncAgentLifecycle({
-              taskId: agentBackgroundTask.agentId,
-              abortController: agentBackgroundTask.abortController!,
-              makeStream: onCacheSafeParams => runAgent({
-                ...runAgentParams,
-                override: {
-                  ...runAgentParams.override,
-                  agentId: asAgentId(agentBackgroundTask.agentId),
-                  abortController: agentBackgroundTask.abortController!
-                },
-                onCacheSafeParams
-              }),
-              metadata,
-              description,
-              toolUseContext,
-              rootSetAppState,
-              agentIdForCleanup: asyncAgentId,
-              enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
-              getWorktreeResult: cleanupWorktreeIfNeeded
-            })),
+            runAsyncAgentInPreparedDirectory,
             {
               signal: agentBackgroundTask.abortController!.signal,
-              onStarted: () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
               onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
             },
           )),
-      );
+      ).catch((launchError) => {
+        // Worktree setup happens before runAsyncAgentLifecycle. Surface that
+        // pre-lifecycle failure instead of leaving a registered task "running".
+        const error = errorMessage(launchError);
+        failAsyncAgent(agentBackgroundTask.agentId, error, rootSetAppState);
+        enqueueAgentNotification({
+          taskId: agentBackgroundTask.agentId,
+          description,
+          status: 'failed',
+          error,
+          setAppState: rootSetAppState,
+          toolUseId: toolUseContext.toolUseId,
+        });
+        void cleanupWorktreeIfNeeded().catch(cleanupError =>
+          logForDebugging(`Async agent launch cleanup failed: ${errorMessage(cleanupError)}`),
+        );
+      });
       const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));
       return {
         data: {
@@ -1092,6 +1148,12 @@ export const AgentTool = buildTool({
                       }
                     }
                     const agentResult = finalizeAgentTool(agentMessages, backgroundedTaskId, metadata);
+                    // Same Expert research-audit persistence as the pure-async and
+                    // pure-sync completion paths. Without this, a long-running
+                    // evidence reviewer that is later backgrounded finishes with a
+                    // visible <playwright-browser-audit> for the parent but never
+                    // writes researchCompletion — blocking research-delivery cards.
+                    await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
 
                     // Mark task completed FIRST so TaskOutput(block=true)
                     // unblocks immediately, then notify the parent before
@@ -1360,6 +1422,13 @@ export const AgentTool = buildTool({
         // whatever messages we have. If we have no assistant messages,
         // re-throw the error so it's properly handled by the tool framework.
         if (syncAgentError) {
+          // Expert evidence work is all-or-nothing: a provider/tool error can leave
+          // a partial transcript, but that is not completed research and must be
+          // surfaced to the parent so it can retry or record a real limitation.
+          if (shouldSurfaceExpertEvidenceAgentFailure(selectedAgent.agentType)) {
+            throw syncAgentError;
+          }
+
           // Check if we have any assistant messages to return
           const hasAssistantMessages = agentMessages.some(msg => msg.type === 'assistant');
           if (!hasAssistantMessages) {
@@ -1372,6 +1441,7 @@ export const AgentTool = buildTool({
           logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
         }
         const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
+        await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
         if (feature('TRANSCRIPT_CLASSIFIER')) {
           const currentAppState = toolUseContext.getAppState();
           const handoffWarning = await classifyHandoffIfNeeded({
@@ -1488,15 +1558,15 @@ The agent is now running and will receive instructions via mailbox.`
         type: 'text' as const,
         text: '(Subagent completed but returned no output.)'
       }];
-      // Expert evidence agents need their transcript-derived BrowserResearch audit even if
+      // Expert evidence agents need their transcript-derived Playwright audit even if
       // they later become one-shot agents. The audit is evidence provenance, not optional
       // conversational metadata.
-      const browserResearchAudit = requiresBrowserResearchAudit(data.agentType)
-        ? formatBrowserResearchAudit(data.browserResearchAudit)
+      const playwrightAudit = requiresPlaywrightAudit(data.agentType)
+        ? formatPlaywrightAudit(data.playwrightAudit)
         : undefined;
       // One-shot built-ins (Explore, Plan) are never continued via SendMessage. Keep that
       // optimization for normal agents, but never hide the evidence audit from a parent.
-      if (data.agentType && ONE_SHOT_BUILTIN_AGENT_TYPES.has(data.agentType) && !worktreeInfoText && !browserResearchAudit) {
+      if (data.agentType && ONE_SHOT_BUILTIN_AGENT_TYPES.has(data.agentType) && !worktreeInfoText && !playwrightAudit) {
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
@@ -1513,8 +1583,8 @@ The agent is now running and will receive instructions via mailbox.`
 tool_uses: ${data.totalToolUseCount}
 duration_ms: ${data.totalDurationMs}</usage>
 <tool-audit>
-BrowserResearch: ${data.browserResearchToolUseCount ?? 0}
-</tool-audit>${browserResearchAudit ? `\n${browserResearchAudit}` : ''}`
+Playwright: ${data.playwrightToolUseCount ?? 0}
+</tool-audit>${playwrightAudit ? `\n${playwrightAudit}` : ''}`
         }]
       };
     }

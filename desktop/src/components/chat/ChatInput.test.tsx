@@ -1286,7 +1286,7 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
 
     await waitFor(() => {
-      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'repo-health-check')
+      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'repo-health-check', undefined)
     })
     expect(useSessionStore.getState().sessions[0]?.expert).toMatchObject({
       mode: 'expert',
@@ -1337,7 +1337,7 @@ describe('ChatInput file mentions', () => {
     fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
 
     await waitFor(() => {
-      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'product-brief-intake')
+      expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'product-brief-intake', undefined)
     })
     expect(useSessionStore.getState().sessions[0]?.expert).toMatchObject({
       mode: 'expert',

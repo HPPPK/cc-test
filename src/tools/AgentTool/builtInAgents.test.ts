@@ -50,22 +50,22 @@ describe('built-in agents', () => {
 })
 
 
-test('includes the read-only Expert evidence research role', () => {
+test('includes the read-only Expert evidence research role without a subagent question tool', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-researcher')
-  expect(agent?.tools).toEqual(['BrowserResearch', 'Read'])
+  expect(agent?.tools).toEqual(['Playwright', 'Read'])
   const prompt = agent?.getSystemPrompt() ?? ''
-  expect(prompt).toContain('must make at least one real BrowserResearch call')
-  expect(prompt).toContain('search_engine: google')
-  expect(prompt).toContain('search_engine: baidu')
-  expect(prompt).toContain('search_engine: 360')
-  expect(prompt).toContain('Do not hand-build search-engine URLs')
-  expect(prompt).toContain('official evidence missing')
-  expect(prompt).toContain('open at least one specific candidate page')
+  expect(prompt).toContain('real Playwright actions with a non-empty actions array')
+  expect(prompt).toContain('A search page is only for discovery')
+  expect(prompt).toContain('page-level failure')
+  expect(prompt).toContain('human-verification handoff')
+  expect(prompt).toContain('do not bypass it')
+  expect(prompt).toContain('or call AskUserQuestion')
+  expect(prompt).toContain('compact evidence ledger')
 })
 
 test('includes the independent Expert evidence review role', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-reviewer')
-  expect(agent?.tools).toEqual(['BrowserResearch', 'Read'])
+  expect(agent?.tools).toEqual(['Playwright', 'Read'])
   const prompt = agent?.getSystemPrompt() ?? ''
   expect(prompt).toContain('N keyword snapshots')
   expect(prompt).toContain('direct-competitor price gap')

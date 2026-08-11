@@ -1697,6 +1697,8 @@ export const en = {
   'agentStatus.starting': 'Starting',
   'agentStatus.running': 'Running',
   'agentStatus.done': 'Done',
+  'agentStatus.partial': 'Partially done',
+  'agentStatus.blocked': 'Blocked',
   'agentStatus.failed': 'Failed',
   'agentStatus.stopped': 'Stopped',
   'agentStatus.noActivity': 'No tool activity yet',

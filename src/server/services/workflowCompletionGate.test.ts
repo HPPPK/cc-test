@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   applyWorkflowPhaseProgress,
   getWorkflowCompletionEligibility,
+  markAskUserQuestionIssuesStale,
   migrateWorkflowRuntimeContract,
   rebuildWorkflowCompletionContract,
   recordAskUserQuestionAnswer,
@@ -77,6 +78,34 @@ describe('workflow completion contract', () => {
     ]))
   })
 
+
+
+  test('keeps old workflow fixtures compatible and strips malformed automatic recovery metadata', () => {
+    const legacy = legacyState()
+    const migratedLegacy = migrateWorkflowRuntimeContract(legacy, template(), NOW)
+    expect(migratedLegacy).not.toHaveProperty('autoRecovery')
+    expect(migratedLegacy).not.toHaveProperty('autoRecoveryAttempts')
+
+    const malformed = {
+      ...rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Build the current contract before recovery metadata migration.'),
+      autoRecovery: {
+        phaseId: 'unknown-phase',
+        startedAt: 'not-a-date',
+        expiresAt: 'not-a-date',
+        attempt: 0,
+        source: 'unknown-source',
+      },
+      autoRecoveryAttempts: {
+        run: { [PHASE_ID]: 1, invalid: -1 },
+        invalid: 'not-a-record',
+      },
+    } as WorkflowSessionState
+    const migrated = migrateWorkflowRuntimeContract(malformed, template(), NOW)
+
+    expect(migrated).not.toHaveProperty('autoRecovery')
+    expect(migrated.autoRecoveryAttempts).toEqual({ run: { [PHASE_ID]: 1 } })
+  })
+
   test('keeps AskUserQuestion answers blocking until explicit processing and linked evidence are complete', () => {
     let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
     state = applyWorkflowPhaseProgress(state, PHASE_ID, {
@@ -93,7 +122,7 @@ describe('workflow completion contract', () => {
     state = recordAskUserQuestionIssue(state, {
       requestId: 'question-1',
       toolUseId: 'tool-1',
-      questions: [{ id: 'decision-option', header: 'Decision', question: 'Which option should the phase use?' }],
+      questions: [{ id: 'decision-option', header: 'Decision', question: 'Which option should the phase use?', blocksCompletion: true }],
       now: NOW,
     })
     state = recordAskUserQuestionAnswer(state, {
@@ -121,6 +150,82 @@ describe('workflow completion contract', () => {
     expect(getWorkflowCompletionEligibility(state)).toMatchObject({ status: 'eligible', reasons: [] })
   })
 
+
+  test('records an AskUserQuestion without blocksCompletion as non-blocking', () => {
+    let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'optional-question',
+      toolUseId: 'optional-tool-use',
+      questions: [{ id: 'format', question: 'Which distribution format should the preview use?' }],
+      now: NOW,
+    })
+
+    expect(state.runtimeContract!.phaseStates[PHASE_ID]!.issues[0]).toMatchObject({
+      status: 'open',
+      blocksCompletion: false,
+    })
+  })
+
+  test('persists full AskUserQuestion card input so an open workflow question can be rendered again after restart', () => {
+    let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
+    const questions = [{
+      id: 'authorize-b01',
+      header: 'B01 authorization',
+      question: 'Allow the workflow to create the project skeleton?',
+      blocksCompletion: true,
+      choices: [
+        { id: 'allow', label: 'Allow (Recommended)', description: 'Create the approved local skeleton.' },
+        { id: 'pause', label: 'Pause', description: 'Keep the workflow waiting.' },
+      ],
+    }]
+
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'persisted-question',
+      toolUseId: 'persisted-tool-use',
+      questions,
+      now: NOW,
+    })
+
+    const issue = state.runtimeContract!.phaseStates[PHASE_ID]!.issues[0] as WorkflowPhaseIssue & {
+      questionInput?: unknown
+    }
+    expect(issue.questionInput).toEqual({ questions })
+  })
+
+  test('marks a failed AskUserQuestion delivery stale so it cannot block completion', () => {
+    let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
+    state = applyWorkflowPhaseProgress(state, PHASE_ID, {
+      type: 'work-ready-for-review', actor: 'user', rationale: 'The active phase work is ready for review.',
+    }, NOW)
+    state = applyWorkflowPhaseProgress(state, PHASE_ID, {
+      type: 'artifact-satisfied', actor: 'user', artifactRequirementId: 'decision-record', artifactIds: ['decision-record'], rationale: 'Verified the decision record.',
+    }, NOW)
+    state = applyWorkflowPhaseProgress(state, PHASE_ID, {
+      type: 'check-passed', actor: 'user', checkId: 'completion-criteria:0', evidenceArtifactIds: ['decision-record'], rationale: 'Reviewed the decision record.',
+    }, NOW)
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'aborted-question',
+      toolUseId: 'aborted-tool-use',
+      questions: [{ id: 'decision-option', question: 'Which option should the phase use?' }],
+      now: NOW,
+    })
+
+    const stale = markAskUserQuestionIssuesStale(state, {
+      toolUseId: 'aborted-tool-use',
+      now: NOW,
+      rationale: 'The question tool request failed before an answer was delivered.',
+    })
+
+    expect(stale.runtimeContract?.phaseStates[PHASE_ID]?.issues[0]).toMatchObject({
+      status: 'stale',
+      blocksCompletion: false,
+      processing: {
+        status: 'stale',
+        rationale: 'The question tool request failed before an answer was delivered.',
+      },
+    })
+    expect(getWorkflowCompletionEligibility(stale)).toMatchObject({ status: 'eligible', reasons: [] })
+  })
 
   test('repairs only legacy Debug intake evidence bindings without advancing the workflow', () => {
     const debugTemplate: WorkflowTemplate = {

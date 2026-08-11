@@ -45,6 +45,27 @@ export function resolveExpertCategoryId(expert?: { id?: string; categoryId?: str
   return expert?.id ? legacyExpertCategoryIds[expert.id] ?? 'uncategorized' : 'uncategorized'
 }
 
+export type ExpertResearchBrowserPresentation = 'assistable_background' | 'always_visible'
+
+export type ExpertResearchBrowserPolicy = {
+  sharePlaywrightSessionAcrossAgents: boolean
+  allowUserAuthorizedCdp?: boolean
+  managedPresentationDefault?: ExpertResearchBrowserPresentation
+  allowManagedPresentationChoice?: boolean
+  forceVisiblePlaywright?: boolean
+  closePlaywrightWhenAgentDone?: boolean
+  verificationFallbackSearchEngines?: Array<'Google' | '百度' | 'Bing' | '360'>
+}
+
+export type ExpertResearchBrowserConnectionInput =
+  | { kind: 'managed' }
+  | { kind: 'cdp'; browser: 'chrome' | 'edge'; endpoint: string; userAuthorized: true }
+
+export type ExpertResearchBrowserStartOptions = {
+  researchBrowserConnection?: ExpertResearchBrowserConnectionInput
+  researchBrowserPresentation?: ExpertResearchBrowserPresentation
+}
+
 export type ExpertToolManifest = {
   id: string
   name: string
@@ -73,6 +94,7 @@ export type ExpertDefinition = {
   formPaths: string[]
   outputProtocolPath?: string
   outputProtocolContent?: string
+  researchBrowserPolicy?: ExpertResearchBrowserPolicy
   skillIds: string[]
   hostTools: Array<{ id: string; name: string; purpose: string; minHostVersion?: string; supported?: boolean }>
   permissions: Array<{ id: string; description: string }>
@@ -179,8 +201,9 @@ export const expertsApi = {
   updatePack: (packId: string, input: ExpertPackUpdateInput) => api.put<ExpertPackSummary>(`/api/experts/packs/${encodeURIComponent(packId)}`, input),
   copyPack: (packId: string) => api.post<ExpertPackImportPreview>(`/api/experts/packs/${encodeURIComponent(packId)}/copy`, {}),
   deletePack: (packId: string) => api.delete<void>(`/api/experts/packs/${encodeURIComponent(packId)}`),
-  enterSessionExpertMode: (sessionId: string, expertId: string) => api.post<ExpertSessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/start`, { expertId }),
+  enterSessionExpertMode: (sessionId: string, expertId: string, options?: ExpertResearchBrowserStartOptions) => api.post<ExpertSessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/start`, { expertId, ...(options?.researchBrowserConnection ? { researchBrowserConnection: options.researchBrowserConnection } : {}), ...(options?.researchBrowserPresentation ? { researchBrowserPresentation: options.researchBrowserPresentation } : {}) }),
   exitSessionExpertMode: (sessionId: string) => api.post<ExpertSessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/exit`, {}),
+  requestResearchBrowserVisibility: (sessionId: string) => api.post<{ activity: unknown | null }>('/api/expert-browser-activity', { sessionId, action: 'show' }),
   submitIntakeStep: (sessionId: string, request: { stepId?: string; answer?: unknown; answers?: Record<string, unknown> }) => api.post<{ expert: ExpertSessionSummary; intakeState: ExpertIntakeState }>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/intake`, request),
   listSessionExpertMaterials: (sessionId: string) => api.get<{ materialRefs: ExpertMaterialRef[] }>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/materials`),
   downloadMaterialPackage: (sessionId: string, runId: string) => api.get<ArrayBuffer>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/materials/${encodeURIComponent(runId)}/download`),

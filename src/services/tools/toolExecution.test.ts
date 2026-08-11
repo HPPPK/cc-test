@@ -9,6 +9,7 @@ import { FileEditTool } from '../../tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import { FileWriteTool } from '../../tools/FileWriteTool/FileWriteTool.js'
 import { AskUserQuestionTool } from '../../tools/AskUserQuestionTool/AskUserQuestionTool.js'
+import { PlaywrightTool } from '../../tools/PlaywrightTool/PlaywrightTool.js'
 import { SubmitPhaseCompletionTool } from '../../tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import { createAssistantMessage } from '../../utils/messages.js'
@@ -208,6 +209,93 @@ describe('runToolUse file edit recovery', () => {
     expect(JSON.stringify(messages)).toContain('WORKFLOW_TOOL_FORBIDDEN')
   })
 
+  test('uses the latest Desktop workflow phase instead of stale CLI state before a tool executes', async () => {
+    const filePath = path.join(tmpDir, 'desktop-current-phase.txt')
+    const context = createContext()
+    const originalFetch = globalThis.fetch
+    const originalServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    const originalSessionId = process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
+    const localWorkflow = {
+      mode: 'workflow',
+      activePhaseId: 'delegate-implement',
+      workflowStatus: 'running',
+      status: 'running',
+      phases: [{ id: 'delegate-implement', status: 'running', artifactPointers: [] }],
+      templateSnapshot: {
+        schemaVersion: 1,
+        id: 'desktop-state-guard',
+        source: 'user',
+        version: '1',
+        displayName: 'Desktop state guard',
+        description: 'test',
+        phases: [
+          {
+            id: 'requirements-clarification',
+            label: 'Requirements',
+            instructions: 'Clarify requirements.',
+            requestedModel: null,
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: [],
+            transitionAuthority: 'user-confirmation',
+          },
+          {
+            id: 'delegate-implement',
+            label: 'Implement',
+            instructions: 'Implement the approved change.',
+            requestedModel: null,
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: [],
+            transitionAuthority: 'user-confirmation',
+            toolPolicy: { allowedTools: ['Write'] },
+          },
+        ],
+      },
+    }
+    const currentDesktopWorkflow = {
+      ...localWorkflow,
+      activePhaseId: 'requirements-clarification',
+      phases: [{ id: 'requirements-clarification', status: 'running', artifactPointers: [] }],
+    }
+    context.options.tools = [FileWriteTool]
+    context.getAppState = () => ({
+      toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
+      workflow: localWorkflow,
+      tasks: {},
+      effortValue: undefined,
+      sessionHooks: new Map(),
+    }) as ReturnType<ToolUseContext['getAppState']>
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:4567/'
+    process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-current-phase'
+    const calls: string[] = []
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      calls.push(String(input))
+      return new Response(JSON.stringify({ state: currentDesktopWorkflow }), { status: 200 })
+    }) as typeof fetch
+
+    try {
+      const messages = await runSingleToolUse({
+        type: 'tool_use',
+        id: 'toolu_desktop_current_phase',
+        name: FileWriteTool.name,
+        input: { file_path: filePath, content: 'must not write' },
+      } as ToolUseBlock, context)
+
+      expect(await fs.stat(filePath).catch(() => null)).toBeNull()
+      expect(JSON.stringify(messages)).toContain('WORKFLOW_TOOL_FORBIDDEN')
+      expect(calls).toEqual([
+        'http://127.0.0.1:4567/api/sessions/workflow-current-phase/workflow',
+      ])
+    } finally {
+      globalThis.fetch = originalFetch
+      if (originalServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+      else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = originalServerUrl
+      if (originalSessionId === undefined) delete process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
+      else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalSessionId
+    }
+  })
+
   test('allows one silent correction retry for the rejected unavailable completion status', async () => {
     let appState: any = {
       workflow: {
@@ -288,6 +376,28 @@ describe('runToolUse file edit recovery', () => {
     const second = await runSingleToolUse({ ...toolUse, id: 'toolu_submit_second' }, context)
     expect(JSON.stringify(second)).toContain('WORKFLOW_SUBMIT_BLOCKED')
     expect(appState.workflow.runStatus).toBe('blocked')
+  })
+
+  test('returns Playwright-specific recovery guidance when an action type is unsupported', async () => {
+    const context = createContext()
+    context.options.tools = [PlaywrightTool]
+
+    const messages = await runSingleToolUse({
+      type: 'tool_use',
+      id: 'toolu_playwright_invalid_action',
+      name: PlaywrightTool.name,
+      input: {
+        actions: [{ type: 'search', selector: '#kw', text: '坦克大战' }],
+      },
+    } as ToolUseBlock, context)
+
+    const result = JSON.stringify(messages)
+    const toolError = JSON.parse(result)[0].message.content[0].content as string
+    expect(toolError).toContain('actions[0].type="search"')
+    expect(toolError).toContain('Retry this Playwright call immediately')
+    expect(toolError).toContain('a search uses navigate')
+    expect(toolError).toContain('Do not switch to Bash')
+    expect(toolError).not.toContain('Invalid input for Playwright')
   })
 
   test('auto-reads an existing file before retrying Edit validation', async () => {

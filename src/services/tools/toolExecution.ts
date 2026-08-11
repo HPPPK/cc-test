@@ -52,6 +52,9 @@ import {
 } from '../../tools/ToolSearchTool/prompt.js'
 import { getAllBaseTools } from '../../tools.js'
 import { renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
+import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
+import { resolveCurrentPlaywrightSessionKey } from '../../tools/PlaywrightTool/PlaywrightTool.js'
+import { resolveWorkflowRuntimeState } from './workflowRuntimeStateBridge.js'
 import {
   getWorkflowQuestionCardContractViolation,
   isWorkflowPhaseToolDenied,
@@ -673,7 +676,8 @@ async function checkPermissionsAndCallTool(
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   const parsedInput = tool.inputSchema.safeParse(input)
   if (!parsedInput.success) {
-    let errorContent = formatZodValidationError(tool.name, parsedInput.error)
+    let errorContent = tool.formatInputValidationError?.(input)
+      ?? formatZodValidationError(tool.name, parsedInput.error)
 
     const schemaHint = buildSchemaNotSentHint(
       tool,
@@ -744,11 +748,35 @@ async function checkPermissionsAndCallTool(
     ]
   }
 
-  // Enforce the active workflow contract again at the execution boundary.
-  // The CLI receives the same deny list at session launch, but this guard
-  // prevents a stale/resumed tool reference from bypassing a phase change.
-  const workflowState = (toolUseContext.getAppState() as { workflow?: unknown }).workflow
-  if (isWorkflowPhaseToolDenied(tool.name, workflowState as any)) {
+  // The workflow leader stays alive across ordinary phase changes, so its
+  // in-memory app state may briefly describe the prior phase. Resolve the
+  // persisted Desktop state before every actual tool call instead of trusting
+  // a launch-time deny list or an old transcript turn.
+  const localWorkflowState = (toolUseContext.getAppState() as { workflow?: unknown }).workflow
+  const workflowResolution = await resolveWorkflowRuntimeState(localWorkflowState)
+  if (workflowResolution.source === 'desktop-unavailable') {
+    const violation = `WORKFLOW_STATE_UNAVAILABLE: ${workflowResolution.reason} No tool was executed; retry after Desktop workflow state is available.`
+    logForDebugging(violation)
+    const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          toolUseResult: `Error: ${workflowErrorContent}`,
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      },
+    ]
+  }
+  const workflowState = workflowResolution.state
+  if (isWorkflowPhaseToolDenied(tool.name, workflowState)) {
     const violation = `WORKFLOW_TOOL_FORBIDDEN: ${tool.name} is not allowed in the current workflow phase. Complete or route the current phase before using this tool.`
     logForDebugging(violation)
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
@@ -1374,7 +1402,7 @@ async function checkPermissionsAndCallTool(
     callInput = processedInput
   }
   try {
-    const result = await tool.call(
+    const rawResult = await tool.call(
       callInput,
       {
         ...toolUseContext,
@@ -1390,6 +1418,30 @@ async function checkPermissionsAndCallTool(
         })
       },
     )
+    const result = await coordinateExpertBrowserVerification({
+      toolName: tool.name,
+      result: rawResult,
+      input: callInput,
+      resume: async (continuationInput) => await tool.call(
+        continuationInput as typeof callInput,
+        {
+          ...toolUseContext,
+          toolUseId: toolUseID,
+          userModified: permissionDecision.userModified ?? false,
+        },
+        canUseTool,
+        assistantMessage,
+        progress => {
+          onToolProgress({
+            toolUseID: progress.toolUseID,
+            data: progress.data,
+          })
+        },
+      ),
+      ...(toolUseContext.agentId ? { agentId: toolUseContext.agentId } : {}),
+      toolUseId: toolUseID,
+      ...(tool.name === 'Playwright' ? { browserSessionKey: resolveCurrentPlaywrightSessionKey(toolUseContext) } : {}),
+    })
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
 

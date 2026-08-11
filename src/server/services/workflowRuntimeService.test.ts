@@ -9,6 +9,7 @@ import type {
   WorkflowTransitionRequest,
 } from './workflowTypes.js'
 import type { WorkflowPhaseSkillCatalogEntry } from './workflowPhaseSkillResolver.js'
+import { workflowSummaryFromState } from './workflowSummary.js'
 
 const NOW = '2026-05-20T00:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-service-test'
@@ -426,7 +427,10 @@ describe('WorkflowRuntimeService', () => {
       type: 'system_notification',
       subtype: 'workflow_state',
       data: expect.objectContaining({
-        sessionId: SESSION_ID,
+        templateId: 'requirements-to-implementation',
+        activePhaseIndex: 0,
+        phaseCount: 2,
+        pendingConfirmation: false,
         stateVersion: 2,
       }),
     }))
@@ -1020,6 +1024,101 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('AskUserQuestion 的 prompt、choice label、阶段摘要')
   })
 
+  test('tells a resumed workflow not to repeat an already-open question card', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      activePhaseId: 'requirements',
+      phases: [{ id: 'requirements', index: 0, status: 'running', artifactPointers: [] }],
+    })
+    state.runtimeContract = {
+      schemaVersion: 1,
+      migrationStatus: 'current',
+      phaseStates: {
+        requirements: {
+          phaseId: 'requirements',
+          workStatus: 'in-progress',
+          eligibility: 'ineligible',
+          blockerReasons: ['Unresolved phase issue: waiting for the user.'],
+          issues: [{
+            id: 'ask:restore-1:0',
+            phaseId: 'requirements',
+            sessionId: state.sessionId,
+            createdAt: '2026-08-06T00:00:00.000Z',
+            updatedAt: '2026-08-06T00:00:00.000Z',
+            source: 'ask-user-question',
+            status: 'open',
+            blocksCompletion: true,
+            question: 'May B01 create the local project skeleton?',
+            blockingReason: 'The user must authorize the local project skeleton.',
+            questionRequestId: 'restore-1',
+            questionId: 'authorize-b01',
+            createdStateVersion: state.stateVersion,
+          }],
+          artifactRequirements: [],
+          checks: [],
+          taskSnapshots: [],
+          evaluatedAt: '2026-08-06T00:00:00.000Z',
+        },
+      },
+      audit: [],
+    }
+
+    const prompt = await service.assemblePrompt({ state, userMessage: 'Continue the workflow.' })
+
+    expect(prompt.content).toContain('An unresolved AskUserQuestion is already awaiting the user')
+    expect(prompt.content).toContain('May B01 create the local project skeleton?')
+    expect(prompt.content).toContain('Do not create a replacement or duplicate question')
+  })
+
+  test('tells a resumed workflow to process a persisted answer before asking again', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      activePhaseId: 'requirements',
+      phases: [{ id: 'requirements', index: 0, status: 'running', artifactPointers: [] }],
+    })
+    state.runtimeContract = {
+      schemaVersion: 1,
+      migrationStatus: 'current',
+      phaseStates: {
+        requirements: {
+          phaseId: 'requirements',
+          workStatus: 'in-progress',
+          eligibility: 'ineligible',
+          blockerReasons: ['Unresolved phase issue: answer processing required.'],
+          issues: [{
+            id: 'ask:answered-1:0',
+            phaseId: 'requirements',
+            sessionId: state.sessionId,
+            createdAt: '2026-08-06T00:00:00.000Z',
+            updatedAt: '2026-08-06T00:01:00.000Z',
+            source: 'ask-user-question',
+            status: 'answered-pending-processing',
+            blocksCompletion: true,
+            question: 'May B01 create the local project skeleton?',
+            blockingReason: 'The B01 authorization answer still needs to be applied.',
+            questionRequestId: 'answered-1',
+            questionId: 'authorize-b01',
+            answer: { 'authorize-b01': 'Allow B01 (Recommended)' },
+            createdStateVersion: state.stateVersion,
+          }],
+          artifactRequirements: [],
+          checks: [],
+          taskSnapshots: [],
+          evaluatedAt: '2026-08-06T00:01:00.000Z',
+        },
+      },
+      audit: [],
+    }
+
+    const prompt = await service.assemblePrompt({ state, userMessage: 'Continue the workflow.' })
+
+    expect(prompt.content).toContain('Persisted workflow answer recovery')
+    expect(prompt.content).toContain('Allow B01 (Recommended)')
+    expect(prompt.content).toContain('do not repeat the question')
+  })
+
   test('keeps Chinese workflow language for an English continue message when the UI locale is Chinese', async () => {
     const service = await makeService()
     const prompt = await service.assemblePrompt({
@@ -1258,12 +1357,34 @@ describe('WorkflowRuntimeService', () => {
       },
     })
     expect(blocked.state.activePhaseId).toBe('requirements')
+    expect(blocked.state).toMatchObject({
+      workflowStatus: 'failed',
+      status: 'failed',
+      runStatus: 'blocked',
+      pendingConfirmation: null,
+      blockedReason: 'Required artifact requirements-md is missing.',
+    })
     expect(blocked.state.phases[0]).toMatchObject({
-      status: 'running',
+      status: 'failed',
       blockedReason: 'Required artifact requirements-md is missing.',
     })
 
+    const retried = await service.applyTransition({
+      state: blocked.state,
+      requestedAt: '2026-05-20T00:02:30.000Z',
+      request: { phaseId: 'requirements', action: 'retry', transitionId: 'retry-current-blocked-phase' },
+    })
+    expect(retried.state).toMatchObject({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      activePhaseId: 'requirements',
+      pendingConfirmation: null,
+    })
+    expect(retried.state.phases[0]).toMatchObject({ status: 'running' })
+
     const pending = await service.applyTransition({
+      state: retried.state,
       state: blocked.state,
       requestedAt: '2026-05-20T00:03:00.000Z',
       request: { phaseId: 'requirements', action: 'retry', transitionId: 'retry-with-artifact' },
@@ -1945,6 +2066,354 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.pendingRoute).toBeNull()
     expect(confirmed.state.runStatus).toBe('active')
     expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+  })
+
+  test('automatically applies the first blocked completion recovery route without a user confirmation', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const blocked = await service.submitPhaseCompletion({
+      state,
+      requestedAt: NOW,
+      transitionId: 'blocked-auto-recovery-1',
+      submission: completionSubmission({
+        status: 'blocked',
+        rationale: 'A repairable validation defect must be fixed before this phase can continue.',
+        evidence: [{ kind: 'validation', label: 'Repairable defect', ref: 'test:requirements:defect' }],
+      }),
+    })
+
+    expect(blocked.state.autoRecovery).toMatchObject({
+      phaseId: 'requirements',
+      attempt: 1,
+      source: 'phase-completion-blocked',
+    })
+    expect(blocked.notifications.find((notification) => notification.subtype === 'workflow_state')).toMatchObject({
+      data: expect.objectContaining({
+        templateId: 'requirements-to-implementation',
+        activePhaseId: 'requirements',
+        activePhaseIndex: 0,
+        phaseCount: 2,
+        pendingConfirmation: false,
+        blockedReason: 'A repairable validation defect must be fixed before this phase can continue.',
+        autoRecovery: expect.objectContaining({ phaseId: 'requirements' }),
+      }),
+    })
+
+    const recovered = await service.requestWorkflowRoute({
+      state: blocked.state,
+      requestedAt: '2026-05-20T00:00:01.000Z',
+      transitionId: 'blocked-auto-recovery-route-1',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: blocked.state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'implementation',
+        rationale: 'Return to implementation and repair the recorded defect.',
+        evidence: [{ kind: 'validation', ref: 'test:requirements:defect' }],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(recovered.requiresConfirmation).toBe(false)
+    expect(recovered.state.activePhaseId).toBe('implementation')
+    expect(recovered.state.runStatus).toBe('active')
+    expect(recovered.state.pendingRoute).toBeNull()
+    expect(recovered.state.pendingConfirmation).toBeNull()
+    expect(recovered.state.autoRecovery).toBeUndefined()
+    expect(recovered.state.transitionHistory.at(-1)).toMatchObject({
+      action: 'route-recovery-auto-applied',
+      authority: 'recovery',
+      result: 'accepted',
+    })
+  })
+
+
+
+  test('does not open a second automatic recovery window for the same blocker in one phase execution', async () => {
+    const service = await makeService()
+    const initial = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const repeatedBlocker = {
+      status: 'blocked' as const,
+      rationale: 'A repairable defect needs a focused rework.',
+    }
+    const firstBlocked = await service.submitPhaseCompletion({
+      state: initial,
+      requestedAt: NOW,
+      transitionId: 'first-blocked-rework',
+      submission: completionSubmission(repeatedBlocker),
+    })
+    const reworked = await service.requestWorkflowRoute({
+      state: firstBlocked.state,
+      requestedAt: '2026-05-20T00:00:01.000Z',
+      transitionId: 'first-blocked-rework-route',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: firstBlocked.state.stateVersion,
+        intent: 'rework_current_phase',
+        rationale: 'Repair the active phase before resubmitting it.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+
+    const secondBlocked = await service.submitPhaseCompletion({
+      state: reworked.state,
+      requestedAt: '2026-05-20T00:00:02.000Z',
+      transitionId: 'second-blocked-rework',
+      submission: completionSubmission({
+        ...repeatedBlocker,
+        phaseId: 'requirements',
+        stateVersion: reworked.state.stateVersion,
+      }),
+    })
+
+    expect(secondBlocked.state.autoRecovery).toBeUndefined()
+    const attempts = secondBlocked.state.autoRecoveryAttempts?.[SESSION_ID + ':current'] ?? {}
+    expect(Object.values(attempts)).toEqual([1])
+    expect(Object.keys(attempts)).toHaveLength(1)
+    expect(Object.keys(attempts)[0]).toMatch(/^requirements:/)
+  })
+
+  test('opens a fresh automatic recovery window when the same blocker returns after a new phase entry', async () => {
+    const service = await makeService()
+    const initial = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', startedAt: NOW, artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const repeatedBlocker = {
+      status: 'blocked' as const,
+      rationale: 'The preview still has the same repairable defect after the repair pass.',
+    }
+    const firstBlocked = await service.submitPhaseCompletion({
+      state: initial,
+      requestedAt: NOW,
+      transitionId: 'first-entry-blocked',
+      submission: completionSubmission(repeatedBlocker),
+    })
+    const sentToRepair = await service.requestWorkflowRoute({
+      state: firstBlocked.state,
+      requestedAt: '2026-05-20T00:00:01.000Z',
+      transitionId: 'first-entry-auto-route',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: firstBlocked.state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'implementation',
+        rationale: 'Return to implementation and repair the recorded preview defect.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(sentToRepair.requiresConfirmation).toBe(false)
+
+    const repairCompleted = await service.submitPhaseCompletion({
+      state: sentToRepair.state,
+      requestedAt: '2026-05-20T00:00:02.000Z',
+      transitionId: 'repair-completed-before-reentry',
+      submission: completionSubmission({
+        phaseId: 'implementation',
+        stateVersion: sentToRepair.state.stateVersion,
+        status: 'ready',
+        rationale: 'The repair pass is complete and ready for another preview attempt.',
+      }),
+    })
+    const reentryRequested = await service.requestWorkflowRoute({
+      state: repairCompleted.state,
+      requestedAt: '2026-05-20T00:00:02.500Z',
+      transitionId: 'return-to-requirements',
+      request: {
+        phaseId: 'implementation',
+        stateVersion: repairCompleted.state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'requirements',
+        rationale: 'The repair pass is complete; re-enter requirements for another preview attempt.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(reentryRequested.requiresConfirmation).toBe(true)
+    const reentered = await service.applyTransition({
+      state: reentryRequested.state,
+      requestedAt: '2026-05-20T00:00:03.000Z',
+      request: {
+        phaseId: 'implementation',
+        action: 'confirm',
+        transitionId: 'confirm-return-to-requirements',
+        confirmationId: reentryRequested.state.pendingRoute!.routeId,
+        expectedStateVersion: reentryRequested.state.stateVersion,
+      },
+    })
+    expect(reentered.state.activePhaseId).toBe('requirements')
+    expect(reentered.state.phases.find((phase) => phase.id === 'requirements')?.startedAt)
+      .toBe('2026-05-20T00:00:03.000Z')
+
+    const blockedAfterReentry = await service.submitPhaseCompletion({
+      state: reentered.state,
+      requestedAt: '2026-05-20T00:00:04.000Z',
+      transitionId: 'second-entry-same-blocked',
+      submission: completionSubmission({
+        ...repeatedBlocker,
+        phaseId: 'requirements',
+        stateVersion: reentered.state.stateVersion,
+      }),
+    })
+
+    expect(blockedAfterReentry.state.autoRecovery).toMatchObject({ phaseId: 'requirements', attempt: 1 })
+    const attempts = blockedAfterReentry.state.autoRecoveryAttempts?.[SESSION_ID + ':current'] ?? {}
+    expect(Object.keys(attempts)).toHaveLength(2)
+    expect(Object.keys(attempts)).toEqual(expect.arrayContaining([
+      expect.stringContaining(`requirements:${NOW}:`),
+      expect.stringContaining('requirements:2026-05-20T00:00:03.000Z:'),
+    ]))
+  })
+
+  test('opens another automatic recovery window for a different blocker in the same phase and run', async () => {
+    const service = await makeService()
+    const initial = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const firstBlocked = await service.submitPhaseCompletion({
+      state: initial,
+      requestedAt: NOW,
+      transitionId: 'first-distinct-blocked-rework',
+      submission: completionSubmission({
+        status: 'blocked',
+        rationale: 'Validation evidence has a repairable schema defect.',
+      }),
+    })
+    const reworked = await service.requestWorkflowRoute({
+      state: firstBlocked.state,
+      requestedAt: '2026-05-20T00:00:01.000Z',
+      transitionId: 'first-distinct-blocked-rework-route',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: firstBlocked.state.stateVersion,
+        intent: 'rework_current_phase',
+        rationale: 'Repair the validation schema before retrying requirements.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+
+    const secondBlocked = await service.submitPhaseCompletion({
+      state: reworked.state,
+      requestedAt: '2026-05-20T00:00:02.000Z',
+      transitionId: 'second-distinct-blocked-rework',
+      submission: completionSubmission({
+        phaseId: 'requirements',
+        stateVersion: reworked.state.stateVersion,
+        status: 'blocked',
+        rationale: 'Browser preview rendering has a separate repairable defect.',
+      }),
+    })
+    expect(secondBlocked.state.autoRecovery).toMatchObject({ phaseId: 'requirements', attempt: 1 })
+
+    const recovered = await service.requestWorkflowRoute({
+      state: secondBlocked.state,
+      requestedAt: '2026-05-20T00:00:03.000Z',
+      transitionId: 'second-distinct-blocked-rework-route',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: secondBlocked.state.stateVersion,
+        intent: 'rework_current_phase',
+        rationale: 'Return to requirements and repair the preview defect.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(recovered.requiresConfirmation).toBe(false)
+    expect(recovered.state.runStatus).toBe('active')
+    expect(recovered.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-auto-applied' })
+  })
+
+  test('keeps authentication and model-environment blockers out of the silent recovery path', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+
+    const blocked = await service.submitPhaseCompletion({
+      state,
+      requestedAt: NOW,
+      transitionId: 'authentication-blocked',
+      submission: completionSubmission({
+        status: 'unable',
+        rationale: 'Provider authentication is required before the model can continue.',
+      }),
+    })
+
+    expect(blocked.state.runStatus).toBe('blocked')
+    expect(blocked.state.autoRecovery).toBeUndefined()
+  })
+
+  test('requires normal confirmation when the automatic recovery window has expired', async () => {
+    const service = await makeService()
+    const state = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const blocked = await service.submitPhaseCompletion({
+      state,
+      requestedAt: NOW,
+      transitionId: 'expired-auto-recovery',
+      submission: completionSubmission({ status: 'blocked', rationale: 'A repairable defect needs a focused rework.' }),
+    })
+
+    const requested = await service.requestWorkflowRoute({
+      state: blocked.state,
+      requestedAt: '2026-05-20T00:00:11.000Z',
+      transitionId: 'expired-auto-recovery-route',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: blocked.state.stateVersion,
+        intent: 'rework_current_phase',
+        rationale: 'Repair the active phase after the automatic window expired.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })
+
+    expect(requested.requiresConfirmation).toBe(true)
+    expect(requested.state.pendingRoute).toMatchObject({ origin: 'blocked-recovery' })
   })
 
   test('rejects linear advance before applying blocked-recovery intent rules', async () => {
@@ -2915,7 +3384,7 @@ describe('WorkflowRuntimeService', () => {
         transition.transitionId === 'confirm-idempotent-1'
       )).toHaveLength(1)
       expect(second.notifications).toEqual([
-        expect.objectContaining({ subtype: 'workflow_state', data: first.state }),
+        expect.objectContaining({ subtype: 'workflow_state', data: workflowSummaryFromState(first.state) }),
       ])
     })
 

@@ -50,7 +50,7 @@ type TaskOutput = {
   // Present only when this agent result was created by a runtime that records
   // exact tool_use counts. Keeping it optional preserves old persisted tasks.
   toolAudit?: {
-    browserResearch: number;
+    playwright: number;
   };
 };
 type TaskOutputToolOutput = {
@@ -107,11 +107,11 @@ async function getTaskOutputData(task: TaskState): Promise<TaskOutput> {
       result: cleanResult || output,
       output: cleanResult || output,
       error: agentTask.error,
-      ...(agentTask.result?.browserResearchToolUseCount === undefined
+      ...(agentTask.result?.playwrightToolUseCount === undefined
         ? {}
         : {
             toolAudit: {
-              browserResearch: agentTask.result.browserResearchToolUseCount,
+              playwright: agentTask.result.playwrightToolUseCount,
             },
           }),
     };
@@ -309,7 +309,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
         parts.push(`<output>\n${content.trimEnd()}\n</output>`);
       }
       if (data.task.toolAudit) {
-        parts.push(`<tool-audit>\nBrowserResearch: ${data.task.toolAudit.browserResearch}\n</tool-audit>`);
+        parts.push(`<tool-audit>\nPlaywright: ${data.task.toolAudit.playwright}\n</tool-audit>`);
       }
       if (data.task.error) {
         parts.push(`<error>${data.task.error}</error>`);

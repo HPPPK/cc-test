@@ -2,10 +2,13 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 describe('release desktop workflow', () => {
-  test('publishes signed Windows and Apple Silicon updater artifacts without racing latest.json', () => {
+  test('publishes signed Windows updater artifacts by default and keeps Apple Silicon as an explicit manual opt-in', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
 
     expect(workflow).toContain('max-parallel: 1')
+    expect(workflow).toContain('include_macos:')
+    expect(workflow).toContain("default: false")
+    expect(workflow).toContain("matrix.label != 'macOS-ARM64' || (github.event_name == 'workflow_dispatch' && inputs.include_macos)")
     expect(workflow).toContain('platform: windows-latest')
     expect(workflow).toContain('rust_target: x86_64-pc-windows-msvc')
     expect(workflow).toContain('platform: macos-latest')

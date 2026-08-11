@@ -14,7 +14,8 @@ import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js'
 import { GlobTool } from './tools/GlobTool/GlobTool.js'
 import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js'
-import { BrowserResearchTool } from './tools/BrowserResearchTool/BrowserResearchTool.js'
+import { PlaywrightTool } from './tools/PlaywrightTool/PlaywrightTool.js'
+import { ImageGenerationTool } from './tools/ImageGenerationTool/ImageGenerationTool.js'
 import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
 import { BriefTool } from './tools/BriefTool/BriefTool.js'
 // Dead code elimination: conditional import for ant-only tools
@@ -146,6 +147,10 @@ import {
   getWorkflowPhaseDisallowedTools,
   getWorkflowScopedToolNames,
 } from './server/services/workflowToolPolicy.js'
+import {
+  getWorkflowSubagentRoleToolPolicy,
+  type WorkflowDelegatedAgentRole,
+} from './server/services/workflowRuntimeEnforcement.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
 import { isEnvTruthy } from './utils/envUtils.js'
@@ -208,16 +213,22 @@ export function getAllBaseTools(): Tools {
     TaskOutputTool,
     BashTool,
     // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
-    // trick as ripgrep). When available, find/grep in Claude's shell are aliased
-    // to these fast tools, so the dedicated Glob/Grep tools are unnecessary.
-    ...(hasEmbeddedSearchTools() ? [] : [GlobTool, GrepTool]),
+    // trick as ripgrep). Outside workflows, find/grep in Claude's Bash shell are
+    // aliased to those fast tools, so dedicated Glob/Grep tools are unnecessary.
+    // Workflow intake phases can deliberately deny Bash while still permitting
+    // read-only discovery; retain Glob/Grep for an active workflow child so its
+    // declarative read-only policy is actually executable.
+    ...((!hasEmbeddedSearchTools() || Boolean(process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID?.trim()))
+      ? [GlobTool, GrepTool]
+      : []),
     ExitPlanModeV2Tool,
     FileReadTool,
     FileEditTool,
     FileWriteTool,
     NotebookEditTool,
     WebFetchTool,
-    BrowserResearchTool,
+    PlaywrightTool,
+    ImageGenerationTool,
     TodoWriteTool,
     WebSearchTool,
     TaskStopTool,
@@ -413,8 +424,15 @@ export function assembleWorkflowToolPool(
   permissionContext: ToolPermissionContext,
   mcpTools: Tools,
   state: WorkflowSessionState | null | undefined,
+  workflowRole?: WorkflowDelegatedAgentRole,
 ): Tools {
-  const disallowedToolNames = new Set(getWorkflowPhaseDisallowedTools(state))
+  const roleDisallowedToolNames = workflowRole
+    ? getWorkflowSubagentRoleToolPolicy(workflowRole).disallowedTools
+    : []
+  const disallowedToolNames = new Set([
+    ...getWorkflowPhaseDisallowedTools(state),
+    ...roleDisallowedToolNames,
+  ])
   const workflowTools = filterToolsByDenyRules(
     getWorkflowScopedTools(state),
     permissionContext,

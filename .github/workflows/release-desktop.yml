@@ -10,6 +10,11 @@ on:
         required: false
         default: true
         type: boolean
+      include_macos:
+        description: 'Also build macOS Apple Silicon artifacts (Windows-only by default)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -43,6 +48,8 @@ jobs:
             asset_name_pattern: 'Claude-Code-Jiangxia_[version]_macos_arm64_[bundle][ext]'
             apple_signing_identity: '-'
 
+    # Tag releases build Windows by default. macOS is an explicit manual opt-in so a Windows release never waits on macOS packaging.
+    if: ${{ matrix.label != 'macOS-ARM64' || (github.event_name == 'workflow_dispatch' && inputs.include_macos) }}
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
 

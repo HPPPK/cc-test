@@ -488,6 +488,12 @@ export type Tool<
   backfillObservableInput?(input: Record<string, unknown>): void
 
   /**
+   * Optionally replaces the generic Zod input error with recovery guidance for a
+   * tool-specific invalid shape. Called only after inputSchema rejects the input.
+   */
+  formatInputValidationError?(input: unknown): string | undefined
+
+  /**
    * Determines if this tool is allowed to run with this input in the current context.
    * It informs the model of why the tool use failed, and does not directly display any UI.
    * @param input
