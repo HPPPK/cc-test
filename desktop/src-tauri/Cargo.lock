@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "cc-jiangxia-desktop"
-version = "0.2.60"
+version = "0.2.61"
 dependencies = [
  "anyhow",
  "portable-pty",
