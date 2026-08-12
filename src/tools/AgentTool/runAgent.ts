@@ -25,7 +25,7 @@ import type {
   MCPServerConnection,
   ScopedMcpServerConfig,
 } from '../../services/mcp/types.js'
-import type { Tool, Tools, ToolUseContext } from '../../Tool.js'
+import { toolMatchesName, type Tool, type Tools, type ToolUseContext } from '../../Tool.js'
 import { killShellTasksForAgent } from '../../tasks/LocalShellTask/killShellTasks.js'
 import type { Command } from '../../types/command.js'
 import type { AgentId } from '../../types/ids.js'
@@ -57,7 +57,9 @@ import { clearSessionHooks } from '../../utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from '../../utils/hooks.js'
 import { createUserMessage } from '../../utils/messages.js'
 import {
+  formatExpertSubagentResearchEvidenceContext,
   formatExpertSubagentSkillContext,
+  loadExpertSubagentResearchEvidenceContext,
   loadExpertSubagentSkillContext,
 } from '../../services/tools/expertSubagentSkillRuntime.js'
 import { getAgentModel } from '../../utils/model/agent.js'
@@ -561,15 +563,39 @@ export async function* runAgent({
   // Expert ZIP Skills are already available to the parent through the managed
   // runtime prompt. Delegated agents do not inherit that prompt, so fetch only
   // the package-declared Skill bindings for this specific Expert agent type.
-  const expertSubagentSkills = formatExpertSubagentSkillContext(
-    await loadExpertSubagentSkillContext(agentDefinition.agentType),
-  )
+  const [expertSkillContext, expertResearchEvidenceContext] = await Promise.all([
+    loadExpertSubagentSkillContext(agentDefinition.agentType),
+    loadExpertSubagentResearchEvidenceContext(agentDefinition.agentType),
+  ])
+  const expertSubagentSkills = formatExpertSubagentSkillContext(expertSkillContext)
   if (expertSubagentSkills) {
     initialMessages.push(createUserMessage({
       content: [{ type: 'text', text: expertSubagentSkills }],
       isMeta: true,
     }))
   }
+  const expertResearchEvidence = formatExpertSubagentResearchEvidenceContext(expertResearchEvidenceContext)
+  if (expertResearchEvidence) {
+    initialMessages.push(createUserMessage({
+      content: [{ type: 'text', text: expertResearchEvidence }],
+      isMeta: true,
+    }))
+  }
+  // A ZIP can declare that the evidence reviewer receives only the completed
+  // upstream handoff. Keep its normal prompt, but deny file/browser rediscovery
+  // at execution time for this one session; all other agents retain their tool
+  // capabilities unchanged.
+  const canUseAgentTool: CanUseToolFn = expertResearchEvidenceContext?.reviewerEvidenceOnly
+    ? async (tool, input, context, assistantMessage, toolUseID, forceDecision) => {
+        if (toolMatchesName(tool, 'Read') || toolMatchesName(tool, 'Playwright')) {
+          return {
+            behavior: 'deny' as const,
+            message: 'This Expert evidence reviewer must assess the injected upstream research handoff. Do not use Read or Playwright to rediscover workdir files or pages.',
+          }
+        }
+        return canUseTool(tool, input, context, assistantMessage, toolUseID, forceDecision)
+      }
+    : canUseTool
 
   // Register agent's frontmatter hooks (scoped to agent lifecycle)
   // Pass isAgent=true to convert Stop hooks to SubagentStop (since subagents trigger SubagentStop)
@@ -767,7 +793,7 @@ export async function* runAgent({
       systemPrompt: agentSystemPrompt,
       userContext: resolvedUserContext,
       systemContext: resolvedSystemContext,
-      canUseTool,
+      canUseTool: canUseAgentTool,
       toolUseContext: agentToolUseContext,
       querySource,
       maxTurns: maxTurns ?? agentDefinition.maxTurns,

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  formatExpertSubagentResearchEvidenceContext,
   formatExpertSubagentSkillContext,
+  loadExpertSubagentResearchEvidenceContext,
   loadExpertSubagentSkillContext,
   recordExpertSubagentResearchAudit,
 } from './expertSubagentSkillRuntime.js'
@@ -117,4 +119,35 @@ describe('expertSubagentSkillRuntime', () => {
       fetch: async () => new Response(JSON.stringify({ skills: [] }), { status: 200 }),
     })).toBeUndefined()
   })
+
+  test('loads reviewer-only upstream evidence instead of asking the reviewer to read workdir files', async () => {
+    let requestedUrl = ''
+    const context = await loadExpertSubagentResearchEvidenceContext('expert-evidence-reviewer', {
+      env: expertEnv,
+      fetch: async (input) => {
+        requestedUrl = String(input)
+        return new Response(JSON.stringify({
+          expertId: 'commercialization-research-report',
+          packId: 'commercialization-research-report',
+          packVersion: '0.14.0-local',
+          reviewerEvidenceOnly: true,
+          records: [{
+            agentId: 'competitor-researcher',
+            agentType: 'expert-evidence-researcher',
+            recordedAt: '2026-08-12T00:00:00.000Z',
+            content: 'Typora is a one-time purchase competitor.',
+            entries: [{ target: 'https://typora.io/', finalUrl: 'https://typora.io/', kind: 'url', status: 'opened' }],
+          }],
+        }), { status: 200 })
+      },
+    })
+
+    expect(requestedUrl).toBe('http://127.0.0.1:3456/api/sessions/expert-session-123/expert/subagent-research-evidence-context?agentType=expert-evidence-reviewer')
+    const prompt = formatExpertSubagentResearchEvidenceContext(context)
+    expect(prompt).toContain('<expert-subagent-research-evidence>')
+    expect(prompt).toContain('Typora is a one-time purchase competitor.')
+    expect(prompt).toContain('Do not use Read to search the work directory')
+    expect(prompt).toContain('https://typora.io/')
+  })
+
 })

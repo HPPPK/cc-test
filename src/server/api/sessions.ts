@@ -245,7 +245,7 @@ export async function handleSessionsApi(
     }
 
     if (subResource === 'expert') {
-      return await handleSessionExpertRoute(req, sessionId, segments[4], segments[5], segments[6])
+      return await handleSessionExpertRoute(req, url, sessionId, segments[4], segments[5], segments[6])
     }
 
     // Route to conversations handler if sub-resource is 'chat'
@@ -447,6 +447,7 @@ export async function handleWorkflowTemplatesApi(req: Request): Promise<Response
 
 async function handleSessionExpertRoute(
   req: Request,
+  url: URL,
   sessionId: string,
   action?: string,
   subAction?: string,
@@ -478,6 +479,12 @@ async function handleSessionExpertRoute(
     if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
     return Response.json(await expertSessionService.getSubagentSkillContext(sessionId, agentType))
   }
+  if (action === 'subagent-research-evidence-context') {
+    if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const agentType = url.searchParams.get('agentType') ?? ''
+    if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
+    return Response.json(await expertSessionService.getSubagentResearchEvidenceContext(sessionId, agentType))
+  }
   if (action === 'research-audit') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const body = await readOptionalObjectBody(req)
@@ -485,6 +492,7 @@ async function handleSessionExpertRoute(
       agentId: body.agentId,
       agentType: body.agentType,
       entries: body.entries,
+      content: body.content,
     }))
   }
   if (action === 'research-delivery') {

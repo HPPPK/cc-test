@@ -7,6 +7,7 @@ import { ZipPackAdapter, assertSafeZipPath, type ZipPackArchive } from './zipPac
 import { deriveExpertTemplateFillSchema } from '../../utils/expertTemplateFill.js'
 import { resolveExpertResearchBrowserPolicy, type ExpertResearchBrowserConnection, type ExpertResearchBrowserPolicy, type ExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
 import type { ExpertResearchCompletionPolicy, ExpertResearchCompletionState } from './expertResearchCompletionService.js'
+import type { ExpertResearchEvidenceReviewPolicy, ExpertResearchEvidenceState } from './expertResearchEvidenceReviewService.js'
 
 export type ExpertSessionStatus = 'active' | 'collecting' | 'running' | 'completed' | 'exited' | 'failed'
 
@@ -92,6 +93,7 @@ export type ExpertRuntimeBinding = {
   researchDeliveryPolicy?: ExpertResearchDeliveryPolicy
   researchBrowserPolicy?: ExpertResearchBrowserPolicy
   researchCompletionPolicy?: ExpertResearchCompletionPolicy
+  researchEvidenceReviewPolicy?: ExpertResearchEvidenceReviewPolicy
   outputMode?: ExpertOutputMode
   outputTemplate?: { path: string; content: string }
   activatedAt: string
@@ -110,6 +112,8 @@ export type ExpertSessionMetadata = {
   intakeState?: ExpertIntakeState
   researchDelivery?: ExpertResearchDeliveryState
   researchCompletion?: ExpertResearchCompletionState
+  /** Bounded completed researcher handoffs for a ZIP-designated evidence reviewer. */
+  researchEvidence?: ExpertResearchEvidenceState
   /** Session-scoped browser choice; never persists a profile path or credentials. */
   researchBrowserConnection?: ExpertResearchBrowserConnection
   /** Session-scoped managed Chromium presentation; omitted for legacy or CDP sessions. */

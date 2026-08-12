@@ -40,6 +40,21 @@ describe('detectHumanVerificationKind', () => {
     )).toBe('Baidu security verification')
   })
 
+  test('does not treat a public FAQ that documents login and SMS verification as a verification page', () => {
+    const url = 'https://www.u-tools.cn/docs/guide/faq.html'
+    const title = 'uTools 文档中心 | uTools 帮助中心'
+    const text = [
+      '常见问题',
+      '登录时提示手机号已被使用或绑定微信失败怎么办？',
+      '注销手机号：使用手机验证码登录，跳过微信绑定。',
+      '无法收到短信？验证码倒计时结束后可以重新获取。',
+      '请检查安全软件或防火墙是否拦截了网络请求。',
+    ].join('\n')
+
+    expect(detectHumanVerificationKind(url, title, text)).toBeNull()
+    expect(classifyRenderedPageAccess(url, title, text)).toBeNull()
+  })
+
   test('returns null for ordinary public research pages', () => {
     expect(detectHumanVerificationKind(
       'https://example.com/product',

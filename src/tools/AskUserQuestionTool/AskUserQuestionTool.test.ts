@@ -229,6 +229,55 @@ describe('AskUserQuestionTool workflow contract', () => {
     }
   })
 
+  test('syncs legacy delivery IDs with the canonical ZIP contract after the user answers the displayed card', async () => {
+    const previousPolicy = process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+    const previousSessionId = process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+    const previousServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+    process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = JSON.stringify({
+      questionId: 'research-delivery:commercialization-report',
+      acceptedChoiceId: 'accept_current_scope',
+      continueChoiceIds: ['provide_material_and_continue'],
+      pauseChoiceIds: ['pause_research'],
+    })
+    process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'expert-session'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
+    const originalFetch = globalThis.fetch
+    let request: RequestInit | undefined
+    globalThis.fetch = async (_url, init) => {
+      request = init
+      return new Response('{}', { status: 200 })
+    }
+    try {
+      const tool = await loadTool()
+      await tool.call({
+        questions: [{
+          id: 'research_delivery',
+          prompt: '是否接受当前证据范围并生成报告？',
+          choices: [
+            { id: 'deliver_now', label: '接受当前范围（推荐）' },
+            { id: 'bring_material', label: '补充材料后继续' },
+            { id: 'pause_here', label: '暂缓报告' },
+          ],
+        }],
+        answers: { research_delivery: '接受当前范围（推荐）' },
+        answerChoiceIds: { research_delivery: ['deliver_now'] },
+        metadata: { expert_research_delivery: { question_id: 'research_delivery' } },
+      })
+      expect(JSON.parse(String(request?.body))).toMatchObject({
+        questionId: 'research-delivery:commercialization-report',
+        choiceIds: ['accept_current_scope'],
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      if (previousPolicy === undefined) delete process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
+      else process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = previousPolicy
+      if (previousSessionId === undefined) delete process.env.CC_JIANGXIA_EXPERT_SESSION_ID
+      else process.env.CC_JIANGXIA_EXPERT_SESSION_ID = previousSessionId
+      if (previousServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
+      else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = previousServerUrl
+    }
+  })
+
   test('blocks model-generated CAPTCHA Ask cards so the dedicated Desktop modal remains the only verification UI', async () => {
     const previousHandoff = process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
     const previousServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL

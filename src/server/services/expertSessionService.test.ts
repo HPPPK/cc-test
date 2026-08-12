@@ -92,6 +92,13 @@ async function installDeliveryConfirmedExpert(configRoot: string) {
         continueChoiceIds: ['provide_material_and_continue'],
         pauseChoiceIds: ['pause_research'],
       },
+      researchEvidenceReview: {
+        reviewerAgentType: 'expert-evidence-reviewer',
+        sourceAgentTypes: ['expert-evidence-researcher'],
+        maxRecords: 4,
+        maxCharactersPerRecord: 2000,
+        reviewerEvidenceOnly: true,
+      },
     }),
     'experts/delivery/templates/report.html': '<html data-template-id="delivery-v1"><body><h1>{{REPORT_TITLE}}</h1><table><thead><tr><th>编号</th><th>链接（URL）</th></tr></thead><tbody><!-- SLOT: SOURCE_ROWS --></tbody></table></body></html>',
     'skills/session-skill/SKILL.md': 'Session package skill',
@@ -362,6 +369,33 @@ describe('ExpertSessionService', () => {
       endpoint: 'http://example.com:9222',
       userAuthorized: true,
     })).rejects.toThrow('只允许连接本机')
+  })
+
+  it('passes completed researcher reports and browser audits only to the ZIP-declared reviewer', async () => {
+    const configRoot = await makeTempRoot('expert-review-evidence-config-')
+    const projectRoot = await makeTempRoot('expert-review-evidence-project-')
+    await installDeliveryConfirmedExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'delivery-expert')
+
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'competitor-researcher',
+      agentType: 'expert-evidence-researcher',
+      content: 'Typora pricing is a one-time purchase according to its opened official page.',
+      entries: [{ target: 'https://typora.io/', finalUrl: 'https://typora.io/', kind: 'url', status: 'opened' }],
+    })
+
+    const reviewer = await service.getSubagentResearchEvidenceContext(sessionId, 'expert-evidence-reviewer')
+    expect(reviewer).toMatchObject({
+      reviewerEvidenceOnly: true,
+      records: [expect.objectContaining({
+        agentId: 'competitor-researcher',
+        content: 'Typora pricing is a one-time purchase according to its opened official page.',
+        entries: [expect.objectContaining({ finalUrl: 'https://typora.io/', status: 'opened' })],
+      })],
+    })
+    expect(await service.getSubagentResearchEvidenceContext(sessionId, 'expert-evidence-researcher')).toBeUndefined()
   })
 
   it('requires a pack-declared user delivery decision before rendering final HTML', async () => {

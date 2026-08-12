@@ -315,6 +315,97 @@ describe('coordinateExpertBrowserVerification', () => {
     }))
   })
 
+  test('derives a public-search fallback from a direct official page after the user explicitly declines verification', async () => {
+    const resumedInputs: unknown[] = []
+    const result = await coordinateExpertBrowserVerification({
+      toolName: 'Playwright',
+      result: {
+        data: {
+          url: 'https://www.u-tools.cn/docs/guide/faq.html',
+          title: 'uTools 文档中心 | uTools 帮助中心',
+          error: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: login verification at https://www.u-tools.cn/docs/guide/faq.html',
+          steps: [{ index: 0, type: 'navigate', outcome: 'success', url: 'https://www.u-tools.cn/docs/guide/faq.html' }],
+        },
+      },
+      input: {
+        visible: true,
+        actions: [
+          { type: 'navigate', url: 'https://www.u-tools.cn/docs/guide/faq.html' },
+          { type: 'extract', selector: 'body' },
+        ],
+      },
+      resume: async (input) => {
+        resumedInputs.push(input)
+        return {
+          data: {
+            url: 'https://www.google.com/search?q=u%20tools',
+            title: 'Google results',
+            text: 'fallback results for uTools',
+            accessLimited: false,
+            steps: [
+              { index: 0, type: 'navigate', outcome: 'success', url: 'https://www.google.com/search?q=u%20tools' },
+              { index: 1, type: 'wait_for_load_state', outcome: 'success', url: 'https://www.google.com/search?q=u%20tools' },
+              { index: 2, type: 'extract', outcome: 'success', url: 'https://www.google.com/search?q=u%20tools' },
+            ],
+          },
+        }
+      },
+      env: {
+        ...enabledEnv,
+        CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度', 'Bing', '360']),
+      },
+      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+    })
+
+    expect(resumedInputs).toEqual([{
+      visible: true,
+      verification_resolution: 'switch_public_entry',
+      actions: [
+        { type: 'navigate', url: 'https://www.google.com/search?q=u%20tools' },
+        { type: 'wait_for_load_state', state: 'domcontentloaded' },
+        { type: 'extract', selector: 'body' },
+      ],
+    }])
+    expect(result.data).toEqual(expect.objectContaining({
+      text: 'fallback results for uTools',
+      accessLimited: false,
+    }))
+  })
+
+  test('releases a declined verification instead of leaving the task blocked when no fallback query can be recovered', async () => {
+    const resumedInputs: unknown[] = []
+    const result = await coordinateExpertBrowserVerification({
+      toolName: 'Playwright',
+      result: {
+        data: {
+          url: 'about:blank',
+          error: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: verification at about:blank',
+          steps: [],
+        },
+      },
+      input: {
+        visible: true,
+        actions: [{ type: 'wait', ms: 20 }],
+      },
+      resume: async (input) => {
+        resumedInputs.push(input)
+        return { data: { url: 'about:blank', accessLimited: true, error: 'released', steps: [] } }
+      },
+      env: {
+        ...enabledEnv,
+        CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度']),
+      },
+      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+    })
+
+    expect(resumedInputs).toEqual([{
+      visible: true,
+      actions: [],
+      verification_resolution: 'record_evidence_gap',
+    }])
+    expect((result.data as { error: string }).error).toContain('EXPERT_HUMAN_VERIFICATION_FALLBACK_UNAVAILABLE')
+  })
+
   test('opens another dedicated handoff if the automatic same-page continuation still reaches verification', async () => {
     const resumedInputs: unknown[] = []
     let handoffRequests = 0

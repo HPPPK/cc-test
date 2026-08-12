@@ -324,11 +324,12 @@ describe('Expert Playwright audit', () => {
   })
 
   test('persists the completed synchronous Expert agent browser audit through the shared transport', async () => {
-    let recorded: { agentId: string; agentType: string; entries: unknown } | undefined
+    let recorded: { agentId: string; agentType: string; entries: unknown; content?: string } | undefined
 
     await recordFinalizedExpertAgentResearchAudit({
       agentId: 'sync-expert-agent',
       agentType: 'expert-evidence-researcher',
+      content: [{ type: 'text', text: 'Research handoff content' }],
       playwrightAudit: [{
         target: 'https://example.com/evidence',
         kind: 'url',
@@ -342,16 +343,18 @@ describe('Expert Playwright audit', () => {
     expect(recorded).toEqual({
       agentId: 'sync-expert-agent',
       agentType: 'expert-evidence-researcher',
+      content: 'Research handoff content',
       entries: [expect.objectContaining({ finalUrl: 'https://example.com/evidence' })],
     })
   })
 
   test('persists browser audits for expert-evidence-reviewer the same way as researchers', async () => {
-    let recorded: { agentId: string; agentType: string; entries: unknown } | undefined
+    let recorded: { agentId: string; agentType: string; entries: unknown; content?: string } | undefined
 
     await recordFinalizedExpertAgentResearchAudit({
       agentId: 'a39662dca2982113c',
       agentType: 'expert-evidence-reviewer',
+      content: [{ type: 'text', text: 'Reviewer handoff content' }],
       playwrightAudit: [{
         target: 'https://www.bing.com/search?q=test',
         kind: 'search',
@@ -366,6 +369,7 @@ describe('Expert Playwright audit', () => {
     expect(recorded).toEqual({
       agentId: 'a39662dca2982113c',
       agentType: 'expert-evidence-reviewer',
+      content: 'Reviewer handoff content',
       entries: [expect.objectContaining({ kind: 'search', searchEngine: 'Bing' })],
     })
   })

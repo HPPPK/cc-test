@@ -169,6 +169,43 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).not.toContain('Mandatory expert output template:')
   })
 
+  test('carries the ZIP-declared reviewer evidence-handoff policy only into that Expert runtime binding', () => {
+    const context = {
+      expert: {
+        id: 'reviewer-pack',
+        name: 'Reviewer Pack',
+        packId: 'reviewer-pack',
+        packVersion: '1.0.0',
+        tools: [],
+      },
+      prompts: { system: 'Review supplied research.' },
+      skills: [],
+      hostTools: [],
+      permissions: [],
+      outputProtocol: {
+        path: 'experts/reviewer/outputs/material-protocol.json',
+        content: JSON.stringify({
+          researchEvidenceReview: {
+            reviewerAgentType: 'expert-evidence-reviewer',
+            sourceAgentTypes: ['expert-evidence-researcher'],
+            maxRecords: 8,
+            maxCharactersPerRecord: 24000,
+            reviewerEvidenceOnly: true,
+          },
+        }),
+      },
+    } as unknown as ExpertRuntimeContext
+
+    expect(createExpertRuntimeBinding(context, '2026-08-12T00:00:00.000Z').researchEvidenceReviewPolicy).toEqual({
+      reviewerAgentType: 'expert-evidence-reviewer',
+      sourceAgentTypes: ['expert-evidence-researcher'],
+      maxRecords: 8,
+      maxCharactersPerRecord: 24000,
+      reviewerEvidenceOnly: true,
+    })
+    expect(createExpertRuntimeBinding({ ...context, outputProtocol: undefined }, '2026-08-12T00:00:00.000Z').researchEvidenceReviewPolicy).toBeUndefined()
+  })
+
   test('carries a ZIP-declared shared Playwright policy into only that Expert runtime binding', () => {
     const runtimeContext = {
       expert: {

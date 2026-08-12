@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   normalizeExpertResearchDeliveryQuestionContract,
   syncExpertResearchDeliveryDecision,
+  normalizeExpertResearchDeliveryResponseContract,
   validateExpertResearchDeliveryQuestionContract,
 } from './expertResearchDeliveryRuntime.js'
 
@@ -338,3 +339,39 @@ test('recovers a stable choice ID from an exact legacy Desktop answer', async ()
     unresolvedEvidence: [],
   })
 })
+
+test('canonicalizes a legacy delivery response before the runtime syncs it to the fixed contract', () => {
+  const env = {
+    CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY: JSON.stringify({
+      questionId: 'research-delivery:commercialization-report',
+      acceptedChoiceId: 'accept_current_scope',
+      continueChoiceIds: ['provide_material_and_continue'],
+      pauseChoiceIds: ['pause_research'],
+    }),
+  }
+
+  const normalized = normalizeExpertResearchDeliveryResponseContract({
+    questions: [{
+      id: 'research_delivery',
+      prompt: '是否接受当前证据范围并生成报告？',
+      choices: [
+        { id: 'deliver_now', label: '接受当前范围（推荐）' },
+        { id: 'bring_material', label: '补充材料后继续' },
+        { id: 'pause_here', label: '暂缓报告' },
+      ],
+    }],
+    answers: { research_delivery: '接受当前范围（推荐）' },
+    answerChoiceIds: { research_delivery: ['deliver_now'] },
+    metadata: { expert_research_delivery: { question_id: 'research_delivery' } },
+  }, env)
+
+  expect(normalized.questions[0]?.id).toBe('research-delivery:commercialization-report')
+  expect(normalized.metadata?.expert_research_delivery?.question_id).toBe('research-delivery:commercialization-report')
+  expect(normalized.answerChoiceIds).toEqual({
+    'research-delivery:commercialization-report': ['accept_current_scope'],
+  })
+  expect(normalized.answers).toEqual({
+    'research-delivery:commercialization-report': '接受当前范围（推荐）',
+  })
+})
+

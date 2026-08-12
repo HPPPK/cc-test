@@ -1,9 +1,25 @@
+import type { ExpertResearchAuditEntry } from '../../server/services/expertResearchCompletionService.js'
+
 type ExpertSubagentRuntimeSkill = {
   skillId: string
   title: string
   path: string
   sha256: string
   content: string
+}
+
+export type ExpertSubagentResearchEvidenceContext = {
+  expertId: string
+  packId: string
+  packVersion: string
+  reviewerEvidenceOnly: true
+  records: Array<{
+    agentId: string
+    agentType: string
+    recordedAt: string
+    content: string
+    entries: ExpertResearchAuditEntry[]
+  }>
 }
 
 export type ExpertSubagentSkillContext = {
@@ -61,6 +77,101 @@ function normalizeContext(value: unknown): ExpertSubagentSkillContext | undefine
     skills.push({ skillId, title, path, sha256, content })
   }
   return { expertId, packId, packVersion, skills }
+}
+
+function normalizeEvidenceContext(value: unknown): ExpertSubagentResearchEvidenceContext | undefined {
+  if (!isRecord(value)) return undefined
+  const expertId = nonEmptyString(value.expertId)
+  const packId = nonEmptyString(value.packId)
+  const packVersion = nonEmptyString(value.packVersion)
+  if (!expertId || !packId || !packVersion || value.reviewerEvidenceOnly !== true || !Array.isArray(value.records)) return undefined
+  const records: ExpertSubagentResearchEvidenceContext['records'] = []
+  let total = 0
+  for (const rawRecord of value.records.slice(-16)) {
+    if (!isRecord(rawRecord)) continue
+    const agentId = nonEmptyString(rawRecord.agentId)
+    const agentType = nonEmptyString(rawRecord.agentType)
+    const recordedAt = nonEmptyString(rawRecord.recordedAt)
+    const content = nonEmptyString(rawRecord.content)
+    if (!agentId || !agentType || !recordedAt || !content || !Array.isArray(rawRecord.entries)) continue
+    if (total + content.length > 96_000) break
+    total += content.length
+    records.push({
+      agentId,
+      agentType,
+      recordedAt,
+      content,
+      entries: rawRecord.entries.filter(isRecord).map((entry) => ({
+        target: nonEmptyString(entry.target) ?? '',
+        status: nonEmptyString(entry.status) as ExpertResearchAuditEntry['status'],
+        ...(entry.kind === 'search' || entry.kind === 'url' ? { kind: entry.kind } : {}),
+        ...(nonEmptyString(entry.searchEngine) ? { searchEngine: nonEmptyString(entry.searchEngine) as ExpertResearchAuditEntry['searchEngine'] } : {}),
+        ...(nonEmptyString(entry.query) ? { query: nonEmptyString(entry.query) } : {}),
+        ...(nonEmptyString(entry.finalUrl) ? { finalUrl: nonEmptyString(entry.finalUrl) } : {}),
+        ...(nonEmptyString(entry.detail) ? { detail: nonEmptyString(entry.detail) } : {}),
+      })).filter((entry) => entry.target && entry.status),
+    })
+  }
+  return { expertId, packId, packVersion, reviewerEvidenceOnly: true, records }
+}
+
+/** Loads bounded upstream researcher evidence only for the ZIP-designated reviewer. */
+export async function loadExpertSubagentResearchEvidenceContext(
+  agentType: string,
+  dependencies: Dependencies = { env: process.env, fetch: globalThis.fetch },
+): Promise<ExpertSubagentResearchEvidenceContext | undefined> {
+  if (!agentType.startsWith('expert-')) return undefined
+  const sessionId = nonEmptyString(
+    dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID,
+  )
+  const serverUrl = resolveServerUrl(dependencies.env)
+  if (!sessionId || !serverUrl) return undefined
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await dependencies.fetch(
+      `${serverUrl}/api/sessions/${encodeURIComponent(sessionId)}/expert/subagent-research-evidence-context?agentType=${encodeURIComponent(agentType)}`,
+      { signal: controller.signal },
+    )
+    if (!response.ok) return undefined
+    return normalizeEvidenceContext(await response.json())
+  } catch {
+    return undefined
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+/** Formats facts, raw observations, and audit status without asking the reviewer to rediscover files. */
+export function formatExpertSubagentResearchEvidenceContext(
+  context: ExpertSubagentResearchEvidenceContext | undefined,
+): string | undefined {
+  if (!context) return undefined
+  const records = context.records.map((record) => {
+    const audit = record.entries.map((entry) => {
+      const target = entry.kind === 'search'
+        ? `search ${JSON.stringify(entry.query ?? entry.target)}${entry.searchEngine ? ` [engine=${entry.searchEngine}]` : ''}`
+        : entry.target
+      return `- ${entry.status}: ${target}${entry.finalUrl ? ` [final_url=${entry.finalUrl}]` : ''}${entry.detail ? ` — ${entry.detail}` : ''}`
+    }).join('\n')
+    return [
+      `## Upstream research handoff: ${record.agentType}/${record.agentId}`,
+      `Recorded: ${record.recordedAt}`,
+      'Researcher report:',
+      record.content,
+      'Playwright audit:',
+      audit || '- No valid Playwright audit was retained.',
+    ].join('\n')
+  }).join('\n\n---\n\n')
+  return [
+    '<expert-subagent-research-evidence>',
+    `The active Expert ZIP ${context.packId}@${context.packVersion} has provided the completed upstream research handoffs below.`,
+    'This is the material you must review. Do not use Read to search the work directory and do not call Playwright to rediscover it.',
+    'Treat only opened URL audit entries and the supplied report text as candidate evidence. access_limited, failed, and pending entries can support only a limitation statement.',
+    'For each important finding, state whether it is usable and where it should go: include, merge, internal-only, or exclude. Do not downgrade supplied opened evidence to evidence_gap merely because no local file exists.',
+    records || 'No upstream researcher handoff was retained. Report that this reviewer has no reviewable upstream evidence.',
+    '</expert-subagent-research-evidence>',
+  ].join('\n')
 }
 
 /**
@@ -122,7 +233,7 @@ export function formatExpertSubagentSkillContext(
  * unaffected, and no model-callable tool is introduced.
  */
 export async function recordExpertSubagentResearchAudit(
-  input: { agentId: string; agentType: string; entries: unknown },
+  input: { agentId: string; agentType: string; entries: unknown; content?: unknown },
   dependencies: Dependencies = { env: process.env, fetch: globalThis.fetch },
 ): Promise<void> {
   if (!input.agentType.startsWith('expert-')) return

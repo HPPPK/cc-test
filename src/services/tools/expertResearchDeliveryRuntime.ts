@@ -199,6 +199,60 @@ export function normalizeExpertResearchDeliveryQuestionContract<T extends Expert
  * Desktop displays a permission card, so an invalid model ID cannot consume a
  * user response and then loop at final rendering time.
  */
+/**
+ * Normalizes the persisted response with the same ZIP-scoped delivery
+ * contract used before the card is displayed. This closes the UI/runtime gap:
+ * a legacy Desktop response can still carry the model's pre-normalization IDs.
+ */
+export function normalizeExpertResearchDeliveryResponseContract<T extends ExpertResearchDeliveryRuntimeInput>(
+  input: T,
+  env: Record<string, string | undefined> = process.env,
+): T {
+  const normalizedContract = normalizeExpertResearchDeliveryQuestionContract({
+    questions: input.questions,
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  }, env)
+  if (normalizedContract.questions === input.questions && normalizedContract.metadata === input.metadata) return input
+
+  const originalQuestion = input.questions[0]
+  const normalizedQuestion = normalizedContract.questions[0]
+  if (!originalQuestion || !normalizedQuestion) return input
+  const originalChoices = originalQuestion.choices ?? originalQuestion.options ?? []
+  const normalizedChoices = normalizedQuestion.choices ?? normalizedQuestion.options ?? []
+  const originalQuestionId = originalQuestion.id
+  const normalizedQuestionId = normalizedQuestion.id
+  if (!originalQuestionId || !normalizedQuestionId) return input
+
+  const choiceIdMap = new Map<string, string>()
+  originalChoices.forEach((choice, index) => {
+    const oldId = choice.id?.trim()
+    const canonicalId = normalizedChoices[index]?.id?.trim()
+    if (oldId && canonicalId) choiceIdMap.set(oldId, canonicalId)
+  })
+
+  const originalChoiceIds = input.answerChoiceIds?.[originalQuestionId]
+  const normalizedChoiceIds = originalChoiceIds?.map((choiceId) => choiceIdMap.get(choiceId) ?? choiceId)
+  const answers = { ...(input.answers ?? {}) }
+  if (Object.prototype.hasOwnProperty.call(answers, originalQuestionId)) {
+    const answer = answers[originalQuestionId]
+    delete answers[originalQuestionId]
+    answers[normalizedQuestionId] = answer
+  }
+  const answerChoiceIds = { ...(input.answerChoiceIds ?? {}) }
+  if (Object.prototype.hasOwnProperty.call(answerChoiceIds, originalQuestionId)) {
+    delete answerChoiceIds[originalQuestionId]
+    if (normalizedChoiceIds) answerChoiceIds[normalizedQuestionId] = normalizedChoiceIds
+  }
+
+  return {
+    ...input,
+    questions: normalizedContract.questions,
+    ...(Object.keys(answers).length > 0 ? { answers } : {}),
+    ...(Object.keys(answerChoiceIds).length > 0 ? { answerChoiceIds } : {}),
+    ...(normalizedContract.metadata ? { metadata: normalizedContract.metadata } : {}),
+  } as T
+}
+
 export function validateExpertResearchDeliveryQuestionContract(
   input: ExpertResearchDeliveryContractInput,
   env: Record<string, string | undefined> = process.env,

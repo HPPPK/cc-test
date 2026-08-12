@@ -12,10 +12,19 @@ import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 import { hasAcceptedExpertResearchDelivery, resolveExpertResearchDeliveryDecision, type ExpertResearchDeliveryState } from './expertResearchDeliveryService.js'
 import { resolveExpertResearchBrowserConnection, resolveExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
 import { expertBrowserActivityService } from './expertBrowserActivityService.js'
-import { evaluateExpertFinalSourceCoverage, evaluateExpertResearchCompletion, recordExpertResearchAudit, type ExpertResearchCompletionState } from './expertResearchCompletionService.js'
+import { evaluateExpertFinalSourceCoverage, evaluateExpertResearchCompletion, recordExpertResearchAudit, type ExpertResearchAuditEntry, type ExpertResearchCompletionState } from './expertResearchCompletionService.js'
+import { recordExpertResearchEvidence, type ExpertResearchEvidenceRecord, type ExpertResearchEvidenceState } from './expertResearchEvidenceReviewService.js'
 
 const registry = new ExpertPackRegistryService()
 const runtime = new ExpertRuntimeService()
+
+export type ExpertSubagentResearchEvidenceContext = {
+  expertId: string
+  packId: string
+  packVersion: string
+  reviewerEvidenceOnly: true
+  records: ExpertResearchEvidenceRecord[]
+}
 
 export type ExpertSubagentSkillContext = {
   expertId: string
@@ -66,6 +75,41 @@ export class ExpertSessionService {
     }
   }
 
+
+  /**
+   * Exposes only completed researcher handoffs to the ZIP-declared reviewer.
+   * It never exposes user materials, chat history, browser profiles, or other
+   * agent types, and ordinary Experts receive an empty list.
+   */
+  async getSubagentResearchEvidenceContext(
+    sessionId: string,
+    agentType: string,
+  ): Promise<ExpertSubagentResearchEvidenceContext | undefined> {
+    const normalizedAgentType = agentType.trim()
+    if (!/^[a-z][a-z0-9-]{0,95}$/.test(normalizedAgentType)) {
+      throw ApiError.badRequest('子代理类型无效。')
+    }
+    const session = await sessionService.getSession(sessionId)
+    if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
+    const expert = hasActiveExpertRuntime(session.expert)
+      ? session.expert
+      : await expertRuntimeSessionStore.get(sessionId)
+    if (!hasActiveExpertRuntime(expert)) {
+      throw ApiError.badRequest('当前会话没有启用有效的 Expert Runtime。')
+    }
+    const policy = expert.runtimeBinding.researchEvidenceReviewPolicy
+    if (!policy || policy.reviewerAgentType !== normalizedAgentType) return undefined
+    return {
+      expertId: expert.runtimeBinding.expertId,
+      packId: expert.runtimeBinding.packId,
+      packVersion: expert.runtimeBinding.packVersion,
+      reviewerEvidenceOnly: true,
+      records: (expert.researchEvidence?.records ?? []).map((record) => ({
+        ...record,
+        entries: record.entries.map((entry) => ({ ...entry })),
+      })),
+    }
+  }
 
   async enterExpertMode(sessionId: string, expertId: string, researchBrowserConnectionInput?: unknown, researchBrowserPresentationInput?: unknown): Promise<ExpertSessionMetadata> {
     const session = await sessionService.getSession(sessionId)
@@ -253,27 +297,45 @@ export class ExpertSessionService {
 
   async recordResearchAudit(
     sessionId: string,
-    input: { agentId: unknown; agentType: unknown; entries: unknown },
-  ): Promise<{ expert: ExpertSessionMetadata; researchCompletion: ExpertResearchCompletionState }> {
+    input: { agentId: unknown; agentType: unknown; entries: unknown; content?: unknown },
+  ): Promise<{ expert: ExpertSessionMetadata; researchCompletion: ExpertResearchCompletionState; researchEvidence?: ExpertResearchEvidenceState }> {
     const session = await sessionService.getSession(sessionId)
     if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const expert = hasActiveExpertRuntime(session.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
     if (!hasActiveExpertRuntime(expert)) throw ApiError.badRequest('当前会话没有启用可用的 Expert Runtime。')
-    const policy = expert.runtimeBinding.researchCompletionPolicy
-    if (!policy || !policy.trackedAgentTypes.includes(typeof input.agentType === 'string' ? input.agentType : '')) {
+    const completionPolicy = expert.runtimeBinding.researchCompletionPolicy
+    const evidencePolicy = expert.runtimeBinding.researchEvidenceReviewPolicy
+    const agentType = typeof input.agentType === 'string' ? input.agentType : ''
+    const tracksCompletion = Boolean(completionPolicy?.trackedAgentTypes.includes(agentType))
+    const tracksEvidence = Boolean(evidencePolicy?.sourceAgentTypes.includes(agentType))
+    if (!tracksCompletion && !tracksEvidence) {
       return { expert, researchCompletion: expert.researchCompletion ?? { audits: [], updatedAt: new Date().toISOString() } }
     }
     const now = new Date().toISOString()
-    let researchCompletion: ExpertResearchCompletionState
+    let researchCompletion: ExpertResearchCompletionState = expert.researchCompletion ?? { audits: [], updatedAt: now }
+    let researchEvidence: ExpertResearchEvidenceState | undefined
     try {
-      researchCompletion = recordExpertResearchAudit(expert.researchCompletion, { ...input, recordedAt: now })
+      if (tracksCompletion) {
+        researchCompletion = recordExpertResearchAudit(expert.researchCompletion, { ...input, recordedAt: now })
+      }
+      if (evidencePolicy && tracksEvidence) {
+        researchEvidence = recordExpertResearchEvidence(expert.researchEvidence, evidencePolicy, {
+          ...input,
+          recordedAt: now,
+        })
+      }
     } catch (error) {
       throw new ApiError(400, `研究浏览审计无效：${error instanceof Error ? error.message : String(error)}`, 'EXPERT_RESEARCH_AUDIT_INVALID')
     }
-    const metadata: ExpertSessionMetadata = { ...expert, researchCompletion, updatedAt: now }
+    const metadata: ExpertSessionMetadata = {
+      ...expert,
+      researchCompletion,
+      ...(researchEvidence ? { researchEvidence } : {}),
+      updatedAt: now,
+    }
     await sessionService.appendSessionMetadata(sessionId, { workDir: session.workDir || session.projectRoot || session.projectPath, expert: metadata })
     await expertRuntimeSessionStore.save(sessionId, metadata)
-    return { expert: metadata, researchCompletion }
+    return { expert: metadata, researchCompletion, ...(researchEvidence ? { researchEvidence } : {}) }
   }
 
   async renderTemplateFill(sessionId: string, payload: unknown): Promise<{ content: string; templateId: string }> {

@@ -159,6 +159,29 @@ function queryFromInput(input: unknown): string | undefined {
   return undefined
 }
 
+function queryFromDirectPublicTarget(input: unknown): string | undefined {
+  const actions = asRecord(input)?.actions
+  if (!Array.isArray(actions)) return undefined
+
+  for (const action of [...actions].reverse()) {
+    const actionRecord = asRecord(action)
+    const value = actionRecord?.url
+    if (typeof value !== 'string' || !value.trim()) continue
+    try {
+      const url = new URL(value)
+      if (!/^https?:$/.test(url.protocol) || searchEngineFor(url.toString())) continue
+      const labels = url.hostname.toLowerCase().split('.').filter(Boolean)
+      const hostLabels = labels.filter((label) => label !== 'www' && label !== 'm')
+      const meaningfulLabels = hostLabels.slice(0, Math.max(1, hostLabels.length - 1))
+      const query = meaningfulLabels.join(' ').replace(/[._-]+/g, ' ').trim()
+      if (query) return query
+    } catch {
+      // Direct target inference is best-effort; a caller can still release the held page safely.
+    }
+  }
+  return undefined
+}
+
 function fallbackUrl(engine: ExpertSearchEngine, query: string): string {
   const encoded = encodeURIComponent(query)
   switch (engine) {
@@ -204,7 +227,7 @@ export function buildExpertFallbackPlaywrightContinuation(
   const dataRecord = asRecord(data)
   const url = typeof dataRecord?.url === 'string' ? dataRecord.url : ''
   const currentEngine = searchEngineFor(url)
-  const query = queryFromUrl(url) ?? queryFromInput(original)
+  const query = queryFromUrl(url) ?? queryFromInput(original) ?? queryFromDirectPublicTarget(original)
   const engine = nextFallbackSearchEngine(currentEngine, fallbackSearchEngines, attemptedEngines)
   if (!query || !engine) return undefined
 
@@ -411,12 +434,31 @@ export async function coordinateExpertBrowserVerification<T>(params: {
         attemptedEngines.add(fallback.engine)
         continuation = fallback.input
       } else {
-        return withVerificationError(
-          aggregateResult,
-          config.fallbackSearchEngines.length > 0
-            ? 'EXPERT_HUMAN_VERIFICATION_FALLBACK_EXHAUSTED: The user explicitly declined verification and every package-declared public search entry has been attempted or is unavailable. Keep the affected entries as access-limited; continue with already-discovered direct public pages before recording an overall evidence gap.'
-            : guidanceFor(resolution.resolution, url),
-        )
+        // The user explicitly declined this page. A direct page can have no
+        // search query, so release its held tab rather than leaving the task
+        // stuck waiting for another human-verification decision.
+        const release = buildExpertVerificationRelease(currentInput)
+        if (!release) {
+          return withVerificationError(
+            aggregateResult,
+            config.fallbackSearchEngines.length > 0
+              ? 'EXPERT_HUMAN_VERIFICATION_FALLBACK_UNAVAILABLE: The user explicitly declined verification, but this browser call has no recoverable search query or direct target. Keep only this page as access-limited and continue the remaining research; do not wait for another verification choice.'
+              : guidanceFor(resolution.resolution, url),
+          )
+        }
+        try {
+          const released = await params.resume(release)
+          const merged = mergeVerifiedPlaywrightContinuation(aggregateResult, released)
+          return withVerificationError(
+            merged,
+            config.fallbackSearchEngines.length > 0
+              ? 'EXPERT_HUMAN_VERIFICATION_FALLBACK_UNAVAILABLE: The user explicitly declined verification. This held page was released as access-limited because the call had no recoverable search query or direct public target; continue the remaining research without reopening this modal.'
+              : guidanceFor(resolution.resolution, url),
+          )
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          return withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_RELEASE_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.')
+        }
       }
     } else {
       continuation = buildExpertVerificationRelease(currentInput)

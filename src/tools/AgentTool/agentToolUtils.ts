@@ -629,7 +629,7 @@ export function finalizeAgentTool(
  * for ordinary agents and never exposes another model-callable tool.
  */
 export async function recordFinalizedExpertAgentResearchAudit(
-  agentResult: Pick<AgentToolResult, 'agentId' | 'agentType' | 'playwrightAudit'>,
+  agentResult: Pick<AgentToolResult, 'agentId' | 'agentType' | 'content' | 'playwrightAudit'>,
   fallbackAgentType: string,
   recordAudit: typeof recordExpertSubagentResearchAudit = recordExpertSubagentResearchAudit,
 ): Promise<void> {
@@ -637,6 +637,7 @@ export async function recordFinalizedExpertAgentResearchAudit(
     agentId: agentResult.agentId,
     agentType: agentResult.agentType ?? fallbackAgentType,
     entries: agentResult.playwrightAudit ?? [],
+    ...(agentResult.content ? { content: extractTextContent(agentResult.content, '\n') } : {}),
   })
 }
 

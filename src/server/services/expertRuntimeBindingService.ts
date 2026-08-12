@@ -4,6 +4,7 @@ import type { ExpertRuntimeContext } from './expertRuntimeService.js'
 import { resolveExpertResearchDeliveryPolicy } from './expertResearchDeliveryService.js'
 import { resolveExpertResearchBrowserPolicy } from './expertResearchBrowserPolicyService.js'
 import { resolveExpertResearchCompletionPolicy } from './expertResearchCompletionService.js'
+import { resolveExpertResearchEvidenceReviewPolicy } from './expertResearchEvidenceReviewService.js'
 import type { ExpertHostTool, ExpertRuntimeBinding, ExpertSessionMetadata, ExpertToolManifest } from './expertPackRegistryService.js'
 
 const MAX_PROMPT_CHARACTERS = 24_000
@@ -148,6 +149,7 @@ export function createExpertRuntimeBinding(
   const researchDeliveryPolicy = resolveExpertResearchDeliveryPolicy(context.outputProtocol?.content)
   const researchBrowserPolicy = resolveExpertResearchBrowserPolicy(context.outputProtocol?.content)
   const researchCompletionPolicy = resolveExpertResearchCompletionPolicy(context.outputProtocol?.content)
+  const researchEvidenceReviewPolicy = resolveExpertResearchEvidenceReviewPolicy(context.outputProtocol?.content)
   return {
     schemaVersion: 1,
     active: true,
@@ -202,6 +204,9 @@ export function createExpertRuntimeBinding(
       : {}),
     ...(researchCompletionPolicy
       ? { researchCompletionPolicy }
+      : {}),
+    ...(researchEvidenceReviewPolicy
+      ? { researchEvidenceReviewPolicy }
       : {}),
     ...(context.expert.outputMode
       ? { outputMode: context.expert.outputMode }

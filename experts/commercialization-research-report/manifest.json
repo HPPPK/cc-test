@@ -1,7 +1,7 @@
 {
   "packId": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
-  "version": "0.13.0-local",
+  "version": "0.13.1-local",
   "schemaVersion": 1,
   "type": "expert-pack",
   "description": "基于可编辑业务规则、固定 HTML 母版、分章节研究子代理、浏览器多入口检索、多源渠道证据包、字段示例教学和内置 CLI 填充的新品商业化调研专家。",

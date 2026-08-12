@@ -13,11 +13,18 @@ const HUMAN_VERIFICATION_PATTERNS: Array<{ pattern: RegExp; kind: string }> = [
     pattern: /人机身份验证|进行人机|人机验证|滑块验证|滑动验证|异常流量|unusual traffic|verify you are human|i.?m not a robot|\b(?:captcha|recaptcha|hcaptcha)\b/i,
     kind: 'human verification',
   },
-  {
-    pattern: /(?:登录|login).{0,24}(?:验证|verify|verification)|(?:验证|verify|verification).{0,24}(?:登录|login)/i,
-    kind: 'login verification',
-  },
 ]
+
+const LOGIN_PAGE_TITLE = /^\s*(?:登录(?:验证)?|login(?: verification)?|sign[ -]?in|authentication required)(?:\s*[-|].*)?\s*$/i
+const LOGIN_PAGE_URL = /\/(?:login|sign[ -]?in|signin|auth|authenticate)(?:\/|[?#]|$)/i
+const LOGIN_FORM_PATTERN = /账号|帐户|用户名|密码|短信验证码|手机验证码|email|password|sign in to continue|login required/i
+
+function hasLoginVerificationSurface(url: string, title: string, text: string): boolean {
+  // A public FAQ can legitimately explain “登录” and “验证码”. Treat it as an
+  // interactive verification page only when the URL or page title identifies a
+  // sign-in surface and the rendered body contains a real authentication form.
+  return (LOGIN_PAGE_TITLE.test(title) || LOGIN_PAGE_URL.test(url)) && LOGIN_FORM_PATTERN.test(text)
+}
 
 /** Detects CAPTCHA / slider / Google sorry surfaces that require human help. */
 export function detectHumanVerificationKind(
@@ -26,7 +33,9 @@ export function detectHumanVerificationKind(
   text: string,
 ): string | null {
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
-  return HUMAN_VERIFICATION_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.kind ?? null
+  const explicitChallenge = HUMAN_VERIFICATION_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.kind
+  if (explicitChallenge) return explicitChallenge
+  return hasLoginVerificationSurface(url, title, text) ? 'login verification' : null
 }
 
 /** Detects a rendered access or verification surface without making any research-quality judgment. */
@@ -35,7 +44,7 @@ export function classifyRenderedPageAccess(url: string, title: string, text: str
   if (ACCESS_LIMITED_PATTERN.test(rendered) || detectHumanVerificationKind(url, title, text)) {
     return 'ACCESS_LIMITED_PAGE: The rendered page requires verification, login, or another access control.'
   }
-  const authTitle = /^\s*(?:登录|log[ -]?in|sign[ -]?in|authentication required)(?:\s*[-|].*)?\s*$/i.test(title)
-  const authForm = /账号|帐户|用户名|密码|短信验证码|手机验证码|email|password|sign in to continue|login required/i.test(text)
-  return authTitle && authForm ? 'ACCESS_LIMITED_PAGE: The rendered page is an authentication prompt.' : null
+  return hasLoginVerificationSurface(url, title, text)
+    ? 'ACCESS_LIMITED_PAGE: The rendered page is an authentication prompt.'
+    : null
 }

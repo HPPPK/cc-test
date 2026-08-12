@@ -12,6 +12,7 @@ import { buildTool, type ToolDef } from '../../Tool.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import {
   normalizeExpertResearchDeliveryQuestionContract,
+  normalizeExpertResearchDeliveryResponseContract,
   syncExpertResearchDeliveryDecision,
   validateExpertResearchDeliveryQuestionContract,
 } from '../../services/tools/expertResearchDeliveryRuntime.js';
@@ -273,12 +274,18 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
       : questions.map((question) => (
         question.multiSelect === undefined ? { ...question, multiSelect } : question
       ))
-    await syncExpertResearchDeliveryDecision({ questions: normalizedQuestions, answers, answerChoiceIds, metadata })
+    const normalizedDeliveryResponse = normalizeExpertResearchDeliveryResponseContract({
+      questions: normalizedQuestions,
+      answers,
+      ...(answerChoiceIds ? { answerChoiceIds } : {}),
+      ...(metadata ? { metadata } : {}),
+    })
+    await syncExpertResearchDeliveryDecision(normalizedDeliveryResponse)
     return {
       data: {
-        questions: normalizedQuestions,
-        answers,
-        ...(answerChoiceIds && { answerChoiceIds }),
+        questions: normalizedDeliveryResponse.questions,
+        answers: normalizedDeliveryResponse.answers ?? answers,
+        ...(normalizedDeliveryResponse.answerChoiceIds && { answerChoiceIds: normalizedDeliveryResponse.answerChoiceIds }),
         ...(annotations && {
           annotations
         })

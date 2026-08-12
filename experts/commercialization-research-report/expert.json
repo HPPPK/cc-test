@@ -2,7 +2,7 @@
   "id": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
   "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。按字段研究，使用包内浏览器信息检索方法发现候选链接、通过 Playwright 逐页取证，并以多源渠道证据包支撑 SEO/SEM/内容渠道判断；先生成紧凑字段 JSON，再由内置 CLI 填充最终 HTML。资料不足时如实标注，不把业务规则当作市场证据。",
-  "statusLabel": "分章节子代理 + 注入式检索 Skill + 即时 CAPTCHA 人工接力 + 零 Key 多入口浏览器检索 + 多源渠道证据包 + 证据复核 + 交付确认 + 固定母版 CLI 填充 v0.13.0-local",
+  "statusLabel": "分章节子代理 + 注入式检索 Skill + 即时 CAPTCHA 人工接力 + 零 Key 多入口浏览器检索 + 多源渠道证据包 + 证据复核 + 交付确认 + 固定母版 CLI 填充 v0.13.1-local",
   "promptPaths": {
     "system": "experts/commercialization-research-report/prompts/system.md"
   },
@@ -194,8 +194,8 @@
     "version": "v1.0.8-local",
     "notes": "模型从可信来源范围动态构造候选 URL，Playwright 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，字段 JSON 经内置 CLI 校验并填充固定母版。"
   },
-  "version": "0.13.0-local",
-  "status": "即时 CAPTCHA 人工接力 + ZIP 子代理检索 Skill 注入 + 可见 Playwright 调研 + 可选用户授权本机 Chrome/Edge 连接 + 四子代理复核 + 用户确认范围后固定 HTML CLI 填充 v0.13.0-local",
+  "version": "0.13.1-local",
+  "status": "即时 CAPTCHA 人工接力 + ZIP 子代理检索 Skill 注入 + 可见 Playwright 调研 + 可选用户授权本机 Chrome/Edge 连接 + 四子代理复核 + 用户确认范围后固定 HTML CLI 填充 v0.13.1-local",
   "outputTemplatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
   "outputMode": "template-fill",
   "subagentSkillIds": {
