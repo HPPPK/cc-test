@@ -1,0 +1,14 @@
+{
+  "name": "Playwright",
+  "purpose": "匿名、只读地研究公开 http(s) 页面并取得真实证据截图；不访问本地文件、localhost、私网、登录或受限内容。",
+  "id": "playwright",
+  "type": "hostBuiltinRef",
+  "hostToolId": "Playwright",
+  "permissions": [
+    {
+      "id": "public-reference-research",
+      "description": "仅可匿名、只读地打开公开 http(s) 参考网站或研究来源并获取真实截图；不得登录、绕过限制、访问 file://、localhost、私网或用户未授权页面。"
+    }
+  ],
+  "network": "public-web-read-only"
+}

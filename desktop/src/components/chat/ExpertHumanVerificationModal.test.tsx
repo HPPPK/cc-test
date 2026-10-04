@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-const { sendMock } = vi.hoisted(() => ({
+const { notifyDesktopMock, sendMock, requestBrowserVisibilityMock, requestVerificationCheckMock } = vi.hoisted(() => ({
+  notifyDesktopMock: vi.fn(),
   sendMock: vi.fn(),
+  requestBrowserVisibilityMock: vi.fn(async () => ({ activity: null, presentationConfirmed: true })),
+  requestVerificationCheckMock: vi.fn(async () => ({ activity: null })),
 }))
 
 vi.mock('../../api/websocket', () => ({
@@ -20,6 +23,17 @@ vi.mock('../../api/sessions', () => ({
     getMessages: vi.fn(async () => ({ messages: [] })),
     getSlashCommands: vi.fn(async () => ({ commands: [] })),
   },
+}))
+
+vi.mock('../../api/experts', () => ({
+  expertsApi: {
+    requestResearchBrowserVisibility: requestBrowserVisibilityMock,
+    requestResearchBrowserVerificationCheck: requestVerificationCheckMock,
+  },
+}))
+
+vi.mock('../../lib/desktopNotifications', () => ({
+  notifyDesktop: notifyDesktopMock,
 }))
 
 import { ExpertHumanVerificationModal } from './ExpertHumanVerificationModal'
@@ -69,8 +83,29 @@ function setPendingRequest(requestInput: unknown = input, toolName = 'Playwright
 
 describe('ExpertHumanVerificationModal', () => {
   beforeEach(() => {
+    notifyDesktopMock.mockReset()
     sendMock.mockReset()
+    requestBrowserVisibilityMock.mockReset()
+    requestBrowserVisibilityMock.mockResolvedValue({ activity: null, presentationConfirmed: true })
+    requestVerificationCheckMock.mockReset()
+    requestVerificationCheckMock.mockResolvedValue({ activity: null })
     setPendingRequest()
+  })
+
+  it('sends a desktop reminder when research is blocked for human verification', () => {
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
+      dedupeKey: 'expert-human-verification:expert-session:verification-request',
+      title: expect.stringContaining('Google'),
+      requestAttention: true,
+      target: { type: 'session', sessionId: SESSION_ID },
+    }))
   })
 
   it('shows only the website and the concrete action, not a long verification URL', () => {
@@ -83,17 +118,44 @@ describe('ExpertHumanVerificationModal', () => {
 
     expect(screen.getByRole('dialog', { name: 'Google 需要验证' })).not.toBeNull()
     expect(screen.getByText('请完成：页面显示的安全验证')).not.toBeNull()
-    expect(screen.getByText('浏览器已打开 Google 的验证页面。')).not.toBeNull()
+    expect(screen.getByText(/已为你保留 Google 的验证页面。完成网页验证后，软件会自动检测并继续当前检索/)).not.toBeNull()
+    expect(screen.getByText(/点击“打开验证浏览器”才会按你的这次操作恢复该托管 Chromium/)).not.toBeNull()
+    expect(screen.getByRole('button', { name: '打开验证浏览器' })).not.toBeNull()
+    expect(screen.getByText(/关闭此提示会改查其他公开入口/)).not.toBeNull()
     expect(screen.queryByText('https://www.google.com/search?q=markdown+reader')).toBeNull()
     expect(screen.queryByText(/不要刷新页面/)).toBeNull()
   })
 
+  it('uses the same manual-window explanation for historical verification payloads', async () => {
+    setPendingRequest({
+      ...input,
+      verification: {
+        ...input.verification,
+        windowPresentationConfirmed: false,
+      },
+    })
+
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
+    expect(screen.getByText(/点击“打开验证浏览器”才会按你的这次操作恢复该托管 Chromium/)).not.toBeNull()
+    expect(screen.queryByText(/未能确认 Chromium 已自动恢复到前台/)).toBeNull()
+    expect(screen.queryByRole('button', { name: '我已完成，继续' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '立即检查' }))
+    await waitFor(() => expect(requestVerificationCheckMock).toHaveBeenCalledWith(SESSION_ID))
+    expect(sendMock).not.toHaveBeenCalled()
+  })
   it('names Baidu and summarizes queued verification pages without exposing the URL', () => {
     setPendingRequest({
       kind: 'expert-playwright-verification',
       verification: {
         url: 'https://wappass.baidu.com/static/captcha?opaque=private',
         engine: '百度',
+        detail: 'Baidu security verification',
       },
       queue: { remaining: 2 },
     })
@@ -111,7 +173,17 @@ describe('ExpertHumanVerificationModal', () => {
     expect(screen.queryByText(/wappass.baidu.com/)).toBeNull()
   })
 
-  it('returns the selected completion without creating an AskUserQuestion card', () => {
+  it('does not label an ordinary Baidu page as a slider challenge without a concrete challenge kind', () => {
+    setPendingRequest({
+      kind: 'expert-playwright-verification',
+      verification: {
+        url: 'https://www.baidu.com/',
+        engine: '百度',
+        detail: 'A browser action timed out while waiting for a selector.',
+      },
+      queue: { remaining: 0 },
+    })
+
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -119,17 +191,41 @@ describe('ExpertHumanVerificationModal', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '我已完成，继续' }))
-
-    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
-      type: 'permission_response',
-      requestId: 'verification-request',
-      allowed: true,
-      updatedInput: { verificationResolution: 'verification_completed' },
-    })
+    expect(screen.getByText('请完成：页面显示的安全验证')).not.toBeNull()
+    expect(screen.queryByText('请完成：百度安全验证（如拖动滑块）')).toBeNull()
   })
 
-  it('does not auto-resolve when the user closes, escapes, or clicks the backdrop', () => {
+  it('opens the preserved managed browser only after the user explicitly requests it', async () => {
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '打开验证浏览器' }))
+
+    await waitFor(() => expect(requestBrowserVisibilityMock).toHaveBeenCalledWith(SESSION_ID))
+    expect((await screen.findByRole('status')).textContent).toContain('验证浏览器已打开')
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  it('uses passive immediate checking without completing the verification or creating an AskUserQuestion card', async () => {
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '我已完成，继续' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '立即检查' }))
+
+    await waitFor(() => expect(requestVerificationCheckMock).toHaveBeenCalledWith(SESSION_ID))
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  it('treats Escape as an explicit decision to check another public entry', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -138,14 +234,52 @@ describe('ExpertHumanVerificationModal', () => {
     )
 
     fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
+      type: 'permission_response',
+      requestId: 'verification-request',
+      allowed: true,
+      updatedInput: { verificationResolution: 'switch_public_entry' },
+    })
+  })
+
+  it('treats the close button as an explicit decision to check another public entry', () => {
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
     fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+
+    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
+      type: 'permission_response',
+      requestId: 'verification-request',
+      allowed: true,
+      updatedInput: { verificationResolution: 'switch_public_entry' },
+    })
+  })
+
+  it('treats a backdrop click as an explicit decision to check another public entry', () => {
+    render(
+      <ExpertHumanVerificationModal
+        sessionId={SESSION_ID}
+        request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission}
+      />,
+    )
+
     const dialog = screen.getByRole('dialog', { name: 'Google 需要验证' })
     const backdrop = dialog.parentElement?.querySelector('.absolute.inset-0')
     if (!backdrop) throw new Error('Expected verification modal backdrop')
     fireEvent.click(backdrop)
 
-    expect(sendMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: 'Google 需要验证' })).not.toBeNull()
+    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
+      type: 'permission_response',
+      requestId: 'verification-request',
+      allowed: true,
+      updatedInput: { verificationResolution: 'switch_public_entry' },
+    })
   })
 
   it('returns the explicit public-entry fallback decision', () => {
@@ -156,7 +290,7 @@ describe('ExpertHumanVerificationModal', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '暂不验证，换其他入口' }))
+    fireEvent.click(screen.getByRole('button', { name: '改查其他入口' }))
 
     expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
       type: 'permission_response',

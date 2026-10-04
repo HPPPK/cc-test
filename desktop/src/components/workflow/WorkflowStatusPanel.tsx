@@ -217,7 +217,7 @@ const STATUS_LABELS: Record<WorkflowStatusPanelSummary['status'], string> = {
 const RUN_STATUS_LABELS: Record<NonNullable<WorkflowStatusPanelSummary['runStatus']>, string> = {
   draft: '草稿',
   active: '进行中',
-  waiting_for_user: '等待确认',
+  waiting_for_user: '等待你的回答',
   paused: '已暂停',
   completed: '已完成',
   cancelled: '已取消',

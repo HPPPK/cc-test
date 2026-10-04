@@ -1,14 +1,14 @@
 {
   "id": "write",
-  "name": "写入 HTML 报告",
+  "name": "调研 Markdown 与结构化 HTML 报告",
   "type": "hostBuiltinRef",
-  "purpose": "仅在用户确认目标路径后，创建或另存为本次商业化调研 HTML 报告。",
+  "purpose": "文件优先研究阶段：只能用 Write(file_path, content) 写入运行时声明的 Markdown 交接文件。主代理先写 01-research-brief.md；每名研究子代理只写自己被分配的 Markdown；独立复核子代理只写 05-evidence-review.md。Markdown 路径是授权依据，不需要、也不得传 research_artifact.kind；子代理完成后只回传已写入的固定 Markdown 路径与极短真实状态，不回传研究内容；运行时仅以真实 Write 结果、可读取产物和审计记录判断后续流程。只有最终交付时才用 Write(file_path, content: \"\", expert_output: { templateId, fields }) 提交结构化字段；运行时服务端渲染固定 HTML 母版。不得写临时 JSON、脚本或自由 HTML。 渲染成功不等于文件保存成功。运行时先渲染、再由 Write 写盘、再核对已保存内容；确认成功后才进入 08 复核或记录最终交付。写盘失败保留原字段及复核状态，重试同一份 Write；确认响应丢失只重试确认。不要让模型调用内部确认接口、添加回执字段、重做调研或另写自由 HTML。 首次渲染失败时，保留已有字段并用相同路径和 templateId、mode=\"patch\" 局部修复；需要删除母版未声明的键时，将该未声明字段设为 null，并先把有用备注移入合法字段。合法字段不能置空，已渲染复核草稿不走此删除规则。初版保存后，先读 08，按已有材料做最小补写或来源/语义纠正；无修正需要则 finalize。",
   "hostToolId": "Write",
   "network": "none",
   "permissions": [
     {
-      "id": "write-user-confirmed-report",
-      "description": "仅在用户确认输出路径后写入最终 HTML 报告。"
+      "id": "write-session-report",
+      "description": "仅写入当前专家会话底部选中的工作目录；不创建默认报告子目录，也不使用硬编码路径。"
     }
   ]
 }

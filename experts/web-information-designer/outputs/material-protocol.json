@@ -1,0 +1,293 @@
+{
+  "version": 3,
+  "mode": "prototype-html-artifact-set",
+  "outputRoot": "current-session-workdir",
+  "primaryOutput": {
+    "mode": "write-files",
+    "requiredPaths": [
+      "prototype-brief.md",
+      "01-low-fidelity.html",
+      "02-mid-fidelity.html",
+      "03-high-fidelity.html",
+      "prototype-evidence.md"
+    ],
+    "conditionalPaths": {
+      "provided-sources": [
+        "prototype-research.md",
+        "prototype-sources.json"
+      ],
+      "public-research": [
+        "prototype-research.md",
+        "prototype-sources.json"
+      ]
+    },
+    "dynamicDirectories": [
+      "imgs/references",
+      "imgs/qa"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "prototype-brief.md",
+      "required": true,
+      "purpose": "产品事实、页面任务、目标用户、内容边界、统一信息架构、设计方向与保真度映射。"
+    },
+    {
+      "path": "prototype-research.md",
+      "requiredWhen": [
+        "provided-sources",
+        "public-research"
+      ],
+      "purpose": "真实公开研究范围、已验证事实、分析归纳、证据缺口与页面可用结论。"
+    },
+    {
+      "path": "prototype-sources.json",
+      "requiredWhen": [
+        "provided-sources",
+        "public-research"
+      ],
+      "purpose": "逐页打开的公开来源、时间、支持主张、局限与截图关联。"
+    },
+    {
+      "path": "01-low-fidelity.html",
+      "required": true,
+      "purpose": "低保真线框 HTML：信息架构、模块顺序、层级、CTA 和交互状态，不追求最终视觉。"
+    },
+    {
+      "path": "02-mid-fidelity.html",
+      "required": true,
+      "purpose": "中保真结构稿：同一内容和流程，加入设计 token、真实文案、组件状态与清晰布局。"
+    },
+    {
+      "path": "03-high-fidelity.html",
+      "required": true,
+      "purpose": "高保真可运行 HTML：完整样式、交互、响应式、可访问性和克制动画；不伪装未实现的后端。"
+    },
+    {
+      "path": "prototype-evidence.md",
+      "required": true,
+      "purpose": "公开来源、图片归属、本地渲染命令结果、三个视口截图观察、修订与未验证边界。"
+    },
+    {
+      "path": "imgs/references/",
+      "required": false,
+      "purpose": "仅保存本轮 Playwright 已返回、Read 已查看并记录来源的公开网页证据截图。"
+    },
+    {
+      "path": "imgs/qa/",
+      "required": true,
+      "purpose": "仅保存当前会话已生成 HTML 的本地 Chromium QA 截图。"
+    }
+  ],
+  "prototypeContract": {
+    "defaultPageMode": "product-or-web-prototype",
+    "fidelityLevels": {
+      "low": "线框级：保留相同页面结构、内容标签与主要操作，不强行使用品牌视觉。",
+      "medium": "结构化草稿：保留相同页面结构、真实或明确标注的演示文案，展示组件状态和布局节奏。",
+      "high": "可点击视觉原型：保留相同信息架构和关键交互，加入完整 CSS、JS、响应式和可访问性。"
+    },
+    "consistencyRequirements": [
+      "same-page-goal",
+      "same-information-architecture",
+      "same-section-order",
+      "same-core-copy-meaning",
+      "same-primary-cta-intent",
+      "same-interaction-model",
+      "same-screen-ids-and-task-flow",
+      "same-data-and-control-semantics"
+    ],
+    "highFidelityBaseline": {
+      "designCanvas": "1920px reference canvas; content max-width 1200px; first viewport target at most 960px tall",
+      "typography": "Chinese-first font stack beginning with Microsoft YaHei; base text at least 16px unless a caption requires smaller accessible treatment",
+      "requiredInteractions": [
+        "fixed-or-sticky navigation where appropriate",
+        "visible hover and keyboard focus for primary CTAs",
+        "working FAQ accordion if FAQ exists",
+        "prefers-reduced-motion fallback"
+      ],
+      "preferredSectionsForProductLanding": [
+        "Navbar (excluded from count)",
+        "L01 Hero",
+        "L02 Value proposition",
+        "L03-L05 2-3 alternating features or grounded scenario",
+        "L06 Usage workflow",
+        "L07 proof or clearly marked demo / transparent limitations",
+        "L08 FAQ (4-6 questions)",
+        "L09 optional closing CTA",
+        "Footer (excluded from count)"
+      ],
+      "technology": "Self-contained browser-runnable HTML5 with inline or local CSS/JS and authorized assets. Use native CSS/JS animation; no external CDN dependencies or React-only Framer Motion imports. PrototypePreview blocks external network resources."
+    },
+    "screenCoverage": {
+      "productApp": {
+        "targetMin": 8,
+        "targetMax": 12,
+        "minimumTaskScreens": 6,
+        "minimumStateScreens": 2
+      },
+      "productLanding": {
+        "targetMin": 8,
+        "targetMax": 10,
+        "countUnit": "substantive-section",
+        "excludeNavigationAndFooter": true
+      },
+      "smallPrdRule": "ask-to-reduce-do-not-invent-features",
+      "explicitUserScopeWins": true,
+      "excludeFromCount": [
+        "fidelity-variants",
+        "responsive-variants",
+        "recolors",
+        "duplicated-content",
+        "blank-padding",
+        "standalone-toast"
+      ],
+      "informationMicrosite": "confirm-content-architecture-not-product-screen-quota",
+      "enforcement": "package-instructions-and-review-not-a-new-server-validator"
+    },
+    "paletteConfirmation": {
+      "tool": "AskUserQuestion",
+      "trigger": "palette-missing-and-not-explicitly-delegated",
+      "preserveUserColors": true,
+      "genericStyleIsNotPaletteConsent": true,
+      "confirmBeforeVisualDesign": true,
+      "options": "2-3 product-specific palettes with HEX and usage; allow Other/custom",
+      "recordIn": "prototype-brief.md"
+    },
+    "screenInventoryFields": [
+      "screenId",
+      "prdRequirement",
+      "userTask",
+      "entry",
+      "exit",
+      "primaryAction",
+      "content",
+      "states",
+      "verification"
+    ],
+    "overview": {
+      "location": "each-of-the-three-canonical-html-files",
+      "productApp": "all-screen-overview-with-directory-and-single-screen-mode",
+      "productLanding": "continuous-page-with-section-anchors",
+      "screenAttribute": "data-screen-id",
+      "sectionAttribute": "data-section-id",
+      "singleSource": "reuse-the-same-DOM-and-data",
+      "imageBoundary": "PNG is a flattened HTML rendering, not image generation or editable Figma layers"
+    }
+  },
+  "evidenceBoundary": {
+    "publicResearchOnly": true,
+    "requireSourceForExternalFacts": true,
+    "userProvidedFactsMayBeUsedWithLabel": true,
+    "labelInferenceAndUnknowns": true,
+    "prohibitFabrication": true,
+    "prohibitedWithoutUserProof": [
+      "download URLs",
+      "purchase links",
+      "prices",
+      "system support",
+      "usage metrics",
+      "savings percentages",
+      "customer reviews",
+      "company or product logos",
+      "payment and account flows"
+    ],
+    "demoContentRule": "Only use invented content when the user explicitly allows demo copy; label it visibly as 演示占位/待替换 and never present it as a real testimonial or business fact.",
+    "screenshotArchiveRequires": [
+      "actual Playwright screenshot path for the exact public URL",
+      "Read inspection of that screenshot",
+      "source URL, title, capture time, relative path, purpose and alt text recorded"
+    ],
+    "localQaBoundary": "PrototypePreview renders only HTML and local assets in the current Expert session workDir, blocks network resources and returns run-scoped imgs/qa/<runId>/ screenshots. It must not start a server, expose a public URL, browse arbitrary local paths, or relax public Playwright URL restrictions."
+  },
+  "verificationContract": {
+    "publicResearch": [
+      "Every material external claim traces to opened public source or is labeled user-provided / demo / unverified.",
+      "A search-results page is not final evidence."
+    ],
+    "localHtmlQa": [
+      "Use PrototypePreview, never Bash or public Playwright, to render the generated local HTML. Await the structured receipt and Read its exact unique PNG paths; HTML/PNG/review hashes must match the final revision.",
+      "Render 03-high-fidelity.html at 1440x1000, 1024x900 and 390x844.",
+      "Read every final high-fidelity QA screenshot before claiming visual verification.",
+      "Render low and mid prototypes at least once at desktop width to catch missing local assets.",
+      "If a visible defect is found, revise the affected HTML and rerender before delivery.",
+      "Call the result responsive viewport verification, not real-device or cross-platform testing.",
+      "Treat any 390 crop or horizontal overflow, 1024 disconnected/overlapped layout, 1440 decorative-only hero or buried CTA, error-page screenshot, or unread final revision as NEEDS WORK.",
+      "Evidence must be screenshot-observation-led: never claim visible or responsive merely because the intended CSS contains a media query.",
+      "Review every screen or substantive section; the three canonical first-viewport PNGs alone do not prove full-set coverage.",
+      "Normal vertical scrolling below the fold is not layout clipping; record unseen areas as not observed.",
+      "Do not infer click, keyboard, drag or reduced-motion execution from a still PNG; distinguish actual operation, code inspection and unverified behavior."
+    ],
+    "evidencePath": "prototype-evidence.md"
+  },
+  "visualQualityContract": {
+    "requiredSkillIds": [
+      "prototype-fidelity-workflow",
+      "prototype-visual-quality-gate",
+      "frontend-design"
+    ],
+    "designPlanLocation": "prototype-brief.md",
+    "designPlanFields": [
+      "page-job",
+      "audience",
+      "visual-register",
+      "tokens",
+      "composition",
+      "single-memory-point",
+      "motion-purpose",
+      "anti-template-risks",
+      "prd-screen-inventory",
+      "palette-confirmation",
+      "component-state-spec",
+      "reference-application-map"
+    ],
+    "firstRenderReview": [
+      "visual-hierarchy",
+      "copy-specificity",
+      "module-rhythm",
+      "typography",
+      "color-contrast",
+      "primary-cta-visibility",
+      "responsive-overflow",
+      "fake-fact-scan"
+    ],
+    "requiredHighFidelityQa": [
+      "first-render:1440x1000",
+      "first-render:1024x900",
+      "first-render:390x844",
+      "revision-after-image-review",
+      "revised-render:1440x1000",
+      "revised-render:1024x900",
+      "revised-render:390x844"
+    ],
+    "prohibitedTemplatePatterns": [
+      "generic-gradient-saas-hero",
+      "equal-weight-card-wall",
+      "all-content-centered",
+      "unsupported-big-number",
+      "generic-anonymous-copy",
+      "fake-logo-or-review-or-price"
+    ],
+    "finalReceipt": "prototype-evidence.md must record the chosen visual register, first-render defects, actual HTML corrections, and concrete 1440/1024/390 observations. It must state viewport-based visual QA, not real-device or cross-platform testing.",
+    "mandatoryFailureConditions": [
+      "390px: any clipped navigation, primary CTA, hero content, key visual, FAQ control, user-facing text, or horizontal scrolling caused by the high-fidelity layout",
+      "1024px: visibly disconnected, overlapped, or implausibly narrow desktop-derived content after responsive reflow",
+      "1440px: decorative-only hero that does not demonstrate a product action/state, visually buried primary CTA, or excessive empty gap before proof",
+      "any error-page screenshot, missing local resource, unread final screenshot, or screenshot from a non-final HTML revision"
+    ],
+    "receiptAccuracyRules": [
+      "describe what is visibly present in each named final PNG, not a CSS expectation",
+      "for 1440, 1024 and 390, state navigation/CTA visibility, content crop status, and the actual responsive arrangement",
+      "if any mandatory failure remains, record NEEDS WORK instead of a pass claim",
+      "record screen counts, approved scope exceptions, palette consent and per-screen coverage; no claim that instruction checks prove model output quality"
+    ],
+    "multiScreenReview": [
+      "each-screen-content-and-task",
+      "prd-coverage-and-approved-exceptions",
+      "screen-id-and-fidelity-parity",
+      "palette-consent-and-shared-design-tokens",
+      "reference-to-screen-mapping",
+      "separate-visual-code-and-interaction-evidence",
+      "no-padding-or-duplicate-screen-count"
+    ]
+  }
+}

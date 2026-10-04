@@ -1,3 +1,4 @@
+import { searchEngineForUrl, isSearchResultsUrl } from '../../utils/searchEngineSurface.js'
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { clearInvokedSkillsForAgent } from '../../bootstrap/state.js'
@@ -14,7 +15,8 @@ import {
 } from '../../services/analytics/index.js'
 import { clearDumpState } from '../../services/api/dumpPrompts.js'
 import { closeCompletedExpertAgentPlaywrightBrowser } from '../../services/tools/expertAgentPlaywrightLifecycle.js'
-import { recordExpertSubagentResearchAudit } from '../../services/tools/expertSubagentSkillRuntime.js'
+import { isFileFirstExpertResearchAgentType } from '../../services/tools/expertFileFirstResearchProtocol.js'
+import { loadExpertPostReviewEvidenceAbsorptionContext, recordExpertSubagentResearchAudit, type ExpertResearchSourceAssignment } from '../../services/tools/expertSubagentSkillRuntime.js'
 import type { AppState } from '../../state/AppState.js'
 import type {
   Tool,
@@ -73,6 +75,12 @@ export type ResolvedAgentTools = {
 export function isExpertSubagentQuestionForbidden(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION === '1'
     || env.CC_HAHA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION === '1'
+}
+
+/** Active Expert sessions bypass ordinary subagent tool narrowing. */
+export function isExpertSubagentFullToolAccess(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS === '1'
+    || env.CC_HAHA_EXPERT_FULL_TOOL_ACCESS === '1'
 }
 
 export function filterToolsForAgent({
@@ -139,6 +147,7 @@ export function resolveAgentTools(
   availableTools: Tools,
   isAsync = false,
   isMainThread = false,
+  env: NodeJS.ProcessEnv = process.env,
 ): ResolvedAgentTools {
   const {
     tools: agentTools,
@@ -146,10 +155,25 @@ export function resolveAgentTools(
     source,
     permissionMode,
   } = agentDefinition
+  // An active Expert session grants every delegated agent the same host tool
+  // pool as its parent, except for package-scoped interaction channels that are
+  // explicitly forbidden. In particular, a research worker must not regain
+  // AskUserQuestion merely because full tool access is enabled.
+  if (!isMainThread && isExpertSubagentFullToolAccess(env)) {
+    const resolvedTools = isExpertSubagentQuestionForbidden(env)
+      ? availableTools.filter((tool) => !toolMatchesName(tool, ASK_USER_QUESTION_TOOL_NAME))
+      : availableTools
+    return {
+      hasWildcard: true,
+      validTools: [],
+      invalidTools: [],
+      resolvedTools,
+    }
+  }
   // AskUserQuestion is normally excluded from every subagent. A reviewed built-in
   // agent can opt in only by explicitly declaring the existing tool in its own
   // definition; custom/plugin agents cannot gain this interaction channel.
-  const allowExplicitUserQuestion = !isExpertSubagentQuestionForbidden()
+  const allowExplicitUserQuestion = !isExpertSubagentQuestionForbidden(env)
     && source === 'built-in'
     && Boolean(agentTools?.some((toolSpec) => permissionRuleValueFromString(toolSpec).toolName === ASK_USER_QUESTION_TOOL_NAME))
   // When isMainThread is true, skip filterToolsForAgent entirely — the main
@@ -244,15 +268,16 @@ export function resolveAgentTools(
 }
 
 const EXPERT_PLAYWRIGHT_AUDIT_AGENT_TYPES = new Set([
+  // Reviewers receive upstream ledgers and are deliberately forbidden from
+  // browsing again, so only evidence researchers require browser provenance.
   'expert-evidence-researcher',
-  'expert-evidence-reviewer',
 ])
 
 /** Evidence subagents may return partial messages before an upstream/tool failure.
  * Those partial messages are not completed research and must reach the parent as
  * an error instead of a misleading completed Agent result. */
 export function shouldSurfaceExpertEvidenceAgentFailure(agentType: string | undefined): boolean {
-  return agentType === 'expert-evidence-researcher' || agentType === 'expert-evidence-reviewer'
+  return isFileFirstExpertResearchAgentType(agentType)
 }
 
 export const playwrightAuditStatusSchema = z.enum([
@@ -260,18 +285,32 @@ export const playwrightAuditStatusSchema = z.enum([
   'access_limited',
   'failed',
   'pending',
+  'interrupted',
 ])
 
 export const playwrightAuditEntrySchema = z.object({
+  /** Stable per tool use/action inside one active Expert session. */
+  auditId: z.string().optional(),
   target: z.string(),
   /** Present only when the actual navigation was a recognised search-engine entry. */
   kind: z.enum(['search', 'url']).optional(),
   searchEngine: z.enum(['Google', '百度', 'Bing', '360']).optional(),
   query: z.string().optional(),
   searchUrl: z.string().url().optional(),
+  /** A search homepage does not count as observed keyword results. */
+  searchResultStatus: z.enum(['results_observed', 'entry_opened', 'access_limited', 'failed', 'pending', 'interrupted']).optional(),
   status: playwrightAuditStatusSchema,
   finalUrl: z.string().optional(),
+  /** Browser action kinds observed in this navigation group. */
+  actionTypes: z.array(z.string()).max(64).optional(),
   detail: z.string().optional(),
+  accessDiagnostics: z.object({
+    connectionKind: z.enum(['managed', 'cdp']),
+    searchEngine: z.enum(['Google', '百度', 'Bing', '360']).optional(),
+    observedAt: z.string(),
+    pacingWaitedMs: z.number().int().nonnegative().optional(),
+    verificationKind: z.string().optional(),
+  }).optional(),
 })
 
 export type PlaywrightAuditStatus = z.infer<typeof playwrightAuditStatusSchema>
@@ -281,6 +320,8 @@ export const agentToolResultSchema = lazySchema(() =>
   z.object({
     agentId: z.string(),
     agentType: z.string().optional(),
+    /** Derived from a successful Write/Edit Markdown mutation, never from an exact final handoff format. */
+    artifactPath: z.string().optional(),
     content: z.array(z.object({ type: z.literal('text'), text: z.string() })),
     totalToolUseCount: z.number(),
     playwrightToolUseCount: z.number().optional(),
@@ -310,6 +351,40 @@ export function countToolUses(messages: MessageType[]): number {
   return count
 }
 
+/** Returns the last Markdown destination whose real Write or Edit call succeeded.
+ * A declared tool_use is only an intent: permission denials, failed mutations,
+ * or an interrupted stream must never be promoted into a durable artifact path.
+ * The server separately validates the allowed path and the saved artifact. */
+export function lastWrittenMarkdownArtifactPath(messages: MessageType[]): string | undefined {
+  const successfulMutationIds = new Set<string>()
+  for (const message of messages) {
+    if (message?.type !== 'user') continue
+    for (const block of message.message.content) {
+      if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.is_error !== true) {
+        successfulMutationIds.add(block.tool_use_id)
+      }
+    }
+  }
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex--) {
+    const message = messages[messageIndex]
+    if (message?.type !== 'assistant') continue
+    for (let blockIndex = message.message.content.length - 1; blockIndex >= 0; blockIndex--) {
+      const block = message.message.content[blockIndex]
+      if (
+        block?.type !== 'tool_use'
+        || (block.name !== 'Write' && block.name !== 'Edit')
+        || !successfulMutationIds.has(block.id)
+      ) continue
+      const input = asRecord(block.input)
+      const filePath = input?.file_path
+      if (typeof filePath !== 'string') continue
+      const normalized = filePath.trim()
+      if (normalized && normalized === filePath && normalized.endsWith('.md') && !/[\r\n]/.test(normalized)) return normalized
+    }
+  }
+  return undefined
+}
+
 /** Counts real SDK tool_use blocks for one exact tool name; never infer usage from text or URLs. */
 export function countToolUsesByName(messages: MessageType[], toolName: string): number {
   let count = 0
@@ -329,22 +404,59 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined
 }
 
-type PlaywrightAuditTarget = Pick<PlaywrightAuditEntry, 'target' | 'kind' | 'searchEngine' | 'query' | 'searchUrl'> & {
-  actionIndex?: number
+/** File-first Expert workers use durable Markdown as their only research handoff. */
+export function isFileFirstExpertResearchArtifactAgent(
+  agentType: string | undefined,
+  _env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return isFileFirstExpertResearchAgentType(agentType)
 }
 
-function searchEngineForAuditUrl(value: string): PlaywrightAuditEntry['searchEngine'] | undefined {
-  try {
-    const hostname = new URL(value).hostname.toLowerCase()
-    if (hostname.includes('google.')) return 'Google'
-    if (hostname.includes('baidu.')) return '百度'
-    if (hostname.includes('bing.')) return 'Bing'
-    if (hostname === 'so.com' || hostname.endsWith('.so.com')) return '360'
-  } catch {
-    // A malformed navigation is still retained as a normal failed target below.
-  }
-  return undefined
+function displayArtifactName(artifactPath: string | undefined): string | undefined {
+  if (typeof artifactPath !== 'string') return undefined
+  const normalized = artifactPath.trim()
+  if (!normalized || /[\r\n]/.test(normalized)) return undefined
+  const name = normalized.split(/[\\/]/).filter(Boolean).at(-1)
+  return name?.endsWith('.md') ? name : undefined
 }
+
+/**
+ * A file-first worker may think or report freely inside its own transcript, but
+ * its parent-visible completion is deliberately reduced to a one-line file
+ * receipt. The actual Markdown is read and verified separately by the server.
+ */
+export function normalizeFinalizedExpertResearchArtifactContent(
+  agentType: string,
+  content: AgentToolResult['content'],
+  artifactPath?: string,
+): AgentToolResult['content'] {
+  if (!isFileFirstExpertResearchArtifactAgent(agentType)) return content
+  const artifactName = displayArtifactName(artifactPath)
+  return [{
+    type: 'text',
+    text: artifactName
+      ? `文件交接：${artifactName}；状态：子代理已结束，请直接 Read 已分配 Markdown 核验。`
+      : '文件交接：未捕获 Markdown 路径；状态：子代理已结束，请按任务中已分配的 Markdown Read 核验。',
+  }]
+}
+
+/**
+ * Compatibility no-op. Intermediate artifact paths and prose are not a
+ * completion gate; later evidence and final-output review own validation.
+ */
+export function assertFinalizedExpertResearchArtifactWrite(
+  _agentMessages: MessageType[],
+  _agentType: string,
+  _contentOrEnv: AgentToolResult['content'] | NodeJS.ProcessEnv = process.env,
+  _legacyEnv?: NodeJS.ProcessEnv,
+): void {}
+type PlaywrightAuditTarget = Pick<PlaywrightAuditEntry, 'target' | 'kind' | 'searchEngine' | 'query' | 'searchUrl'> & {
+  actionIndex?: number
+  scriptPageIndex?: number
+  scriptPage?: PlaywrightScriptPage
+}
+
+const searchEngineForAuditUrl = searchEngineForUrl
 
 function searchQueryFromUrl(value: string): string | undefined {
   try {
@@ -368,11 +480,28 @@ function searchQueryFromActions(actions: Record<string, unknown>[]): string | un
   return undefined
 }
 
+/** A recognised engine homepage is an entry only; never treat it as a SERP. */
+function hasObservedSearchResults(engine: NonNullable<PlaywrightAuditEntry['searchEngine']>, value: string | undefined): boolean {
+  return isSearchResultsUrl(value, engine)
+}
+
+function playwrightActionTypesForAuditTarget(input: unknown, actionIndex: number | undefined, nextActionIndex: number | undefined): string[] | undefined {
+  if (actionIndex === undefined) return undefined
+  const rawActions = asRecord(input)?.actions
+  if (!Array.isArray(rawActions)) return undefined
+  const actionTypes = rawActions
+    .slice(actionIndex, nextActionIndex)
+    .map(asRecord)
+    .map((action) => typeof action?.type === 'string' ? action.type : undefined)
+    .filter((action): action is string => Boolean(action))
+  return actionTypes.length ? [...new Set(actionTypes)] : undefined
+}
+
 function playwrightAuditTargets(input: unknown): PlaywrightAuditTarget[] {
   const rawActions = asRecord(input)?.actions
   if (!Array.isArray(rawActions)) return []
   const actions = rawActions.map(asRecord).filter((action): action is Record<string, unknown> => Boolean(action))
-  const targets = actions.flatMap((action, actionIndex) => {
+  const targets = actions.flatMap<PlaywrightAuditTarget>((action, actionIndex) => {
     if ((action.type !== 'navigate' && action.type !== 'new_tab') || typeof action.url !== 'string') return []
     const searchEngine = searchEngineForAuditUrl(action.url)
     if (!searchEngine) return [{ target: action.url, kind: 'url' as const, actionIndex }]
@@ -386,7 +515,15 @@ function playwrightAuditTargets(input: unknown): PlaywrightAuditTarget[] {
       actionIndex,
     }]
   })
-  return targets.length > 0 ? targets : [{ target: 'Playwright action sequence' }]
+  return targets
+}
+
+type PlaywrightScriptPage = {
+  requestedUrl?: string
+  finalUrl?: string
+  title?: string
+  status?: 'opened' | 'access_limited' | 'failed'
+  detail?: string
 }
 
 type PlaywrightLedgerStep = {
@@ -395,11 +532,30 @@ type PlaywrightLedgerStep = {
   outcome?: 'success' | 'failed'
   url?: string
   detail?: string
+  scriptPages?: PlaywrightScriptPage[]
+}
+
+type PlaywrightAccessDiagnostics = {
+  connectionKind?: 'managed' | 'cdp'
+  searchEngine?: 'Google' | '百度' | 'Bing' | '360'
+  observedAt?: string
+  pacingWaitedMs?: number
+  verificationKind?: string
+}
+
+type PlaywrightVerificationHistory = {
+  stepIndex?: number
+  url?: string
+  detail?: string
 }
 
 type PlaywrightLedger = {
+  sharedHumanVerificationBlocked?: boolean
   url?: string
+  textExtracted?: boolean
   accessLimited?: boolean
+  verificationHistory?: PlaywrightVerificationHistory[]
+  accessDiagnostics?: PlaywrightAccessDiagnostics
   error?: string
   steps?: PlaywrightLedgerStep[]
 }
@@ -410,18 +566,50 @@ function decodePlaywrightLedger(content: unknown): PlaywrightLedger | undefined 
     : Array.isArray(content)
       ? content.map((block) => typeof asRecord(block)?.text === 'string' ? asRecord(block)?.text : '').join('\n')
       : ''
-  const match = text.match(/<playwright-action-ledger\s+encoding=\"base64\">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/i)
+  const match = text.match(/<playwright-action-ledger\s+encoding="base64">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/i)
   if (!match?.[1]) return undefined
   try {
     const parsed = asRecord(JSON.parse(Buffer.from(match[1], 'base64').toString('utf8')))
     if (!parsed) return undefined
     return {
       ...(typeof parsed.url === 'string' ? { url: parsed.url } : {}),
+      ...(parsed.textExtracted === true ? { textExtracted: true } : {}),
       ...(typeof parsed.accessLimited === 'boolean' ? { accessLimited: parsed.accessLimited } : {}),
+      ...(parsed.sharedHumanVerificationBlocked === true ? { sharedHumanVerificationBlocked: true } : {}),
+      ...(Array.isArray(parsed.verificationHistory) ? { verificationHistory: parsed.verificationHistory.map(asRecord).filter((entry): entry is PlaywrightVerificationHistory => Boolean(entry)) } : {}),
+      ...(asRecord(parsed.accessDiagnostics) ? { accessDiagnostics: parsed.accessDiagnostics as PlaywrightAccessDiagnostics } : {}),
       ...(typeof parsed.error === 'string' ? { error: parsed.error } : {}),
       ...(Array.isArray(parsed.steps) ? { steps: parsed.steps.map(asRecord).filter((step): step is PlaywrightLedgerStep => Boolean(step)) } : {}),
     }
   } catch { return undefined }
+}
+
+function scriptPageAuditTargets(ledger: PlaywrightLedger): PlaywrightAuditTarget[] {
+  const targets: PlaywrightAuditTarget[] = []
+  for (const step of ledger.steps ?? []) {
+    if (step.type !== 'script' || typeof step.index !== 'number') continue
+    for (const [scriptPageIndex, scriptPage] of (step.scriptPages ?? []).entries()) {
+      const targetUrl = scriptPage.requestedUrl ?? scriptPage.finalUrl
+      if (!targetUrl) continue
+      const searchEngine = searchEngineForAuditUrl(targetUrl)
+      if (searchEngine) {
+        const query = searchQueryFromUrl(targetUrl)
+        targets.push({
+          target: query ?? targetUrl,
+          kind: 'search',
+          searchEngine,
+          ...(query ? { query } : {}),
+          searchUrl: targetUrl,
+          actionIndex: step.index,
+          scriptPageIndex,
+          scriptPage,
+        })
+      } else {
+        targets.push({ target: targetUrl, kind: 'url', actionIndex: step.index, scriptPageIndex, scriptPage })
+      }
+    }
+  }
+  return targets
 }
 
 function isHumanVerificationUrl(value: unknown): boolean {
@@ -430,6 +618,9 @@ function isHumanVerificationUrl(value: unknown): boolean {
 }
 
 function firstHumanVerificationStepIndex(ledger: PlaywrightLedger): number | undefined {
+  for (const entry of ledger.verificationHistory ?? []) {
+    if (typeof entry.stepIndex === 'number') return entry.stepIndex
+  }
   for (const step of ledger.steps ?? []) {
     if (
       typeof step.index === 'number'
@@ -439,65 +630,209 @@ function firstHumanVerificationStepIndex(ledger: PlaywrightLedger): number | und
   return undefined
 }
 
+/**
+ * A human-verification history records the page that was actually blocked before
+ * the Expert runtime injected a later fallback navigation. Keep that provenance
+ * attached to the blocked target rather than replacing it with the fallback URL.
+ */
+function verificationUrlForAuditTarget(ledger: PlaywrightLedger, actionIndex: number | undefined): string | undefined {
+  const history = ledger.verificationHistory ?? []
+  if (actionIndex !== undefined) {
+    const matchingEntry = history.find((entry) => entry.stepIndex === actionIndex && typeof entry.url === 'string')
+    if (matchingEntry?.url) return matchingEntry.url
+  }
+  if (history.length === 1 && typeof history[0]?.url === 'string') return history[0].url
+  return undefined
+}
+
+/**
+ * The runner may observe an engine's short verification interstitial while the
+ * same browser action is still in flight. When the final page is a normal SERP
+ * for that same engine and the runner's final assessment is healthy, that is an
+ * internal transition diagnostic rather than a user-blocking access limit.
+ */
+function transientVerificationRecoveredToSearchResults(ledger: PlaywrightLedger): boolean {
+  if (ledger.accessLimited || !ledger.url || !(ledger.verificationHistory?.length)) return false
+  return ledger.verificationHistory.some((entry) => {
+    if (typeof entry.url !== 'string') return false
+    const engine = searchEngineForAuditUrl(entry.url)
+    return Boolean(engine && hasObservedSearchResults(engine, ledger.url))
+  })
+}
+
+/**
+ * Resolves the URL that a navigation actually reached before the next navigation
+ * began. This deliberately differs from the initial action URL: a search flow
+ * commonly starts on an engine homepage, fills a query, presses Enter, and only
+ * then reaches the evidence-bearing SERP.
+ */
+function observedActionFinalUrl(input: {
+  ledger: PlaywrightLedger
+  actionIndex: number | undefined
+  nextActionIndex: number | undefined
+  accessLimited: boolean
+}): string | undefined {
+  const { ledger, actionIndex, nextActionIndex, accessLimited } = input
+  const urlIsUsable = (url: string | undefined): url is string => Boolean(url) && (accessLimited || !isHumanVerificationUrl(url))
+
+  // The ledger's top-level URL is the browser's final URL for the last action
+  // group. Prefer it there so submit/redirect flows retain the resulting page.
+  if (nextActionIndex === undefined && urlIsUsable(ledger.url)) return ledger.url
+
+  const observed = (ledger.steps ?? [])
+    .filter((step) => (
+      typeof step.index === 'number'
+      && (actionIndex === undefined || step.index >= actionIndex)
+      && (nextActionIndex === undefined || step.index < nextActionIndex)
+      && urlIsUsable(step.url)
+    ))
+    .map((step) => step.url)
+    .findLast((url): url is string => Boolean(url))
+  if (observed) return observed
+
+  // Preserve an access-limited final URL (for example a CAPTCHA page) when it
+  // is the only observed outcome for this action group.
+  if (accessLimited && nextActionIndex === undefined && ledger.url) return ledger.url
+  return undefined
+}
+
 /** Reads actual Playwright action traces, never natural-language claims, for evidence-agent auditing. */
 export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEntry[] {
   const resultsByUseId = new Map<string, { content: unknown; isError: boolean }>()
   for (const message of messages) {
     if (message.type !== 'user') continue
-    for (const block of message.message.content) if (block.type === 'tool_result') resultsByUseId.set(block.tool_use_id, { content: block.content, isError: Boolean(block.is_error) })
+    for (const block of message.message.content) {
+      if (block.type === 'tool_result') resultsByUseId.set(block.tool_use_id, { content: block.content, isError: Boolean(block.is_error) })
+    }
   }
   const audit: PlaywrightAuditEntry[] = []
   for (const message of messages) {
     if (message.type !== 'assistant') continue
     for (const block of message.message.content) {
       if (block.type !== 'tool_use' || block.name !== 'Playwright') continue
-      const targets = playwrightAuditTargets(block.input)
       const result = resultsByUseId.get(block.id)
+      const declaredTargets = playwrightAuditTargets(block.input)
       if (!result) {
-        audit.push(...targets.map(({ actionIndex: _actionIndex, ...target }) => ({ ...target, status: 'pending' as const, detail: 'No paired Playwright tool result was recorded.' })))
+        const targets = declaredTargets.length > 0 ? declaredTargets : [{ target: 'Playwright action sequence' }]
+        audit.push(...targets.map(({ actionIndex: _actionIndex, scriptPageIndex: _scriptPageIndex, scriptPage: _scriptPage, ...target }) => ({ ...target, status: 'pending' as const, detail: 'No paired Playwright tool result was recorded.' })))
         continue
       }
       const ledger = decodePlaywrightLedger(result.content)
       if (!ledger) {
-        audit.push(...targets.map(({ actionIndex: _actionIndex, ...target }) => ({ ...target, status: 'pending' as const, detail: 'Playwright returned no machine-readable action ledger.' })))
+        const targets = declaredTargets.length > 0 ? declaredTargets : [{ target: 'Playwright action sequence' }]
+        audit.push(...targets.map(({ actionIndex: _actionIndex, scriptPageIndex: _scriptPageIndex, scriptPage: _scriptPage, ...target }) => ({ ...target, status: 'pending' as const, detail: 'Playwright returned no machine-readable action ledger.' })))
         continue
       }
+      if (ledger.sharedHumanVerificationBlocked && !(ledger.steps?.length)) {
+        audit.push(...declaredTargets.map(({ actionIndex: _actionIndex, scriptPageIndex: _scriptPageIndex, scriptPage: _scriptPage, ...target }) => ({
+          ...target,
+          status: 'interrupted' as const,
+          detail: '本请求因其它页面的共享验证等待而未执行；不代表目标网站受限或访问失败。' + (ledger.error ? ' ' + ledger.error : ''),
+        })))
+        continue
+      }
+      const targets = [...declaredTargets, ...scriptPageAuditTargets(ledger)]
+      if (targets.length === 0 && ledger.url && ledger.steps?.length) {
+        // An extract/click/typed search in a later call still belongs to the page
+        // actually observed by the runner, not a generic action sequence.
+        const engine = searchEngineForAuditUrl(ledger.url)
+        const query = engine ? searchQueryFromUrl(ledger.url) : undefined
+        targets.push({ target: query ?? ledger.url, kind: engine ? 'search' : 'url',
+          ...(engine ? { searchEngine: engine, searchUrl: ledger.url } : {}),
+          ...(query ? { query } : {}), actionIndex: ledger.steps[0]?.index ?? 0 })
+      }
+      if (targets.length === 0) targets.push({ target: 'Playwright action sequence' })
       const hasIndexedSteps = ledger.steps?.some((step) => typeof step.index === 'number') ?? false
-      for (const { actionIndex, ...target } of targets) {
+      for (const [targetPosition, rawTarget] of targets.entries()) {
+        const { actionIndex, scriptPageIndex, scriptPage, ...target } = rawTarget
+        const nextActionIndex = targets.slice(targetPosition + 1)
+          .map((candidate) => candidate.actionIndex)
+          .find((candidate): candidate is number => typeof candidate === 'number' && candidate !== actionIndex)
         const actionStep = actionIndex === undefined || !hasIndexedSteps
           ? undefined
           : ledger.steps?.find((step) => step.index === actionIndex)
-        const failure = actionStep?.outcome === 'failed' ? actionStep : undefined
-        const actionDidNotRun = actionIndex !== undefined && hasIndexedSteps && !actionStep
+        const failure = (ledger.steps ?? []).find((step) => step.outcome === 'failed'
+          && typeof step.index === 'number' && (actionIndex === undefined || step.index >= actionIndex)
+          && (nextActionIndex === undefined || step.index < nextActionIndex))
+        const actionDidNotRun = !scriptPage && actionIndex !== undefined && hasIndexedSteps && !actionStep
         const verificationStepIndex = firstHumanVerificationStepIndex(ledger)
-        const accessLimitedForTarget = Boolean(ledger.accessLimited) && (
-          actionIndex === undefined
-          || verificationStepIndex === undefined
-          || actionIndex >= verificationStepIndex
-        )
-        const errorAppliesToTarget = !ledger.accessLimited || accessLimitedForTarget
-        const status: PlaywrightAuditStatus = actionDidNotRun
-          ? 'pending'
-          : accessLimitedForTarget
-            ? 'access_limited'
-            : errorAppliesToTarget && (ledger.error || result.isError || failure)
-              ? 'failed'
-              : 'opened'
-        const actionUrl = actionStep?.url
-        const finalUrl = actionUrl && !(isHumanVerificationUrl(actionUrl) && !accessLimitedForTarget)
-          ? actionUrl
-          : ledger.url
+        const hasVerificationHistory = (ledger.verificationHistory?.length ?? 0) > 0
+        const transientVerificationRecovered = transientVerificationRecoveredToSearchResults(ledger)
+        const verificationObserved = Boolean(ledger.accessLimited) || (hasVerificationHistory && !transientVerificationRecovered)
+        const accessLimitedForTarget = scriptPage
+          ? scriptPage.status === 'access_limited'
+          : verificationObserved && (
+            actionIndex === undefined ||
+            verificationStepIndex === undefined ||
+            actionIndex === verificationStepIndex
+          )
+        const errorAppliesToTarget = scriptPage
+          ? scriptPage.status === 'failed'
+          : (!verificationObserved || accessLimitedForTarget)
+            && (Boolean(failure) || !hasIndexedSteps || nextActionIndex === undefined)
+        const status: PlaywrightAuditStatus = scriptPage?.status
+          ?? (actionDidNotRun
+            ? 'pending'
+            : accessLimitedForTarget
+              ? 'access_limited'
+              : errorAppliesToTarget && (ledger.error || result.isError || failure)
+                ? 'failed'
+                : 'opened')
+        const verificationUrl = accessLimitedForTarget
+          ? verificationUrlForAuditTarget(ledger, actionIndex)
+          : undefined
+        const finalUrl = scriptPage
+          ? scriptPage.finalUrl ?? scriptPage.requestedUrl
+          : verificationUrl ?? observedActionFinalUrl({
+            ledger,
+            actionIndex,
+            nextActionIndex,
+            accessLimited: accessLimitedForTarget,
+          }) ?? actionStep?.url ?? ledger.url
+        const executedTypes = hasIndexedSteps
+          ? (ledger.steps ?? []).filter((step) => step.outcome === 'success'
+            && (actionIndex === undefined || step.index! >= actionIndex)
+            && (nextActionIndex === undefined || step.index! < nextActionIndex))
+            .map((step) => step.type).filter((type): type is string => Boolean(type))
+          : playwrightActionTypesForAuditTarget(block.input, actionIndex, nextActionIndex) ?? []
+        // Script navigation alone proves no extraction. Only the final body
+        // actually returned by the tool can attest that particular page.
+        if (executedTypes.includes('script') && ledger.textExtracted && status === 'opened' && finalUrl === ledger.url) executedTypes.push('extract')
+        const actionTypes = [...new Set(executedTypes)]
+        const searchResultStatus = target.kind === 'search'
+          ? status === 'access_limited'
+            ? 'access_limited' as const
+            : status === 'pending'
+              ? 'pending' as const
+              : status === 'failed'
+                ? 'failed' as const
+                : hasObservedSearchResults(target.searchEngine!, finalUrl)
+                  ? 'results_observed' as const
+                  : 'entry_opened' as const
+          : undefined
         audit.push({
           ...target,
+          auditId: scriptPage
+            ? 'playwright:' + block.id + ':' + (actionIndex ?? 'script') + ':script:' + (scriptPageIndex ?? 0)
+            : 'playwright:' + block.id + ':' + (actionIndex ?? 'sequence'),
           status,
+          ...(searchResultStatus ? { searchResultStatus } : {}),
           ...(finalUrl ? { finalUrl } : {}),
+          ...(actionTypes ? { actionTypes } : {}),
+          ...(accessLimitedForTarget && ledger.accessDiagnostics?.connectionKind && ledger.accessDiagnostics.observedAt
+            ? { accessDiagnostics: ledger.accessDiagnostics as PlaywrightAuditEntry['accessDiagnostics'] }
+            : {}),
           ...(actionDidNotRun
             ? { detail: 'This navigation did not run because the Playwright action sequence stopped earlier.' }
-            : errorAppliesToTarget && ledger.error
-              ? { detail: truncatePlaywrightAuditDetail(ledger.error) }
-              : failure?.detail
-                ? { detail: truncatePlaywrightAuditDetail(failure.detail) }
-                : {}),
+            : scriptPage?.detail
+              ? { detail: truncatePlaywrightAuditDetail(scriptPage.detail) }
+              : errorAppliesToTarget && ledger.error
+                ? { detail: truncatePlaywrightAuditDetail(ledger.error) }
+                : failure?.detail
+                  ? { detail: truncatePlaywrightAuditDetail(failure.detail) }
+                  : transientVerificationRecovered
+                    ? { detail: 'A transient verification interstitial automatically recovered to the final normal search-results page.' }
+                    : {}),
         })
       }
     }
@@ -521,10 +856,13 @@ export function formatPlaywrightAudit(
   }
   const lines = entries.slice(0, maxEntries).map(entry => {
     const target = entry.kind === 'search'
-      ? `query ${JSON.stringify(entry.query ?? entry.target)}${entry.searchEngine ? ` [engine=${entry.searchEngine}]` : ''}${entry.searchUrl ? ` [search_url=${entry.searchUrl}]` : ''}`
-      : entry.target
+      ? `query ${JSON.stringify(entry.query ?? entry.target)}${entry.searchEngine ? ` [engine=${entry.searchEngine}]` : ''}${entry.searchUrl ? ` [search_url=${entry.searchUrl}]` : ''}${entry.searchResultStatus ? ` [search_result=${entry.searchResultStatus}]` : ''}${entry.auditId ? ` [audit_id=${entry.auditId}]` : ''}`
+      : `${entry.target}${entry.auditId ? ` [audit_id=${entry.auditId}]` : ''}`
     const finalUrl = entry.finalUrl ? ` [final_url=${entry.finalUrl}]` : ''
-    return `- ${entry.status}: ${target}${finalUrl}${entry.detail ? ` — ${entry.detail}` : ''}`
+    const diagnostics = entry.accessDiagnostics
+      ? ` [browser=${entry.accessDiagnostics.connectionKind}${entry.accessDiagnostics.searchEngine ? `; engine=${entry.accessDiagnostics.searchEngine}` : ''}${typeof entry.accessDiagnostics.pacingWaitedMs === 'number' ? `; pacingWaitedMs=${entry.accessDiagnostics.pacingWaitedMs}` : ''}${entry.accessDiagnostics.verificationKind ? `; verification=${entry.accessDiagnostics.verificationKind}` : ''}]`
+      : ''
+    return `- ${entry.status}: ${target}${finalUrl}${diagnostics}${entry.detail ? ` — ${entry.detail}` : ''}`
   })
   if (entries.length > maxEntries) {
     lines.push(`- truncated: ${entries.length - maxEntries} additional Playwright call(s) are retained in the transcript.`)
@@ -542,6 +880,7 @@ export function finalizeAgentTool(
     startTime: number
     agentType: string
     isAsync: boolean
+    researchSourceAssignment?: ExpertResearchSourceAssignment
   },
 ): AgentToolResult {
   const {
@@ -582,6 +921,12 @@ export function finalizeAgentTool(
     'Playwright',
   )
   const playwrightAudit = buildPlaywrightAudit(agentMessages)
+  const artifactPath = lastWrittenMarkdownArtifactPath(agentMessages)
+  const parentVisibleContent = normalizeFinalizedExpertResearchArtifactContent(
+    agentType,
+    content,
+    artifactPath,
+  )
 
   logEvent('tengu_agent_tool_completed', {
     agent_type:
@@ -613,7 +958,8 @@ export function finalizeAgentTool(
   return {
     agentId,
     agentType,
-    content,
+    ...(artifactPath ? { artifactPath } : {}),
+    content: parentVisibleContent,
     totalDurationMs: Date.now() - startTime,
     totalTokens,
     totalToolUseCount,
@@ -624,21 +970,118 @@ export function finalizeAgentTool(
 }
 
 /**
+ * Records a bounded terminal outcome when an Expert researcher stops before its
+ * normal final message. Pending transcript entries become "interrupted" and
+ * every URL in the injected source batch receives an explicit interrupted
+ * receipt when it was not reached. This is never an access-limit conclusion.
+ */
+export async function recordInterruptedExpertAgentResearchAudit(
+  input: {
+    agentId: string
+    agentType?: string
+    prompt?: string
+    messages: MessageType[]
+    artifactPath?: string
+    sourceAssignment?: ExpertResearchSourceAssignment
+    reason: string
+    recordAudit?: typeof recordExpertSubagentResearchAudit
+  },
+): Promise<boolean> {
+  if (input.agentType !== 'expert-evidence-researcher') return false
+
+  const transcriptText = input.messages
+    .filter((message) => message.type === 'assistant' || message.type === 'user')
+    .map((message) => extractTextContent(message.message.content, '\n'))
+    .concat(input.prompt ?? '')
+    .join('\n')
+  const assignment = [...transcriptText.matchAll(/<expert-research-source-assignment>([\s\S]*?)<\/expert-research-source-assignment>/g)].at(-1)?.[1] ?? ''
+  const transcriptArtifactPath = assignment.match(/(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.md\b/i)?.[0]
+  const transcriptUrls = [...assignment.matchAll(/https?:\/\/[^\s<>"']+/g)]
+    .map((match) => match[0].replace(/[.,;:!?)}]+$/g, ''))
+    .filter((url, index, urls) => Boolean(url) && urls.indexOf(url) === index)
+  // Prefer the runner's structured assignment. The transcript is only a
+  // compatibility fallback for older callers; it may be absent when the
+  // provider/tool stream fails before injected meta messages are emitted.
+  const assignedArtifactPath = input.sourceAssignment?.artifactPath ?? transcriptArtifactPath
+  const assignedUrls = input.sourceAssignment?.candidateUrls ?? transcriptUrls
+
+  const reason = input.reason.trim().slice(0, 240)
+  const interruptedDetail = '研究子代理在当前来源小批次完成前中断；这不代表该入口已访问、受限或失败' + (reason ? '。原因：' + reason : '。')
+  const audit = buildPlaywrightAudit(input.messages).map((entry) => {
+    if (entry.status !== 'pending') return entry
+    return {
+      ...entry,
+      status: 'interrupted' as const,
+      ...(entry.searchResultStatus === 'pending' ? { searchResultStatus: 'interrupted' as const } : {}),
+      detail: interruptedDetail + (entry.detail ? ' ' + entry.detail : ''),
+    }
+  })
+  const representedUrls = new Set(audit.flatMap((entry) => [entry.target, entry.finalUrl].filter((value): value is string => Boolean(value))))
+  for (const [index, target] of assignedUrls.entries()) {
+    if (representedUrls.has(target)) continue
+    audit.push({
+      auditId: 'interrupted:' + input.agentId + ':' + index,
+      target,
+      kind: 'url',
+      status: 'interrupted',
+      detail: interruptedDetail,
+    })
+  }
+  if (audit.length === 0) return false
+
+  const recordAudit = input.recordAudit ?? recordExpertSubagentResearchAudit
+  await recordAudit({
+    agentId: input.agentId,
+    agentType: input.agentType,
+    entries: audit,
+    ...(input.artifactPath ?? assignedArtifactPath ? { artifactPath: input.artifactPath ?? assignedArtifactPath } : {}),
+    content: '研究子代理在当前来源小批次完成前中断。以下记录仅用于恢复队列和浏览审计，不代表入口已打开、访问受限或访问失败。' + (reason ? '原因：' + reason : ''),
+    interrupted: true,
+  })
+  return true
+}
+
+/**
  * Persists transcript-derived browser provenance for Expert researchers after
  * either synchronous or asynchronous Agent completion. This remains a no-op
  * for ordinary agents and never exposes another model-callable tool.
  */
 export async function recordFinalizedExpertAgentResearchAudit(
-  agentResult: Pick<AgentToolResult, 'agentId' | 'agentType' | 'content' | 'playwrightAudit'>,
+  agentResult: Pick<AgentToolResult, 'agentId' | 'agentType' | 'artifactPath' | 'content' | 'playwrightAudit'>,
   fallbackAgentType: string,
   recordAudit: typeof recordExpertSubagentResearchAudit = recordExpertSubagentResearchAudit,
-): Promise<void> {
+  loadPostReviewContext: typeof loadExpertPostReviewEvidenceAbsorptionContext = loadExpertPostReviewEvidenceAbsorptionContext,
+): Promise<string | undefined> {
+  const agentType = agentResult.agentType ?? fallbackAgentType
+  const persistedHandoff = normalizeFinalizedExpertResearchArtifactContent(
+    agentType,
+    agentResult.content,
+    agentResult.artifactPath,
+  )
   await recordAudit({
     agentId: agentResult.agentId,
-    agentType: agentResult.agentType ?? fallbackAgentType,
+    agentType,
+    ...((agentType === 'expert-evidence-researcher' || (agentType === 'general-purpose' && agentResult.artifactPath)) ? { completed: true } : {}),
     entries: agentResult.playwrightAudit ?? [],
-    ...(agentResult.content ? { content: extractTextContent(agentResult.content, '\n') } : {}),
+    ...(agentResult.artifactPath ? { artifactPath: agentResult.artifactPath } : {}),
+    ...(persistedHandoff.length > 0 ? { content: extractTextContent(persistedHandoff, '\n') } : {}),
   })
+  return (await loadPostReviewContext(agentType))?.instruction
+}
+
+/**
+ * Appends a server-authorized, ZIP-opt-in evidence absorption phase to the
+ * parent-visible handoff. This has no effect for ordinary agents or Experts.
+ */
+export function appendExpertPostReviewEvidenceAbsorptionContext(
+  agentResult: Pick<AgentToolResult, 'agentType' | 'content'>,
+  instruction: string | undefined,
+): void {
+  if (isFileFirstExpertResearchArtifactAgent(agentResult.agentType)) return
+  const normalized = instruction?.trim()
+  if (!normalized || !normalized.includes('<expert-post-review-evidence-absorption>')) return
+  if (agentResult.content.some((block) => block.text.includes('<expert-post-review-evidence-absorption>'))) return
+  agentResult.content.push({ type: 'text', text: normalized })
 }
 
 /**
@@ -805,6 +1248,7 @@ export async function runAsyncAgentLifecycle({
   agentIdForCleanup,
   enableSummarization,
   getWorktreeResult,
+  validateFinalMessage,
 }: {
   taskId: string
   abortController: AbortController
@@ -821,6 +1265,7 @@ export async function runAsyncAgentLifecycle({
     worktreePath?: string
     worktreeBranch?: string
   }>
+  validateFinalMessage?: (message: string) => string | null
 }): Promise<AsyncAgentLifecycleOutcome> {
   let stopSummarization: (() => void) | undefined
   const agentMessages: MessageType[] = []
@@ -884,7 +1329,11 @@ export async function runAsyncAgentLifecycle({
     stopSummarization?.()
 
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
-    await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType)
+    const finalMessage = extractTextContent(agentResult.content, '\n')
+    const finalValidationError = validateFinalMessage?.(finalMessage)
+    if (finalValidationError) throw new Error(finalValidationError)
+    const postReviewEvidenceAbsorption = await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType)
+    appendExpertPostReviewEvidenceAbsorptionContext(agentResult, postReviewEvidenceAbsorption)
 
     // Mark task completed FIRST so TaskOutput(block=true) unblocks
     // immediately, then notify the parent before any optional cleanup. The
@@ -896,7 +1345,7 @@ export async function runAsyncAgentLifecycle({
       description,
       status: 'completed',
       setAppState: rootSetAppState,
-      finalMessage: extractTextContent(agentResult.content, '\n'),
+      finalMessage,
       usage: {
         totalTokens: getTokenCountFromTracker(tracker),
         toolUses: agentResult.totalToolUseCount,
@@ -928,6 +1377,18 @@ export async function runAsyncAgentLifecycle({
     return { status: 'succeeded' }
   } catch (error) {
     stopSummarization?.()
+    try {
+      await recordInterruptedExpertAgentResearchAudit({
+        agentId: agentIdForCleanup,
+        agentType: metadata.agentType,
+        prompt: metadata.prompt,
+        messages: agentMessages,
+        sourceAssignment: metadata.researchSourceAssignment,
+        reason: error instanceof AbortError ? 'Agent was cancelled before normal completion.' : errorMessage(error),
+      })
+    } catch (auditError) {
+      logForDebugging(`Interrupted Expert research audit failed: ${errorMessage(auditError)}`)
+    }
     if (error instanceof AbortError) {
       // killAsyncAgent is a no-op if TaskStop already set status='killed' —
       // but only this catch handler has agentMessages, so the notification

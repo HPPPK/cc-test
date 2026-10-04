@@ -1,0 +1,15 @@
+{
+  "id": "write",
+  "name": "写入项目体检",
+  "type": "hostBuiltinRef",
+  "purpose": "在当前 Expert 会话 workDir 写入只读体检交付物。",
+  "entrypoint": "tools/write/tool.json",
+  "hostToolId": "Write",
+  "permissions": [
+    {
+      "id": "write-session-artifacts",
+      "description": "仅在当前 Expert 会话的 workDir 内写入明确声明的交付文件；不使用硬编码绝对路径，不修改用户项目源码。"
+    }
+  ],
+  "network": "none"
+}

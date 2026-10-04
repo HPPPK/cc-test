@@ -23,8 +23,8 @@ describe('AskUserQuestionTool workflow contract', () => {
     expect(parsed.success).toBe(false)
     if (parsed.success) throw new Error('Question without choices must be rejected')
     expect(parsed.error.issues.some((issue) => issue.message.includes('Question card requires 2–4 choices'))).toBe(true)
-    expect(parsed.error.issues.some((issue) => issue.message.includes('open-ended answer, use a normal assistant message'))).toBe(true)
-    expect(parsed.error.issues.some((issue) => issue.message.includes('retry AskUserQuestion with 2–4 user-answer choices'))).toBe(true)
+    expect(parsed.error.issues.some((issue) => issue.message.includes('Keep the user interaction in AskUserQuestion'))).toBe(true)
+    expect(parsed.error.issues.some((issue) => issue.message.includes('retry with 2–4 useful choices'))).toBe(true)
   })
 
   test('accepts a legacy top-level multiSelect flag without breaking the provider-facing schema', async () => {
@@ -48,6 +48,25 @@ describe('AskUserQuestionTool workflow contract', () => {
     expect(Object.prototype.hasOwnProperty.call(jsonSchema.properties ?? {}, 'multiSelect')).toBe(true)
   })
 
+  test('accepts a legacy root header so a cosmetic label cannot force the model to retry the same question', async () => {
+    const tool = await loadTool()
+    const parsed = tool.inputSchema.safeParse({
+      header: 'Research focus',
+      questions: [{
+        id: 'research-object',
+        prompt: 'Which research object should we analyze?',
+        choices: [{ id: 'new-product', label: 'New product' }, { id: 'existing-product', label: 'Existing product' }],
+      }],
+    })
+
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.header).toBe('Research focus')
+
+    const jsonSchema = zodToJsonSchema(tool.inputSchema)
+    expect(Object.prototype.hasOwnProperty.call(jsonSchema.properties ?? {}, 'header')).toBe(true)
+  })
+
   test('accepts explicit workflow completion blocking semantics without adding a new tool', async () => {
     const tool = await loadTool()
     expect(tool.inputSchema.safeParse({
@@ -58,6 +77,25 @@ describe('AskUserQuestionTool workflow contract', () => {
         choices: [{ id: 'brief', label: 'Brief summary' }, { id: 'detailed', label: 'Detailed summary' }],
       }],
     }).success).toBe(true)
+  })
+
+  test('accepts blank optional workflow context for a non-blocking question instead of rejecting the whole card', async () => {
+    const tool = await loadTool()
+    const parsed = tool.inputSchema.safeParse({
+      questions: [{
+        id: 'market-scope',
+        prompt: 'Which markets should the research cover?',
+        blocksCompletion: false,
+        blockingReason: '',
+        answerImpact: '   ',
+        choices: [{ id: 'china', label: 'China' }, { id: 'global', label: 'Global' }],
+      }],
+    })
+
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.questions[0]?.blockingReason).toBe('')
+    expect(parsed.data.questions[0]?.answerImpact).toBe('   ')
   })
 
   test('accepts the optional context required by necessary workflow questions', async () => {
@@ -71,6 +109,24 @@ describe('AskUserQuestionTool workflow contract', () => {
         choices: [{ label: 'Integration A' }, { label: 'Integration B' }],
       }],
     }).success).toBe(true)
+  })
+
+  test('requires a complete blocking contract in both validation and the provider-facing schema', async () => {
+    const tool = await loadTool()
+    const incomplete = tool.inputSchema.safeParse({
+      questions: [{
+        prompt: 'Which compatibility contract must this change preserve?',
+        blocksCompletion: true,
+        choices: [{ label: 'Contract A' }, { label: 'Contract B' }],
+      }],
+    })
+
+    expect(incomplete.success).toBe(false)
+
+    const jsonSchema = JSON.stringify(zodToJsonSchema(tool.inputSchema))
+    expect(jsonSchema).toContain('"required":["blocksCompletion","blockingReason","answerImpact"]')
+    expect(jsonSchema).toContain('"const":true')
+    expect(jsonSchema).toContain('"const":false')
   })
 
   test('rejects workflow commands in question options so Ask can only return an answer to the current phase', async () => {

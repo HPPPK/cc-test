@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ApiError } from '../middleware/errorHandler.js'
-import type { WorkflowArtifact, WorkflowRun } from './workflowTypes.js'
+import type { WorkflowArtifact, WorkflowContextCapsule, WorkflowRun, WorkflowTemplate } from './workflowTypes.js'
 
 type WorkflowStorageKind = 'project-context' | 'work-order' | 'run-report'
 
@@ -16,6 +16,9 @@ export type EnsureWorkflowArtifactStorageInput = {
   run: WorkflowRun
   runIndex?: number
   now: string
+  templateSnapshot?: WorkflowTemplate
+  templateSnapshotHash?: string
+  contextCapsules?: WorkflowContextCapsule[]
 }
 
 const WORKFLOW_DIR = '.workflow'
@@ -62,6 +65,13 @@ export function workflowRunArchiveDir(workspaceRoot: string, runIndex = 0): stri
   return path.join(workspaceRoot, WORKFLOW_DIR, 'runs', `run-${String(runIndex + 1).padStart(3, '0')}`)
 }
 
+export function workflowRunStateDir(workspaceRoot: string, runId: string): string {
+  if (!runId || path.basename(runId) !== runId || runId.includes('/') || runId.includes('\\')) {
+    throw ApiError.badRequest('Workflow run id is not safe for project artifact storage')
+  }
+  return path.join(workspaceRoot, WORKFLOW_DIR, 'runs', runId)
+}
+
 export async function ensureWorkflowArtifactStorage(
   input: EnsureWorkflowArtifactStorageInput,
 ): Promise<void> {
@@ -70,6 +80,7 @@ export async function ensureWorkflowArtifactStorage(
   await ensureWorkflowDirectories(input.workspaceRoot)
   await writeCurrentCanonicalFiles(input)
   await writeRunArchive(input)
+  await writeRunStateArtifacts(input)
 }
 
 async function ensureWorkflowDirectories(workspaceRoot: string): Promise<void> {
@@ -105,6 +116,36 @@ async function writeRunArchive(input: EnsureWorkflowArtifactStorageInput): Promi
       artifact.content ?? renderArtifactSummary(artifact),
     )
   }
+}
+
+async function writeRunStateArtifacts(input: EnsureWorkflowArtifactStorageInput): Promise<void> {
+  if (!input.templateSnapshot && !(input.contextCapsules?.length)) return
+  const runDir = workflowRunStateDir(input.workspaceRoot, input.run.id)
+  await fs.mkdir(runDir, { recursive: true })
+
+  if (input.templateSnapshot) {
+    await atomicWriteJson(path.join(runDir, 'template.snapshot.json'), {
+      schemaVersion: 1,
+      runId: input.run.id,
+      templateId: input.run.templateId,
+      templateHash: input.templateSnapshotHash ?? null,
+      template: input.templateSnapshot,
+    })
+  }
+
+  for (const capsule of input.contextCapsules ?? []) {
+    if (capsule.runId !== input.run.id) continue
+    const filename = `${safeJsonSegment(capsule.fromPhaseId)}-to-${safeJsonSegment(capsule.toPhaseId)}.json`
+    await atomicWriteJson(path.join(runDir, 'handoffs', filename), capsule)
+  }
+}
+
+async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+  await atomicWriteFile(filePath, JSON.stringify(value, null, 2))
+}
+
+function safeJsonSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'phase'
 }
 
 async function writeCanonicalFile(

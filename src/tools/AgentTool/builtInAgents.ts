@@ -5,6 +5,8 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
 import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
 import { EXPERT_EVIDENCE_RESEARCH_AGENT } from './built-in/expertEvidenceResearchAgent.js'
+import { EXPERT_EVIDENCE_ABSORPTION_AGENT } from './built-in/expertEvidenceAbsorptionAgent.js'
+import { EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT } from './built-in/expertEvidenceOutputReviewAgent.js'
 import { EXPERT_EVIDENCE_REVIEW_AGENT } from './built-in/expertEvidenceReviewAgent.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { PLAN_AGENT } from './built-in/planAgent.js'
@@ -62,6 +64,8 @@ export function getBuiltInAgents(): AgentDefinition[] {
     STATUSLINE_SETUP_AGENT,
     EXPERT_EVIDENCE_RESEARCH_AGENT,
     EXPERT_EVIDENCE_REVIEW_AGENT,
+    EXPERT_EVIDENCE_ABSORPTION_AGENT,
+    EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT,
   ]
 
   if (areExplorePlanAgentsEnabled()) {

@@ -1,0 +1,14 @@
+{
+  "name": "Write",
+  "purpose": "仅在当前 Expert 会话 workDir 写入原型和研究交付文件。",
+  "id": "write",
+  "type": "hostBuiltinRef",
+  "hostToolId": "Write",
+  "permissions": [
+    {
+      "id": "write-prototype-artifacts",
+      "description": "仅在当前 Expert 会话 workDir 写原型简报、可选研究台账、低中高保真 HTML 和 QA 证据；不写入用户项目。"
+    }
+  ],
+  "network": "none"
+}

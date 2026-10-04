@@ -280,12 +280,13 @@ function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): Workflow
 function workflowStateWithToolPolicy(
   activePhaseId: string,
   allowedTools: string[],
+  templateId = 'custom-tools',
 ): WorkflowSessionState {
   return {
     ...stateFor(activePhaseId),
     templateSnapshot: {
       schemaVersion: 1,
-      id: 'custom-tools',
+      id: templateId,
       source: 'user',
       version: '1',
       displayName: 'Custom Tools',
@@ -305,6 +306,11 @@ function workflowStateWithToolPolicy(
           transitionAuthority: 'user-confirmation',
         },
       ],
+    },
+    templateIdentity: {
+      id: templateId,
+      source: 'user',
+      version: '1',
     },
   } as WorkflowSessionState
 }
@@ -630,6 +636,40 @@ describe('workflowToolPolicy', () => {
     expect(workflowToolPolicy.isWorkflowArtifactWritePath('/workspace/project', '.workflow/project-context.md')).toBe(true)
     expect(workflowToolPolicy.isWorkflowArtifactWritePath('/workspace/project', '.workflow/../src/app.ts')).toBe(false)
     expect(workflowToolPolicy.isWorkflowArtifactWritePath('/workspace/project', 'src/app.ts')).toBe(false)
+  })
+
+  test('explains the concrete Write-only .workflow recovery contract only for skills-development', () => {
+    const getPromptGuidance = requireWorkflowPromptToolGuidance()
+    const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
+    const state = workflowStateWithToolPolicy(
+      'scope-plan',
+      ['Read', capability],
+      'skills-development',
+    )
+
+    const guidance = getPromptGuidance(state, state.templateSnapshot)
+
+    expect(guidance).toContain('declarative capability')
+    expect(guidance).toContain('workspace-relative .workflow/...')
+    expect(guidance).toContain('Do not use Edit/MultiEdit')
+    expect(guidance).toContain('C:' + String.raw`\Temp`)
+    expect(guidance).toContain('do not end in prose')
+  })
+
+  test('does not add skills-development artifact-write recovery guidance to efficient', () => {
+    const getPromptGuidance = requireWorkflowPromptToolGuidance()
+    const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
+    const state = workflowStateWithToolPolicy(
+      'scope-plan',
+      ['Read', capability],
+      'efficient-constrained-dev-debug-workflow-v5',
+    )
+
+    const guidance = getPromptGuidance(state, state.templateSnapshot)
+
+    expect(guidance).not.toContain('workflow_artifact_write is a declarative capability')
+    expect(guidance).not.toContain('Do not use Edit/MultiEdit as a substitute')
+    expect(guidance).not.toContain('If an artifact Write is denied, repair the path')
   })
 
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
@@ -1109,12 +1149,39 @@ describe('Workflow question card contract', () => {
     )).toBeNull()
   })
 
+  test('injects the necessary-question schema branch into the active workflow tool guidance', () => {
+    const state = stateWithNecessaryQuestionPolicy()
+    const guidance = requireWorkflowPromptToolGuidance()(state, state.templateSnapshot)
+
+    expect(guidance).toContain('AskUserQuestion in this phase uses the necessary-question schema branch')
+    expect(guidance).toContain('exactly one question with blocksCompletion: true')
+    expect(guidance).toContain('non-empty blockingReason and answerImpact')
+    expect(guidance).toContain('2–4 user-answer choices')
+
+    const ordinaryState = stateFor('feature-implement')
+    ordinaryState.templateIdentity = { id: 'ordinary-workflow', source: 'user', version: '1' }
+    expect(requireWorkflowPromptToolGuidance()(ordinaryState)).not.toContain('necessary-question schema branch')
+  })
+
   test.each([
     ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
-  ])('allows optional single-question cards without blocking metadata for %s', (templateId, phaseId) => {
+  ])('uses the necessary-question contract before generic single-card policy for %s', (templateId, phaseId) => {
     const state = stateWithNecessaryQuestionPolicy(templateId, phaseId)
+
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', optionalQuestionCard, state))
+      .toContain('only allows a necessary blocking question')
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', necessaryQuestionCard, state)).toBeNull()
+  })
+
+  test.each([
+    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
+    ['feature-extension-workflow-v8', 'feature-memory-plan'],
+    ['debug-repair-workflow-v8', 'debug-memory-intake'],
+  ])('keeps non-blocking cards free of workflow-only fields when the phase has no necessary-question policy for %s', (templateId, phaseId) => {
+    const state = stateFor(phaseId)
+    state.templateIdentity = { id: templateId, source: 'user', version: 'current' }
 
     expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', optionalQuestionCard, state)).toBeNull()
     expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', {
@@ -1152,9 +1219,9 @@ describe('Workflow question card contract', () => {
 
     expect(getWorkflowQuestionCardContractViolation(
       'AskUserQuestion',
-      optionalQuestionCard,
+      necessaryQuestionCard,
       state,
-    )).toContain('unanswered question')
+    )).toContain('unanswered blocking question')
   })
 
   test('requires the current answer to be processed before the next question card for a legacy hard-stop workflow', () => {
@@ -1183,26 +1250,26 @@ describe('Workflow question card contract', () => {
   test.each([
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-investigate'],
-  ])('allows another optional card after the earlier %s answer is delivered', (templateId, phaseId) => {
-    const pendingIssue: WorkflowPhaseIssue = {
+  ])('allows the next necessary card after the earlier %s answer is processed', (templateId, phaseId) => {
+    const processedIssue: WorkflowPhaseIssue = {
       id: 'previous-question',
       phaseId,
       sessionId: 'session-1',
       createdAt: '2026-08-02T00:00:00.000Z',
       updatedAt: '2026-08-02T00:01:00.000Z',
       source: 'ask-user-question',
-      status: 'answered-pending-processing',
-      blocksCompletion: false,
-      blockingReason: 'Previous optional question.',
-      answer: { selected: 'Portable package' },
+      status: 'resolved',
+      blocksCompletion: true,
+      blockingReason: 'The previous necessary answer has been applied to the current phase.',
+      answer: { selected: 'Integration A' },
       answerReceivedAt: '2026-08-02T00:01:00.000Z',
       createdStateVersion: 1,
     }
 
     expect(getWorkflowQuestionCardContractViolation(
       'AskUserQuestion',
-      optionalQuestionCard,
-      stateWithNecessaryQuestionPolicy(templateId, phaseId, [pendingIssue], true),
+      necessaryQuestionCard,
+      stateWithNecessaryQuestionPolicy(templateId, phaseId, [processedIssue], true),
     )).toBeNull()
   })
 

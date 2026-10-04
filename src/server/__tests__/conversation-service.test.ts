@@ -496,13 +496,32 @@ describe('ConversationService', () => {
     const env = (await service.buildChildEnv(
       '/tmp',
       'ws://127.0.0.1:3456/sdk/test-session?token=test-token',
-      { expertSessionId: 'template-fill-session' },
+      {
+        expertSessionId: 'template-fill-session',
+        expertTemplateFillWrite: true,
+      },
     )) as Record<string, string>
 
     expect(env.CC_JIANGXIA_EXPERT_SESSION_ID).toBe('template-fill-session')
     expect(env.CC_HAHA_EXPERT_SESSION_ID).toBe('template-fill-session')
     expect(env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE).toBe('1')
     expect(env.CC_HAHA_EXPERT_TEMPLATE_FILL_WRITE).toBe('1')
+  })
+
+  test('passes an opted-in Expert template-fill output root only to the desktop SDK child environment', async () => {
+    const service = new ConversationService() as any
+    const env = (await service.buildChildEnv(
+      'C:\session\selected',
+      'ws://127.0.0.1:3456/sdk/test-session?token=test-token',
+      {
+        expertSessionId: 'template-fill-session',
+        expertTemplateFillWrite: true,
+        expertTemplateFillOutputRoot: 'C:\session\selected',
+      },
+    )) as Record<string, string>
+
+    expect(env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT).toBe('C:\session\selected')
+    expect(env.CC_HAHA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT).toBe('C:\session\selected')
   })
 
   test('reports SDK connection authorization status reasons', () => {
@@ -634,7 +653,7 @@ describe('ConversationService', () => {
       const env = (await service.buildChildEnv(
         '/tmp',
         'ws://127.0.0.1:3456/sdk/expert-session?token=test-token',
-        { expertSessionId: 'expert-session' },
+        { expertSessionId: 'expert-session', expertTemplateFillWrite: true },
       )) as Record<string, string>
 
       expect(env.CLAUDE_CLI_PATH).toBe('C:\\portable\\claude-sidecar.exe')

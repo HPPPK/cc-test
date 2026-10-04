@@ -30,6 +30,7 @@ import {
 import { cleanSessionTitleSource } from '../../utils/sessionTitleText.js'
 import type { WorkflowSessionMetadata } from './workflowTypes.js'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
+import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 
 // ============================================================================
 // Types
@@ -177,6 +178,7 @@ type RawEntry = {
   parent_tool_use_id?: string | null
   isSidechain?: boolean
   isMeta?: boolean
+  isSynthetic?: boolean
   cwd?: string
   message?: {
     role?: string
@@ -232,6 +234,8 @@ const USER_INTERRUPTION_TEXTS = new Set([
 const NO_RESPONSE_REQUESTED_TEXT = 'No response requested.'
 const TASK_NOTIFICATION_RE = /^<task-notification>\s*[\s\S]*<\/task-notification>$/i
 const TASK_NOTIFICATION_BLOCK_RE = /<task-notification>\s*[\s\S]*?<\/task-notification>/i
+const INTERNAL_EXPERT_RUNTIME_PROMPT_RE = /^<(expert-(?:research-[a-z0-9-]*(?:recovery|auto-continue)|post-review-evidence-absorption))>[\s\S]*<\/\1>$/i
+const TEAMMATE_MESSAGE_RE = /^<teammate-message\b[\s\S]*<\/teammate-message>$/i
 
 // ============================================================================
 // Service
@@ -613,6 +617,30 @@ export class SessionService {
     )
   }
 
+  private isInternalWorkflowTerminalRecovery(content: unknown): boolean {
+    const textBlocks = this.extractTextBlocks(content)
+    return (
+      textBlocks.length > 0 &&
+      textBlocks.every((text) => /^<workflow-terminal-recovery>[\s\S]*<\/workflow-terminal-recovery>$/.test(text))
+    )
+  }
+
+  private isInternalExpertRuntimePrompt(content: unknown): boolean {
+    const textBlocks = this.extractTextBlocks(content)
+    return (
+      textBlocks.length > 0 &&
+      textBlocks.every((text) => INTERNAL_EXPERT_RUNTIME_PROMPT_RE.test(text))
+    )
+  }
+
+  private isTeammateMessageContent(content: unknown): boolean {
+    const textBlocks = this.extractTextBlocks(content)
+    return (
+      textBlocks.length > 0 &&
+      textBlocks.every((text) => TEAMMATE_MESSAGE_RE.test(text))
+    )
+  }
+
   private extractTaskNotificationXml(text: string): string | null {
     const trimmed = text.trim()
     if (TASK_NOTIFICATION_RE.test(trimmed)) return trimmed
@@ -674,7 +702,9 @@ export class SessionService {
       return (
         this.isInternalCommandBreadcrumb(content) ||
         this.isSyntheticUserInterruption(content) ||
-        this.isTaskNotificationContent(content)
+        this.isTaskNotificationContent(content) ||
+        this.isInternalWorkflowTerminalRecovery(content) ||
+        this.isInternalExpertRuntimePrompt(content)
       )
     }
 
@@ -683,6 +713,70 @@ export class SessionService {
     }
 
     return false
+  }
+
+  private isInternalExpertTurnDescendant(
+    entry: RawEntry,
+    entriesByUuid: Map<string, RawEntry>,
+    cache: Map<string, boolean>,
+  ): boolean {
+    const cacheKey = entry.uuid
+    if (cacheKey && cache.has(cacheKey)) return cache.get(cacheKey) ?? false
+
+    let parentUuid = entry.parentUuid ?? undefined
+    const visited = new Set<string>()
+    let result = false
+
+    while (parentUuid && !visited.has(parentUuid)) {
+      visited.add(parentUuid)
+      const cachedParent = cache.get(parentUuid)
+      if (cachedParent !== undefined) {
+        result = cachedParent
+        break
+      }
+
+      const parent = entriesByUuid.get(parentUuid)
+      if (!parent) break
+      if (parent.message?.role === 'user') {
+        if (this.isInternalExpertRuntimePrompt(parent.message.content)) {
+          result = true
+          break
+        }
+        if (
+          !this.isToolResultContent(parent.message.content)
+          && !this.isTaskNotificationContent(parent.message.content)
+          && !this.isTeammateMessageContent(parent.message.content)
+        ) {
+          break
+        }
+      }
+      parentUuid = parent.parentUuid ?? undefined
+    }
+
+    if (cacheKey) cache.set(cacheKey, result)
+    return result
+  }
+
+  private stripInternalExpertAssistantProse(entry: RawEntry): RawEntry | null {
+    if (entry.message?.role !== 'assistant') return entry
+    const content = entry.message.content
+    if (typeof content === 'string') return null
+    if (!Array.isArray(content)) return entry
+
+    const visibleContent = content.filter((block) => {
+      if (!block || typeof block !== 'object') return true
+      const type = (block as Record<string, unknown>).type
+      return type !== 'text' && type !== 'thinking' && type !== 'redacted_thinking'
+    })
+    if (visibleContent.length === 0) return null
+
+    return {
+      ...entry,
+      message: {
+        ...entry.message,
+        content: visibleContent,
+      },
+    }
   }
 
   private isGoalLocalCommandOutput(output: string): boolean {
@@ -1421,7 +1515,7 @@ export class SessionService {
         const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
         const workDirExists = await this.pathExists(workDir)
         const workflow = this.resolveWorkflowFromEntries(entries)
-        const expert = this.resolveExpertFromEntries(entries)
+        const expert = this.resolveExpertFromEntries(entries) ?? await expertRuntimeSessionStore.get(sessionId)
 
         // Count transcript messages only (user + assistant)
         const messageCount = entries.filter(
@@ -1482,7 +1576,7 @@ export class SessionService {
     const projectRoot = await this.resolveProjectRootFromEntries(entries, workDir, projectDir)
     const workDirExists = await this.pathExists(workDir)
     const workflow = this.resolveWorkflowFromEntries(entries)
-    const expert = this.resolveExpertFromEntries(entries)
+    const expert = this.resolveExpertFromEntries(entries) ?? await expertRuntimeSessionStore.get(sessionId)
 
     let createdAt = stat.birthtime.toISOString()
     for (const e of entries) {
@@ -1769,6 +1863,7 @@ export class SessionService {
     const workDir = this.resolveWorkDirFromEntries(entries, found.projectDir) || fallbackWorkDir || process.cwd()
     const repository = this.resolveRepositoryFromEntries(entries)
     const workflow = this.resolveWorkflowFromEntries(entries)
+    const expert = this.resolveExpertFromEntries(entries) ?? await expertRuntimeSessionStore.get(sessionId)
     const now = new Date().toISOString()
 
     const initialEntry = {
@@ -1788,6 +1883,7 @@ export class SessionService {
       workDir,
       repository,
       ...(workflow ? { workflow } : {}),
+      ...(expert ? { expert } : {}),
       timestamp: now,
     }
 
@@ -2057,6 +2153,7 @@ export class SessionService {
     const messages: MessageEntry[] = []
     const entriesByUuid = new Map<string, RawEntry>()
     const parentToolUseIdCache = new Map<string, string | undefined>()
+    const internalExpertTurnCache = new Map<string, boolean>()
     let suppressTaskNotificationResponse = false
 
     for (const entry of entries) {
@@ -2097,8 +2194,17 @@ export class SessionService {
 
       if (this.shouldHideTranscriptEntry(entry)) continue
 
+      let visibleEntry: RawEntry | null = entry
+      if (
+        entry.message.role === 'assistant'
+        && this.isInternalExpertTurnDescendant(entry, entriesByUuid, internalExpertTurnCache)
+      ) {
+        visibleEntry = this.stripInternalExpertAssistantProse(entry)
+      }
+      if (!visibleEntry) continue
+
       // Skip non-transcript entry types
-      const entryType = entry.type
+      const entryType = visibleEntry.type
       if (
         entryType !== 'user' &&
         entryType !== 'assistant' &&
@@ -2108,11 +2214,11 @@ export class SessionService {
       }
 
       const parentToolUseId = this.resolveParentToolUseId(
-        entry,
+        visibleEntry,
         entriesByUuid,
         parentToolUseIdCache,
       )
-      const msg = this.entryToMessage(entry, parentToolUseId)
+      const msg = this.entryToMessage(visibleEntry, parentToolUseId)
       if (msg) {
         messages.push(msg)
       }

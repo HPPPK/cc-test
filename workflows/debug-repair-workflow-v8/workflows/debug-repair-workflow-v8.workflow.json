@@ -1,0 +1,1585 @@
+{
+  "schemaVersion": 2,
+  "id": "debug-repair-workflow-v8",
+  "version": "23",
+  "name": "问题修复流程",
+  "description": "Focused workflow for reproducing, fixing, validating, previewing, and closing bugs.",
+  "labels": [
+    "bug",
+    "error-handling",
+    "help-wanted"
+  ],
+  "routingPolicy": {
+    "router": "workflow-task-router-v1",
+    "defaultEffort": "standard",
+    "followUpInheritance": [
+      "刚才",
+      "上一个",
+      "这个项目",
+      "这个错误"
+    ]
+  },
+  "stopConditions": [
+    "Do not write production code before debug-investigate.",
+    "debug-fix requires reproduction evidence or could-not-reproduce reasoning.",
+    "Regression validation is required before preview or finish.",
+    "Use the same Start App / Stop App preview controls as the development workflow only after debug-quality-preview validation evidence; debug-finish-memory never performs production repair."
+  ],
+  "phases": [
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "debug-memory-intake",
+      "name": "问题清单",
+      "instructions": "Start from the current user request and any resumed conversation or explicit workflow carryover. Then, when available, use project-context.md and run-report.md as supporting notes before updating debug-context.md and debug-work-order.md with every user-requested item before investigation. Do not silently choose only the first symptom. For each debug task record a stable id, symptom, expected/actual behavior, evidence and logs, reproduction clues, affected area, suspected relationship to other tasks, accepted/deferred decision, priority, dependencies, target files and write scopes, and validation cases.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nFor each accepted symptom, record the expected behavior, actual behavior, evidence already available, and the concrete observation that would show the issue is resolved. If a user answer is needed, link it to that reproduction or acceptance decision instead of collecting it as a standalone questionnaire response.\n\nInherited context and workspace grounding:\n- Treat the current user request plus any resumed conversation or explicit workflow carryover as the primary context. Read project-context.md and run-report.md as supporting workflow notes, not as a replacement for the current request; if either is absent, stale, or conflicts with the current request, record and update the discrepancy.\n- Before asking a question, use read-only discovery: Glob for the smallest relevant file surface, Grep for relevant symbols or log entries, and Read for targeted contents. Use LS only when the host exposes it; never fall back to Bash or PowerShell merely to list or search files. Inspect user-named paths, immediate manifests or entry points, supplied error logs, and the relevant symptom surface. Record a small project map: workspace root, user-specified target, suspected areas, evidence locations, and important unknowns.\n- Do not blindly scan an entire repository. Inspect only the smallest project surface needed to inventory every reported debug task and begin reproducible investigation.\n\n### Focused problem clarification and first evidence pass\n\nBuild an inventory for every reported problem before repair. Start with the request, source, existing AGENTS.md/CLAUDE.md, workflow context, application logs, error reports, and reproducible evidence. For each task capture the observed symptom, expected behavior, trigger/reproduction context, impact, environment/version, available diagnostics, constraints, and user-visible acceptance outcome.\n\nAfter that first evidence pass, create a diagnostic decision coverage checklist for every accepted symptom. Evaluate: exact expected contract, reproduction/frequency and affected boundary, environment/version/data conditions, user impact and priority, compatibility or recovery behavior, allowed side effects, rollback/containment needs, and the observable acceptance proof. A plausible code-level root cause does not settle an intended behavior or repair-policy choice that is absent from code and evidence.\n\nWhen one or more material diagnostic or repair-policy decisions remain unknown, ask one structured AskUserQuestion before repair. Ask exactly one unresolved material diagnostic or repair-policy decision at a time, state the evidence already known, offer bounded choices when useful, and give answerImpact. Incorporate the answer into diagnosis and repair planning, then explicitly reassess the existing diagnostic decision coverage checklist. If another independent material decision in that checklist remains unresolved, ask it in the next AskUserQuestion call. Continue sequentially until every material diagnostic or repair-policy decision in that existing checklist is settled; thorough clarification is encouraged, but never combine several questions in one call. Do not require a complete preflight questionnaire before investigation or repair can proceed.\n\nMaintain a clarification ledger in debug-context.md and debug-work-order.md: question id, settled answer or evidence, affected debug task ids, diagnosis/repair impact, and explicit deferments. Do not ask for status confirmation, duplicate a logged symptom, or ask the user to repeat information already available in code/logs/workflow context. Before a later question, consult that ledger and the current conversation; ask again only when new evidence conflicts with a recorded answer or exposes a distinct material decision.\n\nFor a genuinely non-material gap, state a bounded hypothesis and the lowest-cost discriminating check, record it, and begin investigation.\n\n### Multi-symptom focused clarification\n\nWhen a request reports more than one user-visible symptom, first use the available code and logs to separate what is already evidenced from what remains genuinely unknown. Before creating the authoritative debug-context.md or debug-work-order.md, ask exactly one focused question only when one unresolved decision about terminal behavior, validation/input handling, affected data or accounts, recovery/rollback, or user-visible acceptance would materially change the repair. Incorporate the answer before asking a distinct follow-up. Do not silently choose a material policy, but do not combine several questions in one AskUserQuestion call or turn a multi-symptom report into a progress questionnaire. For a material gap that cannot be safely bounded, keep blocksCompletion true until its single answer is incorporated.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Debug Capsule\n\nMaintain these fixed fields for every accepted symptom: 用户现象, 复现步骤, 日志证据, 已验证事实, 假设, 已排除原因, 根本原因, 修复, 回归证据. Start from the user report, then proactively inspect relevant existing logs and code; do not ask the user to repeat evidence already available. AGENTS.md, CLAUDE.md, and application logs are optional sources, not prerequisites.",
+      "objective": "Inventory every reported symptom as a confirmed debug task before investigation, without product brainstorming.",
+      "requiredIntake": [
+        "User symptom, errors/logs/test output, project-context.md when available."
+      ],
+      "handoffRules": [
+        "Record a task inventory for every user-requested item, with symptom, expected/actual behavior, evidence, suspected entry points, and accepted or explicitly deferred status.",
+        "Record whether tasks share a suspected root cause or are independent; do not merge them without evidence.",
+        "Record dependencies, target files, write scopes, validation cases, and any bounded question needed to confirm the inventory.",
+        "Handoff the complete Debug Capsule and task inventory; ask only one unresolved material question per AskUserQuestion call."
+      ],
+      "executionRules": [
+        "Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.",
+        "Do not implement.",
+        "Confirm the complete debug task inventory before investigation; one accepted symptom does not erase the remaining reported items.",
+        "use workflow_artifact_write to persist debug-context.md and debug-work-order.md before completion.",
+        "do not ask the user to finish, retry, bypass, or skip the intake; use a bounded structured question only when the task inventory cannot be confirmed."
+      ],
+      "outputArtifact": {
+        "id": "debug-context",
+        "name": "Debug Context",
+        "kind": "markdown",
+        "description": "Debug intake plus a confirmed inventory of every reported issue.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "project-context",
+          "filename": "project-context.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Current project memory."
+        },
+        {
+          "id": "debug-context",
+          "filename": "debug-context.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Fixed Debug Capsule fields for every accepted symptom: user symptom, reproduction steps, log evidence, verified facts, hypotheses, excluded causes, root cause, fix, and regression evidence."
+        },
+        {
+          "id": "debug-work-order",
+          "filename": "debug-work-order.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Confirmed debug task inventory with accepted/deferred status, evidence, dependencies, write scopes, and validation cases."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation.",
+          "Record a task inventory for every user-requested item, with symptom, expected/actual behavior, evidence, suspected entry points, and accepted or explicitly deferred status.",
+          "Record whether tasks share a suspected root cause or are independent; do not merge them without evidence.",
+          "Record dependencies, target files, write scopes, validation cases, and any bounded question needed to confirm the inventory.",
+          "Handoff the complete Debug Capsule and task inventory; ask only one unresolved material question per AskUserQuestion call."
+        ]
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation."
+      },
+      "transition": {
+        "authority": "auto"
+      },
+      "intent": {
+        "objective": "Prepare a focused debug intake without product brainstorming.",
+        "role": "Inherit Context + Debug Intake",
+        "intake": [
+          "User symptom, errors/logs/test output, project-context.md when available."
+        ]
+      },
+      "contract": {
+        "instructions": "Start from the current user request and any resumed conversation or explicit workflow carryover. Then, when available, use project-context.md and run-report.md as supporting notes before updating debug-context.md and debug-work-order.md with every user-requested item before investigation. Do not silently choose only the first symptom. For each debug task record a stable id, symptom, expected/actual behavior, evidence and logs, reproduction clues, affected area, suspected relationship to other tasks, accepted/deferred decision, priority, dependencies, target files and write scopes, and validation cases.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nFor each accepted symptom, record the expected behavior, actual behavior, evidence already available, and the concrete observation that would show the issue is resolved. If a user answer is needed, link it to that reproduction or acceptance decision instead of collecting it as a standalone questionnaire response.\n\nInherited context and workspace grounding:\n- Treat the current user request plus any resumed conversation or explicit workflow carryover as the primary context. Read project-context.md and run-report.md as supporting workflow notes, not as a replacement for the current request; if either is absent, stale, or conflicts with the current request, record and update the discrepancy.\n- Before asking a question, use read-only discovery: Glob for the smallest relevant file surface, Grep for relevant symbols or log entries, and Read for targeted contents. Use LS only when the host exposes it; never fall back to Bash or PowerShell merely to list or search files. Inspect user-named paths, immediate manifests or entry points, supplied error logs, and the relevant symptom surface. Record a small project map: workspace root, user-specified target, suspected areas, evidence locations, and important unknowns.\n- Do not blindly scan an entire repository. Inspect only the smallest project surface needed to inventory every reported debug task and begin reproducible investigation.\n\n### Focused problem clarification and first evidence pass\n\nBuild an inventory for every reported problem before repair. Start with the request, source, existing AGENTS.md/CLAUDE.md, workflow context, application logs, error reports, and reproducible evidence. For each task capture the observed symptom, expected behavior, trigger/reproduction context, impact, environment/version, available diagnostics, constraints, and user-visible acceptance outcome.\n\nAfter that first evidence pass, create a diagnostic decision coverage checklist for every accepted symptom. Evaluate: exact expected contract, reproduction/frequency and affected boundary, environment/version/data conditions, user impact and priority, compatibility or recovery behavior, allowed side effects, rollback/containment needs, and the observable acceptance proof. A plausible code-level root cause does not settle an intended behavior or repair-policy choice that is absent from code and evidence.\n\nWhen one or more material diagnostic or repair-policy decisions remain unknown, ask one structured AskUserQuestion before repair. Ask exactly one unresolved material diagnostic or repair-policy decision at a time, state the evidence already known, offer bounded choices when useful, and give answerImpact. Incorporate the answer into diagnosis and repair planning, then explicitly reassess the existing diagnostic decision coverage checklist. If another independent material decision in that checklist remains unresolved, ask it in the next AskUserQuestion call. Continue sequentially until every material diagnostic or repair-policy decision in that existing checklist is settled; thorough clarification is encouraged, but never combine several questions in one call. Do not require a complete preflight questionnaire before investigation or repair can proceed.\n\nMaintain a clarification ledger in debug-context.md and debug-work-order.md: question id, settled answer or evidence, affected debug task ids, diagnosis/repair impact, and explicit deferments. Do not ask for status confirmation, duplicate a logged symptom, or ask the user to repeat information already available in code/logs/workflow context. Before a later question, consult that ledger and the current conversation; ask again only when new evidence conflicts with a recorded answer or exposes a distinct material decision.\n\nFor a genuinely non-material gap, state a bounded hypothesis and the lowest-cost discriminating check, record it, and begin investigation.\n\n### Multi-symptom focused clarification\n\nWhen a request reports more than one user-visible symptom, first use the available code and logs to separate what is already evidenced from what remains genuinely unknown. Before creating the authoritative debug-context.md or debug-work-order.md, ask exactly one focused question only when one unresolved decision about terminal behavior, validation/input handling, affected data or accounts, recovery/rollback, or user-visible acceptance would materially change the repair. Incorporate the answer before asking a distinct follow-up. Do not silently choose a material policy, but do not combine several questions in one AskUserQuestion call or turn a multi-symptom report into a progress questionnaire. For a material gap that cannot be safely bounded, keep blocksCompletion true until its single answer is incorporated.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Debug Capsule\n\nMaintain these fixed fields for every accepted symptom: 用户现象, 复现步骤, 日志证据, 已验证事实, 假设, 已排除原因, 根本原因, 修复, 回归证据. Start from the user report, then proactively inspect relevant existing logs and code; do not ask the user to repeat evidence already available. AGENTS.md, CLAUDE.md, and application logs are optional sources, not prerequisites.",
+        "executionRules": [
+          "Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.",
+          "Do not implement.",
+          "Confirm the complete debug task inventory before investigation; one accepted symptom does not erase the remaining reported items.",
+          "use workflow_artifact_write to persist debug-context.md and debug-work-order.md before completion.",
+          "do not ask the user to finish, retry, bypass, or skip the intake; use a bounded structured question only when the task inventory cannot be confirmed."
+        ],
+        "transitionAuthority": "auto",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record a task inventory for every user-requested item, with symptom, expected/actual behavior, evidence, suspected entry points, and accepted or explicitly deferred status.",
+          "Record whether tasks share a suspected root cause or are independent; do not merge them without evidence.",
+          "Record dependencies, target files, write scopes, validation cases, and any bounded question needed to confirm the inventory.",
+          "Handoff the complete Debug Capsule and task inventory; ask only one unresolved material question per AskUserQuestion call."
+        ],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation.",
+            "Record a task inventory for every user-requested item, with symptom, expected/actual behavior, evidence, suspected entry points, and accepted or explicitly deferred status.",
+            "Record whether tasks share a suspected root cause or are independent; do not merge them without evidence.",
+            "Record dependencies, target files, write scopes, validation cases, and any bounded question needed to confirm the inventory.",
+            "Handoff the complete Debug Capsule and task inventory; ask only one unresolved material question per AskUserQuestion call."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "project-context",
+            "filename": "project-context.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Current project memory."
+          },
+          {
+            "id": "debug-context",
+            "filename": "debug-context.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Fixed Debug Capsule fields for every accepted symptom: user symptom, reproduction steps, log evidence, verified facts, hypotheses, excluded causes, root cause, fix, and regression evidence."
+          },
+          {
+            "id": "debug-work-order",
+            "filename": "debug-work-order.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Confirmed debug task inventory with accepted/deferred status, evidence, dependencies, write scopes, and validation cases."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "debug-context",
+          "name": "Debug Context",
+          "kind": "markdown",
+          "description": "Debug intake and inherited project context.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation."
+        },
+        "handoffRules": [
+          "Record symptom, expected behavior, actual behavior, affected area, logs, and suspected entry points."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "debug-investigate",
+      "name": "问题排查",
+      "instructions": "For every accepted task in debug-work-order.md, reproduce the symptom or document a credible could-not-reproduce path, then identify root cause, impact, and minimal fix strategy. First assess dependencies, overlapping target files and write scopes, shared resources, and whether evidence supports a shared root cause. Build a workflow_parallel_plan only for logically isolated investigation batches; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from dependencies, write scopes, and resource claims. Do not complete investigation while any accepted task lacks reproduction/could-not-reproduce evidence and a planned terminal path.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse a lightweight diagnosis loop for every accepted task: record the current hypothesis, the discriminating check, the observed result, and the planned terminal path. Do not ask for a progress confirmation when code, logs, workspace evidence, or a conservative reproduction path can move the investigation forward.\n\n### Investigate without progress prompts\n\nContinue from the accepted inventory, consolidated answers, and first-pass evidence. Do not ask whether to proceed to the next bug, whether to run the planned investigation, or whether to inspect available logs. Use logs and project guidance when present; distinguish observed evidence from hypotheses. Ask only when investigation reaches a genuine user-specific blocker that code, tests, logs, and a bounded conservative path cannot resolve.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Mandatory pre-coding parallelization plan\n\nBefore completing this planning phase, create an internal repairParallelizationPlan in debug-work-order.md. This is technical execution planning, not a user-facing confirmation: do not ask the user whether to parallelize.\n\nAssess the complete remaining implementation set, not only the next task. For every candidate coding or repair batch, record: batch/task IDs and goal; prerequisite IDs and the concrete evidence that each prerequisite is already stable or completed; exact expected writeScopes at file or narrow directory level; shared resourceClaims such as schema, API contract, shared state, build configuration, generated output, test fixture, or environment ownership; independent validation; worktree/isolation requirement for write work; and the decision `parallel group <wave>` or `serial`, with a concrete reason.\n\nA completed predecessor is not a concurrent write conflict. A shared parent module or broad directory name is not enough to force serial work: identify the actual overlapping file, mutable resource, unstable contract, or dependency. Conversely, never invent parallelism merely to increase agent count. A serial-only plan is valid only when every remaining candidate has a recorded concrete conflict or dependency.\n\nUse the plan to form safe waves: all batches in one `parallel group <wave>` must have satisfied prerequisites, isolated non-overlapping writeScopes and resourceClaims, independent validation, and an available isolated worktree for write execution. Within each batch, Coder -> Reviewer -> bounded Coder fixes -> Reviewer remains strictly serial. At the coding phase, re-check this plan against the actual current tree before delegation; launch every still-safe independent wave in parallel through workflow_parallel_plan, and revise only when fresh code evidence changes the recorded dependency or conflict.\n\nFor Debug, distinguish read-only investigation parallelism from later write repair parallelism. Do not launch Coder work in this investigation phase. The repairParallelizationPlan must cover only tasks with a confirmed or bounded repair path and be carried into debug-fix for its final current-tree re-check.\n\n### Diagnostic Evidence Discipline (mandatory)\nFor every accepted symptom, record whether application logs are used, not-applicable, or unavailable. Do not force logs for a pure visual/layout problem when logs cannot prove the symptom; record not-applicable with the reason. When logs are used, record the concrete paths, failure-time window, search terms or observations, and what they do or do not establish. When logs are unavailable, record the locations checked and the reason. Code inspection alone must be identified as code evidence, not runtime evidence.\n\n\n### One-question workflow clarification contract\nAsk only one necessary user question in each AskUserQuestion call. Continue with another one-question card only when, after incorporating the prior answer and current evidence, a distinct unresolved user-specific fact still blocks a correct decision. Do not repeat answered facts, do not bundle unrelated decisions into a packet, and do not require an artifact or phase completion between independent necessary questions. A business answer is not a workflow route: collect the answer first, then use submit_phase_completion or request_workflow_route only when their separate conditions are actually met.\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Debug Capsule evidence update\n\nFor every accepted symptom, inspect relevant existing logs proactively when available, then update 日志证据, 已验证事实, 假设, 已排除原因, and 根本原因. Do not repeat an excluded hypothesis unless new evidence invalidates the earlier exclusion. Missing logs do not block investigation; record unavailable or not-applicable with a reason.",
+      "objective": "Investigate every accepted debug task, grouping shared root causes only when evidence supports it.",
+      "requiredIntake": [
+        "debug-context.md, logs/errors/test output, selected files."
+      ],
+      "handoffRules": [
+        "Record one problem-report entry for every accepted task: task id, reproduction status, evidence, root-cause finding or uncertainty, impact, and minimal fix path.",
+        "Record why tasks were grouped or kept separate, including dependency, write-scope, and shared-resource reasoning for parallel investigation batches.",
+        "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+        "Handoff the updated Debug Capsule so debug-fix receives verified facts, excluded causes, root cause, and the smallest repair path without full chat history."
+      ],
+      "executionRules": [
+        "Read, log, test, artifact, and question actions only. Do not implement.",
+        "Investigate every accepted task; do not merge independent symptoms into one root cause without evidence.",
+        "Only logically isolated investigation batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+        "Do not complete the phase while any accepted task lacks reproduction/could-not-reproduce evidence and a planned terminal path."
+      ],
+      "outputArtifact": {
+        "id": "problem-report",
+        "name": "Problem Report",
+        "kind": "markdown",
+        "description": "Per-task problem report with reproduction/could-not-reproduce evidence, root-cause analysis, grouping rationale, and minimal fix plan.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "problem-report",
+          "filename": "problem-report.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Reproduction status, root cause, impact, and minimal fix plan."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "test",
+          "log",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing.",
+          "Record one problem-report entry for every accepted task: task id, reproduction status, evidence, root-cause finding or uncertainty, impact, and minimal fix path.",
+          "Record why tasks were grouped or kept separate, including dependency, write-scope, and shared-resource reasoning for parallel investigation batches.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+          "Handoff the updated Debug Capsule so debug-fix receives verified facts, excluded causes, root cause, and the smallest repair path without full chat history."
+        ]
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing."
+      },
+      "transition": {
+        "authority": "user-confirmation"
+      },
+      "skillBindings": [
+        "superpowers:systematic-debugging"
+      ],
+      "intent": {
+        "objective": "Produce evidence before any fix.",
+        "role": "Problem Investigation",
+        "intake": [
+          "debug-context.md, logs/errors/test output, selected files."
+        ]
+      },
+      "contract": {
+        "instructions": "For every accepted task in debug-work-order.md, reproduce the symptom or document a credible could-not-reproduce path, then identify root cause, impact, and minimal fix strategy. First assess dependencies, overlapping target files and write scopes, shared resources, and whether evidence supports a shared root cause. Build a workflow_parallel_plan only for logically isolated investigation batches; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from dependencies, write scopes, and resource claims. Do not complete investigation while any accepted task lacks reproduction/could-not-reproduce evidence and a planned terminal path.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse a lightweight diagnosis loop for every accepted task: record the current hypothesis, the discriminating check, the observed result, and the planned terminal path. Do not ask for a progress confirmation when code, logs, workspace evidence, or a conservative reproduction path can move the investigation forward.\n\n### Investigate without progress prompts\n\nContinue from the accepted inventory, consolidated answers, and first-pass evidence. Do not ask whether to proceed to the next bug, whether to run the planned investigation, or whether to inspect available logs. Use logs and project guidance when present; distinguish observed evidence from hypotheses. Ask only when investigation reaches a genuine user-specific blocker that code, tests, logs, and a bounded conservative path cannot resolve.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Mandatory pre-coding parallelization plan\n\nBefore completing this planning phase, create an internal repairParallelizationPlan in debug-work-order.md. This is technical execution planning, not a user-facing confirmation: do not ask the user whether to parallelize.\n\nAssess the complete remaining implementation set, not only the next task. For every candidate coding or repair batch, record: batch/task IDs and goal; prerequisite IDs and the concrete evidence that each prerequisite is already stable or completed; exact expected writeScopes at file or narrow directory level; shared resourceClaims such as schema, API contract, shared state, build configuration, generated output, test fixture, or environment ownership; independent validation; worktree/isolation requirement for write work; and the decision `parallel group <wave>` or `serial`, with a concrete reason.\n\nA completed predecessor is not a concurrent write conflict. A shared parent module or broad directory name is not enough to force serial work: identify the actual overlapping file, mutable resource, unstable contract, or dependency. Conversely, never invent parallelism merely to increase agent count. A serial-only plan is valid only when every remaining candidate has a recorded concrete conflict or dependency.\n\nUse the plan to form safe waves: all batches in one `parallel group <wave>` must have satisfied prerequisites, isolated non-overlapping writeScopes and resourceClaims, independent validation, and an available isolated worktree for write execution. Within each batch, Coder -> Reviewer -> bounded Coder fixes -> Reviewer remains strictly serial. At the coding phase, re-check this plan against the actual current tree before delegation; launch every still-safe independent wave in parallel through workflow_parallel_plan, and revise only when fresh code evidence changes the recorded dependency or conflict.\n\nFor Debug, distinguish read-only investigation parallelism from later write repair parallelism. Do not launch Coder work in this investigation phase. The repairParallelizationPlan must cover only tasks with a confirmed or bounded repair path and be carried into debug-fix for its final current-tree re-check.\n\n### Diagnostic Evidence Discipline (mandatory)\nFor every accepted symptom, record whether application logs are used, not-applicable, or unavailable. Do not force logs for a pure visual/layout problem when logs cannot prove the symptom; record not-applicable with the reason. When logs are used, record the concrete paths, failure-time window, search terms or observations, and what they do or do not establish. When logs are unavailable, record the locations checked and the reason. Code inspection alone must be identified as code evidence, not runtime evidence.\n\n\n### One-question workflow clarification contract\nAsk only one necessary user question in each AskUserQuestion call. Continue with another one-question card only when, after incorporating the prior answer and current evidence, a distinct unresolved user-specific fact still blocks a correct decision. Do not repeat answered facts, do not bundle unrelated decisions into a packet, and do not require an artifact or phase completion between independent necessary questions. A business answer is not a workflow route: collect the answer first, then use submit_phase_completion or request_workflow_route only when their separate conditions are actually met.\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Debug Capsule evidence update\n\nFor every accepted symptom, inspect relevant existing logs proactively when available, then update 日志证据, 已验证事实, 假设, 已排除原因, and 根本原因. Do not repeat an excluded hypothesis unless new evidence invalidates the earlier exclusion. Missing logs do not block investigation; record unavailable or not-applicable with a reason.",
+        "executionRules": [
+          "Read, log, test, artifact, and question actions only. Do not implement.",
+          "Investigate every accepted task; do not merge independent symptoms into one root cause without evidence.",
+          "Only logically isolated investigation batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+          "Do not complete the phase while any accepted task lacks reproduction/could-not-reproduce evidence and a planned terminal path."
+        ],
+        "transitionAuthority": "user-confirmation",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record one problem-report entry for every accepted task: task id, reproduction status, evidence, root-cause finding or uncertainty, impact, and minimal fix path.",
+          "Record why tasks were grouped or kept separate, including dependency, write-scope, and shared-resource reasoning for parallel investigation batches.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+          "Handoff the updated Debug Capsule so debug-fix receives verified facts, excluded causes, root cause, and the smallest repair path without full chat history."
+        ],
+        "subagentPolicy": {
+          "allowedRoles": [
+            "debug"
+          ],
+          "sequence": [
+            "debug subagent investigates one accepted task",
+            "host may run only logically isolated investigation batches in parallel after dependency, write-scope, and resource analysis"
+          ],
+          "maxParallel": null,
+          "parallelSubagentsAllowed": true,
+          "controlledBy": "host-runtime",
+          "contextPolicy": "brief-only",
+          "requiredReturn": [
+            "taskId",
+            "batchId",
+            "reproduction",
+            "evidence",
+            "rootCause",
+            "fixPlan",
+            "blockers",
+            "terminalStatus",
+            "summary"
+          ]
+        },
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "test",
+            "log",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "test",
+            "log",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing.",
+            "Record one problem-report entry for every accepted task: task id, reproduction status, evidence, root-cause finding or uncertainty, impact, and minimal fix path.",
+            "Record why tasks were grouped or kept separate, including dependency, write-scope, and shared-resource reasoning for parallel investigation batches.",
+            "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+            "Handoff the updated Debug Capsule so debug-fix receives verified facts, excluded causes, root cause, and the smallest repair path without full chat history."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "problem-report",
+            "filename": "problem-report.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Reproduction status, root cause, impact, and minimal fix plan."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "problem-report",
+          "name": "Problem Report",
+          "kind": "markdown",
+          "description": "Reproduction and root cause report.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing."
+        },
+        "handoffRules": [
+          "Record reproduction status, expected/actual behavior, root cause, impact, and minimal fix plan."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "Bash",
+          "PowerShell",
+          "Agent",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "subagentPolicy": {
+        "allowedRoles": [
+          "debug"
+        ],
+        "sequence": [
+          "debug subagent investigates one accepted task",
+          "host may run only logically isolated investigation batches in parallel after dependency, write-scope, and resource analysis"
+        ],
+        "maxParallel": null,
+        "parallelSubagentsAllowed": true,
+        "controlledBy": "host-runtime",
+        "contextPolicy": "brief-only",
+        "requiredReturn": [
+          "taskId",
+          "batchId",
+          "reproduction",
+          "evidence",
+          "rootCause",
+          "fixPlan",
+          "blockers",
+          "terminalStatus",
+          "summary"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "test",
+          "log",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "debug-fix",
+      "name": "修复审查",
+      "instructions": "For every accepted task with a confirmed or bounded root-cause path, apply the smallest scoped fix. First assess dependencies, overlapping target files and write scopes, and shared resources. Build parallel batches only for logically isolated tasks; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from declared dependencies, write scopes, and resource claims. Within each task keep Coder -> Reviewer -> bounded Coder fixes serial. Do not complete the phase until fix-log.md accounts for every accepted task as fixed, explicitly deferred by the user, could-not-reproduce with evidence, or blocked with evidence.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse the same execution loop as the development workflow without adding new stages: for each accepted task, record the confirmed or bounded cause, exact target paths, validation check, Coder result, Reviewer result, and Leader decision (pass, scoped fix, blocked, or one specific user decision). Do the planned fix and review before asking again; a completed fix log alone is not evidence that the symptom is resolved.\n\n### Repair, review, and routine documentation without reapproval\n\nFor each accepted repair path, perform the planned Coder -> Reviewer -> bounded Coder fix sequence and move through accepted isolated batches without asking the user for routine continuation. Update existing AGENTS.md and CLAUDE.md where the repair changes operational behavior, commands, architecture, diagnostics, or a known failure path. If a compatible logging/diagnostic mechanism exists, preserve or improve the evidence needed to diagnose recurrence without recording sensitive data.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Evidence-based batch-parallelism review\n\nBefore launching any Coder or Reviewer Subagent for implementation or repair, perform a strict, evidence-based review of the complete remaining batch set. Do not merely say that batches are parallel or serial.\n\nBefore delegating, the Leader must make an explicit batch-parallelism assessment in the current phase response and include the relevant decision and evidence in each affected Coder packet. For every remaining candidate batch, state: batch ID and goal; prerequisite batch IDs and the concrete evidence for each dependency; expected write files/modules; shared resources or environment claims; and the decision parallel group <id> or serial, with its concrete reason.\n\nNo parallel batches is a valid conclusion only when this review documents an actual dependency, overlapping write scope, shared mutable resource, or other concrete execution conflict for every candidate. Never choose serial-by-default merely to avoid analysis or to appear cautious.\n\nA parallel group is valid only when each member has satisfied prerequisites, has no overlapping write scopes or shared mutable resources, can be independently validated, and does not require another member's implementation result as input. Launch every qualifying independent group in parallel when host capacity permits; do not invent parallelism for appearance.\n\nRe-evaluate the batch-parallelism assessment after each accepted batch or whenever new evidence changes dependencies, file scopes, resources, or risk. Within one batch, keep Coder -> Reviewer -> bounded Coder fixes -> Reviewer strictly serial.\n\n### Core Repair Flow and Reviewer Contract (mandatory)\nFor every repair, define and retain the original symptom flow: reproduction trigger -> observed bad state -> affected boundary -> repair -> rerun of the same trigger -> expected visible result or explicit remaining error. Coder may not rely only on service/API/FFmpeg/mock tests when the symptom is reachable through a user-visible entry boundary.\n\nReviewer must independently trace that original symptom flow and return coreFlowCheck, actualEntryBoundaryCovered, bypassedLayers, observedCheckpoints, reproducibility, logEvidenceDisposition, and requiredFixes. A static-only review or a path marked partial/not-run cannot be assessed as fixed. It must return to the scoped repair or remain an explicit preview requirement.\n\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Lightweight Coder and Reviewer handoff\n\nFor each accepted repair batch, the Coder changes only the proven root-cause scope and the Reviewer uses workflow:lightweight-batch-review read-only. Reviewer returns reviewStatus, userScenarioChecked, evidence, requiredFixes, remainingRisks, and allowNextBatch. needs-fix returns to the same Coder batch before quality validation. Update the Debug Capsule 修复 field and preserve the evidence chain.",
+      "objective": "Apply the smallest scoped fix for every accepted debug task, preserving task-level Coder -> Reviewer sequencing.",
+      "requiredIntake": [
+        "problem-report.md with reproduction status or could-not-reproduce reasoning."
+      ],
+      "handoffRules": [
+        "Record one fix-log entry for every accepted task: task id, batch, changed files, fix summary, tests/checks, reviewer feedback, and terminal status.",
+        "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+        "Never silently omit a remaining accepted task; record an explicit user deferral, could-not-reproduce outcome, or blocker instead.",
+        "Handoff the Debug Capsule with root cause, fix, changed files, Coder evidence, Reviewer result, and remaining regression work."
+      ],
+      "executionRules": [
+        "Keep edits limited to the documented fix scope.",
+        "For every accepted task, Coder implements and updates tests, Reviewer reviews that same task without production edits, then Coder applies bounded fixes before quality validation.",
+        "Only logically isolated fix batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+        "Do not install dependencies, migrate data, delete files, or deploy without explicit user confirmation.",
+        "Do not complete the phase while any accepted task lacks a fixed, user-deferred, could-not-reproduce, or blocked terminal record."
+      ],
+      "outputArtifact": {
+        "id": "fix-log",
+        "name": "Fix Log",
+        "kind": "markdown",
+        "description": "Task-by-task fix ledger with batch isolation, changed files, tests, review findings, bounded fixes, and terminal status.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "fix-log",
+          "filename": "fix-log.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Changed files, fix summary, tests/checks, and blockers."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "edit-within-plan",
+          "test",
+          "artifact",
+          "question",
+          "subagent-coder",
+          "subagent-reviewer"
+        ],
+        "forbiddenActions": [
+          "out-of-scope edits",
+          "unconfirmed installs",
+          "unconfirmed migrations",
+          "unconfirmed deletes",
+          "unconfirmed deploy"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ],
+          "requiresExplicitUserConfirmation": [
+            "installDependencies",
+            "migrations",
+            "delete",
+            "network",
+            "deploy"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status.",
+          "Record one fix-log entry for every accepted task: task id, batch, changed files, fix summary, tests/checks, reviewer feedback, and terminal status.",
+          "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral, could-not-reproduce outcome, or blocker instead.",
+          "Handoff the Debug Capsule with root cause, fix, changed files, Coder evidence, Reviewer result, and remaining regression work."
+        ]
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status."
+      },
+      "transition": {
+        "authority": "auto"
+      },
+      "skillBindings": [
+        "superpowers:subagent-driven-development",
+        "superpowers:test-driven-development",
+        "workflow:lightweight-batch-review"
+      ],
+      "intent": {
+        "objective": "Fix only the documented problem without broad rewrites.",
+        "role": "Minimal Fix with Coder Subagent",
+        "intake": [
+          "problem-report.md with reproduction status or could-not-reproduce reasoning."
+        ]
+      },
+      "contract": {
+        "instructions": "For every accepted task with a confirmed or bounded root-cause path, apply the smallest scoped fix. First assess dependencies, overlapping target files and write scopes, and shared resources. Build parallel batches only for logically isolated tasks; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from declared dependencies, write scopes, and resource claims. Within each task keep Coder -> Reviewer -> bounded Coder fixes serial. Do not complete the phase until fix-log.md accounts for every accepted task as fixed, explicitly deferred by the user, could-not-reproduce with evidence, or blocked with evidence.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse the same execution loop as the development workflow without adding new stages: for each accepted task, record the confirmed or bounded cause, exact target paths, validation check, Coder result, Reviewer result, and Leader decision (pass, scoped fix, blocked, or one specific user decision). Do the planned fix and review before asking again; a completed fix log alone is not evidence that the symptom is resolved.\n\n### Repair, review, and routine documentation without reapproval\n\nFor each accepted repair path, perform the planned Coder -> Reviewer -> bounded Coder fix sequence and move through accepted isolated batches without asking the user for routine continuation. Update existing AGENTS.md and CLAUDE.md where the repair changes operational behavior, commands, architecture, diagnostics, or a known failure path. If a compatible logging/diagnostic mechanism exists, preserve or improve the evidence needed to diagnose recurrence without recording sensitive data.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Evidence-based batch-parallelism review\n\nBefore launching any Coder or Reviewer Subagent for implementation or repair, perform a strict, evidence-based review of the complete remaining batch set. Do not merely say that batches are parallel or serial.\n\nBefore delegating, the Leader must make an explicit batch-parallelism assessment in the current phase response and include the relevant decision and evidence in each affected Coder packet. For every remaining candidate batch, state: batch ID and goal; prerequisite batch IDs and the concrete evidence for each dependency; expected write files/modules; shared resources or environment claims; and the decision parallel group <id> or serial, with its concrete reason.\n\nNo parallel batches is a valid conclusion only when this review documents an actual dependency, overlapping write scope, shared mutable resource, or other concrete execution conflict for every candidate. Never choose serial-by-default merely to avoid analysis or to appear cautious.\n\nA parallel group is valid only when each member has satisfied prerequisites, has no overlapping write scopes or shared mutable resources, can be independently validated, and does not require another member's implementation result as input. Launch every qualifying independent group in parallel when host capacity permits; do not invent parallelism for appearance.\n\nRe-evaluate the batch-parallelism assessment after each accepted batch or whenever new evidence changes dependencies, file scopes, resources, or risk. Within one batch, keep Coder -> Reviewer -> bounded Coder fixes -> Reviewer strictly serial.\n\n### Core Repair Flow and Reviewer Contract (mandatory)\nFor every repair, define and retain the original symptom flow: reproduction trigger -> observed bad state -> affected boundary -> repair -> rerun of the same trigger -> expected visible result or explicit remaining error. Coder may not rely only on service/API/FFmpeg/mock tests when the symptom is reachable through a user-visible entry boundary.\n\nReviewer must independently trace that original symptom flow and return coreFlowCheck, actualEntryBoundaryCovered, bypassedLayers, observedCheckpoints, reproducibility, logEvidenceDisposition, and requiredFixes. A static-only review or a path marked partial/not-run cannot be assessed as fixed. It must return to the scoped repair or remain an explicit preview requirement.\n\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Lightweight Coder and Reviewer handoff\n\nFor each accepted repair batch, the Coder changes only the proven root-cause scope and the Reviewer uses workflow:lightweight-batch-review read-only. Reviewer returns reviewStatus, userScenarioChecked, evidence, requiredFixes, remainingRisks, and allowNextBatch. needs-fix returns to the same Coder batch before quality validation. Update the Debug Capsule 修复 field and preserve the evidence chain.",
+        "executionRules": [
+          "Keep edits limited to the documented fix scope.",
+          "For every accepted task, Coder implements and updates tests, Reviewer reviews that same task without production edits, then Coder applies bounded fixes before quality validation.",
+          "Only logically isolated fix batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+          "Do not install dependencies, migrate data, delete files, or deploy without explicit user confirmation.",
+          "Do not complete the phase while any accepted task lacks a fixed, user-deferred, could-not-reproduce, or blocked terminal record."
+        ],
+        "transitionAuthority": "auto",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record one fix-log entry for every accepted task: task id, batch, changed files, fix summary, tests/checks, reviewer feedback, and terminal status.",
+          "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral, could-not-reproduce outcome, or blocker instead.",
+          "Handoff the Debug Capsule with root cause, fix, changed files, Coder evidence, Reviewer result, and remaining regression work."
+        ],
+        "subagentPolicy": {
+          "allowedRoles": [
+            "coder",
+            "reviewer"
+          ],
+          "sequence": [
+            "coder implements one accepted debug task",
+            "reviewer reviews that same task before validation",
+            "coder applies bounded fixes from reviewer findings",
+            "host may run only logically isolated fix batches in parallel after dependency, write-scope, and resource analysis"
+          ],
+          "maxParallel": null,
+          "parallelSubagentsAllowed": true,
+          "controlledBy": "host-runtime",
+          "contextPolicy": "brief-only",
+          "requiredReturn": [
+            "taskId",
+            "batchId",
+            "changedFiles",
+            "testsRun",
+            "reviewStatus",
+            "userScenarioChecked",
+            "evidence",
+            "requiredFixes",
+            "remainingRisks",
+            "allowNextBatch",
+            "terminalStatus"
+          ]
+        },
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "edit-within-plan",
+            "test",
+            "artifact",
+            "question",
+            "subagent-coder",
+            "subagent-reviewer"
+          ],
+          "forbiddenActions": [
+            "out-of-scope edits",
+            "unconfirmed installs",
+            "unconfirmed migrations",
+            "unconfirmed deletes",
+            "unconfirmed deploy"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "edit-within-plan",
+            "test",
+            "artifact",
+            "question",
+            "subagent-coder",
+            "subagent-reviewer"
+          ],
+          "forbiddenActions": [
+            "out-of-scope edits",
+            "unconfirmed installs",
+            "unconfirmed migrations",
+            "unconfirmed deletes",
+            "unconfirmed deploy"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ],
+            "requiresExplicitUserConfirmation": [
+              "installDependencies",
+              "migrations",
+              "delete",
+              "network",
+              "deploy"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status.",
+            "Record one fix-log entry for every accepted task: task id, batch, changed files, fix summary, tests/checks, reviewer feedback, and terminal status.",
+            "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+            "Never silently omit a remaining accepted task; record an explicit user deferral, could-not-reproduce outcome, or blocker instead.",
+            "Handoff the Debug Capsule with root cause, fix, changed files, Coder evidence, Reviewer result, and remaining regression work."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "fix-log",
+            "filename": "fix-log.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Changed files, fix summary, tests/checks, and blockers."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "fix-log",
+          "name": "Fix Log",
+          "kind": "markdown",
+          "description": "Scoped debug fix log.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status."
+        },
+        "handoffRules": [
+          "Record changed files, fix summary, tests/checks run, blockers, and any reviewer feedback."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "Write",
+          "Edit",
+          "MultiEdit",
+          "Bash",
+          "PowerShell",
+          "Agent",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "subagentPolicy": {
+        "allowedRoles": [
+          "coder",
+          "reviewer"
+        ],
+        "sequence": [
+          "coder implements one accepted debug task",
+          "reviewer reviews that same task before validation",
+          "coder applies bounded fixes from reviewer findings",
+          "host may run only logically isolated fix batches in parallel after dependency, write-scope, and resource analysis"
+        ],
+        "maxParallel": null,
+        "parallelSubagentsAllowed": true,
+        "controlledBy": "host-runtime",
+        "contextPolicy": "brief-only",
+        "requiredReturn": [
+          "taskId",
+          "batchId",
+          "changedFiles",
+          "testsRun",
+          "reviewStatus",
+          "userScenarioChecked",
+          "evidence",
+          "requiredFixes",
+          "remainingRisks",
+          "allowNextBatch",
+          "terminalStatus"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "edit-within-plan",
+          "test",
+          "artifact",
+          "question",
+          "subagent-coder",
+          "subagent-reviewer"
+        ],
+        "forbiddenActions": [
+          "out-of-scope edits",
+          "unconfirmed installs",
+          "unconfirmed migrations",
+          "unconfirmed deletes",
+          "unconfirmed deploy"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "debug-quality-preview",
+      "name": "回归预览",
+      "instructions": "Run regression checks and scenario validation for every accepted task in debug-work-order.md, including cross-task regressions when tasks interact. A missing accepted-task result blocks completion. If validation finds a code defect, call request_workflow_route with targetPhaseId debug-fix, preserve the failure evidence, and wait for debug-fix to repair and re-review it. Do not code or repair in this quality phase. Use preview controls when useful or document why preview was skipped.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nTreat this as outcome review, not only command review: compare the observed behavior with the original expected/actual symptom and record the regression result, any remaining mismatch, and the next scoped repair or user decision. Do not ask the user to confirm progress when the scenario can be checked from the workspace or existing evidence.\n\n### Compact regression closeout\n\nTreat regression checking, preview evidence, and the route-back handoff as one closeout path. Do not ask the user to authorize ordinary regression work or phase progress. Only surface a question when the observed result requires a product decision, cannot be reproduced safely, or reveals an unresolved risk outside the accepted repair scope.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Debug Core-Flow Evidence and Honest Runtime Status (mandatory)\nWrite .workflow/runs/<runId>/core-flow-evidence.json with schemaVersion 1 and one flows entry for every accepted symptom. Each entry must include coreFlowId, entryBoundary, expectedCheckpoints, observedCheckpoints, logEvidence, and execution.\n\nlogEvidence must be exactly one of: used { paths, timeWindow, observations }, not-applicable { reason }, or unavailable { reason }. execution must declare status pass|partial|not-run and method runtime|manual-preview|integration|static. A pass requires non-static execution, observed checkpoints, and a visible result. A partial/not-run path requires nextAction.\n\nIf any declared symptom flow is partial/not-run, quality-report.md and run-preview.md must not claim Runtime Preview PASS or that the symptom is resolved. Static code-path tracing may guide the repair, but it must remain partial/not-run until the relevant entry path is actually observed or explicitly previewed.\n\n### Route-only quality failure handling\n\nThis phase is validation-only. Never edit code or launch a Coder here. If any regression or user scenario needs a code change, call request_workflow_route to debug-fix with the failing evidence and affected Debug Capsule fields. After repair and Reviewer pass, return and rerun the affected scenario. Retry, tool failure, or Agent completion must not advance the phase.",
+      "objective": "Validate every accepted debug task and cross-task regression before preview or finish.",
+      "requiredIntake": [
+        "fix-log.md and problem-report.md."
+      ],
+      "handoffRules": [
+        "Record regression evidence, log disposition, preview status, residual risks, and terminal status for every accepted symptom.",
+        "Route code-affecting failures to debug-fix and revalidate after the repaired batch passes Reviewer."
+      ],
+      "executionRules": [
+        "Run regression validation for every accepted symptom and update the Debug Capsule 回归证据 field.",
+        "Do not edit code or launch a Coder in this phase; code failures must request_workflow_route to debug-fix.",
+        "Use existing logs to explain failed checks when available; preserve unavailable or not-applicable dispositions.",
+        "Do not complete while any accepted symptom lacks pass evidence or an explicit user-approved blocked/deferred outcome."
+      ],
+      "outputArtifact": {
+        "id": "quality-report",
+        "name": "Quality Report",
+        "kind": "markdown",
+        "description": "Regression and scenario validation ledger for every accepted task, cross-task cases, preview evidence, and residual risk.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "quality-report",
+          "filename": ".workflow/runs/<runId>/quality-report.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Regression evidence for every accepted task, cross-task scenarios, repairs, and residual risk."
+        },
+        {
+          "id": "run-preview",
+          "filename": ".workflow/runs/<runId>/run-preview.md",
+          "kind": "markdown",
+          "required": false,
+          "description": "Preview command, URL, logs, and user acceptance when preview is used."
+        },
+        {
+          "id": "core-flow-evidence",
+          "filename": ".workflow/runs/<runId>/core-flow-evidence.json",
+          "kind": "json",
+          "required": true,
+          "description": "Machine-checkable primary user-flow evidence: entry boundary, expected and observed checkpoints, log disposition, execution status/method, visible result, bypassed layers, and next action."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "test",
+          "build",
+          "lint",
+          "review",
+          "preview-start",
+          "preview-stop",
+          "artifact",
+          "question",
+          "subagent-qa",
+          "subagent-reviewer",
+          "route"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "test-file edits",
+          "direct repair",
+          "subagent-coder",
+          "deploy without confirmation"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ],
+          "requiresExplicitUserConfirmation": [
+            "installDependencies",
+            "migrations",
+            "delete",
+            "network",
+            "deploy"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion.",
+          "Record regression evidence, log disposition, preview status, residual risks, and terminal status for every accepted symptom.",
+          "Route code-affecting failures to debug-fix and revalidate after the repaired batch passes Reviewer."
+        ]
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion."
+      },
+      "transition": {
+        "authority": "user-confirmation"
+      },
+      "skillBindings": [
+        "superpowers:verification-before-completion",
+        "superpowers:requesting-code-review"
+      ],
+      "intent": {
+        "objective": "Prove the bug is fixed and avoid regressions before finish.",
+        "role": "Regression Scenario Validation + Preview",
+        "intake": [
+          "fix-log.md and problem-report.md."
+        ]
+      },
+      "contract": {
+        "instructions": "Run regression checks and scenario validation for every accepted task in debug-work-order.md, including cross-task regressions when tasks interact. A missing accepted-task result blocks completion. If validation finds a code defect, call request_workflow_route with targetPhaseId debug-fix, preserve the failure evidence, and wait for debug-fix to repair and re-review it. Do not code or repair in this quality phase. Use preview controls when useful or document why preview was skipped.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nTreat this as outcome review, not only command review: compare the observed behavior with the original expected/actual symptom and record the regression result, any remaining mismatch, and the next scoped repair or user decision. Do not ask the user to confirm progress when the scenario can be checked from the workspace or existing evidence.\n\n### Compact regression closeout\n\nTreat regression checking, preview evidence, and the route-back handoff as one closeout path. Do not ask the user to authorize ordinary regression work or phase progress. Only surface a question when the observed result requires a product decision, cannot be reproduced safely, or reveals an unresolved risk outside the accepted repair scope.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Debug Core-Flow Evidence and Honest Runtime Status (mandatory)\nWrite .workflow/runs/<runId>/core-flow-evidence.json with schemaVersion 1 and one flows entry for every accepted symptom. Each entry must include coreFlowId, entryBoundary, expectedCheckpoints, observedCheckpoints, logEvidence, and execution.\n\nlogEvidence must be exactly one of: used { paths, timeWindow, observations }, not-applicable { reason }, or unavailable { reason }. execution must declare status pass|partial|not-run and method runtime|manual-preview|integration|static. A pass requires non-static execution, observed checkpoints, and a visible result. A partial/not-run path requires nextAction.\n\nIf any declared symptom flow is partial/not-run, quality-report.md and run-preview.md must not claim Runtime Preview PASS or that the symptom is resolved. Static code-path tracing may guide the repair, but it must remain partial/not-run until the relevant entry path is actually observed or explicitly previewed.\n\n### Route-only quality failure handling\n\nThis phase is validation-only. Never edit code or launch a Coder here. If any regression or user scenario needs a code change, call request_workflow_route to debug-fix with the failing evidence and affected Debug Capsule fields. After repair and Reviewer pass, return and rerun the affected scenario. Retry, tool failure, or Agent completion must not advance the phase.",
+        "executionRules": [
+          "Run regression validation for every accepted symptom and update the Debug Capsule 回归证据 field.",
+          "Do not edit code or launch a Coder in this phase; code failures must request_workflow_route to debug-fix.",
+          "Use existing logs to explain failed checks when available; preserve unavailable or not-applicable dispositions.",
+          "Do not complete while any accepted symptom lacks pass evidence or an explicit user-approved blocked/deferred outcome."
+        ],
+        "transitionAuthority": "user-confirmation",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record regression evidence, log disposition, preview status, residual risks, and terminal status for every accepted symptom.",
+          "Route code-affecting failures to debug-fix and revalidate after the repaired batch passes Reviewer."
+        ],
+        "subagentPolicy": {
+          "allowedRoles": [
+            "qa",
+            "reviewer"
+          ],
+          "sequence": [
+            "qa",
+            "reviewer"
+          ],
+          "maxParallel": null,
+          "contextPolicy": "brief-only",
+          "requiredReturn": [
+            "scenarioResults",
+            "logEvidenceDisposition",
+            "evidence",
+            "blockers",
+            "remainingRisks",
+            "readyForPreview"
+          ],
+          "parallelSubagentsAllowed": true,
+          "controlledBy": "host-runtime"
+        },
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "test",
+            "build",
+            "lint",
+            "review",
+            "preview-start",
+            "preview-stop",
+            "artifact",
+            "question",
+            "subagent-qa",
+            "subagent-reviewer",
+            "route"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "test-file edits",
+            "direct repair",
+            "subagent-coder",
+            "deploy without confirmation"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "test",
+            "build",
+            "lint",
+            "review",
+            "preview-start",
+            "preview-stop",
+            "artifact",
+            "question",
+            "subagent-qa",
+            "subagent-reviewer",
+            "route"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "test-file edits",
+            "direct repair",
+            "subagent-coder",
+            "deploy without confirmation"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ],
+            "requiresExplicitUserConfirmation": [
+              "installDependencies",
+              "migrations",
+              "delete",
+              "network",
+              "deploy"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion.",
+            "Record regression evidence, log disposition, preview status, residual risks, and terminal status for every accepted symptom.",
+            "Route code-affecting failures to debug-fix and revalidate after the repaired batch passes Reviewer."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "quality-report",
+            "filename": ".workflow/runs/<runId>/quality-report.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Regression evidence for every accepted task, cross-task scenarios, repairs, and residual risk."
+          },
+          {
+            "id": "run-preview",
+            "filename": ".workflow/runs/<runId>/run-preview.md",
+            "kind": "markdown",
+            "required": false,
+            "description": "Preview command, URL, logs, and user acceptance when preview is used."
+          },
+          {
+            "id": "core-flow-evidence",
+            "filename": ".workflow/runs/<runId>/core-flow-evidence.json",
+            "kind": "json",
+            "required": true,
+            "description": "Machine-checkable primary user-flow evidence: entry boundary, expected and observed checkpoints, log disposition, execution status/method, visible result, bypassed layers, and next action."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "quality-report",
+          "name": "Quality Report",
+          "kind": "markdown",
+          "description": "Regression validation and preview result.",
+          "required": true
+        },
+        "requiredArtifacts": [
+          {
+            "id": "core-flow-evidence",
+            "name": "Core Flow Evidence",
+            "description": "JSON core-flow evidence. Static inspection cannot claim pass. Partial/not-run paths require nextAction; Debug requires an honest log disposition for every flow.",
+            "required": true
+          }
+        ],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion."
+        },
+        "handoffRules": [
+          "Record regression cases, tests/checks, preview status, risks, and user acceptance decision."
+        ],
+        "coreFlowEvidence": {
+          "type": "core-flow-evidence-v1",
+          "outputArtifactId": "core-flow-evidence",
+          "qualityReportArtifactId": "quality-report",
+          "requireLogDisposition": true
+        }
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "Bash",
+          "PowerShell",
+          "Agent",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "subagentPolicy": {
+        "allowedRoles": [
+          "qa",
+          "reviewer"
+        ],
+        "sequence": [
+          "qa",
+          "reviewer"
+        ],
+        "maxParallel": null,
+        "contextPolicy": "brief-only",
+        "requiredReturn": [
+          "scenarioResults",
+          "logEvidenceDisposition",
+          "evidence",
+          "blockers",
+          "remainingRisks",
+          "readyForPreview"
+        ],
+        "parallelSubagentsAllowed": true,
+        "controlledBy": "host-runtime"
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "test",
+          "build",
+          "lint",
+          "review",
+          "preview-start",
+          "preview-stop",
+          "artifact",
+          "question",
+          "subagent-qa",
+          "subagent-reviewer",
+          "route"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "test-file edits",
+          "direct repair",
+          "subagent-coder",
+          "deploy without confirmation"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "debug-finish-memory",
+      "name": "完成归档",
+      "instructions": "Update project memory and run report, then close the debug workflow or prepare a confirmed follow-up workflow.\n\n### Non-blocking debug archive\n\nThis is a durable evidence archive, not a new clarification stage. Use the accepted task inventory, diagnosis, fix log, regression evidence, and relevant existing guidance/logs to produce the handoff. Do not reopen routine questions; record explicit residual uncertainty or a concrete follow-up only when it remains.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n",
+      "objective": "Finish the bug fix while preserving reproducible evidence and project memory.",
+      "requiredIntake": [
+        "quality-report.md, fix-log.md, problem-report.md."
+      ],
+      "handoffRules": [
+        "Record outcome, proof, residual risks, updated memory, next workflow choices, and the terminal status of every accepted debug task.",
+        "The archive is non-blocking: preserve diagnosis, fix and regression evidence, relevant project guidance/log updates, diagnostic/log references, and explicit residual risk for every accepted debug task."
+      ],
+      "executionRules": [
+        "Do not perform production repair in this phase.",
+        "Do not auto-start follow-up workflows.",
+        "Keep all workflow markdown under .workflow/."
+      ],
+      "outputArtifact": {
+        "id": "handoff",
+        "name": "Handoff",
+        "kind": "markdown",
+        "description": "Debug repair handoff.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "handoff",
+          "filename": "handoff.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Outcome, proof, residual risks, and next action choices."
+        },
+        {
+          "id": "run-report",
+          "filename": "run-report.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Latest debug execution, validation, preview, review, and follow-up summary."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "handoff",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "auto-start follow-up workflow"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+          "Record outcome, proof, residual risks, updated memory, next workflow choices, and the terminal status of every accepted debug task.",
+          "The archive is non-blocking: preserve diagnosis, fix and regression evidence, relevant project guidance/log updates, diagnostic/log references, and explicit residual risk for every accepted debug task."
+        ]
+      },
+      "completionCriteria": {
+        "type": "manual-checklist",
+        "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+      },
+      "transition": {
+        "authority": "user-choice"
+      },
+      "skillBindings": [
+        "superpowers:finishing-a-development-branch"
+      ],
+      "intent": {
+        "objective": "Finish the bug fix while preserving reproducible evidence and project memory.",
+        "role": "Preview if Needed + Finish",
+        "intake": [
+          "quality-report.md, fix-log.md, problem-report.md."
+        ]
+      },
+      "contract": {
+        "instructions": "Update project memory and run report, then close the debug workflow or prepare a confirmed follow-up workflow.\n\n### Non-blocking debug archive\n\nThis is a durable evidence archive, not a new clarification stage. Use the accepted task inventory, diagnosis, fix log, regression evidence, and relevant existing guidance/logs to produce the handoff. Do not reopen routine questions; record explicit residual uncertainty or a concrete follow-up only when it remains.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n",
+        "executionRules": [
+          "Do not perform production repair in this phase.",
+          "Do not auto-start follow-up workflows.",
+          "Keep all workflow markdown under .workflow/."
+        ],
+        "transitionAuthority": "user-choice",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record outcome, proof, residual risks, updated memory, next workflow choices, and the terminal status of every accepted debug task.",
+          "The archive is non-blocking: preserve diagnosis, fix and regression evidence, relevant project guidance/log updates, diagnostic/log references, and explicit residual risk for every accepted debug task."
+        ],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "handoff",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "auto-start follow-up workflow"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "handoff",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "auto-start follow-up workflow"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+            "Record outcome, proof, residual risks, updated memory, next workflow choices, and the terminal status of every accepted debug task.",
+            "The archive is non-blocking: preserve diagnosis, fix and regression evidence, relevant project guidance/log updates, diagnostic/log references, and explicit residual risk for every accepted debug task."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "handoff",
+            "filename": "handoff.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Outcome, proof, residual risks, and next action choices."
+          },
+          {
+            "id": "run-report",
+            "filename": "run-report.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Latest debug execution, validation, preview, review, and follow-up summary."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "handoff",
+          "name": "Handoff",
+          "kind": "markdown",
+          "description": "Debug repair handoff.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+        },
+        "handoffRules": [
+          "Record outcome, proof, residual risks, updated memory, and next workflow choices."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "handoff",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "auto-start follow-up workflow"
+        ]
+      }
+    }
+  ],
+  "editableDefault": true
+}

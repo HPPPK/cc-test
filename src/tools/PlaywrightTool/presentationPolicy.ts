@@ -9,47 +9,18 @@ export function initialWindowPresentationTarget(
 }
 
 /**
- * assistable_background research must not steal focus. Only an explicit
- * verification handoff or a user "show browser" request may call bringToFront.
+ * Only the runtime-owned assistable mode starts an isolated Chromium window
+ * off-screen and minimized. This is a neutral startup concern: after that
+ * one initial handoff, the runner deliberately does not move, minimize,
+ * restore, or foreground the window again.
  */
-export function shouldCallBringToFront(
+export function managedPresentationLaunchArgs(
   presentation: ManagedPresentation | undefined,
-  target: WindowPresentationTarget | undefined,
-): boolean {
-  if (presentation !== 'assistable_background') return true
-  return target === 'foreground'
-}
-
-/**
- * Chromium on Windows often restores a minimized window after navigation or
- * tab changes. Re-apply minimize after those actions so research does not flash.
- */
-export function shouldReassertMinimizedAfterAction(
-  presentation: ManagedPresentation | undefined,
-  target: WindowPresentationTarget | undefined,
-  actionType: string,
-): boolean {
-  if (presentation !== 'assistable_background' || target !== 'minimized') return false
+): string[] {
+  if (presentation !== 'assistable_background') return []
   return [
-    'navigate',
-    'reload',
-    'go_back',
-    'go_forward',
-    'new_tab',
-    'switch_tab',
-    'close_tab',
-    'click',
-    'double_click',
-    'press',
-    'script',
-  ].includes(actionType)
-}
-
-/** After a run, keep the window foreground only while a CAPTCHA gate is live. */
-export function windowTargetAfterRun(
-  presentation: ManagedPresentation | undefined,
-  humanVerificationPending: boolean,
-): WindowPresentationTarget | null {
-  if (presentation !== 'assistable_background') return null
-  return humanVerificationPending ? 'foreground' : 'minimized'
+    '--start-minimized',
+    '--window-position=-32000,-32000',
+    '--window-size=1,1',
+  ]
 }

@@ -7,6 +7,7 @@ import {
   rebuildWorkflowCompletionContract,
   recordAskUserQuestionAnswer,
   recordAskUserQuestionIssue,
+  recalculateWorkflowCompletionEligibility,
 } from './workflowCompletionGate.js'
 import type { WorkflowSessionState, WorkflowTemplate } from './workflowTypes.js'
 
@@ -150,6 +151,59 @@ describe('workflow completion contract', () => {
     expect(getWorkflowCompletionEligibility(state)).toMatchObject({ status: 'eligible', reasons: [] })
   })
 
+
+  test('deduplicates managed workflow questions by stable content fingerprint across retries and answered state', () => {
+    const base = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
+    let state = {
+      ...base,
+      template: { ...base.template, id: 'feature-extension-workflow-v8' },
+      templateIdentity: { ...base.templateIdentity, id: 'feature-extension-workflow-v8' },
+    }
+    const question = {
+      id: 'decision-option',
+      header: 'Decision',
+      question: 'Which option should the phase use?',
+      options: [{ label: 'Option B', description: 'Use option B.' }],
+      blocksCompletion: true,
+    }
+
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'question-first',
+      toolUseId: 'tool-first',
+      questions: [question],
+      now: NOW,
+    })
+    const firstIssue = state.runtimeContract!.phaseStates[PHASE_ID]!.issues[0]!
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'question-retry',
+      toolUseId: 'tool-retry',
+      questions: [{ ...question, question: '  Which option should the phase use?  ' }],
+      now: '2026-09-17T00:01:00.000Z',
+    })
+
+    expect(state.runtimeContract!.phaseStates[PHASE_ID]!.issues).toHaveLength(1)
+    expect(state.runtimeContract!.phaseStates[PHASE_ID]!.issues[0]).toMatchObject({
+      id: firstIssue.id,
+      questionRequestId: 'question-first',
+      questionFingerprint: expect.any(String),
+      status: 'open',
+    })
+
+    state = recordAskUserQuestionAnswer(state, {
+      requestId: 'question-first',
+      answers: { 'decision-option': 'Option B' },
+      now: '2026-09-17T00:02:00.000Z',
+    })
+    state = recordAskUserQuestionIssue(state, {
+      requestId: 'question-after-answer',
+      toolUseId: 'tool-after-answer',
+      questions: [question],
+      now: '2026-09-17T00:03:00.000Z',
+    })
+
+    expect(state.runtimeContract!.phaseStates[PHASE_ID]!.issues).toHaveLength(1)
+    expect(state.runtimeContract!.phaseStates[PHASE_ID]!.issues[0]?.status).toBe('answered-pending-processing')
+  })
 
   test('records an AskUserQuestion without blocksCompletion as non-blocking', () => {
     let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Re-evaluated current phase state.')
@@ -315,4 +369,48 @@ describe('workflow completion contract', () => {
       type: 'artifact-satisfied', actor: 'user', artifactRequirementId: 'decision-record', artifactIds: ['not-persisted'], rationale: 'Claimed evidence.',
     }, NOW)).toThrow('unknown workflow artifact')
   })
+  test('blocks managed workflow phase completion until every persisted Agent task succeeds', () => {
+    const base = legacyState()
+    const managed = {
+      ...base,
+      template: { ...base.template, id: 'feature-extension-workflow-v8' },
+      templateIdentity: { ...base.templateIdentity, id: 'feature-extension-workflow-v8' },
+      runtimeContract: {
+        schemaVersion: 1 as const,
+        migrationStatus: 'current' as const,
+        phaseStates: {
+          [PHASE_ID]: {
+            phaseId: PHASE_ID,
+            workStatus: 'ready-for-review' as const,
+            eligibility: 'eligible' as const,
+            blockerReasons: [],
+            issues: [],
+            artifactRequirements: [],
+            checks: [],
+            taskSnapshots: [{
+              taskId: 'B1::reviewer',
+              sessionId: SESSION_ID,
+              phaseId: PHASE_ID,
+              stateVersion: 7,
+              status: 'needs_fix' as const,
+              updatedAt: NOW,
+              batchId: 'B1',
+              workflowRole: 'reviewer' as const,
+              reviewStatus: 'needs-fix' as const,
+              requiredFixes: ['wire the start action'],
+            }],
+            evaluatedAt: NOW,
+          },
+        },
+        audit: [],
+      },
+    } as WorkflowSessionState
+
+    const evaluated = recalculateWorkflowCompletionEligibility(managed, undefined, NOW)
+    expect(getWorkflowCompletionEligibility(evaluated)).toMatchObject({
+      status: 'ineligible',
+      reasons: ['Workflow task is not safely settled: B1::reviewer'],
+    })
+  })
+
 })

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { sessionsApi } from '../../api/sessions'
+import { sessionsApi, type WorkflowTemplateListItemWithBundledUpdate, type WorkflowTemplatesWithBundledUpdatesResponse } from '../../api/sessions'
 import { useTranslation } from '../../i18n'
 import { useUIStore } from '../../stores/uiStore'
 import type {
   WorkflowTemplateDetail,
   WorkflowTemplateListItem,
   WorkflowTemplateSelector,
-  WorkflowTemplatesResponse,
 } from '../../types/session'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { WorkflowImportExportDialog } from './WorkflowImportExportDialog'
@@ -21,7 +20,7 @@ type WorkflowTemplateManagerProps = {
   onExportTemplate?: (template: WorkflowTemplateListItem) => void
 }
 
-type TemplateIssue = WorkflowTemplatesResponse['invalidTemplates'][number]
+type TemplateIssue = WorkflowTemplatesWithBundledUpdatesResponse['invalidTemplates'][number]
 
 export function WorkflowTemplateManager({
   onCopyTemplate,
@@ -31,7 +30,7 @@ export function WorkflowTemplateManager({
 }: WorkflowTemplateManagerProps) {
   const t = useTranslation()
   const addToast = useUIStore((state) => state.addToast)
-  const [templates, setTemplates] = useState<WorkflowTemplateListItem[]>([])
+  const [templates, setTemplates] = useState<WorkflowTemplateListItemWithBundledUpdate[]>([])
   const [invalidTemplates, setInvalidTemplates] = useState<TemplateIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,8 +42,10 @@ export function WorkflowTemplateManager({
   const [dialogMode, setDialogMode] = useState<'import' | 'export' | null>(null)
   const [exportSelection, setExportSelection] = useState<WorkflowTemplateSelector[]>([])
   const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState<WorkflowTemplateListItem | null>(null)
+  const [pendingBundledUpdate, setPendingBundledUpdate] = useState<WorkflowTemplateListItemWithBundledUpdate | null>(null)
+  const [bundledUpdateError, setBundledUpdateError] = useState<string | null>(null)
 
-  const applyTemplateList = (response: WorkflowTemplatesResponse) => {
+  const applyTemplateList = (response: WorkflowTemplatesWithBundledUpdatesResponse) => {
     setTemplates(response.templates)
     setInvalidTemplates(response.invalidTemplates)
   }
@@ -134,6 +135,43 @@ export function WorkflowTemplateManager({
     }
   }
 
+  const requestBundledUpdate = (template: WorkflowTemplateListItemWithBundledUpdate) => {
+    if (template.source !== 'user' || !bundledUpdateDetails(template)) return
+    setActionError(null)
+    setBundledUpdateError(null)
+    setPendingBundledUpdate(template)
+  }
+
+  const handleBundledUpdate = async () => {
+    if (!pendingBundledUpdate) return
+
+    const update = bundledUpdateDetails(pendingBundledUpdate)
+    if (!update) return
+
+    setActionError(null)
+    setBundledUpdateError(null)
+    setBusyTemplateKey(templateKey(pendingBundledUpdate))
+    try {
+      const result = await sessionsApi.applyBundledUpdate(pendingBundledUpdate.id)
+      const updatedName = localizeWorkflowTemplateDisplay(pendingBundledUpdate, t).name
+      setPendingBundledUpdate(null)
+      await loadTemplates()
+      addToast({
+        type: 'success',
+        message: t('settings.workflows.manager.bundledUpdateSuccess', {
+          name: updatedName,
+          version: result.installedVersion,
+          backupFilename: result.backupFilename,
+        }),
+      })
+    } catch (updateError) {
+      const message = t('settings.workflows.manager.bundledUpdateFailed', { error: errorMessage(updateError) })
+      setBundledUpdateError(message)
+      setActionError(message)
+    } finally {
+      setBusyTemplateKey(null)
+    }
+  }
   const requestDeleteTemplate = (template: WorkflowTemplateListItem) => {
     if (template.source !== 'user' || template.editable === false) return
 
@@ -188,7 +226,7 @@ export function WorkflowTemplateManager({
     await loadTemplates()
   }
 
-  const handleImportSuccess = (response: WorkflowTemplatesResponse) => {
+  const handleImportSuccess = (response: WorkflowTemplatesWithBundledUpdatesResponse) => {
     applyTemplateList(response)
   }
 
@@ -269,6 +307,43 @@ export function WorkflowTemplateManager({
         />
       )}
 
+      {pendingBundledUpdate && (() => {
+        const update = bundledUpdateDetails(pendingBundledUpdate)
+        const display = localizeWorkflowTemplateDisplay(pendingBundledUpdate, t)
+        if (!update) return null
+        return (
+          <ConfirmDialog
+            open
+            title={t('settings.workflows.manager.bundledUpdateAvailable')}
+            body={(
+              <div className="space-y-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                <p>{t('settings.workflows.manager.bundledUpdateDialogBody', {
+                  name: display.name,
+                  localVersion: update.localVersion,
+                  bundledVersion: update.bundledVersion,
+                })}</p>
+                <p className="font-medium text-[var(--color-warning)]">
+                  {t('settings.workflows.manager.bundledUpdateBackupHint')}
+                </p>
+                {bundledUpdateError && (
+                  <p role="alert" className="rounded-[7px] border border-[var(--color-error)]/30 bg-[var(--color-error)]/8 px-3 py-2 text-xs text-[var(--color-error)]">
+                    {bundledUpdateError}
+                  </p>
+                )}
+              </div>
+            )}
+            confirmLabel={t('settings.workflows.manager.bundledUpdateConfirm')}
+            cancelLabel={t('common.cancel')}
+            confirmVariant="primary"
+            loading={busyTemplateKey === templateKey(pendingBundledUpdate)}
+            onClose={() => {
+              setPendingBundledUpdate(null)
+              setBundledUpdateError(null)
+            }}
+            onConfirm={handleBundledUpdate}
+          />
+        )
+      })()}
       {actionError && (
         <div className="rounded-[8px] border border-[var(--color-error)]/30 bg-[var(--color-error)]/8 px-3 py-2 text-xs text-[var(--color-error)]">
           {actionError}
@@ -322,6 +397,7 @@ export function WorkflowTemplateManager({
                     onCopyTemplate={handleCopyTemplate}
                     onEditTemplate={handleEditTemplate}
                     onDeleteTemplate={requestDeleteTemplate}
+                    onApplyBundledUpdate={requestBundledUpdate}
                     onExportTemplate={(template) => {
                       openExportDialog([{ source: template.source, id: template.id }])
                       onExportTemplate?.(template)
@@ -349,14 +425,16 @@ function WorkflowTemplateRow({
   onEditTemplate,
   onDeleteTemplate,
   onExportTemplate,
+  onApplyBundledUpdate,
   busy = false,
 }: {
-  template: WorkflowTemplateListItem
+  template: WorkflowTemplateListItemWithBundledUpdate
   displayTemplate?: WorkflowTemplateListItem
   onCopyTemplate?: (template: WorkflowTemplateListItem) => void
   onEditTemplate?: (template: WorkflowTemplateListItem) => void
   onDeleteTemplate?: (template: WorkflowTemplateListItem) => void
   onExportTemplate?: (template: WorkflowTemplateListItem) => void
+  onApplyBundledUpdate?: (template: WorkflowTemplateListItemWithBundledUpdate) => void
   busy?: boolean
 }) {
   const t = useTranslation()
@@ -364,6 +442,7 @@ function WorkflowTemplateRow({
   const editable = template.editable !== false
   const copyable = template.copyable !== false
   const display = displayTemplate ?? template
+  const bundledUpdate = bundledUpdateDetails(template)
 
   return (
     <article
@@ -419,9 +498,44 @@ function WorkflowTemplateRow({
             </dd>
           </div>
         </dl>
+
+        {bundledUpdate && (
+          <div className="mt-3 rounded-[8px] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/8 px-3 py-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-warning)]">
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">upgrade</span>
+              <span>{t('settings.workflows.manager.bundledUpdateAvailable')}</span>
+            </div>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+              {t('settings.workflows.manager.bundledUpdateVersionComparison', {
+                localVersion: bundledUpdate.localVersion,
+                bundledVersion: bundledUpdate.bundledVersion,
+              })}
+            </p>
+            {bundledUpdate.localSha256 && bundledUpdate.bundledSha256 && (
+              <p className="mt-1 break-all font-mono text-[10px] text-[var(--color-text-tertiary)]">
+                {t('settings.workflows.manager.bundledUpdateShaComparison', {
+                  localSha256: bundledUpdate.localSha256,
+                  bundledSha256: bundledUpdate.bundledSha256,
+                })}
+              </p>
+            )}
+            <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
+              {t('settings.workflows.manager.bundledUpdateBackupHint')}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-start justify-start gap-1.5 md:justify-end">
+        {bundledUpdate && template.source === 'user' && (
+          <ActionButton
+            icon="upgrade"
+            label={t('settings.workflows.manager.bundledUpdateAction')}
+            ariaLabel={t('settings.workflows.manager.bundledUpdateActionAria', { name: display.name })}
+            disabled={busy}
+            onClick={() => onApplyBundledUpdate?.(template)}
+          />
+        )}
         {copyable && (
           <ActionButton
             icon="content_copy"
@@ -559,6 +673,21 @@ function StatusChip({
   )
 }
 
+function bundledUpdateDetails(template: WorkflowTemplateListItemWithBundledUpdate) {
+  if (!template.bundledUpdate) return null
+
+  const nested = typeof template.bundledUpdate === 'object' ? template.bundledUpdate : undefined
+  const localVersion = template.localVersion ?? nested?.localVersion ?? template.version
+  const bundledVersion = template.bundledVersion ?? nested?.bundledVersion
+  if (!bundledVersion) return null
+
+  return {
+    localVersion,
+    bundledVersion,
+    localSha256: template.localSha256 ?? nested?.localSha256,
+    bundledSha256: template.bundledSha256 ?? nested?.bundledSha256,
+  }
+}
 function testIdPart(value: string) {
   return value.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()
 }

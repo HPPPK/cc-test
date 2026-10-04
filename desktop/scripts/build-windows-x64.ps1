@@ -237,6 +237,22 @@ try {
 
 $activeOutputDir = Resolve-OutputDirectory -PreferredPath $canonicalOutputDir
 
+$workflowPackStagedAuditPath = Join-Path $activeOutputDir 'workflow-pack-staged-audit.json'
+$workflowPackAuditScript = Join-Path $repoRoot 'scripts\audit-workflow-packs.ts'
+Write-Step 'Auditing staged Windows workflow pack resources...'
+Push-Location $repoRoot
+try {
+  & bun run $workflowPackAuditScript `
+    --resource-dir (Join-Path $desktopDir 'src-tauri\binaries') `
+    --layer windows-release-resource `
+    --output-file $workflowPackStagedAuditPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "[build-windows-x64] workflow pack audit failed (exit $LASTEXITCODE)"
+  }
+} finally {
+  Pop-Location
+}
+
 $bundleRoots = @(
   (Join-Path $tauriTargetDir "$targetTriple\release\bundle"),
   (Join-Path $tauriTargetDir 'release\bundle')
@@ -269,6 +285,25 @@ $msiInstaller = Get-LatestArtifact -SearchRoots @(
 ) -Patterns @('*.msi')
 
 $msiInstallerPath = if ($msiInstaller) { $msiInstaller.FullName } else { 'not found' }
+if (-not $msiInstaller) {
+  throw '[build-windows-x64] No MSI installer found; cannot audit packaged workflow resources.'
+}
+
+$workflowPackAuditPath = Join-Path $activeOutputDir 'workflow-pack-audit.json'
+$workflowPackBundleAuditScript = Join-Path $repoRoot 'scripts\audit-windows-workflow-bundle.ts'
+Write-Step 'Auditing workflow packs inside the built Windows installer...'
+Push-Location $repoRoot
+try {
+  & bun run $workflowPackBundleAuditScript `
+    --installer $msiInstaller.FullName `
+    --layer windows-release-bundle `
+    --output-file $workflowPackAuditPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "[build-windows-x64] packaged workflow audit failed (exit $LASTEXITCODE)"
+  }
+} finally {
+  Pop-Location
+}
 
 $buildInfo = @(
   "App version: $appVersion"
@@ -277,6 +312,8 @@ $buildInfo = @(
   "Actual output: $activeOutputDir"
   "Windows installer (MSI): $msiInstallerPath"
   "Artifacts copied: $($copiedArtifacts.Count)"
+  "Workflow pack staged audit: $workflowPackStagedAuditPath"
+  "Workflow pack bundle audit: $workflowPackAuditPath"
   "Built at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')"
 )
 

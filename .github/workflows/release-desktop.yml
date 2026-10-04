@@ -24,7 +24,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality-preflight:
+    runs-on: windows-latest
+    name: Release quality preflight
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install root dependencies
+        run: bun install
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: bun install
+
+      - name: Install adapter dependencies
+        working-directory: adapters
+        run: bun install
+
+      - name: Run non-live release preflight
+        run: bun run quality:gate --mode pr
+
+      - name: Upload release quality gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-quality-gate
+          path: |
+            artifacts/quality-runs/
+            artifacts/coverage/
+          if-no-files-found: error
+          retention-days: 14
   build:
+    needs: quality-preflight
     strategy:
       fail-fast: false
       # tauri-action merges the current job's updater entry into the existing
@@ -140,6 +190,14 @@ jobs:
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: bun run build:sidecars
 
+      - name: Audit staged Windows workflow pack resources
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p artifacts/release
+          bun run scripts/audit-workflow-packs.ts --resource-dir desktop/src-tauri/binaries --layer windows-release-resource --output-file artifacts/release/workflow-pack-staged-audit.json
+
+
       # ── Build Tauri app ──────────────────────────────────────
       - name: Validate updater signing key
         shell: bash
@@ -162,7 +220,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}
         with:
           projectPath: desktop
-          tauriScript: bunx tauri
+          tauriScript: bun run tauri:audited
           tagName: v__VERSION__
           releaseName: 'Claude Code Jiangxia v__VERSION__'
           releaseBody: ${{ steps.release_notes.outputs.body }}
@@ -172,3 +230,14 @@ jobs:
           updaterJsonPreferNsis: true
           assetNamePattern: ${{ matrix.asset_name_pattern }}
           args: ${{ matrix.tauri_args }} --ci --config src-tauri/tauri.release-ci.json
+
+      - name: Upload workflow pack audits
+        if: always() && matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-pack-audit-${{ matrix.label }}
+          path: |
+            artifacts/release/workflow-pack-staged-audit.json
+            artifacts/release/workflow-pack-audit.json
+          if-no-files-found: error
+          retention-days: 30

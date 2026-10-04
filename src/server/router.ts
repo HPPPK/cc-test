@@ -34,6 +34,8 @@ import { handleExpertsApi } from './api/experts.js'
 import { handleImagesApi } from './api/images.js'
 import { handleExpertHumanVerificationsApi } from './api/expert-human-verifications.js'
 import { handleExpertBrowserActivityApi } from './api/expert-browser-activity.js'
+import { handleExpertBrowserSearchPacingApi } from './api/expert-browser-search-pacing.js'
+import { handleAgentRunsApi } from './api/agent-runs.js'
 
 export async function handleApiRequest(req: Request, url: URL): Promise<Response> {
   const path = url.pathname
@@ -154,6 +156,11 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'expert-browser-activity':
       return handleExpertBrowserActivityApi(req, url, segments)
+    case 'expert-browser-search-pacing':
+      return handleExpertBrowserSearchPacingApi(req, url, segments)
+
+    case 'agent-runs':
+      return handleAgentRunsApi(req, url, segments)
 
     case 'filesystem':
       return handleFilesystemRoute(url.pathname, url)

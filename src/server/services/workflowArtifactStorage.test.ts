@@ -6,8 +6,9 @@ import {
   ensureWorkflowArtifactStorage,
   workflowArtifactStoragePath,
   workflowRunArchiveDir,
+  workflowRunStateDir,
 } from './workflowArtifactStorage.js'
-import type { WorkflowRun } from './workflowTypes.js'
+import type { WorkflowContextCapsule, WorkflowRun, WorkflowTemplate } from './workflowTypes.js'
 
 const NOW = '2026-07-02T06:00:00.000Z'
 
@@ -121,6 +122,36 @@ describe('workflow artifact storage policy', () => {
       .resolves.toContain('snapshot')
     await expect(fs.readFile(path.join(archiveDir, 'quality-report.md'), 'utf-8'))
       .resolves.toContain('passed')
+  })
+
+  test('persists the run template snapshot and context handoffs under the stable run id', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-storage-snapshot-'))
+    const currentRun = run({ id: 'session-abc-run-1', workspaceRoot })
+    const templateSnapshot: WorkflowTemplate = {
+      schemaVersion: 2, id: 'guided-product-builder', source: 'pack', version: '7', displayName: 'Guided', phases: [],
+    }
+    const capsule: WorkflowContextCapsule = {
+      schemaVersion: 1, id: 'capsule-route-to-scope', sessionId: 'session-abc', runId: currentRun.id,
+      fromPhaseId: 'route', toPhaseId: 'scope', sourceStateVersion: 4, sourceHash: 'sha256-abc', createdAt: NOW,
+      userRequirements: [], userDecisions: [], acceptedTaskIds: [], completedTaskIds: [], incompleteTaskIds: [],
+      artifactRefs: [], modifiedFiles: [], verificationEvidence: [], excludedIssues: [], unresolvedRisks: [], nextActions: [],
+      handoff: { summary: 'route complete' },
+    }
+
+    await ensureWorkflowArtifactStorage({
+      workspaceRoot,
+      run: currentRun,
+      now: NOW,
+      templateSnapshot,
+      templateSnapshotHash: 'sha256-template',
+      contextCapsules: [capsule],
+    })
+
+    const runDir = workflowRunStateDir(workspaceRoot, currentRun.id)
+    await expect(fs.readFile(path.join(runDir, 'template.snapshot.json'), 'utf8'))
+      .resolves.toContain('sha256-template')
+    await expect(fs.readFile(path.join(runDir, 'handoffs', 'route-to-scope.json'), 'utf8'))
+      .resolves.toContain('route complete')
   })
 
   test('rejects workflow artifact storage outside the workspace .workflow directory', () => {

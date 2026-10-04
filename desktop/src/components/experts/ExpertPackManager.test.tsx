@@ -16,6 +16,7 @@ vi.mock('../../api/experts', () => ({
     previewImport: vi.fn(),
     importPack: vi.fn(),
     updatePack: vi.fn(),
+    applyBundledUpdate: vi.fn(),
     copyPack: vi.fn(),
     createPack: vi.fn(),
     deletePack: vi.fn(),
@@ -76,7 +77,23 @@ describe('ExpertPackManager', () => {
     vi.mocked(expertsApi.copyPack).mockResolvedValue({ pack, experts: pack.experts, summary: '', warnings: [], canImport: true })
     vi.mocked(expertsApi.deletePack).mockResolvedValue(undefined)
     vi.mocked(expertsApi.updatePack).mockResolvedValue(pack)
+    vi.mocked(expertsApi.applyBundledUpdate).mockResolvedValue({ pack, previousVersion: '1.0.0', bundledVersion: '1.1.0', backupFilename: 'custom-pack.backup-1.0.0-test.zip' })
     useSkillStore.setState({ catalog: [], skills: [], isCatalogLoading: false, isLoading: false, error: null })
+  })
+
+  it('prompts before replacing a user-owned Expert ZIP and requests a backed-up bundled update', async () => {
+    const updateAvailablePack = {
+      ...pack,
+      bundledUpdate: { kind: 'version' as const, localVersion: '1.0.0', bundledVersion: '1.1.0' },
+    }
+    vi.mocked(expertsApi.listPacks).mockResolvedValue({ packs: [updateAvailablePack] })
+    render(<ExpertPackManager />)
+
+    expect(await screen.findByRole('dialog', { name: '发现专家包官方更新' })).toBeInTheDocument()
+    expect(screen.getByText(/不会更换包 ID/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '更新并备份' }))
+
+    await waitFor(() => expect(expertsApi.applyBundledUpdate).toHaveBeenCalledWith('custom-pack'))
   })
 
   it('uses the workflow-style manager shell and opens a separate edit framework', async () => {

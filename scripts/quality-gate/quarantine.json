@@ -3,41 +3,41 @@
     {
       "id": "server:cron-scheduler",
       "path": "src/server/__tests__/cron-scheduler.test.ts",
-      "reason": "Known unstable scheduler timing assertions; keep out of default server gate until fixed.",
+      "reason": "Re-reviewed 2026-09-17: scheduler tests still show 5 s timeouts and cross-test run-log mismatches; keep out of the default server gate until deterministic scheduler controls replace wall-clock/process behavior.",
       "owner": "maintainers",
-      "reviewAfter": "2026-08-01",
+      "reviewAfter": "2026-10-17",
       "exitCriteria": "Replace timing-sensitive assertions with deterministic scheduler controls and prove the test passes in check:server for five consecutive local/CI runs."
     },
     {
       "id": "server:providers-real",
       "path": "src/server/__tests__/providers-real.test.ts",
-      "reason": "Live provider coverage belongs in maintainer baseline or release mode, not the default PR gate.",
+      "reason": "Re-reviewed 2026-09-17: live provider coverage still belongs in maintainer baseline or release mode, not the default non-live PR gate.",
       "owner": "maintainers",
-      "reviewAfter": "2026-08-01",
+      "reviewAfter": "2026-10-17",
       "exitCriteria": "Move live behavior into provider-smoke lanes and keep only non-live provider contract tests in check:server."
     },
     {
       "id": "server:tasks",
       "path": "src/server/__tests__/tasks.test.ts",
-      "reason": "Known default-gate instability; keep quarantined until task timing is hardened.",
+      "reason": "Re-reviewed 2026-09-17: the suite passed once, but the existing exit criterion requires five consecutive local/CI passes before removal.",
       "owner": "maintainers",
-      "reviewAfter": "2026-08-01",
+      "reviewAfter": "2026-10-17",
       "exitCriteria": "Harden task timing with fake timers or event-based waits and prove the suite passes in check:server for five consecutive local/CI runs."
     },
     {
       "id": "server:e2e:business-flow",
       "path": "src/server/__tests__/e2e/business-flow.test.ts",
-      "reason": "Broad e2e flow is not deterministic enough for default PR checks.",
+      "reason": "Re-reviewed 2026-09-17: the broad flow still has model, session, and WebSocket assumptions that fail outside a bounded deterministic fixture.",
       "owner": "maintainers",
-      "reviewAfter": "2026-08-01",
+      "reviewAfter": "2026-10-17",
       "exitCriteria": "Split into deterministic contract tests or move to an explicit smoke lane with bounded fixtures, logs, and timeout policy."
     },
     {
       "id": "server:e2e:full-flow",
       "path": "src/server/__tests__/e2e/full-flow.test.ts",
-      "reason": "Broad e2e flow is not deterministic enough for default PR checks.",
+      "reason": "Re-reviewed 2026-09-17: the broad flow still has diagnostics/model catalog drift and remains unsuitable for the default deterministic PR gate.",
       "owner": "maintainers",
-      "reviewAfter": "2026-08-01",
+      "reviewAfter": "2026-10-17",
       "exitCriteria": "Split into deterministic contract tests or move to an explicit smoke lane with bounded fixtures, logs, and timeout policy."
     }
   ]

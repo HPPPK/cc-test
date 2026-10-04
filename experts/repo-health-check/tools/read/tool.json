@@ -1,0 +1,15 @@
+{
+  "id": "read",
+  "name": "读取文件",
+  "type": "hostBuiltinRef",
+  "purpose": "读取用户授权的项目文件与文档，不修改内容。",
+  "entrypoint": "tools/read/tool.json",
+  "hostToolId": "Read",
+  "permissions": [
+    {
+      "id": "read-authorized-materials",
+      "description": "仅读取用户明确提供或当前会话已授权读取的材料与项目文件。"
+    }
+  ],
+  "network": "none"
+}

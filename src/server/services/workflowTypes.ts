@@ -766,7 +766,7 @@ export type WorkflowTransitionAuthority =
   | 'stop'
   | 'recovery'
 
-export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear'
+export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear' | 'capsule'
 
 export type WorkflowTransitionRecord = {
   transitionId: string
@@ -799,6 +799,9 @@ export type WorkflowTransitionRecord = {
   previousRevision?: number
   nextRevision?: number
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
+  defaultPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
+  contextCapsules?: WorkflowContextCapsule[]
+  activeContextCapsuleId?: string
 }
 
 export const WORKFLOW_COMPLETION_ELIGIBILITY_STATUSES = [
@@ -893,11 +896,42 @@ export type WorkflowTaskSnapshot = {
   sessionId: string
   phaseId: string
   stateVersion: number
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'interrupted' | 'stale'
+  status:
+    | 'pending'
+    | 'waiting_dependency'
+    | 'running'
+    | 'waiting_user'
+    | 'needs_fix'
+    | 'succeeded'
+    | 'failed'
+    | 'blocked'
+    | 'interrupted'
+    | 'cancelled'
+    | 'stale'
   executionMode?: 'read' | 'write'
   integrationStatus?: 'not-required' | 'pending' | 'handoff-ready' | 'integrated' | 'verified' | 'stale'
   updatedAt: string
   reason?: string
+  batchId?: string
+  workflowRole?: 'coder' | 'reviewer' | 'qa' | 'debug'
+  agentId?: string
+  agentRunId?: string
+  attempt?: number
+  dependsOn?: string[]
+  writeScopes?: string[]
+  resourceClaims?: string[]
+  inputCapsuleRef?: string
+  outputArtifactRefs?: string[]
+  lastHeartbeatAt?: string
+  toolUseId?: string
+  developmentPlanSignature?: string
+  startedAt?: string
+  completedAt?: string
+  startedStateVersion?: number
+  completedStateVersion?: number
+  reviewStatus?: 'pass' | 'needs-fix'
+  requiredFixes?: string[]
+  readyForNextBatch?: boolean
 }
 
 export type WorkflowPhaseCompletionState = {
@@ -926,6 +960,30 @@ export type WorkflowRuntimeContractState = {
     [key: string]: unknown
   }>
   [key: string]: unknown
+}
+
+export type WorkflowContextCapsule = {
+  schemaVersion: 1
+  id: string
+  sessionId: string
+  runId: string
+  fromPhaseId: string
+  toPhaseId: string
+  sourceStateVersion: number
+  sourceHash: string
+  createdAt: string
+  userRequirements: string[]
+  userDecisions: string[]
+  acceptedTaskIds: string[]
+  completedTaskIds: string[]
+  incompleteTaskIds: string[]
+  artifactRefs: WorkflowArtifactPointer[]
+  modifiedFiles: string[]
+  verificationEvidence: string[]
+  excludedIssues: string[]
+  unresolvedRisks: string[]
+  nextActions: string[]
+  handoff: JsonObject
 }
 
 export type WorkflowSessionState = {

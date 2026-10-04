@@ -1,14 +1,22 @@
+import { collectUiuxImageEvidence } from '../../services/tools/uiuxImageWorkflowRuntime.js'
+import { validateUiuxImageReview, UIUX_REVIEW_INSTRUCTION, UIUX_REFERENCE_INSTRUCTION } from '../../services/tools/uiuxImageContract.js'
 /**
  * WebSocket connection handler
  *
- * 管理 WebSocket 连接生命周期，处理消息路由。
- * 用户消息通过 CLI 子进程（stream-json 模式）处理，
- * CLI stdout 消息被转换为 ServerMessage 并转发到 WebSocket。
- */
+ * 绠＄悊 WebSocket 杩炴帴鐢熷懡鍛ㄦ湡锛屽鐞嗘秷鎭矾鐢便€? * 鐢ㄦ埛娑堟伅閫氳繃 CLI 瀛愯繘绋嬶紙stream-json 妯″紡锛夊鐞嗭紝
+ * CLI stdout 娑堟伅琚浆鎹负 ServerMessage 骞惰浆鍙戝埌 WebSocket銆? */
 
+import { isUiuxImageOnlyBinding } from '../services/uiuxImageDeliveryPolicyService.js'
+import { upgradeUiuxImageOnlyRuntime } from '../services/expertRuntimeBindingService.js'
+import { PROTOTYPE_PREVIEW_TOOL, parsePrototypePreviewReceipt, imageMatchesPreview, type PrototypePreviewReceipt, type PrototypePreviewScreenshot } from '../services/prototypePreviewService.js'
+import { validatePrototypePreviewFiles } from '../services/prototypePreviewEvidence.js'
 import type { ServerWebSocket } from 'bun'
 import type { ClientMessage, ServerMessage } from './events.js'
+import { ClientOutbox } from './clientOutbox.js'
 import * as os from 'node:os'
+import { createHash } from 'node:crypto'
+import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
 import {
   ConversationStartupError,
   conversationService,
@@ -16,7 +24,11 @@ import {
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
 import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
 import { expertBrowserActivityService } from '../services/expertBrowserActivityService.js'
+import { expertSearchPacingService } from '../services/expertSearchPacingService.js'
+import { expertResearchAutoContinueService, type ExpertResearchAutoContinuePlan } from '../services/expertResearchAutoContinueService.js'
+import { ExpertSessionService } from '../services/expertSessionService.js'
 import { sessionService } from '../services/sessionService.js'
+import type { ExpertResearchArtifactPolicy } from '../services/expertResearchArtifactPolicyService.js'
 import { ApiError } from '../middleware/errorHandler.js'
 import { SettingsService } from '../services/settingsService.js'
 import { ProviderService } from '../services/providerService.js'
@@ -25,6 +37,8 @@ import { deriveTitle, generateTitle, saveAiTitle } from '../services/titleServic
 import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
+import { WorkflowRefinementLedgerService } from '../services/workflowRefinementLedgerService.js'
+import { getAppStoragePath } from '../../utils/appIdentity.js'
 import {
   clearWorkflowSessionTransitionCoordinatorForTests,
   enqueueWorkflowSessionTransition,
@@ -35,6 +49,7 @@ import {
   recordAskUserQuestionIssue,
 } from '../services/workflowCompletionGate.js'
 import { loadCurrentWorkflowTemplate } from '../services/workflowRuntimeTemplateService.js'
+import { isManagedWorkflowAgentTaskState } from '../services/workflowAgentTaskStateService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
 import {
   getWorkflowPhaseDisallowedTools,
@@ -66,24 +81,40 @@ import {
 import { shouldCreateWorktreeForSessionLaunch } from '../services/repositoryLaunchService.js'
 import {
   buildExpertRuntimeTurnInstruction,
+  getExpertProcessBindingKey,
   buildNormalRuntimeResetInstruction,
   ExpertRuntimeBindingError,
   hasActiveExpertRuntime,
   resolveExpertRuntimeToolPolicy,
+  upgradeCommercializationResearchChannelRuntime,
+  restoreTruncatedExpertRuntime,
 } from '../services/expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
+import { sessionRuntimeTransitionService } from '../services/sessionRuntimeTransitionService.js'
+import { resolveExpertTemplateFillOutputRoot } from '../services/expertTemplateOutputPolicyService.js'
 import {
   resolveExpertResearchDeliveryTerminalRecovery,
   type ExpertResearchDeliveryTerminalRecovery,
 } from '../services/expertResearchDeliveryTerminalService.js'
 
-import { setSessionChatState } from '../api/conversations.js'
+import { getSessionChatState, setSessionChatState } from '../api/conversations.js'
 
 const settingsService = new SettingsService()
 const providerService = new ProviderService()
 const workflowRuntimeService = new WorkflowRuntimeService()
 const workflowSessionStateService = new WorkflowSessionStateService()
 const workflowReportStore = new WorkflowReportStore()
+const workflowRefinementLedgerService = new WorkflowRefinementLedgerService()
+// ExpertSessionService reaches the browser-activity service, which delivers
+// events through this module. Instantiate it only after ESM module evaluation
+// completes so that this legitimate service-to-WebSocket cycle never reads the
+// imported class while it is still in the temporal dead zone.
+let expertSessionService: ExpertSessionService | undefined
+function getExpertSessionService(): ExpertSessionService {
+  expertSessionService ??= new ExpertSessionService()
+  return expertSessionService
+}
+const workflowArtifactWriteRecoveryAttempts = new Map<string, number>()
 
 /**
  * Cache slash commands from CLI init messages, keyed by sessionId.
@@ -103,8 +134,8 @@ const sessionSlashCommands = new Map<string, SessionSlashCommand[]>()
 const sessionCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /**
- * Track sessions where user requested stop — suppress the CLI_ERROR that
- * follows an interrupt so the frontend doesn't show "处理过程中发生错误".
+ * Track sessions where user requested stop 鈥?suppress the CLI_ERROR that
+ * follows an interrupt so the frontend doesn't show "澶勭悊杩囩▼涓彂鐢熼敊璇?.
  */
 const sessionStopRequested = new Set<string>()
 
@@ -128,7 +159,7 @@ type RuntimeOverride = {
 
 const runtimeOverrides = new Map<string, RuntimeOverride>()
 
-const runtimeTransitionPromises = new Map<string, Promise<void>>()
+// CLI starts and HTTP Expert transitions share the same session lifecycle queue.
 
 
 const ephemeralWorkflowStates = new Map<string, WorkflowSessionState>()
@@ -153,7 +184,7 @@ function restoreRuntimeOverride(
 async function sendRepositoryStartupStatus(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
-  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue',
+  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue' | 'expert_research_auto_continue',
 ): Promise<void> {
   if (reason !== 'user_message') return
 
@@ -185,6 +216,29 @@ const clientOutputCallbacks = new Map<ServerWebSocket<WebSocketData>, {
   sessionId: string
   callback: (msg: any) => void
 }>()
+// Keep a session-level listener during the short reconnect grace period. The
+// listener still drives workflow recovery even when there is temporarily no UI
+// socket to receive its broadcast messages.
+const retainedSessionOutputCallbacks = new Map<string, (msg: any) => void>()
+
+type ClientBackpressureState = {
+  startedAt: number
+  lastReportedAt: number
+  queuedSendCount: number
+  messageTypes: Set<string>
+}
+
+// uWebSockets returns -1 when a payload is queued behind a slow client. Keep
+// delivery intact, but coalesce diagnostics so a long streaming response does
+// not turn one recoverable slow-client period into thousands of disk writes.
+const CLIENT_BACKPRESSURE_DIAGNOSTIC_INTERVAL_MS = 15_000
+const clientBackpressureStates = new Map<
+  ServerWebSocket<WebSocketData>,
+  ClientBackpressureState
+>()
+
+const clientOutboxes = new Map<ServerWebSocket<WebSocketData>, ClientOutbox>()
+const runningBackgroundTasks = new Map<string, Set<string>>()
 
 function addActiveClient(
   sessionId: string,
@@ -204,6 +258,9 @@ function removeActiveClient(
 ): boolean {
   const clients = activeSessions.get(sessionId)
   if (!clients?.has(ws)) return false
+  clientBackpressureStates.delete(ws)
+  clientOutboxes.get(ws)?.dispose()
+  clientOutboxes.delete(ws)
   clients.delete(ws)
   if (clients.size === 0) {
     activeSessions.delete(sessionId)
@@ -218,12 +275,22 @@ function hasActiveClients(sessionId: string): boolean {
 function scheduleSessionCleanupAfterClientDisconnect(sessionId: string): void {
   if (hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId)) return
 
-  computerUseApprovalService.cancelSession(sessionId)
-  expertHumanVerificationService.cancelSession(sessionId, 'Desktop session disconnected before browser verification was resolved.')
   const cleanupTimer = setTimeout(() => {
     sessionCleanupTimers.delete(sessionId)
     if (!hasActiveClients(sessionId)) {
-      console.log(`[WS] Session ${sessionId} not reconnected after 30s, stopping CLI subprocess`)
+      // A UI connection is not the lifetime/owner of a running research task.
+      // Keep approval requests pending; reconnecting must not auto-deny them.
+      if (getSessionChatState(sessionId) !== 'idle'
+        || (runningBackgroundTasks.get(sessionId)?.size ?? 0) > 0
+        || expertHumanVerificationService.getPendingRequest(sessionId)
+        || conversationService.getPendingPermissionRequests(sessionId).length > 0) {
+        scheduleSessionCleanupAfterClientDisconnect(sessionId)
+        return
+      }
+      console.log(`[WS] Idle session ${sessionId} disconnected after grace period; releasing CLI subprocess`)
+      computerUseApprovalService.cancelSession(sessionId)
+      expertHumanVerificationService.cancelSession(sessionId)
+      removeSessionOutputCallbacks(sessionId)
       conversationService.stopSession(sessionId)
       cleanupSessionRuntimeState(sessionId)
     }
@@ -236,8 +303,10 @@ function removeDisconnectedClient(
   ws: ServerWebSocket<WebSocketData>,
 ): boolean {
   const removed = removeActiveClient(sessionId, ws)
-  // Always clear the callback mapping, including duplicate close notifications.
-  removeClientOutputCallback(ws)
+  // Always clear the socket mapping, including duplicate close notifications.
+  // Keep the underlying session listener only for the final client during the
+  // reconnect grace period, so workflow terminal recovery still receives CLI output.
+  removeClientOutputCallback(ws, { retainForReconnect: !hasActiveClients(sessionId) })
   if (removed) {
     scheduleSessionCleanupAfterClientDisconnect(sessionId)
   }
@@ -285,6 +354,33 @@ type ClientSendOutcome = 'sent' | 'backpressured' | 'dropped'
 function sendToClient(
   ws: ServerWebSocket<WebSocketData>,
   payload: string,
+  _messageType: string,
+): ClientSendOutcome {
+  let outbox = clientOutboxes.get(ws)
+  if (!outbox) {
+    outbox = new ClientOutbox((frame) => {
+      const outcome = sendClientFrame(ws, frame, JSON.parse(frame).type)
+      return outcome === 'dropped' ? 0 : outcome === 'backpressured' ? -1 : 1
+    }, () => {
+      void diagnosticsService.recordEvent({
+        type: 'ws_client_resync_required', severity: 'warn', sessionId: ws.data.sessionId,
+        summary: 'Slow client exceeded the bounded outbox; reconnect and restore persisted history',
+      })
+      removeDisconnectedClient(ws.data.sessionId, ws)
+      try {
+        ws.close(1013, 'Client too slow; reconnect to restore history')
+      } catch {
+        // The stale socket is already detached; do not interrupt healthy peers.
+      }
+    })
+    clientOutboxes.set(ws, outbox)
+  }
+  return outbox.send(payload)
+}
+
+function sendClientFrame(
+  ws: ServerWebSocket<WebSocketData>,
+  payload: string,
   messageType: string,
 ): ClientSendOutcome {
   try {
@@ -297,6 +393,37 @@ function sendToClient(
       return 'dropped'
     }
     if (sendResult === -1) {
+      const now = Date.now()
+      const existing = clientBackpressureStates.get(ws)
+      if (existing) {
+        existing.queuedSendCount += 1
+        existing.messageTypes.add(messageType)
+        if (now - existing.lastReportedAt >= CLIENT_BACKPRESSURE_DIAGNOSTIC_INTERVAL_MS) {
+          void diagnosticsService.recordEvent({
+            type: 'ws_client_backpressure',
+            severity: 'warn',
+            sessionId: ws.data.sessionId,
+            summary: 'Client WebSocket remains backpressured; queued sends coalesced in diagnostics',
+            details: {
+              channel: ws.data.channel,
+              sendResult,
+              durationMs: now - existing.startedAt,
+              queuedSendCount: existing.queuedSendCount,
+              messageTypes: [...existing.messageTypes],
+            },
+          })
+          existing.lastReportedAt = now
+        }
+        return 'backpressured'
+      }
+
+      const state: ClientBackpressureState = {
+        startedAt: now,
+        lastReportedAt: now,
+        queuedSendCount: 1,
+        messageTypes: new Set([messageType]),
+      }
+      clientBackpressureStates.set(ws, state)
       void diagnosticsService.recordEvent({
         type: 'ws_client_backpressure',
         severity: 'warn',
@@ -306,9 +433,27 @@ function sendToClient(
           channel: ws.data.channel,
           messageType,
           sendResult,
+          queuedSendCount: state.queuedSendCount,
         },
       })
       return 'backpressured'
+    }
+
+    const recovered = clientBackpressureStates.get(ws)
+    if (recovered) {
+      clientBackpressureStates.delete(ws)
+      void diagnosticsService.recordEvent({
+        type: 'ws_client_backpressure_recovered',
+        severity: 'info',
+        sessionId: ws.data.sessionId,
+        summary: 'Client WebSocket recovered from backpressure',
+        details: {
+          channel: ws.data.channel,
+          durationMs: Date.now() - recovered.startedAt,
+          queuedSendCount: recovered.queuedSendCount,
+          messageTypes: [...recovered.messageTypes],
+        },
+      })
     }
     return 'sent'
   } catch (error) {
@@ -361,7 +506,7 @@ export const handleWebSocket = {
     })
 
     // A second socket or a pending cleanup timer means this client is reconnecting.
-    const isReconnect = hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId)
+    const isReconnect = hasActiveClients(sessionId) || sessionCleanupTimers.has(sessionId) || retainedSessionOutputCallbacks.has(sessionId)
 
     // Cancel pending cleanup timer if client reconnects
     const pendingTimer = sessionCleanupTimers.get(sessionId)
@@ -371,6 +516,9 @@ export const handleWebSocket = {
     }
 
     addActiveClient(sessionId, ws)
+    // A prior sidecar could have received all three researcher handoffs after the
+    // parent turn ended. Re-check only this opt-in Expert when its client reconnects.
+    expertResearchAutoContinueService.schedule(sessionId)
     void reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId).catch((error) => {
       console.warn('[WS] Failed to reconcile persisted AskUserQuestion answers for ' + sessionId + ': ' + (
         error instanceof Error ? error.message : String(error)
@@ -384,6 +532,10 @@ export const handleWebSocket = {
 
     const msg: ServerMessage = { type: 'connected', sessionId }
     if (sendMessage(ws, msg) === 'dropped') return
+    sendMessage(ws, {
+      type: 'system_notification', subtype: 'session_state',
+      data: { state: getSessionChatState(sessionId), reconnected: isReconnect },
+    })
     if (isReconnect) {
       sendWorkflowStateSnapshotIfAvailable(ws, sessionId).catch((err) => {
         console.warn(
@@ -510,7 +662,7 @@ export const handleWebSocket = {
   },
 
   drain(ws: ServerWebSocket<WebSocketData>) {
-    // Backpressure handling - called when the socket is ready to receive more data
+    if (ws.data.channel === 'client') clientOutboxes.get(ws)?.drain()
   },
 }
 
@@ -527,9 +679,18 @@ async function handleUserMessage(
   // Clear any stale stop flag from a previous turn
   sessionStopRequested.delete(sessionId)
   const streamState = getStreamState(sessionId)
+  // A deterministic renderer/ledger failure belongs only to the prior user turn.
+  streamState.expertTemplateFillValidationFailure = false
   resetStrictVisualQaEvidence(streamState)
   streamState.strictVisualIntroductionTurn = false
   clearPrewarmState(sessionId)
+  const prototypeVisualRuntimeActive = await isPrototypeVisualRuntimeActive(sessionId)
+  if (prototypeVisualRuntimeActive && userRequestsPrototypeArtifactDelivery(message.content, message.attachments)) {
+    // A concrete topic (for example “AI 老照片修复”) starts a deliverable
+    // request. It remains true across card answers so the final confirmation
+    // cannot end as a prose-only plan.
+    streamState.prototypeDeliveryRequested = true
+  }
   const strictVisualRuntimeActive = await isStrictVisualRuntimeActive(sessionId)
   if (strictVisualRuntimeActive && userRequestsStrictVisualPublicResearch(message.content)) {
     // The user has already chosen a public reference site or explicitly
@@ -537,6 +698,16 @@ async function handleUserMessage(
     // this visual-research decision never happened.
     streamState.strictVisualReferenceResearchRequired = true
     streamState.strictVisualLockedReferenceUrls = strictVisualPublicReferenceUrls(message.content)
+  }
+  if (
+    strictVisualRuntimeActive
+    && userRequestsStrictVisualInspirationSourceDecision(message.content, message.attachments)
+    && !userHasResolvedStrictVisualInspirationSources(message.content)
+  ) {
+    // A screenshot-redesign task has reached the point where visual-reference
+    // scope must be chosen. Keep this as server state rather than trusting the
+    // model to remember to issue its inspiration_sources card.
+    streamState.strictVisualInspirationSourceDecisionRequired = true
   }
   if (strictVisualRuntimeActive && userRequestsStrictVisualFinalDelivery(message.content, message.attachments)) {
     // A rendered artifact cannot complete through a prose-only final claim.
@@ -595,78 +766,47 @@ async function handleUserMessage(
   streamState.strictVisualIntroductionTurn = titleState.userMessageCount === 1
     && isStrictVisualIntroductionRequest(message.content)
 
-  // 启动 CLI 子进程（如果还没有）
   try {
-    await ensureCliSessionStarted(ws, sessionId, 'user_message')
+    await enqueueRuntimeTransition(sessionId, async () => {
+      await ensureCliSessionStartedInTransition(ws, sessionId, 'user_message')
+      // Bind to the final process, then send exactly once before releasing the queue.
+      let userMessageSent = false
+      const shouldForwardCurrentTurnLocalCommand = createCurrentTurnLocalCommandForwarder(desktopSlashCommand)
+      bindAllClientSessionOutputs(sessionId, {
+        shouldForward: (cliMsg) => userMessageSent || (cliMsg.type === 'result' && cliMsg.is_error)
+          || shouldForwardCurrentTurnLocalCommand(cliMsg),
+      })
+      const resolvedMessage = await resolveSessionRuntimeUserMessage(ws, sessionId, message.content, message.workflowLanguage)
+      if (resolvedMessage === null) {
+        sendMessage(ws, { type: 'status', state: 'idle' })
+        return
+      }
+      const sent = conversationService.sendMessage(sessionId, resolvedMessage, message.attachments)
+      if (!sent) {
+        sendMessage(ws, {
+          type: 'error',
+          message: 'CLI process is not running. The session may have ended or the process crashed.',
+          code: 'CLI_NOT_RUNNING',
+        })
+        sendMessage(ws, { type: 'status', state: 'idle' })
+        return
+      }
+      userMessageSent = true
+    })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
-    const code =
-      err instanceof ExpertRuntimeBindingError
-        ? err.code
-        : err instanceof ConversationStartupError
-          ? err.code
-          : 'CLI_START_FAILED'
+    const code = err instanceof ExpertRuntimeBindingError ? err.code
+      : err instanceof ConversationStartupError ? err.code : 'CLI_START_FAILED'
     console.error('[WS] CLI start failed for ' + sessionId + ': ' + errMsg)
     sendMessage(ws, {
       type: 'error',
-      message: err instanceof ExpertRuntimeBindingError
-        ? errMsg
+      message: err instanceof ExpertRuntimeBindingError ? errMsg
         : await buildSessionStartupDiagnosticMessage(sessionId, errMsg),
       code,
-      retryable:
-        err instanceof ConversationStartupError ? err.retryable : false,
+      retryable: err instanceof ConversationStartupError ? err.retryable : false,
     })
     sendMessage(ws, { type: 'status', state: 'idle' })
-    return
   }
-
-  const startupRuntimeTransition = await waitForRuntimeTransitionBeforeUserTurn(ws, sessionId)
-  if (startupRuntimeTransition.ok) {
-    if (startupRuntimeTransition.waited) {
-      sendMessage(ws, { type: 'status', state: 'thinking', verb: 'Thinking' })
-    }
-  } else {
-    return
-  }
-
-  // Register the callback before sending the turn so startup errors are not lost.
-  // Keep output muted until the current user turn is enqueued to avoid forwarding
-  // any pre-turn SDK chatter as fresh chat history.
-  let userMessageSent = false
-  const shouldForwardCurrentTurnLocalCommand =
-    createCurrentTurnLocalCommandForwarder(desktopSlashCommand)
-
-  bindAllClientSessionOutputs(sessionId, {
-    shouldForward: (cliMsg) => {
-      if (userMessageSent || (cliMsg.type === 'result' && cliMsg.is_error)) {
-        return true
-      }
-      return shouldForwardCurrentTurnLocalCommand(cliMsg)
-    },
-  })
-
-  const resolvedMessage = await resolveSessionRuntimeUserMessage(ws, sessionId, message.content, message.workflowLanguage)
-  if (resolvedMessage === null) {
-    sendMessage(ws, { type: 'status', state: 'idle' })
-    return
-  }
-
-  const sent = conversationService.sendMessage(
-    sessionId,
-    resolvedMessage,
-    message.attachments
-  )
-  if (!sent) {
-    sendMessage(ws, {
-      type: 'error',
-      message: 'CLI process is not running. The session may have ended or the process crashed.',
-      code: 'CLI_NOT_RUNNING',
-    })
-    sendMessage(ws, { type: 'status', state: 'idle' })
-    return
-  }
-
-  userMessageSent = true
 }
 
 async function handleDesktopClearCommand(
@@ -676,6 +816,7 @@ async function handleDesktopClearCommand(
 
   const workDir = conversationService.getSessionWorkDir(sessionId)
   conversationService.stopSession(sessionId)
+  runningBackgroundTasks.delete(sessionId)
   conversationService.clearOutputCallbacks(sessionId)
   sessionSlashCommands.delete(sessionId)
   sessionTitleState.delete(sessionId)
@@ -742,15 +883,15 @@ async function sendWorkflowWelcomeIfNeeded(
   const labels = Array.isArray(state.labels) ? state.labels : []
   const capabilities = [
     description,
-    phaseCount > 0 ? `我会按 ${phaseCount} 个阶段带你推进` : '',
-    firstPhase?.label ? `第一步会从「${firstPhase.label}」开始` : '',
-    labels.length ? `当前路线偏向：${labels.join('、')}` : '',
+    phaseCount > 0 ? `我会按 ${phaseCount} 个阶段带你推进。` : '',
+    firstPhase?.label ? `第一步会从“${firstPhase.label}”开始。` : '',
+    labels.length ? `当前路线偏向：${labels.join('、')}。` : '',
   ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
 
   const message = [
-    `嗨，我是「${workflowName}」workflow。`,
-    capabilities.length ? capabilities.join('；') + '。' : '我会按这个 workflow 的阶段约束来协助你推进。',
-    '你可以直接告诉我想做什么、要改哪里、或把目标/问题丢给我；你一发消息，我就正式进入第一阶段开工。🚀',
+    `嗨，我是“${workflowName}”工作流。`,
+    capabilities.length ? capabilities.join('\n') : '我会按这个工作流的阶段约束来协助你推进。',
+    '你可以直接告诉我想做什么、要改哪里，或把目标/问题交给我；你一发消息，我就正式进入第一阶段。',
   ].join('\n\n')
 
   sendMessage(ws, {
@@ -766,7 +907,6 @@ async function sendWorkflowWelcomeIfNeeded(
     },
   })
 }
-
 async function handlePrewarmSession(ws: ServerWebSocket<WebSocketData>) {
   const { sessionId } = ws.data
   if (conversationService.hasSession(sessionId) || sessionStartupPromises.has(sessionId)) {
@@ -824,9 +964,11 @@ async function resolveSessionRuntimeUserMessage(
   // Expert runtime is attached as a hidden CLI system prompt when the session
   // starts. Never prepend it to a visible user turn or transcript entry.
   const resetInstruction = buildNormalRuntimeResetInstruction(session?.expert)
-  return resetInstruction
-    ? [resetInstruction, content].join('\n\n')
-    : content
+  // The commercialization Expert owns any necessary product-definition
+  // question in its prompt. Do not recreate the retired short-title intake
+  // gate here: every research run is a complete commercial analysis by default.
+  const dynamicIntakeInstruction = undefined
+  return [resetInstruction, dynamicIntakeInstruction, content].filter(Boolean).join('\n\n')
 }
 
 async function resolveWorkflowUserMessage(
@@ -988,12 +1130,111 @@ function handleE2ETestPermissionResponseAck(
   })
 }
 
+type WorkflowArtifactWriteDenial = {
+  message: string
+  recoverySent: boolean
+  retryable?: boolean
+}
+
+const SKILLS_DEVELOPMENT_TEMPLATE_ID = 'skills-development'
+const WORKFLOW_ARTIFACT_WRITE_RECOVERY_ATTEMPTS = 1
+const LEGACY_WORKFLOW_ARTIFACT_WRITE_FORBIDDEN_MESSAGE =
+  'This workflow phase may write only session-internal .workflow artifacts. Production files and unknown paths remain blocked until a phase explicitly grants normal edit capability.'
+
+function isSkillsDevelopmentWorkflow(state: WorkflowSessionState): boolean {
+  return state.templateIdentity?.id === SKILLS_DEVELOPMENT_TEMPLATE_ID
+}
+
+function workflowArtifactWriteRecoveryPhaseKey(
+  sessionId: string,
+  phaseId: string | null,
+): string {
+  return `${sessionId}:${phaseId ?? 'unknown'}`
+}
+
+function workflowArtifactWriteLedgerFingerprint(
+  phaseId: string | null,
+  candidatePath: unknown,
+): string {
+  const pathDigest = createHash('sha256')
+    .update(typeof candidatePath === 'string' ? candidatePath.trim().toLowerCase() : 'missing-or-unknown')
+    .digest('hex')
+  return `${phaseId ?? 'unknown'}:${pathDigest}`
+}
+
+function configDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
+}
+
+async function currentWorkflowPackSha256(templateId: string): Promise<string | null> {
+  try {
+    const filePath = getAppStoragePath(configDir(), 'workflows', 'packs', `${templateId}.zip`)
+    const bytes = await fs.readFile(filePath)
+    return createHash('sha256').update(bytes).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+function workflowArtifactWriteRecoveryInstruction(state: WorkflowSessionState): string {
+  const lines = [
+    'The previous Write request was denied because this is an artifact-only workflow phase.',
+    'workflow_artifact_write is declarative; the visible tool may still be named Write. This phase permits only a workspace-relative .workflow/... path.',
+    'Continue the current phase using Write only for the required .workflow artifact. Do not write src, public, the repository root, C:\\Temp, another workspace, or an unknown path. Do not call Edit/MultiEdit or treat the denial as phase completion.',
+    'If a temporary verification script seems necessary, use an already allowed command or record the blocked reason under .workflow instead. Do not create an external temporary file.',
+  ]
+  return ['<workflow-artifact-write-recovery>', ...lines, '</workflow-artifact-write-recovery>'].join('\n')
+}
+async function appendWorkflowArtifactWriteRefinement(
+  state: WorkflowSessionState,
+  sessionId: string,
+  candidatePath: unknown,
+): Promise<void> {
+  const templateId = state.templateIdentity?.id
+  // The refinement ledger is intentionally opt-in for the independently evolved
+  // skills-development pack. Other workflow templates must not gain durable
+  // side effects merely because they share the artifact-write runtime guard.
+  if (templateId !== SKILLS_DEVELOPMENT_TEMPLATE_ID) return
+  const phaseId = state.activePhaseId ?? undefined
+  const phaseFingerprint = workflowArtifactWriteLedgerFingerprint(state.activePhaseId, candidatePath)
+  const existing = await workflowRefinementLedgerService.list(templateId).catch(() => [])
+  if (existing.some((record) => (
+    record.status === 'observed'
+    && record.kind === 'tool-contract'
+    && record.sourceSessionId === sessionId
+    && record.phaseId === phaseId
+    && record.evidence.some((evidence) => evidence.fingerprint === phaseFingerprint)
+  ))) return
+
+  const now = new Date().toISOString()
+  await workflowRefinementLedgerService.append({
+    templateId,
+    basePackSha256: await currentWorkflowPackSha256(templateId),
+    ...(phaseId ? { phaseId } : {}),
+    kind: 'tool-contract',
+    status: 'observed',
+    scope: 'template',
+    evidence: [{
+      type: 'workflow-artifact-write-denied',
+      summary: 'Artifact-only phase attempted a Write outside workspace-relative .workflow/.',
+      observedAt: now,
+      fingerprint: phaseFingerprint,
+      pathCategory: typeof candidatePath === 'string' && candidatePath.trim() ? 'outside-workflow' : 'missing-or-unknown',
+    }],
+    expectedOutcome: 'The current phase recovers with a Write confined to .workflow/ and no product files are changed.',
+    proposedChange: 'Keep the concrete Write-to-.workflow contract and bounded recovery instruction in the workflow runtime and pack.',
+    sourceSessionId: sessionId,
+  }).catch((error) => {
+    console.warn(`[WS] Failed to record workflow artifact-write refinement for ${sessionId}:`, error)
+  })
+}
+
 async function rejectUnsafeWorkflowArtifactWrite(
   sessionId: string,
   requestId: string,
   allowed: boolean,
   updatedInput?: Record<string, unknown>,
-): Promise<string | null> {
+): Promise<WorkflowArtifactWriteDenial | null> {
   if (!allowed) return null
   const pending = conversationService.getPendingPermissionRequests(sessionId)
     .find((request) => request.requestId === requestId)
@@ -1006,10 +1247,51 @@ async function rejectUnsafeWorkflowArtifactWrite(
   const candidatePath = input.file_path ?? input.filePath ?? input.path
   const workDir = conversationService.getSessionWorkDir(sessionId)
     || await sessionService.getSessionWorkDir(sessionId).catch(() => null)
-  if (workDir && isWorkflowArtifactWritePath(workDir, candidatePath)) return null
+  if (workDir && isWorkflowArtifactWritePath(workDir, candidatePath)) {
+    if (isSkillsDevelopmentWorkflow(stateRead.state)) {
+      // A compliant artifact write is meaningful progress only for the isolated
+      // skills-development recovery guard. Other templates retain the original
+      // artifact-write behavior with no recovery state.
+      workflowArtifactWriteRecoveryAttempts.delete(
+        workflowArtifactWriteRecoveryPhaseKey(sessionId, stateRead.state.activePhaseId),
+      )
+    }
+    return null
+  }
 
-  conversationService.respondToPermission(sessionId, requestId, false)
-  return 'This workflow phase may write only session-internal .workflow artifacts. Production files and unknown paths remain blocked until a phase explicitly grants normal edit capability.'
+  // All non-skills-development templates retain the pre-v16 terminal rejection
+  // exactly: no recovery prompt, retry budget, or refinement-ledger side effect.
+  if (!isSkillsDevelopmentWorkflow(stateRead.state)) {
+    conversationService.respondToPermission(sessionId, requestId, false)
+    return {
+      message: LEGACY_WORKFLOW_ARTIFACT_WRITE_FORBIDDEN_MESSAGE,
+      recoverySent: false,
+    }
+  }
+
+  const recoveryPhaseKey = workflowArtifactWriteRecoveryPhaseKey(sessionId, stateRead.state.activePhaseId)
+  const recoveryAttempts = workflowArtifactWriteRecoveryAttempts.get(recoveryPhaseKey) ?? 0
+  const canRecover = recoveryAttempts < WORKFLOW_ARTIFACT_WRITE_RECOVERY_ATTEMPTS
+  const message = canRecover
+    ? 'This is an artifact-only workflow phase. The workflow_artifact_write capability exposes the visible Write tool only for workspace-relative .workflow/... files. Your attempted path is blocked. Do not edit source/product files or end the phase; write the required current-phase artifact under .workflow/ and continue.'
+    : 'This artifact-only workflow phase received another Write outside workspace-relative .workflow/ after a recovery instruction. Production files remain protected. Retry the current phase and write only its required .workflow artifact.'
+
+  conversationService.respondToPermission(sessionId, requestId, false, undefined, undefined, message)
+  await appendWorkflowArtifactWriteRefinement(stateRead.state, sessionId, candidatePath)
+
+  if (!canRecover) {
+    return { message, recoverySent: false, retryable: false }
+  }
+
+  workflowArtifactWriteRecoveryAttempts.set(recoveryPhaseKey, recoveryAttempts + 1)
+  sendToSession(sessionId, {
+    type: 'status',
+    state: 'thinking',
+    verb: 'Recovering workflow artifact write',
+  })
+  const recoverySent = conversationService.hasSession(sessionId)
+    && conversationService.sendMessage(sessionId, workflowArtifactWriteRecoveryInstruction(stateRead.state))
+  return { message, recoverySent, retryable: recoverySent }
 }
 
 function persistedWorkflowQuestionRecoveryPrompt(answered: boolean): string {
@@ -1056,13 +1338,18 @@ async function handlePermissionResponse(
       type: 'permission_response_ack',
       requestId: message.requestId,
       status: 'rejected',
-      message: artifactWriteDenial,
+      message: artifactWriteDenial.message,
     })
-    sendMessage(ws, {
-      type: 'error',
-      message: artifactWriteDenial,
-      code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
-    })
+    if (!artifactWriteDenial.recoverySent) {
+      sendMessage(ws, {
+        type: 'error',
+        message: artifactWriteDenial.message,
+        code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
+        ...(artifactWriteDenial.retryable === undefined
+          ? {}
+          : { retryable: artifactWriteDenial.retryable }),
+      })
+    }
     return
   }
   const pendingAskUserQuestion = conversationService.getPendingPermissionRequests(sessionId)
@@ -1798,7 +2085,7 @@ function isCompletionSubmissionAction(action: unknown): action is CompletionSubm
 function isSupportedNextPhaseContextStrategy(
   strategy: unknown,
 ): strategy is WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined {
-  return strategy === undefined || strategy === 'inherit' || strategy === 'clear'
+  return strategy === undefined || strategy === 'inherit' || strategy === 'clear' || strategy === 'capsule'
 }
 
 function toCompletionSubmission(message: WorkflowBoundaryTransitionMessage): CompletionSubmission {
@@ -1997,28 +2284,18 @@ async function handleSetRuntimeConfig(
     return
   }
 
-  if (!conversationService.hasSession(sessionId)) {
-    const pendingStartup = sessionStartupPromises.get(sessionId)
-    if (pendingStartup) {
-      await enqueueRuntimeTransition(sessionId, async () => {
-        await pendingStartup.catch(() => undefined)
-        const currentOverride = runtimeOverrides.get(sessionId)
-        if (
-          currentOverride?.providerId !== nextOverride.providerId ||
-          currentOverride.modelId !== nextOverride.modelId ||
-          !conversationService.hasSession(sessionId)
-        ) {
-          return
-        }
-        await restartSessionWithRuntimeConfig(ws, sessionId, prevOverride)
-      })
-    }
-    return
-  }
-
-  await enqueueRuntimeTransition(sessionId, () =>
-    restartSessionWithRuntimeConfig(ws, sessionId, prevOverride),
-  )
+  // Queue even before startSession has registered a process or startup promise.
+  // A prewarm may already be resolving old settings inside the same queue.
+  // Check process ownership only after that earlier transition has settled.
+  await enqueueRuntimeTransition(sessionId, async () => {
+    const currentOverride = runtimeOverrides.get(sessionId)
+    if (
+      currentOverride?.providerId !== nextOverride.providerId ||
+      currentOverride.modelId !== nextOverride.modelId ||
+      !conversationService.hasSession(sessionId)
+    ) return
+    await restartSessionWithRuntimeConfig(ws, sessionId, prevOverride)
+  })
 }
 
 async function restartSessionWithPermissionMode(
@@ -2203,6 +2480,7 @@ function handleStopGeneration(ws: ServerWebSocket<WebSocketData>) {
   console.log(`[WS] Stop generation requested for session: ${sessionId}`)
 
   sessionStopRequested.add(sessionId)
+  runningBackgroundTasks.delete(sessionId)
 
   if (conversationService.hasSession(sessionId)) {
     const stopTarget = conversationService.getSessionProcessToken(sessionId)
@@ -2276,6 +2554,13 @@ function triggerTitleGeneration(ws: ServerWebSocket<WebSocketData>, sessionId: s
 // CLI message translation
 // ============================================================================
 
+type PrototypeFidelity = 'low' | 'mid' | 'high'
+type PrototypeQaViewport = 'desktop' | 'tablet' | 'mobile'
+type PrototypeScreenshot = { viewport: PrototypeQaViewport; path: string }
+type PrototypeRenderAttempt = { writeCount: number; screenshots: PrototypeScreenshot[] }
+type PrototypeReadAttempt = PrototypeScreenshot & { writeCount: number; rendered: boolean; preview?: PrototypePreviewScreenshot }
+type PrototypeWriteAttempt = { fidelities: PrototypeFidelity[]; receipt?: string; writeCount: number }
+
 /**
  * Per-session streaming state to avoid cross-session interference.
  * Each session tracks its own dedup flag, active block types, and tool blocks.
@@ -2287,17 +2572,27 @@ type SessionStreamState = {
   pendingLocalCommand?: { name: string; args: string }
   usedAskUserQuestion: boolean
   assistantText: string
+  /** Hide free-form prose emitted during a server-initiated Expert continuation. */
+  suppressExpertAutoContinueAssistantText: boolean
   terminalRecoveryHandledForTurn: boolean
   terminalTurnSequence: number
   terminalFallbackTimer?: ReturnType<typeof setTimeout>
   failedAskUserQuestionToolUseIds: Set<string>
   strictVisualIntroductionTurn: boolean
+  hasStrictVisualGeneratedImage: boolean
   wroteStrictVisualHtml: boolean
   strictVisualHtmlWriteCount: number
   completedStrictVisualQa: boolean
   strictVisualRendererSuccessCount: number
   visualQaRendererToolUseIds: Set<string>
   strictVisualPngReadToolUseIds: Set<string>
+  /** Successful image_generation calls must be read back from their returned image path. */
+  strictVisualImageGenerationToolUseIds: Set<string>
+  strictVisualGeneratedImagePathsByToolUseId: Map<string, string>
+  strictVisualGeneratedImageReadPathsByToolUseId: Map<string, string>
+  strictVisualGeneratedImageFailedReadPaths: Set<string>
+  strictVisualGeneratedImageReadPaths: Set<string>
+  strictVisualGeneratedImageReviewText: string
   strictVisualLastImageReviewHtmlWriteCount: number | null
   /** True when the latest complete HTML write uses an unverifiable lifestyle price comparison. */
   strictVisualUnsupportedPriceAnalogyDetected: boolean
@@ -2312,6 +2607,8 @@ type SessionStreamState = {
   /** True when this user turn is asking the strict Expert to produce a rendered design artifact. */
   strictVisualFinalReviewRequired: boolean
   strictVisualReferenceResearchRequired: boolean
+  /** A screenshot-redesign task must choose its visual-reference scope before it may end. */
+  strictVisualInspirationSourceDecisionRequired: boolean
   /** A user-supplied pair of public URLs is a closed reference scope for this turn. */
   strictVisualLockedReferenceUrls: string[]
   strictVisualLockedReferenceAttemptUrls: Set<string>
@@ -2324,17 +2621,43 @@ type SessionStreamState = {
   strictVisualReferenceResearchRecoveryAttempts: number
   strictVisualRenderRecoveryAttempts: number
   strictVisualReviewRecoveryAttempts: number
+  /** Prototype-only visual QA state; this is separate from the UIUX strict workflow. */
+  /** A user has supplied a concrete product/topic request, not only asked what this Expert can do. */
+  prototypeDeliveryRequested: boolean
+  prototypeFidelityHtmlPaths: Set<PrototypeFidelity>
+  prototypeHighFidelityWriteCount: number
+  prototypeHighFidelityLastReadWriteCount: number | null
+  prototypeHighFidelityRevisionAfterImageReview: boolean
+  prototypeWritesByToolUseId: Map<string, PrototypeWriteAttempt>
+  prototypeEvidenceReceipt: string
+  prototypeReviewAssistantText: string
+  prototypePreviewAttempts: Map<string, { writeCount: number; fidelity: string }>
+  prototypePreviewReceipt: PrototypePreviewReceipt | null
+  prototypePreviewReadPaths: Set<string>
+  prototypeQaRenderedPaths: Set<string>
+  prototypeQaRendererViewportByToolUseId: Map<string, PrototypeRenderAttempt>
+  prototypeQaRenderedViewports: Set<PrototypeQaViewport>
+  prototypeQaReadViewportByToolUseId: Map<string, PrototypeReadAttempt>
+  prototypeQaReadViewports: Set<PrototypeQaViewport>
+  prototypeAskUserQuestionRecoveryAttempts: number
+  prototypeRenderRecoveryAttempts: number
+  prototypeReviewRecoveryAttempts: number
   structuredInteractionRecoveryAttempts: number
   expertResearchDeliveryRecoveryAttempts: number
+  /** Counts internal tool-only recoveries; ordinary model noncompliance is not a user-visible error. */
+  commercializationResearchQuestionRecoveryAttempts: number
+  /** A deterministic template/evidence tool failure occurred in this user turn. */
+  expertTemplateFillValidationFailure: boolean
   /** A delivery card reached the model turn; a transient record failure is not prose-only completion. */
   expertResearchDeliveryCardAttempted: boolean
   workflowProtocolToolRegistryError?: 'submit_phase_completion' | 'request_workflow_route'
   workflowProtocolBindingRecoveryAttempts: number
   workflowProtocolBindingRecoveryInFlight: boolean
   workflowProtocolInputValidationError?: WorkflowRecoverableInputToolName
+  workflowProtocolInputValidationDetail?: string
   workflowProtocolInputRecoveryAttempts: number
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
-   *  The assistant message carries the complete input — defer to that. */
+   *  The assistant message carries the complete input 鈥?defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
   toolParentUseIds: Map<string, string>
   lastApiError?: {
@@ -2355,6 +2678,7 @@ function getStreamState(sessionId: string): SessionStreamState {
       pendingLocalCommand: undefined,
       usedAskUserQuestion: false,
       assistantText: '',
+      suppressExpertAutoContinueAssistantText: false,
       terminalRecoveryHandledForTurn: false,
       terminalTurnSequence: 0,
       terminalFallbackTimer: undefined,
@@ -2366,6 +2690,12 @@ function getStreamState(sessionId: string): SessionStreamState {
       strictVisualRendererSuccessCount: 0,
       visualQaRendererToolUseIds: new Set(),
       strictVisualPngReadToolUseIds: new Set(),
+      strictVisualImageGenerationToolUseIds: new Set(),
+      strictVisualGeneratedImagePathsByToolUseId: new Map(),
+      strictVisualGeneratedImageReadPathsByToolUseId: new Map(),
+      strictVisualGeneratedImageFailedReadPaths: new Set(),
+      strictVisualGeneratedImageReadPaths: new Set(),
+      strictVisualGeneratedImageReviewText: '',
       strictVisualLastImageReviewHtmlWriteCount: null,
       strictVisualUnsupportedPriceAnalogyDetected: false,
       strictVisualUnsafeAbsolutePlanBadgeDetected: false,
@@ -2374,6 +2704,7 @@ function getStreamState(sessionId: string): SessionStreamState {
       strictVisualProcessDisclaimerDetected: false,
       strictVisualFinalReviewRequired: false,
       strictVisualReferenceResearchRequired: false,
+      strictVisualInspirationSourceDecisionRequired: false,
       strictVisualLockedReferenceUrls: [],
       strictVisualLockedReferenceAttemptUrls: new Set(),
       strictVisualReferenceSourceLockViolation: false,
@@ -2385,13 +2716,35 @@ function getStreamState(sessionId: string): SessionStreamState {
       strictVisualReferenceResearchRecoveryAttempts: 0,
       strictVisualRenderRecoveryAttempts: 0,
       strictVisualReviewRecoveryAttempts: 0,
+      prototypeDeliveryRequested: false,
+      prototypeFidelityHtmlPaths: new Set(),
+      prototypeHighFidelityWriteCount: 0,
+      prototypeHighFidelityLastReadWriteCount: null,
+      prototypeHighFidelityRevisionAfterImageReview: false,
+      prototypeWritesByToolUseId: new Map(),
+      prototypeEvidenceReceipt: '',
+      prototypeReviewAssistantText: '',
+      prototypePreviewAttempts: new Map(),
+    prototypePreviewReceipt: null,
+    prototypePreviewReadPaths: new Set(),
+    prototypeQaRenderedPaths: new Set(),
+      prototypeQaRendererViewportByToolUseId: new Map(),
+      prototypeQaRenderedViewports: new Set(),
+      prototypeQaReadViewportByToolUseId: new Map(),
+      prototypeQaReadViewports: new Set(),
+      prototypeAskUserQuestionRecoveryAttempts: 0,
+      prototypeRenderRecoveryAttempts: 0,
+      prototypeReviewRecoveryAttempts: 0,
       structuredInteractionRecoveryAttempts: 0,
       expertResearchDeliveryRecoveryAttempts: 0,
+      commercializationResearchQuestionRecoveryAttempts: 0,
+      expertTemplateFillValidationFailure: false,
       expertResearchDeliveryCardAttempted: false,
       workflowProtocolToolRegistryError: undefined,
       workflowProtocolBindingRecoveryAttempts: 0,
       workflowProtocolBindingRecoveryInFlight: false,
       workflowProtocolInputValidationError: undefined,
+      workflowProtocolInputValidationDetail: undefined,
       workflowProtocolInputRecoveryAttempts: 0,
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
@@ -2433,11 +2786,15 @@ function cleanupStreamState(sessionId: string) {
 }
 
 function cleanupSessionRuntimeState(sessionId: string) {
+  runningBackgroundTasks.delete(sessionId)
   cleanupStreamState(sessionId)
   sessionSlashCommands.delete(sessionId)
   sessionTitleState.delete(sessionId)
   runtimeOverrides.delete(sessionId)
-  runtimeTransitionPromises.delete(sessionId)
+  // In-flight lifecycle work owns its queue entry until it settles.
+  for (const key of workflowArtifactWriteRecoveryAttempts.keys()) {
+    if (key.startsWith(`${sessionId}:`)) workflowArtifactWriteRecoveryAttempts.delete(key)
+  }
   sessionStartupPromises.delete(sessionId)
   lastResolvedStartupWorkDirs.delete(sessionId)
   clearPrewarmState(sessionId)
@@ -2514,12 +2871,23 @@ function extractAssistantText(cliMsg: any): string {
 type WorkflowInteractionTurn = {
   assistantText: string
   usedAskUserQuestion: boolean
+  expertTemplateFillValidationFailure: boolean
   strictVisualIntroductionTurn: boolean
   wroteStrictVisualHtml: boolean
   completedStrictVisualQa: boolean
   completedStrictVisualReview: boolean
   visualReviewFailureReasons: string[]
+  wrotePrototypeHtml: boolean
+  prototypeDeliveryRequested: boolean
+  hasAllPrototypeFidelityHtml: boolean
+  completedPrototypeViewportQa: boolean
+  completedPrototypeVisualReview: boolean
+  prototypeVisualQualityFailureReasons: string[]
+  prototypeAskUserQuestionRecoveryAttempts: number
+  prototypeRenderRecoveryAttempts: number
+  prototypeReviewRecoveryAttempts: number
   strictVisualReferenceResearchRequired: boolean
+  strictVisualInspirationSourceDecisionRequired: boolean
   completedStrictVisualReferenceResearch: boolean
   referenceResearchRecoveryAttempts: number
   renderQaRecoveryAttempts: number
@@ -2534,10 +2902,25 @@ type WorkflowTerminalRecovery = {
 
 type ExpertResearchDeliveryTerminalRecoveryResult = ExpertResearchDeliveryTerminalRecovery
 
+type CommercializationResearchQuestionRecovery = {
+  expertId: string
+}
+
 type StrictVisualTerminalRecovery = {
-  kind: 'ask-user-question' | 'design-direction' | 'visual-reference-research' | 'render-qa' | 'visual-review'
+  imageOnly?: boolean
+  imageGenerationFailed?: boolean
+  latestImagePath?: string
+  imagePreviewFailed?: boolean
+  imagePreviewRead?: boolean
+  kind: 'ask-user-question' | 'design-direction' | 'inspiration-source' | 'visual-reference-research' | 'image-generation' | 'image-generation-review' | 'render-qa' | 'visual-review'
   expertId: string
   visualReviewFailureReasons?: string[]
+}
+
+type PrototypeVisualTerminalRecovery = {
+  kind: 'prototype-ask-user-question' | 'prototype-production' | 'prototype-render-qa' | 'prototype-visual-review'
+  expertId: string
+  failureReasons?: string[]
 }
 
 function beginStreamedAssistantTurn(streamState: SessionStreamState): void {
@@ -2554,6 +2937,8 @@ function beginStreamedAssistantTurn(streamState: SessionStreamState): void {
 function recordAssistantText(streamState: SessionStreamState, text: unknown): void {
   if (typeof text !== 'string' || !text) return
   streamState.assistantText += text
+  if (hasStrictVisualGeneratedImageReviewPreview(streamState)) streamState.strictVisualGeneratedImageReviewText += text
+  streamState.prototypeReviewAssistantText += text
 }
 
 function bashCommandWritesHtml(inputText: string): boolean {
@@ -2572,6 +2957,64 @@ function bashCommandWritesHtml(inputText: string): boolean {
 
 function normalizedStrictVisualPath(value: string): string {
   return value.trim().replace(/\\/g, '/').toLowerCase()
+}
+
+function prototypeFidelityFromPath(path: string): PrototypeFidelity | null {
+  const match = /(?:^|\/)(?:01-(low)|02-(mid)|03-(high))-fidelity\.html?$/i.exec(normalizedStrictVisualPath(path))
+  return (match?.[1] || match?.[2] || match?.[3] || null) as PrototypeFidelity | null
+}
+
+function prototypeWrittenFidelities(toolName: unknown, input: Record<string, unknown>): PrototypeFidelity[] {
+  if (['Write', 'Edit', 'MultiEdit'].includes(toolName as string) && typeof input.file_path === 'string') {
+    const fidelity = prototypeFidelityFromPath(input.file_path)
+    return fidelity ? [fidelity] : []
+  }
+  const command = input.command
+  if (toolName !== 'Bash' || typeof command !== 'string' || !bashCommandWritesHtml(command)) return []
+  // For shell writes, only explicit destinations count; mentioning an HTML
+  // filename in a report, source string, renderer, or copy source is not a write.
+  const targetPatterns = [
+    /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|WriteAllText|WriteAllBytes)\s*\(\s*(?:"([^"]+\.html?)"|'([^']+\.html?)')/gi,
+    /\b(?:Set-Content|Add-Content|Out-File)\s+(?:(?:-LiteralPath|-Path|-FilePath)\s+)?(?:"([^"]+\.html?)"|'([^']+\.html?)'|([^\s;|]+\.html?)(?=\s|$))/gi,
+    /\bPath\s*\(\s*(?:"([^"]+\.html?)"|'([^']+\.html?)')\s*\)\s*\.\s*write_(?:text|bytes)\s*\(/gi,
+    /\bopen\s*\(\s*(?:"([^"]+\.html?)"|'([^']+\.html?)')\s*,\s*["'][wax][^"']*["']/gi,
+    /(?:^|[;&|])[^\r\n;&|]*(?:>>|>)\s*(?:"([^"]+\.html?)"|'([^']+\.html?)'|([^\s;&|]+\.html?)(?=\s|$))/gi,
+  ]
+  return [...new Set(targetPatterns.flatMap(pattern => Array.from(command.matchAll(pattern)).flatMap(match => {
+    const fidelity = prototypeFidelityFromPath(match[1] || match[2] || match[3] || '')
+    return fidelity ? [fidelity] : []
+  })))]
+}
+
+function prototypeScreenshotFromPath(path: string): PrototypeScreenshot | null {
+  const normalized = normalizedStrictVisualPath(path)
+  const match = /(?:^|\/)high-(?:(?:first|final|desktop|tablet|mobile)-)*(1440x1000|1024x900|390x844)\.png$/i.exec(normalized)
+  if (!match) return null
+  const viewport = match[1] === '1440x1000' ? 'desktop' : match[1] === '1024x900' ? 'tablet' : 'mobile'
+  return { viewport, path: normalized }
+}
+
+function prototypeScreenshotsFromRendererCommand(command: string): PrototypeScreenshot[] {
+  const screenshots: PrototypeScreenshot[] = []
+  // A single Bash call may contain all three renderer invocations. Track each
+  // explicit output separately and later require its own successful receipt.
+  for (const invocation of command.split(/;|\r?\n|&&/)) {
+    if (!/03-high-fidelity\.html?(?:["'\s]|$)/i.test(invocation)
+      || !/(?:VISUAL_QA_BROWSER_EXECUTABLE|chrome|headless_shell|playwright)/i.test(invocation)) continue
+    const match = /["']--screenshot=([^"']+)["']|--screenshot=(?:"([^"]+)"|'([^']+)'|([^\s"']+))/i.exec(invocation)
+    const screenshot = match && prototypeScreenshotFromPath(match[1] || match[2] || match[3] || match[4] || '')
+    if (!screenshot) continue
+    const size = screenshot.viewport === 'desktop' ? '1440,1000' : screenshot.viewport === 'tablet' ? '1024,900' : '390,844'
+    if (invocation.includes('--window-size=' + size)) screenshots.push(screenshot)
+  }
+  return screenshots
+}
+
+function prototypeSuccessfulScreenshotPaths(content: unknown): Set<string> {
+  const text = textFromToolResultContent(content)
+  const paths = Array.from(text.matchAll(/(?:Screenshot written:\s*|\b\d+ bytes written to file\s+)([^\r\n]+?\.png)(?=["'\s]|$)/gi),
+    match => normalizedStrictVisualPath(match[1]!.replace(/^["']/, '')))
+  return new Set(paths)
 }
 
 function inputRequestsStrictVisualInspirationSources(inputText: string): boolean {
@@ -2609,17 +3052,11 @@ function readTargetsStrictVisualReferenceScreenshot(inputText: string, screensho
 
 export function containsStrictVisualUnsafeAbsolutePlanBadge(inputText: string): boolean {
   const normalized = inputText.toLowerCase()
-  const hasAbsolutePosition = /position\s*:\s*absolute/.test(normalized)
-  if (!hasAbsolutePosition) return false
-  // Limit the pairing window so unrelated absolute-positioned dialogs do not
-  // trip the purchase-card rule. Promotion labels repeatedly caused 390px
-  // title/price collisions in generated transaction windows.
-  const planBadge = /(?:plan|tier|price|member|membership|套餐|会员)[-_ ]?(?:badge|ribbon|tag|flag|label)|(?:badge|ribbon|tag|flag|label)[-_ ]?(?:plan|tier|price|member|membership|套餐|会员)/
-  const badgeMention = /(?:badge|ribbon|tag|flag|label|角标|飘带|推荐标|促销标|赠品标)/
-  return (planBadge.test(normalized) && /(?:plan|tier|price|member|membership|套餐|会员|badge|ribbon|tag|flag|label)[\s\S]{0,260}position\s*:\s*absolute|position\s*:\s*absolute[\s\S]{0,260}(?:plan|tier|price|member|membership|套餐|会员|badge|ribbon|tag|flag|label)/.test(normalized))
-    || (badgeMention.test(normalized) && /(?:badge|ribbon|tag|flag|label|角标|飘带|推荐标|促销标|赠品标)[\s\S]{0,180}position\s*:\s*absolute|position\s*:\s*absolute[\s\S]{0,180}(?:badge|ribbon|tag|flag|label|角标|飘带|推荐标|促销标|赠品标)/.test(normalized))
+  if (!/position\s*:\s*absolute/.test(normalized)) return false
+  const planOrBadge = /(?:plan|tier|price|member|membership|badge|ribbon|tag|flag|label|套餐|会员|角标|飘带|推荐|促销|赠品)/i
+  if (!planOrBadge.test(normalized)) return false
+  return /(?:plan|tier|price|member|membership|badge|ribbon|tag|flag|label|套餐|会员|角标|飘带|推荐|促销|赠品)[\s\S]{0,260}position\s*:\s*absolute|position\s*:\s*absolute[\s\S]{0,260}(?:plan|tier|price|member|membership|badge|ribbon|tag|flag|label|套餐|会员|角标|飘带|推荐|促销|赠品)/i.test(normalized)
 }
-
 export function containsStrictVisualGeneratedSemanticPseudoText(inputText: string): boolean {
   // Write inputs are often JSON-stringified, so normalize escaped quotes before
   // looking for CSS pseudo-elements that inject visible words into controls.
@@ -2642,7 +3079,7 @@ export function containsStrictVisualMisleadingPaymentCode(inputText: string): bo
   // A CSS texture can be decorative elsewhere, but a dense black/white stripe
   // or grid inside a QR/payment/code selector looks like a real scannable
   // payment artefact while being unusable. Require an honest CTA instead.
-  const paymentSelector = /(?:qr(?:-|_)?code|qrcode|barcode|payment(?:-|_)?code|payment-qr|二维码|扫码)[^{}]{0,260}\{[^{}]{0,900}\}/gi
+  const paymentSelector = /(?:qr(?:-|_)?code|qrcode|barcode|payment(?:-|_)?code|payment-qr|浜岀淮鐮亅鎵爜)[^{}]{0,260}\{[^{}]{0,900}\}/gi
   for (const match of normalized.matchAll(paymentSelector)) {
     const css = match[0] ?? ''
     if (/(?:repeating-linear-gradient|linear-gradient\([^)]*(?:#000|#111|black|rgb\(0))/i.test(css)) return true
@@ -2657,13 +3094,12 @@ export function containsStrictVisualProcessDisclaimer(inputText: string): boolea
 
 function containsStrictVisualUnsupportedPriceAnalogy(inputText: string): boolean {
   const text = inputText.toLowerCase()
-  const hasPrice = /(?:[¥￥]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*元)/.test(text)
-  const hasComparison = /(?:≈|约等于|相当于|只相当于|不到|一份|一杯|一顿|一次)/.test(text)
-  const hasNamedLifestyleReference = /(咖啡|奶茶|电影票|午餐|早餐|自助餐|水煮鱼|炸鸡|打车|出租车|一顿饭|一份(?:饭|餐)|一杯)/.test(text)
-  const hasFoodOrRideUnit = /[一二三四五六七八九十0-9]+\s*(?:份|次|杯|顿)[^<\n]{0,12}(?:鸡|鱼|餐|饭|咖啡|奶茶|电影|车)/.test(text)
+  const hasPrice = /(?:[$¥€£]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:usd|eur|cny|rmb|yuan|元|美元|人民币))/i.test(text)
+  const hasComparison = /(?:≈|约等于|相当于|只相当于|不到|equivalent(?:s+to)?|sames+as|prices+of|lesss+than)/i.test(text)
+  const hasNamedLifestyleReference = /(?:咖啡|奶茶|电影票|午餐|早餐|自助餐|寿司|水煮鱼|炸鸡|打车|出租车|一顿饭|一份饭|coffee|latte|milks*tea|movies*ticket|lunch|breakfast|buffet|sushi|taxi|ride)/i.test(text)
+  const hasFoodOrRideUnit = /(?:[一二三四五六七八九十0-9]+\s*(?:份|次|杯|条|顿|餐|item|meal|cup|ride))[^<\n]{0,12}(?:鸡|鱼|餐|饭|咖啡|奶茶|电影|车|coffee|tea|movie|ride|taxi)/i.test(text)
   return hasPrice && hasComparison && (hasNamedLifestyleReference || hasFoodOrRideUnit)
 }
-
 function localScreenshotPathsFromPlaywrightResult(content: unknown): string[] {
   const text = textFromToolResultContent(content)
   const matches = [...text.matchAll(/Local screenshot path:\s*([^\r\n]+)/gi)]
@@ -2687,8 +3123,8 @@ function normalizeStrictVisualPublicUrl(value: string): string | null {
 /** Extracts only concrete user-supplied public URLs; order is preserved and duplicates removed. */
 export function strictVisualPublicReferenceUrls(content: string): string[] {
   const urls: string[] = []
-  for (const match of content.matchAll(/\bhttps?:\/\/[^\s<>"'）)】，,。、]+/gi)) {
-    const normalized = normalizeStrictVisualPublicUrl(match[0] ?? '')
+  for (const match of content.matchAll(/\bhttps?:\/\/[^\s<>"'，。；、]+/gi)) {
+    const normalized = normalizeStrictVisualPublicUrl((match[0] ?? '').replace(/[)\],.;:!?]+$/g, ''))
     if (normalized && !urls.includes(normalized)) urls.push(normalized)
   }
   return urls
@@ -2728,19 +3164,45 @@ export function userRequestsStrictVisualFinalDelivery(
   return requestsProduction && (requestsArtifact || hasVisualAttachment)
 }
 
+/**
+ * Screenshot redesign is the one visual intake that must actively decide the
+ * reference scope. Read-only diagnosis remains free-form; a request to improve
+ * the screenshot's visual or conversion outcome cannot silently skip the
+ * inspiration_sources AskUserQuestion card.
+ */
+export function userRequestsStrictVisualInspirationSourceDecision(
+  content: string,
+  attachments?: Array<{ mimeType?: string; path?: string; name?: string }>,
+): boolean {
+  const hasVisualAttachment = (attachments ?? []).some((attachment) => /image|png|jpe?g|webp/i.test(`${attachment.mimeType ?? ''} ${attachment.path ?? ''} ${attachment.name ?? ''}`))
+  if (!hasVisualAttachment) return false
+
+  return /(?:重构|改版|重做|优化|改善|提升|设计|制作|生成|实现|购买欲|转化|付费|更有吸引力|好看|redesign|improve|optimi[sz]e|conversion|purchase)/i.test(content.trim())
+}
+
+function userHasResolvedStrictVisualInspirationSources(content: string): boolean {
+  const normalized = content.trim()
+  if (!normalized) return false
+  if (userRequestsStrictVisualPublicResearch(normalized)) return true
+  return /(?:不需要|无需|不查|基于|根据).{0,24}(?:外部|公开|网站|网页|灵感|参考|研究|截图|现有页面|原图)|(?:no|without).{0,24}(?:external|public|website|web|reference|research)/i.test(normalized)
+}
+async function isPrototypeVisualRuntimeActive(sessionId: string): Promise<boolean> {
+  const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
+  return hasActiveExpertRuntime(expert) && expert.runtimeBinding.runtimePolicy?.mode === 'prototype-visual-workflow'
+}
+
 async function isStrictVisualRuntimeActive(sessionId: string): Promise<boolean> {
   const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
-  const expert = hasActiveExpertRuntime(transcriptExpert)
-    ? transcriptExpert
-    : await expertRuntimeSessionStore.get(sessionId)
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
   return hasActiveExpertRuntime(expert) && expert.runtimeBinding.runtimePolicy?.mode === 'strict-visual-workflow'
 }
 function selectedStrictVisualPublicResearch(content: unknown): boolean | null {
   const text = textFromToolResultContent(content)
   if (!/User has answered your questions:/i.test(text) || !/\binspiration_sources\b/i.test(text)) return null
   const normalized = text.toLowerCase()
-  if (/(?:不使用|不研究|无需外部|无需参考|no external|without external|do not research|none)/i.test(normalized)) return false
-  if (/(?:内置|builtin|扩展|extend|允许.*(?:研究|网页)|public.*research|research.*public)/i.test(normalized)) return true
+  if (/(?:涓嶄娇鐢▅涓嶇爺绌秥鏃犻渶澶栭儴|鏃犻渶鍙傝€億no external|without external|do not research|none)/i.test(normalized)) return false
+  if (/(?:鍐呯疆|builtin|鎵╁睍|extend|鍏佽.*(?:鐮旂┒|缃戦〉)|public.*research|research.*public)/i.test(normalized)) return true
   return null
 }
 
@@ -2753,7 +3215,7 @@ function recordAssistantToolUse(
   if (toolName === 'AskUserQuestion') streamState.usedAskUserQuestion = true
   if (toolName === 'AskUserQuestion') {
     const serialized = typeof input === 'string' ? input : JSON.stringify(input ?? '')
-    if (/expert_research_delivery|research-delivery:|证据缺口.{0,40}(?:交付|报告)|accept_current_scope/i.test(serialized)) {
+    if (/expert_research_delivery|research-delivery:|璇佹嵁缂哄彛.{0,40}(?:浜や粯|鎶ュ憡)|accept_current_scope/i.test(serialized)) {
       streamState.expertResearchDeliveryCardAttempted = true
     }
   }
@@ -2765,8 +3227,19 @@ function recordAssistantToolUse(
   } catch {
     return
   }
+  if (
+    toolName === 'image_generation'
+    && typeof toolUseId === 'string'
+    && /(?:"|')operation(?:"|')\s*:\s*(?:"|')generate(?:"|')/i.test(inputText)
+  ) {
+    streamState.strictVisualImageGenerationToolUseIds.add(toolUseId)
+  }
   if (toolName === 'AskUserQuestion' && typeof toolUseId === 'string' && inputRequestsStrictVisualInspirationSources(inputText)) {
+    // A valid card is now on the path to the user. Do not trigger the same
+    // recovery again when the answer resumes the model; re-arm only if the
+    // tool result reports that this exact card failed.
     streamState.strictVisualInspirationQuestionToolUseIds.add(toolUseId)
+    streamState.strictVisualInspirationSourceDecisionRequired = false
   }
   if (toolName === 'Playwright') {
     // Any Playwright use in this strict UIUX workflow is a claimed public
@@ -2777,9 +3250,9 @@ function recordAssistantToolUse(
     const referenceTargetUrl = playwrightTargetUrl(input, inputText)
     // content_block_start can arrive before the SDK has streamed the complete
     // Playwright input. Do not turn that partial/empty JSON into a false
-    // “third-site” violation; evaluate only a complete URL or search request.
+    // 鈥渢hird-site鈥?violation; evaluate only a complete URL or search request.
     const hasCompleteReferenceTarget = referenceTargetUrl !== null
-      || /(?:"|')显式浏览器动作(?:"|')\s*:/i.test(inputText)
+      || /(?:\"|')?url(?:\"|')?\s*:/i.test(inputText)
     if (streamState.strictVisualLockedReferenceUrls.length >= 2 && hasCompleteReferenceTarget) {
       if (!referenceTargetUrl || !streamState.strictVisualLockedReferenceUrls.includes(referenceTargetUrl)) {
         // The tool has already been requested by the model, so this is a
@@ -2800,6 +3273,12 @@ function recordAssistantToolUse(
         // Preserve the original Playwright screenshot as provenance even if
         // the model reads its safe resized derivative.
         streamState.strictVisualReferenceReadPathsByToolUseId.set(toolUseId, screenshotPath)
+        break
+      }
+    }
+    for (const imagePath of streamState.strictVisualGeneratedImagePathsByToolUseId.values()) {
+      if (readTargetsStrictVisualGeneratedImage(inputText, imagePath)) {
+        streamState.strictVisualGeneratedImageReadPathsByToolUseId.set(toolUseId, imagePath)
         break
       }
     }
@@ -2825,6 +3304,35 @@ function recordAssistantToolUse(
       streamState.strictVisualProcessDisclaimerDetected = hasProcessDisclaimer
     }
   }
+  if (typeof toolUseId === 'string' && input && typeof input === 'object') {
+    const toolInput = input as Record<string, unknown>
+    const fidelities = prototypeWrittenFidelities(toolName, toolInput)
+    const receipt = toolName === 'Write' && typeof toolInput.file_path === 'string'
+      && /(?:^|\/)prototype-evidence\.md$/i.test(normalizedStrictVisualPath(toolInput.file_path))
+      && typeof toolInput.content === 'string' ? toolInput.content : undefined
+    if (fidelities.length || receipt !== undefined) {
+      streamState.prototypeWritesByToolUseId.set(toolUseId, {
+        fidelities, receipt, writeCount: streamState.prototypeHighFidelityWriteCount,
+      })
+    }
+    if (toolName === 'Bash' && typeof toolInput.command === 'string') {
+      const screenshots = prototypeScreenshotsFromRendererCommand(toolInput.command)
+      if (screenshots.length) streamState.prototypeQaRendererViewportByToolUseId.set(toolUseId, {
+        writeCount: streamState.prototypeHighFidelityWriteCount, screenshots,
+      })
+    }
+    if (toolName === PROTOTYPE_PREVIEW_TOOL) {
+      streamState.prototypePreviewAttempts.set(toolUseId, { writeCount: streamState.prototypeHighFidelityWriteCount, fidelity: String(toolInput.fidelity || 'high') })
+    }
+    if (toolName === 'Read' && typeof toolInput.file_path === 'string') {
+      const preview = streamState.prototypePreviewReceipt?.screenshots.find(shot => normalizedStrictVisualPath(shot.path) === normalizedStrictVisualPath(toolInput.file_path as string))
+      const screenshot = preview ? { viewport: preview.viewport, path: normalizedStrictVisualPath(preview.path) } : prototypeScreenshotFromPath(toolInput.file_path)
+      if (screenshot) streamState.prototypeQaReadViewportByToolUseId.set(toolUseId, {
+        ...screenshot, preview, writeCount: streamState.prototypeHighFidelityWriteCount,
+        rendered: streamState.prototypeQaRenderedPaths.has(screenshot.path),
+      })
+    }
+  }
   if (toolName === 'Read' && typeof toolUseId === 'string' && /\.png(?:["'\s]|$)/i.test(inputText)) {
     streamState.strictVisualPngReadToolUseIds.add(toolUseId)
   }
@@ -2846,23 +3354,121 @@ function toolResultContainsImage(content: unknown): boolean {
   return toolResultContainsImage(block.content)
 }
 
+function generatedImagePathFromToolResult(content: unknown): string | null {
+  const text = textFromToolResultContent(content)
+  const match = /(?:^|\n)Image:\s*(.+?\.(?:png|jpe?g|webp))\s*(?:\r?\n|$)/i.exec(text)
+  return match?.[1]?.trim() || null
+}
+
+function imageGenerationToolResultSucceeded(content: unknown): boolean {
+  const text = textFromToolResultContent(content)
+  return /(?:^|\n)Image generation status:\s*generated\.\s*(?:\r?\n|$)/i.test(text)
+}
+
+function readTargetsStrictVisualGeneratedImage(inputText: string, imagePath: string): boolean {
+  try {
+    const input = JSON.parse(inputText)
+    return typeof input.file_path === 'string' && normalizeStrictVisualImagePath(input.file_path) === normalizeStrictVisualImagePath(imagePath)
+  } catch { return false }
+}
+
+function latestStrictVisualGeneratedImagePath(streamState: SessionStreamState): string | null {
+  return Array.from(streamState.strictVisualGeneratedImagePathsByToolUseId.values()).at(-1) || null
+}
+
+function hasStrictVisualGeneratedImageReviewPreview(streamState: SessionStreamState): boolean {
+  const latestImagePath = latestStrictVisualGeneratedImagePath(streamState)
+  return latestImagePath !== null && streamState.strictVisualGeneratedImageReadPaths.has(latestImagePath)
+}
+
+function hasStrictVisualGeneratedImageReviewReceipt(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return [
+    'taste-redesign',
+    'impeccable-visual-refinement',
+    'ui-craft-critique',
+    'ui-craft-finalize',
+    'source-fidelity-final-pass',
+  ].every((skill) => normalized.includes(skill))
+    && /(?:visual-register|visual register|视觉基调|视觉人格)/i.test(text)
+    && /(?:removed|remove:|删除|移除|删去)/i.test(text)
+    && /(?:source-fidelity|source fidelity|源图保真|事实核对|duplicate scan|重复文本)/i.test(text)
+    && /(?:image_generation|image generation|generated image|真实生图|生成图像)/i.test(text)
+}
+
 function recordFailedAskUserQuestionToolResult(
   streamState: SessionStreamState,
   toolResult: { tool_use_id?: unknown; is_error?: unknown },
 ): void {
   if (toolResult.is_error !== true || typeof toolResult.tool_use_id !== 'string') return
   streamState.failedAskUserQuestionToolUseIds.add(toolResult.tool_use_id)
+  if (streamState.strictVisualInspirationQuestionToolUseIds.has(toolResult.tool_use_id)) {
+    // The UI never received a usable source-scope card, so force the next
+    // strict visual model turn to issue it again rather than treating it as a
+    // user decision.
+    streamState.strictVisualInspirationSourceDecisionRequired = true
+  }
+}
+
+const EXPERT_TEMPLATE_FILL_VALIDATION_ERROR_CODES = [
+  'EXPERT_TEMPLATE_FILL_RENDER_FAILED',
+  'EXPERT_RESEARCH_EVIDENCE_ABSORPTION_REQUIRED',
+  'EXPERT_RESEARCH_AUDIT_REFERENCE_REQUIRED',
+  'EXPERT_FINAL_SOURCE_COVERAGE_REQUIRED',
+] as const
+
+export function isDeterministicExpertTemplateFillValidationFailure(content: unknown): boolean {
+  const resultText = textFromToolResultContent(content)
+  return EXPERT_TEMPLATE_FILL_VALIDATION_ERROR_CODES.some((code) => resultText.includes(code))
+}
+
+function recordExpertTemplateFillValidationFailure(
+  streamState: SessionStreamState,
+  toolResult: { is_error?: unknown; content?: unknown },
+): void {
+  if (toolResult.is_error !== true) return
+  if (isDeterministicExpertTemplateFillValidationFailure(toolResult.content)) {
+    // Keep this fact through any follow-up assistant messages in the same user
+    // turn. A tool failure is not missing product information and must never be
+    // converted into a new AskUserQuestion card.
+    streamState.expertTemplateFillValidationFailure = true
+  }
 }
 
 function recordStrictVisualQaToolResult(
   streamState: SessionStreamState,
   toolResult: { tool_use_id?: unknown; is_error?: unknown; content?: unknown },
 ): void {
-  if (typeof toolResult.tool_use_id !== 'string' || toolResult.is_error) return
+  if (typeof toolResult.tool_use_id !== 'string') return
 
-  if (streamState.strictVisualInspirationQuestionToolUseIds.has(toolResult.tool_use_id)) {
+  if (streamState.strictVisualInspirationQuestionToolUseIds.has(toolResult.tool_use_id) && !toolResult.is_error) {
+    // Record the selected public-research requirement. The pending choice was
+    // cleared when its card was emitted; a failed result re-arms it above.
     const requiresResearch = selectedStrictVisualPublicResearch(toolResult.content)
     if (requiresResearch !== null) streamState.strictVisualReferenceResearchRequired = requiresResearch
+  }
+
+  recordPrototypeToolResult(streamState, {
+    tool_use_id: toolResult.tool_use_id,
+    is_error: Boolean(toolResult.is_error),
+    content: toolResult.content,
+  })
+  const previewPath = streamState.strictVisualGeneratedImageReadPathsByToolUseId.get(toolResult.tool_use_id)
+  if (previewPath) {
+    if (toolResult.is_error || !toolResultContainsImage(toolResult.content)) streamState.strictVisualGeneratedImageFailedReadPaths.add(previewPath)
+    else streamState.strictVisualGeneratedImageFailedReadPaths.delete(previewPath)
+  }
+  if (toolResult.is_error) return
+  if (streamState.strictVisualImageGenerationToolUseIds.has(toolResult.tool_use_id) && imageGenerationToolResultSucceeded(toolResult.content)) {
+    // A generated PNG can exceed the inline response limit. Record the tool
+    // result path even when the tool returns text only; the later Read result
+    // must still contain an image block before this becomes final evidence.
+    const imagePath = generatedImagePathFromToolResult(toolResult.content)
+    if (imagePath) {
+      streamState.strictVisualGeneratedImagePathsByToolUseId.set(toolResult.tool_use_id, imagePath)
+      streamState.strictVisualGeneratedImageReadPaths.delete(imagePath)
+      streamState.strictVisualGeneratedImageReviewText = ''
+    }
   }
   if (streamState.strictVisualReferenceResearchToolUseIds.has(toolResult.tool_use_id)) {
     for (const screenshotPath of localScreenshotPathsFromPlaywrightResult(toolResult.content)) {
@@ -2872,6 +3478,10 @@ function recordStrictVisualQaToolResult(
   const referenceReadPath = streamState.strictVisualReferenceReadPathsByToolUseId.get(toolResult.tool_use_id)
   if (referenceReadPath && toolResultContainsImage(toolResult.content)) {
     streamState.strictVisualReferenceScreenshotReadPaths.add(referenceReadPath)
+  }
+  const generatedImageReadPath = streamState.strictVisualGeneratedImageReadPathsByToolUseId.get(toolResult.tool_use_id)
+  if (generatedImageReadPath && toolResultContainsImage(toolResult.content)) {
+    streamState.strictVisualGeneratedImageReadPaths.add(generatedImageReadPath)
   }
 
   if (streamState.visualQaRendererToolUseIds.has(toolResult.tool_use_id)) {
@@ -2889,6 +3499,73 @@ function recordStrictVisualQaToolResult(
   }
 }
 
+function recordPrototypeToolResult(
+  streamState: SessionStreamState,
+  result: { tool_use_id: string; is_error?: boolean; content?: unknown },
+): void {
+  const previewAttempt = streamState.prototypePreviewAttempts.get(result.tool_use_id)
+  streamState.prototypePreviewAttempts.delete(result.tool_use_id)
+  const write = streamState.prototypeWritesByToolUseId.get(result.tool_use_id)
+  const render = streamState.prototypeQaRendererViewportByToolUseId.get(result.tool_use_id)
+  const read = streamState.prototypeQaReadViewportByToolUseId.get(result.tool_use_id)
+  streamState.prototypeWritesByToolUseId.delete(result.tool_use_id)
+  streamState.prototypeQaRendererViewportByToolUseId.delete(result.tool_use_id)
+  streamState.prototypeQaReadViewportByToolUseId.delete(result.tool_use_id)
+  if (result.is_error) return
+  if (write) {
+    for (const fidelity of write.fidelities) {
+      streamState.prototypeFidelityHtmlPaths.add(fidelity)
+      if (fidelity !== 'high') continue
+      const previous = streamState.prototypeHighFidelityWriteCount
+      if (previous > 0 && streamState.prototypeHighFidelityLastReadWriteCount === previous) {
+        streamState.prototypeHighFidelityRevisionAfterImageReview = true
+      }
+      streamState.prototypeHighFidelityWriteCount += 1
+      streamState.prototypeHighFidelityLastReadWriteCount = null
+      streamState.prototypePreviewReceipt = null
+      streamState.prototypePreviewReadPaths.clear()
+      streamState.prototypeQaRenderedViewports.clear()
+      streamState.prototypeQaRenderedPaths.clear()
+      streamState.prototypeQaReadViewports.clear()
+      streamState.prototypeEvidenceReceipt = ''
+      streamState.prototypeReviewAssistantText = ''
+    }
+    if (write.receipt !== undefined && write.writeCount === streamState.prototypeHighFidelityWriteCount) {
+      streamState.prototypeEvidenceReceipt = write.receipt
+    }
+  }
+  if (previewAttempt?.fidelity === 'high' && previewAttempt.writeCount > 0 && previewAttempt.writeCount === streamState.prototypeHighFidelityWriteCount) {
+    const receipt = parsePrototypePreviewReceipt(textFromToolResultContent(result.content))
+    if (receipt?.fidelity === 'high' && !receipt.screenId && /(?:^|[\/])03-high-fidelity\.html$/i.test(receipt.source.path.replaceAll('\\', '/'))) {
+      streamState.prototypePreviewReceipt = receipt
+      streamState.prototypePreviewReadPaths.clear()
+      streamState.prototypeQaRenderedPaths.clear()
+      streamState.prototypeQaRenderedViewports.clear()
+      streamState.prototypeQaReadViewports.clear()
+      for (const shot of receipt.screenshots) {
+        streamState.prototypeQaRenderedPaths.add(normalizedStrictVisualPath(shot.path))
+        streamState.prototypeQaRenderedViewports.add(shot.viewport)
+      }
+    }
+  }
+  if (render && render.writeCount > 0 && render.writeCount === streamState.prototypeHighFidelityWriteCount) {
+    const paths = prototypeSuccessfulScreenshotPaths(result.content)
+    for (const screenshot of render.screenshots) {
+      if (!paths.has(screenshot.path)) continue
+      streamState.prototypeQaRenderedViewports.add(screenshot.viewport)
+      streamState.prototypeQaRenderedPaths.add(screenshot.path)
+    }
+  }
+  if (read && read.rendered && read.writeCount > 0
+    && read.writeCount === streamState.prototypeHighFidelityWriteCount
+    && streamState.prototypeQaRenderedPaths.has(read.path)
+    && (read.preview ? imageMatchesPreview(result.content, read.preview) : toolResultContainsImage(result.content))) {
+    if (read.preview) streamState.prototypePreviewReadPaths.add(read.path)
+    streamState.prototypeQaReadViewports.add(read.viewport)
+    streamState.prototypeHighFidelityLastReadWriteCount = read.writeCount
+  }
+}
+
 function resetStrictVisualQaEvidence(streamState: SessionStreamState): void {
   streamState.wroteStrictVisualHtml = false
   streamState.strictVisualHtmlWriteCount = 0
@@ -2896,6 +3573,12 @@ function resetStrictVisualQaEvidence(streamState: SessionStreamState): void {
   streamState.strictVisualRendererSuccessCount = 0
   streamState.visualQaRendererToolUseIds.clear()
   streamState.strictVisualPngReadToolUseIds.clear()
+  streamState.strictVisualImageGenerationToolUseIds.clear()
+  streamState.strictVisualGeneratedImagePathsByToolUseId.clear()
+  streamState.strictVisualGeneratedImageReadPathsByToolUseId.clear()
+  streamState.strictVisualGeneratedImageFailedReadPaths.clear()
+  streamState.strictVisualGeneratedImageReadPaths.clear()
+  streamState.strictVisualGeneratedImageReviewText = ''
   streamState.strictVisualLastImageReviewHtmlWriteCount = null
   streamState.strictVisualUnsupportedPriceAnalogyDetected = false
   streamState.strictVisualUnsafeAbsolutePlanBadgeDetected = false
@@ -2904,6 +3587,7 @@ function resetStrictVisualQaEvidence(streamState: SessionStreamState): void {
   streamState.strictVisualProcessDisclaimerDetected = false
   streamState.strictVisualFinalReviewRequired = false
   streamState.strictVisualReferenceResearchRequired = false
+  streamState.strictVisualInspirationSourceDecisionRequired = false
   streamState.strictVisualLockedReferenceUrls = []
   streamState.strictVisualLockedReferenceAttemptUrls.clear()
   streamState.strictVisualReferenceSourceLockViolation = false
@@ -2915,6 +3599,23 @@ function resetStrictVisualQaEvidence(streamState: SessionStreamState): void {
   streamState.strictVisualReferenceResearchRecoveryAttempts = 0
   streamState.strictVisualRenderRecoveryAttempts = 0
   streamState.strictVisualReviewRecoveryAttempts = 0
+  streamState.prototypeFidelityHtmlPaths.clear()
+  streamState.prototypeHighFidelityWriteCount = 0
+  streamState.prototypeHighFidelityLastReadWriteCount = null
+  streamState.prototypeHighFidelityRevisionAfterImageReview = false
+  streamState.prototypeWritesByToolUseId.clear()
+  streamState.prototypeEvidenceReceipt = ''
+  streamState.prototypeReviewAssistantText = ''
+  streamState.prototypePreviewReceipt = null
+  streamState.prototypePreviewAttempts.clear()
+  streamState.prototypePreviewReadPaths.clear()
+  streamState.prototypeQaRenderedPaths.clear()
+  streamState.prototypeQaRendererViewportByToolUseId.clear()
+  streamState.prototypeQaRenderedViewports.clear()
+  streamState.prototypeQaReadViewportByToolUseId.clear()
+  streamState.prototypeQaReadViewports.clear()
+  streamState.prototypeRenderRecoveryAttempts = 0
+  streamState.prototypeReviewRecoveryAttempts = 0
 }
 
 const WORKFLOW_PROTOCOL_TOOL_NAMES = new Set([
@@ -2957,7 +3658,12 @@ function recordWorkflowProtocolToolRegistryError(
   const toolName = workflowProtocolToolNameFromError(toolResult.content)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
   const validationToolName = workflowProtocolInputValidationToolNameFromError(toolResult.content)
-  if (validationToolName) streamState.workflowProtocolInputValidationError = validationToolName
+  if (validationToolName) {
+    streamState.workflowProtocolInputValidationError = validationToolName
+    streamState.workflowProtocolInputValidationDetail = typeof toolResult.content === 'string'
+      ? toolResult.content.slice(0, 4_000)
+      : undefined
+  }
 }
 
 function recordWorkflowProtocolToolRegistryErrorFromMessage(
@@ -2973,32 +3679,75 @@ function recordWorkflowProtocolToolRegistryErrorFromMessage(
   const toolName = workflowProtocolToolNameFromError(text)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
   const validationToolName = workflowProtocolInputValidationToolNameFromError(text)
-  if (validationToolName) streamState.workflowProtocolInputValidationError = validationToolName
+  if (validationToolName) {
+    streamState.workflowProtocolInputValidationError = validationToolName
+    streamState.workflowProtocolInputValidationDetail = text.slice(0, 4_000)
+  }
 }
 
 function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
   const streamState = getStreamState(sessionId)
-  const visualReviewFailureReasons = [
-    streamState.strictVisualRendererSuccessCount < 2 ? 'two successful local renderer runs were not recorded' : null,
-    streamState.strictVisualHtmlWriteCount < 2 ? 'a complete HTML revision was not recorded after visual review' : null,
-    streamState.strictVisualLastImageReviewHtmlWriteCount !== streamState.strictVisualHtmlWriteCount ? 'the latest HTML revision was not read back as a rendered PNG image' : null,
-    streamState.strictVisualUnsupportedPriceAnalogyDetected ? 'unsupported lifestyle price analogy remains in the latest complete HTML write' : null,
-    streamState.strictVisualUnsafeAbsolutePlanBadgeDetected ? 'an absolute-positioned plan badge can overlap a tier label or price' : null,
-    streamState.strictVisualGeneratedSemanticPseudoTextDetected ? 'CSS pseudo-elements inject semantic user-facing text' : null,
-    streamState.strictVisualMisleadingPaymentCodeDetected ? 'a fake QR/barcode-like payment pattern remains in the latest complete HTML write' : null,
-    streamState.strictVisualProcessDisclaimerDetected ? 'a prototype/process disclaimer remains in the customer-facing HTML' : null,
-    hasStrictVisualReviewReceipt(streamState.assistantText) ? null : 'the final visual-review receipt is incomplete',
+  const hasStrictVisualGeneratedImage = streamState.strictVisualGeneratedImagePathsByToolUseId.size > 0
+  const generatedImageReviewPreviewRead = hasStrictVisualGeneratedImageReviewPreview(streamState)
+  const visualReviewFailureReasons = (hasStrictVisualGeneratedImage
+    ? [
+        generatedImageReviewPreviewRead
+          ? null
+          : 'the final generated image was not Read as a bounded visual preview',
+        hasStrictVisualGeneratedImageReviewReceipt(streamState.assistantText)
+          ? null
+          : 'the final generated-image review receipt is incomplete',
+      ]
+    : [
+        streamState.strictVisualRendererSuccessCount < 2 ? 'two successful local renderer runs were not recorded' : null,
+        streamState.strictVisualHtmlWriteCount < 2 ? 'a complete HTML revision was not recorded after visual review' : null,
+        streamState.strictVisualLastImageReviewHtmlWriteCount !== streamState.strictVisualHtmlWriteCount ? 'the latest HTML revision was not read back as a rendered PNG image' : null,
+        streamState.strictVisualUnsupportedPriceAnalogyDetected ? 'unsupported lifestyle price analogy remains in the latest complete HTML write' : null,
+        streamState.strictVisualUnsafeAbsolutePlanBadgeDetected ? 'an absolute-positioned plan badge can overlap a tier label or price' : null,
+        streamState.strictVisualGeneratedSemanticPseudoTextDetected ? 'CSS pseudo-elements inject semantic user-facing text' : null,
+        streamState.strictVisualMisleadingPaymentCodeDetected ? 'a fake QR/barcode-like payment pattern remains in the latest complete HTML write' : null,
+        streamState.strictVisualProcessDisclaimerDetected ? 'a prototype/process disclaimer remains in the customer-facing HTML' : null,
+        hasStrictVisualReviewReceipt(streamState.assistantText) ? null : 'the final visual-review receipt is incomplete',
+      ]
+  ).filter((reason): reason is string => Boolean(reason))
+  const wrotePrototypeHtml = streamState.prototypeFidelityHtmlPaths.size > 0
+  const hasAllPrototypeFidelityHtml = (['low', 'mid', 'high'] as PrototypeFidelity[])
+    .every((fidelity) => streamState.prototypeFidelityHtmlPaths.has(fidelity))
+  const completedPrototypeViewportQa = (['desktop', 'tablet', 'mobile'] as PrototypeQaViewport[])
+    .every((viewport) => streamState.prototypeQaRenderedViewports.has(viewport) && streamState.prototypeQaReadViewports.has(viewport))
+  const prototypeVisualQualityFailureReasons = [
+    hasAllPrototypeFidelityHtml ? null : '01-low-fidelity.html, 02-mid-fidelity.html, and 03-high-fidelity.html were not all written',
+    completedPrototypeViewportQa ? null : 'all required high-fidelity 1440/1024/390 PNGs were not both rendered and Read as images',
+    streamState.prototypeHighFidelityRevisionAfterImageReview ? null : '03-high-fidelity.html was not revised after the first image review',
+    streamState.prototypeHighFidelityLastReadWriteCount === streamState.prototypeHighFidelityWriteCount
+      ? null
+      : 'the latest high-fidelity HTML revision was not Read back as rendered PNG images',
+    hasPrototypeVisualReviewReceipt(streamState.prototypeReviewAssistantText) || hasPrototypeVisualReviewReceipt(streamState.prototypeEvidenceReceipt)
+      ? null : 'the prototype visual-review receipt is incomplete',
   ].filter((reason): reason is string => Boolean(reason))
+
   return {
     assistantText: streamState.assistantText.trim(),
     usedAskUserQuestion: streamState.usedAskUserQuestion,
+    expertTemplateFillValidationFailure: streamState.expertTemplateFillValidationFailure,
     strictVisualIntroductionTurn: streamState.strictVisualIntroductionTurn,
     strictVisualFinalReviewRequired: streamState.strictVisualFinalReviewRequired,
+    hasStrictVisualGeneratedImage,
     wroteStrictVisualHtml: streamState.wroteStrictVisualHtml,
     completedStrictVisualQa: streamState.completedStrictVisualQa,
     completedStrictVisualReview: visualReviewFailureReasons.length === 0,
     visualReviewFailureReasons,
+    wrotePrototypeHtml,
+    prototypeDeliveryRequested: streamState.prototypeDeliveryRequested,
+    hasAllPrototypeFidelityHtml,
+    completedPrototypeViewportQa,
+    completedPrototypeVisualReview: prototypeVisualQualityFailureReasons.length === 0,
+    prototypeVisualQualityFailureReasons,
+    prototypeAskUserQuestionRecoveryAttempts: streamState.prototypeAskUserQuestionRecoveryAttempts,
+    prototypeRenderRecoveryAttempts: streamState.prototypeRenderRecoveryAttempts,
+    prototypeReviewRecoveryAttempts: streamState.prototypeReviewRecoveryAttempts,
     strictVisualReferenceResearchRequired: streamState.strictVisualReferenceResearchRequired,
+    strictVisualInspirationSourceDecisionRequired: streamState.strictVisualInspirationSourceDecisionRequired,
     // Tool facts, not a prose receipt, establish whether visual research occurred.
     // A user-locked pair cannot be silently replaced: if one locked public
     // page is inaccessible, one successful locked screenshot plus the source
@@ -3027,15 +3776,18 @@ function finishWorkflowInteractionTurn(
   streamState.usedAskUserQuestion = false
   streamState.assistantText = ''
   streamState.failedAskUserQuestionToolUseIds.clear()
+  streamState.expertTemplateFillValidationFailure = false
   streamState.strictVisualIntroductionTurn = false
   streamState.workflowProtocolToolRegistryError = undefined
   resetStrictVisualQaEvidence(streamState)
   if (resetRecoveryAttempts) streamState.structuredInteractionRecoveryAttempts = 0
   if (resetRecoveryAttempts) streamState.expertResearchDeliveryRecoveryAttempts = 0
+  if (resetRecoveryAttempts) streamState.commercializationResearchQuestionRecoveryAttempts = 0
   streamState.expertResearchDeliveryCardAttempted = false
   if (resetBindingRecoveryAttempts) streamState.workflowProtocolBindingRecoveryAttempts = 0
   if (resetInputValidationRecoveryAttempts) {
     streamState.workflowProtocolInputValidationError = undefined
+    streamState.workflowProtocolInputValidationDetail = undefined
     streamState.workflowProtocolInputRecoveryAttempts = 0
   }
 }
@@ -3044,8 +3796,18 @@ function assistantTextRequestsUserDecision(text: string): boolean {
   const normalized = text.trim()
   if (!normalized) return false
   const hasQuestionSignal = /[?？]/.test(normalized)
-  const hasDecisionLanguage = /(?:要我|还是|请(?:你)?(?:选择|确认|告诉)|你(?:想|要|希望)|是否|需不需要|下一步|怎么做|would you like|do you want|should i|which (?:option|one)|please (?:choose|confirm|tell)|let me know|what would you like)/i.test(normalized)
+  const hasDecisionLanguage = /(?:要我|还是|请选择|请确认|告诉我|你想|需要我|是否|需不需要|下一步|怎么做|would you like|do you want|should i|which (?:option|one)|please (?:choose|confirm|tell)|let me know|what would you like)/i.test(normalized)
   return hasQuestionSignal && hasDecisionLanguage
+}
+function assistantTextRequestsCommercializationUserInput(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) return false
+
+  // Only recover an actual request for the user's information. Statements about
+  // public evidence, future research, or an internal uncertainty must remain
+  // normal model turns and must not become a forced card.
+  const directImperativeRequest = /请(?:直接|先|再|用.{0,24})?(?:澄清|确认|补充|说明|回答|选择|提供|告诉我|回复|描述|粘贴|上传)/i.test(normalized)
+  return assistantTextRequestsUserDecision(normalized) || directImperativeRequest || /(?:我(?:还)?需要(?:你|您).{0,24}(?:澄清|确认|补充|说明|回答|选择|提供)|(?:我|还)?需要(?:你|您)?(?:先)?(?:澄清|确认|补充).{0,20}(?:关键信息|关键点|情况|细节|材料)|在(?:开始|启动|继续).{0,40}(?:之前|前).{0,36}(?:需要|需).{0,16}(?:澄清|确认|补充|说明|回答|选择|提供)|请(?:你|您).{0,20}(?:澄清|确认|补充|说明|回答|选择|提供|告诉我|回复)|(?:需要|需).{0,24}(?:用户|你|您).{0,24}(?:回答|确认|补充|选择|提供)|(?:i|we).{0,24}(?:need|require).{0,48}(?:your input|you to|clarif|confirm|more (?:information|detail))|(?:please|could you).{0,30}(?:clarif|confirm|provide|tell|choose))/i.test(normalized)
 }
 
 function isStrictVisualIntroductionRequest(text: string): boolean {
@@ -3059,63 +3821,96 @@ function isStrictVisualIntroductionRequest(text: string): boolean {
   return (identifiesThisExpert && asksCapabilities) || englishCapabilityIntro
 }
 
+export function assistantTextPresentsMultipleDesignDirections(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) return false
+  const labeledDirections = normalized.match(/(?:方向|方案|路线|direction|concept)\s*(?:[一二三四五六七八九十A-Da-d]|\d+)/gi) ?? []
+  if (labeledDirections.length >= 2) return true
+  const numberedLines = normalized.match(/(?:^|\n)\s*(?:[1-4]|[A-D])[.、:：)）]/gim) ?? []
+  return numberedLines.length >= 2 && /(?:方向|方案|设计|视觉|direction|concept|design)/i.test(normalized)
+}
+
 export function assistantTextRequestsStrictVisualBoundedDecision(text: string): boolean {
   const normalized = text.trim()
   if (!normalized) return false
+  if (/(?:已选|已经选择|选定|已确认).{0,12}(?:方向|方案)|(?:方向|方案).{0,12}(?:已选|已经选择|选定|已确认)|(?:selected|confirmed).{0,20}(?:direction|concept)/i.test(normalized)) return false
 
-  // A strict visual Expert may still ask for an uploaded screenshot, a pasted
-  // URL, or free-form design context in prose. Only intercept decisions that
-  // can truthfully become an AskUserQuestion card with bounded choices.
-  //
-  // Narrative wording such as "I will confirm whether external references are
-  // needed" is not a present-tense user choice. It must not trigger recovery.
-  const explicitBoundedInstruction = /(?:请(?:你)?(?:选择|确认|选)(?:\s*(?:[A-D]|方案|方向|其一))?|请选择|请确认|二选一|(?:^|[。；;：:\n])\s*选择\s*(?:[A-D]|方案|方向|其一))/i.test(normalized)
+  // Narrative context is allowed. Intercept only an explicit, bounded user decision.
+  const explicitBoundedInstruction = /(?:请选择|请确认|二选一|选项\s*[A-D]|方案\s*[A-D]|方向\s*[A-D]|please\s+(?:choose|confirm)|choose\s+(?:options?\s*)?[A-D])/i.test(normalized)
   const questionDecision = /[?？]/.test(normalized)
     && /(?:还是|是否|需不需要|要不要|would you like|do you want|should i|which (?:option|one)|please (?:choose|confirm))/i.test(normalized)
 
   return explicitBoundedInstruction || questionDecision
-}function assistantTextPresentsMultipleDesignDirections(text: string): boolean {
-  const normalized = text.trim()
-  if (!normalized) return false
-
-  const chineseDirections = normalized.match(/方向\s*(?:[一二三四五六七八九十]|\d+)/g) ?? []
-  const englishDirections = normalized.match(/(?:design\s+)?directions?\s*(?:[1-9]|one|two|three|four|five)/gi) ?? []
-  const directions = new Set(
-    [...chineseDirections, ...englishDirections]
-      .map((value) => value.replace(/\s+/g, '').toLowerCase()),
-  )
-  return directions.size >= 2
 }
-
 async function strictVisualTerminalRecoveryForResult(
   sessionId: string,
   turn: WorkflowInteractionTurn,
 ): Promise<StrictVisualTerminalRecovery | null> {
-  if (turn.usedAskUserQuestion || hasPendingAskUserQuestion(sessionId)) return null
+  if (hasPendingAskUserQuestion(sessionId)) return null
 
-  const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
-  const expert = hasActiveExpertRuntime(transcriptExpert)
-    ? transcriptExpert
-    : await expertRuntimeSessionStore.get(sessionId)
+  const transcript = await sessionService.getSession(sessionId).catch(() => null)
+  const transcriptExpert = transcript?.expert
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
   if (
     !hasActiveExpertRuntime(expert)
     || expert.runtimeBinding.runtimePolicy?.mode !== 'strict-visual-workflow'
   ) {
     return null
   }
-
-  if (turn.strictVisualReferenceResearchRequired && !turn.completedStrictVisualReferenceResearch) {
-    return { kind: 'visual-reference-research', expertId: expert.expertId }
+  const imageOnly = isUiuxImageOnlyBinding(expert.runtimeBinding)
+  const historical = imageOnly ? collectUiuxImageEvidence(transcript?.messages ?? []) : null
+  if (turn.usedAskUserQuestion && (!imageOnly || (!turn.hasStrictVisualGeneratedImage && !turn.wroteStrictVisualHtml))) return null
+  if (historical?.stopped) return null
+  const referenceScopeSatisfied = historical?.scope === 'none'
+    || (historical?.scope === 'public' && historical.sources.length >= historical.minimumReferences && historical.referenceReceipt)
+  if (turn.strictVisualInspirationSourceDecisionRequired && !historical?.scope) {
+    return { kind: 'inspiration-source', expertId: expert.expertId }
+  }
+  if (turn.strictVisualReferenceResearchRequired && !turn.completedStrictVisualReferenceResearch && !referenceScopeSatisfied
+    && !(imageOnly && (turn.hasStrictVisualGeneratedImage || historical?.latestImage))) {
+    return { kind: 'visual-reference-research', expertId: expert.expertId, imageOnly: isUiuxImageOnlyBinding(expert.runtimeBinding) }
+  }
+  if (isUiuxImageOnlyBinding(expert.runtimeBinding)) {
+    if (turn.strictVisualIntroductionTurn) return null
+    if (!historical?.direction && assistantTextPresentsMultipleDesignDirections(turn.assistantText)) return { kind: 'design-direction', expertId: expert.expertId }
+    if (assistantTextRequestsStrictVisualBoundedDecision(turn.assistantText)) return { kind: 'ask-user-question', expertId: expert.expertId }
+    const state = getStreamState(sessionId)
+    const latestAttempt = Array.from(state.strictVisualImageGenerationToolUseIds).at(-1)
+    if (latestAttempt && !state.strictVisualGeneratedImagePathsByToolUseId.has(latestAttempt)) {
+      return { kind: 'image-generation', expertId: expert.expertId, imageOnly: true, imageGenerationFailed: true }
+    }
+    if (turn.wroteStrictVisualHtml || turn.hasStrictVisualGeneratedImage || turn.strictVisualFinalReviewRequired) {
+      if (!turn.hasStrictVisualGeneratedImage && !historical?.latestImage) return { kind: 'image-generation', expertId: expert.expertId, imageOnly: true }
+      const latestImagePath = latestStrictVisualGeneratedImagePath(state) ?? historical?.latestImage ?? undefined
+      const historicalPreviewRead = latestImagePath === historical?.latestImage && historical?.latestImageRead
+      const reviewText = latestStrictVisualGeneratedImagePath(state)
+        ? state.strictVisualGeneratedImageReviewText
+        : historicalPreviewRead ? turn.assistantText : ''
+      const receipt = validateUiuxImageReview(reviewText, latestImagePath)
+      if (!(hasStrictVisualGeneratedImageReviewPreview(state) || historicalPreviewRead) || !receipt.valid) {
+        return { kind: 'image-generation-review', expertId: expert.expertId, imageOnly: true, latestImagePath,
+          imagePreviewFailed: Boolean(latestImagePath && (state.strictVisualGeneratedImageFailedReadPaths.has(latestImagePath) || (latestImagePath === historical?.latestImage && historical?.latestReadFailed))),
+          imagePreviewRead: hasStrictVisualGeneratedImageReviewPreview(state) || Boolean(historicalPreviewRead), visualReviewFailureReasons: receipt.errors }
+      }
+    }
+    return null
   }
   if (turn.wroteStrictVisualHtml && !turn.completedStrictVisualQa) {
     return { kind: 'render-qa', expertId: expert.expertId }
   }
-  const finalDeliveryClaimed = /(?:已完成|已交付|完成视觉稿|完成设计|final(?:ized)?|delivered?|completed)/i.test(turn.assistantText)
+  const finalDeliveryClaimed = /(?:宸插畬鎴恷宸蹭氦浠榺瀹屾垚瑙嗚绋縷瀹屾垚璁捐|final(?:ized)?|delivered?|completed)/i.test(turn.assistantText)
+  if (turn.strictVisualFinalReviewRequired && finalDeliveryClaimed && !turn.wroteStrictVisualHtml && !turn.hasStrictVisualGeneratedImage) {
+    return { kind: 'image-generation', expertId: expert.expertId }
+  }
   if (
-    (turn.wroteStrictVisualHtml || (turn.strictVisualFinalReviewRequired && finalDeliveryClaimed))
+    (turn.wroteStrictVisualHtml || turn.hasStrictVisualGeneratedImage || (turn.strictVisualFinalReviewRequired && finalDeliveryClaimed))
     && !turn.completedStrictVisualReview
   ) {
-    return { kind: 'visual-review', expertId: expert.expertId, visualReviewFailureReasons: turn.visualReviewFailureReasons }
+    return {
+      kind: turn.hasStrictVisualGeneratedImage ? 'image-generation-review' : 'visual-review',
+      expertId: expert.expertId,
+      visualReviewFailureReasons: turn.visualReviewFailureReasons,
+    }
   }
   // The desktop's first welcome request is not a design decision. Let it end
   // naturally and wait for the user's next free-form request.
@@ -3127,6 +3922,149 @@ async function strictVisualTerminalRecoveryForResult(
     return { kind: 'ask-user-question', expertId: expert.expertId }
   }
   return null
+}
+
+function hasPrototypeVisualReviewReceipt(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return /<prototype-visual-review-receipt>/i.test(text)
+    && ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'].every((skill) => normalized.includes(skill))
+    && /(?:visual register|visual-register|视觉基调|视觉方案)/i.test(text)
+    && /(?:first render|first-render|首次截图|首(?:版|轮)(?:截图)?问题)/i.test(text)
+    && /(?:revised|revision|changed|fixed|修改|修订|调整)/i.test(text)
+    && /(?:1440|desktop|桌面)/i.test(text)
+    && /(?:1024|tablet|平板)/i.test(text)
+    && /(?:390|mobile|手机)/i.test(text)
+    && /(?:viewport|视口)/i.test(text)
+}
+
+
+function userRequestsPrototypeArtifactDelivery(text: string, attachments: unknown[]): boolean {
+  const normalized = text.trim()
+  if (!normalized) return attachments.length > 0
+
+  // “介绍一下原型图demo，你可以帮我做什么” is a capability question, not a
+  // request to write three files. A concrete product/topic or page request is.
+  const mentionsThisExpert = /(?:原型图\s*demo|原型图|这个专家)/i.test(normalized)
+  const asksCapabilities = /(?:介绍(?:一下)?|说说|讲讲|展示|功能|能力|能(?:帮我)?做什么|可以(?:帮我)?做什么|能做哪些|有什么用)/i.test(normalized)
+  if (mentionsThisExpert && asksCapabilities) return false
+
+  if (/(?:生成|制作|创建|设计|开发|写(?:出)?|做(?:一个|成)?|搭建|原型|html|网页|页面|落地页|demo|产品)/i.test(normalized)) return true
+  // In this Expert, a short noun phrase after capability intake is the common
+  // way users name the product they want prototyped, e.g. “AI 老照片修复”.
+  return normalized.length <= 80 && !/[?？]/.test(normalized)
+}
+
+function assistantTextRequestsPrototypeAskUserQuestion(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized || !/\bAskUserQuestion\b/i.test(normalized)) return false
+
+  // This catches an execution monologue such as “Must ask approval via
+  // AskUserQuestion” without turning ordinary user-facing prose into a card.
+  return /\b(?:must|required|need(?:s)?|should|have\s+to)\b.{0,96}\b(?:ask|use|call)\b.{0,96}\bAskUserQuestion\b/i.test(normalized)
+    || /\bAskUserQuestion\b.{0,96}\b(?:must|required|need(?:s)?|should|have\s+to|approval|confirm(?:ation)?|choice|selection)\b/i.test(normalized)
+}
+
+async function prototypeVisualTerminalRecoveryForResult(
+  sessionId: string,
+  turn: WorkflowInteractionTurn,
+): Promise<PrototypeVisualTerminalRecovery | null> {
+  if (turn.usedAskUserQuestion || hasPendingAskUserQuestion(sessionId)) return null
+
+  if (!await isPrototypeVisualRuntimeActive(sessionId)) return null
+  const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
+  if (!hasActiveExpertRuntime(expert) || expert.runtimeBinding.runtimePolicy?.mode !== 'prototype-visual-workflow') return null
+  const requestedPrototypeDecisionInProse = assistantTextRequestsPrototypeAskUserQuestion(turn.assistantText)
+    || assistantTextPresentsMultipleDesignDirections(turn.assistantText)
+    || assistantTextRequestsStrictVisualBoundedDecision(turn.assistantText)
+  if (!turn.wrotePrototypeHtml && requestedPrototypeDecisionInProse) {
+    return { kind: 'prototype-ask-user-question', expertId: expert.expertId }
+  }
+  if (!turn.wrotePrototypeHtml && turn.prototypeDeliveryRequested) {
+    return {
+      kind: 'prototype-production',
+      expertId: expert.expertId,
+      failureReasons: ['the confirmed prototype brief ended without any required HTML artifact'],
+    }
+  }
+  if (!turn.wrotePrototypeHtml) return null
+  if (!turn.hasAllPrototypeFidelityHtml) {
+    return { kind: 'prototype-production', expertId: expert.expertId, failureReasons: turn.prototypeVisualQualityFailureReasons }
+  }
+  if (expert.runtimeBinding.runtimePolicy.allowedToolNames.includes(PROTOTYPE_PREVIEW_TOOL)) {
+    const state = getStreamState(sessionId)
+    const receipt = state.prototypePreviewReceipt
+    const failures: string[] = []
+    if (!receipt) failures.push('尚未登记当前 HTML 的 PrototypePreview 回执；shell 命令成功不等于截图完成')
+    else {
+      const workDir = conversationService.getSessionWorkDir(sessionId)
+      if (!workDir) failures.push('无法取得当前会话目录，不能核验最终文件')
+      else failures.push(...await validatePrototypePreviewFiles(receipt, workDir).catch(() => ['无法读取预览证据目录']))
+      for (const shot of receipt.screenshots) {
+        if (!state.prototypePreviewReadPaths.has(normalizedStrictVisualPath(shot.path))) failures.push(shot.viewport + ' 截图尚未以匹配哈希的图片读取；可能读到旧图或文本结果')
+        failures.push(...shot.issues.map(issue => shot.viewport + ': ' + issue))
+      }
+      if (receipt.blockedResources.length) failures.push('本地预览缺少资源：' + receipt.blockedResources.join(', '))
+      if (receipt.status === 'needs-work' && !failures.length) failures.push('预览工具报告 NEEDS WORK，不能用文字覆盖')
+    }
+    if (failures.length) return { kind: 'prototype-render-qa', expertId: expert.expertId, failureReasons: failures }
+  }
+  if (!turn.completedPrototypeViewportQa) {
+    return { kind: 'prototype-render-qa', expertId: expert.expertId, failureReasons: turn.prototypeVisualQualityFailureReasons }
+  }
+  if (!turn.completedPrototypeVisualReview) {
+    return { kind: 'prototype-visual-review', expertId: expert.expertId, failureReasons: turn.prototypeVisualQualityFailureReasons }
+  }
+  return null
+}
+
+function buildPrototypeVisualTerminalRecoveryInstruction(
+  recovery: PrototypeVisualTerminalRecovery,
+): string {
+  const shared = [
+    'This is a server-enforced prototype visual-quality workflow for Expert ' + recovery.expertId + '.',
+    'Keep every written artifact in the active session workDir. Do not start a web server, deploy files, or use Playwright on file URLs.',
+  ]
+  if (recovery.kind === 'prototype-ask-user-question') {
+    return [
+      '<prototype-visual-ask-user-question-recovery>',
+      'The prior response requested a user choice or confirmation in prose instead of calling AskUserQuestion.',
+      'Immediately call AskUserQuestion with exactly one bounded confirmation question and 2-3 stable, mutually exclusive choices. Reuse the approval/choice already described in the prior response; do not invent a different decision.',
+      'Until the AskUserQuestion tool call is emitted, do not output prose, end the turn, write HTML, or call another tool.',
+      ...shared,
+      '</prototype-visual-ask-user-question-recovery>',
+    ].join('\n')
+  }
+  if (recovery.kind === 'prototype-production') {
+    return [
+      '<prototype-visual-production-recovery>',
+      'The prototype delivery has a confirmed brief but did not write all three required files: 01-low-fidelity.html, 02-mid-fidelity.html, and 03-high-fidelity.html.',
+      'Do not summarize the plan again. Immediately write prototype-brief.md and finish the missing HTML files with one shared information architecture. Preserve verified product facts and visibly mark any allowed demo-only content as 演示占位 / 待替换. Do not call this complete yet.',
+      ...shared,
+      '</prototype-visual-production-recovery>',
+    ].join('\n')
+  }
+  if (recovery.kind === 'prototype-render-qa') {
+    return [
+      '<prototype-visual-render-qa-recovery>',
+      'The required high-fidelity viewport evidence is incomplete: ' + (recovery.failureReasons?.join('; ') || 'unknown render evidence failure') + '.',
+      'Use PrototypePreview({ fidelity: "high" }) for 03-high-fidelity.html, then Read the exact unique PNG paths returned in its structured receipt. It awaits PNG completion and sets CSS viewports 1440x1000, 1024x900, and 390x844. If measured issues report clipping, missing local assets, or overflow, fix the HTML, rerender and Read again; never override them with a passing prose receipt. Do not replay Bash screenshot commands. If this session has no PrototypePreview tool, state that its ZIP/runtime binding needs upgrading rather than inventing the call.',
+      ...shared,
+      '</prototype-visual-render-qa-recovery>',
+    ].join('\n')
+  }
+  const receiptOnly = recovery.failureReasons?.length === 1
+    && recovery.failureReasons[0] === 'the prototype visual-review receipt is incomplete'
+  return [
+    '<prototype-visual-review-recovery>',
+    'The prototype visual review is incomplete: ' + (recovery.failureReasons?.join('; ') || 'unknown review failure') + '.',
+    receiptOnly
+      ? 'The successful HTML revision, renderer outputs, and image reads are already recorded. Only the review receipt is missing. Preserve the verified HTML and screenshots; do not make a redundant revision or rerender merely to satisfy this recovery.'
+      : 'Apply prototype-fidelity-workflow, prototype-visual-quality-gate, and frontend-design to the screenshots you actually Read. Identify concrete hierarchy, readability, specificity, spacing, CTA, overflow, or template-pattern defects. Modify 03-high-fidelity.html after that review, then rerender and Read desktop 1440x1000, tablet 1024x900, and mobile 390x844 again.',
+    'Before ending, Write the complete <prototype-visual-review-receipt>...</prototype-visual-review-receipt> to prototype-evidence.md or include it in the final response. It must name all three applied Skills, visual register, first-render defects, actual corrections, 1440/1024/390 observations, factual/demo-content boundary, and viewport QA boundary. Do not claim physical-device testing.',
+    ...shared,
+    '</prototype-visual-review-recovery>',
+  ].join('\n')
 }
 
 export function hasStrictVisualReviewReceipt(text: string): boolean {
@@ -3141,18 +4079,89 @@ export function hasStrictVisualReviewReceipt(text: string): boolean {
     // A Skill name alone is not a critique. The strict receipt must prove the
     // model chose a source-specific visual register and removed a concrete
     // generic treatment after seeing the rendered image.
-    && /(?:visual-register|visual register|视觉基调|视觉人格)/i.test(text)
-    && /(?:removed|remove:|删除|移除|剔除)/i.test(text)
-    && /(?:collision|overlap|重叠|遮挡|裁切|cropping)/i.test(text)
-    && /(?:source-fidelity|source fidelity|源图保真|事实核对|duplicate scan|重复文本)/i.test(text)
-    && /(1440|desktop|桌面)/i.test(text)
-    && /(1024|tablet|平板)/i.test(text)
-    && /(390|mobile|手机|移动)/i.test(text)
+    && /(?:visual-register|visual register|瑙嗚鍩鸿皟|瑙嗚浜烘牸)/i.test(text)
+    && /(?:removed|remove:|鍒犻櫎|绉婚櫎|鍓旈櫎)/i.test(text)
+    && /(?:collision|overlap|閲嶅彔|閬尅|瑁佸垏|cropping)/i.test(text)
+    && /(?:source-fidelity|source fidelity|婧愬浘淇濈湡|浜嬪疄鏍稿|duplicate scan|閲嶅鏂囨湰)/i.test(text)
+    && /(1440|desktop|妗岄潰)/i.test(text)
+    && /(1024|tablet|骞虫澘)/i.test(text)
+    && /(390|mobile|鎵嬫満|绉诲姩)/i.test(text)
 }
 
 function buildStrictVisualTerminalRecoveryInstruction(
   recovery: StrictVisualTerminalRecovery,
 ): string {
+  if (recovery.kind === 'image-generation' && recovery.imageOnly) {
+    return [
+      '<strict-visual-image-generation-recovery>',
+      'UIUX_GENERATED_IMAGE_ONLY: no HTML, Python drawing or browser screenshot can satisfy this image request.',
+      recovery.imageGenerationFailed
+        ? 'The actual image generation attempt did not succeed. Explain its recorded error and call AskUserQuestion id=image_generation_failure with configure_then_retry, adjust_brief, or stop; do not automatically retry or offer substitute deliverables.'
+        : 'After the resolved source/reference/direction decisions, call image_generation operation="generate" with the specific visual brief. Then Read the returned Image path and complete the generated-image-review-receipt. Do not ask for source code or start a renderer.',
+      '</strict-visual-image-generation-recovery>',
+    ].join('\n')
+  }
+  if (recovery.kind === 'image-generation') {
+    return [
+      '<strict-visual-image-generation-recovery>',
+      'This strict UIUX request requires a real image deliverable, but the prior turn did not produce a successful Provider-generated image or an authorized fallback.',
+      'Immediately call image_generation with operation="preflight". If it is available, call image_generation again with operation="generate" using a production-ready prompt grounded in the screenshot facts, selected direction, and locked visual-reference observations. Do not write HTML, CSS, SVG, Canvas, or a browser screenshot as a substitute.',
+      'After every successful generate result, retain the returned Image path as real delivery evidence and immediately call Read exactly once on that path. The host returns a bounded review preview rather than the full payload; do not use Bash to copy or convert it and do not reread the same Provider image. Only after the Read returns an image block may you complete the generated-image review receipt or claim visual Skill use. If generation returns fallback.required, call AskUserQuestion with its supplied image_generation_fallback question and choices. Do not choose Python or HTML/CSS on the user’s behalf.',
+      'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
+      '</strict-visual-image-generation-recovery>',
+    ].join('\n')
+  }
+
+  if (recovery.kind === 'image-generation-review' && recovery.imageOnly) {
+    return [
+      '<strict-visual-image-generation-review-recovery>',
+      'UIUX_GENERATED_IMAGE_ONLY: generation succeeded. Latest Image: ' + recovery.latestImagePath,
+      'Do not regenerate to repair a preview error. Do not change the image Provider or substitute an earlier file.',
+      recovery.imagePreviewFailed
+        ? 'The host failed to provide an image block for this existing file. Explain preview failure separately from generation. Call AskUserQuestion id=image_preview_recovery with repair_preview_then_read (after host repair retry Read of this exact existing file) or stop. Do not automatically repeat failed Reads before repair.'
+        : recovery.imagePreviewRead
+          ? 'The latest image already returned an image block. Reuse those pixels; no redundant Read or generation is required. Complete the factual and visual review.'
+          : 'Read the exact latest Image path above. A successful Read image block is required before visual claims. If Read fails, ask to repair the host preview or stop; preserve the file.',
+      'After pixels are available, apply taste-redesign, impeccable-visual-refinement, ui-craft-critique and source-fidelity-final-pass. Compare immutable source facts: brand, prices, quantities, license/use rights. Never infer family sharing from a software bundle. Scan duplicate navigation and account actions. Write a concrete image-revision-brief before one targeted correction only if a visible defect needs it. Finalize with the generated-image-review-receipt and NEEDS WORK for remaining defects.',
+      UIUX_REVIEW_INSTRUCTION,
+      ...(recovery.visualReviewFailureReasons?.length ? ['Receipt defects: ' + recovery.visualReviewFailureReasons.join('; ')] : []),
+      '</strict-visual-image-generation-review-recovery>',
+    ].join('\n')
+  }
+
+  if (recovery.kind === 'visual-reference-research' && recovery.imageOnly) {
+    return [
+      '<strict-visual-reference-research-recovery>',
+      UIUX_REFERENCE_INSTRUCTION,
+      'Write visual-reference-receipt from visible pixels: URL, section, observed layout, limitation and original application. Text/DOM extraction is not proof of an unseen visual arrangement.',
+      'If a source or preview is unavailable, report the limitation and use AskUserQuestion id=reference_recovery for use_available_evidence (only with a successfully read source), no_external_reference, change_sources, or stop. Never silently expand a user-locked scope or generate before this decision.',
+      '</strict-visual-reference-research-recovery>',
+    ].join('\n')
+  }
+
+  if (recovery.kind === 'image-generation-review') {
+    return [
+      '<strict-visual-image-generation-review-recovery>',
+      'A real Provider-generated image exists, but the strict UIUX delivery has not completed its image-based review receipt.',
+      'Server-detected unfinished evidence: ' + (recovery.visualReviewFailureReasons?.join('; ') || 'unknown generated-image completion failure') + '.',
+      'Treat the successful Provider-generated PNG path as real delivery evidence. Immediately call Read exactly once on the returned Image path; the host must downsample and attach a bounded visual preview, so never use Bash to copy or convert the original and never retry the same path. Only after that image Read returns an image block may you apply taste-redesign, impeccable-visual-refinement, ui-craft-critique, ui-craft-finalize, and source-fidelity-final-pass to the actual final pixels. If the preview identifies a material problem, issue one revised image_generation.generate prompt and immediately Read the new final Image path once; do not fabricate an iteration or claim visual Skill use without the latest preview.',
+      'Before ending, include a concise <generated-image-review-receipt> that names those five methods, states the chosen visual-register, names a concrete treatment removed or avoided, records source-fidelity/duplicate-scan evidence, and says that the final PNG came from image_generation. Do not claim HTML or a browser render was model-generated imagery.',
+      'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
+      '</strict-visual-image-generation-review-recovery>',
+    ].join('\n')
+  }
+
+  if (recovery.kind === 'inspiration-source') {
+    return [
+      '<strict-visual-inspiration-source-recovery>',
+      'This screenshot-redesign task has not yet chosen its inspiration/reference scope. The prior prose statement that a scope is needed does not satisfy the strict workflow.',
+      'Immediately call AskUserQuestion with exactly one question whose id is inspiration_sources. Offer exactly these four stable options: user_provided_reference (the user will paste one or two public reference URLs next), builtin_public_sources (use the package built-in public reference sources), extended_public_research (allow the Expert to choose relevant public reference websites), and no_external_reference (use only the screenshot facts and original design work).',
+      'Do not output prose, ask for a free-form answer, begin diagnosis, browse, write HTML, or end the turn before the AskUserQuestion call is emitted.',
+      'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
+      '</strict-visual-inspiration-source-recovery>',
+    ].join('\n')
+  }
+
   if (recovery.kind === 'visual-reference-research') {
     return [
       '<strict-visual-reference-research-recovery>',
@@ -3172,7 +4181,7 @@ function buildStrictVisualTerminalRecoveryInstruction(
       'The PNG renderer succeeded, but this strict UIUX delivery has not completed an evidence-backed visual critique and finalization cycle.',
       'Server-detected unfinished evidence: ' + (recovery.visualReviewFailureReasons?.join('; ') || 'unknown strict visual completion failure') + '.',
       'At least one Read result in this conversation returned an actual image payload. Treat it as visual input: do not claim that rendered screenshots cannot be read, and do not ask the user to upload the screenshots you already received.',
-      'Immediately apply the package-local taste-redesign, impeccable-visual-refinement, ui-craft-critique, and source-fidelity-final-pass methods to the rendered desktop, tablet, and mobile screenshots. Identify concrete screenshot-specific problems, then revise the existing HTML (do not merely describe changes). Run a source-to-final semantic diff: visible tabs, plan count/order/names/prices, payment relationship, and benefit labels must match the source fact ledger exactly; remove accidental repeated words such as “企业 企业”, invented labels, and any text injected through CSS ::before/::after. Keep all user-facing semantic labels as real DOM text, not CSS content. Remove every unsupported lifestyle price analogy such as coffee, meals, cinema tickets, ride-hailing, self-service meals, or dishes. Keep only direct prices, formula-based per-day prices, and source-supported benefits; do not invent user segments, trials, guarantees, or promotions. Never draw a fake QR code, barcode, checkerboard, or black-white stripe pattern as a payment affordance: if a real payment QR is unavailable, use an honest login/payment CTA and a plainly non-code container. Do not place prototype/process disclaimers such as “this is a visual assumption” in the customer-facing page; report those limits only in the final receipt. A plan promotion/recommendation badge may not use position:absolute in the final HTML, because it can cover a tier label or price at 390px; place it in normal flow or remove it. If this recovery follows unsupported copy, unsafe plan badges, or generated semantic pseudo text, use Write to replace the complete HTML source with a clean version: do not rely on Bash or partial Edit to silently remove it.',
+      'Immediately apply the package-local taste-redesign, impeccable-visual-refinement, ui-craft-critique, and source-fidelity-final-pass methods to the rendered desktop, tablet, and mobile screenshots. Identify concrete screenshot-specific problems, then revise the existing HTML (do not merely describe changes). Run a source-to-final semantic diff: visible tabs, plan count/order/names/prices, payment relationship, and benefit labels must match the source fact ledger exactly; remove accidental repeated words such as 鈥滀紒涓?浼佷笟鈥? invented labels, and any text injected through CSS ::before/::after. Keep all user-facing semantic labels as real DOM text, not CSS content. Remove every unsupported lifestyle price analogy such as coffee, meals, cinema tickets, ride-hailing, self-service meals, or dishes. Keep only direct prices, formula-based per-day prices, and source-supported benefits; do not invent user segments, trials, guarantees, or promotions. Never draw a fake QR code, barcode, checkerboard, or black-white stripe pattern as a payment affordance: if a real payment QR is unavailable, use an honest login/payment CTA and a plainly non-code container. Do not place prototype/process disclaimers such as 鈥渢his is a visual assumption鈥?in the customer-facing page; report those limits only in the final receipt. A plan promotion/recommendation badge may not use position:absolute in the final HTML, because it can cover a tier label or price at 390px; place it in normal flow or remove it. If this recovery follows unsupported copy, unsafe plan badges, or generated semantic pseudo text, use Write to replace the complete HTML source with a clean version: do not rely on Bash or partial Edit to silently remove it.',
       'After revision, call Bash again to render all three viewports with $env:CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE, then Read at least one newly rendered PNG image. Apply ui-craft-finalize only after that second image review.',
       'Before ending, include a concise <visual-review-receipt> that names taste-redesign, impeccable-visual-refinement, ui-craft-critique, ui-craft-finalize, and source-fidelity-final-pass; includes visual-register, removed, collision/cropping evidence, and source-fidelity / duplicate-scan evidence; and contains one concrete observation for each of 1440 desktop, 1024 tablet, and 390 mobile. Do not use AskUserQuestion or end early.',
       'This is a server-enforced strict visual workflow for Expert ' + recovery.expertId + '.',
@@ -3196,11 +4205,11 @@ function buildStrictVisualTerminalRecoveryInstruction(
     ? [
         'You just presented multiple design directions without the mandatory selection card.',
         'Immediately call AskUserQuestion with exactly one question whose id is design_direction.',
-        'Its 2–4 bounded choices must map one-to-one to the directions already shown. Preserve their actual names and intent; do not invent a replacement direction.',
+        'Its 2鈥? bounded choices must map one-to-one to the directions already shown. Preserve their actual names and intent; do not invent a replacement direction.',
       ]
     : [
         'Your previous response asked the user for a bounded choice or confirmation in prose.',
-        'Immediately convert that exact decision into one AskUserQuestion card with 2–4 bounded choices and stable ids.',
+        'Immediately convert that exact decision into one AskUserQuestion card with 2鈥? bounded choices and stable ids.',
       ]
 
   return [
@@ -3213,39 +4222,91 @@ function buildStrictVisualTerminalRecoveryInstruction(
   ].join('\n')
 }
 
-function sendStrictVisualTerminalProtocolError(
+
+function sendPrototypeVisualTerminalProtocolError(
   sessionId: string,
   code:
-    | 'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED'
-    | 'STRICT_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
-    | 'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED'
-    | 'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE'
-    | 'STRICT_VISUAL_RENDER_QA_REQUIRED'
-    | 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
-    | 'STRICT_VISUAL_REVIEW_REQUIRED'
-    | 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE',
+    | 'PROTOTYPE_VISUAL_ASK_USER_QUESTION_REQUIRED'
+    | 'PROTOTYPE_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
+    | 'PROTOTYPE_VISUAL_PRODUCTION_REQUIRED'
+    | 'PROTOTYPE_VISUAL_PRODUCTION_RECOVERY_UNAVAILABLE'
+    | 'PROTOTYPE_VISUAL_RENDER_QA_REQUIRED'
+    | 'PROTOTYPE_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
+    | 'PROTOTYPE_VISUAL_REVIEW_REQUIRED'
+    | 'PROTOTYPE_VISUAL_REVIEW_RECOVERY_UNAVAILABLE',
+  failureReasons: string[] = [],
 ): void {
-  const message = code === 'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED'
-    ? 'The strict UIUX Expert ended a choice turn without AskUserQuestion twice. No production action was started; retry the choice step.'
-    : code === 'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED'
-      ? 'The strict UIUX Expert was asked to use public visual references but did not read two successful website screenshots. No visual delivery was accepted.'
-      : code === 'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE'
-        ? 'The strict UIUX Expert could not deliver its required website visual-reference recovery turn. No visual delivery was accepted.'
-        : code === 'STRICT_VISUAL_RENDER_QA_REQUIRED'
-      ? 'The strict UIUX Expert wrote HTML but did not complete a successful Playwright/Chromium PNG render twice. No visual delivery was accepted.'
-      : code === 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
-        ? 'The strict UIUX Expert could not deliver its required local visual-QA recovery turn. No visual delivery was accepted.'
-        : code === 'STRICT_VISUAL_REVIEW_REQUIRED'
-          ? 'The strict UIUX Expert rendered PNGs but skipped the required image-based critique, revision, rerender, and finalization cycle. No visual delivery was accepted.'
-          : code === 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE'
-            ? 'The strict UIUX Expert could not run its required image-review recovery turn. No visual delivery was accepted.'
-            : 'The strict UIUX Expert could not deliver its required AskUserQuestion recovery turn. No production action was started; retry the choice step.'
+  const clients = activeSessions.get(sessionId)
+  if (!clients) return
+  const message = code === 'PROTOTYPE_VISUAL_ASK_USER_QUESTION_REQUIRED'
+    ? '原型图demo连续两次把确认工具写成文字，没有真正弹出确认卡片；请重试当前选择步骤。'
+    : code === 'PROTOTYPE_VISUAL_PRODUCTION_REQUIRED'
+      ? '原型图demo没有写全低、中、高三档 HTML，未接受为完成交付。'
+    : code === 'PROTOTYPE_VISUAL_RENDER_QA_REQUIRED'
+      ? '原型图demo预览未通过：' + (failureReasons.join('；') || '尚未取得当前版本的完整预览证据') + '。文件仍保留，不代表未生成。'
+      : code === 'PROTOTYPE_VISUAL_REVIEW_REQUIRED'
+        ? '原型图demo的视觉验收未通过：' + failureReasons.map(reason => ({
+          '03-high-fidelity.html was not revised after the first image review': '尚未记录首版图片审查后的成功 HTML 修订',
+          'the latest high-fidelity HTML revision was not Read back as rendered PNG images': '最新 HTML 修订的截图尚未完成图片复审',
+          'the prototype visual-review receipt is incomplete': '视觉复审回执缺失或字段不完整',
+        }[reason] || reason)).join('；') + '。已生成的文件仍然保留。'
+        : '原型图demo无法发送所需的视觉质量恢复指令；请重试当前原型步骤。'
+  for (const ws of clients) {
+    sendMessage(ws, { type: 'error', code, message, retryable: true })
+  }
+}
+
+function strictVisualTerminalNotice(code: StrictVisualTerminalProtocolCode): string {
+  if (code === 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED' || code === 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_RECOVERY_UNAVAILABLE') {
+    return '图片已经保留，但本轮自动像素复核没有完成；它不会被标记为已验收。你可以继续让我重新检查或重新生成。'
+  }
+  if (code === 'STRICT_VISUAL_IMAGE_GENERATION_REQUIRED' || code === 'STRICT_VISUAL_IMAGE_GENERATION_RECOVERY_UNAVAILABLE') {
+    return '本轮没有得到可验收的生成图片；你可以继续让我重试生成，或调整设计要求。'
+  }
+  if (code === 'STRICT_VISUAL_RENDER_QA_REQUIRED' || code === 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE' || code === 'STRICT_VISUAL_REVIEW_REQUIRED' || code === 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE') {
+    return '页面草稿已保留，但自动视觉校验没有完成；它不会被标记为已验收。你可以继续让我修订或重新检查。'
+  }
+  if (code === 'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED' || code === 'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE') {
+    return '本轮没有完成参考网站的视觉整理；你可以继续提供参考，或让我改用内置参考来源。'
+  }
+  return '本轮需要的选择没有完成；请继续告诉我你的选择，我会从当前进度继续。'
+}
+
+type StrictVisualTerminalProtocolCode =
+  | 'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED'
+  | 'STRICT_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
+  | 'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED'
+  | 'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE'
+  | 'STRICT_VISUAL_IMAGE_GENERATION_REQUIRED'
+  | 'STRICT_VISUAL_IMAGE_GENERATION_RECOVERY_UNAVAILABLE'
+  | 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED'
+  | 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_RECOVERY_UNAVAILABLE'
+  | 'STRICT_VISUAL_RENDER_QA_REQUIRED'
+  | 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
+  | 'STRICT_VISUAL_REVIEW_REQUIRED'
+  | 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE'
+
+/**
+ * Strict visual gates are recovery mechanisms, not transport failures. Once a
+ * bounded recovery has been exhausted, preserve the model's honest output and
+ * settle the chat normally instead of rendering a red protocol error.
+ */
+function settleStrictVisualTerminalProtocol(
+  sessionId: string,
+  code: StrictVisualTerminalProtocolCode,
+  recovery?: StrictVisualTerminalRecovery,
+): void {
+  const message = recovery?.imageOnly && recovery.kind === 'image-generation-review'
+    ? '图片已生成并保留，但尚未完成像素复审。请修复宿主预览后读取已有图片，或继续复审；不要因此重新生成或修改生图配置。最新文件：' + recovery.latestImagePath
+    : strictVisualTerminalNotice(code)
+  console.warn(`[StrictVisual] ${code}: ${message}`)
   sendToSession(sessionId, {
-    type: 'error',
-    code,
+    type: 'system_notification',
+    subtype: 'strict_visual_incomplete',
     message,
-    retryable: true,
+    data: { code },
   })
+  sendToSession(sessionId, { type: 'status', state: 'idle' })
 }
 
 function hasPendingAskUserQuestion(sessionId: string): boolean {
@@ -3355,7 +4416,7 @@ async function replayPersistedWorkflowAskUserQuestion(
     rawRequest,
     workflowQuestionContextForRequest(candidate, rawRequest),
   )
-  sendMessage(ws, request)
+  sendReplayedPermissionRequest(ws, request)
 }
 
 function hasPersistedOpenWorkflowQuestion(state: WorkflowSessionState): boolean {
@@ -3384,50 +4445,42 @@ async function staleFailedWorkflowAskUserQuestions(
 function buildWorkflowTerminalRecoveryInstruction(
   recovery: WorkflowTerminalRecovery,
   assistantText: string,
+  recoveryAttempt: number,
 ): string {
-  const isChinese = recovery.state.workflowLanguage === 'zh'
+  const previousTurnWasEmpty = !assistantText.trim()
   const interactionInstruction = recovery.kind === 'ask-user-question'
-    ? isChinese
-      ? [
-          '你刚才用普通文本向用户提出了需要选择、确认或决定的问题，但当前活跃工作流禁止在自由输入框等待回答。',
-          '现在必须立即调用 AskUserQuestion；不得再输出普通文本问题，也不得结束本轮。',
-          '调用必须包含顶层 questions 数组、稳定的 question id 和 option id，以及 2 至 4 个有界选项。',
-          '选项只能使用 AskUserQuestion 支持的字段：id、label、description、preview。当前阶段完成、非线性跳转和恢复必须分别使用对应的工作流工具，不能把路由字段塞进业务选项。',
-        ]
-      : [
-          'Your previous response asked the user for a decision in prose, but an active workflow must not wait at the free-form composer.',
-          'Immediately call AskUserQuestion. Do not ask another prose question and do not end this turn.',
-          'The call must include a top-level questions array, stable question and option ids, and 2-4 bounded choices.',
-          'Choices may use only AskUserQuestion-supported fields: id, label, description, and preview. Keep phase completion, non-linear routes, and recovery in their dedicated workflow tools; never put route fields into a business choice.',
-        ]
-    : isChinese
-      ? [
-          '你在 workflow 仍处于运行中时结束了模型回合，但没有产生 pending completion、pending route 或 AskUserQuestion。',
-          '不得静默停止，也不得等待用户在自由输入框中发送“继续”。',
-          '现在继续当前阶段：若需要用户判断、确认、权限、范围或下一步选择，立即调用 AskUserQuestion；若当前阶段已经完成，调用 submit_phase_completion；否则继续执行当前阶段允许的工作。',
-          '不要用普通文本问题替代 AskUserQuestion，也不要用普通文本声明阶段完成。',
-        ]
-      : [
-          'You ended a model turn while the workflow is still running, but there is no pending completion, pending route, or AskUserQuestion.',
-          'Do not silently stop and do not wait for the user to type “continue” in the free-form composer.',
-          'Continue the active phase now: call AskUserQuestion if user judgment, confirmation, permission, scope, or next-step choice is needed; call submit_phase_completion if the phase is ready; otherwise continue allowed phase work.',
-          'Do not replace AskUserQuestion or submit_phase_completion with prose.',
-        ]
-  const visibilityInstruction = isChinese
-    ? '所有用户可见文案使用中文（文件路径、代码和原始错误除外）。'
-    : 'Keep user-visible text in the current workflow language.'
+    ? [
+        'Your previous response asked the user for a decision in prose, but an active workflow must not wait at the free-form composer.',
+        'Immediately call AskUserQuestion. Do not ask another prose question and do not end this turn.',
+        'The call must include a top-level questions array, stable question and option ids, and 2-4 bounded choices.',
+        'Choices may use only AskUserQuestion-supported fields: id, label, description, and preview. Keep phase completion, non-linear routes, and recovery in their dedicated workflow tools; never put route fields into a business choice.',
+      ]
+    : [
+        'You ended a model turn while the workflow is still running, but there is no pending completion, pending route, or AskUserQuestion.',
+        'Do not silently stop and do not wait for the user to type continue in the free-form composer.',
+        ...(previousTurnWasEmpty
+          ? [
+              'The previous model turn was completely empty: it produced no text and no tool call. This is not a completed workflow action.',
+              'Immediately take one concrete action allowed by the active phase. Do not return another empty end_turn.',
+            ]
+          : []),
+        ...(recoveryAttempt > 1
+          ? ['A prior internal continuation did not create workflow state. Use a different concrete next action instead of repeating the same empty or prose-only finish.']
+          : []),
+        'Continue the active phase now: call AskUserQuestion if user judgment, confirmation, permission, scope, or next-step choice is needed; call submit_phase_completion if the phase is ready; otherwise continue allowed phase work.',
+        'Do not replace AskUserQuestion or submit_phase_completion with prose.',
+      ]
 
   return [
     '<workflow-terminal-recovery>',
-    '这是工作流运行时的内部恢复指令，不要把它作为普通答复展示给用户。',
+    'This is an internal workflow runtime recovery instruction. Do not display it as a normal user-facing answer.',
     `Active phase: ${recovery.state.activePhaseId ?? 'unknown'}.`,
     ...interactionInstruction,
-    visibilityInstruction,
-    assistantText ? `刚才的普通文本：${assistantText}` : '',
+    'Keep user-visible text in the current workflow language.',
+    assistantText ? `Previous prose: ${assistantText}` : '',
     '</workflow-terminal-recovery>',
   ].filter(Boolean).join('\n')
 }
-
 async function workflowTerminalRecoveryForResult(
   sessionId: string,
   turn: WorkflowInteractionTurn,
@@ -3451,9 +4504,6 @@ async function workflowTerminalRecoveryForResult(
 }
 
 const WORKFLOW_TERMINAL_RESULT_FALLBACK_MS = 300
-// One reminder can be missed by a live model turn. Allow one additional
-// bounded recovery before surfacing a retryable protocol error to the user.
-const WORKFLOW_TERMINAL_RECOVERY_ATTEMPTS = 2
 
 function assistantEndedTurnWithoutResult(cliMsg: any): boolean {
   if (cliMsg?.type !== 'assistant' || cliMsg?.is_error || cliMsg?.error) return false
@@ -3497,52 +4547,110 @@ function buildExpertResearchDeliveryTerminalRecoveryInstruction(
     ...recovery.policy.pauseChoiceIds,
   ]
   const auditSummary = recovery.completion.complete
-    ? '当前浏览审计已达到该专家包声明的最小覆盖门槛。'
-    : `当前浏览审计仍有以下缺口：${recovery.completion.missing.join('；')}`
+    ? 'The browser audit meets this Expert package minimum coverage threshold.'
+    : `The browser audit still has these evidence gaps: ${recovery.completion.missing.join('; ')}`
 
-  // Incomplete audits (Google CAPTCHA/VPN, partial subagents) are disclosed on
-  // the card as unresolved evidence. The user may still accept current scope.
   return [
     '<expert-research-delivery-terminal-recovery>',
-    '这是 Expert Runtime 的内部续办指令，不能作为普通答复展示给用户。',
-    '本轮已经有研究子代理回传可审计的浏览记录，但你刚才以普通阶段总结结束，尚未完成该专家声明的研究交付流程。',
+    'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer.',
+    'Research agents returned auditable browser records, but the task ended in ordinary prose before the package research-delivery flow completed.',
     auditSummary,
-    '现在必须继续当前专家任务，不能再用“初步取证完成”“证据不足”或“还可以继续做”作为本轮结束。',
-    '先复用已有审计、已打开来源和证据缺口；若仍有高价值且可公开访问的证据可补，可做有限补证。',
-    'Google/百度等入口若因验证码、VPN 或访问限制无法取得完整 SERP，记为该入口的证据缺口即可，不要反复卡在同一入口。',
-    `若补证已无实质价值、被访问限制阻断，或需要用户决定是否接受当前证据范围，必须立即调用一次 AskUserQuestion 的正式研究交付卡。唯一问题 ID 必须为 ${recovery.policy.questionId}。`,
-    `这张卡的选项 ID 必须且只能使用：${expectedChoiceIds.join('、')}；必须包含 ${recovery.policy.acceptedChoiceId}。`,
-    '交付卡必须携带该专家包要求的 expert_research_delivery metadata，并列出当前真实未解决的证据缺口（含未取得的搜索入口）。不要创建别的 delivery 问题 ID。',
-    `用户的最终选择优先：若用户选择 ${recovery.policy.acceptedChoiceId}，即使仍有审计/搜索入口缺口，也视为已确认交付范围，随后可询问输出路径并执行 expert-template-fill --data-stdin。`,
-    '不要用 Write、Edit、手写 HTML 或普通文本绕过这个交付流程。',
-    assistantText ? `刚才的普通阶段总结：${assistantText}` : '',
+    'Continue the current Expert task. Reuse existing audit records and opened sources; perform only bounded additional public research when it is materially useful.',
+    '用户的最终选择优先：一旦该正式 AskUserQuestion 获得回答，严格按其选择继续，不要用内部推断覆盖、重问或绕过该选择。',
+    `If a delivery decision is necessary, call exactly one formal AskUserQuestion research-delivery card using question id ${recovery.policy.questionId}.`,
+    `Its option ids must be exactly: ${expectedChoiceIds.join(', ')}; it must include ${recovery.policy.acceptedChoiceId}.`,
+    'The card must include the required expert_research_delivery metadata and list genuine unresolved evidence only. Do not create another delivery question id.',
+    'Do not bypass the delivery flow with Write, Edit, hand-written HTML, or ordinary prose.',
+    assistantText ? `Previous ordinary summary: ${assistantText}` : '',
     '</expert-research-delivery-terminal-recovery>',
   ].filter(Boolean).join('\n')
 }
-
 function sendExpertResearchDeliveryTerminalProtocolError(sessionId: string): void {
   sendToSession(sessionId, {
     type: 'error',
     code: 'EXPERT_RESEARCH_DELIVERY_PROTOCOL_REQUIRED',
-    message: '该研究专家已两次在已有浏览证据后以普通文本结束，但没有继续补证、发出交付范围选择卡或生成报告。本次没有把普通总结当作正式完成；请重试当前专家任务。',
+    message: 'This research Expert ended twice after browser evidence without continuing research, issuing the required delivery decision, or generating the report. The ordinary summary was not treated as completion; retry the current Expert task.',
     retryable: true,
   })
 }
-
 async function expertResearchDeliveryTerminalRecoveryForResult(
   sessionId: string,
   turn: WorkflowInteractionTurn,
 ): Promise<ExpertResearchDeliveryTerminalRecoveryResult | null> {
   const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
-  const expert = hasActiveExpertRuntime(transcriptExpert)
-    ? transcriptExpert
-    : await expertRuntimeSessionStore.get(sessionId)
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
   return resolveExpertResearchDeliveryTerminalRecovery({
     expert,
     usedAskUserQuestion: turn.usedAskUserQuestion,
     hasPendingAskUserQuestion: hasPendingAskUserQuestion(sessionId),
   })
 }
+export function isCommercializationResearchQuestionRecoveryBlocked(input: {
+  usedAskUserQuestion: boolean
+  hasPendingAskUserQuestion: boolean
+  expertTemplateFillValidationFailure: boolean
+}): boolean {
+  return input.usedAskUserQuestion
+    || input.hasPendingAskUserQuestion
+    // A renderer/evidence validation failure is an internal technical state,
+    // not a missing product fact. Do not force a new user card from the
+    // model's ordinary recovery prose.
+    || input.expertTemplateFillValidationFailure
+}
+
+async function commercializationResearchQuestionRecoveryForResult(
+  sessionId: string,
+  turn: WorkflowInteractionTurn,
+): Promise<CommercializationResearchQuestionRecovery | null> {
+  if (isCommercializationResearchQuestionRecoveryBlocked({
+    usedAskUserQuestion: turn.usedAskUserQuestion,
+    hasPendingAskUserQuestion: hasPendingAskUserQuestion(sessionId),
+    expertTemplateFillValidationFailure: turn.expertTemplateFillValidationFailure,
+  })) return null
+
+  const transcriptExpert = (await sessionService.getSession(sessionId).catch(() => null))?.expert
+  const expert = transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId)
+  if (
+    !hasActiveExpertRuntime(expert)
+    || expert.expertId !== 'commercialization-research-report'
+    || !assistantTextRequestsCommercializationUserInput(turn.assistantText)
+  ) {
+    return null
+  }
+
+  return { expertId: expert.expertId }
+}
+
+function buildCommercializationResearchQuestionRecoveryInstruction(
+  recovery: CommercializationResearchQuestionRecovery,
+  assistantText: string,
+  recoveryAttempt: number,
+): string {
+  return [
+    '<commercialization-research-ask-user-question-recovery>',
+    'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer.',
+    'The previous response said that more user clarification is needed, but it ended in prose without an AskUserQuestion call. That prose statement is not a completed turn.',
+    'Immediately call exactly one AskUserQuestion for the specific missing product fact implied by the previous response.',
+    recoveryAttempt > 1
+      ? 'The prior tool-only correction was ignored. Retry now with the AskUserQuestion tool as the entire response: no prose before or after the tool call.'
+      : '',
+    'Use 2–4 concise, product-specific choices and rely on the built-in Other path for custom detail. Do not ask for a generic analysis direction, permission to start research, an output location, or a fixed questionnaire.',
+    'Do not browse, dispatch subagents, write files, emit another prose request, or end the turn before the AskUserQuestion call is emitted.',
+    'This recovery applies only to Expert ' + recovery.expertId + '.',
+    assistantText ? 'Previous prose: ' + assistantText : '',
+    '</commercialization-research-ask-user-question-recovery>',
+  ].filter(Boolean).join('\n')
+}
+
+function sendCommercializationResearchQuestionRecoveryUnavailableError(sessionId: string): void {
+  sendToSession(sessionId, {
+    type: 'error',
+    code: 'COMMERCIALIZATION_RESEARCH_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE',
+    message: '当前会话无法发送必要的 AskUserQuestion 澄清卡片。请重试当前问题；系统没有把本轮误显示为已完成。',
+    retryable: true,
+  })
+}
+
 function isDuplicateOfLastApiError(
   lastApiError: SessionStreamState['lastApiError'],
   resultMessage: string,
@@ -3561,6 +4669,7 @@ function bindPrewarmMetadataCapture(sessionId: string) {
   }
   if (!conversationService.hasSession(sessionId)) return
 
+  removeSessionOutputCallbacks(sessionId)
   conversationService.clearOutputCallbacks(sessionId)
   conversationService.onOutput(sessionId, (cliMsg) => {
     cacheSessionInitMetadata(sessionId, cliMsg)
@@ -3587,39 +4696,289 @@ async function resolveSessionWorkDir(sessionId: string, fallback = os.homedir())
   return workDir
 }
 
+const EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION = [
+  '<expert-research-auto-continue>',
+  'The three declared file-first researcher handoffs are already complete and have been durably recorded.',
+  'Do not ask the user another question. Do not re-dispatch researchers and do not redo completed browsing.',
+  'Read only these files from the current session work directory:',
+  '- commercialization-research/01-research-brief.md',
+  '- commercialization-research/02-competitors.md',
+  '- commercialization-research/03-user-needs.md',
+  '- commercialization-research/04-channels.md',
+  '- commercialization-research/06-browser-audit.md if it already exists.',
+  'Continue the existing report pipeline now: delegate the independent evidence review, then complete browser audit, field absorption, and the fixed-template HTML report.',
+  'Keep the three research reports as file paths; never paste their full contents into the parent context.',
+  '</expert-research-auto-continue>',
+].join('\n')
+
+export function buildIncompleteRequiredRouteRecoveryInstruction(plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-incomplete-required-routes' }>): string {
+  const byArtifact = new Map<string, typeof plan.recoveries>()
+  for (const recovery of plan.recoveries) {
+    if (recovery.artifactPath === 'commercialization-research/01-research-brief.md') continue
+    const current = byArtifact.get(recovery.artifactPath) ?? []
+    current.push(recovery)
+    byArtifact.set(recovery.artifactPath, current)
+  }
+  return [
+    '<expert-research-required-route-recovery>',
+    'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer and do not ask the user a question.',
+    'The declared researcher Markdown files exist, but the server matched their real Playwright audits against both ordinary planned platform work and optional Required route blocks in 01-research-brief.md and found only the narrow gaps listed below.',
+    'Do not redo broad research, re-run completed routes, or replace any other researcher report. For each artifact group below, dispatch exactly one Agent with subagent_type "expert-evidence-researcher", research_task_kind: "targeted-evidence", and run_in_background: true. Its Agent tool call must set research_artifact_path to the exact Artifact path below; keep this route repair separate from the company-source queue.',
+    'Each recovery agent must Read 01-research-brief.md and its assigned existing Markdown, then use Playwright only for the listed route action. A normal content page requires navigate + wait + extract. For a real access limit, do not bypass verification: preserve the result and execute the listed same-field fallback. A real product-specific no-result search is also a bounded outcome. If primary and same-field fallback remain unavailable, preserve the gap and finish; do not loop. Homepage extraction is not content evidence; checkpoint saves do not end remaining assigned tasks.',
+    ...[...byArtifact.entries()].flatMap(([artifactPath, recoveries]) => [
+      '- Artifact: ' + artifactPath + '; research_artifact_path=' + artifactPath,
+      ...recoveries.map((recovery) => '  - Route ' + recovery.routeId + ': ' + recovery.nextStep
+        + '; primary=' + recovery.primaryTargetHost
+        + '; fallback=' + recovery.fallbackTargetHost
+        + (recovery.evidenceField ? '; field=' + recovery.evidenceField : '')
+        + (recovery.goal ? '; goal=' + recovery.goal : '')
+        + (recovery.firstRoute ? '; first=' + recovery.firstRoute : '')
+        + (recovery.fallbackRoute ? '; fallback-action=' + recovery.fallbackRoute : '')
+        + '; reason=' + recovery.reason),
+    ]),
+    'Each recovery researcher may update only its assigned existing Markdown path. Its final return must contain only that relative Markdown path plus a very short status. After dispatching all listed recovery researchers, use TaskOutput(block: true), then Read the saved paths and continue D → E → report pipeline. Do not paste research Markdown contents into the parent context.',
+    '</expert-research-required-route-recovery>',
+  ].join('\n')
+}
+
+
+export function buildUndispatchedSourceBatchRecoveryInstruction(
+  plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-undispatched-source-batch' }>,
+): string {
+  return [
+    '<expert-research-source-batch-recovery>',
+    'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer and do not ask the user a question.',
+    'The declared researcher Markdown and browser audit were saved, but this bounded A/B/C execution wave still has URLs without a real terminal receipt. Run only the listed current wave; do not redo completed URLs or broad research.',
+    'For every listed artifact, dispatch one Agent with subagent_type "expert-evidence-researcher", research_task_kind: "source-batch", and run_in_background: true. The Agent call must set research_artifact_path to that exact path so the server injects the correct A/B/C package. Dispatch all listed artifacts before waiting, so independent recovery lanes remain parallel.',
+    ...plan.recoveries.flatMap((recovery) => [
+      '- Artifact: ' + recovery.artifactPath
+        + '; research_artifact_path=' + recovery.artifactPath
+        + '; assigned core=' + recovery.coreEntryCount
+        + '; assigned open=' + recovery.openEntryCount
+        + '; remaining=' + recovery.remainingEntryCount
+        + '; reason=' + recovery.reason,
+      ...recovery.entries.map((entry) => '  - [' + entry.tier + '][' + entry.category + '] ' + entry.candidateUrl),
+    ]),
+    'Each recovery researcher must Read 01-research-brief.md and its existing assigned Markdown, then process only the explicit current-wave URLs above (at most 10 per lane). Every URL needs one real Playwright outcome: opened, access_limited, or failed. A platform search with no relevant result is a truthful failed/no-result outcome, not a reason to loop. Save the completed wave back to the same Markdown.',
+    'Do not replace this source wave with a competitor-only assignment. After existing workers finish, dispatch any remaining direct-competitor gaps separately with research_task_kind: "targeted-evidence" and the same owner Markdown. Across A/B/C, preserve the official-site plus B站、YouTube、Reddit、GitHub、Gitee、X、小红书、知乎、百度贴吧、微博 evidence routes; open a concrete result when one exists, otherwise preserve truthful no-result or access-limited. Never run two writers for the same Markdown at once.',
+    'After the listed agents finish, let the server re-evaluate terminal receipts. An ended unchanged wave gets at most one targeted retry; if it ends again without receipts, the runtime records the remaining entries as interrupted (unexecuted/incomplete, never visited or website-restricted), then continues D → E → initial fixed-template HTML → 08 → final patch/finalize. Do not repeatedly dispatch a still-running wave. Individual access_limited and failed/no-result outcomes are terminal and never require success retries.',
+    '</expert-research-source-batch-recovery>',
+  ].join('\n')
+}
+
+function buildEvidenceAbsorptionAutoContinueInstruction(
+  plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-absorption' }>,
+): string {
+  return [
+    '<expert-research-absorption-auto-continue>',
+    'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
+    'The independent evidence review is durably saved, but the declared field-absorption Markdown is missing or empty. Continue E now; do not merely say that you will dispatch it.',
+    'Your next action must be exactly one Agent tool call with subagent_type "' + plan.absorberAgentType + '" and run_in_background: false.',
+    'Give that Agent only this file-first task: Read the declared session Markdown artifacts below and Write only ' + plan.absorptionPath + '. Its final return must contain only that relative Markdown path plus a short status.',
+    '- ' + plan.briefPath,
+    ...plan.researcherPaths.map((artifactPath) => '- ' + artifactPath),
+    '- ' + plan.auditPath,
+    '- ' + plan.reviewerPath,
+    'Do not reopen browser pages, task-output transcripts, or research browsers; do not re-dispatch A/B/C/D. Do not paste Markdown contents into the parent context.',
+    'After the Agent succeeds, Read ' + plan.briefPath + ' and ' + plan.absorptionPath + ', then continue the existing fixed-template report pipeline.',
+    '</expert-research-absorption-auto-continue>',
+  ].join('\n')
+}
+
+function buildInitialTemplateRenderAutoContinueInstruction(
+  plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-initial-render' }>,
+): string {
+  return [
+    '<expert-research-initial-render-auto-continue>',
+    'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
+    'The chapter-ready 07 material is durably saved, but no initial fixed-template HTML draft exists. Continue the real render now; do not merely describe a future report step.',
+    'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', then exactly one structured Write for one .html file directly in the current session workDir. Use Write.content as an empty string and put the complete fixed-template fields in expert_output.',
+    'Do not reopen browser pages, re-dispatch A/B/C/D/E/F, read raw ledgers, create Markdown, or paste research content into the parent context. Use a stable descriptive .html filename and do not ask the user to choose it.',
+    'This Write creates an initial draft only. Do not call it final delivery and do not replace it with ordinary prose. The server will advance the same draft to the constrained 08 review when the Write really succeeds.',
+    '</expert-research-initial-render-auto-continue>',
+  ].join('\n')
+}
+
+function buildOutputReviewAutoContinueInstruction(
+  plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-output-review' }>,
+): string {
+  return [
+    '<expert-research-output-review-auto-continue>',
+    'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
+    'The initial HTML draft is durably saved, but this draft does not yet have a current 08 completeness-review receipt. Continue the real review now; do not merely say that you will dispatch it.',
+    'Your next action must be exactly one Agent tool call with subagent_type "' + plan.reviewerAgentType + '" and run_in_background: false.',
+    'Give that Agent only this file-first task: Read exactly ' + plan.briefPath + ', ' + plan.absorptionPath + ', and ' + plan.reportPath + '; Write only ' + plan.completionReviewPath + '. Its final return must contain only that relative Markdown path plus a short status.',
+    'Do not browse, re-dispatch research workers, read raw researcher ledgers, generate another HTML file, or paste any research content into the parent context. After the Agent succeeds, the server will require the parent to Read 08 and make one patch-or-finalize decision for this same HTML path.',
+    '</expert-research-output-review-auto-continue>',
+  ].join('\n')
+}
+
+function buildFinalizeDeliveryAutoContinueInstruction(
+  plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-finalize-delivery' }>,
+): string {
+  return [
+    '<expert-research-finalize-delivery-auto-continue>',
+    'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
+    'The same initial HTML and a current 08 completeness review are durably saved. Finish the existing delivery now; do not restart research or create another report file.',
+    'Read only ' + plan.completionReviewPath + '. Then write only the existing report path ' + plan.reportPath + ' using the structured fixed-template Write.',
+    'If 08 plainly identifies a source-supported omission in the current report, make exactly one mode="patch" Write with only the smallest supported fields. Otherwise make mode="finalize" with fields: {} so the reviewed initial draft becomes the final delivery unchanged.',
+    'Do not browse, invoke agents, ask the user, reread raw ledgers, paste research content into the parent context, or replace the report with a fresh full rewrite.',
+    '</expert-research-finalize-delivery-auto-continue>',
+  ].join('\n')
+}
+
+function buildMissingResearcherRecoveryInstruction(missingArtifactPaths: string[]): string {
+  return [
+    '<expert-research-missing-handoff-recovery>',
+    'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer and do not ask the user a question.',
+    'The server confirmed that the following declared file-first researcher handoffs are still missing or lack a durable audit receipt:',
+    ...missingArtifactPaths.map((artifactPath) => '- ' + artifactPath),
+    'Do not re-dispatch any existing non-empty researcher artifact. For each missing path, dispatch exactly one Agent with subagent_type "expert-evidence-researcher", research_task_kind: "targeted-evidence", and run_in_background: true. Each Agent call must also set research_artifact_path to that one exact Markdown path; never omit it and never put sibling paths in the same call.',
+    'Each recovery researcher must Read commercialization-research/01-research-brief.md, use the allowed research tools, and Write only its assigned missing Markdown path. Its final return must contain only the relative Markdown path plus a very short status.',
+    'After dispatching every missing researcher, use TaskOutput(block: true) to receive their completion notifications. Then Read the actually saved files and continue the normal D → E → report pipeline. Do not paste the research Markdown contents into the parent context.',
+    '</expert-research-missing-handoff-recovery>',
+  ].join('\n')
+}
+
+export async function continueCommercializationResearch(
+  sessionId: string,
+  plan: ExpertResearchAutoContinuePlan,
+): Promise<boolean> {
+  const expert = (await sessionService.getSession(sessionId))?.expert ?? await expertRuntimeSessionStore.get(sessionId)
+  const plannedBindingKey = getExpertProcessBindingKey(expert)
+  if (!plannedBindingKey) return false
+  return enqueueRuntimeTransition(sessionId, async () => {
+    const current = (await sessionService.getSession(sessionId))?.expert ?? await expertRuntimeSessionStore.get(sessionId)
+    // An already prepared continuation must not start ordinary chat or another
+    // Expert after an exit/switch that was queued before this send.
+    if (getExpertProcessBindingKey(current) !== plannedBindingKey) return false
+    return continueCommercializationResearchInTransition(sessionId, plan)
+  })
+}
+
+async function continueCommercializationResearchInTransition(
+  sessionId: string,
+  plan: ExpertResearchAutoContinuePlan,
+): Promise<boolean> {
+  // A live TaskOutput wait will consume normal task notifications itself. This
+  // fallback exists only for the observed "parent text ended, children finished"
+  // gap, so never inject a duplicate turn while a parent turn is still active.
+  if (getSessionChatState(sessionId) !== 'idle') return false
+
+  const client = activeSessions.get(sessionId)?.values().next().value as ServerWebSocket<WebSocketData> | undefined
+  if (!client) return false
+
+  if (plan.kind === 'report-delivery-stalled') {
+    broadcastServerMessageToSession(sessionId, {
+      type: 'error', code: 'EXPERT_REPORT_DELIVERY_STALLED',
+      message: '报告定稿连续出现同一工具错误（' + plan.errorCode + '），草稿和复核没有变化，已停止无进展的自动重试。研究材料和原 HTML 均保留，但尚未最终交付：' + plan.reportPath + '。修正错误后可继续当前会话，不需要重新调研。',
+    })
+    broadcastServerMessageToSession(sessionId, { type: 'status', state: 'idle' })
+    return true
+  }
+
+  broadcastServerMessageToSession(sessionId, {
+    type: 'status',
+    state: 'thinking',
+    verb: plan.kind === 'recover-missing-researchers'
+      ? '正在补齐缺失的调研子任务'
+      : plan.kind === 'recover-undispatched-source-batch'
+        ? '正在补齐未执行的核心来源取证批次'
+        : plan.kind === 'recover-incomplete-required-routes'
+        ? '正在补齐已选关键路线的真实取证'
+        : plan.kind === 'continue-absorption'
+          ? '正在进入字段吸收阶段'
+          : plan.kind === 'continue-initial-render'
+            ? '正在生成初始报告草稿'
+            : plan.kind === 'continue-output-review'
+              ? '正在进行报告完整性复核'
+              : plan.kind === 'continue-finalize-delivery'
+                ? '正在完成报告交付'
+                : '正在继续证据复核',
+  })
+
+  try {
+    await ensureCliSessionStartedInTransition(client, sessionId, 'expert_research_auto_continue')
+    bindAllClientSessionOutputs(sessionId)
+    const instruction = plan.kind === 'recover-missing-researchers'
+      ? buildMissingResearcherRecoveryInstruction(plan.missingArtifactPaths)
+      : plan.kind === 'recover-undispatched-source-batch'
+        ? buildUndispatchedSourceBatchRecoveryInstruction(plan)
+        : plan.kind === 'recover-incomplete-required-routes'
+        ? buildIncompleteRequiredRouteRecoveryInstruction(plan)
+        : plan.kind === 'continue-absorption'
+          ? buildEvidenceAbsorptionAutoContinueInstruction(plan)
+          : plan.kind === 'continue-initial-render'
+            ? buildInitialTemplateRenderAutoContinueInstruction(plan)
+            : plan.kind === 'continue-output-review'
+              ? buildOutputReviewAutoContinueInstruction(plan)
+              : plan.kind === 'continue-finalize-delivery'
+                ? buildFinalizeDeliveryAutoContinueInstruction(plan)
+                : EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION
+    const streamState = getStreamState(sessionId)
+    // Mark the turn before enqueueing it because SDK output may begin
+    // synchronously. Tool/status events remain visible; only free-form prose is
+    // hidden until this same generation reaches its real terminal result.
+    streamState.suppressExpertAutoContinueAssistantText = true
+    const sent = conversationService.sendInternalMessage(sessionId, instruction)
+    if (sent) return true
+    streamState.suppressExpertAutoContinueAssistantText = false
+  } catch (error) {
+    getStreamState(sessionId).suppressExpertAutoContinueAssistantText = false
+    console.warn(`[WS] Failed to auto-continue commercialization research for ${sessionId}: ${
+      error instanceof Error ? error.message : String(error)
+    }`)
+  }
+
+  broadcastServerMessageToSession(sessionId, { type: 'status', state: 'idle' })
+  return false
+}
+
+expertHumanVerificationService.setDelivery(sendToSession)
+expertResearchAutoContinueService.setHandler(continueCommercializationResearch)
 async function ensureCliSessionStarted(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
-  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue',
+  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue' | 'expert_research_auto_continue',
 ): Promise<void> {
-  const pendingStartup = sessionStartupPromises.get(sessionId)
-  if (pendingStartup) {
-    await pendingStartup
-    return
+  return enqueueRuntimeTransition(sessionId, () => ensureCliSessionStartedInTransition(ws, sessionId, reason))
+}
+
+// Only call while owning the lifecycle queue; never enqueue or await the queue itself here.
+async function ensureCliSessionStartedInTransition(
+  ws: ServerWebSocket<WebSocketData>,
+  sessionId: string,
+  reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue' | 'expert_research_auto_continue',
+): Promise<void> {
+  // Resolve inside the queue, not when the request first arrived. An Expert may
+  // have been activated or exited while a previous startup was still pending.
+  const runtimeSettings = await getRuntimeSettings(sessionId)
+  const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
+  if (conversationService.hasSession(sessionId)) {
+    const loadedKey = conversationService.getSessionExpertRuntimeBindingKey(sessionId)
+    if (loadedKey === sessionSettings.expertRuntimeBindingKey) return
+    await conversationService.stopSessionAndWait(sessionId)
+    void diagnosticsService.recordEvent({
+      type: 'expert_runtime_binding_rebound', severity: 'info', sessionId,
+      summary: 'Replacing CLI with the current Expert runtime binding before sending a turn',
+      details: { loadedBindingKey: loadedKey ?? null, expectedBindingKey: sessionSettings.expertRuntimeBindingKey ?? null },
+    })
   }
-
-  if (conversationService.hasSession(sessionId)) return
-
   const startup = (async () => {
     const workDir = await resolveSessionWorkDir(sessionId)
     lastResolvedStartupWorkDirs.set(sessionId, workDir)
-    const runtimeSettings = await getRuntimeSettings(sessionId)
-    const sessionSettings = await getRuntimeSettingsWithWorkflowPolicy(sessionId, runtimeSettings)
     const sdkUrl =
-      `ws://${ws.data.serverHost}:${ws.data.serverPort}/sdk/${sessionId}` +
-      `?token=${encodeURIComponent(crypto.randomUUID())}`
+      'ws://' + ws.data.serverHost + ':' + ws.data.serverPort + '/sdk/' + sessionId +
+      '?token=' + encodeURIComponent(crypto.randomUUID())
     await sendRepositoryStartupStatus(ws, sessionId, reason)
-    console.log(`[WS] Starting CLI for ${sessionId} due to ${reason}`)
+    console.log('[WS] Starting CLI for ' + sessionId + ' due to ' + reason)
     await conversationService.startSession(sessionId, workDir, sdkUrl, sessionSettings)
   })()
-
   sessionStartupPromises.set(sessionId, startup)
   try {
     await startup
   } finally {
-    if (sessionStartupPromises.get(sessionId) === startup) {
-      sessionStartupPromises.delete(sessionId)
-    }
+    if (sessionStartupPromises.get(sessionId) === startup) sessionStartupPromises.delete(sessionId)
   }
 }
 
@@ -3646,7 +5005,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 
         for (const block of cliMsg.message.content) {
           if (streamState.hasReceivedStreamEvents) {
-            // Stream events handled most blocks — but any tool_use whose
+            // Stream events handled most blocks 鈥?but any tool_use whose
             // input JSON failed to parse in content_block_stop was deferred.
             // Emit those now with the complete input from the assistant message.
             if (block.type === 'tool_use' && streamState.pendingToolBlocks.has(block.id)) {
@@ -3663,13 +5022,15 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
               })
             }
           } else {
-            // No stream events received — this is the only source, process everything
+            // No stream events received 鈥?this is the only source, process everything
             if (block.type === 'thinking' && block.thinking) {
               messages.push({ type: 'thinking', text: block.thinking })
             } else if (block.type === 'text' && block.text) {
-              recordAssistantText(streamState, block.text)
-              messages.push({ type: 'content_start', blockType: 'text' })
-              messages.push({ type: 'content_delta', text: block.text })
+              if (!streamState.suppressExpertAutoContinueAssistantText) {
+                recordAssistantText(streamState, block.text)
+                messages.push({ type: 'content_start', blockType: 'text' })
+                messages.push({ type: 'content_delta', text: block.text })
+              }
             } else if (block.type === 'tool_use') {
               recordAssistantToolUse(streamState, block.name, block.input, block.id)
               const parentToolUseId = cliParentToolUseId(cliMsg)
@@ -3694,8 +5055,8 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
     }
 
     case 'user': {
-      // Bug #1: 处理 tool_result 消息
-      // CLI 发送 type:'user' 消息，其中 content 包含 tool_result 块
+      // Bug #1: 澶勭悊 tool_result 娑堟伅
+      // Process tool_result messages sent back by the CLI.
       const messages: ServerMessage[] = []
 
       const localCommandOutput = extractLocalCommandOutput(
@@ -3725,6 +5086,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           if (block.type === 'tool_result') {
             recordWorkflowProtocolToolRegistryError(streamState, block)
             recordFailedAskUserQuestionToolResult(streamState, block)
+            recordExpertTemplateFillValidationFailure(streamState, block)
             recordStrictVisualQaToolResult(streamState, block)
             const rememberedParentToolUseId = consumeToolParentUseId(streamState, block.tool_use_id)
             const parentToolUseId =
@@ -3786,6 +5148,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           }
 
           streamState.activeBlockTypes.set(index, 'text')
+          if (streamState.suppressExpertAutoContinueAssistantText) return []
           return [{ type: 'content_start', blockType: 'text' }]
         }
 
@@ -3794,6 +5157,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           if (!delta) return []
 
           if (delta.type === 'text_delta' && delta.text) {
+            if (streamState.suppressExpertAutoContinueAssistantText) return []
             recordAssistantText(streamState, delta.text)
             return [{ type: 'content_delta', text: delta.text }]
           }
@@ -3836,7 +5200,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
                 }]
               }
 
-              // JSON parse failed — defer to the assistant message which
+              // JSON parse failed 鈥?defer to the assistant message which
               // carries the complete, already-parsed tool input.
               console.warn(
                 `[WS] Tool input JSON parse failed for ${toolBlock.toolName} (${toolBlock.toolUseId}), deferring to assistant message`,
@@ -3861,13 +5225,13 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           return []
         }
 
-        default:
+    default:
           return []
       }
     }
 
     case 'control_request': {
-      // 权限请求 — CLI 需要用户授权才能执行工具
+      // The CLI needs user approval before it can execute a tool.
       if (cliMsg.request?.subtype === 'can_use_tool') {
         return [{
           type: 'permission_request',
@@ -3883,12 +5247,12 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
       }
       return []
     }
-
     case 'control_response':
       return []
 
     case 'result': {
-      // 对话结果（成功或错误）
+      streamState.suppressExpertAutoContinueAssistantText = false
+      // Conversation result (success or error)
       const usage = {
         input_tokens: cliMsg.usage?.input_tokens || 0,
         output_tokens: cliMsg.usage?.output_tokens || 0,
@@ -3896,7 +5260,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 
       if (cliMsg.is_error) {
         // If the user requested stop, this "error" is just the interrupt
-        // result — don't show it as an error in the chat UI.
+        // result 鈥?don't show it as an error in the chat UI.
         if (sessionStopRequested.has(sessionId)) {
           sessionStopRequested.delete(sessionId)
           return [{ type: 'message_complete', usage }]
@@ -3911,7 +5275,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           streamState.lastApiError = undefined
           return [{ type: 'message_complete', usage }]
         }
-        // 错误和完成消息都发送
+        // Send error and completion messages
         return [
           {
             type: 'error',
@@ -3929,11 +5293,10 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
     }
 
     case 'system': {
-      // 区分不同的 system 子类型
+      // Distinguish system subtypes
       const subtype = cliMsg.subtype
       if (subtype === 'init') {
-        // CLI 初始化完成 — 缓存 slash commands 并发送模型信息
-        // NOTE: Do NOT send status:idle here — the CLI init fires while
+        // CLI 鍒濆鍖栧畬鎴?鈥?缂撳瓨 slash commands 骞跺彂閫佹ā鍨嬩俊鎭?        // NOTE: Do NOT send status:idle here 鈥?the CLI init fires while
         // processing the first user message, and sending idle would reset
         // the frontend's streaming state prematurely.
         cacheSessionInitMetadata(sessionId, cliMsg)
@@ -3965,7 +5328,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
         }]
       }
       if (subtype === 'hook_started' || subtype === 'hook_response') {
-        // Hook 执行中 — 不转发给前端
+        // Hook 鎵ц涓?鈥?涓嶈浆鍙戠粰鍓嶇
         return []
       }
       if (subtype === 'local_command' || subtype === 'local_command_output') {
@@ -3998,7 +5361,7 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           { type: 'content_delta', text: localCommandOutput },
         ]
       }
-      // Bug #7: 处理 task/team system 消息
+      // Bug #7: 澶勭悊 task/team system 娑堟伅
       if (subtype === 'task_notification') {
         return [{
           type: 'system_notification',
@@ -4053,12 +5416,16 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           data: cliMsg.compact_metadata ?? cliMsg,
         }]
       }
-      // 其他 system 消息
+      // 鍏朵粬 system 娑堟伅
       return []
     }
 
+    case 'keep_alive':
+      // Transport-level heartbeat. It deliberately has no desktop UI effect.
+      return []
+
     default:
-      // 未知类型 — 调试输出但不转发
+      // 鏈煡绫诲瀷 鈥?璋冭瘯杈撳嚭浣嗕笉杞彂
       console.log(`[WS] Unknown CLI message type: ${cliMsg.type}`, JSON.stringify(cliMsg).substring(0, 200))
       return []
   }
@@ -4069,6 +5436,24 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 // ============================================================================
 
 function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessage): void {
+  if (message.type === 'system_notification'
+    && (message.subtype === 'task_started' || message.subtype === 'task_notification')) {
+    const data = message.data as { task_id?: unknown; status?: unknown } | undefined
+    if (typeof data?.task_id === 'string') {
+      if (message.subtype === 'task_started' && !sessionStopRequested.has(sessionId)) {
+        const tasks = runningBackgroundTasks.get(sessionId) ?? new Set<string>()
+        tasks.add(data.task_id)
+        runningBackgroundTasks.set(sessionId, tasks)
+      } else if (['completed', 'failed', 'stopped', 'cancelled'].includes(String(data.status))) {
+        runningBackgroundTasks.get(sessionId)?.delete(data.task_id)
+      }
+    }
+  }
+  if (message.type === 'content_start' || message.type === 'thinking') {
+    setSessionChatState(sessionId, message.type === 'thinking' ? 'thinking'
+      : message.blockType === 'tool_use' ? 'tool_executing' : 'streaming')
+    return
+  }
   if (message.type === 'status') {
     setSessionChatState(sessionId, message.state)
     return
@@ -4076,6 +5461,7 @@ function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessa
 
   if (message.type === 'message_complete') {
     setSessionChatState(sessionId, 'idle')
+    expertResearchAutoContinueService.schedule(sessionId)
     return
   }
 
@@ -4294,12 +5680,30 @@ function getCompactBoundaryMessage(cliMsg: any): string {
   return 'Context compacted'
 }
 
+function sendReplayedPermissionRequest(
+  ws: ServerWebSocket<WebSocketData>,
+  request: Extract<ServerMessage, { type: 'permission_request' }>,
+): void {
+  // AskUserQuestion needs both transcript and permission state on the desktop.
+  // Reconnect recovery must replay the pair together; replaying only the
+  // permission leaves the workflow waiting with no visible question card.
+  if (request.toolName === 'AskUserQuestion' && request.toolUseId) {
+    sendMessage(ws, {
+      type: 'tool_use_complete',
+      toolName: request.toolName,
+      toolUseId: request.toolUseId,
+      input: request.input,
+    })
+  }
+  sendMessage(ws, request)
+}
+
 function replayPendingPermissionRequests(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
 ): void {
   for (const request of conversationService.getPendingPermissionRequests(sessionId)) {
-    sendMessage(ws, {
+    sendReplayedPermissionRequest(ws, {
       type: 'permission_request',
       requestId: request.requestId,
       toolName: request.toolName,
@@ -4321,7 +5725,10 @@ function sendSessionTitleUpdated(
   }
 }
 
-function removeClientOutputCallback(ws: ServerWebSocket<WebSocketData>): void {
+function removeClientOutputCallback(
+  ws: ServerWebSocket<WebSocketData>,
+  options: { retainForReconnect?: boolean } = {},
+): void {
   const entry = clientOutputCallbacks.get(ws)
   if (!entry) return
   clientOutputCallbacks.delete(ws)
@@ -4330,13 +5737,34 @@ function removeClientOutputCallback(ws: ServerWebSocket<WebSocketData>): void {
       candidate.sessionId === entry.sessionId &&
       candidate.callback === entry.callback,
   )
-  if (!stillUsed) {
-    conversationService.removeOutputCallback(entry.sessionId, entry.callback)
+  if (stillUsed) return
+
+  if (options.retainForReconnect) {
+    const previousRetained = retainedSessionOutputCallbacks.get(entry.sessionId)
+    if (previousRetained && previousRetained !== entry.callback) {
+      conversationService.removeOutputCallback(entry.sessionId, previousRetained)
+    }
+    retainedSessionOutputCallbacks.set(entry.sessionId, entry.callback)
+    return
   }
+
+  const retained = retainedSessionOutputCallbacks.get(entry.sessionId)
+  if (retained) {
+    retainedSessionOutputCallbacks.delete(entry.sessionId)
+    if (retained !== entry.callback) {
+      conversationService.removeOutputCallback(entry.sessionId, retained)
+    }
+  }
+  conversationService.removeOutputCallback(entry.sessionId, entry.callback)
 }
 
 function removeSessionOutputCallbacks(sessionId: string): void {
   const callbacks = new Set<(msg: any) => void>()
+  const retained = retainedSessionOutputCallbacks.get(sessionId)
+  if (retained) {
+    callbacks.add(retained)
+    retainedSessionOutputCallbacks.delete(sessionId)
+  }
   for (const [ws, entry] of [...clientOutputCallbacks.entries()]) {
     if (entry.sessionId !== sessionId) continue
     callbacks.add(entry.callback)
@@ -4374,11 +5802,7 @@ function bindAllClientSessionOutputs(
 }
 
 function broadcastServerMessageToSession(sessionId: string, message: ServerMessage): void {
-  const clients = activeSessions.get(sessionId)
-  if (!clients) return
-  for (const ws of [...clients]) {
-    sendMessage(ws, message)
-  }
+  sendToSession(sessionId, message)
 }
 
 function broadcastCliMessagesToSession(sessionId: string, cliMsg: any): void {
@@ -4402,41 +5826,26 @@ function broadcastCliMessagesToSession(sessionId: string, cliMsg: any): void {
   }
 }
 
-function sendWorkflowTerminalProtocolError(
-  sessionId: string,
-  recovery: WorkflowTerminalRecovery,
-  code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED' | 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE',
-): void {
+function sendWorkflowTerminalRecoveryUnavailableError(sessionId: string): void {
   const clients = activeSessions.get(sessionId)
   if (!clients) return
-  const isChinese = recovery.state.workflowLanguage === 'zh'
-  const message = code === 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE'
-    ? (isChinese
-      ? '当前工作流需要继续生成结构化交互，但运行时无法把恢复指令送达模型。系统不会把这次普通文本终止当作正常完成；请重试当前阶段。'
-      : 'This workflow needs a structured continuation, but the runtime could not deliver the recovery instruction to the model. This prose-only termination is not treated as normal completion; retry the current phase.')
-    : (isChinese
-      ? '当前工作流连续两次在没有 AskUserQuestion、阶段完成或阶段路由的情况下结束。请重试当前阶段；系统不会把这种普通文本终止当作已完成的工作流交互。'
-      : 'This workflow ended twice without AskUserQuestion, phase completion, or phase routing. Retry the current phase; prose-only termination is not treated as completed workflow interaction.')
 
   for (const ws of clients) {
     sendMessage(ws, {
       type: 'error',
-      code,
-      message,
+      code: 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE',
+      message: 'This workflow needs a structured continuation, but the runtime could not deliver the recovery instruction to the model. This prose-only termination is not treated as normal completion; retry the current phase.',
       retryable: true,
     })
   }
 }
-
 function sendWorkflowProtocolToolBindingError(
   sessionId: string,
   state: WorkflowSessionState,
 ): void {
   const clients = activeSessions.get(sessionId)
   if (!clients) return
-  const message = state.workflowLanguage === 'zh'
-    ? '工作流阶段工具未能恢复。系统没有继续推进阶段；请重试当前阶段。'
-    : 'Workflow phase tools could not be restored. The workflow was not advanced; retry the current phase.'
+  const message = 'Workflow phase tools could not be restored. The workflow was not advanced; retry the current phase.'
 
   for (const ws of clients) {
     sendMessage(ws, {
@@ -4447,28 +5856,19 @@ function sendWorkflowProtocolToolBindingError(
     })
   }
 }
-
 function buildWorkflowProtocolToolBindingRecoveryInstruction(
   state: WorkflowSessionState,
   toolName: WorkflowProtocolToolName,
 ): string {
-  const isChinese = state.workflowLanguage === 'zh'
   const action = toolName === 'submit_phase_completion'
     ? 'submit_phase_completion'
     : 'request_workflow_route'
-  const instruction = isChinese
-    ? [
-        `刚才对 ${action} 的调用因运行时工具绑定异常未执行。新的工作流运行时已经启动，并且该工具现在可用。`,
-        `立即重新执行刚才需要的 ${action} 结构化调用。`,
-        '不要把工具调用失败解释给用户，不要等待用户在输入框发送“继续”，也不要用普通文本替代结构化工具调用。',
-        '继续遵守当前阶段权限；所有用户可见文字使用中文。',
-      ]
-    : [
-        `The previous ${action} call did not execute because the runtime tool binding was unhealthy. A fresh workflow runtime is now running and this tool is available.`,
-        `Immediately retry the required structured ${action} call.`,
-        'Do not ask the user to type continue, do not expose this internal binding failure, and do not replace the tool call with prose.',
-        'Continue to obey the active phase permissions.',
-      ]
+  const instruction = [
+    `The previous ${action} call did not execute because the runtime tool binding was unhealthy. A fresh workflow runtime is now running and this tool is available.`,
+    `Immediately retry the required structured ${action} call.`,
+    'Do not ask the user to type continue, do not expose this internal binding failure, and do not replace the tool call with prose.',
+    'Continue to obey the active phase permissions and use the current workflow language for user-visible text.',
+  ]
 
   return [
     '<workflow-protocol-binding-recovery>',
@@ -4476,7 +5876,6 @@ function buildWorkflowProtocolToolBindingRecoveryInstruction(
     '</workflow-protocol-binding-recovery>',
   ].join('\n')
 }
-
 async function recoverWorkflowProtocolToolBinding(
   sessionId: string,
   cliMsg: any,
@@ -4497,7 +5896,7 @@ async function recoverWorkflowProtocolToolBinding(
     return false
   }
 
-  if (streamState.workflowProtocolBindingRecoveryAttempts >= 1) {
+  if (streamState.workflowProtocolBindingRecoveryAttempts >= 1 && !isManagedWorkflowAgentTaskState(state)) {
     sendWorkflowProtocolToolBindingError(sessionId, state)
     finishWorkflowInteractionTurn(sessionId)
     return true
@@ -4510,7 +5909,7 @@ async function recoverWorkflowProtocolToolBinding(
       sendMessage(ws, {
         type: 'status',
         state: 'thinking',
-        verb: state.workflowLanguage === 'zh' ? '正在恢复工作流工具' : 'Restoring workflow tools',
+        verb: 'Restoring workflow tools',
       })
     }
   }
@@ -4542,9 +5941,7 @@ function sendWorkflowProtocolInputValidationError(
 ): void {
   const clients = activeSessions.get(sessionId)
   if (!clients) return
-  const message = state.workflowLanguage === 'zh'
-    ? '工作流阶段工具的参数连续两次未通过校验。当前阶段没有推进；请重试当前阶段。'
-    : 'Workflow phase tool parameters failed validation twice. The workflow was not advanced; retry the current phase.'
+  const message = 'Workflow phase tool parameters failed validation twice. The workflow was not advanced; retry the current phase.'
 
   for (const ws of clients) {
     sendMessage(ws, {
@@ -4555,54 +5952,90 @@ function sendWorkflowProtocolInputValidationError(
     })
   }
 }
+function workflowProtocolCorrectedExample(toolName: WorkflowRecoverableInputToolName): Record<string, unknown> {
+  if (toolName === WORKFLOW_AGENT_TOOL_NAME) {
+    return {
+      description: 'Implement or review the current workflow batch',
+      prompt: 'Use the current Context Capsule and complete only the assigned batch.',
+      subagent_type: 'general-purpose',
+      workflow_role: 'coder',
+    }
+  }
+  if (toolName === 'submit_phase_completion') {
+    return {
+      status: 'ready',
+      handoff: { summary: 'What was completed and what the next phase must know.' },
+      rationale: 'Why the active phase is eligible to complete.',
+      evidence: [],
+    }
+  }
+  return {
+    intent: 'jump_to_phase',
+    targetPhaseId: 'target-phase-id',
+    rationale: 'Why the workflow must route to this phase.',
+    evidence: [],
+  }
+}
+
+function workflowProtocolInputRecoveryPayload(
+  toolName: WorkflowRecoverableInputToolName,
+  detail: string | undefined,
+): Record<string, unknown> {
+  const normalized = detail?.trim() || `InputValidationError: ${toolName} payload was rejected.`
+  const knownFields = [
+    'description', 'prompt', 'subagent_type', 'workflow_role',
+    'status', 'handoff', 'rationale', 'evidence', 'phaseId', 'stateVersion',
+    'intent', 'targetPhaseId',
+  ]
+  const lower = normalized.toLowerCase()
+  const missingFields = knownFields.filter(field => {
+    const key = field.toLowerCase()
+    const index = lower.indexOf(key)
+    if (index < 0) return false
+    const context = lower.slice(Math.max(0, index - 48), index + key.length + 96)
+    return context.includes('missing') || context.includes('required')
+  })
+  const unexpectedFields = [...normalized.matchAll(/(?:unexpected|unrecognized|unknown)\s+(?:field|key|parameter)?\s*[`"']?([A-Za-z_][A-Za-z0-9_]*)/gi)]
+    .map(match => match[1]!)
+    .filter((field, index, all) => all.indexOf(field) === index)
+  const fieldErrors = normalized.split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, 16)
+  return {
+    errorCode: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
+    toolName,
+    fieldErrors,
+    missingFields,
+    unexpectedFields,
+    correctedExample: workflowProtocolCorrectedExample(toolName),
+    recoverable: true,
+  }
+}
 
 function buildWorkflowProtocolInputValidationRecoveryInstruction(
   state: WorkflowSessionState,
   toolName: WorkflowRecoverableInputToolName,
+  detail: string | undefined,
+  attempt: number,
 ): string {
-  const isChinese = state.workflowLanguage === 'zh'
   const contract = toolName === WORKFLOW_AGENT_TOOL_NAME
-    ? (isChinese
-      ? [
-          '立即重新调用 Agent，并提供非空 description 和非空 prompt。',
-          '若这是工作流委派，使用 subagent_type=general-purpose，并在顶层提供 workflow_role（coder、reviewer 或 qa）；不要把 role 只写在 prompt 里。',
-        ]
-      : [
-          'Immediately call Agent again with a non-empty description and a non-empty prompt.',
-          'For workflow delegation, use subagent_type=general-purpose and a top-level workflow_role (coder, reviewer, or qa); do not place the role only in prompt text.',
-        ])
+    ? ['Immediately call Agent again with a non-empty description and prompt.', 'For workflow delegation, use subagent_type=general-purpose and a top-level workflow_role (coder, reviewer, or qa).']
     : toolName === 'submit_phase_completion'
-    ? (isChinese
-      ? [
-          '立即重新调用 submit_phase_completion，并提供：status、handoff（对象）、rationale（非空字符串）和 evidence（数组）。',
-          'phaseId 与 stateVersion 如不确定可省略，让运行时使用当前工作流状态。',
-        ]
-      : [
-          'Immediately call submit_phase_completion again with status, handoff (an object), rationale (a non-empty string), and evidence (an array).',
-          'If phaseId or stateVersion is uncertain, omit it so the runtime uses the current workflow state.',
-        ])
-    : (isChinese
-      ? [
-          '立即重新调用 request_workflow_route，并提供：intent、rationale（非空字符串）和 evidence（数组）。',
-          '当 intent 为 jump_to_phase 时必须提供 targetPhaseId。',
-        ]
-      : [
-          'Immediately call request_workflow_route again with intent, rationale (a non-empty string), and evidence (an array).',
-          'targetPhaseId is required for jump_to_phase.',
-        ])
-  const instruction = isChinese
-    ? [
-        `刚才的 ${toolName} 调用因参数校验失败而未执行。工具结果中已包含具体校验错误。`,
-        ...contract,
-        '不要把这次失败解释给用户，不要改用普通文本、AskUserQuestion 或等待用户在输入框发送“继续”。只修正参数后重试同一个结构化工具调用。',
-        '继续遵守当前阶段权限；所有用户可见文案使用中文。',
-      ]
-    : [
-        `The previous ${toolName} call was rejected by input validation and did not execute. The tool result contains the specific validation errors.`,
-        ...contract,
-        'Do not explain this failure to the user, replace it with prose or AskUserQuestion, or wait for the user to type continue. Correct the payload and retry the same structured tool call only.',
-        'Continue to obey the active phase permissions.',
-      ]
+      ? ['Immediately call submit_phase_completion again with status, handoff (an object), rationale (a non-empty string), and evidence (an array).', 'If phaseId or stateVersion is uncertain, omit it so the runtime uses the current workflow state.']
+      : ['Immediately call request_workflow_route again with intent, rationale (a non-empty string), and evidence (an array).', 'targetPhaseId is required for jump_to_phase.']
+  const recoveryPayload = workflowProtocolInputRecoveryPayload(toolName, detail)
+  const instruction = [
+    `The previous ${toolName} call was rejected by input validation and did not execute.`,
+    `Recovery attempt ${attempt}. Inspect the exact structured error below and change the invalid fields.`,
+    attempt > 1 ? 'Do not resend the unchanged invalid payload; correct the concrete fields named below.' : 'Correct the concrete fields named below.',
+    ...contract,
+    '<workflow-protocol-input-error>',
+    JSON.stringify(recoveryPayload, null, 2),
+    '</workflow-protocol-input-error>',
+    'Do not explain this internal failure to the user, replace it with prose or AskUserQuestion, or wait for the user to type continue. Correct the payload and retry the same structured tool call only.',
+    'Continue to obey the active phase permissions and use the current workflow language for user-visible text.',
+  ]
 
   return [
     '<workflow-protocol-input-recovery>',
@@ -4610,7 +6043,6 @@ function buildWorkflowProtocolInputValidationRecoveryInstruction(
     '</workflow-protocol-input-recovery>',
   ].join('\n')
 }
-
 async function recoverWorkflowProtocolInputValidation(
   sessionId: string,
   cliMsg: any,
@@ -4632,7 +6064,7 @@ async function recoverWorkflowProtocolInputValidation(
     return false
   }
 
-  if (streamState.workflowProtocolInputRecoveryAttempts >= 1) {
+  if (streamState.workflowProtocolInputRecoveryAttempts >= 1 && !isManagedWorkflowAgentTaskState(state)) {
     sendWorkflowProtocolInputValidationError(sessionId, state)
     finishWorkflowInteractionTurn(sessionId)
     return true
@@ -4645,20 +6077,22 @@ async function recoverWorkflowProtocolInputValidation(
   }
 
   streamState.workflowProtocolInputRecoveryAttempts += 1
+  const recoveryAttempt = streamState.workflowProtocolInputRecoveryAttempts
+  const validationDetail = streamState.workflowProtocolInputValidationDetail
   const clients = activeSessions.get(sessionId)
   if (clients) {
     for (const ws of clients) {
       sendMessage(ws, {
         type: 'status',
         state: 'thinking',
-        verb: state.workflowLanguage === 'zh' ? '正在修正工作流工具参数' : 'Correcting workflow tool parameters',
+        verb: 'Correcting workflow tool parameters',
       })
     }
   }
 
   const sent = conversationService.sendMessage(
     sessionId,
-    buildWorkflowProtocolInputValidationRecoveryInstruction(state, toolName),
+    buildWorkflowProtocolInputValidationRecoveryInstruction(state, toolName, validationDetail, recoveryAttempt),
   )
   if (!sent) {
     sendWorkflowProtocolInputValidationError(sessionId, state)
@@ -4680,6 +6114,9 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
     typeof fallbackTurn === 'number'
     && fallbackTurn !== streamState.terminalTurnSequence
   ) return
+  // Either a real result or the accepted synthetic terminal fallback closes
+  // this generation. Never let suppression leak into the next user turn.
+  streamState.suppressExpertAutoContinueAssistantText = false
   if (streamState.terminalRecoveryHandledForTurn) {
     if (typeof fallbackTurn !== 'number') broadcastCliMessagesToSession(sessionId, cliMsg)
     return
@@ -4708,15 +6145,109 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   const strictVisualRecovery = !cliMsg.is_error && !workflowRecovery
     ? await strictVisualTerminalRecoveryForResult(sessionId, turn)
     : null
-  const expertResearchDeliveryRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery
+  const prototypeVisualRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery
+    ? await prototypeVisualTerminalRecoveryForResult(sessionId, turn)
+    : null
+  const commercializationResearchQuestionRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery && !prototypeVisualRecovery
+    ? await commercializationResearchQuestionRecoveryForResult(sessionId, turn)
+    : null
+  const expertResearchDeliveryRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery && !prototypeVisualRecovery && !commercializationResearchQuestionRecovery
     ? await expertResearchDeliveryTerminalRecoveryForResult(sessionId, turn)
     : null
+
+
+  if (prototypeVisualRecovery) {
+    const recoveryAttempts = prototypeVisualRecovery.kind === 'prototype-ask-user-question'
+      ? turn.prototypeAskUserQuestionRecoveryAttempts
+      : prototypeVisualRecovery.kind === 'prototype-render-qa'
+        ? turn.prototypeRenderRecoveryAttempts
+      : prototypeVisualRecovery.kind === 'prototype-visual-review'
+        ? turn.prototypeReviewRecoveryAttempts
+        : 0
+    const requiredErrorCode = prototypeVisualRecovery.kind === 'prototype-ask-user-question'
+      ? 'PROTOTYPE_VISUAL_ASK_USER_QUESTION_REQUIRED'
+      : prototypeVisualRecovery.kind === 'prototype-production'
+        ? 'PROTOTYPE_VISUAL_PRODUCTION_REQUIRED'
+      : prototypeVisualRecovery.kind === 'prototype-render-qa'
+        ? 'PROTOTYPE_VISUAL_RENDER_QA_REQUIRED'
+        : 'PROTOTYPE_VISUAL_REVIEW_REQUIRED'
+    const unavailableErrorCode = prototypeVisualRecovery.kind === 'prototype-ask-user-question'
+      ? 'PROTOTYPE_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
+      : prototypeVisualRecovery.kind === 'prototype-production'
+        ? 'PROTOTYPE_VISUAL_PRODUCTION_RECOVERY_UNAVAILABLE'
+      : prototypeVisualRecovery.kind === 'prototype-render-qa'
+        ? 'PROTOTYPE_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
+        : 'PROTOTYPE_VISUAL_REVIEW_RECOVERY_UNAVAILABLE'
+
+    if (recoveryAttempts >= 1 || !conversationService.hasSession(sessionId)) {
+      sendPrototypeVisualTerminalProtocolError(sessionId, recoveryAttempts >= 1 ? requiredErrorCode : unavailableErrorCode, prototypeVisualRecovery.failureReasons)
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    const streamState = getStreamState(sessionId)
+    if (prototypeVisualRecovery.kind === 'prototype-ask-user-question') {
+      streamState.prototypeAskUserQuestionRecoveryAttempts += 1
+    } else if (prototypeVisualRecovery.kind === 'prototype-render-qa') {
+      streamState.prototypeRenderRecoveryAttempts += 1
+    } else if (prototypeVisualRecovery.kind === 'prototype-visual-review') {
+      streamState.prototypeReviewRecoveryAttempts += 1
+    }
+    sendToSession(sessionId, {
+      type: 'status',
+      state: 'thinking',
+      verb: prototypeVisualRecovery.kind === 'prototype-ask-user-question'
+        ? 'Preparing the required confirmation'
+        : prototypeVisualRecovery.kind === 'prototype-production'
+          ? 'Completing required prototype files'
+        : prototypeVisualRecovery.kind === 'prototype-render-qa'
+          ? 'Running required prototype visual QA'
+          : 'Critiquing and refining the prototype',
+    })
+    const sent = conversationService.sendMessage(
+      sessionId,
+      buildPrototypeVisualTerminalRecoveryInstruction(prototypeVisualRecovery),
+    )
+    if (sent) return
+
+    sendPrototypeVisualTerminalProtocolError(sessionId, unavailableErrorCode, prototypeVisualRecovery.failureReasons)
+    finishWorkflowInteractionTurn(sessionId)
+    return
+  }
+
+  if (commercializationResearchQuestionRecovery) {
+    if (!conversationService.hasSession(sessionId)) {
+      sendCommercializationResearchQuestionRecoveryUnavailableError(sessionId)
+      finishWorkflowInteractionTurn(sessionId)
+      return
+    }
+
+    streamState.commercializationResearchQuestionRecoveryAttempts += 1
+    sendToSession(sessionId, {
+      type: 'status',
+      state: 'thinking',
+      verb: '正在生成可回答的澄清卡片',
+    })
+    const sent = conversationService.sendMessage(
+      sessionId,
+      buildCommercializationResearchQuestionRecoveryInstruction(
+        commercializationResearchQuestionRecovery,
+        turn.assistantText,
+        streamState.commercializationResearchQuestionRecoveryAttempts,
+      ),
+    )
+    if (sent) return
+
+    sendCommercializationResearchQuestionRecoveryUnavailableError(sessionId)
+    finishWorkflowInteractionTurn(sessionId)
+    return
+  }
 
   if (expertResearchDeliveryRecovery) {
     // A real delivery card can fail after the user selects it if the local
     // Desktop HTTP connection resets. That is not a prose-only model exit, so
     // give the contract recovery a fresh attempt instead of showing the final
-    // “twice ended in prose” error.
+    // 鈥渢wice ended in prose鈥?error.
     if (streamState.expertResearchDeliveryCardAttempted) {
       streamState.expertResearchDeliveryCardAttempted = false
       streamState.expertResearchDeliveryRecoveryAttempts = 0
@@ -4755,32 +6286,40 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
       ? turn.referenceResearchRecoveryAttempts
       : strictVisualRecovery.kind === 'render-qa'
         ? turn.renderQaRecoveryAttempts
-        : strictVisualRecovery.kind === 'visual-review'
+        : strictVisualRecovery.kind === 'visual-review' || strictVisualRecovery.kind === 'image-generation-review'
           ? turn.visualReviewRecoveryAttempts
           : turn.recoveryAttempts
     const requiredErrorCode = strictVisualRecovery.kind === 'visual-reference-research'
       ? 'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED'
-      : strictVisualRecovery.kind === 'render-qa'
-        ? 'STRICT_VISUAL_RENDER_QA_REQUIRED'
-        : strictVisualRecovery.kind === 'visual-review'
-          ? 'STRICT_VISUAL_REVIEW_REQUIRED'
-          : 'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED'
+      : strictVisualRecovery.kind === 'image-generation'
+        ? 'STRICT_VISUAL_IMAGE_GENERATION_REQUIRED'
+        : strictVisualRecovery.kind === 'image-generation-review'
+          ? 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED'
+          : strictVisualRecovery.kind === 'render-qa'
+            ? 'STRICT_VISUAL_RENDER_QA_REQUIRED'
+            : strictVisualRecovery.kind === 'visual-review'
+              ? 'STRICT_VISUAL_REVIEW_REQUIRED'
+              : 'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED'
     const unavailableErrorCode = strictVisualRecovery.kind === 'visual-reference-research'
       ? 'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE'
-      : strictVisualRecovery.kind === 'render-qa'
-        ? 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
-        : strictVisualRecovery.kind === 'visual-review'
-          ? 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE'
-          : 'STRICT_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
+      : strictVisualRecovery.kind === 'image-generation'
+        ? 'STRICT_VISUAL_IMAGE_GENERATION_RECOVERY_UNAVAILABLE'
+        : strictVisualRecovery.kind === 'image-generation-review'
+          ? 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_RECOVERY_UNAVAILABLE'
+          : strictVisualRecovery.kind === 'render-qa'
+            ? 'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE'
+            : strictVisualRecovery.kind === 'visual-review'
+              ? 'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE'
+              : 'STRICT_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
 
     if (strictVisualRecoveryAttempts >= 1) {
-      sendStrictVisualTerminalProtocolError(sessionId, requiredErrorCode)
+      settleStrictVisualTerminalProtocol(sessionId, requiredErrorCode, strictVisualRecovery)
       finishWorkflowInteractionTurn(sessionId)
       return
     }
 
     if (!conversationService.hasSession(sessionId)) {
-      sendStrictVisualTerminalProtocolError(sessionId, unavailableErrorCode)
+      settleStrictVisualTerminalProtocol(sessionId, unavailableErrorCode, strictVisualRecovery)
       finishWorkflowInteractionTurn(sessionId)
       return
     }
@@ -4790,7 +6329,7 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
       streamState.strictVisualReferenceResearchRecoveryAttempts += 1
     } else if (strictVisualRecovery.kind === 'render-qa') {
       streamState.strictVisualRenderRecoveryAttempts += 1
-    } else if (strictVisualRecovery.kind === 'visual-review') {
+    } else if (strictVisualRecovery.kind === 'visual-review' || strictVisualRecovery.kind === 'image-generation-review') {
       streamState.strictVisualReviewRecoveryAttempts += 1
     } else {
       streamState.structuredInteractionRecoveryAttempts += 1
@@ -4800,13 +6339,19 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
       state: 'thinking',
       verb: strictVisualRecovery.kind === 'visual-reference-research'
         ? 'Reading locked visual reference websites'
-        : strictVisualRecovery.kind === 'render-qa'
-          ? 'Running required local visual QA'
-          : strictVisualRecovery.kind === 'visual-review'
-            ? 'Critiquing and finalizing rendered UI'
-            : strictVisualRecovery.kind === 'design-direction'
+        : strictVisualRecovery.kind === 'image-generation'
+          ? 'Generating the required real image'
+          : strictVisualRecovery.kind === 'image-generation-review'
+            ? 'Critiquing and finalizing the generated image'
+            : strictVisualRecovery.kind === 'render-qa'
+              ? 'Running required local visual QA'
+              : strictVisualRecovery.kind === 'visual-review'
+                ? 'Critiquing and finalizing rendered UI'
+                : strictVisualRecovery.kind === 'design-direction'
             ? 'Generating required design-direction choices'
-            : 'Generating required choices',
+            : strictVisualRecovery.kind === 'inspiration-source'
+              ? 'Generating required inspiration-source choices'
+              : 'Generating required choices',
     })
     const sent = conversationService.sendMessage(
       sessionId,
@@ -4814,21 +6359,15 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
     )
     if (sent) return
 
-    sendStrictVisualTerminalProtocolError(sessionId, unavailableErrorCode)
+    settleStrictVisualTerminalProtocol(sessionId, unavailableErrorCode, strictVisualRecovery)
     finishWorkflowInteractionTurn(sessionId)
     return
   }
 
   if (workflowRecovery) {
     const recovery = workflowRecovery
-    if (turn.recoveryAttempts >= WORKFLOW_TERMINAL_RECOVERY_ATTEMPTS) {
-      sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED')
-      finishWorkflowInteractionTurn(sessionId)
-      return
-    }
-
     if (!conversationService.hasSession(sessionId)) {
-      sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE')
+      sendWorkflowTerminalRecoveryUnavailableError(sessionId)
       finishWorkflowInteractionTurn(sessionId)
       return
     }
@@ -4841,19 +6380,21 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
         sendMessage(ws, {
           type: 'status',
           state: 'thinking',
-          verb: recovery.state.workflowLanguage === 'zh'
-            ? (recovery.kind === 'ask-user-question' ? '正在生成选项' : '正在继续工作流')
-            : (recovery.kind === 'ask-user-question' ? 'Generating choices' : 'Continuing workflow'),
+          verb: recovery.kind === 'ask-user-question' ? 'Generating choices' : 'Continuing workflow',
         })
       }
     }
     const sent = conversationService.sendMessage(
       sessionId,
-      buildWorkflowTerminalRecoveryInstruction(recovery, turn.assistantText),
+      buildWorkflowTerminalRecoveryInstruction(
+        recovery,
+        turn.assistantText,
+        streamState.structuredInteractionRecoveryAttempts,
+      ),
     )
     if (sent) return
 
-    sendWorkflowTerminalProtocolError(sessionId, recovery, 'WORKFLOW_TERMINAL_RECOVERY_UNAVAILABLE')
+    sendWorkflowTerminalRecoveryUnavailableError(sessionId)
     finishWorkflowInteractionTurn(sessionId)
     return
   }
@@ -4936,6 +6477,16 @@ function bindClientSessionOutput(
     return
   }
 
+  const retainedCallback = retainedSessionOutputCallbacks.get(sessionId)
+  if (retainedCallback) {
+    retainedSessionOutputCallbacks.delete(sessionId)
+    if (!options?.shouldForward) {
+      clientOutputCallbacks.set(ws, { sessionId, callback: retainedCallback })
+      return
+    }
+    conversationService.removeOutputCallback(sessionId, retainedCallback)
+  }
+
   const callback = createClientBroadcastCallback(sessionId, options)
   clientOutputCallbacks.set(ws, { sessionId, callback })
   conversationService.onOutput(sessionId, callback)
@@ -4951,11 +6502,20 @@ type RuntimeSettings = {
   workflowSessionId?: string
   workflowSystemPrompt?: string
   expertSystemPrompt?: string
+  expertRuntimeBindingKey?: string
+  /** Package-scoped template output root taken from the persisted session workDir. */
+  expertTemplateFillOutputRoot?: string
+  /** ZIP-declared fixed Markdown artifact allowlist for this active Expert only. */
+  expertResearchArtifactPolicy?: ExpertResearchArtifactPolicy
+  /** True only while a terse commercialization direction awaits one dynamic user clarification. */
+  expertRequireInitialDynamicIntake?: boolean
   expertSessionId?: string
   expertSharedPlaywrightSessionId?: string
   expertPlaywrightCdpEndpoint?: string
   expertManagedPlaywrightPresentation?: 'assistable_background' | 'always_visible'
   expertForceVisiblePlaywright?: boolean
+  /** Package-scoped SERP pacing for this active Expert session only. */
+  expertBrowserSearchPacing?: { minIntervalMs: number }
 }
 
 async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> {
@@ -5009,13 +6569,23 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const transcriptExpert = workflowIsActive
     ? undefined
     : (await sessionService.getSession(sessionId).catch(() => null))?.expert
-  const expert = workflowIsActive
+  let expert = workflowIsActive
     ? undefined
-    : (hasActiveExpertRuntime(transcriptExpert)
-      ? transcriptExpert
-      : await expertRuntimeSessionStore.get(sessionId))
+    : (transcriptExpert ?? await expertRuntimeSessionStore.get(sessionId))
   if (expert?.mode === 'expert' && expert.status === 'active' && !hasActiveExpertRuntime(expert)) {
     throw new ExpertRuntimeBindingError()
+  }
+  if (!workflowIsActive && hasActiveExpertRuntime(expert)) {
+    const upgradedExpert = await upgradeUiuxImageOnlyRuntime(await restoreTruncatedExpertRuntime(upgradeCommercializationResearchChannelRuntime(expert)))
+    if (upgradedExpert !== expert) {
+      const persistedSession = await sessionService.getSession(sessionId).catch(() => null)
+      await sessionService.appendSessionMetadata(sessionId, {
+        workDir: persistedSession?.workDir || persistedSession?.projectRoot || persistedSession?.projectPath,
+        expert: upgradedExpert,
+      })
+      await expertRuntimeSessionStore.save(sessionId, upgradedExpert)
+      expert = upgradedExpert
+    }
   }
   const expertToolPolicy = workflowIsActive
     ? { disallowedTools: [] }
@@ -5030,6 +6600,13 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const expertResearchDeliveryPolicy = !workflowIsActive && hasActiveExpertRuntime(expert)
     ? expert.runtimeBinding.researchDeliveryPolicy
     : undefined
+  const expertResearchArtifactPolicy = !workflowIsActive && hasActiveExpertRuntime(expert)
+    ? expert.runtimeBinding.researchArtifactPolicy
+    : undefined
+  const expertTemplateFillOutputRoot = resolveExpertTemplateFillOutputRoot(
+    expertTemplateFillWrite === true ? expert?.runtimeBinding.templateFillOutputPolicy : undefined,
+    (await sessionService.getSession(sessionId).catch(() => null))?.workDir,
+  )
   const expertBrowserHumanVerificationHandoff = !workflowIsActive && hasActiveExpertRuntime(expert) &&
     expert.runtimeBinding.researchBrowserPolicy?.desktopHumanVerificationHandoff === true
     ? true
@@ -5037,15 +6614,25 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const expertBrowserVerificationFallbackSearchEngines = !workflowIsActive && hasActiveExpertRuntime(expert)
     ? expert.runtimeBinding.researchBrowserPolicy?.verificationFallbackSearchEngines
     : undefined
+  const expertBrowserSearchPacing = !workflowIsActive && hasActiveExpertRuntime(expert) &&
+    expert.runtimeBinding.researchBrowserPolicy?.searchEnginePacing?.enabled === true
+    ? { minIntervalMs: expert.runtimeBinding.researchBrowserPolicy.searchEnginePacing.minIntervalMs }
+    : undefined
   const expertForbidSubagentAskUserQuestion = !workflowIsActive && hasActiveExpertRuntime(expert) &&
     expert.runtimeBinding.researchBrowserPolicy?.forbidSubagentAskUserQuestion === true
+    ? true
+    : undefined
+  // Active Expert sessions deliberately give their main Agent and every
+  // delegated Agent the Desktop host's complete currently enabled tool pool.
+  const uiuxImageOnlyDelivery = !workflowIsActive && hasActiveExpertRuntime(expert) && isUiuxImageOnlyBinding(expert.runtimeBinding)
+  const expertFullToolAccess = !uiuxImageOnlyDelivery && !workflowIsActive && hasActiveExpertRuntime(expert)
     ? true
     : undefined
   const expertClosePlaywrightWhenAgentDone = !workflowIsActive && hasActiveExpertRuntime(expert) &&
     expert.runtimeBinding.researchBrowserPolicy?.closePlaywrightWhenAgentDone === true
     ? true
     : undefined
-  const expertSessionId = expertTemplateFillWrite || expertBrowserHumanVerificationHandoff || expertResearchDeliveryPolicy
+  const expertSessionId = expertTemplateFillWrite || expertBrowserHumanVerificationHandoff || expertResearchDeliveryPolicy || expertResearchArtifactPolicy
     ? sessionId
     : undefined
   const expertSharedPlaywrightSessionId = !workflowIsActive && hasActiveExpertRuntime(expert) &&
@@ -5080,8 +6667,11 @@ async function getRuntimeSettingsWithWorkflowPolicy(
   const expertSettings = expertSystemPrompt
     ? {
         expertSystemPrompt,
+        expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
         ...(expertSessionId ? { expertSessionId } : {}),
         ...(expertTemplateFillWrite ? { expertTemplateFillWrite: true } : {}),
+        ...(expertTemplateFillOutputRoot ? { expertTemplateFillOutputRoot } : {}),
+        ...(expertResearchArtifactPolicy ? { expertResearchArtifactPolicy } : {}),
         ...(expertResearchDeliveryPolicy ? { expertResearchDeliveryPolicy } : {}),
         ...(expertSharedPlaywrightSessionId ? { expertSharedPlaywrightSessionId } : {}),
         ...(expertPlaywrightCdpEndpoint ? { expertPlaywrightCdpEndpoint } : {}),
@@ -5091,8 +6681,11 @@ async function getRuntimeSettingsWithWorkflowPolicy(
         ...(expertBrowserVerificationFallbackSearchEngines?.length
           ? { expertBrowserVerificationFallbackSearchEngines }
           : {}),
+        ...(expertBrowserSearchPacing ? { expertBrowserSearchPacing } : {}),
         ...(expertClosePlaywrightWhenAgentDone ? { expertClosePlaywrightWhenAgentDone: true } : {}),
         ...(expertForbidSubagentAskUserQuestion ? { expertForbidSubagentAskUserQuestion: true } : {}),
+        ...(expertFullToolAccess ? { expertFullToolAccess: true } : {}),
+        ...(uiuxImageOnlyDelivery ? { uiuxImageOnlyDelivery: true } : {}),
       }
     : {}
   return disallowedTools.length > 0
@@ -5115,7 +6708,7 @@ function buildWorkflowRuntimeBindingInstruction(
     'Phase-specific instructions are supplied only by the latest Desktop workflow control turn. Treat an earlier phase contract as historical after a newer control turn arrives; do not carry its implementation, review, or completion instructions into the new phase.',
     'Do not infer, request, or execute future-phase instructions before Desktop supplies that phase. Historical workflow text is project context, not permission to work outside the current phase.',
     'The persisted Desktop workflow state and the tool execution result are authoritative. Each tool call is checked against that latest state, even if this transcript contains a different earlier phase.',
-    'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
+    'Historical transcript messages, including any earlier 鈥淣o such tool available鈥?result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
     'When the current phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
     'Use request_workflow_route only for a true non-linear route, rework, jump_to_phase, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion.',
     ...(startupPrompt
@@ -5157,7 +6750,7 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
 
   let model: string | undefined
   if (resolvedActiveId) {
-    // Provider is active — only consult provider-managed cc-jiangxia settings.
+    // Provider is active 鈥?only consult provider-managed cc-jiangxia settings.
     // Global ~/.claude/settings.json model values must not bleed into provider mode.
     const baseModel =
       typeof modelSettings.model === 'string' && modelSettings.model.trim()
@@ -5168,7 +6761,7 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
       if (modelContext) model += `:${modelContext}`
     }
   } else {
-    // No provider — pass model normally
+    // No provider 鈥?pass model normally
     const baseModel =
       typeof userSettings.model === 'string' && userSettings.model.trim()
         ? userSettings.model
@@ -5239,21 +6832,17 @@ async function buildSessionStartupDiagnosticMessage(
   return lines.join('\n')
 }
 
-function enqueueRuntimeTransition(
+function enqueueRuntimeTransition<T>(
   sessionId: string,
-  transition: () => Promise<void>,
-): Promise<void> {
-  const previous = runtimeTransitionPromises.get(sessionId) ?? Promise.resolve()
-  const next = previous
-    .catch(() => {})
-    .then(transition)
-    .finally(() => {
-      if (runtimeTransitionPromises.get(sessionId) === next) {
-        runtimeTransitionPromises.delete(sessionId)
+  transition: () => Promise<T>,
+): Promise<T> {
+  return sessionRuntimeTransitionService.run(sessionId, transition).finally(() => {
+    if (!sessionRuntimeTransitionService.pending(sessionId)) {
+      for (const key of workflowArtifactWriteRecoveryAttempts.keys()) {
+        if (key.startsWith(sessionId + ':')) workflowArtifactWriteRecoveryAttempts.delete(key)
       }
-    })
-  runtimeTransitionPromises.set(sessionId, next)
-  return next
+    }
+  })
 }
 
 async function waitForRuntimeTransitionBeforeUserTurn(
@@ -5261,7 +6850,7 @@ async function waitForRuntimeTransitionBeforeUserTurn(
   sessionId: string,
 ): Promise<{ ok: boolean; waited: boolean }> {
   let waited = false
-  let pendingRuntimeTransition = runtimeTransitionPromises.get(sessionId)
+  let pendingRuntimeTransition = sessionRuntimeTransitionService.pending(sessionId)
   while (pendingRuntimeTransition) {
     waited = true
     try {
@@ -5285,7 +6874,7 @@ async function waitForRuntimeTransitionBeforeUserTurn(
       return { ok: false, waited }
     }
 
-    const nextTransition = runtimeTransitionPromises.get(sessionId)
+    const nextTransition = sessionRuntimeTransitionService.pending(sessionId)
     pendingRuntimeTransition =
       nextTransition && nextTransition !== pendingRuntimeTransition
         ? nextTransition
@@ -5533,6 +7122,8 @@ function isWorkflowSessionState(value: unknown): value is WorkflowSessionState {
  * Send a message to a specific session's WebSocket (for use by services)
  */
 export function sendToSession(sessionId: string, message: ServerMessage): boolean {
+  // Runtime state must advance even without a UI socket, and only once per event.
+  syncSessionChatStateFromMessage(sessionId, message)
   const clients = activeSessions.get(sessionId)
   if (!clients || clients.size === 0) return false
 
@@ -5604,6 +7195,8 @@ export function closeSessionConnection(sessionId: string, reason = 'session clos
   computerUseApprovalService.cancelSession(sessionId)
   expertHumanVerificationService.cancelSession(sessionId)
   expertBrowserActivityService.clear(sessionId)
+  expertSearchPacingService.clear(sessionId)
+  retainedSessionOutputCallbacks.delete(sessionId)
   conversationService.clearOutputCallbacks(sessionId)
   cleanupSessionRuntimeState(sessionId)
 
@@ -5613,6 +7206,9 @@ export function closeSessionConnection(sessionId: string, reason = 'session clos
   activeSessions.delete(sessionId)
   for (const ws of clients) {
     clientOutputCallbacks.delete(ws)
+    clientOutboxes.get(ws)?.dispose()
+    clientOutboxes.delete(ws)
+    clientBackpressureStates.delete(ws)
     ws.close(1000, reason)
   }
   return true
@@ -5627,13 +7223,19 @@ export function __resetWebSocketHandlerStateForTests(): void {
   for (const timer of prewarmIdleTimers.values()) clearTimeout(timer)
   activeSessions.clear()
   clientOutputCallbacks.clear()
+  retainedSessionOutputCallbacks.clear()
+  clientBackpressureStates.clear()
+  for (const outbox of clientOutboxes.values()) outbox.dispose()
+  clientOutboxes.clear()
+  runningBackgroundTasks.clear()
   sessionCleanupTimers.clear()
   prewarmIdleTimers.clear()
   clearWorkflowSessionTransitionCoordinatorForTests()
-  runtimeTransitionPromises.clear()
+  sessionRuntimeTransitionService.clearForTests()
   runtimeOverrides.clear()
   sessionStartupPromises.clear()
   prewarmPendingSessions.clear()
   prewarmedSessions.clear()
   ephemeralWorkflowStates.clear()
+  workflowArtifactWriteRecoveryAttempts.clear()
 }

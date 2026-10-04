@@ -1,0 +1,93 @@
+{
+  "packId": "repo-health-check",
+  "name": "项目体检",
+  "version": "1.3.0",
+  "schemaVersion": 1,
+  "type": "expert-pack",
+  "description": "以只读方式理解和诊断项目：可小到查清运行方式、环境要求和入口，也可扩展到项目结构、关键代码逻辑、依赖/测试/配置与工程风险；支持授权本地目录、公开 GitHub/Gitee 仓库或二者结合，并明确证据范围。",
+  "entrypoints": {
+    "experts": [
+      "experts/repo-health-check/expert.json"
+    ],
+    "skills": [
+      "repo-health-check-guide"
+    ],
+    "tools": [
+      "tools/ask-user-question/tool.json",
+      "tools/playwright/tool.json",
+      "tools/read/tool.json",
+      "tools/write/tool.json"
+    ]
+  },
+  "hostTools": [
+    {
+      "id": "AskUserQuestion",
+      "name": "提问",
+      "purpose": "在来源、体检范围、目标或授权路径不明确时向用户做有界确认。",
+      "supported": true
+    },
+    {
+      "id": "Playwright",
+      "name": "公开仓库浏览",
+      "purpose": "读取用户指定公开 GitHub/Gitee 仓库及其必要的公开页面、README、文件内容和可见 CI/元信息。",
+      "supported": true
+    },
+    {
+      "id": "Read",
+      "name": "读取文件",
+      "purpose": "读取用户授权的项目文件、配置、文档和关键实现，用于运行指引、结构或代码逻辑分析。",
+      "supported": true
+    },
+    {
+      "id": "Glob",
+      "name": "定位文件",
+      "purpose": "定位入口、运行/构建配置、测试、环境变量示例、部署文件和关键模块。",
+      "supported": true
+    },
+    {
+      "id": "Write",
+      "name": "写入交付物",
+      "purpose": "在当前会话 workDir 写入与所选体检范围匹配的项目理解报告与证据台账。",
+      "supported": true
+    }
+  ],
+  "permissions": [
+    {
+      "id": "read-authorized-materials",
+      "description": "仅读取用户明确提供或当前会话已授权读取的材料与项目文件。"
+    },
+    {
+      "id": "write-session-artifacts",
+      "description": "仅在当前 Expert 会话的 workDir 内写入明确声明的交付文件；不使用硬编码绝对路径，不修改用户项目源码。"
+    },
+    {
+      "id": "research-public-repository",
+      "description": "仅通过当前会话可用的 Playwright 读取用户指定的公开 GitHub/Gitee 仓库及理解该仓库所必需的同站公开子页面；不登录、不克隆、不绕过访问控制。"
+    }
+  ],
+  "compatibility": {
+    "minHostVersion": "0.2.8"
+  },
+  "catalog": {
+    "categoryId": "development",
+    "tags": [
+      "运行方式",
+      "项目结构",
+      "代码逻辑",
+      "工程风险",
+      "接手",
+      "公开仓库"
+    ]
+  },
+  "portability": {
+    "selfContained": true,
+    "notes": "MVP 支持从“只查如何运行”到“结构、代码逻辑与风险体检”的可伸缩只读分析；本地目录以实际文件为准，远端结论必须标注公开可见覆盖范围，不能冒充完整仓库扫描。"
+  },
+  "runtimePolicy": {
+    "mode": "package-local-skills",
+    "allowedToolNames": [],
+    "requiredSkillIds": [
+      "repo-health-check-guide"
+    ]
+  }
+}

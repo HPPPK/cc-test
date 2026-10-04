@@ -20,7 +20,7 @@ export type ExpertResearchBrowserPolicy = {
   allowManagedPresentationChoice?: boolean
   /** Legacy compatibility for packages authored before managedPresentationDefault. */
   forceVisiblePlaywright?: boolean
-  /** Close each delegated agent's isolated Playwright browser after that agent reaches a terminal state. */
+  /** Close a delegated agent's owned Playwright pages after it reaches a terminal state; shared cookies and sibling pages remain alive. */
   closePlaywrightWhenAgentDone?: boolean
   /** Let the Desktop host own CAPTCHA/login handoff for this Expert session. */
   desktopHumanVerificationHandoff?: boolean
@@ -28,6 +28,8 @@ export type ExpertResearchBrowserPolicy = {
   forbidSubagentAskUserQuestion?: boolean
   /** Ordered fallback search entries used only after the user declines a visible verification. */
   verificationFallbackSearchEngines?: ExpertResearchBrowserSearchEngine[]
+  /** Package-scoped pacing for search-result entry pages; Agent reasoning remains parallel while shared-browser actions are serialized. */
+  searchEnginePacing?: { enabled: true; minIntervalMs: number }
 }
 
 export type ExpertResearchBrowserConnection =
@@ -132,7 +134,7 @@ export function resolveExpertResearchBrowserPresentation(
     ?? (policy?.forceVisiblePlaywright === true ? 'always_visible' : undefined)
   if (input === undefined || input === null) return defaultPresentation
   if (input !== 'assistable_background' && input !== 'always_visible') {
-    throw new Error('浏览器显示方式必须是“后台检索，需协助时自动显示”或“全程显示浏览器操作”。')
+    throw new Error('浏览器显示方式必须是“后台检索，需要时可打开”或“全程显示浏览器操作”。')
   }
   if (policy?.allowManagedPresentationChoice !== true) {
     throw new Error('这个专家包不允许修改软件自带 Chromium 的显示方式。')
@@ -207,6 +209,17 @@ export function resolveExpertResearchBrowserPolicy(
   const normalizedFallbackSearchEngines = verificationFallbackSearchEngines === undefined
     ? undefined
     : [...new Set(verificationFallbackSearchEngines)] as ExpertResearchBrowserSearchEngine[]
+  const searchEnginePacing = document.researchBrowser.searchEnginePacing
+  if (searchEnginePacing !== undefined && !isRecord(searchEnginePacing)) {
+    throw new Error('researchBrowser.searchEnginePacing 必须是对象。')
+  }
+  if (searchEnginePacing !== undefined && searchEnginePacing.enabled !== true) {
+    throw new Error('researchBrowser.searchEnginePacing.enabled 必须为 true。')
+  }
+  const pacingInterval = searchEnginePacing?.minIntervalMs
+  if (pacingInterval !== undefined && (typeof pacingInterval !== 'number' || !Number.isInteger(pacingInterval) || pacingInterval < 0 || pacingInterval > 60_000)) {
+    throw new Error('researchBrowser.searchEnginePacing.minIntervalMs 必须是 0 到 60000 的整数。')
+  }
 
   return {
     sharePlaywrightSessionAcrossAgents,
@@ -218,5 +231,6 @@ export function resolveExpertResearchBrowserPolicy(
     ...(desktopHumanVerificationHandoff === true ? { desktopHumanVerificationHandoff: true } : {}),
     ...(forbidSubagentAskUserQuestion === true ? { forbidSubagentAskUserQuestion: true } : {}),
     ...(normalizedFallbackSearchEngines ? { verificationFallbackSearchEngines: normalizedFallbackSearchEngines } : {}),
+    ...(searchEnginePacing ? { searchEnginePacing: { enabled: true, minIntervalMs: pacingInterval ?? 3_000 } } : {}),
   }
 }

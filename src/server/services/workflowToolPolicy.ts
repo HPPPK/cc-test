@@ -396,17 +396,19 @@ export function getWorkflowQuestionCardContractViolation(
 ): string | null {
   if (toolName !== 'AskUserQuestion') return null
 
-  const templateId = state && isActiveWorkflowState(state) ? workflowTemplateId(state) : null
-  if (templateId && SINGLE_QUESTION_WORKFLOW_TEMPLATE_IDS.has(templateId)) {
-    return getSingleWorkflowQuestionViolation(input, state, templateId)
-  }
-
   const policy = getSkillsDevelopmentScopePlanQuestionPolicy(state)
   if (!policy) {
     const necessaryQuestionPolicy = getNecessaryWorkflowQuestionPolicy(state)
-    return necessaryQuestionPolicy
-      ? getNecessaryWorkflowQuestionViolation(input, state, necessaryQuestionPolicy)
-      : null
+    if (necessaryQuestionPolicy) {
+      return getNecessaryWorkflowQuestionViolation(input, state, necessaryQuestionPolicy)
+    }
+
+    const templateId = state && isActiveWorkflowState(state) ? workflowTemplateId(state) : null
+    if (templateId && SINGLE_QUESTION_WORKFLOW_TEMPLATE_IDS.has(templateId)) {
+      return getSingleWorkflowQuestionViolation(input, state, templateId)
+    }
+
+    return null
   }
   const phaseLabel = state?.activePhaseId ?? 'active phase'
   const contractLabel = SKILLS_DEVELOPMENT_TEMPLATE_ID + '/' + phaseLabel
@@ -552,6 +554,25 @@ function phaseToolPolicy(state: WorkflowSessionState): {
 
   return { allowed, forbidden }
 }
+export function getWorkflowPhaseAlwaysLoadedTools(
+  state: WorkflowSessionState | null | undefined,
+): string[] {
+  if (!isActiveWorkflowState(state)) return []
+  const managedIds = new Set([
+    "efficient-constrained-dev-debug-workflow-v5",
+    "feature-extension-workflow-v8",
+    "debug-repair-workflow-v8",
+  ])
+  if (!managedIds.has(state.templateIdentity?.id ?? "")) return []
+  const { allowed, forbidden } = phaseToolPolicy(state)
+  return [...new Set([
+    ...allowed,
+    SUBMIT_PHASE_COMPLETION_TOOL_NAME,
+    REQUEST_WORKFLOW_ROUTE_TOOL_NAME,
+    "AskUserQuestion",
+  ])].filter(toolName => !forbidden.has(toolName))
+}
+
 export function getWorkflowUnavailableSearchToolNames(
   status: WorkflowRipgrepStatus = getRipgrepStatus(),
 ): string[] {
@@ -751,6 +772,13 @@ export function getWorkflowPromptToolGuidance(
   const scopedToolNames = getWorkflowScopedToolNames(state)
   const hasCompletionTool = scopedToolNames.includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)
   const hasRouteTool = scopedToolNames.includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)
+  const necessaryQuestionPolicy = getNecessaryWorkflowQuestionPolicy(state)
+  const hasArtifactWrite = hasWorkflowArtifactWriteCapability(state)
+  // The concrete artifact-write recovery wording belongs only to the independently
+  // evolved skills-development pack. Other workflow templates keep their existing
+  // prompt guidance even if they share the declarative capability name.
+  const hasSkillsDevelopmentArtifactWriteGuidance =
+    hasArtifactWrite && state.templateIdentity?.id === 'skills-development'
   const completionEligibility = state.runtimeContract
     ? getWorkflowCompletionEligibility(state)
     : null
@@ -764,6 +792,15 @@ export function getWorkflowPromptToolGuidance(
 
   return [
     'Workflow-only tools',
+    necessaryQuestionPolicy
+      ? 'AskUserQuestion in this phase uses the necessary-question schema branch: call exactly one question with blocksCompletion: true, non-empty blockingReason and answerImpact, and 2–4 user-answer choices. Use this card only when the answer is required for current-phase work; otherwise continue with a conservative default instead of calling AskUserQuestion.'
+      : null,
+    hasSkillsDevelopmentArtifactWriteGuidance
+      ? 'workflow_artifact_write is a declarative capability, not necessarily a visible tool name. It exposes the visible Write tool only for workspace-relative .workflow/... artifacts in this phase.'
+      : null,
+    hasSkillsDevelopmentArtifactWriteGuidance
+      ? 'Do not use Edit/MultiEdit as a substitute, and do not use Write for src, public, the repository root, C:\\Temp, another workspace, or an unknown path. If an artifact Write is denied, repair the path to .workflow/... and continue the same phase; do not end in prose.'
+      : null,
     hasCompletionTool
       ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} is a direct API tool, never a Skill. Do not call Skill with workflow:${SUBMIT_PHASE_COMPLETION_TOOL_NAME}, and do not prepend workflow: to this tool name.`
       : null,

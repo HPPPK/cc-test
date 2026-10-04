@@ -31,15 +31,32 @@ describe('release desktop workflow', () => {
     expect(macosIndex).toBeGreaterThan(windowsIndex)
   })
 
-  test('build job runs directly without quality preflight dependency', () => {
+  test('blocks release builds on the non-live quality preflight and uploads its evidence', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
 
-    expect(workflow).not.toContain('quality-preflight:')
-    expect(workflow).not.toContain('run: bun run quality:gate --mode pr')
-    expect(workflow).not.toContain('needs: quality-preflight')
+    expect(workflow).toContain('quality-preflight:')
+    expect(workflow).toContain('run: bun run quality:gate --mode pr')
+    expect(workflow).toContain('name: Upload release quality gate')
+    expect(workflow).toContain('name: release-quality-gate')
+    expect(workflow).toContain('needs: quality-preflight')
     expect(workflow).toContain('name: Build (${{ matrix.label }})')
   })
 
+  test('audits the built Windows installer before release upload', () => {
+    const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
+    const localBuild = readFileSync('desktop/scripts/build-windows-x64.ps1', 'utf8')
+
+    expect(workflow).toContain('tauriScript: bun run tauri:audited')
+    expect(workflow).toContain('workflow-pack-staged-audit.json')
+    expect(workflow).toContain('workflow-pack-audit.json')
+    expect(workflow).toContain('name: Upload workflow pack audits')
+    expect(workflow.indexOf('name: Build Tauri app')).toBeLessThan(workflow.indexOf('name: Upload workflow pack audits'))
+    expect(localBuild).toContain(String.raw`scripts\audit-workflow-packs.ts`)
+    expect(localBuild).toContain('workflow-pack-staged-audit.json')
+    expect(localBuild).toContain(String.raw`scripts\audit-windows-workflow-bundle.ts`)
+    expect(localBuild).toContain('windows-release-bundle')
+    expect(localBuild).toContain('workflow-pack-audit.json')
+  })
   test('desktop build workflows keep Bun compile cache on the runner work drive', () => {
     for (const workflowPath of [
       '.github/workflows/build-desktop-dev.yml',

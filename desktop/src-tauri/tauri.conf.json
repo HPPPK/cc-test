@@ -58,6 +58,7 @@
                                      "binaries/browser-runtime",
                                      "binaries/git-runtime",
                                      "binaries/node-runtime",
+                                      "binaries/image-runtime",
                                      "binaries/skills"
                                  ],
                    "icon":  [

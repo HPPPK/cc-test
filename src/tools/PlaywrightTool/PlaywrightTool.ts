@@ -1,8 +1,9 @@
 import { basename, join } from 'node:path'
+import { isUiuxImageOnlySession, uiuxImageBrowserOverrides } from '../../services/tools/uiuxImageWorkflowRuntime.js'
 import { z } from 'zod/v4'
 import { getSessionId } from '../../bootstrap/state.js'
 import { buildTool, type ToolUseContext } from '../../Tool.js'
-import { closePlaywrightBrowserSession, isPlaywrightNodeBridgeAvailable, runPlaywrightWithNodeBridge } from './nodeBridge.js'
+import { abortPlaywrightBrowserSession, isPlaywrightNodeBridgeAvailable, runPlaywrightWithNodeBridge } from './nodeBridge.js'
 import { PLAYWRIGHT_DESCRIPTION, PLAYWRIGHT_TOOL_NAME, getPlaywrightPrompt } from './prompt.js'
 import {
   ensurePlaywrightRuntimeDir,
@@ -57,6 +58,20 @@ type Step = {
   screenshotPath?: string
 }
 
+type AccessDiagnostics = {
+  connectionKind: 'managed' | 'cdp'
+  searchEngine?: 'Google' | '百度' | 'Bing' | '360'
+  observedAt: string
+  pacingWaitedMs?: number
+  verificationKind?: string
+}
+
+type VerificationHistoryEntry = {
+  stepIndex?: number
+  url?: string
+  detail?: string
+}
+
 type Output = {
   url: string
   title: string
@@ -66,6 +81,15 @@ type Output = {
   truncated: boolean
   steps: Step[]
   accessLimited: boolean
+  /** Preserved by the Expert verification runtime after an explicit fallback. */
+  verificationHistory?: VerificationHistoryEntry[]
+  accessDiagnostics?: AccessDiagnostics
+  /** Internal handoff state: whether the managed verification window was restored. */
+  verificationWindowPresentationConfirmed?: boolean
+  /** Stable runtime gate used to rejoin exactly one shared verification decision. */
+  verificationGateId?: string
+  /** Internal handoff state: another shared-browser worker owns the visible CAPTCHA. */
+  sharedHumanVerificationBlocked?: boolean
   screenshotPath?: string
   error?: string
 }
@@ -119,6 +143,16 @@ const outputSchema = z.object({
     screenshotPath: z.string().optional(),
   })),
   accessLimited: z.boolean(),
+  verificationWindowPresentationConfirmed: z.boolean().optional(),
+  verificationGateId: z.string().optional(),
+  sharedHumanVerificationBlocked: z.boolean().optional(),
+  accessDiagnostics: z.object({
+    connectionKind: z.enum(['managed', 'cdp']),
+    searchEngine: z.enum(['Google', '百度', 'Bing', '360']).optional(),
+    observedAt: z.string(),
+    pacingWaitedMs: z.number().int().nonnegative().optional(),
+    verificationKind: z.string().optional(),
+  }).optional(),
   screenshotPath: z.string().optional(),
   error: z.string().optional(),
 })
@@ -143,17 +177,31 @@ export type PlaywrightSessionKeyOptions = {
 }
 
 /**
- * A browser context is normally isolated per parent session and per agent.
- * An Expert may opt in through its active runtime binding to preserve a visible
- * verification page, cookies, and tabs across its own delegated agents.
+ * Browser state is normally isolated per parent session and per agent. An
+ * Expert may opt in through its active runtime binding to share one BrowserContext
+ * for cookies and verification state, while every delegated agent keeps its own
+ * private logical page set and active tab.
  */
 export function resolvePlaywrightSessionKey(
   context: Pick<ToolUseContext, 'agentId'>,
   options: PlaywrightSessionKeyOptions,
 ): string {
+  // A runnable browser session owns one active page. Keep that page private to
+  // each agent even when the Expert explicitly shares its cookie context.
+  return options.rootSessionId + ':' + (context.agentId ?? 'main')
+}
+
+/**
+ * An opted-in Expert shares one isolated BrowserContext (cookies and verified
+ * state) while each agent keeps an independent active page/session.
+ */
+export function resolvePlaywrightContextKey(
+  context: Pick<ToolUseContext, 'agentId'>,
+  options: PlaywrightSessionKeyOptions,
+): string {
   const expertSessionId = options.expertSessionId?.trim()
   if (options.shareAcrossAgents && expertSessionId) return 'expert:' + expertSessionId
-  return options.rootSessionId + ':' + (context.agentId ?? 'main')
+  return resolvePlaywrightSessionKey(context, options)
 }
 
 function sharedExpertPlaywrightSessionId(): string | undefined {
@@ -165,8 +213,12 @@ function sharedExpertPlaywrightSessionId(): string | undefined {
 }
 
 export function resolveCurrentPlaywrightSessionKey(context: Pick<ToolUseContext, 'agentId'>): string {
+  return resolvePlaywrightSessionKey(context, { rootSessionId: getSessionId() })
+}
+
+export function resolveCurrentPlaywrightContextKey(context: Pick<ToolUseContext, 'agentId'>): string {
   const expertSessionId = sharedExpertPlaywrightSessionId()
-  return resolvePlaywrightSessionKey(context, {
+  return resolvePlaywrightContextKey(context, {
     rootSessionId: getSessionId(),
     ...(expertSessionId ? { expertSessionId, shareAcrossAgents: true } : {}),
   })
@@ -190,6 +242,12 @@ export function resolveExpertCdpConnection(env: NodeJS.ProcessEnv = process.env)
   } catch {
     return { error: 'The active Expert browser connection is invalid.' }
   }
+}
+
+// Validation and execution must select the same connection. UIUX image-only
+// research uses an isolated managed browser, not an inherited CDP connection.
+function resolveCurrentPlaywrightCdpConnection(uiuxHeadless = isUiuxImageOnlySession()): ReturnType<typeof resolveExpertCdpConnection> {
+  return uiuxHeadless ? {} : resolveExpertCdpConnection()
 }
 
 export type ExpertManagedPlaywrightPresentation = 'assistable_background' | 'always_visible'
@@ -247,7 +305,7 @@ function unsupportedActionTypeError(input: unknown): string | undefined {
       'Playwright does not support actions[' + index + '].type=' + JSON.stringify(actionType) + '.',
       'Use only: ' + PLAYWRIGHT_ACTION_TYPES.join(', ') + '.',
       'Retry this Playwright call immediately with an equivalent supported action.',
-      'Mappings: a search uses navigate, then fill or type, then press Enter; opening a URL uses navigate; reading page text uses extract.',
+      'Mappings: a search first uses navigate and extract to inspect the live page, then a follow-up uses fill or type and press Enter; opening a URL uses navigate; reading page text uses extract.',
       'Do not switch to Bash, PowerShell, Computer Use, Skill, or another browser tool just because this input was invalid. When a named action is insufficient, retry Playwright with the supported script action.',
     ].join(' ')
   }
@@ -258,7 +316,6 @@ function unsupportedActionTypeError(input: unknown): string | undefined {
 function actionInputError(action: PlaywrightAction, index: number): string | null {
   const label = 'actions[' + index + ']'
   if (action.type === 'navigate') return action.url ? null : label + '.url is required for navigate.'
-  if (action.type === 'new_tab') return action.url ? null : label + '.url is required for new_tab.'
   if (action.type === 'switch_tab') return action.tab_index !== undefined ? null : label + '.tab_index is required for switch_tab.'
   if (action.type === 'fill' || action.type === 'type') return action.selector && action.text !== undefined ? null : label + '.selector and .text are required for ' + action.type + '.'
   if (action.type === 'clear' || action.type === 'click' || action.type === 'double_click' || action.type === 'hover' || action.type === 'focus' || action.type === 'check' || action.type === 'uncheck' || action.type === 'scroll_into_view' || action.type === 'count' || action.type === 'is_visible' || action.type === 'is_enabled' || action.type === 'is_checked' || action.type === 'bounding_box') return action.selector ? null : label + '.selector is required for ' + action.type + '.'
@@ -290,6 +347,10 @@ function renderedOutput(raw: Awaited<ReturnType<typeof runPlaywrightWithNodeBrid
     truncated: summary.truncated,
     steps: raw.steps,
     accessLimited: raw.accessLimited,
+    ...(typeof raw.verificationWindowPresentationConfirmed === 'boolean' ? { verificationWindowPresentationConfirmed: raw.verificationWindowPresentationConfirmed } : {}),
+    ...(typeof raw.verificationGateId === 'string' ? { verificationGateId: raw.verificationGateId } : {}),
+    ...(raw.sharedHumanVerificationBlocked ? { sharedHumanVerificationBlocked: true } : {}),
+    ...(raw.accessDiagnostics ? { accessDiagnostics: raw.accessDiagnostics } : {}),
     ...(raw.screenshotPath ? { screenshotPath: raw.screenshotPath } : {}),
     ...(raw.error ? { error: raw.error } : {}),
   }
@@ -334,10 +395,13 @@ export const PlaywrightTool = buildTool({
     // Keep this compact trace before potentially huge extracted page text. The tool-result
     // persistence layer may replace a large payload with a short preview; placing the
     // ledger first keeps the auditable URL/action record available to Expert researchers.
-    const actionLedger = '<playwright-action-ledger encoding="base64">' + Buffer.from(JSON.stringify({ url: output.url, accessLimited: output.accessLimited, error: output.error, steps: output.steps }), 'utf8').toString('base64') + '</playwright-action-ledger>'
+    const actionLedger = '<playwright-action-ledger encoding="base64">' + Buffer.from(JSON.stringify({ url: output.url, screenshotPath: output.screenshotPath, textExtracted: Boolean(output.text?.trim()) && !output.accessLimited, accessLimited: output.accessLimited, verificationWindowPresentationConfirmed: output.verificationWindowPresentationConfirmed, verificationGateId: output.verificationGateId, sharedHumanVerificationBlocked: output.sharedHumanVerificationBlocked, verificationHistory: output.verificationHistory, accessDiagnostics: output.accessDiagnostics, error: output.error, steps: output.steps }), 'utf8').toString('base64') + '</playwright-action-ledger>'
+    // Keep actual candidate pages visible even when large SERP text is reduced to a preview.
+    const candidateLinks = output.links.slice(0, 24)
     const sections = [
       'Playwright result',
       actionLedger,
+      candidateLinks.length > 0 ? 'Candidate links from this opened page:\n' + candidateLinks.map((link, index) => (index + 1) + '. ' + link.text + ': ' + link.url).join('\n') : undefined,
       'Final URL: ' + output.url,
       output.title ? 'Title: ' + output.title : undefined,
       'Duration: ' + output.durationMs + 'ms',
@@ -346,6 +410,7 @@ export const PlaywrightTool = buildTool({
       output.screenshotPath ? 'Local screenshot path: ' + output.screenshotPath : undefined,
       'Browser action trace:\n' + output.steps.map((step) => (step.index + 1) + '. ' + step.type + ': ' + step.outcome + ' — ' + step.url + (step.detail ? ' — ' + step.detail : '')).join('\n'),
       output.text ? 'Rendered visible text:\n' + output.text : undefined,
+      output.links.length > candidateLinks.length ? 'Additional rendered links: ' + (output.links.length - candidateLinks.length) + ' (not included in the candidate summary).' : undefined,
       output.links.length > 0 ? 'Rendered links:\n' + output.links.map((link, index) => (index + 1) + '. ' + link.text + ': ' + link.url).join('\n') : 'Rendered links: none',
     ].filter((section): section is string => Boolean(section))
     return { tool_use_id: toolUseID, type: 'tool_result', content: sections.join('\n\n') }
@@ -362,7 +427,7 @@ export const PlaywrightTool = buildTool({
         if (issue) return { result: false as const, message: 'Playwright refused this URL: ' + issue, errorCode: 1 }
       }
     }
-    const cdp = resolveExpertCdpConnection()
+    const cdp = resolveCurrentPlaywrightCdpConnection()
     if (cdp.error) return { result: false as const, message: cdp.error, errorCode: 1 }
     if (!cdp.connection && !isPlaywrightRuntimeInstalled() && !isPlaywrightRuntimeAvailable()) {
       return { result: false as const, message: 'Playwright is unavailable because its managed Chromium runtime is not installed.', errorCode: 1 }
@@ -375,15 +440,17 @@ export const PlaywrightTool = buildTool({
   async call(input, context) {
     const request = input as Input
     const sharedExpertSessionId = sharedExpertPlaywrightSessionId()
-    const preserveHumanVerificationPage = shouldPreserveExpertHumanVerificationPage()
+    const uiuxHeadless = isUiuxImageOnlySession()
+    const preserveHumanVerificationPage = !uiuxHeadless && shouldPreserveExpertHumanVerificationPage()
     const managedPresentation = resolveExpertManagedPlaywrightPresentation()
     const sessionKey = resolveCurrentPlaywrightSessionKey(context)
+    const sharedContextKey = sharedExpertSessionId ? resolveCurrentPlaywrightContextKey(context) + (uiuxHeadless ? ':uiux-headless' : '') : undefined
     const activityControl = expertBrowserActivityConfig(sessionKey)
     const startedAt = Date.now()
     const screenshotPath = request.include_screenshot
       ? join(await ensurePlaywrightRuntimeDir(), 'screenshots', Date.now() + '-' + basename(firstTarget(request.actions) ?? 'page').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '.png')
       : undefined
-    const cdp = resolveExpertCdpConnection()
+    const cdp = resolveCurrentPlaywrightCdpConnection(uiuxHeadless)
     if (cdp.error) {
       return { data: { url: firstTarget(request.actions) ?? '', title: '', text: '', links: [], durationMs: Date.now() - startedAt, truncated: false, steps: [], accessLimited: false, error: cdp.error } satisfies Output }
     }
@@ -391,7 +458,7 @@ export const PlaywrightTool = buildTool({
     if (!cdp.connection && !executablePath) {
       return { data: { url: firstTarget(request.actions) ?? '', title: '', text: '', links: [], durationMs: Date.now() - startedAt, truncated: false, steps: [], accessLimited: false, error: 'The managed Playwright Chromium executable is unavailable. Rebuild the desktop sidecars.' } satisfies Output }
     }
-    const abortBrowserSession = () => { void closePlaywrightBrowserSession(sessionKey).catch(() => undefined) }
+    const abortBrowserSession = () => { void abortPlaywrightBrowserSession(sessionKey).catch(() => undefined) }
     context.abortController.signal.addEventListener('abort', abortBrowserSession, { once: true })
     try {
       await publishExpertBrowserActivity({
@@ -402,6 +469,7 @@ export const PlaywrightTool = buildTool({
       })
       const raw = await runPlaywrightWithNodeBridge(sessionKey, {
         ...(cdp.connection ? { connection: cdp.connection } : { executablePath }),
+        ...(sharedContextKey ? { sharedContextKey } : {}),
         actions: request.actions,
         // A package-scoped assistable background browser is headed but minimised.
         // Do not expose this runtime setting in the model's Playwright input.
@@ -421,6 +489,7 @@ export const PlaywrightTool = buildTool({
               ...(request.verification_resolution ? { verificationResolution: request.verification_resolution } : {}),
             }
           : {}),
+        ...uiuxImageBrowserOverrides(uiuxHeadless),
       })
       const verificationRequired = preserveHumanVerificationPage
         && typeof raw.error === 'string'

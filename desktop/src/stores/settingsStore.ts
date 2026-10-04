@@ -10,6 +10,7 @@ import {
   type DesktopTerminalSettings,
   type DesktopTerminalStartupShell,
   type H5AccessSettings,
+  type ImageGenerationSettings,
   type PermissionMode,
   type EffortLevel,
   type ModelInfo,
@@ -59,6 +60,7 @@ type SettingsStore = {
   desktopNotificationsEnabled: boolean
   desktopTerminal: DesktopTerminalSettings
   webSearch: WebSearchSettings
+  imageGeneration: ImageGenerationSettings
   updateProxy: UpdateProxySettings
   agentEnvironmentVariables: Record<string, string>
   h5Access: H5AccessSettings
@@ -83,6 +85,7 @@ type SettingsStore = {
   setDesktopNotificationsEnabled: (enabled: boolean) => Promise<void>
   setDesktopTerminal: (settings: DesktopTerminalSettings) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
+  setImageGeneration: (settings: ImageGenerationSettings) => Promise<void>
   setUpdateProxy: (settings: UpdateProxySettings) => Promise<void>
   setAgentEnvironmentVariables: (env: Record<string, string>) => Promise<void>
   enableH5Access: () => Promise<string>
@@ -115,6 +118,10 @@ const DEFAULT_UPDATE_PROXY_SETTINGS: UpdateProxySettings = {
   url: '',
 }
 
+const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
+  enabled: false,
+}
+
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   permissionMode: 'default',
   currentModel: null,
@@ -128,6 +135,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   desktopNotificationsEnabled: false,
   desktopTerminal: DEFAULT_DESKTOP_TERMINAL_SETTINGS,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
+  imageGeneration: DEFAULT_IMAGE_GENERATION_SETTINGS,
   updateProxy: DEFAULT_UPDATE_PROXY_SETTINGS,
   agentEnvironmentVariables: {},
   h5Access: DEFAULT_H5_ACCESS_SETTINGS,
@@ -177,6 +185,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
         desktopTerminal: normalizeDesktopTerminalSettings(userSettings.desktopTerminal),
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
+        imageGeneration: normalizeImageGenerationSettings(userSettings.imageGeneration),
         updateProxy: normalizeUpdateProxySettings(userSettings.updateProxy),
         agentEnvironmentVariables: normalizeAgentEnvironmentVariables(userSettings.env),
         h5Access: h5AccessResult.settings,
@@ -302,6 +311,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ webSearch: next })
     } catch {
       set({ webSearch: prev })
+    }
+  },
+
+  setImageGeneration: async (imageGeneration) => {
+    const prev = get().imageGeneration
+    const next = normalizeImageGenerationSettings(imageGeneration)
+    set({ imageGeneration: next })
+    try {
+      await settingsApi.updateUser({ imageGeneration: next })
+    } catch (error) {
+      set({ imageGeneration: prev })
+      throw error
     }
   },
 
@@ -438,6 +459,22 @@ function normalizeWebSearchSettings(settings: WebSearchSettings | undefined): We
     mode: settings?.mode ?? 'auto',
     tavilyApiKey: settings?.tavilyApiKey ?? '',
     braveApiKey: settings?.braveApiKey ?? '',
+  }
+}
+
+function normalizeImageGenerationSettings(
+  settings: ImageGenerationSettings | undefined,
+): ImageGenerationSettings {
+  const providerId = typeof settings?.providerId === 'string' && settings.providerId.trim()
+    ? settings.providerId.trim()
+    : undefined
+  const model = typeof settings?.model === 'string' && settings.model.trim()
+    ? settings.model.trim()
+    : undefined
+  return {
+    enabled: settings?.enabled === true,
+    ...(providerId ? { providerId } : {}),
+    ...(model ? { model } : {}),
   }
 }
 

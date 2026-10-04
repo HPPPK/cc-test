@@ -91,6 +91,11 @@ async function handlePackRoute(req: Request, segments: string[]): Promise<Respon
     return Response.json(await expertPacks.copyExpertPack(packId), { status: 201 })
   }
 
+  if (action === 'bundled-update') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    return Response.json(await expertPacks.applyBundledExpertPackUpdate(packId))
+  }
+
   if (!action && req.method === 'PUT') {
     return Response.json(await expertPacks.updateExpertPack(packId, await readJson(req) as ExpertPackUpdateInput))
   }

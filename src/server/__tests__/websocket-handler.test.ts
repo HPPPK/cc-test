@@ -1,3 +1,4 @@
+import uiuxImageReviewFixture from '../../services/tools/fixtures/uiux-image-review.json'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ServerWebSocket } from 'bun'
 import * as fs from 'node:fs/promises'
@@ -5,7 +6,10 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import {
   __resetWebSocketHandlerStateForTests,
+  buildUndispatchedSourceBatchRecoveryInstruction,
+  buildIncompleteRequiredRouteRecoveryInstruction,
   closeSessionConnection,
+  continueCommercializationResearch,
   getActiveSessionIds,
   handleWebSocket,
   refreshWorkflowRuntimeBinding,
@@ -13,23 +17,190 @@ import {
   workflowNotificationForDesktop,
   assistantTextRequestsStrictVisualBoundedDecision,
   hasStrictVisualReviewReceipt,
+  isCommercializationResearchQuestionRecoveryBlocked,
+  isDeterministicExpertTemplateFillValidationFailure,
+  translateCliMessage,
   containsStrictVisualUnsafeAbsolutePlanBadge,
   containsStrictVisualGeneratedSemanticPseudoText,
   containsStrictVisualMisleadingPaymentCode,
   containsStrictVisualProcessDisclaimer,
   userRequestsStrictVisualFinalDelivery,
+  userRequestsStrictVisualInspirationSourceDecision,
   strictVisualPublicReferenceUrls,
   userRequestsStrictVisualPublicResearch,
   type WebSocketData,
 } from '../ws/handler.js'
 import { conversationService } from '../services/conversationService.js'
+import { ExpertSessionService } from '../services/expertSessionService.js'
+import { ExpertRuntimeService } from '../services/expertRuntimeService.js'
+import { ExpertPackRegistryService } from '../services/expertPackRegistryService.js'
+import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
+import { getExpertProcessBindingKey } from '../services/expertRuntimeBindingService.js'
 import { computerUseApprovalService } from '../services/computerUseApprovalService.js'
+import { getSessionChatState, setSessionChatState } from '../api/conversations.js'
+import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
 import { diagnosticsService } from '../services/diagnosticsService.js'
 import { sessionService } from '../services/sessionService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import type { WorkflowSessionState, WorkflowTemplate } from '../services/workflowTypes.js'
 import { setWorkflowRuntimeTemplateLoaderForTests } from '../services/workflowRuntimeTemplateService.js'
 import { recalculateWorkflowCompletionEligibility } from '../services/workflowCompletionGate.js'
+
+
+
+describe('commercialization source-batch recovery instruction', () => {
+  it('dispatches the exact current A/B/C wave in parallel and waits for terminal receipts before advancing', () => {
+    const instruction = buildUndispatchedSourceBatchRecoveryInstruction({
+      kind: 'recover-undispatched-source-batch',
+      recoveries: [
+        {
+          artifactPath: 'commercialization-research/02-competitors.md',
+          batchFingerprint: 'batch-a',
+          coreEntryCount: 59,
+          openEntryCount: 9,
+          remainingEntryCount: 2,
+          reason: 'source-package-incomplete',
+          entries: [
+            { tier: 'core', category: '产品数据', candidateUrl: 'https://example.com/a' },
+            { tier: 'open', category: '代码社区', candidateUrl: 'https://gitee.com/' },
+          ],
+        },
+        {
+          artifactPath: 'commercialization-research/03-user-needs.md',
+          batchFingerprint: 'batch-b',
+          coreEntryCount: 40,
+          openEntryCount: 15,
+          remainingEntryCount: 1,
+          reason: 'source-package-not-dispatched',
+          entries: [{ tier: 'open', category: '中文社区', candidateUrl: 'https://tieba.baidu.com/' }],
+        },
+      ],
+    })
+
+    expect(instruction).toContain('research_task_kind: "source-batch"')
+    expect(instruction).toContain('Dispatch all listed artifacts before waiting')
+    expect(instruction).toContain('research_artifact_path=commercialization-research/02-competitors.md')
+    expect(instruction).toContain('research_artifact_path=commercialization-research/03-user-needs.md')
+    expect(instruction).toContain('https://gitee.com/')
+    expect(instruction).toContain('https://tieba.baidu.com/')
+    expect(instruction).toContain('B站、YouTube、Reddit、GitHub、Gitee、X、小红书、知乎、百度贴吧、微博')
+    expect(instruction).toContain('at most 10 per lane')
+    expect(instruction).toContain('let the server re-evaluate terminal receipts')
+    expect(instruction).toContain('at most one targeted retry')
+    expect(instruction).toContain('opened, access_limited, or failed')
+    expect(instruction).toContain('do not ask the user a question')
+  })
+})
+
+describe('commercialization auto-continue visibility', () => {
+  it('surfaces a report delivery stall without sending another model turn or marking delivery complete', async () => {
+    const sessionId = 'report-stall-' + crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    const send = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+    const start = spyOn(conversationService, 'startSession').mockResolvedValue(undefined as any)
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert: makeExpertRuntimeMetadata('active') } as any)
+    handleWebSocket.open(ws)
+    await continueCommercializationResearch(sessionId, {
+      kind: 'report-delivery-stalled', reportPath: 'C:/research/report.html', errorCode: 'BAD_REQUEST',
+    })
+    expect(send).not.toHaveBeenCalled()
+    expect(start).not.toHaveBeenCalled()
+    expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'error', code: 'EXPERT_REPORT_DELIVERY_STALLED' }))
+    expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'status', state: 'idle' }))
+    expect(parseSentMessages(ws).some((message) => message.type === 'message_complete')).toBe(false)
+    handleWebSocket.close(ws)
+  })
+
+  afterEach(() => {
+    __resetWebSocketHandlerStateForTests()
+    mock.restore()
+  })
+
+  it('hides internal auto-continue prose while preserving Agent cards and later user-turn text', async () => {
+    const sessionId = `commercialization-auto-continue-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    Object.assign(session, { expertRuntimeBindingKey: getExpertProcessBindingKey(makeExpertRuntimeMetadata('active')) })
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendInternalMessage = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert: makeExpertRuntimeMetadata('active') } as any)
+
+    try {
+      handleWebSocket.open(ws)
+      const continued = await continueCommercializationResearch(sessionId, {
+        kind: 'recover-undispatched-source-batch',
+        recoveries: [{
+          artifactPath: 'commercialization-research/02-competitors.md',
+          batchFingerprint: 'wave-8-a',
+          coreEntryCount: 59,
+          openEntryCount: 9,
+          remainingEntryCount: 1,
+          reason: 'source-package-incomplete',
+          entries: [{ tier: 'core', category: '产品数据', candidateUrl: 'http://www2.baidu.com/' }],
+        }],
+      })
+      expect(continued).toBe(true)
+      expect(sendInternalMessage).toHaveBeenCalledWith(sessionId, expect.stringContaining('<expert-research-source-batch-recovery>'))
+      expect(session.outputCallbacks).toHaveLength(1)
+
+      const callback = session.outputCallbacks[0]!
+      callback({ type: 'stream_event', event: { type: 'message_start' } })
+      callback({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } })
+      callback({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'The same eighth-wave recovery instruction was already dispatched.' } } })
+      callback({ type: 'stream_event', event: { type: 'content_block_stop', index: 0 } })
+      callback({ type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'agent-wave-8', name: 'Agent', input: {} } } })
+      callback({ type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"description":"A线第八波实开重取证","prompt":"open assigned URL","subagent_type":"expert-evidence-researcher"}' } } })
+      callback({ type: 'stream_event', event: { type: 'content_block_stop', index: 1 } })
+      callback({
+        type: 'assistant',
+        message: { content: [
+          { type: 'text', text: 'The same eighth-wave recovery instruction was already dispatched.' },
+          { type: 'tool_use', id: 'agent-wave-8', name: 'Agent', input: { description: 'A线第八波实开重取证' } },
+        ] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'message_complete'))
+
+      const internalMessages = parseSentMessages(ws)
+      expect(internalMessages).not.toContainEqual(expect.objectContaining({
+        type: 'content_delta',
+        text: expect.stringContaining('eighth-wave recovery'),
+      }))
+      expect(internalMessages).toContainEqual(expect.objectContaining({
+        type: 'tool_use_complete',
+        toolName: 'Agent',
+        toolUseId: 'agent-wave-8',
+      }))
+
+      handleWebSocket.message(ws, JSON.stringify({ type: 'user_message', content: '请继续。' }))
+      callback({ type: 'assistant', message: { content: [{ type: 'text', text: '这是正常用户回合的可见回复。' }] } })
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'content_delta',
+        text: '这是正常用户回合的可见回复。',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+})
 
 describe('strict visual plan badge detection', () => {
   it('rejects an absolutely positioned plan ribbon that can cover tier copy', () => {
@@ -71,6 +242,13 @@ describe('strict visual final-delivery request detection', () => {
 
   it('does not mistake a read-only screenshot diagnosis for a final visual delivery request', () => {
     expect(userRequestsStrictVisualFinalDelivery('先看这张截图，告诉我有什么 UX 问题。', [{ mimeType: 'image/png', path: 'C:/tmp/source.png' }])).toBe(false)
+  })
+})
+describe('strict visual inspiration-source decision detection', () => {
+  it('requires a source-scope decision for a screenshot redesign, but not read-only diagnosis', () => {
+    const screenshot = [{ mimeType: 'image/png', path: 'C:/tmp/membership.png' }]
+    expect(userRequestsStrictVisualInspirationSourceDecision('让这个会员购买页更有购买欲，直接按截图改版。', screenshot)).toBe(true)
+    expect(userRequestsStrictVisualInspirationSourceDecision('先看这张截图，告诉我有什么 UX 问题。', screenshot)).toBe(false)
   })
 })
 describe('strict visual locked-reference parsing', () => {
@@ -118,9 +296,18 @@ describe('strict visual choice detection', () => {
       '请选方向 A、B 或 C。',
     )).toBe(true)
   })
+
+  it('detects the Chinese confirmation wording emitted by the prototype session', () => {
+    expect(assistantTextRequestsStrictVisualBoundedDecision(
+      '这套方向是否采用方案 A「记忆修复台」？',
+    )).toBe(true)
+  })
 })
 
 beforeEach(() => {
+  // This suite stubs the CLI transport. Runtime revalidation may replace a
+  // pre-existing fake process; it must never spawn a real CLI from user config.
+  spyOn(conversationService, 'startSession').mockResolvedValue()
   setWorkflowRuntimeTemplateLoaderForTests(async (state): Promise<WorkflowTemplate | null> => {
     if (state.templateSnapshot) return state.templateSnapshot
     const templateId = state.templateIdentity?.id ?? 'ephemeral-workflow'
@@ -266,6 +453,461 @@ function makeExpertRuntimeMetadata(status: 'active' | 'exited') {
         }),
   }
 }
+
+describe('commercialization expert dynamic startup', () => {
+  it('passes the first product description to the normal model turn instead of emitting a server-authored intake card', async () => {
+    const sessionId = `commercialization-dynamic-start-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.promptSnapshot = 'The user first product description directly enters the model. Ask product-specific questions only when a decision-critical ambiguity remains.'
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'AI 老照片修复：修复褪色、划痕和模糊的家庭照片。',
+      }))
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('AI 老照片修复'),
+      ))
+
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'permission_request',
+        toolName: 'AskUserQuestion',
+      }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'tool_use_complete',
+        toolName: 'AskUserQuestion',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('recovers a prose-only commercialization clarification into AskUserQuestion instead of completing the turn', async () => {
+    const sessionId = `commercialization-prose-clarification-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.hostTools = [{
+      id: 'AskUserQuestion',
+      name: 'AskUserQuestion',
+      purpose: 'Collect product-specific clarification.',
+      supported: true,
+    }]
+    Object.assign(session, { expertRuntimeBindingKey: getExpertProcessBindingKey(commercializationExpert) })
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Quicker-鼠标中键效率神器',
+      }))
+      await waitForCondition(() => sendMessage.mock.calls.some(([id, content]) =>
+        id === sessionId && content === 'Quicker-鼠标中键效率神器',
+      ))
+      expect(sendMessage).toHaveBeenCalledWith(sessionId, 'Quicker-鼠标中键效率神器', undefined)
+
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'text',
+            text: '欢迎使用「新品商业化调研报告专家」。请用一句话告诉我你想调研的产品方向和核心能力；也可以直接提供链接、截图、产品文档或已有材料。',
+          }],
+          stop_reason: 'end_turn',
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) => (
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<commercialization-research-ask-user-question-recovery>')
+      )))
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('Immediately call exactly one AskUserQuestion'),
+      )
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: '正在生成可回答的澄清卡片',
+      }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('does not recover a commercialization turn that proceeds without asking the user for information', async () => {
+    const sessionId = `commercialization-normal-research-start-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.hostTools = [{
+      id: 'AskUserQuestion',
+      name: 'AskUserQuestion',
+      purpose: 'Collect product-specific clarification.',
+      supported: true,
+    }]
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      sendMessage.mockClear()
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '产品边界已可从公开信息开始验证，我现在直接开展完整商业调研。',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'message_complete'))
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('keeps deterministic template validation errors out of commercialization user-question recovery', () => {
+    expect(isDeterministicExpertTemplateFillValidationFailure(
+      'EXPERT_TEMPLATE_FILL_RENDER_FAILED: EXPERT_RESEARCH_EVIDENCE_ABSORPTION_REQUIRED: SOURCE_ROWS reconciliation failed.',
+    )).toBe(true)
+    expect(isDeterministicExpertTemplateFillValidationFailure('Ask the user to select a research boundary.')).toBe(false)
+
+    expect(isCommercializationResearchQuestionRecoveryBlocked({
+      usedAskUserQuestion: false,
+      hasPendingAskUserQuestion: false,
+      expertTemplateFillValidationFailure: true,
+    })).toBe(true)
+    expect(isCommercializationResearchQuestionRecoveryBlocked({
+      usedAskUserQuestion: false,
+      hasPendingAskUserQuestion: false,
+      expertTemplateFillValidationFailure: false,
+    })).toBe(false)
+  })
+
+  it('recovers a direct commercialization question that omits clarification wording into AskUserQuestion', async () => {
+    const sessionId = `commercialization-direct-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.hostTools = [{
+      id: 'AskUserQuestion',
+      name: 'AskUserQuestion',
+      purpose: 'Collect product-specific clarification.',
+      supported: true,
+    }]
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '你调研的是现有 Quicker 的商业化，还是以 Quicker 为参考开发新品？',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) => (
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<commercialization-research-ask-user-question-recovery>')
+      )))
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('Immediately call exactly one AskUserQuestion'),
+      )
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('retries a second prose-only commercialization clarification as a tool-only recovery without a user-visible protocol error', async () => {
+    const sessionId = `commercialization-prose-clarification-twice-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.hostTools = [{
+      id: 'AskUserQuestion',
+      name: 'AskUserQuestion',
+      purpose: 'Collect product-specific clarification.',
+      supported: true,
+    }]
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      sendMessage.mockClear()
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '在启动商业化调研之前，我需要您补充目标用户这一关键信息。',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) => (
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<commercialization-research-ask-user-question-recovery>')
+      )))
+
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '请您补充目标用户是谁，以便我开始调研。',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.filter(([, content]) => (
+        typeof content === 'string'
+        && content.includes('<commercialization-research-ask-user-question-recovery>')
+      )).length === 2)
+
+      expect(sendMessage.mock.calls.filter(([, content]) => (
+        typeof content === 'string'
+        && content.includes('<commercialization-research-ask-user-question-recovery>')
+      ))).toHaveLength(2)
+      expect(sendMessage.mock.calls.some(([, content]) => (
+        typeof content === 'string'
+        && content.includes('The prior tool-only correction was ignored.')
+      ))).toBe(true)
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'COMMERCIALIZATION_RESEARCH_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE',
+      }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('reports a technical recovery-unavailable error only when the correction turn cannot be sent', async () => {
+    const sessionId = `commercialization-recovery-unavailable-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(false)
+    const commercializationExpert: any = makeExpertRuntimeMetadata('active')
+    commercializationExpert.expertId = 'commercialization-research-report'
+    commercializationExpert.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.expertId = 'commercialization-research-report'
+    commercializationExpert.runtimeBinding.expertName = '新品商业化调研报告专家'
+    commercializationExpert.runtimeBinding.hostTools = [{
+      id: 'AskUserQuestion',
+      name: 'AskUserQuestion',
+      purpose: 'Collect product-specific clarification.',
+      supported: true,
+    }]
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: commercializationExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      sendMessage.mockClear()
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '在开始调研前，我需要您确认当前产品的核心用户。',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) => (
+        message.type === 'error'
+        && message.code === 'COMMERCIALIZATION_RESEARCH_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE'
+      )))
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('<commercialization-research-ask-user-question-recovery>'),
+      )
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'COMMERCIALIZATION_RESEARCH_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE',
+      }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+})
 
 function withCompletionEligibleRuntimeContract(state: WorkflowSessionState): WorkflowSessionState {
   const now = state.updatedAt
@@ -684,7 +1326,129 @@ function makeWorkflowPromptState(sessionId: string): WorkflowSessionState {
   return state
 }
 
+describe('WebSocket handler CLI transport messages', () => {
+  it('silently ignores transport keep-alive messages', () => {
+    const log = spyOn(console, 'log').mockImplementation(() => {})
+    expect(translateCliMessage({ type: 'keep_alive' }, 'keep-alive-session')).toEqual([])
+    expect(log).not.toHaveBeenCalled()
+    log.mockRestore()
+  })
+})
+
 describe('WebSocket handler session isolation', () => {
+  it('does not retain a background-task lease after an explicit stop', () => {
+    const sessionId = 'offline-explicit-stop-' + crypto.randomUUID()
+    let expiry: (() => void) | undefined
+    const originalTimeout = globalThis.setTimeout
+    spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms: number, ...args: any[]) => {
+      if (ms === 30_000) { expiry = fn; return originalTimeout(() => {}, 60_000).unref() }
+      return originalTimeout(fn, ms, ...args)
+    }) as typeof setTimeout)
+    const stop = spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    const ws = makeClientSocket(sessionId)
+    handleWebSocket.open(ws)
+    sendToSession(sessionId, { type: 'system_notification', subtype: 'task_started', data: { task_id: 'agent-1' } })
+    handleWebSocket.message(ws, JSON.stringify({ type: 'stop_generation' }))
+    handleWebSocket.close(ws, 1000, 'closed after stop')
+    expiry?.()
+    expect(stop).toHaveBeenCalledWith(sessionId)
+  })
+
+  it('keeps translating CLI completion without a connected client and never duplicates the retained listener', async () => {
+    const sessionId = 'offline-cli-output-' + crypto.randomUUID()
+    let output: ((msg: any) => void) | undefined
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    const onOutput = spyOn(conversationService, 'onOutput').mockImplementation((_id, callback) => { output = callback })
+    spyOn(conversationService, 'removeOutputCallback').mockImplementation(() => {})
+    const ws = makeClientSocket(sessionId)
+    handleWebSocket.open(ws)
+    output?.({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } })
+    handleWebSocket.close(ws, 1006, 'network interruption')
+    expect(getSessionChatState(sessionId)).toBe('streaming')
+    output?.({ type: 'result', subtype: 'success', result: 'offline result', usage: { input_tokens: 1, output_tokens: 2 } })
+    await waitForCondition(() => getSessionChatState(sessionId) === 'idle')
+    expect(getSessionChatState(sessionId)).toBe('idle')
+    const reconnected = makeClientSocket(sessionId)
+    handleWebSocket.open(reconnected)
+    expect(onOutput).toHaveBeenCalledTimes(1)
+    expect(parseSentMessages(reconnected)).toContainEqual(expect.objectContaining({
+      type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true },
+    }))
+  })
+
+  it('releases an idle disconnected session but preserves a live background task until its terminal receipt', () => {
+    const sessionId = 'offline-background-' + crypto.randomUUID()
+    let expiry: (() => void) | undefined
+    const originalTimeout = globalThis.setTimeout
+    spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms: number, ...args: any[]) => {
+      if (ms === 30_000) { expiry = fn; return originalTimeout(() => {}, 60_000).unref() }
+      return originalTimeout(fn, ms, ...args)
+    }) as typeof setTimeout)
+    const stop = spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+    const ws = makeClientSocket(sessionId)
+    handleWebSocket.open(ws)
+    sendToSession(sessionId, { type: 'system_notification', subtype: 'task_started', data: { task_id: 'agent-1' } })
+    sendToSession(sessionId, { type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    handleWebSocket.close(ws, 1006, 'timeout')
+    expiry?.()
+    expect(stop).not.toHaveBeenCalledWith(sessionId)
+    sendToSession(sessionId, { type: 'system_notification', subtype: 'task_notification', data: { task_id: 'agent-1', status: 'completed' } })
+    expiry?.()
+    expect(stop).toHaveBeenCalledWith(sessionId)
+  })
+
+  it('keeps running and waiting sessions alive beyond disconnect grace and preserves verification', () => {
+    for (const state of ['tool_executing', 'permission_pending'] as const) {
+      const sessionId = 'offline-active-' + crypto.randomUUID()
+      let expiry: (() => void) | undefined
+      const originalTimeout = globalThis.setTimeout
+      const timerSpy = spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms: number, ...args: any[]) => {
+        if (ms === 30_000) { expiry = fn; return originalTimeout(() => {}, 60_000).unref() }
+        return originalTimeout(fn, ms, ...args)
+      }) as typeof setTimeout)
+      const stop = spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+      const cancel = spyOn(expertHumanVerificationService, 'cancelSession').mockImplementation(() => {})
+      const ws = makeClientSocket(sessionId)
+      handleWebSocket.open(ws)
+      setSessionChatState(sessionId, state)
+      handleWebSocket.close(ws, 1006, 'timeout')
+      expiry?.()
+      expect(stop).not.toHaveBeenCalledWith(sessionId)
+      expect(cancel).not.toHaveBeenCalled()
+      timerSpy.mockRestore()
+    }
+  })
+
+  it('updates offline completion state and sends it on reconnect', () => {
+    const sessionId = 'offline-result-' + crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    handleWebSocket.open(ws)
+    setSessionChatState(sessionId, 'streaming')
+    handleWebSocket.close(ws, 1006, 'timeout')
+    sendToSession(sessionId, { type: 'message_complete', usage: { input_tokens: 1, output_tokens: 2 } })
+    expect(getSessionChatState(sessionId)).toBe('idle')
+    const next = makeClientSocket(sessionId)
+    handleWebSocket.open(next)
+    expect(parseSentMessages(next)).toContainEqual(expect.objectContaining({
+      type: 'system_notification', subtype: 'session_state', data: expect.objectContaining({ state: 'idle' }),
+    }))
+  })
+
+  it('waits for drain before sending queued deltas and the terminal frame', () => {
+    const sessionId = 'flow-control-' + crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    handleWebSocket.open(ws)
+    ws.sent.length = 0
+    ws.setSendResult(-1)
+    sendToSession(sessionId, { type: 'content_delta', text: 'a' })
+    sendToSession(sessionId, { type: 'content_delta', text: 'b' })
+    sendToSession(sessionId, { type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(ws.sent).toHaveLength(1)
+    ws.setSendResult(1)
+    handleWebSocket.drain(ws)
+    expect(parseSentMessages(ws).map(m => m.type)).toEqual(['content_delta', 'content_delta', 'message_complete'])
+  })
+
   afterEach(() => {
     __resetWebSocketHandlerStateForTests()
     mock.restore()
@@ -709,7 +1473,7 @@ describe('WebSocket handler session isolation', () => {
     expect(cancelComputerUse).not.toHaveBeenCalled()
   })
 
-  it('records structured client WebSocket lifecycle diagnostics and cleans output callbacks on close', () => {
+  it('records structured client WebSocket lifecycle diagnostics and retains output callbacks during reconnect grace period', () => {
     const sessionId = `lifecycle-75f257d8-fa64-4cd4-a696-ed6dfe58ea59`
     const ws = makeClientSocket(sessionId)
     const recordEvent = spyOn(diagnosticsService, 'recordEvent').mockResolvedValue()
@@ -736,7 +1500,7 @@ describe('WebSocket handler session isolation', () => {
         reason: 'abnormal closure',
       }),
     }))
-    expect(removeOutputCallback).toHaveBeenCalledWith(sessionId, expect.any(Function))
+    expect(removeOutputCallback).not.toHaveBeenCalled()
     expect(getActiveSessionIds()).not.toContain(sessionId)
   })
 
@@ -784,6 +1548,43 @@ describe('WebSocket handler session isolation', () => {
 
     expect(getActiveSessionIds()).toContain(sessionId)
     expect(ws.close).not.toHaveBeenCalled()
+  })
+
+  it('coalesces repeated client backpressure diagnostics and records recovery', () => {
+    const sessionId = `send-backpressure-recovery-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const recordEvent = spyOn(diagnosticsService, 'recordEvent').mockResolvedValue()
+
+    handleWebSocket.open(ws)
+    recordEvent.mockClear()
+    ws.setSendResult(-1)
+
+    expect(sendToSession(sessionId, {
+      type: 'content_delta',
+      text: 'first queued delta',
+    })).toBe(true)
+    expect(sendToSession(sessionId, {
+      type: 'content_delta',
+      text: 'second queued delta',
+    })).toBe(true)
+
+    expect(recordEvent.mock.calls.filter(([event]) =>
+      (event as { type?: string }).type === 'ws_client_backpressure',
+    )).toHaveLength(1)
+
+    ws.setSendResult(1)
+    expect(sendToSession(sessionId, {
+      type: 'message_complete',
+      usage: { input_tokens: 0, output_tokens: 0 },
+    })).toBe(true)
+
+    handleWebSocket.drain(ws)
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'ws_client_backpressure_recovered',
+      severity: 'info',
+      sessionId,
+      details: expect.objectContaining({ queuedSendCount: 1 }),
+    }))
   })
 
   it('removes only dropped clients while preserving delivery to healthy clients', () => {
@@ -1381,6 +2182,174 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
+  it('forces inspiration_sources through AskUserQuestion when a screenshot redesign stops in prose', async () => {
+    const sessionId = `strict-uiux-inspiration-source-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const strictVisualExpert: any = makeExpertRuntimeMetadata('active')
+    strictVisualExpert.expertId = 'uiux-design-system-expert'
+    strictVisualExpert.runtimeBinding.expertId = 'uiux-design-system-expert'
+    strictVisualExpert.runtimeBinding.runtimePolicy = {
+      mode: 'strict-visual-workflow',
+      allowedToolNames: ['AskUserQuestion'],
+      requiredSkillIds: [],
+    }
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: strictVisualExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: '让这个会员购买页更有购买欲，直接按截图改版。',
+        attachments: [{ mimeType: 'image/png', path: 'C:/tmp/membership.png', name: 'membership.png' }],
+      }))
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId]) => calledSessionId === sessionId))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'text',
+            text: '截图事实已整理。下一步需要先确定灵感来源范围，再做诊断与原创方向。',
+          }],
+        },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<strict-visual-inspiration-source-recovery>')
+      ))
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('id is inspiration_sources'),
+      )
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: 'Generating required inspiration-source choices',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('does not repeat inspiration_sources after its card receives a successful user selection', async () => {
+    const sessionId = `strict-uiux-inspiration-selected-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const strictVisualExpert: any = makeExpertRuntimeMetadata('active')
+    strictVisualExpert.expertId = 'uiux-design-system-expert'
+    strictVisualExpert.runtimeBinding.expertId = 'uiux-design-system-expert'
+    strictVisualExpert.runtimeBinding.runtimePolicy = {
+      mode: 'strict-visual-workflow',
+      allowedToolNames: ['AskUserQuestion'],
+      requiredSkillIds: [],
+    }
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: strictVisualExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: '让这个会员购买页更有购买欲，直接按截图改版。',
+        attachments: [{ mimeType: 'image/png', path: 'C:/tmp/membership.png', name: 'membership.png' }],
+      }))
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId]) => calledSessionId === sessionId))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+
+      const callback = session.outputCallbacks[0]!
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use',
+        id: 'inspiration-source-card',
+        name: 'AskUserQuestion',
+        input: { questions: [{ id: 'inspiration_sources', prompt: '灵感来源？', options: [] }] },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result',
+        tool_use_id: 'inspiration-source-card',
+        is_error: false,
+        content: "User has answered your questions: \"inspiration_sources\"=\"不使用外部参考\". You can now continue with the user's answers in mind.",
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text',
+        text: '已记录：仅根据截图事实继续。',
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => (
+        parseSentMessages(ws).some((message) => message.type === 'message_complete')
+        || sendMessage.mock.calls.some(([calledSessionId, content]) => (
+          calledSessionId === sessionId
+          && typeof content === 'string'
+          && content.includes('<strict-visual-inspiration-source-recovery>')
+        ))
+      ))
+      const inspirationRecoveryCalls = sendMessage.mock.calls
+        .filter(([calledSessionId, content]) => (
+          calledSessionId === sessionId
+          && typeof content === 'string'
+          && content.includes('<strict-visual-inspiration-source-recovery>')
+        ))
+        .map(([, content]) => content)
+      expect(inspirationRecoveryCalls).toEqual([])
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
   it('requires Playwright when a strict UIUX user directly supplies a public reference URL', async () => {
     const sessionId = `strict-uiux-direct-public-reference-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
@@ -1901,6 +2870,372 @@ describe('WebSocket handler session isolation', () => {
       conversationService.stopSession(sessionId)
     }
   })
+
+  it('accepts 原型图demo only after three viewport reads and a high-fidelity revision', async () => {
+    const sessionId = `prototype-visual-quality-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const prototypeExpert: any = makeExpertRuntimeMetadata('active')
+    prototypeExpert.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.runtimePolicy = {
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    }
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: prototypeExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    const viewports = [
+      { id: 'desktop', size: '1440,1000', file: 'high-desktop-1440x1000.png' },
+      { id: 'tablet', size: '1024,900', file: 'high-tablet-1024x900.png' },
+      { id: 'mobile', size: '390,844', file: 'high-mobile-390x844.png' },
+    ]
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      const renderPass = (pass: string) => {
+        callback({
+          type: 'assistant',
+          message: { content: viewports.map((viewport) => ({
+            type: 'tool_use',
+            id: `render-${pass}-${viewport.id}`,
+            name: 'Bash',
+            input: { command: `& $env:CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE --headless --window-size=${viewport.size} --screenshot=C:/tmp/${viewport.file} file:///C:/tmp/03-high-fidelity.html` },
+          })) },
+        })
+        for (const viewport of viewports) {
+          callback({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `render-${pass}-${viewport.id}`, is_error: false, content: `Screenshot written: C:/tmp/${viewport.file}` }] } })
+        }
+        callback({
+          type: 'assistant',
+          message: { content: viewports.map((viewport) => ({
+            type: 'tool_use',
+            id: `read-${pass}-${viewport.id}`,
+            name: 'Read',
+            input: { file_path: `C:/tmp/${viewport.file}` },
+          })) },
+        })
+        for (const viewport of viewports) {
+          callback({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `read-${pass}-${viewport.id}`, is_error: false, content: [{ type: 'image', source: { type: 'base64', data: 'AA==' } }] }] } })
+        }
+      }
+
+      callback({
+        type: 'assistant',
+        message: { content: [
+          { type: 'tool_use', id: 'write-low', name: 'Write', input: { file_path: 'C:/tmp/01-low-fidelity.html', content: '<main>low</main>' } },
+          { type: 'tool_use', id: 'write-mid', name: 'Write', input: { file_path: 'C:/tmp/02-mid-fidelity.html', content: '<main>mid</main>' } },
+          { type: 'tool_use', id: 'write-high-first', name: 'Write', input: { file_path: 'C:/tmp/03-high-fidelity.html', content: '<main>first</main>' } },
+        ] },
+      })
+      for (const id of ['write-low', 'write-mid', 'write-high-first']) {
+        callback({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: false, content: 'File created successfully' }] } })
+      }
+      renderPass('first')
+      callback({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'write-high-revised', name: 'Write', input: { file_path: 'C:/tmp/03-high-fidelity.html', content: '<main>revised</main>' } }] } })
+      callback({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'write-high-revised', is_error: false, content: 'File updated successfully' }] } })
+      renderPass('revised')
+      callback({ type: 'assistant', message: { content: [{ type: 'text', text: '<prototype-visual-review-receipt>prototype-fidelity-workflow and prototype-visual-quality-gate with frontend-design: visual register is a focused editorial product desk for a document tool. First render issue: the desktop CTA was visually weak and the mobile feature cards repeated the same weight. Revised HTML: strengthened the primary action, tightened the card hierarchy, and reflowed the mobile stack. Desktop 1440: product proof and CTA are visible. Tablet 1024: spacing retains the reading order. Mobile 390: no crop or horizontal overflow. This was viewport visual QA, not real-device testing.</prototype-visual-review-receipt>' }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) => message.type === 'message_complete'))
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+
+
+  it('continues 原型图demo into artifact production when a confirmed product brief ends as prose', async () => {
+    const sessionId = `prototype-visual-prose-brief-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const prototypeExpert: any = makeExpertRuntimeMetadata('active')
+    prototypeExpert.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.runtimePolicy = {
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    }
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: prototypeExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({ type: 'user_message', content: 'AI 老照片修复' }))
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId && content === 'AI 老照片修复',
+      ))
+
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '已确定为个人用户的单页对比工作台：上传旧照片，选择自然修复，在同一画布查看前后对比，再下载演示结果。',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<prototype-visual-production-recovery>'),
+      ))
+      const recovery = sendMessage.mock.calls.find(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<prototype-visual-production-recovery>'),
+      )?.[1] as string
+      expect(recovery).toContain('Do not summarize the plan again')
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: 'Completing required prototype files',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('recovers 原型图demo into AskUserQuestion when it narrates the tool instead of calling it', async () => {
+    const sessionId = `prototype-visual-ask-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const prototypeExpert: any = makeExpertRuntimeMetadata('active')
+    prototypeExpert.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.runtimePolicy = {
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    }
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: prototypeExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。\n\nUEFN style needs likely user wants proceed? Must ask approval via AskUserQuestion, with choices.',
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<prototype-visual-ask-user-question-recovery>'),
+      ))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: 'Preparing the required confirmation',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+
+  it('recovers 原型图demo when Chinese design directions end with a prose confirmation question', async () => {
+    const sessionId = `prototype-visual-chinese-direction-question-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const prototypeExpert: any = makeExpertRuntimeMetadata('active')
+    prototypeExpert.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.runtimePolicy = {
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    }
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: prototypeExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [{
+          type: 'text',
+          text: [
+            '方案 A：记忆修复台（推荐）',
+            '方案 B：照片档案馆',
+            '方案 C：时间折叠',
+            '',
+            '这套方向是否采用方案 A「记忆修复台」？',
+          ].join('\n'),
+        }] },
+      })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<prototype-visual-ask-user-question-recovery>'),
+      ))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status',
+        state: 'thinking',
+        verb: 'Preparing the required confirmation',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+  it('recovers 原型图demo when first screenshots are not followed by a high-fidelity revision', async () => {
+    const sessionId = `prototype-visual-recovery-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const prototypeExpert: any = makeExpertRuntimeMetadata('active')
+    prototypeExpert.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.expertId = 'web-information-designer'
+    prototypeExpert.runtimeBinding.runtimePolicy = {
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    }
+    spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert: prototypeExpert } as Awaited<ReturnType<typeof sessionService.getSession>>)
+
+    try {
+      handleWebSocket.open(ws)
+      const callback = session.outputCallbacks[0]!
+      callback({
+        type: 'assistant',
+        message: { content: [
+          { type: 'tool_use', id: 'write-low', name: 'Write', input: { file_path: 'C:/tmp/01-low-fidelity.html', content: '<main>low</main>' } },
+          { type: 'tool_use', id: 'write-mid', name: 'Write', input: { file_path: 'C:/tmp/02-mid-fidelity.html', content: '<main>mid</main>' } },
+          { type: 'tool_use', id: 'write-high', name: 'Write', input: { file_path: 'C:/tmp/03-high-fidelity.html', content: '<main>high</main>' } },
+        ] },
+      })
+      for (const id of ['write-low', 'write-mid', 'write-high']) {
+        callback({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: false, content: 'File created successfully' }] } })
+      }
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) => calledSessionId === sessionId && typeof content === 'string' && content.includes('<prototype-visual-render-qa-recovery>')))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'status', state: 'thinking', verb: 'Running required prototype visual QA' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
   it('recovers an English streamed prose decision with structured AskUserQuestion guidance', async () => {
     const sessionId = `workflow-streamed-english-question-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
@@ -2005,6 +3340,64 @@ describe('WebSocket handler session isolation', () => {
       expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
         type: 'message_complete',
       }))
+      expect(sendMessage).toHaveBeenCalledWith(
+        sessionId,
+        expect.stringContaining('Continue the active phase now'),
+      )
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('keeps workflow terminal recovery active through a brief desktop disconnect and reuses the output callback on reconnect', async () => {
+    const sessionId = 'workflow-terminal-recovery-reconnect-' + crypto.randomUUID()
+    const first = makeClientSocket(sessionId)
+    const reconnected = makeClientSocket(sessionId)
+    const stateService = new WorkflowSessionStateService()
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+
+    try {
+      handleWebSocket.open(first)
+      const callback = session.outputCallbacks[0]!
+      handleWebSocket.close(first, 1001, 'network interrupted')
+
+      expect(session.outputCallbacks).toEqual([callback])
+      callback({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'Batch 2 is implemented. Starting reviewer now.' }],
+          stop_reason: 'end_turn',
+        },
+      })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<workflow-terminal-recovery>'),
+      ), 2000)
+
+      handleWebSocket.open(reconnected)
+
+      expect(session.outputCallbacks).toEqual([callback])
       expect(sendMessage).toHaveBeenCalledWith(
         sessionId,
         expect.stringContaining('Continue the active phase now'),
@@ -2750,7 +4143,7 @@ describe('WebSocket handler session isolation', () => {
     })
   })
 
-  it('returns submit completion validation errors to the model for one corrected retry without restarting the CLI', async () => {
+  it('keeps returning exact submit validation errors to managed workflows until the model corrects the payload', async () => {
     const sessionId = `workflow-submit-input-recovery-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
@@ -2775,69 +4168,64 @@ describe('WebSocket handler session isolation', () => {
     const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
-    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+    const workflowState = makeFollowUpWorkflowStageOneState(sessionId, {
+      templateId: 'feature-extension-workflow-v8',
+      phaseId: 'feature-implement',
+    })
+    await stateService.writeState(sessionId, workflowState)
 
-    const invalidResult = {
-      type: 'user',
-      message: {
-        content: [{
-          type: 'tool_result',
-          tool_use_id: 'workflow-completion-tool',
-          is_error: true,
-          content: 'InputValidationError: submit_phase_completion failed due to:\n- handoff missing\n- rationale missing\n- evidence missing',
-        }],
-      },
-    }
+    const validationErrors = [
+      'InputValidationError: submit_phase_completion failed due to:\n- handoff missing\n- rationale missing\n- evidence missing',
+      'InputValidationError: submit_phase_completion failed due to:\n- rationale missing',
+      'InputValidationError: submit_phase_completion failed due to:\n- evidence must be an array',
+    ]
 
     try {
       handleWebSocket.open(ws)
       const callback = session.outputCallbacks[0]!
-      callback(invalidResult)
-      callback({ type: 'result', is_error: true, result: invalidResult.message.content[0].content })
+      for (let index = 0; index < validationErrors.length; index += 1) {
+        const content = validationErrors[index]!
+        callback({
+          type: 'assistant',
+          message: {
+            content: [{
+              type: 'tool_use',
+              id: `workflow-completion-tool-${index}`,
+              name: 'submit_phase_completion',
+              input: {},
+            }],
+          },
+        })
+        callback({
+          type: 'user',
+          message: {
+            content: [{
+              type: 'tool_result',
+              tool_use_id: `workflow-completion-tool-${index}`,
+              is_error: true,
+              content,
+            }],
+          },
+        })
+        callback({ type: 'result', is_error: true, result: content })
+        await waitForCondition(() => sendMessage.mock.calls.length === index + 1)
+      }
 
-      await waitForCondition(() => sendMessage.mock.calls.length === 1)
-
-      expect(sendMessage).toHaveBeenCalledWith(
-        sessionId,
-        expect.stringContaining('<workflow-protocol-input-recovery>'),
-      )
-      expect(sendMessage.mock.calls[0]?.[1]).toContain('handoff (an object)')
-      expect(sendMessage.mock.calls[0]?.[1]).toContain('evidence (an array)')
+      expect(sendMessage).toHaveBeenCalledTimes(3)
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('<workflow-protocol-input-error>')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('\"missingFields\"')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('handoff')
+      expect(sendMessage.mock.calls[2]?.[1]).toContain('evidence must be an array')
+      expect(sendMessage.mock.calls[2]?.[1]).toContain('Do not resend the unchanged invalid payload')
       expect(stopSessionAndWait).not.toHaveBeenCalled()
       expect(startSession).not.toHaveBeenCalled()
       expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
         type: 'error',
         code: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
       }))
-
-      // The model receives the feedback and makes one corrected tool attempt.
-      // It is still invalid, so the runtime must fail visibly instead of looping.
-      callback({
-        type: 'assistant',
-        message: {
-          content: [{
-            type: 'tool_use',
-            id: 'workflow-completion-tool-retry',
-            name: 'submit_phase_completion',
-            input: {},
-          }],
-        },
-      })
-      callback(invalidResult)
-      callback({ type: 'result', is_error: true, result: invalidResult.message.content[0].content })
-
-      await waitForCondition(() => parseSentMessages(ws).some((message) =>
-        message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_INPUT_INVALID'
-      ))
-
-      expect(sendMessage).toHaveBeenCalledTimes(1)
-      expect(stopSessionAndWait).not.toHaveBeenCalled()
-      expect(startSession).not.toHaveBeenCalled()
-      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
-        type: 'error',
-        code: 'WORKFLOW_PROTOCOL_INPUT_INVALID',
-        retryable: true,
-      }))
+      const persisted = await stateService.readState(sessionId)
+      expect(persisted.state?.workflowStatus).toBe('running')
+      expect(persisted.state?.activePhaseId).toBe('feature-implement')
     } finally {
       conversationService.stopSession(sessionId)
     }
@@ -3208,8 +4596,8 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
-  it('fails visibly after the one permitted protocol-tool rebind retry', async () => {
-    const sessionId = `workflow-protocol-retry-exhausted-${crypto.randomUUID()}`
+  it('keeps rebinding protocol tools for managed workflows without exhausting a fixed retry count', async () => {
+    const sessionId = `workflow-protocol-retry-managed-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const session = {
@@ -3236,33 +4624,30 @@ describe('WebSocket handler session isolation', () => {
     const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
-    await stateService.writeState(sessionId, makeWorkflowState(sessionId))
+    await stateService.writeState(sessionId, makeFollowUpWorkflowStageOneState(sessionId, {
+      templateId: 'feature-extension-workflow-v8',
+      phaseId: 'feature-implement',
+    }))
 
     try {
       handleWebSocket.open(ws)
-      const callback = session.outputCallbacks[0]!
       const protocolError = {
         type: 'result',
         is_error: true,
         result: 'No such tool available: submit_phase_completion',
         usage: { input_tokens: 1, output_tokens: 1 },
       }
-      callback(protocolError)
-      await waitForCondition(() => startSession.mock.calls.length === 1)
-      const recoveredSession = (conversationService as any).sessions.get(sessionId)
-      const recoveredCallback = recoveredSession.outputCallbacks[0] as (msg: any) => void
-      recoveredCallback(protocolError)
+      session.outputCallbacks[0]!(protocolError)
+      await waitForCondition(() => startSession.mock.calls.length === 1 && sendMessage.mock.calls.length === 1)
+      const firstRecovered = (conversationService as any).sessions.get(sessionId)
+      ;(firstRecovered.outputCallbacks[0] as (msg: any) => void)(protocolError)
+      await waitForCondition(() => startSession.mock.calls.length === 2 && sendMessage.mock.calls.length === 2)
 
-      await waitForCondition(() => parseSentMessages(ws).some((message) =>
-        message.type === 'error' && message.code === 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE'
-      ))
-
-      expect(startSession).toHaveBeenCalledTimes(1)
-      expect(sendMessage).toHaveBeenCalledTimes(1)
-      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+      expect(startSession).toHaveBeenCalledTimes(2)
+      expect(sendMessage).toHaveBeenCalledTimes(2)
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
         type: 'error',
         code: 'WORKFLOW_PROTOCOL_TOOLS_UNAVAILABLE',
-        retryable: true,
       }))
     } finally {
       conversationService.stopSession(sessionId)
@@ -3321,7 +4706,7 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
-  it('allows one additional bounded recovery before reporting a repeated prose-only workflow end', async () => {
+  it('keeps automatically continuing a workflow after repeated empty or prose-only ends', async () => {
     const sessionId = `workflow-prose-question-repeat-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
@@ -3367,18 +4752,17 @@ describe('WebSocket handler session isolation', () => {
 
       callback({
         type: 'assistant',
-        message: { content: [{ type: 'text', text: '我还需要你的决定。' }] },
+        message: { content: [] },
       })
       callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
 
-      await waitForCondition(() => parseSentMessages(ws).some((message) =>
-        message.type === 'error'
-        && message.code === 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED'
-      ))
+      await waitForCondition(() => sendMessage.mock.calls.length === 3)
 
-      expect(sendMessage).toHaveBeenCalledTimes(2)
+      expect(sendMessage).toHaveBeenCalledTimes(3)
+      expect(sendMessage.mock.calls[2]?.[1]).toContain('The previous model turn was completely empty')
+      expect(sendMessage.mock.calls[2]?.[1]).toContain('A prior internal continuation did not create workflow state.')
       expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
-      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
         type: 'error',
         code: 'WORKFLOW_TERMINAL_PROTOCOL_REQUIRED',
       }))
@@ -4115,6 +5499,70 @@ describe('WebSocket handler Expert research-delivery terminal recovery', () => {
     }
   })
 })
+describe('WebSocket handler AskUserQuestion reconnect replay', () => {
+  afterEach(() => {
+    __resetWebSocketHandlerStateForTests()
+    mock.restore()
+  })
+
+  it('replays both the AskUserQuestion card event and its permission request', () => {
+    const sessionId = `workflow-question-replay-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const questionInput = {
+      questions: [{
+        id: 'ui-direction',
+        prompt: 'Which UI direction should the first version use?',
+        choices: [{ id: 'simple', label: 'Simple default', description: 'Keep it practical.' }],
+      }],
+    }
+    const session = {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map([[
+        'replayed-question-request',
+        {
+          toolName: 'AskUserQuestion',
+          toolUseId: 'replayed-question-tool-use',
+          input: questionInput,
+        },
+      ]]),
+    }
+    ;(conversationService as any).sessions.set(sessionId, session)
+
+    try {
+      handleWebSocket.open(ws)
+
+      const sent = parseSentMessages(ws)
+      const toolIndex = sent.findIndex((message) => (
+        message.type === 'tool_use_complete'
+        && message.toolName === 'AskUserQuestion'
+        && message.toolUseId === 'replayed-question-tool-use'
+      ))
+      const permissionIndex = sent.findIndex((message) => (
+        message.type === 'permission_request'
+        && message.toolName === 'AskUserQuestion'
+        && message.toolUseId === 'replayed-question-tool-use'
+      ))
+      expect(toolIndex).toBeGreaterThanOrEqual(0)
+      expect(permissionIndex).toBeGreaterThan(toolIndex)
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+})
+
 describe('WebSocket handler workflow runtime gating', () => {
   afterEach(() => {
     __resetWebSocketHandlerStateForTests()
@@ -4270,7 +5718,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'user_message',
       content: 'Please inspect the project health.',
     }))
-    await flushAsyncHandlers()
+    await waitForCondition(() => parseSentMessages(ws).some(message => message.type === 'error' && message.code === 'EXPERT_RUNTIME_BINDING_MISSING'))
 
     expect(sendMessage).not.toHaveBeenCalled()
     expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
@@ -4687,6 +6135,87 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(workflowSystemPrompt).not.toContain('active phase requirements-clarification')
   })
 
+  it('Expert activation waits for an unfinished prewarm before changing its binding', async () => {
+    const sessionId = crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    let running = false
+    let expert: any
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const start = spyOn(conversationService, 'startSession').mockImplementation(async () => { await gate; running = true })
+    const stop = spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async () => { running = false })
+    spyOn(conversationService, 'hasSession').mockImplementation(() => running)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockImplementation(async () => ({ id: sessionId, workDir: process.cwd(), expert } as any))
+    const append = spyOn(sessionService, 'appendSessionMetadata').mockImplementation(async (_id, metadata) => { if (metadata.expert) expert = metadata.expert })
+    spyOn(expertRuntimeSessionStore, 'save').mockResolvedValue()
+    spyOn(expertRuntimeSessionStore, 'get').mockResolvedValue(undefined)
+    const definition = { id: 'startup-expert', name: 'Startup expert', packId: 'startup-pack', packVersion: '1', tools: [] } as any
+    spyOn(ExpertPackRegistryService.prototype, 'getExpert').mockResolvedValue(definition)
+    spyOn(ExpertRuntimeService.prototype, 'loadContext').mockResolvedValue({ expert: definition, prompts: { system: 'Write the brief, then dispatch research.' }, skills: [], hostTools: [], permissions: [] } as any)
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({ type: 'prewarm_session' }))
+    await waitForCondition(() => start.mock.calls.length === 1, 2000)
+    const entering = new ExpertSessionService().enterExpertMode(sessionId, 'startup-expert')
+    try {
+      await new Promise(resolve => setTimeout(resolve, 30))
+      expect(append).not.toHaveBeenCalled()
+      expect(stop).not.toHaveBeenCalled()
+    } finally {
+      release()
+      await entering
+    }
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(running).toBe(false)
+    expect(expert.runtimeBinding.promptSnapshot).toBe('Write the brief, then dispatch research.')
+  })
+
+  it('starts every active Expert with full main and delegated-agent tool access', async () => {
+    const sessionId = `expert-full-tool-access-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(false)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      title: 'Expert session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: process.cwd(),
+      projectRoot: null,
+      workDir: process.cwd(),
+      workDirExists: true,
+      messages: [],
+      expert: makeExpertRuntimeMetadata('active'),
+    })
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'user_message',
+      content: 'Inspect the project with the Expert.',
+    }))
+    await waitForCondition(() => startSession.mock.calls.length > 0)
+
+    const sessionSettings = startSession.mock.calls[0]?.[3]
+    expect(sessionSettings).toMatchObject({ expertFullToolAccess: true })
+    expect(sessionSettings?.disallowedTools ?? []).not.toEqual(expect.arrayContaining([
+      'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebSearch', 'Agent', 'Skill',
+    ]))
+  })
+
   for (const workflow of [
     {
       name: 'development',
@@ -4994,16 +6523,18 @@ describe('WebSocket handler workflow runtime gating', () => {
     }
   })
 
-  it('rejects a scoped workflow artifact write outside .workflow before it reaches the CLI', async () => {
-    const sessionId = `workflow-scoped-artifact-write-${crypto.randomUUID()}`
+  it('gives skills-development one recovery instruction after an external artifact Write', async () => {
+    const sessionId = `skills-development-artifact-write-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const state = makeFollowUpWorkflowStageOneState(sessionId, {
-      templateId: 'artifact-write-fixture',
+      templateId: 'skills-development',
       phaseId: 'scope-plan',
       toolPolicy: { allowedTools: ['workflow_artifact_write'] },
     })
     await new WorkflowSessionStateService().writeState(sessionId, state)
     const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
     spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
       requestId: 'artifact-write-request',
       toolName: 'Write',
@@ -5024,11 +6555,284 @@ describe('WebSocket handler workflow runtime gating', () => {
       && message.status === 'rejected'
     )))
 
-    expect(respondToPermission).toHaveBeenCalledWith(sessionId, 'artifact-write-request', false)
+    expect(respondToPermission).toHaveBeenCalledWith(
+      sessionId,
+      'artifact-write-request',
+      false,
+      undefined,
+      undefined,
+      expect.stringContaining('workspace-relative .workflow/...'),
+    )
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('<workflow-artifact-write-recovery>'),
+    )
+    expect(sendMessage).toHaveBeenCalledWith(
+      sessionId,
+      expect.stringContaining('Do not write src, public, the repository root'),
+    )
     expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+      type: 'permission_response_ack',
+      status: 'rejected',
+      message: expect.stringContaining('workspace-relative .workflow/...'),
+    }))
+    expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
       type: 'error',
       code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
     }))
+  })
+
+  it('keeps efficient-constrained-dev-debug-workflow-v5 on its original terminal artifact-write denial path', async () => {
+    const sessionId = `efficient-artifact-write-isolation-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+    const refinementConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-efficient-artifact-isolation-'))
+    process.env.CLAUDE_CONFIG_DIR = refinementConfigDir
+    try {
+      const state = makeFollowUpWorkflowStageOneState(sessionId, {
+        templateId: 'efficient-constrained-dev-debug-workflow-v5',
+        phaseId: 'scenario-review',
+        toolPolicy: { allowedTools: ['workflow_artifact_write'] },
+      })
+      await new WorkflowSessionStateService().writeState(sessionId, state)
+      const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+      const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+      spyOn(conversationService, 'hasSession').mockReturnValue(true)
+      spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
+        requestId: 'efficient-artifact-write-request',
+        toolName: 'Write',
+        input: { file_path: '.workflow/runs/run-001/quality-report.md' },
+      }])
+      spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'permission_response',
+        requestId: 'efficient-artifact-write-request',
+        allowed: true,
+        updatedInput: { file_path: 'C:/Temp/qa-smoke-state.ts' },
+      }))
+      await waitForCondition(() => parseSentMessages(ws).some((message) => (
+        message.type === 'error'
+        && message.code === 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN'
+      )))
+
+      expect(respondToPermission).toHaveBeenCalledWith(
+        sessionId,
+        'efficient-artifact-write-request',
+        false,
+      )
+      expect(sendMessage).not.toHaveBeenCalled()
+      const terminalError = parseSentMessages(ws).find((message) => (
+        message.type === 'error'
+        && message.code === 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN'
+      ))
+      expect(terminalError).toMatchObject({
+        type: 'error',
+        code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
+        message: 'This workflow phase may write only session-internal .workflow artifacts. Production files and unknown paths remain blocked until a phase explicitly grants normal edit capability.',
+      })
+      expect(terminalError).not.toHaveProperty('retryable')
+      await expect(fs.access(path.join(
+        refinementConfigDir,
+        'cc-jiangxia',
+        'workflow-refinements',
+        'efficient-constrained-dev-debug-workflow-v5',
+        'ledger.json',
+      ))).rejects.toThrow()
+    } finally {
+      if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+      else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+      await fs.rm(refinementConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it('bounds skills-development artifact-write recovery after the same phase retries an external Write', async () => {
+    const sessionId = `skills-development-artifact-write-bounded-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const state = makeFollowUpWorkflowStageOneState(sessionId, {
+      templateId: 'skills-development',
+      phaseId: 'scenario-review',
+      toolPolicy: { allowedTools: ['workflow_artifact_write'] },
+    })
+    await new WorkflowSessionStateService().writeState(sessionId, state)
+    const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
+      requestId: 'artifact-write-request-1',
+      toolName: 'Write',
+      input: { file_path: '.workflow/runs/run-001/quality-report.md' },
+    }, {
+      requestId: 'artifact-write-request-2',
+      toolName: 'Write',
+      input: { file_path: '.workflow/runs/run-001/quality-report.md' },
+    }])
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+    handleWebSocket.open(ws)
+    for (const requestId of ['artifact-write-request-1', 'artifact-write-request-2']) {
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'permission_response',
+        requestId,
+        allowed: true,
+        updatedInput: { file_path: 'C:/Temp/qa-smoke-state.ts' },
+      }))
+      await waitForCondition(() => respondToPermission.mock.calls.length >= (requestId.endsWith('-1') ? 1 : 2))
+    }
+
+    expect(respondToPermission).toHaveBeenCalledTimes(2)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+      type: 'error',
+      code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
+      retryable: false,
+    }))
+  })
+
+  it('unlocks one later skills-development artifact-write recovery after a compliant .workflow Write makes progress', async () => {
+    const sessionId = `skills-development-artifact-write-progress-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const state = makeFollowUpWorkflowStageOneState(sessionId, {
+      templateId: 'skills-development',
+      phaseId: 'scenario-review',
+      toolPolicy: { allowedTools: ['workflow_artifact_write'] },
+    })
+    await new WorkflowSessionStateService().writeState(sessionId, state)
+    const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([
+      { requestId: 'progress-denied-1', toolName: 'Write', input: { file_path: '.workflow/runs/run-001/quality-report.md' } },
+      { requestId: 'progress-safe', toolName: 'Write', input: { file_path: '.workflow/runs/run-001/quality-report.md' } },
+      { requestId: 'progress-denied-2', toolName: 'Write', input: { file_path: '.workflow/runs/run-001/quality-report.md' } },
+    ])
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+    handleWebSocket.open(ws)
+    for (const [requestId, filePath] of [
+      ['progress-denied-1', 'C:/Temp/qa-smoke-one.ts'],
+      ['progress-safe', '.workflow/runs/run-001/quality-report.md'],
+      ['progress-denied-2', 'C:/Temp/qa-smoke-two.ts'],
+    ]) {
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'permission_response',
+        requestId,
+        allowed: true,
+        updatedInput: { file_path: filePath },
+      }))
+      await waitForCondition(() => respondToPermission.mock.calls.length >= (requestId === 'progress-denied-1' ? 1 : requestId === 'progress-safe' ? 2 : 3))
+    }
+
+    expect(sendMessage).toHaveBeenCalledTimes(2)
+    expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+      type: 'error',
+      code: 'WORKFLOW_ARTIFACT_WRITE_FORBIDDEN',
+    }))
+  })
+
+  it('records an observed skills-development tool-contract refinement after a blocked external Write', async () => {
+    const sessionId = `skills-development-artifact-ledger-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+    const refinementConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-artifact-ledger-'))
+    process.env.CLAUDE_CONFIG_DIR = refinementConfigDir
+    try {
+      const state = makeFollowUpWorkflowStageOneState(sessionId, {
+        templateId: 'skills-development',
+        phaseId: 'scenario-review',
+        toolPolicy: { allowedTools: ['workflow_artifact_write'] },
+      })
+      await new WorkflowSessionStateService().writeState(sessionId, state)
+      spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+      spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+      spyOn(conversationService, 'hasSession').mockReturnValue(true)
+      spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
+        requestId: 'skills-artifact-write-request',
+        toolName: 'Write',
+        input: { file_path: '.workflow/runs/run-001/quality-report.md' },
+      }])
+      spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'permission_response',
+        requestId: 'skills-artifact-write-request',
+        allowed: true,
+        updatedInput: { file_path: 'C:/Temp/qa-smoke-state.ts' },
+      }))
+      const ledgerPath = path.join(
+        refinementConfigDir,
+        'cc-jiangxia',
+        'workflow-refinements',
+        'skills-development',
+        'ledger.json',
+      )
+      let ledgerText = ''
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          ledgerText = await fs.readFile(ledgerPath, 'utf-8')
+          break
+        } catch {
+          await flushAsyncHandlers()
+        }
+      }
+      expect(ledgerText).toBeTruthy()
+
+      const ledger = JSON.parse(ledgerText) as { records: Array<Record<string, unknown>> }
+      expect(ledger.records).toEqual([expect.objectContaining({
+        templateId: 'skills-development',
+        phaseId: 'scenario-review',
+        kind: 'tool-contract',
+        status: 'observed',
+        sourceSessionId: sessionId,
+      })])
+    } finally {
+      if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+      else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+      await fs.rm(refinementConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it('allows a scoped workflow artifact Write under .workflow without recovery', async () => {
+    const sessionId = `workflow-scoped-artifact-write-safe-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const state = makeFollowUpWorkflowStageOneState(sessionId, {
+      templateId: 'artifact-write-fixture',
+      phaseId: 'scenario-review',
+      toolPolicy: { allowedTools: ['workflow_artifact_write'] },
+    })
+    await new WorkflowSessionStateService().writeState(sessionId, state)
+    const respondToPermission = spyOn(conversationService, 'respondToPermission').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(conversationService, 'getPendingPermissionRequests').mockReturnValue([{
+      requestId: 'artifact-write-safe-request',
+      toolName: 'Write',
+      input: { file_path: '.workflow/runs/run-001/quality-report.md' },
+    }])
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'artifact-write-safe-request',
+      allowed: true,
+      updatedInput: { file_path: '.workflow/runs/run-001/quality-report.md' },
+    }))
+    await waitForCondition(() => parseSentMessages(ws).some((message) => (
+      message.type === 'permission_response_ack'
+      && message.requestId === 'artifact-write-safe-request'
+      && message.status === 'accepted'
+    )))
+
+    expect(respondToPermission).toHaveBeenCalledWith(
+      sessionId,
+      'artifact-write-safe-request',
+      true,
+      undefined,
+      { file_path: '.workflow/runs/run-001/quality-report.md' },
+    )
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('accepts idempotent workflow retry transition commands for workflow sessions', async () => {
@@ -5489,6 +7293,55 @@ describe('WebSocket handler workflow runtime gating', () => {
     )?.[1]
     expect(autoContinuePrompt).toContain('Context boundary: use only accepted handoff materials')
     expect(autoContinuePrompt).toContain('Do not rely on inherited transcript history')
+  })
+
+  it('waits for a prewarm startup to settle before applying a runtime selection', async () => {
+    const sessionId = `runtime-after-prewarm-d225a278-9cd3-42e9-923b-d9a752b93901`
+    const ws = makeClientSocket(sessionId)
+    let cliSessionRunning = false
+    let startCount = 0
+    let releaseInitialStartup: (() => void) | undefined
+    const initialStartup = new Promise<void>((resolve) => {
+      releaseInitialStartup = resolve
+    })
+    const startSession = spyOn(conversationService, 'startSession').mockImplementation(async () => {
+      startCount += 1
+      cliSessionRunning = true
+      if (startCount === 1) await initialStartup
+    })
+    const stopSessionAndWait = spyOn(conversationService, 'stopSessionAndWait').mockImplementation(async () => {
+      cliSessionRunning = false
+    })
+    spyOn(conversationService, 'hasSession').mockImplementation(() => cliSessionRunning)
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue(process.cwd())
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({ type: 'prewarm_session' }))
+    await waitForCondition(() => startSession.mock.calls.length === 1)
+
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'deepseek-v4-flash',
+    }))
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(stopSessionAndWait).not.toHaveBeenCalled()
+    expect(startSession).toHaveBeenCalledTimes(1)
+
+    releaseInitialStartup?.()
+    await waitForCondition(() => (
+      stopSessionAndWait.mock.calls.length === 1 && startSession.mock.calls.length === 2
+    ))
+
+    expect(startSession.mock.calls[1]?.[3]).toEqual(expect.objectContaining({
+      providerId: null,
+      model: 'deepseek-v4-flash',
+    }))
   })
 
   it('restarts an active CLI when the same runtime selection is force-reapplied', async () => {
@@ -6328,4 +8181,387 @@ describe('WebSocket handler workflow runtime gating', () => {
       }),
     }))
   })
+})
+
+
+describe('strict UIUX real image delivery gate', () => {
+  function makeStrictImageSession(sessionId: string) {
+    return {
+      proc: { kill() {}, exited: Promise.resolve(0) },
+      outputCallbacks: [] as Array<(msg: any) => void>,
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'sdk-token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      startupPending: false,
+      startupExitCode: null,
+      stdoutLines: [],
+      stderrLines: [],
+      outputDrain: Promise.resolve(),
+      sdkMessages: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+  }
+
+  function configureStrictImageExpert(sessionId: string, imageOnly = false) {
+    const strictVisualExpert: any = makeExpertRuntimeMetadata('active')
+    strictVisualExpert.expertId = 'uiux-design-system-expert'
+    strictVisualExpert.runtimeBinding.expertId = 'uiux-design-system-expert'
+    if (imageOnly) {
+      strictVisualExpert.packId = 'uiux-design-system-expert'
+      strictVisualExpert.runtimeBinding.packId = 'uiux-design-system-expert'
+      strictVisualExpert.runtimeBinding.outputProtocol = { path: 'output-protocol.json', content: JSON.stringify({ deliveryMode: 'generated-image-only' }) }
+    }
+    strictVisualExpert.runtimeBinding.runtimePolicy = {
+      mode: 'strict-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'image_generation'],
+      requiredSkillIds: ['taste-redesign', 'impeccable-visual-refinement', 'ui-craft-critique', 'ui-craft-finalize', 'source-fidelity-final-pass'],
+    }
+    return spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      workDir: process.cwd(),
+      expert: strictVisualExpert,
+    } as Awaited<ReturnType<typeof sessionService.getSession>>)
+  }
+
+  it.each(['html', 'failure', 'plain-completion'])('UIUX image-only routes %s to image handling, never browser-render recovery', async (scenario) => {
+    const sessionId = 'uiux-only-' + crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId, true)
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({ type: 'user_message', content: 'Create and deliver a final PNG visual redesign.' }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      await waitForCondition(() => sendMessage.mock.calls.some(([, text]) => text === 'Create and deliver a final PNG visual redesign.'))
+      sendMessage.mockClear()
+      const emit = session.outputCallbacks[0]!
+      const use = (id: string, name: string, input: unknown) => emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } })
+      if (scenario === 'html') {
+        use('bad-html', 'Write', { file_path: 'C:/tmp/uiux.html', content: '<!doctype html><html><body>page</body></html>' })
+        emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'bad-html', content: 'written' }] } })
+      }
+      if (scenario === 'failure') {
+        use('failed-generate', 'image_generation', { operation: 'generate', prompt: 'A specific design' })
+        emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'failed-generate', content: 'Image generation status: failed. Provider unavailable.' }] } })
+      }
+      emit({ type: 'assistant', message: { content: [{ type: 'text', text: '已处理。' }] } })
+      emit({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => sendMessage.mock.calls.length > 0)
+      const recovery = String(sendMessage.mock.calls.at(-1)?.[1])
+      expect(recovery).toContain('UIUX_GENERATED_IMAGE_ONLY')
+      expect(recovery).not.toContain('image_generation_fallback')
+      expect(recovery).not.toContain('1440x1000')
+      expect(recovery).toContain(scenario === 'failure' ? 'do not automatically retry' : 'operation="generate"')
+    } finally { conversationService.stopSession(sessionId) }
+  })
+
+  it.each(['unread', 'failed', 'previous-turn', 'already-read'])('UIUX image-only recovers the exact latest WebP: %s', async (scenario) => {
+    const sessionId = 'uiux-latest-preview-' + crypto.randomUUID()
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const sessionSpy = configureStrictImageExpert(sessionId, true)
+    const storedSession = await sessionService.getSession(sessionId)
+    const persisted: any[] = []
+    const previewFailed = scenario === 'failed' || scenario === 'previous-turn'
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({ type: 'user_message', content: 'Create and deliver a final PNG visual redesign.' }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      await waitForCondition(() => sendMessage.mock.calls.some(([, text]) => text === 'Create and deliver a final PNG visual redesign.'))
+      sendMessage.mockClear()
+      const emit = session.outputCallbacks[0]!
+      const record = (role: 'assistant' | 'user', block: any) => {
+        if (scenario === 'previous-turn') persisted.push({ id: crypto.randomUUID(), type: block.type, content: block, timestamp: new Date().toISOString() })
+        else emit({ type: role, message: { content: [block] } })
+      }
+      const use = (id: string, name: string, input: unknown) => record('assistant', { type: 'tool_use', id, name, input })
+      const result = (id: string, content: unknown, is_error = false) => record('user', { type: 'tool_result', tool_use_id: id, content, is_error })
+      use('first', 'image_generation', { operation: 'generate' })
+      result('first', 'Image generation status: generated.\nImage: C:/tmp/old.png')
+      use('latest', 'image_generation', { operation: 'generate' })
+      result('latest', 'Image generation status: generated.\nImage: C:/tmp/latest.webp')
+      if (previewFailed) {
+        use('latest-read', 'Read', { file_path: 'C:/tmp/latest.webp' })
+        result('latest-read', 'IMAGE_PROCESSOR_UNAVAILABLE: failed to create bounded preview', true)
+      }
+      if (scenario === 'previous-turn') sessionSpy.mockResolvedValue({ ...storedSession!, messages: persisted })
+      if (scenario === 'already-read') {
+        use('read-success', 'Read', { file_path: 'C:/tmp/latest.webp' })
+        result('read-success', [{ type: 'image', source: { type: 'base64', media_type: 'image/webp', data: 'dGVzdA==' } }])
+      }
+      emit({ type: 'assistant', message: { content: [{ type: 'text', text: '图片已生成，尚未完成像素复审。' }] } })
+      emit({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => sendMessage.mock.calls.length > 0)
+      const recovery = String(sendMessage.mock.calls.at(-1)?.[1])
+      expect(recovery).toContain('C:/tmp/latest.webp')
+      expect(recovery).not.toContain('C:/tmp/old.png')
+      expect(recovery).toContain('Do not regenerate')
+      if (scenario === 'already-read') expect(recovery).toContain('Reuse those pixels')
+      if (previewFailed) {
+        expect(recovery).toContain('AskUserQuestion')
+        expect(recovery).toContain('repair_preview_then_read')
+        expect(recovery).not.toContain('configure-then-retry')
+      }
+    } finally { conversationService.stopSession(sessionId) }
+  })
+
+  it('recovers a final visual request that skips real image generation instead of accepting HTML-like delivery prose', async () => {
+    const sessionId = `strict-uiux-image-required-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Create and deliver a final PNG visual redesign.',
+      }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId && content === 'Create and deliver a final PNG visual redesign.',
+      ))
+      const callback = session.outputCallbacks[0]!
+      callback({ type: 'assistant', message: { content: [{ type: 'text', text: 'Final visual delivered.' }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+      await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
+        calledSessionId === sessionId
+        && typeof content === 'string'
+        && content.includes('<strict-visual-image-generation-recovery>'),
+      ))
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'status', state: 'thinking', verb: 'Generating the required real image',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it('recovers a real image delivery when the final generated image was not Read as bounded visual input', async () => {
+    const sessionId = `strict-uiux-image-unreviewed-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Create and deliver a final PNG visual redesign.',
+      }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      const callback = session.outputCallbacks[0]!
+      sendMessage.mockClear()
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'generate-real-image', name: 'image_generation', input: { operation: 'generate', prompt: 'A source-faithful polished membership page visual' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'generate-real-image', is_error: false, content: [{
+          type: 'text', text: 'Image generation status: generated.\nImage: C:/tmp/generated-membership.png',
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text',
+        text: '<generated-image-review-receipt>taste-redesign; impeccable-visual-refinement; ui-craft-critique; ui-craft-finalize; source-fidelity-final-pass. visual-register: focused editorial conversion hierarchy. removed: a generic gradient hero. source-fidelity: source labels were checked; duplicate scan: none. image_generation produced the final generated image.</generated-image-review-receipt> Final image delivered.',
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([, content]) =>
+        typeof content === 'string' && content.includes('<strict-visual-image-generation-review-recovery>'),
+      ))
+      expect(sendMessage.mock.calls.some(([, content]) =>
+        typeof content === 'string' && content.includes('Immediately call Read exactly once on the returned Image path'),
+      )).toBe(true)
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it.each([{ imageOnly: false, structured: false, verdict: 'PASS' }, { imageOnly: true, structured: true, verdict: 'PASS' }, { imageOnly: true, structured: true, verdict: 'NEEDS_WORK' }, { imageOnly: true, structured: false, verdict: 'PASS' }, { imageOnly: true, structured: true, verdict: 'PASS', premature: true }, { imageOnly: true, structured: true, verdict: 'PASS', wrongRead: true }])('validates structured UIUX image review while preserving legacy review (%j)', async ({ imageOnly, structured, verdict, premature = false, wrongRead = false }) => {
+    const sessionId = `strict-uiux-image-reviewed-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId, imageOnly)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Create and deliver a final PNG visual redesign.',
+      }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      const callback = session.outputCallbacks[0]!
+      sendMessage.mockClear()
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'generate-real-image', name: 'image_generation', input: { operation: 'generate', prompt: 'A source-faithful polished membership page visual' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'generate-real-image', is_error: false, content: [{
+          type: 'text', text: 'Image generation status: generated.\nImage: C:/tmp/generated-membership.png',
+        }],
+      }] } })
+      const reviewText = structured ? '<generated-image-review-receipt>' + JSON.stringify({ ...uiuxImageReviewFixture, status: verdict, remainingIssues: verdict === 'NEEDS_WORK' ? ['The small footer text remains unclear in this image'] : [] }) + '</generated-image-review-receipt>' : '<generated-image-review-receipt>taste-redesign; impeccable-visual-refinement; ui-craft-critique; ui-craft-finalize; source-fidelity-final-pass. visual-register: focused hierarchy. removed: gradient hero. source-fidelity: checked. duplicate scan: none. image_generation.</generated-image-review-receipt>'
+      if (premature) callback({ type: 'assistant', message: { content: [{ type: 'text', text: reviewText }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'review-generated-image', name: 'Read', input: { file_path: 'C:/tmp/generated-membership.png' + (wrongRead ? '.old' : '') },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'review-generated-image', is_error: false, content: [{
+          type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'dGVzdA==' },
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text',
+        text: premature ? 'Final image delivered.' : reviewText,
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      if (imageOnly && (!structured || premature || wrongRead)) await waitForCondition(() => sendMessage.mock.calls.some(([, content]) => typeof content === 'string' && content.includes('<strict-visual-image-generation-review-recovery>')))
+      else await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(sendMessage.mock.calls.some(([, content]) => typeof content === 'string' && content.includes('<strict-visual-image-generation-review-recovery>'))).toBe(imageOnly && (!structured || premature || wrongRead))
+      if (!imageOnly || (structured && !premature && !wrongRead)) expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'message_complete' }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+  it('requires a bounded visual preview for the latest generated revision, not a prior image', async () => {
+    const sessionId = `strict-uiux-image-latest-preview-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Create and deliver a final PNG visual redesign.',
+      }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      const callback = session.outputCallbacks[0]!
+      sendMessage.mockClear()
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'generate-first-image', name: 'image_generation', input: { operation: 'generate', prompt: 'first visual' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'generate-first-image', is_error: false, content: [{
+          type: 'text', text: 'Image generation status: generated.\nImage: C:/tmp/first.png',
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'read-first-image', name: 'Read', input: { file_path: 'C:/tmp/first.png' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'read-first-image', is_error: false, content: [{
+          type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'dGVzdA==' },
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'generate-final-image', name: 'image_generation', input: { operation: 'generate', prompt: 'revised final visual' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'generate-final-image', is_error: false, content: [{
+          type: 'text', text: 'Image generation status: generated.\nImage: C:/tmp/final.png',
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text',
+        text: '<generated-image-review-receipt>taste-redesign; impeccable-visual-refinement; ui-craft-critique; ui-craft-finalize; source-fidelity-final-pass. visual-register: focused editorial conversion hierarchy. removed: a generic gradient hero. source-fidelity: source labels were checked; duplicate scan: none. image_generation produced the final generated image.</generated-image-review-receipt> Final image delivered.',
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([, content]) =>
+        typeof content === 'string' && content.includes('<strict-visual-image-generation-review-recovery>'),
+      ))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+  it.each([false, true])('settles an exhausted generated-image review recovery without a red protocol error (imageOnly=%s)', async (imageOnly) => {
+    const sessionId = `strict-uiux-image-review-settles-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const session = makeStrictImageSession(sessionId)
+    ;(conversationService as any).sessions.set(sessionId, session)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    configureStrictImageExpert(sessionId, imageOnly)
+
+    try {
+      handleWebSocket.open(ws)
+      handleWebSocket.message(ws, JSON.stringify({
+        type: 'user_message',
+        content: 'Create and deliver a final PNG visual redesign.',
+      }))
+      await waitForCondition(() => session.outputCallbacks.length === 1)
+      const callback = session.outputCallbacks[0]!
+      sendMessage.mockClear()
+
+      callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'generate-real-image', name: 'image_generation', input: { operation: 'generate', prompt: 'source-faithful visual' },
+      }] } })
+      callback({ type: 'user', message: { content: [{
+        type: 'tool_result', tool_use_id: 'generate-real-image', is_error: false, content: [{
+          type: 'text', text: 'Image generation status: generated.\nImage: C:/tmp/generated-membership.png',
+        }],
+      }] } })
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text', text: 'The image was generated, but the visual preview is unavailable.',
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => sendMessage.mock.calls.some(([, content]) =>
+        typeof content === 'string' && content.includes('<strict-visual-image-generation-review-recovery>'),
+      ))
+
+      callback({ type: 'assistant', message: { content: [{
+        type: 'text', text: 'I still cannot complete the pixel review for the generated image.',
+      }] } })
+      callback({ type: 'result', is_error: false, usage: { input_tokens: 1, output_tokens: 1 } })
+
+      await waitForCondition(() => parseSentMessages(ws).some((message) =>
+        message.type === 'system_notification' && message.subtype === 'strict_visual_incomplete',
+      ))
+
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
+        type: 'system_notification',
+        subtype: 'strict_visual_incomplete',
+        data: { code: 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED' },
+      }))
+      if (imageOnly) expect(JSON.stringify(parseSentMessages(ws))).toContain('不要因此重新生成或修改生图配置')
+      expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({ type: 'status', state: 'idle' }))
+      expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        code: 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED',
+      }))
+    } finally {
+      conversationService.stopSession(sessionId)
+    }
+  })
+
+
+})
+
+
+it('required-route recovery explicitly requests targeted evidence instead of another source-library batch', () => {
+  const instruction = buildIncompleteRequiredRouteRecoveryInstruction({
+    kind: 'recover-incomplete-required-routes', recoveries: [],
+  })
+  expect(instruction).toContain('research_task_kind: "targeted-evidence"')
+  expect(instruction).toContain('ordinary planned platform work')
+  expect(instruction).toContain('checkpoint saves do not end remaining assigned tasks')
+  expect(instruction).not.toContain('inject the correct source package')
 })

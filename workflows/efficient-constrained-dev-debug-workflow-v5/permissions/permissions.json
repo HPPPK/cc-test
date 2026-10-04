@@ -1,0 +1,658 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "efficient-constrained-dev-debug-workflow-v5",
+      "phases": [
+        {
+          "id": "route-context",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "workspace-validation",
+              "source-material-identification",
+              "app-framing"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "detailed feature design",
+              "ui detail design",
+              "implementation planning",
+              "subagent coding"
+            ],
+            "completionRequires": [
+              "Stage 1 can complete only when: workspace is valid; the user accepted all recommended app-framing fields or adjusted selected fields and confirmed the final summary; the final app-framing summary includes all eight fields plus appFormat, companionComponents, sourceMaterialType, sourceMaterialAccessStatus, and uiDirectionNeeded when applicable; sourceMaterialLocation and sourceMaterialHandlingHint are recorded when material is provided or mentioned; sourceMaterialAccessStatus records inaccessible or permission-needed material; any explicit user-specified platform, app type, delivery form, or code migration target was preserved or explicitly changed by the user; platformRiskForStage2 is recorded when platform capabilities or messaging/automation permissions need clarification; .workflow/project-context.md is created or updated; .workflow/work-order.md contains the confirmed app-framing block; no production files were edited; no dependency/database/deployment action was performed.",
+              "Handoff confirmed app framing to the next phase: appFormat, companionComponents, sourceMaterialType, sourceMaterialLocation, sourceMaterialAccessStatus, sourceMaterialHandlingHint, uiDirectionNeeded, usageMode, runtimeExpectation, dataPersistence, authAndRoles, projectMode, workspace validity, allowed operations, dangerous operations requiring confirmation, recommended tech-stack strategy, and platformRiskForStage2 when platform capability, messaging, automation, permission, or policy questions need Stage 2 clarification.",
+              "Do not proceed to detailed feature brainstorming until appFraming is confirmed.",
+              "The next phase may discuss product scope, source material extraction, UI/UX direction, or brainstorming only after app framing is confirmed.",
+              "The next phase must use .workflow/project-context.md and .workflow/work-order.md as the source of truth.",
+              "Handoff app framing must preserve appFormat, companionComponents, sourceMaterialType, sourceMaterialLocation, sourceMaterialAccessStatus, sourceMaterialHandlingHint, uiDirectionNeeded, usageMode, runtimeExpectation, dataPersistence, authAndRoles, projectMode, allowedOperations, techStackStrategy, and platformRiskForStage2 when applicable.",
+              "If critical source material is unreadable, handoff must record sourceMaterialType, sourceMaterialLocation, sourceMaterialAccessStatus, sourceMaterialHandlingHint, uiDirectionNeeded when applicable, the user-selected material handling path, and any text-description fallback before proceeding.",
+              "Do not hand off to product scope while an important source material access issue remains unresolved unless the user explicitly chose to continue from text description or to ignore that material for now.",
+              "Handoff a Stage 1 Context Capsule containing confirmed requirements, user decisions, workspace and operation boundaries, source-material status, unresolved risks, and next-stage obligations."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "scope-plan",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "product-discovery",
+              "scope-lock",
+              "source-material-analysis",
+              "ui-ux-direction"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "implementation planning",
+              "target file planning",
+              "database schema design",
+              "api route design",
+              "component structure design",
+              "css implementation planning",
+              "subagent coding"
+            ],
+            "completionRequires": [
+              "Stage 2 can complete only when: Stage 1 appFraming exists; sourceMaterialSummary exists when sourceMaterialType is not none; sourceMaterialFindings exist when available material can be extracted; uiUxDirection exists when UI/prototype/reference material exists or uiDirectionNeeded is true; referencePolicy exists for referenceWebsite; equivalence and behavior-preservation criteria exist for codeMigration; product scope is confirmed or explicitly adjusted/skipped with a reason; .workflow/work-order.md contains productScope, userRoles, coreUserFlows, mvpFeatures, nonGoals, acceptanceCriteria, scenarioCases, and userFacingCopyRequirements unless explicitly skipped with a reason; no production files were edited; no dependency/database/deployment action was performed.",
+              "Handoff locked product scope, sourceMaterialSummary, sourceMaterialFindings, uiUxDirection when available, referencePolicy when applicable, and product boundaries to the next phase.",
+              "The next phase may create technical approach, delivery plan, target modules, UI implementation plan, and implementation batches only after product scope is confirmed.",
+              "The next phase must use .workflow/work-order.md as the source of truth.",
+              "Coder Subagent must not be invoked until after the delivery plan phase.",
+              "Handoff a Stage 2 Requirements Capsule with accepted requirements, decisions, user flows, acceptance criteria, non-goals, preserved behavior, evidence sources, and unresolved risks."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "delivery-plan",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "technical-approach",
+              "delivery-planning",
+              "subagent-task-design",
+              "ui-implementation-planning",
+              "visual-validation-planning"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "implementation execution",
+              "subagent coding",
+              "changing confirmed product scope",
+              "adding non-goals back to MVP"
+            ],
+            "completionRequires": [
+              "Stage 3 can complete only when delivery-plan.md contains a complete Batch DAG for every accepted requirement, pairwise parallelism reasoning, Coder and Reviewer checks, shortest user-path validation, risky actions, and no production edits.",
+              "Handoff the complete validated Batch DAG and parallelism rationale to delegate-implement.",
+              "Do not hand off while an accepted requirement is missing from the DAG or any dependency/write-scope/resource conflict is unresolved."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "delegate-implement",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "search",
+              "edit-within-plan",
+              "targeted-test",
+              "artifact",
+              "question",
+              "subagent-coder",
+              "subagent-reviewer",
+              "subagent-debug",
+              "problem-investigation",
+              "debug-diagnosis"
+            ],
+            "forbiddenActions": [
+              "out-of-plan edits",
+              "changing confirmed product scope",
+              "adding non-goals back to MVP",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "unconfirmed deploy",
+              "broad rewrites",
+              "long-running preview server",
+              "skipping reviewer",
+              "continuing with critical review issues",
+              "ad-hoc repair",
+              "debug direct code edit",
+              "repair without diagnosis",
+              "skipping debug diagnosis"
+            ],
+            "completionRequires": [
+              "Stage 4 can complete only when every accepted task has an explicit terminal status and every completed batch has a successful Coder result followed by a Reviewer pass with user-path evidence.",
+              "Record a terminal result for every accepted task and a Coder then Reviewer result for every completed batch.",
+              "Handoff changed files, checks, user-path evidence, blockers, remaining risks, and the latest Context Capsule to scenario-review.",
+              "Do not advance while a Reviewer returns needs-fix or allowNextBatch=false."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "Write",
+                "Edit",
+                "MultiEdit",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "broad refactor",
+                "changing product scope",
+                "adding new feature not in work-order"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "scenario-review",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ],
+            "restrictions": [
+              "Bash/PowerShell only for bounded tests/checks, not app preview server, install, migration, seed, delete, deploy, or long-running processes.",
+              "Agent only for the QA validation role.",
+              "Reviewer is read-only.",
+              "QA is validation-only, not repair."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "search",
+              "bounded-test",
+              "build-check",
+              "lint-check",
+              "artifact",
+              "question",
+              "subagent-qa",
+              "route"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "Coder Subagent repair",
+              "broad rewrites",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "unconfirmed deploy",
+              "long-running preview server",
+              "finish/handoff",
+              "QA direct repair"
+            ],
+            "completionRequires": [
+              "Stage 5 can complete only when the shortest affected user path has observed pass evidence, or a documented non-code limitation is explicitly accepted; code failures must route to delegate-implement and be revalidated.",
+              "A passing result hands user-path evidence, residual risks, and preview safety to local-preview.",
+              "A failing result must request_workflow_route to delegate-implement with failure evidence; never repair directly in Stage 5."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "proceedToPreviewWithMajorRisk"
+              ],
+              "restrictions": [
+                "Bash/PowerShell only for bounded tests/checks, not app preview server, install, migration, seed, delete, deploy, or long-running processes.",
+                "Agent only for the QA validation role.",
+                "QA is validation-only, not repair.",
+                "Workflow artifact writing is limited to .workflow/run-report.md and .workflow/runs/<runId>/quality-report.md."
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "local-preview",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ],
+            "restrictions": [
+              "Bash/PowerShell only for workflow-owned preview start/stop, bounded log inspection, and safe run command discovery.",
+              "Bash/PowerShell must not be used for install, migration, seed, delete, network, deploy, or unrelated long-running processes unless explicit user confirmation exists.",
+              "Agent only for Debug / Problem Investigation Subagent.",
+              "Stage 6 must not use Coder, Reviewer, or QA subagents.",
+              "Debug Subagent is read-only and investigation-only.",
+              "Stage 6 must not directly repair code."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "preview-start",
+              "preview-stop",
+              "bounded-log-read",
+              "subagent-debug",
+              "problem-investigation",
+              "debug-diagnosis"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "Coder Subagent repair",
+              "broad rewrites",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "deploy",
+              "long-running preview server",
+              "auto-fixing preview failures",
+              "finish/handoff",
+              "finish without preview confirmation",
+              "ad-hoc repair",
+              "debug direct code edit",
+              "repair without diagnosis",
+              "skipping debug diagnosis",
+              "preview direct repair"
+            ],
+            "completionRequires": [
+              "Stage 6 can complete only when: quality-report.md exists; readyForPreview is true or risks were explicitly accepted; run-preview.md exists; the app was successfully previewed and user confirmed success, or the user explicitly chose to skip preview with a reason; Stop App is available for any workflow-owned running process; no unresolved preview blocker remains.",
+              "Handoff .workflow/runs/<runId>/run-preview.md and updated .workflow/run-report.md to Finish.",
+              "Finish may only start after preview is confirmed, skipped with reason, or blocked with clear nextStep.",
+              "If preview fails or the user reports a bug, route to Problem Investigation or repair workflow, not Finish.",
+              "If user preview reported a bug or preview failed, handoff must record the issue, reproduction evidence, Debug diagnosis when required, and whether the user accepted any remaining non-blocking risk.",
+              "Blocking preview issues must not hand off to finish without Debug diagnosis or explicit user risk acceptance."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "continuePreviewWithDocumentedRisk"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        },
+        {
+          "id": "finish-memory",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ],
+            "restrictions": [
+              "Artifact writing is limited to .workflow/project-context.md, .workflow/work-order.md, .workflow/run-report.md, and .workflow/runs/<runId>/handoff.md.",
+              "Do not edit production files.",
+              "Do not start follow-up workflows automatically."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "handoff",
+              "memory-update",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "subagent-coder",
+              "subagent-reviewer",
+              "subagent-qa",
+              "bounded-test",
+              "preview-start",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "auto-start follow-up workflow",
+              "running tests",
+              "starting preview server"
+            ],
+            "completionRequires": [
+              "Stage 7 can complete only when: project-context.md, work-order.md, run-report.md, and handoff.md are updated under .workflow; preview result or skip/block reason is recorded; known risks and next workflow options are recorded; the user chooses finish or a next workflow option through structured question UI; no production files were edited.",
+              "If user chooses finish, mark workflow completed.",
+              "If user chooses debug, prepare nextWorkflowHint = debug-repair but do not auto-start it unless the runtime has an explicit confirmed follow-up flow.",
+              "If user chooses feature extension, prepare nextWorkflowHint = feature-extension but do not auto-start it unless confirmed.",
+              "The next workflow must inherit .workflow/project-context.md and .workflow/run-report.md, including source materials used, UI/UX direction summary, and known visual limitations when available.",
+              "Preserve a concise, factual continuity trail for future development, feature extension, and debugging: current project guidance, durable engineering log entries, actual diagnostic/log locations, validation evidence, and unresolved risks."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

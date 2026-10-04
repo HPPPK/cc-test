@@ -32,6 +32,8 @@ export function ExpertPackManager() {
   const [skillDiscoveryOpen, setSkillDiscoveryOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<ExpertPackSummary | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [pendingBundledUpdate, setPendingBundledUpdate] = useState<ExpertPackSummary | null>(null)
+  const [bundledUpdateLoading, setBundledUpdateLoading] = useState(false)
 
   const loadPacks = async () => {
     setLoading(true)
@@ -41,6 +43,7 @@ export function ExpertPackManager() {
       const categoryResponse = await expertsApi.listCategories().catch(() => ({ categories: fallbackExpertCategories }))
       setPacks(response.packs)
       setCategories(categoryResponse.categories)
+      setPendingBundledUpdate((current) => current ?? response.packs.find((pack) => pack.bundledUpdate) ?? null)
       setSelectedPackIds((current) => {
         const available = new Set(response.packs.map((pack) => pack.packId))
         const next = current.filter((packId) => available.has(packId))
@@ -128,6 +131,24 @@ export function ExpertPackManager() {
     }
   }
 
+  const handleBundledUpdate = async () => {
+    if (!pendingBundledUpdate) return
+    setBundledUpdateLoading(true)
+    setActionError(null)
+    try {
+      const result = await expertsApi.applyBundledUpdate(pendingBundledUpdate.packId)
+      setPendingBundledUpdate(null)
+      await loadPacks()
+      addToast({ type: 'success', message: `已更新“${result.pack.name}”，原 ZIP 已备份为 ${result.backupFilename}。` })
+    } catch (cause) {
+      const message = errorMessage(cause)
+      setActionError(message)
+      addToast({ type: 'error', message })
+    } finally {
+      setBundledUpdateLoading(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!pendingDelete) return
     setDeleteLoading(true)
@@ -181,7 +202,7 @@ export function ExpertPackManager() {
   }
 
   return (
-    <section data-testid="expert-pack-manager" aria-hidden={editorOpen || dialogMode !== null || pendingDelete !== null || skillDiscoveryOpen ? true : undefined} className="flex w-full min-w-0 flex-col gap-3">
+    <section data-testid="expert-pack-manager" aria-hidden={editorOpen || dialogMode !== null || pendingDelete !== null || pendingBundledUpdate !== null || skillDiscoveryOpen ? true : undefined} className="flex w-full min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('settings.experts.manager.title')}</h3>
@@ -245,6 +266,7 @@ export function ExpertPackManager() {
                 </div>
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
+                {pack.bundledUpdate ? <ActionButton label="更新" ariaLabel={`更新 ${pack.name}`} onClick={() => setPendingBundledUpdate(pack)} disabled={busyPackId === pack.packId || saving} /> : null}
                 <ActionButton label={t('settings.experts.manager.copy')} ariaLabel={t('settings.experts.manager.copyPack', { name: pack.name })} onClick={() => void handleCopy(pack)} disabled={busyPackId === pack.packId || saving} />
                 <ActionButton label={t('settings.experts.manager.edit')} ariaLabel={t('settings.experts.manager.editPack', { name: pack.name })} onClick={() => openEditEditor(pack)} disabled={busyPackId === pack.packId || saving} />
                 <ActionButton label={t('settings.experts.manager.export')} ariaLabel={t('settings.experts.manager.exportPack', { name: pack.name })} onClick={() => { setSelectedPackIds([pack.packId]); setDialogMode('export') }} disabled={busyPackId === pack.packId || saving} />
@@ -264,6 +286,17 @@ export function ExpertPackManager() {
         initialSelectedPackIds={selectedPackIds}
         onClose={() => setDialogMode(null)}
         onImported={async () => { setDialogMode(null); await loadPacks() }}
+      />
+      <ConfirmDialog
+        open={pendingBundledUpdate !== null}
+        onClose={() => setPendingBundledUpdate(null)}
+        onConfirm={handleBundledUpdate}
+        title="发现专家包官方更新"
+        body={pendingBundledUpdate ? <>“{pendingBundledUpdate.name}”的官方 ZIP 已从 {pendingBundledUpdate.bundledUpdate?.localVersion} 更新到 {pendingBundledUpdate.bundledUpdate?.bundledVersion}。更新会先备份你当前的本地 ZIP，再用新版官方包覆盖；不会更换包 ID。</> : ''}
+        confirmLabel="更新并备份"
+        cancelLabel={t('common.cancel')}
+        confirmVariant="primary"
+        loading={bundledUpdateLoading}
       />
       <ConfirmDialog
         open={pendingDelete !== null}

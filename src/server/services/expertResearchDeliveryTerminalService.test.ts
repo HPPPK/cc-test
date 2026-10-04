@@ -81,7 +81,7 @@ describe('Expert research-delivery terminal recovery', () => {
         eligible: false,
       },
     })
-    expect(recovery?.completion.missing).toContain('仍缺少 3 个已回传浏览审计的研究子代理。')
+    expect(recovery?.completion.missing).toContain('仍缺少 3 个已回传研究结果的子代理。')
   })
 
   it('does not recover an Expert before any tracked browser audit exists', () => {

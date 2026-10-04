@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
-import { assembleWorkflowToolPool, getAllBaseTools, getHeadlessToolPool } from '../../tools.js'
+import { assembleWorkflowToolPool, getAllBaseTools, getHeadlessToolPool } from "../../tools.js"
+import { isDeferredTool } from "../ToolSearchTool/prompt.js"
 
 const TOOL_NAME = 'submit_phase_completion'
 const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
@@ -223,7 +224,7 @@ describe('SubmitPhaseCompletionTool', () => {
     })).success).toBe(true)
   })
 
-  test('silently allows one retry when a completion submission uses unavailable instead of unable', async () => {
+  test('keeps repeated unavailable completion statuses recoverable without blocking the workflow', async () => {
     const mod = await import('./SubmitPhaseCompletionTool.js') as typeof import('./SubmitPhaseCompletionTool.js')
     let appState: any = {
       workflow: {
@@ -258,12 +259,13 @@ describe('SubmitPhaseCompletionTool', () => {
 
     const second = await mod.handleSubmitPhaseCompletionFailure(context, invalidStatusError, { status: 'unavailable' })
 
-    expect(second.retryAllowed).toBe(false)
-    expect(second.message).toContain('WORKFLOW_SUBMIT_BLOCKED')
-    expect(appState.workflow.runStatus).toBe('blocked')
+    expect(second.retryAllowed).toBe(true)
+    expect(second.message).toContain('WORKFLOW_SUBMIT_RETRY_ALLOWED')
+    expect(second.message).not.toContain('WORKFLOW_SUBMIT_BLOCKED')
+    expect(appState.workflow.runStatus).toBe('active')
   })
 
-  test('allows one recoverable submit schema retry then blocks the current phase', async () => {
+  test('keeps repeated submit schema errors recoverable in the current phase', async () => {
     const mod = await import('./SubmitPhaseCompletionTool.js') as typeof import('./SubmitPhaseCompletionTool.js')
     let appState: any = {
       workflow: {
@@ -299,9 +301,10 @@ describe('SubmitPhaseCompletionTool', () => {
       context,
       'InputValidationError: handoff is required.',
     )
-    expect(second.retryAllowed).toBe(false)
-    expect(second.message).toContain('WORKFLOW_SUBMIT_BLOCKED')
-    expect(appState.workflow.runStatus).toBe('blocked')
+    expect(second.retryAllowed).toBe(true)
+    expect(second.message).toContain('WORKFLOW_SUBMIT_RETRY_ALLOWED')
+    expect(second.message).not.toContain('WORKFLOW_SUBMIT_BLOCKED')
+    expect(appState.workflow.runStatus).toBe('active')
     expect(appState.workflow.activePhaseId).toBe('requirements')
   })
 
@@ -639,4 +642,38 @@ describe('SubmitPhaseCompletionTool', () => {
       server.stop(true)
     }
   })
+  test("keeps active phase tool schemas loaded for the three managed workflows", () => {
+    const tools = assembleWorkflowToolPool(
+      getEmptyToolPermissionContext(),
+      [],
+      {
+        mode: "workflow",
+        activePhaseId: "delegate-implement",
+        workflowStatus: "running",
+        templateIdentity: { id: "efficient-constrained-dev-debug-workflow-v5", source: "pack", version: "22" },
+        templateSnapshot: {
+          schemaVersion: 2,
+          id: "efficient-constrained-dev-debug-workflow-v5",
+          source: "pack",
+          version: "22",
+          displayName: "Development",
+          phases: [{
+            id: "delegate-implement",
+            label: "Implement",
+            instructions: "Implement",
+            requestedModel: null,
+            skills: [],
+            skillDeclarations: [],
+            requiredArtifacts: [],
+            completionCriteria: [],
+            transitionAuthority: "user-confirmation",
+            toolPolicy: { allowedTools: ["AskUserQuestion"] },
+          }],
+        },
+      } as any,
+    )
+
+    expect(isDeferredTool(findToolByName(tools, "AskUserQuestion")!)).toBe(false)
+  })
+
 })

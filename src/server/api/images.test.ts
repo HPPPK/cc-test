@@ -19,7 +19,7 @@ function request(path: string, body: unknown, method = 'POST') {
 }
 
 describe('images API', () => {
-  test('passes an explicitly scoped preflight to the image service', async () => {
+  test('passes a preflight with no Agent-selected Provider or model override', async () => {
     let received: unknown
     const handle = createImagesApiHandler({
       async preflight(input) {
@@ -32,17 +32,17 @@ describe('images API', () => {
     })
 
     const response = await handle(
-      request('/api/images/preflight', { providerId: 'session-provider', model: 'gpt-image-2' }),
+      request('/api/images/preflight', {}),
       new URL('http://localhost/api/images/preflight'),
       ['api', 'images', 'preflight'],
     )
 
     expect(response.status).toBe(200)
-    expect(received).toEqual({ providerId: 'session-provider', model: 'gpt-image-2' })
+    expect(received).toEqual({})
     expect(await response.json()).toEqual(preflightResult)
   })
 
-  test('accepts generation options but keeps the Provider key out of the request contract', async () => {
+  test('accepts generation options but rejects Agent-selected Provider/model overrides', async () => {
     let received: unknown
     const generated: ImageGenerationResult = {
       status: 'generated',
@@ -65,7 +65,6 @@ describe('images API', () => {
 
     const response = await handle(
       request('/api/images/generate', {
-        providerId: 'session-provider',
         prompt: 'Editorial product image',
         size: '1536x1024',
         quality: 'high',
@@ -79,7 +78,6 @@ describe('images API', () => {
 
     expect(response.status).toBe(200)
     expect(received).toEqual({
-      providerId: 'session-provider',
       prompt: 'Editorial product image',
       size: '1536x1024',
       quality: 'high',
@@ -113,6 +111,11 @@ describe('images API', () => {
       new URL('http://localhost/api/images/generate'),
       ['api', 'images', 'generate'],
     )
+    const providerOverride = await handle(
+      request('/api/images/generate', { prompt: 'x', workDir: 'C:/workspace', providerId: 'chat-provider', model: 'gpt-image-2' }),
+      new URL('http://localhost/api/images/generate'),
+      ['api', 'images', 'generate'],
+    )
     const unknown = await handle(
       request('/api/images/unknown', {}),
       new URL('http://localhost/api/images/unknown'),
@@ -121,6 +124,7 @@ describe('images API', () => {
 
     expect(missingPrompt.status).toBe(400)
     expect(secretAttempt.status).toBe(400)
+    expect(providerOverride.status).toBe(400)
     expect(unknown.status).toBe(404)
     expect(calls).toBe(0)
   })

@@ -58,7 +58,15 @@ if (!('mocked' in vi)) {
 }
 
 const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
+
+const { notifyDesktopMock } = vi.hoisted(() => ({
+  notifyDesktopMock: vi.fn(),
+}))
 await import('@testing-library/jest-dom/vitest')
+
+vi.mock('../../lib/desktopNotifications', () => ({
+  notifyDesktop: notifyDesktopMock,
+}))
 
 vi.mock('../../api/sessions', () => ({
   sessionsApi: {
@@ -2778,6 +2786,14 @@ describe('WorkflowStatusPanel', () => {
   })
 
 
+  it('labels a workflow awaiting AskUserQuestion as waiting for the user answer', () => {
+    render(<WorkflowStatusPanel workflow={{ ...WORKFLOW_SUMMARY, runStatus: 'waiting_for_user' }} />)
+
+    const panel = screen.getByTestId('workflow-status-panel')
+    expect(within(panel).getByText(/^等待你的回答$/)).toBeInTheDocument()
+    expect(within(panel).queryByText(/^等待确认$/)).not.toBeInTheDocument()
+  })
+
   it('uses neutral text color for unknown workflow status values', () => {
     render(<WorkflowStatusPanel workflow={{
       ...WORKFLOW_SUMMARY,
@@ -2827,6 +2843,69 @@ describe('WorkflowStatusPanel', () => {
 })
 
 describe('WorkflowTransitionControls', () => {
+  it('notifies for a pending phase confirmation and keeps the session as the notification target', () => {
+    render(
+      <WorkflowTransitionControls
+        sessionId="workflow-session"
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'specify',
+          pendingConfirmation: true,
+          pendingConfirmationId: 'confirmation-specify-v7',
+        }}
+        stateVersion={7}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(notifyDesktopMock).toHaveBeenCalledWith({
+      dedupeKey: 'workflow-user-action:workflow-session:confirmation:confirmation-specify-v7',
+      title: 'Confirm this step',
+      body: 'The result for this step is ready. Confirm whether to move to the next step.',
+      requestAttention: true,
+      target: { type: 'session', sessionId: 'workflow-session' },
+    })
+  })
+
+  it('notifies for a pending route requested between workflow stages', () => {
+    render(
+      <WorkflowTransitionControls
+        sessionId="workflow-session"
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          activePhaseId: 'specify',
+          pendingConfirmation: false,
+          pendingRoute: {
+            routeId: 'route-specify-plan-v3',
+            phaseId: 'specify',
+            fromPhaseId: 'specify',
+            targetPhaseId: 'plan',
+            intent: 'jump_to_phase',
+            rationale: 'The user must confirm the recovery route.',
+            requiresConfirmation: true,
+            approvedTargetPhaseId: 'plan',
+            status: 'pending',
+          },
+        }}
+        stateVersion={7}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(notifyDesktopMock).toHaveBeenCalledWith({
+      dedupeKey: 'workflow-user-action:workflow-session:route:route-specify-plan-v3',
+      title: 'Confirm this step',
+      body: 'The result for this step is ready. Confirm whether to move to the next step.',
+      requestAttention: true,
+      target: { type: 'session', sessionId: 'workflow-session' },
+    })
+  })
+
   it('renders no workflow controls unless workflow props are explicit', () => {
     const { container } = render(
       <WorkflowTransitionControls
@@ -3272,6 +3351,32 @@ describe('WorkflowTransitionControls', () => {
 
     expect(screen.getByText(/This step needs attention/)).toBeInTheDocument()
     expect(screen.queryByText(/Completion checklist is still missing/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the blocked card hidden during an active silent recovery even when a stale phase id is displayed', () => {
+    const { container } = render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'failed',
+          runStatus: 'blocked',
+          activePhaseId: 'plan',
+          blockedReason: 'The validation phase found a repairable defect.',
+          autoRecovery: {
+            phaseId: 'scenario-review',
+            startedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 10_000).toISOString(),
+            attempt: 1,
+            source: 'phase-completion-blocked',
+          },
+        }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('shows blocked retry controls without advancing the phase', () => {

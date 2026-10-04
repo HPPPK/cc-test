@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "imagePath": "C:/tmp/generated-membership.png",
+  "status": "PASS",
+  "methods": [
+    {
+      "id": "taste-redesign",
+      "evidence": "The dark price numerals align along a common baseline; the smaller notes do not compete."
+    },
+    {
+      "id": "impeccable-visual-refinement",
+      "evidence": "The compact window retains the source density rather than adding a landing-page hero."
+    },
+    {
+      "id": "ui-craft-critique",
+      "evidence": "The selected item connects directly to the right-hand order summary."
+    },
+    {
+      "id": "hallmark-anti-slop",
+      "evidence": "No card-in-card decoration surrounds the order details in this fixture."
+    },
+    {
+      "id": "ui-craft-finalize",
+      "evidence": "The heading and final action remain inside the current image edges with visible spacing."
+    },
+    {
+      "id": "source-fidelity-final-pass",
+      "evidence": "The source label and primary action are preserved and the login link appears once."
+    }
+  ],
+  "visualRegister": "Compact utility upgrade window, restrained orange action and clear dark numeral hierarchy",
+  "avoidedTreatment": "An oversized empty hero was avoided to retain task density",
+  "observations": [
+    {
+      "region": "right order summary",
+      "finding": "The price and main action are adjacent within the same selected-order region."
+    },
+    {
+      "region": "top account area",
+      "finding": "One login link appears beside the account label without a repeated link below."
+    }
+  ],
+  "facts": [
+    {
+      "category": "brand",
+      "source": "Fixture brand Recorder",
+      "observed": "Recorder label remains in the upper left",
+      "status": "match"
+    },
+    {
+      "category": "names",
+      "source": "Fixture plan Permanent",
+      "observed": "Permanent plan title is preserved",
+      "status": "match"
+    },
+    {
+      "category": "prices",
+      "source": "Fixture permanent price 98 yuan",
+      "observed": "98 yuan shown beside the primary action",
+      "status": "match"
+    },
+    {
+      "category": "quantities",
+      "source": "No additional capacity supplied in fixture",
+      "observed": "No capacity is introduced",
+      "status": "not-applicable"
+    },
+    {
+      "category": "rights",
+      "source": "No sharing rights supplied in fixture",
+      "observed": "No sharing promise is introduced",
+      "status": "not-applicable"
+    },
+    {
+      "category": "required-copy",
+      "source": "Fixture action Activate membership",
+      "observed": "Activate membership remains on the main button",
+      "status": "match"
+    }
+  ],
+  "duplicates": {
+    "status": "clear",
+    "observations": [
+      "Top account area contains one login entry; the order card does not repeat it."
+    ]
+  },
+  "remainingIssues": [],
+  "limitations": [
+    "Static fixture only; interaction, responsiveness, accessibility behavior and conversion lift are unverified"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "debug-repair-workflow-v8",
+      "phases": [
+        {
+          "id": "debug-memory-intake"
+        },
+        {
+          "id": "debug-investigate"
+        },
+        {
+          "id": "debug-fix"
+        },
+        {
+          "id": "debug-quality-preview"
+        },
+        {
+          "id": "debug-finish-memory"
+        }
+      ]
+    }
+  ]
+}

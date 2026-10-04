@@ -46,7 +46,13 @@ type StreamState = {
   currentBlockIndex: number
   nextContentIndex: number
   blockStartSent: boolean   // content_block_start emitted for current block?
-  blockStopSent: boolean    // content_block_stop emitted for current block?
+  blockStopSent: boolean   // content_block_stop emitted for current block?
+
+  // Some compatibility providers emit an execution monologue as ordinary text.
+  // Hold the first short text prefix long enough to classify it before it reaches
+  // the user-visible text block.
+  textDisposition: 'undecided' | 'process' | 'visible'
+  pendingText: string
 
   // Tool call tracking
   toolBlocks: Map<number, ToolBlockState>
@@ -76,6 +82,8 @@ function createState(model: string): StreamState {
     nextContentIndex: 0,
     blockStartSent: false,
     blockStopSent: false,
+    textDisposition: 'undecided',
+    pendingText: '',
     toolBlocks: new Map(),
     model,
     messageStartSent: false,
@@ -308,10 +316,17 @@ function detectBlockTransition(
     return { type: 'tool_use', isNew }
   }
 
-  // Priority 2: Text content
+  // Priority 2: Text content. A compatibility provider can put an
+  // execution monologue in content; keep its continuation in the thinking
+  // block until a clear user-facing Chinese paragraph begins.
   if (delta.content != null && delta.content !== '') {
-    const isNew = state.currentBlockType !== 'text' || !state.blockStartSent
-    return { type: 'text', isNew }
+    const continuesInternalProcess =
+      state.textDisposition === 'process'
+      && !startsWithUserFacingChinese(delta.content)
+      && !USER_FACING_CHINESE_PARAGRAPH.test(delta.content)
+    const type: ContentBlockType = continuesInternalProcess ? 'thinking' : 'text'
+    const isNew = state.currentBlockType !== type || !state.blockStartSent
+    return { type, isNew }
   }
 
   // Priority 3: Reasoning/thinking
@@ -380,7 +395,15 @@ function processChunk(chunk: OpenAIChatStreamChunk, state: StreamState): void {
 
 function handleThinking(delta: DeltaEx, state: StreamState): void {
   const reasoning = extractReasoning(delta)
-  if (!reasoning) return
+  if (!reasoning) {
+    // detectBlockTransition classifies continued compatibility-provider
+    // execution narration as thinking. It still arrives in delta.content,
+    // so it must not be discarded just because it lacks a structured
+    // reasoning_content field.
+    if (delta.content) emitProcessTextUntilUserFacingBoundary(state, delta.content)
+    return
+  }
+  flushPendingTextAsVisible(state)
 
   if (state.currentBlockType !== 'thinking' || !state.blockStartSent) {
     openBlock(state, 'thinking', { type: 'thinking', thinking: '' })
@@ -398,20 +421,103 @@ function handleThinking(delta: DeltaEx, state: StreamState): void {
   }
 }
 
-function handleText(delta: DeltaEx, state: StreamState): void {
-  if (delta.content == null || delta.content === '') return
+const INTERNAL_PROCESS_PREFIX = /^(?:let me|i(?:'ll| will| need to| should| have to| am going to)|we(?:'ll| will| need to| should| have to))\b/i
+const INTERNAL_PROCESS_SIGNAL = /\b(?:audit(?:\s*id)?|browser|playwright|subagents?|agents?|task|research|markdown|ledger|runtime|server|session|write|read|check|review|validate|dispatch)\b/i
+const USER_FACING_CHINESE_PARAGRAPH = /\r?\n\s*\r?\n(?=(?:#{1,6}\s*)?[\u3400-\u9fff])/
 
+function isInternalProcessNarration(value: string): boolean {
+  const normalized = value.trimStart()
+  return INTERNAL_PROCESS_PREFIX.test(normalized) && INTERNAL_PROCESS_SIGNAL.test(normalized)
+}
+
+function startsWithUserFacingChinese(value: string): boolean {
+  return /^(?:\s|#{1,6}\s|[-*>]\s)*[\u3400-\u9fff]/.test(value)
+}
+
+function resolveInitialTextDisposition(value: string): 'process' | 'visible' | undefined {
+  if (startsWithUserFacingChinese(value)) return 'visible'
+
+  const normalized = value.trimStart()
+  // Normal replies must remain genuinely streamed. Only hold an initial phrase
+  // that could still become the provider's internal execution narration.
+  if (!INTERNAL_PROCESS_PREFIX.test(normalized)) return 'visible'
+  if (isInternalProcessNarration(normalized)) return 'process'
+  if (value.length >= 120 || USER_FACING_CHINESE_PARAGRAPH.test(value)) return 'visible'
+  return undefined
+}
+
+function emitVisibleText(state: StreamState, text: string): void {
+  if (!text) return
   if (state.currentBlockType !== 'text' || !state.blockStartSent) {
     openBlock(state, 'text', { type: 'text', text: '' })
   }
+  emitDelta(state, state.currentBlockIndex, { type: 'text_delta', text })
+}
 
-  emitDelta(state, state.currentBlockIndex, {
-    type: 'text_delta', text: delta.content,
-  })
+function emitInternalProcessText(state: StreamState, text: string): void {
+  if (!text) return
+  if (state.currentBlockType !== 'thinking' || !state.blockStartSent) {
+    openBlock(state, 'thinking', { type: 'thinking', thinking: '' })
+  }
+  emitDelta(state, state.currentBlockIndex, { type: 'thinking_delta', thinking: text })
+}
+
+function emitProcessTextUntilUserFacingBoundary(state: StreamState, text: string): void {
+  const boundary = USER_FACING_CHINESE_PARAGRAPH.exec(text)
+  if (!boundary || boundary.index === undefined) {
+    emitInternalProcessText(state, text)
+    return
+  }
+
+  emitInternalProcessText(state, text.slice(0, boundary.index))
+  closeCurrentBlock(state)
+  state.textDisposition = 'visible'
+  emitVisibleText(state, text.slice(boundary.index + boundary[0].length))
+}
+
+function flushPendingTextAsVisible(state: StreamState): void {
+  if (state.textDisposition !== 'undecided' || !state.pendingText) return
+  const text = state.pendingText
+  state.pendingText = ''
+  state.textDisposition = 'visible'
+  emitVisibleText(state, text)
+}
+
+function handleText(delta: DeltaEx, state: StreamState): void {
+  if (delta.content == null || delta.content === '') return
+
+  if (state.textDisposition === 'undecided') {
+    state.pendingText += delta.content
+    const disposition = resolveInitialTextDisposition(state.pendingText)
+    if (!disposition) return
+    const text = state.pendingText
+    state.pendingText = ''
+    state.textDisposition = disposition
+    if (disposition === 'process') {
+      emitProcessTextUntilUserFacingBoundary(state, text)
+    } else {
+      emitVisibleText(state, text)
+    }
+    return
+  }
+
+  if (state.textDisposition === 'process') {
+    emitProcessTextUntilUserFacingBoundary(state, delta.content)
+    return
+  }
+
+  emitVisibleText(state, delta.content)
 }
 
 function handleToolCalls(delta: DeltaEx, state: StreamState): void {
   if (!delta.tool_calls) return
+  flushPendingTextAsVisible(state)
+
+  // A short ordinary reply may have just been flushed above. The raw transition
+  // was observed before that flush, so explicitly close it before opening a tool.
+  if (state.currentBlockType !== 'tool_use') {
+    closeCurrentBlock(state)
+  }
 
   for (const tc of delta.tool_calls) {
     const tcIndex = tc.index
@@ -511,6 +617,9 @@ function finalizeStream(state: StreamState): void {
   state.messageStopSent = true
 
   ensureMessageStart(state)
+
+  // Preserve any short normal reply that never crossed the classifier threshold.
+  flushPendingTextAsVisible(state)
 
   // Close any remaining open blocks
   closeAllOpenBlocks(state)

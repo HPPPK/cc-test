@@ -19,6 +19,19 @@
     },
     "types": [
       "bun-types"
-    ]
-  }
+    ],
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "stubs/**/*.ts"
+  ],
+  "exclude": [
+    "desktop/**",
+    "adapters/**",
+    "docs/**",
+    "artifacts/**",
+    "dist/**",
+    "node_modules/**"
+  ]
 }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type {
   WorkflowAutoRecovery,
   WorkflowCompletionEligibilityStatus,
@@ -10,6 +11,7 @@ import type {
   WorkflowSessionState,
   WorkflowTemplate,
 } from './workflowTypes.js'
+import { developmentBatchAgentBlockerReasons } from './workflowDevelopmentBatchAgentPolicy.js'
 
 export type WorkflowCompletionEligibility = {
   status: WorkflowCompletionEligibilityStatus
@@ -441,14 +443,22 @@ function completionBlockerReasons(
       reasons.push('Required completion check is not passed: ' + check.id)
     }
   }
+  const activeTemplateId = state.templateIdentity?.id || ('id' in state.template ? state.template.id : '')
+  const requiresSuccessfulTaskReceipts = activeTemplateId === 'efficient-constrained-dev-debug-workflow-v5'
+    || activeTemplateId === 'feature-extension-workflow-v8'
+    || activeTemplateId === 'debug-repair-workflow-v8'
   for (const task of phaseState.taskSnapshots) {
-    if (task.status === 'pending' || task.status === 'running' || task.status === 'interrupted') {
+    const unsettled = requiresSuccessfulTaskReceipts
+      ? task.status !== 'succeeded'
+      : task.status === 'pending' || task.status === 'running' || task.status === 'interrupted'
+    if (unsettled) {
       reasons.push('Workflow task is not safely settled: ' + task.taskId)
     }
     if (task.integrationStatus && task.integrationStatus !== 'not-required' && task.integrationStatus !== 'verified') {
       reasons.push('Workflow task is not integrated and verified: ' + task.taskId)
     }
   }
+  reasons.push(...developmentBatchAgentBlockerReasons(state, phaseState))
   return [...new Set(reasons)]
 }
 
@@ -497,6 +507,45 @@ export function rebuildWorkflowCompletionContract(
   }, template, now)
 }
 
+const MANAGED_QUESTION_WORKFLOW_IDS = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
+
+function managedQuestionWorkflowId(state: WorkflowSessionState): string {
+  return state.templateIdentity?.id || ('id' in state.template ? state.template.id : '')
+}
+
+function normalizeQuestionFingerprintText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  return normalized || undefined
+}
+
+function workflowQuestionFingerprint(question: Record<string, unknown>): string {
+  const options = Array.isArray(question.options)
+    ? question.options
+    : Array.isArray(question.choices)
+      ? question.choices
+      : []
+  const normalized = {
+    header: normalizeQuestionFingerprintText(question.header),
+    question: normalizeQuestionFingerprintText(question.question ?? question.prompt),
+    options: options.map(option => {
+      if (!option || typeof option !== 'object' || Array.isArray(option)) return option
+      const record = option as Record<string, unknown>
+      return {
+        label: normalizeQuestionFingerprintText(record.label ?? record.value),
+        description: normalizeQuestionFingerprintText(record.description),
+      }
+    }),
+    multiSelect: question.multiSelect === true,
+    blocksCompletion: question.blocksCompletion === true,
+  }
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
+}
+
 export function recordAskUserQuestionIssue(
   state: WorkflowSessionState,
   input: {
@@ -520,8 +569,20 @@ export function recordAskUserQuestionIssue(
   if (!phaseState) return state
   const existingIssueIds = new Set(phaseState.issues.map((issue) => issue.id))
   const issues = [...phaseState.issues]
+  const useStableQuestionIdentity = MANAGED_QUESTION_WORKFLOW_IDS.has(managedQuestionWorkflowId(state))
   for (const [index, question] of input.questions.entries()) {
-    const id = 'ask:' + input.requestId + ':' + index
+    const questionFingerprint = workflowQuestionFingerprint(question as Record<string, unknown>)
+    const duplicateQuestion = useStableQuestionIdentity
+      ? issues.find(issue =>
+        issue.source === 'ask-user-question'
+        && issue.questionFingerprint === questionFingerprint
+        && issue.status !== 'stale'
+      )
+      : undefined
+    if (duplicateQuestion) continue
+    const id = useStableQuestionIdentity
+      ? 'ask:' + phaseState.phaseId + ':' + questionFingerprint.slice(0, 24)
+      : 'ask:' + input.requestId + ':' + index
     const questionId = question.id ?? question.question ?? question.prompt ?? question.header ?? 'question-' + index
     if (existingIssueIds.has(id)) continue
     issues.push({
@@ -541,6 +602,7 @@ export function recordAskUserQuestionIssue(
       blockingReason: 'A workflow question requires an answer and explicit processing.',
       questionRequestId: input.requestId,
       questionId,
+      ...(useStableQuestionIdentity ? { questionFingerprint } : {}),
       toolUseId: input.toolUseId,
       createdStateVersion: state.stateVersion,
     })

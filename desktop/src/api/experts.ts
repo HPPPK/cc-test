@@ -33,7 +33,6 @@ export type ExpertProfileRecord = { schemaVersion: 1; expertId: string; profile:
 
 const legacyExpertCategoryIds: Record<string, string> = {
   'commercialization-research-report': 'product',
-  'website-reference': 'development',
   'repo-health-check': 'development',
   'product-brief-intake': 'development',
   'migration-refactor-assessment': 'development',
@@ -105,6 +104,19 @@ export type ExpertDefinition = {
   skillContents?: Record<string, string>
 }
 
+export type ExpertPackBundledUpdate = {
+  kind: 'version' | 'content'
+  localVersion: string
+  bundledVersion: string
+}
+
+export type ExpertPackBundledUpdateResult = {
+  pack: ExpertPackSummary
+  previousVersion: string
+  bundledVersion: string
+  backupFilename: string
+}
+
 export type ExpertPackSummary = {
   packId: string
   name: string
@@ -120,6 +132,7 @@ export type ExpertPackSummary = {
   experts: ExpertDefinition[]
   tools?: ExpertToolManifest[]
   importedAt: string
+  bundledUpdate?: ExpertPackBundledUpdate
 }
 
 export type ExpertListResponse = { experts: ExpertDefinition[] }
@@ -199,12 +212,14 @@ export const expertsApi = {
   importPack: (dataBase64: string) => api.post<ExpertPackImportPreview>('/api/experts/packs/import', { dataBase64 }),
   exportPack: (packId: string) => api.get<ExpertPackExportResponse>(`/api/experts/packs/${encodeURIComponent(packId)}/export`),
   updatePack: (packId: string, input: ExpertPackUpdateInput) => api.put<ExpertPackSummary>(`/api/experts/packs/${encodeURIComponent(packId)}`, input),
+  applyBundledUpdate: (packId: string) => api.post<ExpertPackBundledUpdateResult>(`/api/experts/packs/${encodeURIComponent(packId)}/bundled-update`, {}),
   copyPack: (packId: string) => api.post<ExpertPackImportPreview>(`/api/experts/packs/${encodeURIComponent(packId)}/copy`, {}),
   deletePack: (packId: string) => api.delete<void>(`/api/experts/packs/${encodeURIComponent(packId)}`),
   enterSessionExpertMode: (sessionId: string, expertId: string, options?: ExpertResearchBrowserStartOptions) => api.post<ExpertSessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/start`, { expertId, ...(options?.researchBrowserConnection ? { researchBrowserConnection: options.researchBrowserConnection } : {}), ...(options?.researchBrowserPresentation ? { researchBrowserPresentation: options.researchBrowserPresentation } : {}) }),
   exitSessionExpertMode: (sessionId: string) => api.post<ExpertSessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/exit`, {}),
-  requestResearchBrowserVisibility: (sessionId: string) => api.post<{ activity: unknown | null }>('/api/expert-browser-activity', { sessionId, action: 'show' }),
-  submitIntakeStep: (sessionId: string, request: { stepId?: string; answer?: unknown; answers?: Record<string, unknown> }) => api.post<{ expert: ExpertSessionSummary; intakeState: ExpertIntakeState }>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/intake`, request),
+  requestResearchBrowserVisibility: (sessionId: string) => api.post<{ activity: unknown | null; presentationConfirmed: boolean | null }>('/api/expert-browser-activity', { sessionId, action: 'show' }),
+  requestResearchBrowserVerificationCheck: (sessionId: string) => api.post<{ activity: unknown | null }>('/api/expert-browser-activity', { sessionId, action: 'verification_check' }),
+  submitIntakeStep: (sessionId: string, request: { stepId?: string; answer?: unknown; answers?: Record<string, unknown>; choiceId?: string }) => api.post<{ expert: ExpertSessionSummary; intakeState: ExpertIntakeState }>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/intake`, request),
   listSessionExpertMaterials: (sessionId: string) => api.get<{ materialRefs: ExpertMaterialRef[] }>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/materials`),
   downloadMaterialPackage: (sessionId: string, runId: string) => api.get<ArrayBuffer>(`/api/sessions/${encodeURIComponent(sessionId)}/expert/materials/${encodeURIComponent(runId)}/download`),
   getMaterialPackageDownloadUrl: (sessionId: string, runId: string) => getApiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/expert/materials/${encodeURIComponent(runId)}/download`),

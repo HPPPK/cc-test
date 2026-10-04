@@ -25,29 +25,55 @@ const questionOptionSchema = lazySchema(() => z.strictObject({
   preview: z.string().optional().describe('Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.')
 }).superRefine((value, ctx) => {
 }));
-const questionSchema = lazySchema(() => z.object({
-  id: z.string().min(1).optional().describe('Stable question ID. Use this for workflow questions so a structured reply can be matched without relying on display text.'),
-  prompt: z.string().min(1).optional().describe('Canonical question prompt shown to the user.'),
-  question: z.string().min(1).optional().describe('Legacy alias for prompt. Use prompt for new workflow questions.'),
-  header: z.string().optional().describe(`Very short label displayed as a chip/tag (max ${ASK_USER_QUESTION_TOOL_CHIP_WIDTH} chars). Examples: "Auth method", "Library", "Approach".`),
-  blocksCompletion: z.boolean().optional().describe('Workflow only: set true only when the answer must be reflected in current-phase work before completion. Set false for informational or acknowledgement questions that must not create a completion blocker. Omit outside workflows.'),
-  blockingReason: z.string().min(1).optional().describe('Workflow-only context for a necessary blocking question: explain why the request, workspace, logs, and current artifacts cannot resolve this fact without the user. Omit outside workflows that require this context.'),
-  answerImpact: z.string().min(1).optional().describe('Workflow-only context for a necessary blocking question: state the specific implementation, investigation, or acceptance decision that the answer will change. Omit outside workflows that require this context.'),
-  choices: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Canonical choices for this question. Choices represent only user answers; never include workflow actions, route commands, or phase targets.'),
-  options: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Legacy alias for choices. New workflow questions should use choices.'),
-  multiSelect: z.boolean().optional().describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'),
-  metadata: z.strictObject({
-    question_id: z.string().min(1).optional().describe('Expert-only stable question ID for metadata attached to this question. When present, it must match this question id.'),
-    unresolved_evidence: z.array(z.string().min(1)).max(12).optional().describe('Expert-only remaining evidence gaps attached to this delivery-decision question.'),
-  }).optional().describe('Expert-only question-scoped delivery metadata. It is not displayed to the user.')
-}).superRefine((value, ctx) => {
-  if (!value.prompt && !value.question) {
-    ctx.addIssue({ code: 'custom', message: 'Question requires prompt (or legacy question).' })
+
+const questionSchema = lazySchema(() => {
+  const commonFields = {
+    id: z.string().min(1).optional().describe('Stable question ID. Use this for workflow questions so a structured reply can be matched without relying on display text.'),
+    prompt: z.string().min(1).optional().describe('Canonical question prompt shown to the user.'),
+    question: z.string().min(1).optional().describe('Legacy alias for prompt. Use prompt for new workflow questions.'),
+    header: z.string().optional().describe('Very short label displayed as a chip/tag (max ' + ASK_USER_QUESTION_TOOL_CHIP_WIDTH + ' chars). Examples: "Auth method", "Library", "Approach".'),
+    choices: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Canonical choices for this question. Choices represent only user answers; never include workflow actions, route commands, or phase targets.'),
+    options: z.array(questionOptionSchema()).min(2).max(4).optional().describe('Legacy alias for choices. New workflow questions should use choices.'),
+    multiSelect: z.boolean().optional().describe('Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'),
+    metadata: z.strictObject({
+      question_id: z.string().min(1).optional().describe('Expert-only stable question ID for metadata attached to this question. When present, it must match this question id.'),
+      unresolved_evidence: z.array(z.string().min(1)).max(12).optional().describe('Expert-only remaining evidence gaps attached to this delivery-decision question.'),
+    }).optional().describe('Expert-only question-scoped delivery metadata. It is not displayed to the user.'),
   }
-  if (!value.choices && !value.options) {
-    ctx.addIssue({ code: 'custom', message: 'Question card requires 2–4 choices (or legacy options). For an open-ended answer, use a normal assistant message; for a decision, retry AskUserQuestion with 2–4 user-answer choices.' })
-  }
-}));
+  const withCardRequirements = <T extends z.ZodRawShape>(completionFields: T) => z.object({
+    ...commonFields,
+    ...completionFields,
+  }).superRefine((value, ctx) => {
+    if (!value.prompt && !value.question) {
+      ctx.addIssue({ code: 'custom', message: 'Question requires prompt (or legacy question).' })
+    }
+    if (!value.choices && !value.options) {
+      ctx.addIssue({ code: 'custom', message: 'Question card requires 2–4 choices (or legacy options). Keep the user interaction in AskUserQuestion: retry with 2–4 useful choices and direct the user to the built-in Other option for custom text.' })
+    }
+  })
+
+  return z.union([
+    // This branch is intentionally explicit in the provider-facing JSON schema:
+    // a blocking workflow question cannot omit its reason or decision impact.
+    withCardRequirements({
+      blocksCompletion: z.literal(true).describe('Workflow necessary-question contract: true when the answer must be applied before the current phase can complete.'),
+      blockingReason: z.string().min(1).describe('Workflow necessary-question contract: why the request, workspace, logs, and artifacts cannot resolve this fact without the user.'),
+      answerImpact: z.string().min(1).describe('Workflow necessary-question contract: the specific implementation, investigation, or acceptance decision this answer changes.'),
+    }),
+    // Ordinary and Expert questions remain permissive. In particular, an
+    // explicit false must not require workflow-only explanation fields.
+    withCardRequirements({
+      blocksCompletion: z.literal(false).optional().describe('Set false for informational or acknowledgement questions that must not create a completion blocker. Omit outside workflows.'),
+      // Models often serialize optional explanation fields as empty strings. For
+      // a non-blocking card those fields are semantically absent, not an invalid
+      // user-facing question that should force a duplicate retry.
+      // Keep this representable in the provider JSON schema: transforms cannot
+      // be serialized by Zod's schema exporter.
+      blockingReason: z.string().optional().describe('Workflow-only context for a necessary blocking question. Not required when blocksCompletion is false or omitted.'),
+      answerImpact: z.string().optional().describe('Workflow-only context for a necessary blocking question. Not required when blocksCompletion is false or omitted.'),
+    }),
+  ])
+})
 
 function questionPrompt(question: z.infer<ReturnType<typeof questionSchema>>): string {
   return question.prompt ?? question.question ?? question.id ?? ''
@@ -97,6 +123,10 @@ const inputSchema = lazySchema(() => z.strictObject({
   // tool root. Keep this serializable in the provider-facing JSON schema so
   // an already-issued question does not fail before Desktop can display it.
   multiSelect: z.boolean().optional().describe('Legacy tool-level alias. Prefer setting multiSelect inside each question; when supplied here it applies to questions that do not set their own value.'),
+  // Compatibility alias: some providers emit the card heading at the tool root.
+  // It is cosmetic and ignored when questions are already present, so accepting it
+  // must not reject an otherwise valid question and force a duplicate retry.
+  header: z.string().optional().describe('Legacy tool-level heading. Prefer question.header; this alias is accepted for provider compatibility.'),
   ...commonFields()
 }).refine(UNIQUENESS_REFINE.check, {
   message: UNIQUENESS_REFINE.message

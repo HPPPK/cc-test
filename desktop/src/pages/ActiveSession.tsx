@@ -1059,6 +1059,7 @@ export function ActiveSession() {
     (workflowDisplay.activePhaseId === 'run-preview' || Boolean(workflowDisplay.preview))
   const workflowTransitionCard = canShowWorkflowControls ? (
     <WorkflowTransitionControls
+      sessionId={activeTabId ?? undefined}
       workflow={workflowControlsDisplay}
       stateVersion={workflowStateVersion}
       pendingTransition={pendingWorkflowTransition}

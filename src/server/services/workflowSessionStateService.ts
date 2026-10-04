@@ -122,6 +122,9 @@ async function syncProjectWorkflowArtifacts(state: WorkflowSessionState): Promis
     run: activeRun.run,
     runIndex: activeRun.index,
     now: state.updatedAt || new Date().toISOString(),
+    templateSnapshot: state.templateSnapshot,
+    templateSnapshotHash: state.templateSnapshotHash,
+    contextCapsules: state.contextCapsules,
   })
 }
 

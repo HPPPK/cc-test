@@ -2,11 +2,11 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { ProviderService } from './providerService.js'
 import { SettingsService } from './settingsService.js'
+import { readImageGenerationSettings } from './imageGenerationSettings.js'
 import type { SavedProvider } from '../types/provider.js'
 
 const IMAGE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
-const DEFAULT_IMAGE_MODEL = 'gpt-image-2'
 
 export type ImageQuality = 'auto' | 'low' | 'medium' | 'high'
 export type ImageOutputFormat = 'png' | 'jpeg' | 'webp'
@@ -14,15 +14,13 @@ export type ImageOutputFormat = 'png' | 'jpeg' | 'webp'
 type ImageProvider = Pick<SavedProvider, 'id' | 'name' | 'baseUrl' | 'apiKey'>
 
 export type ImageGenerationDependencies = {
-  providerService?: Pick<ProviderService, 'getProvider' | 'listProviders'>
+  providerService?: Pick<ProviderService, 'getProvider'>
   settingsService?: Pick<SettingsService, 'getUserSettings'>
   fetch?: typeof globalThis.fetch
   now?: () => Date
 }
 
 export type ImageGenerationInput = {
-  providerId?: string
-  model?: string
   prompt?: string
   size?: string
   quality?: ImageQuality
@@ -173,7 +171,7 @@ function hasExpectedImageSignature(image: Buffer, format: ImageOutputFormat): bo
 }
 
 export class ImageGenerationService {
-  private readonly providerService: Pick<ProviderService, 'getProvider' | 'listProviders'>
+  private readonly providerService: Pick<ProviderService, 'getProvider'>
   private readonly settingsService: Pick<SettingsService, 'getUserSettings'>
   private readonly fetchImpl: typeof globalThis.fetch
   private readonly now: () => Date
@@ -185,37 +183,41 @@ export class ImageGenerationService {
     this.now = dependencies.now ?? (() => new Date())
   }
 
-  private async resolveProvider(providerId?: string): Promise<ImageProvider | null> {
+  private async resolveProvider(providerId: string): Promise<ImageProvider | null> {
     try {
-      if (providerId) return await this.providerService.getProvider(providerId)
-      const { activeId } = await this.providerService.listProviders()
-      return activeId ? await this.providerService.getProvider(activeId) : null
+      return await this.providerService.getProvider(providerId)
     } catch {
-      // A stale session provider id must never leak an internal provider error or credential details.
+      // A stale saved image Provider must never leak an internal provider error or credential details.
       return null
     }
   }
 
-  private async resolveConfig(input: ImageGenerationInput): Promise<ResolvedImageConfig | ImageGenerationResult> {
-    const provider = await this.resolveProvider(input.providerId)
+  private async resolveConfig(): Promise<ResolvedImageConfig | ImageGenerationResult> {
+    const settings = await this.settingsService.getUserSettings()
+    const imageGeneration = readImageGenerationSettings(settings.imageGeneration)
+    if (!imageGeneration.enabled || !imageGeneration.providerId || !imageGeneration.model) {
+      return {
+        status: 'unavailable',
+        availability: 'unavailable',
+        model: imageGeneration.model ?? 'unconfigured',
+        message: 'Real image generation is not configured. In Settings > Image generation, enable it and explicitly choose an image Provider and model.',
+        errorCode: 'IMAGE_GENERATION_NOT_CONFIGURED',
+      }
+    }
+
+    const provider = await this.resolveProvider(imageGeneration.providerId)
     if (!provider) {
       return {
         status: 'unavailable',
         availability: 'unavailable',
-        model: asString(input.model) ?? DEFAULT_IMAGE_MODEL,
-        message: 'No provider is bound to this Agent session. Select or restart with a configured provider before generating an image.',
+        model: imageGeneration.model,
+        message: 'The explicitly selected image Provider is unavailable. Choose an existing Provider in Settings > Image generation.',
         errorCode: 'IMAGE_PROVIDER_NOT_CONFIGURED',
       }
     }
 
-    const settings = await this.settingsService.getUserSettings()
-    const env = isRecord(settings.env) ? settings.env : {}
-    const configuredBaseUrl = asString(env.OPENAI_IMAGE_BASE_URL) ?? asString(env.OPENAI_BASE_URL)
-    const configuredModel = asString(env.OPENAI_IMAGE_MODEL)
-    const model = asString(input.model) ?? configuredModel ?? DEFAULT_IMAGE_MODEL
-    const endpoint = `${normalizeBaseUrl(configuredBaseUrl ?? provider.baseUrl)}/images/generations`
-
-    return { provider, endpoint, model }
+    const endpoint = `${normalizeBaseUrl(provider.baseUrl)}/images/generations`
+    return { provider, endpoint, model: imageGeneration.model }
   }
 
   private async probeImageEndpoint({ provider, endpoint, model }: ResolvedImageConfig): Promise<ImageGenerationResult> {
@@ -288,7 +290,7 @@ export class ImageGenerationService {
   }
 
   async preflight(input: ImageGenerationInput): Promise<ImageGenerationResult> {
-    const resolved = await this.resolveConfig(input)
+    const resolved = await this.resolveConfig()
     if (!('provider' in resolved)) return resolved
 
     const { provider, endpoint, model } = resolved
@@ -337,7 +339,7 @@ export class ImageGenerationService {
       return {
         status: 'failed',
         availability: 'unverified',
-        model: asString(input.model) ?? DEFAULT_IMAGE_MODEL,
+        model: 'unconfigured',
         message: 'A non-empty image prompt is required.',
         errorCode: 'IMAGE_PROMPT_REQUIRED',
       }
@@ -346,13 +348,13 @@ export class ImageGenerationService {
       return {
         status: 'failed',
         availability: 'unverified',
-        model: asString(input.model) ?? DEFAULT_IMAGE_MODEL,
+        model: 'unconfigured',
         message: 'An absolute session workspace is required for image delivery.',
         errorCode: 'IMAGE_WORKDIR_REQUIRED',
       }
     }
 
-    const resolved = await this.resolveConfig(input)
+    const resolved = await this.resolveConfig()
     if (!('provider' in resolved)) return resolved
     const { provider, endpoint, model } = resolved
     const format = input.outputFormat ?? 'png'

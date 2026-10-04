@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
-const { sendMock } = vi.hoisted(() => ({
+const { notifyDesktopMock, sendMock } = vi.hoisted(() => ({
+  notifyDesktopMock: vi.fn(),
   sendMock: vi.fn(),
 }))
 
@@ -22,6 +23,10 @@ vi.mock('../../api/sessions', () => ({
   },
 }))
 
+vi.mock('../../lib/desktopNotifications', () => ({
+  notifyDesktop: notifyDesktopMock,
+}))
+
 import { AskUserQuestion } from './AskUserQuestion'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -31,6 +36,7 @@ const ACTIVE_TAB = 'active-tab'
 
 describe('AskUserQuestion', () => {
   beforeEach(() => {
+    notifyDesktopMock.mockReset()
     sendMock.mockReset()
     useSettingsStore.setState({ locale: 'en' })
     useTabStore.setState({
@@ -71,6 +77,118 @@ describe('AskUserQuestion', () => {
         },
       },
     })
+  })
+
+  it('does not render a superseded AskUserQuestion whose tool use is not the active permission request', () => {
+    useChatStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        [ACTIVE_TAB]: {
+          ...state.sessions[ACTIVE_TAB]!,
+          pendingPermission: null,
+          chatState: 'idle',
+        },
+      },
+    }))
+
+    render(
+      <AskUserQuestion
+        toolUseId="superseded-tool-use"
+        input={{
+          questions: [{
+            question: 'Which scope should be used?',
+            options: [{ label: 'Current scope' }, { label: 'Expanded scope' }],
+          }],
+        }}
+      />,
+    )
+
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByTestId('ask-user-option-0-Current scope')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
+  it('notifies the user when a successful AskUserQuestion call is waiting for an answer', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [
+            {
+              question: 'Should we persist data?',
+              options: [{ label: 'No' }, { label: 'Yes' }],
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(notifyDesktopMock).toHaveBeenCalledWith({
+      dedupeKey: 'ask-user-question:active-tab:perm-1',
+      title: 'Claude needs your input',
+      body: 'Should we persist data?',
+      requestAttention: true,
+      target: { type: 'session', sessionId: ACTIVE_TAB },
+    })
+  })
+
+  it('does not notify again for an AskUserQuestion that already has a result', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?' }],
+        }}
+        result={{ answers: { 'Should we persist data?': 'Yes' } }}
+      />,
+    )
+
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the commercialization free-text field only after “other” is selected and retains the choice id', () => {
+    const input = {
+      questions: [{
+        id: 'expert-intake:core-differentiation',
+        question: 'Which differentiation should be researched?',
+        intakeFreeTextOptionId: 'other',
+        options: [
+          { id: 'fewer-steps', label: 'Fewer steps' },
+          { id: 'other', label: 'Other / explain' },
+        ],
+      }],
+    }
+    useChatStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        [ACTIVE_TAB]: {
+          ...state.sessions[ACTIVE_TAB]!,
+          pendingPermission: {
+            requestId: 'perm-1',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'tool-1',
+            input,
+          },
+        },
+      },
+    }))
+
+    render(<AskUserQuestion toolUseId="tool-1" input={input} />)
+    expect(screen.queryByRole('textbox')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Other \/ explain/i }))
+    const textarea = screen.getByRole('textbox')
+    expect((screen.getByRole('button', { name: /submit/i }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(textarea, { target: { value: 'A local-first privacy benefit' } })
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({
+      type: 'permission_response',
+      updatedInput: expect.objectContaining({
+        answers: { 'expert-intake:core-differentiation': 'A local-first privacy benefit' },
+        answerChoiceIds: { 'expert-intake:core-differentiation': ['other'] },
+      }),
+    }))
   })
 
   it('submits answers through permission_response updatedInput instead of sending a chat message', () => {
@@ -431,6 +549,109 @@ describe('AskUserQuestion', () => {
     expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
   })
 
+  it('keeps an accepted answer compact after the card remounts before its tool result is persisted', () => {
+    const answeredSession = {
+      ...useChatStore.getState().sessions[ACTIVE_TAB]!,
+      pendingPermission: null,
+      permissionResponse: { requestId: 'perm-1', status: 'accepted' as const },
+      answeredAskUserQuestions: {
+        'tool-1': {
+          requestId: 'perm-1',
+          status: 'accepted' as const,
+          answers: { 'Should we persist data?': 'Yes' },
+        },
+      },
+    }
+    useChatStore.setState((state) => ({
+      sessions: { ...state.sessions, [ACTIVE_TAB]: answeredSession as never },
+    }))
+
+    const firstView = render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    expect(screen.getByText('Yes')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+
+    firstView.unmount()
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
+  it('keeps a submitted answer compact after a tab/window remount before acknowledgement', () => {
+    const firstView = render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(screen.getByText('Answer submitted:')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+
+    firstView.unmount()
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('Answer submitted:')).toBeTruthy()
+    expect(screen.getByText('Yes')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
+  it('collapses a legacy accepted acknowledgement when no persisted result is available yet', () => {
+    useChatStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        [ACTIVE_TAB]: {
+          ...state.sessions[ACTIVE_TAB]!,
+          pendingPermission: null,
+          permissionResponse: { requestId: 'legacy-perm-1', toolUseId: 'tool-1', status: 'accepted' },
+        },
+      },
+    }))
+
+    render(
+      <AskUserQuestion
+        toolUseId="tool-1"
+        input={{
+          questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+  })
+
   it('keeps custom responses scoped to each question tab', () => {
     const input = {
       questions: [
@@ -579,7 +800,7 @@ describe('AskUserQuestion', () => {
     })
   })
 
-  it('keeps a question non-terminal until acknowledgement and restores it after a rejected response', async () => {
+  it('collapses a submitted answer before acknowledgement and restores the form after rejection', async () => {
     render(
       <AskUserQuestion
         toolUseId="tool-1"
@@ -595,31 +816,44 @@ describe('AskUserQuestion', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Current scope' }))
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
-    expect(screen.queryByText(/answered/i)).toBeNull()
+    expect(screen.getByText('Answer submitted:')).toBeTruthy()
+    expect(screen.getByText('Current scope')).toBeTruthy()
+    expect(screen.queryByText('Claude needs your input')).toBeNull()
     expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
 
     await act(async () => {
-      useChatStore.setState((state) => ({
-        sessions: {
-          ...state.sessions,
-          [ACTIVE_TAB]: {
-            ...state.sessions[ACTIVE_TAB]!,
-            permissionResponse: {
-              requestId: 'perm-1',
-              status: 'rejected',
-              message: 'The selected action was rejected. Please choose again.',
-            },
-            pendingPermission: state.sessions[ACTIVE_TAB]!.pendingPermission,
-            chatState: 'permission_pending',
-          },
-        },
-      }))
+      useChatStore.getState().handleServerMessage(ACTIVE_TAB, {
+        type: 'permission_response_ack',
+        requestId: 'perm-1',
+        status: 'rejected',
+        message: 'The selected action was rejected. Please choose again.',
+      })
     })
 
     expect(screen.getByRole('alert').textContent).toContain('Please choose again')
     expect(screen.getByRole('button', { name: /submit/i })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     expect(sendMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('collapses an unrecovered input-validation failure instead of leaving a disabled question form', () => {
+    render(
+      <AskUserQuestion
+        toolUseId="tool-validation-failure"
+        input={{
+          questions: [{
+            question: 'Which scope?',
+            options: [{ label: 'Single page' }, { label: 'Tabs' }],
+          }],
+        }}
+        result="<tool_use_error>InputValidationError: AskUserQuestion failed because an unexpected parameter `header` was provided</tool_use_error>"
+      />,
+    )
+
+    expect(screen.getByRole('alert').textContent).toContain('InputValidationError')
+    expect(screen.queryByTestId('ask-user-option-0-Single page')).toBeNull()
+    expect(screen.queryByPlaceholderText('Type your answer...')).toBeNull()
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
   })
 
   it('renders aborted permission results as terminal instead of asking again', () => {
@@ -722,6 +956,40 @@ describe('AskUserQuestion', () => {
         answerChoiceIds: { 'research-delivery:commercialization-report': ['accept_current_scope'] },
       }),
     }))
+  })
+
+  it('queues two live questions through submit, acknowledgement and remount without hiding an unanswered request', async () => {
+    useChatStore.setState(state => ({ sessions: { ...state.sessions, [ACTIVE_TAB]: { ...state.sessions[ACTIVE_TAB]!, pendingPermission: null } } }))
+    const input1 = { questions: [{ question: 'First real question?', options: [{ label: 'First answer' }, { label: 'No' }] }] }
+    const input2 = { questions: [{ question: 'Second real question?', options: [{ label: 'Second answer' }, { label: 'No' }] }] }
+    await act(async () => {
+      for (const [n, input] of [[1, input1], [2, input2]] as const) {
+        useChatStore.getState().handleServerMessage(ACTIVE_TAB, { type: 'permission_request', requestId: 'perm-' + n, toolUseId: 'tool-' + n, toolName: 'AskUserQuestion', input })
+      }
+    })
+    const cards = <><AskUserQuestion toolUseId="tool-1" input={input1} /><AskUserQuestion toolUseId="tool-2" input={input2} /></>
+    const firstMount = render(cards)
+    expect(screen.getByText('First real question?')).toBeTruthy()
+    expect(screen.queryByText('Second real question?')).toBeNull()
+    fireEvent.click(screen.getByTestId('ask-user-option-0-First answer'))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(sendMock.mock.calls[0]?.[1]).toMatchObject({ requestId: 'perm-1', updatedInput: { answers: { 'First real question?': 'First answer' } } })
+    await act(async () => {
+      useChatStore.getState().handleServerMessage(ACTIVE_TAB, { type: 'permission_response_ack', requestId: 'perm-1', status: 'accepted' })
+    })
+    firstMount.unmount()
+    render(cards)
+    expect(screen.getByText('Second real question?')).toBeTruthy()
+    expect(screen.queryByTestId('ask-user-option-0-First answer')).toBeNull()
+    expect(screen.getByText(/Answered:/)).toBeTruthy()
+    fireEvent.click(screen.getByTestId('ask-user-option-0-Second answer'))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    await act(async () => {
+      useChatStore.getState().handleServerMessage(ACTIVE_TAB, { type: 'permission_response_ack', requestId: 'perm-2', status: 'accepted' })
+    })
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+    expect(sendMock.mock.calls.map(([, message]) => message.requestId)).toEqual(['perm-1', 'perm-2'])
+    expect(useChatStore.getState().sessions[ACTIVE_TAB]!.pendingPermission).toBeNull()
   })
 
 })

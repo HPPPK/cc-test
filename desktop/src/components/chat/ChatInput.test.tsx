@@ -1313,6 +1313,56 @@ describe('ChatInput file mentions', () => {
     expect(mocks.runRepoHealthCheck).not.toHaveBeenCalled()
   })
 
+  it('shows a dynamic-commercialization welcome without sending the model a kickoff turn', async () => {
+    mocks.listExperts.mockResolvedValueOnce({
+      experts: [{
+        id: 'commercialization-research-report',
+        name: '新品商业化调研报告专家',
+        description: 'Research commercialization evidence.',
+        statusLabel: 'Ready',
+        packId: 'commercialization-research-report',
+        packName: 'Commercialization pack',
+        packVersion: '0.13.26-local',
+        entrypoint: 'experts/commercialization-research-report/expert.json',
+        promptPaths: { system: 'experts/commercialization-research-report/prompts/system.md' },
+        formPaths: [],
+        skillIds: [],
+        hostTools: [{ id: 'AskUserQuestion', name: 'AskUserQuestion', purpose: 'Structured intake' }],
+        permissions: [],
+        portable: true,
+      }],
+    })
+    mocks.enterSessionExpertMode.mockResolvedValueOnce({
+      expert: {
+        mode: 'expert',
+        expertId: 'commercialization-research-report',
+        expertName: '新品商业化调研报告专家',
+        packId: 'commercialization-research-report',
+        packVersion: '0.13.26-local',
+        status: 'active',
+        materialRefs: [],
+        startedAt: '2026-08-17T00:00:00.000Z',
+        updatedAt: '2026-08-17T00:00:00.000Z',
+      },
+    })
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /专家/ }))
+    const expertDialog = await screen.findByTestId('expert-selection-dialog')
+    fireEvent.click(within(expertDialog).getByRole('button', { name: /新品商业化调研报告专家/ }))
+    fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
+
+    await waitFor(() => expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'commercialization-research-report', undefined))
+    expect(useChatStore.getState().getSession(sessionId).messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'assistant_text', content: expect.stringContaining('只有确实缺少会改变调研范围的信息时') }),
+    ]))
+    expect(mocks.wsSend).not.toHaveBeenCalledWith(sessionId, expect.objectContaining({
+      type: 'user_message',
+      content: expect.stringContaining('介绍一下'),
+    }))
+  })
+
   it('enters the selected package-driven expert instead of a hardcoded runner', async () => {
     mocks.enterSessionExpertMode.mockResolvedValueOnce({
       expert: {

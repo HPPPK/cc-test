@@ -1,4 +1,5 @@
 export type ExpertResearchSearchEngine = 'Google' | '百度' | 'Bing' | '360'
+export type ExpertResearchSearchResultStatus = 'results_observed' | 'entry_opened' | 'access_limited' | 'failed' | 'pending' | 'interrupted'
 
 export type ExpertResearchFinalOutputBehavior = 'block' | 'allow-with-evidence-gaps'
 
@@ -14,6 +15,14 @@ export type ExpertResearchCompletionPolicy = {
   minimumCompletedAgents: number
   /** Optional ZIP-declared agent composition so one worker type cannot stand in for a full research program. */
   minimumCompletedAgentsByType?: Record<string, number>
+  /**
+   * Some package-declared agents review already-opened upstream evidence and are
+   * intentionally forbidden from opening pages again. They still count as
+   * completed work, but are not required to return a browser audit themselves.
+   */
+  completedWithoutBrowserAuditAgentTypes?: string[]
+  /** Require the declared search-engine attempts even when evidence-gap output is allowed. */
+  requireSearchCoverageBeforeFinalOutput?: true
   requiredSearchEngines: ExpertResearchSearchEngine[]
   minimumDistinctSearchQueries: number
   minimumOpenedSpecificPublicPages: number
@@ -24,12 +33,18 @@ export type ExpertResearchCompletionPolicy = {
 }
 
 export type ExpertResearchAuditEntry = {
+  /** Stable within the active session; supports server-resolved source references. */
+  auditId?: string
   target: string
   kind?: 'search' | 'url'
   searchEngine?: ExpertResearchSearchEngine
   query?: string
-  status: 'opened' | 'access_limited' | 'failed' | 'pending'
+  /** Only search entries use this: a homepage is not a query result snapshot. */
+  searchResultStatus?: ExpertResearchSearchResultStatus
+  status: 'opened' | 'access_limited' | 'failed' | 'pending' | 'interrupted'
   finalUrl?: string
+  /** Browser actions observed for this attempt, for example navigate/wait/extract. */
+  actionTypes?: string[]
   detail?: string
 }
 
@@ -52,7 +67,7 @@ export type ExpertResearchCompletionEvaluation = {
 
 type JsonRecord = Record<string, unknown>
 const ENGINES = new Set<ExpertResearchSearchEngine>(['Google', '百度', 'Bing', '360'])
-const STATUSES = new Set<ExpertResearchAuditEntry['status']>(['opened', 'access_limited', 'failed', 'pending'])
+const STATUSES = new Set<ExpertResearchAuditEntry['status']>(['opened', 'access_limited', 'failed', 'pending', 'interrupted'])
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -78,6 +93,13 @@ function finalSourceCoverage(value: unknown): ExpertResearchFinalSourceCoverage 
     minimumRows: positiveInteger(value.minimumRows, 'finalSourceCoverage.minimumRows'),
   }
 }
+function optionalAgentTypes(value: unknown, field: string): string[] | undefined {
+  if (value === undefined) return undefined
+  const values = stringArray(value, field)
+  if (values.length === 0) throw new Error(`researchCompletion.${field} 必须是非空字符串数组。`)
+  return values
+}
+
 function minimumAgentsByType(value: unknown): Record<string, number> | undefined {
   if (value === undefined) return undefined
   if (!isRecord(value) || Object.keys(value).length === 0) throw new Error('researchCompletion.minimumCompletedAgentsByType 必须是非空对象。')
@@ -107,14 +129,24 @@ export function resolveExpertResearchCompletionPolicy(outputProtocolContent?: st
     finalOutputBehavior = 'block'
   }
   if (!finalOutputBehavior) return undefined
+  if (raw.requireSearchCoverageBeforeFinalOutput !== undefined && raw.requireSearchCoverageBeforeFinalOutput !== true) {
+    throw new Error('researchCompletion.requireSearchCoverageBeforeFinalOutput 如声明必须为 true。')
+  }
   const trackedAgentTypes = stringArray(raw.trackedAgentTypes, 'trackedAgentTypes')
   const engines = stringArray(raw.requiredSearchEngines, 'requiredSearchEngines')
   if (engines.some((engine) => !ENGINES.has(engine as ExpertResearchSearchEngine))) throw new Error('researchCompletion.requiredSearchEngines 包含不支持的搜索入口。')
   if (raw.requireConcreteSourcePerAgent !== true) throw new Error('启用 researchCompletion 时 requireConcreteSourcePerAgent 必须为 true。')
   const minimumCompletedAgents = positiveInteger(raw.minimumCompletedAgents, 'minimumCompletedAgents')
   const minimumCompletedAgentsByType = minimumAgentsByType(raw.minimumCompletedAgentsByType)
+  const completedWithoutBrowserAuditAgentTypes = optionalAgentTypes(
+    raw.completedWithoutBrowserAuditAgentTypes,
+    'completedWithoutBrowserAuditAgentTypes',
+  )
   if (minimumCompletedAgentsByType && Object.keys(minimumCompletedAgentsByType).some((agentType) => !trackedAgentTypes.includes(agentType))) {
     throw new Error('researchCompletion.minimumCompletedAgentsByType 只能声明 trackedAgentTypes 中的子代理类型。')
+  }
+  if (completedWithoutBrowserAuditAgentTypes?.some((agentType) => !trackedAgentTypes.includes(agentType))) {
+    throw new Error('researchCompletion.completedWithoutBrowserAuditAgentTypes 只能声明 trackedAgentTypes 中的子代理类型。')
   }
   const minimumRequiredAgents = Object.values(minimumCompletedAgentsByType ?? {}).reduce((total, minimum) => total + minimum, 0)
   if (minimumRequiredAgents > minimumCompletedAgents) {
@@ -133,6 +165,8 @@ export function resolveExpertResearchCompletionPolicy(outputProtocolContent?: st
     trackedAgentTypes,
     minimumCompletedAgents,
     ...(minimumCompletedAgentsByType ? { minimumCompletedAgentsByType } : {}),
+    ...(completedWithoutBrowserAuditAgentTypes ? { completedWithoutBrowserAuditAgentTypes } : {}),
+    ...(raw.requireSearchCoverageBeforeFinalOutput === true ? { requireSearchCoverageBeforeFinalOutput: true as const } : {}),
     requiredSearchEngines: engines as ExpertResearchSearchEngine[],
     minimumDistinctSearchQueries: positiveInteger(raw.minimumDistinctSearchQueries, 'minimumDistinctSearchQueries'),
     minimumOpenedSpecificPublicPages,
@@ -170,18 +204,18 @@ function normalizeEntry(value: unknown): ExpertResearchAuditEntry | undefined {
   const kind = value.kind === 'search' || value.kind === 'url' ? value.kind : undefined
   const searchEngine = typeof value.searchEngine === 'string' && ENGINES.has(value.searchEngine as ExpertResearchSearchEngine)
     ? value.searchEngine as ExpertResearchSearchEngine : undefined
-  return { target, status: status as ExpertResearchAuditEntry['status'], ...(kind ? { kind } : {}), ...(searchEngine ? { searchEngine } : {}), ...(text(value.query) ? { query: text(value.query) } : {}), ...(text(value.finalUrl) ? { finalUrl: text(value.finalUrl) } : {}), ...(text(value.detail) ? { detail: text(value.detail) } : {}) }
+  return { target, status: status as ExpertResearchAuditEntry['status'], ...(kind ? { kind } : {}), ...(searchEngine ? { searchEngine } : {}), ...(text(value.query) ? { query: text(value.query) } : {}), ...(text(value.finalUrl) ? { finalUrl: text(value.finalUrl) } : {}), ...(Array.isArray(value.actionTypes) ? { actionTypes: [...new Set(value.actionTypes.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()))].slice(0, 64) } : {}), ...(text(value.detail) ? { detail: text(value.detail) } : {}) }
 }
 
 export function recordExpertResearchAudit(
   previous: ExpertResearchCompletionState | undefined,
-  input: { agentId: unknown; agentType: unknown; entries: unknown; recordedAt: string },
+  input: { agentId: unknown; agentType: unknown; entries: unknown; recordedAt: string; allowEmptyEntries?: boolean },
 ): ExpertResearchCompletionState {
   const agentId = text(input.agentId)
   const agentType = text(input.agentType)
   if (!agentId || !agentType || !Array.isArray(input.entries)) throw new Error('研究审计缺少 agentId、agentType 或 entries。')
   const entries = input.entries.map(normalizeEntry).filter((entry): entry is ExpertResearchAuditEntry => Boolean(entry)).slice(0, 64)
-  if (entries.length === 0) throw new Error('研究审计没有可验证的 Playwright 记录。')
+  if (entries.length === 0 && input.allowEmptyEntries !== true) throw new Error('研究审计没有可验证的 Playwright 记录。')
   const record: ExpertResearchAuditRecord = { agentId, agentType, recordedAt: input.recordedAt, entries }
   const audits = [...(previous?.audits ?? []).filter((item) => item.agentId !== agentId), record].slice(-32)
   return { audits, updatedAt: input.recordedAt }
@@ -193,18 +227,19 @@ export function evaluateExpertResearchCompletion(
 ): ExpertResearchCompletionEvaluation {
   const audits = (state?.audits ?? []).filter((audit) => policy.trackedAgentTypes.includes(audit.agentType))
   const missing: string[] = []
-  if (audits.length < policy.minimumCompletedAgents) missing.push(`仍缺少 ${policy.minimumCompletedAgents - audits.length} 个已回传浏览审计的研究子代理。`)
+  if (audits.length < policy.minimumCompletedAgents) missing.push(`仍缺少 ${policy.minimumCompletedAgents - audits.length} 个已回传研究结果的子代理。`)
   for (const [agentType, minimum] of Object.entries(policy.minimumCompletedAgentsByType ?? {})) {
     const completed = audits.filter((audit) => audit.agentType === agentType).length
-    if (completed < minimum) missing.push(`仍缺少 ${minimum - completed} 个类型为 ${agentType} 的已回传浏览审计子代理。`)
+    if (completed < minimum) missing.push(`仍缺少 ${minimum - completed} 个类型为 ${agentType} 的已回传研究结果子代理。`)
   }
-  const searches = audits.flatMap((audit) => audit.entries.filter((entry) => entry.kind === 'search'))
+  const browserAudits = audits.filter((audit) => !policy.completedWithoutBrowserAuditAgentTypes?.includes(audit.agentType))
+  const searches = browserAudits.flatMap((audit) => audit.entries.filter((entry) => entry.kind === 'search'))
   const seenEngines = new Set(searches.map((entry) => entry.searchEngine).filter(Boolean))
   const missingEngines = policy.requiredSearchEngines.filter((engine) => !seenEngines.has(engine))
   if (missingEngines.length) missing.push(`未记录以下搜索入口的实际尝试状态：${missingEngines.join('、')}。`)
   const queries = new Set(searches.map((entry) => entry.query?.trim()).filter(Boolean))
   if (queries.size < policy.minimumDistinctSearchQueries) missing.push(`只记录了 ${queries.size} 个不同搜索词；至少需要 ${policy.minimumDistinctSearchQueries} 个，以证明出现跑偏/受限时有改词或补充检索。`)
-  const concreteEntries = audits.flatMap((audit) => audit.entries.filter((entry) => entry.kind === 'url' && entry.status === 'opened'))
+  const concreteEntries = browserAudits.flatMap((audit) => audit.entries.filter((entry) => entry.kind === 'url' && entry.status === 'opened'))
   const concreteUrls = new Set(concreteEntries.map((entry) => entry.finalUrl ?? entry.target))
   if (concreteUrls.size < policy.minimumOpenedSpecificPublicPages) missing.push(`只实际打开了 ${concreteUrls.size} 个具体公开来源页；至少需要 ${policy.minimumOpenedSpecificPublicPages} 个。`)
   if (policy.minimumDistinctOpenedSourceDomains) {
@@ -221,7 +256,7 @@ export function evaluateExpertResearchCompletion(
     }
   }
   if (policy.requireConcreteSourcePerAgent) {
-    const agentsWithoutSource = audits.filter((audit) => !audit.entries.some((entry) => entry.kind === 'url' && entry.status === 'opened'))
+    const agentsWithoutSource = browserAudits.filter((audit) => !audit.entries.some((entry) => entry.kind === 'url' && entry.status === 'opened'))
     if (agentsWithoutSource.length) missing.push(`以下研究子代理尚未打开具体公开来源页：${agentsWithoutSource.map((audit) => audit.agentId).join('、')}。`)
   }
   return { complete: missing.length === 0, missing }

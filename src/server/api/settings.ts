@@ -11,6 +11,7 @@
  */
 
 import { SettingsService } from '../services/settingsService.js'
+import { validateImageGenerationSettings } from '../services/imageGenerationSettings.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { ensureDesktopCliLauncherInstalled } from '../services/desktopCliLauncherService.js'
 import { conversationService } from '../services/conversationService.js'
@@ -75,6 +76,13 @@ async function handleUserSettings(req: Request): Promise<Response> {
       : null
     if (Object.prototype.hasOwnProperty.call(body, 'env')) {
       body.env = normalizeEnvSettings(body.env)
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'imageGeneration')) {
+      try {
+        body.imageGeneration = validateImageGenerationSettings(body.imageGeneration)
+      } catch (error) {
+        throw ApiError.badRequest(error instanceof Error ? error.message : 'Invalid image generation settings')
+      }
     }
     await settingsService.updateUserSettings(body)
     syncThinkingSettingToActiveSessions(body)

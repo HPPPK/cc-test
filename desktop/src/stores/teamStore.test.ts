@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getMock, listMock, deleteMemberMock } = vi.hoisted(() => ({
+const { getMock, listMock, deleteMemberMock, transcriptMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   listMock: vi.fn(),
   deleteMemberMock: vi.fn(),
+  transcriptMock: vi.fn(),
 }))
 
 vi.mock('../api/teams', () => ({
   teamsApi: {
     list: listMock,
     get: getMock,
-    getMemberTranscript: vi.fn(),
+    getMemberTranscript: transcriptMock,
     sendMemberMessage: vi.fn(),
     deleteMember: deleteMemberMock,
     stopMember: vi.fn(),
@@ -28,6 +29,7 @@ describe('teamStore team detail projection', () => {
     getMock.mockReset()
     listMock.mockReset()
     deleteMemberMock.mockReset()
+    transcriptMock.mockReset()
     useTeamStore.setState({
       ...initialState,
       teams: [],
@@ -131,6 +133,30 @@ describe('teamStore team detail projection', () => {
     })
   })
 
+  it('initializes a newly loaded member session with an empty permission queue', async () => {
+    transcriptMock.mockResolvedValue({ messages: [] })
+    useTeamStore.setState({
+      activeTeam: {
+        name: 'metrics-team',
+        leadAgentId: 'lead-agent',
+        leadSessionId: 'lead-session',
+        members: [{ agentId: 'worker-agent', role: 'Worker Agent', status: 'idle' }],
+      },
+    })
+
+    await useTeamStore.getState().refreshMemberSession('team-member:worker-agent')
+
+    expect(transcriptMock).toHaveBeenCalledWith('metrics-team', 'worker-agent')
+    expect(useChatStore.getState().sessions['team-member:worker-agent']).toMatchObject({
+      messages: [],
+      chatState: 'idle',
+      connectionState: 'connected',
+      pendingPermission: null,
+      pendingPermissions: [],
+      pendingComputerUsePermission: null,
+    })
+  })
+
   it('marks an open member session disconnected when that member is deleted', async () => {
     deleteMemberMock.mockResolvedValue({ ok: true })
     const memberSessionId = 'team-member:worker-agent'
@@ -161,7 +187,8 @@ describe('teamStore team detail projection', () => {
           activeToolUseId: null,
           activeToolName: null,
           activeThinkingId: null,
-          pendingPermission: null,
+          pendingPermission: { requestId: 'q1', toolName: 'AskUserQuestion', input: {} },
+          pendingPermissions: [{ requestId: 'q1', toolName: 'AskUserQuestion', input: {} }, { requestId: 'q2', toolName: 'AskUserQuestion', input: {} }],
           pendingComputerUsePermission: null,
           tokenUsage: { input_tokens: 0, output_tokens: 0 },
           elapsedSeconds: 0,
@@ -178,6 +205,8 @@ describe('teamStore team detail projection', () => {
     expect(useChatStore.getState().sessions[memberSessionId]).toMatchObject({
       chatState: 'idle',
       connectionState: 'disconnected',
+      pendingPermission: null,
+      pendingPermissions: [],
       messages: [{ id: 'msg-1', type: 'assistant_text', content: 'History', timestamp: 1 }],
     })
   })

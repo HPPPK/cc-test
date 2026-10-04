@@ -28,6 +28,11 @@ import {
 import type { ToolUseContext } from "../../Tool.js";
 import { buildTool, type ToolDef } from "../../Tool.js";
 import { getCwd } from "../../utils/cwd.js";
+import {
+  isSessionResearchArtifactReadAllowed,
+  isMainAgentReportHandoffRead,
+  recordMainAgentReportReadPage,
+} from "../../services/tools/expertTemplateFillRuntime.js";
 import { getClaudeConfigHomeDir, isEnvTruthy } from "../../utils/envUtils.js";
 import { getErrnoCode, isENOENT } from "../../utils/errors.js";
 import {
@@ -41,6 +46,7 @@ import { logFileOperation } from "../../utils/fileOperationAnalytics.js";
 import { formatFileSize } from "../../utils/format.js";
 import { getFsImplementation } from "../../utils/fsOperations.js";
 import {
+  compressImageBuffer,
   compressImageBufferWithTokenLimit,
   createImageMetadataText,
   detectImageFormatFromBuffer,
@@ -184,6 +190,21 @@ export function isExpertEvidenceResearchReadAllowed(
   });
 }
 
+/**
+ * File-first research is an explicit, session-scoped exception to the normal
+ * evidence-agent attachment rule. Researchers may Read the declared brief and
+ * a declared researcher report so they can verify their own successful Write;
+ * runAgent narrows that report to the task-assigned path. Arbitrary workDir
+ * discovery remains denied.
+ */
+export function isExpertEvidenceResearchSessionReadAllowed(
+  filePath: string,
+  messages: ToolUseContext["messages"],
+): boolean {
+  return isSessionResearchArtifactReadAllowed(filePath, ["research-brief", "researcher-report"]) ||
+    isExpertEvidenceResearchReadAllowed(filePath, messages);
+}
+
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames
 const THIN_SPACE = String.fromCharCode(8239);
 
@@ -229,13 +250,146 @@ export function registerFileReadListener(
   };
 }
 
+type FileReadTokenRecovery = {
+  filePath: string;
+  totalLines: number;
+  totalBytes: number;
+  longestLineBytes: number;
+  preview?: {
+    content: string;
+    bytes: number;
+  };
+};
+
+const JSON_RECOVERY_MAX_LINES = 20;
+const JSON_RECOVERY_MIN_LINE_BYTES = 16 * 1024;
+const JSON_RECOVERY_PREVIEW_BYTES = 768;
+const JSON_RECOVERY_WINDOW_BYTES = 4096;
+
+function getLongestLine(content: string): { content: string; bytes: number } {
+  let start = 0;
+  let longestStart = 0;
+  let longestEnd = 0;
+  let longestBytes = 0;
+
+  const consider = (end: number) => {
+    const line = content.slice(start, end);
+    const lineBytes = Buffer.byteLength(line, "utf8");
+    if (lineBytes > longestBytes) {
+      longestStart = start;
+      longestEnd = end;
+      longestBytes = lineBytes;
+    }
+  };
+
+  for (let index = 0; index < content.length; index++) {
+    if (content.charCodeAt(index) === 10) {
+      consider(index);
+      start = index + 1;
+    }
+  }
+  consider(content.length);
+
+  return {
+    content: content.slice(longestStart, longestEnd),
+    bytes: longestBytes,
+  };
+}
+
+function clipUtf8Preview(
+  content: string,
+  maxBytes: number,
+): { content: string; bytes: number } {
+  let bytes = 0;
+  let end = 0;
+
+  for (const character of content) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + characterBytes > maxBytes) break;
+    bytes += characterBytes;
+    end += character.length;
+  }
+
+  return { content: content.slice(0, end), bytes };
+}
+
+function isJsonLikeText(ext: string, content: string): boolean {
+  return ext === "json" || ext === "jsonl" || /^[\s]*[\[{]/.test(content);
+}
+
+function createFileReadTokenRecovery(
+  filePath: string,
+  ext: string,
+  content: string,
+  totalLines: number,
+  totalBytes: number,
+): FileReadTokenRecovery {
+  const longestLine = getLongestLine(content);
+  const hasCompactJsonShape =
+    totalLines <= JSON_RECOVERY_MAX_LINES &&
+    longestLine.bytes >= JSON_RECOVERY_MIN_LINE_BYTES &&
+    isJsonLikeText(ext, content);
+
+  return {
+    filePath,
+    totalLines,
+    totalBytes,
+    longestLineBytes: longestLine.bytes,
+    ...(hasCompactJsonShape
+      ? {
+          preview: clipUtf8Preview(
+            longestLine.content,
+            JSON_RECOVERY_PREVIEW_BYTES,
+          ),
+        }
+      : {}),
+  };
+}
+
+function createByteWindowCommand(filePath: string): string {
+  const encodedFilePath = Buffer.from(filePath, "utf8").toString("base64");
+  return `python -c "import base64; from pathlib import Path; p = Path(base64.b64decode('${encodedFilePath}').decode('utf-8')); f = p.open('rb'); f.seek(0); print(f.read(${JSON_RECOVERY_WINDOW_BYTES}).decode('utf-8', 'replace'))"`;
+}
+
+function createMaxFileReadTokenExceededMessage(
+  tokenCount: number,
+  maxTokens: number,
+  recovery?: FileReadTokenRecovery,
+): string {
+  const prefix = `File content (${tokenCount} tokens) exceeds maximum allowed tokens (${maxTokens}).`;
+  if (!recovery) {
+    return `${prefix} Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`;
+  }
+
+  const recoveryMessage =
+    ` Read metadata: totalLines=${recovery.totalLines}, totalBytes=${recovery.totalBytes}, longestLineBytes=${recovery.longestLineBytes}.` +
+    " Read's limit parameter is a line count, not a byte or character budget. It cannot split the longest line, so retrying with limit: 400 will not recover a one-line oversized record.";
+  const byteWindowCommand = createByteWindowCommand(recovery.filePath);
+
+  if (recovery.preview) {
+    return (
+      prefix +
+      recoveryMessage +
+      ` This looks like compact JSON with few lines. Bounded data preview of the first ${recovery.preview.bytes} UTF-8 bytes of its longest line (escaped and truncated; it may not be valid JSON): ${JSON.stringify(recovery.preview.content)}.` +
+      ` To inspect the next safe segment, use Bash to run ${byteWindowCommand}; then change f.seek(0) to f.seek(${JSON_RECOVERY_WINDOW_BYTES}) for the next ${JSON_RECOVERY_WINDOW_BYTES}-byte window.`
+    );
+  }
+
+  return (
+    prefix +
+    recoveryMessage +
+    ` Use offset and limit only to select complete lines. If the needed data is inside the long line, use Bash to run ${byteWindowCommand} for a bounded ${JSON_RECOVERY_WINDOW_BYTES}-byte preview.`
+  );
+}
+
 export class MaxFileReadTokenExceededError extends Error {
   constructor(
     public tokenCount: number,
     public maxTokens: number,
+    recovery?: FileReadTokenRecovery,
   ) {
     super(
-      `File content (${tokenCount} tokens) exceeds maximum allowed tokens (${maxTokens}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`,
+      createMaxFileReadTokenExceededMessage(tokenCount, maxTokens, recovery),
     );
     this.name = "MaxFileReadTokenExceededError";
   }
@@ -455,12 +609,12 @@ export const FileReadTool = buildTool({
   async checkPermissions(input, context): Promise<PermissionDecision> {
     if (
       context.agentType === EXPERT_EVIDENCE_RESEARCH_AGENT_TYPE &&
-      !isExpertEvidenceResearchReadAllowed(input.file_path, context.messages)
+      !isExpertEvidenceResearchSessionReadAllowed(input.file_path, context.messages)
     ) {
       return {
         behavior: "deny",
         message:
-          "The evidence-research subagent may only Read files or directories explicitly attached by the user. No user material is available for this path; ask for the source file instead of guessing workspace files such as README.md or index.html.",
+          "The evidence-research subagent may only Read the declared session research brief or files/directories explicitly attached by the user. No permitted material is available for this path; do not probe workspace files such as README.md or index.html.",
         decisionReason: {
           type: "other",
           reason:
@@ -610,7 +764,7 @@ export const FileReadTool = buildTool({
       "tengu_read_dedup_killswitch",
       false,
     );
-    const existingState = dedupKillswitch
+    const existingState = dedupKillswitch || (!context.agentType && isMainAgentReportHandoffRead(fullFilePath))
       ? undefined
       : readFileState.get(fullFilePath);
     // Only dedup entries that came from a prior Read (offset is always set
@@ -829,6 +983,7 @@ async function validateContentTokens(
   content: string,
   ext: string,
   maxTokens?: number,
+  createRecovery?: () => FileReadTokenRecovery | undefined,
 ): Promise<void> {
   const effectiveMaxTokens =
     maxTokens ?? getDefaultFileReadingLimits().maxTokens;
@@ -840,7 +995,11 @@ async function validateContentTokens(
   const effectiveCount = tokenCount ?? tokenEstimate;
 
   if (effectiveCount > effectiveMaxTokens) {
-    throw new MaxFileReadTokenExceededError(effectiveCount, effectiveMaxTokens);
+    throw new MaxFileReadTokenExceededError(
+      effectiveCount,
+      effectiveMaxTokens,
+      createRecovery?.(),
+    );
   }
 }
 
@@ -853,6 +1012,11 @@ type ImageResult = {
     dimensions?: ImageDimensions;
   };
 };
+
+// This is a transport/context guard, not a visual-token estimate. A full PNG can
+// be modest in pixel area yet still make a long provider conversation overflow.
+const MAX_IMAGE_TOOL_RESULT_BYTES = 192 * 1024;
+const MAX_IMAGE_TOOL_RESULT_REVIEW_TOKENS = 768;
 
 function createImageResponse(
   buffer: Buffer,
@@ -869,6 +1033,75 @@ function createImageResponse(
       dimensions,
     },
   };
+}
+
+function decodedImagePayloadBytes(base64: string): number {
+  return Buffer.from(base64, "base64").length;
+}
+
+async function enforceImageToolResultPayloadLimit(
+  result: ImageResult,
+  imageBuffer: Buffer,
+  originalSize: number,
+  detectedFormat: string,
+): Promise<ImageResult> {
+  if (decodedImagePayloadBytes(result.file.base64) <= MAX_IMAGE_TOOL_RESULT_BYTES) {
+    return result;
+  }
+
+  let preview: ImageResult;
+  try {
+    const downsampled = await downsampleImageBufferToVisionTokenBudget(
+      imageBuffer,
+      originalSize,
+      detectedFormat,
+      MAX_IMAGE_TOOL_RESULT_REVIEW_TOKENS,
+    );
+    preview = createImageResponse(
+      downsampled.buffer,
+      downsampled.mediaType,
+      originalSize,
+      downsampled.dimensions,
+    );
+  } catch (error) {
+    logError(error);
+    throw new ImageResizeError(
+      `Image file is too large to attach safely as visual input (${formatFileSize(originalSize)}). ` +
+        "The host could not create a bounded review preview. " +
+        "Preview processing failed, not image generation. Repair the desktop image runtime and retry Read of this existing file; do not regenerate or change the image Provider. " +
+        (error instanceof Error && error.message.includes("IMAGE_PROCESSOR_") ? error.message : ""),
+    );
+  }
+
+  if (decodedImagePayloadBytes(preview.file.base64) <= MAX_IMAGE_TOOL_RESULT_BYTES) {
+    return preview;
+  }
+
+  try {
+    const compressed = await compressImageBuffer(
+      Buffer.from(preview.file.base64, "base64"),
+      MAX_IMAGE_TOOL_RESULT_BYTES,
+      preview.file.type,
+    );
+    if (decodedImagePayloadBytes(compressed.base64) > MAX_IMAGE_TOOL_RESULT_BYTES) {
+      throw new ImageResizeError("Image compression exceeded the bounded review preview limit.");
+    }
+    return {
+      type: "image",
+      file: {
+        base64: compressed.base64,
+        type: compressed.mediaType,
+        originalSize,
+        dimensions: preview.file.dimensions,
+      },
+    };
+  } catch (error) {
+    logError(error);
+    throw new ImageResizeError(
+      `Image file is too large to attach safely as visual input (${formatFileSize(originalSize)}). ` +
+        "The host could not compress the bounded review preview.",
+    );
+  }
 }
 
 function estimateVisionImageTokens(
@@ -1112,7 +1345,21 @@ async function callInner(
       context.abortController.signal,
     );
 
-  await validateContentTokens(content, ext, maxTokens);
+  await validateContentTokens(
+    content,
+    ext,
+    maxTokens,
+    limit === undefined
+      ? () =>
+          createFileReadTokenRecovery(
+            resolvedFilePath,
+            ext,
+            content,
+            totalLines,
+            totalBytes,
+          )
+      : undefined,
+  );
 
   readFileState.set(fullFilePath, {
     content,
@@ -1126,6 +1373,12 @@ async function callInner(
   // would splice the live array and skip the next listener.
   for (const listener of fileReadListeners.slice()) {
     listener(resolvedFilePath, content);
+  }
+
+  // Accumulate successful parent pages for the same file revision. Only full
+  // coverage unlocks delivery; child reads never satisfy the parent handoff.
+  if (!context.agentType) {
+    await recordMainAgentReportReadPage(resolvedFilePath, { offset, lineCount, totalLines, totalBytes, mtimeMs });
   }
 
   const data = {
@@ -1198,6 +1451,14 @@ export async function readImageWithTokenBudget(
   const detectedMediaType = detectImageFormatFromBuffer(imageBuffer);
   const detectedFormat = detectedMediaType.split("/")[1] || "png";
 
+  const finalizeImageResult = (candidate: ImageResult) =>
+    enforceImageToolResultPayloadLimit(
+      candidate,
+      imageBuffer,
+      originalSize,
+      detectedFormat,
+    );
+
   // Try standard resize
   let result: ImageResult;
   try {
@@ -1229,12 +1490,12 @@ export async function readImageWithTokenBudget(
         detectedFormat,
         maxTokens,
       );
-      return createImageResponse(
+      return finalizeImageResult(createImageResponse(
         downsampled.buffer,
         downsampled.mediaType,
         originalSize,
         downsampled.dimensions,
-      );
+      ));
     } catch (e) {
       logError(e);
     }
@@ -1246,14 +1507,14 @@ export async function readImageWithTokenBudget(
         maxTokens,
         detectedMediaType,
       );
-      return {
+      return finalizeImageResult({
         type: "image",
         file: {
           base64: compressed.base64,
           type: compressed.mediaType,
           originalSize,
         },
-      };
+      });
     } catch (e) {
       logError(e);
       // Fallback: heavily compressed version from the SAME buffer
@@ -1274,13 +1535,13 @@ export async function readImageWithTokenBudget(
           .jpeg({ quality: 20 })
           .toBuffer();
 
-        return createImageResponse(fallbackBuffer, "jpeg", originalSize);
+        return finalizeImageResult(createImageResponse(fallbackBuffer, "jpeg", originalSize));
       } catch (error) {
         logError(error);
-        return createImageResponse(imageBuffer, detectedFormat, originalSize);
+        return finalizeImageResult(createImageResponse(imageBuffer, detectedFormat, originalSize));
       }
     }
   }
 
-  return result;
+  return finalizeImageResult(result);
 }

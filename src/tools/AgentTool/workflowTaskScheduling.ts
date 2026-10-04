@@ -6,7 +6,7 @@ import {
 } from '../../server/services/workflowParallelScheduler.js'
 import { resolveWorkflowParallelism } from '../../utils/workflowParallelism.js'
 import { loadCurrentWorkflowTemplate } from '../../server/services/workflowRuntimeTemplateService.js'
-import type { WorkflowSessionState } from '../../server/services/workflowTypes.js'
+import type { WorkflowSessionState, WorkflowTaskSnapshot } from '../../server/services/workflowTypes.js'
 
 export type WorkflowTaskScheduleInput = {
   task_id: string
@@ -24,8 +24,11 @@ export type WorkflowTaskSchedulePlan = {
   tasks: WorkflowParallelTask[]
 }
 
+export type WorkflowTaskSchedulingRole = 'coder' | 'reviewer'
+
 export type WorkflowTaskSchedulingLifecycleOptions = {
   signal?: AbortSignal
+  role?: WorkflowTaskSchedulingRole
   onStarted?: () => void
   onCancelled?: () => void
   onBlocked?: (reason: string) => void
@@ -74,6 +77,39 @@ export function getWorkflowTaskExecutionMode(
   return task.executionMode ?? (task.writeScopes.length > 0 ? 'write' : 'read')
 }
 
+function scheduledTaskId(batchId: string, role: WorkflowTaskSchedulingRole): string {
+  return `${batchId}::${role}`
+}
+
+export function expandWorkflowBatchPlanForRole(
+  plan: WorkflowTaskSchedulePlan,
+  role: WorkflowTaskSchedulingRole | undefined,
+): WorkflowTaskSchedulePlan {
+  if (!role) return plan
+
+  const tasks: WorkflowParallelTask[] = []
+  for (const batch of plan.tasks) {
+    tasks.push({
+      id: scheduledTaskId(batch.id, 'coder'),
+      dependsOn: batch.dependsOn.map((dependencyId) => scheduledTaskId(dependencyId, 'reviewer')),
+      writeScopes: [...batch.writeScopes],
+      resourceClaims: [...batch.resourceClaims],
+      executionMode: batch.executionMode ?? (batch.writeScopes.length > 0 ? 'write' : 'read'),
+    })
+    tasks.push({
+      id: scheduledTaskId(batch.id, 'reviewer'),
+      dependsOn: [scheduledTaskId(batch.id, 'coder')],
+      writeScopes: [],
+      resourceClaims: [],
+      executionMode: 'read',
+    })
+  }
+  return {
+    taskId: scheduledTaskId(plan.taskId, role),
+    tasks,
+  }
+}
+
 function inlineSchedulingTemplate(workflow: unknown): unknown {
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return null
   const record = workflow as Record<string, unknown>
@@ -110,6 +146,7 @@ async function loadSchedulingTemplate(workflow: unknown) {
 export async function validateWorkflowTaskSchedule(
   workflow: unknown,
   plan: WorkflowTaskSchedulePlan,
+  role?: WorkflowTaskSchedulingRole,
 ): Promise<void> {
   const inlineTemplate = inlineSchedulingTemplate(workflow)
   const template = inlineTemplate ?? await loadSchedulingTemplate(workflow)
@@ -126,8 +163,10 @@ export async function validateWorkflowTaskSchedule(
     throw new Error(`Workflow task ${plan.taskId} is a read task and cannot declare write scopes`)
   }
 
+  const scheduledPlan = expandWorkflowBatchPlanForRole(plan, role)
+  validateWorkflowParallelPlan({ maxParallel: parallelism.maxParallel }, scheduledPlan.tasks)
   const existing = schedulerLanes.get(parallelism.key)
-  if (existing && existing.planSignature !== createPlanSignature(plan.tasks)) {
+  if (existing && existing.planSignature !== createPlanSignature(scheduledPlan.tasks)) {
     throw new Error('Workflow task plan does not match the existing workflow task plan for this phase')
   }
 }
@@ -147,7 +186,7 @@ export async function runWithinWorkflowTaskSchedule<T extends WorkflowTaskLifecy
 ): Promise<T | undefined> {
   let permit: { key: string, lane: SchedulerLane }
   try {
-    permit = await acquireWorkflowTaskPermit(workflow, plan, options.signal)
+    permit = await acquireWorkflowTaskPermit(workflow, plan, options.signal, options.role)
   } catch (error) {
     if (error instanceof WorkflowTaskBlockedError) {
       options.onBlocked?.(error.message)
@@ -164,10 +203,10 @@ export async function runWithinWorkflowTaskSchedule<T extends WorkflowTaskLifecy
   const { key, lane } = permit
   try {
     const outcome = await lifecycle()
-    completeWorkflowTask(key, lane, plan.taskId, outcome)
+    completeWorkflowTask(key, lane, expandWorkflowBatchPlanForRole(plan, options.role).taskId, outcome)
     return outcome
   } catch (error) {
-    completeWorkflowTask(key, lane, plan.taskId, {
+    completeWorkflowTask(key, lane, expandWorkflowBatchPlanForRole(plan, options.role).taskId, {
       status: 'failed',
       reason: error instanceof Error ? error.message : String(error),
     })
@@ -193,6 +232,7 @@ async function acquireWorkflowTaskPermit(
   workflow: unknown,
   plan: WorkflowTaskSchedulePlan,
   signal?: AbortSignal,
+  role?: WorkflowTaskSchedulingRole,
 ): Promise<{ key: string, lane: SchedulerLane }> {
   const inlineTemplate = inlineSchedulingTemplate(workflow)
   const template = inlineTemplate ?? await loadSchedulingTemplate(workflow)
@@ -204,13 +244,26 @@ async function acquireWorkflowTaskPermit(
     throw createCancellationError()
   }
 
-  const lane = getOrCreateLane(parallelism.key, parallelism.maxParallel, plan.tasks)
+  const scheduledPlan = expandWorkflowBatchPlanForRole(plan, role)
+  const lane = getOrCreateLane(
+    parallelism.key,
+    parallelism.maxParallel,
+    scheduledPlan.tasks,
+    persistedTaskSnapshots(workflow, scheduledPlan.tasks),
+  )
+  if (role) {
+    const current = lane.scheduler.snapshot().tasks.find((task) => task.id === scheduledPlan.taskId)
+    if (current && (current.status === 'succeeded' || current.status === 'failed' || current.status === 'blocked')) {
+      lane.scheduler.resetTaskAndDependents(scheduledPlan.taskId)
+      notifyLane(lane)
+    }
+  }
   while (true) {
     if (signal?.aborted) {
       throw createCancellationError()
     }
 
-    const result = lane.scheduler.tryStartTask(plan.taskId)
+    const result = lane.scheduler.tryStartTask(scheduledPlan.taskId)
     if (result.status === 'started') {
       return { key: parallelism.key, lane }
     }
@@ -226,6 +279,7 @@ function getOrCreateLane(
   key: string,
   maxParallel: number,
   tasks: WorkflowParallelTask[],
+  persistedSnapshots: WorkflowTaskSnapshot[] = [],
 ): SchedulerLane {
   const planSignature = createPlanSignature(tasks)
   const existing = schedulerLanes.get(key)
@@ -241,8 +295,51 @@ function getOrCreateLane(
     planSignature,
     listeners: new Set(),
   }
+  for (const snapshot of persistedSnapshots) {
+    const status = persistedSchedulerStatus(snapshot)
+    if (!status) continue
+    lane.scheduler.hydrateTask(snapshot.taskId, status, snapshot.reason)
+  }
   schedulerLanes.set(key, lane)
   return lane
+}
+
+function persistedTaskSnapshots(
+  workflow: unknown,
+  tasks: WorkflowParallelTask[],
+): WorkflowTaskSnapshot[] {
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) return []
+  const record = workflow as WorkflowSessionState
+  const phaseId = record.activePhaseId
+  if (!phaseId) return []
+  const snapshots = record.runtimeContract?.phaseStates[phaseId]?.taskSnapshots ?? []
+  return tasks.flatMap(task => {
+    const exact = snapshots.find(snapshot => snapshot.taskId === task.id)
+    if (exact) return [{ ...exact, taskId: task.id }]
+    const separator = task.id.lastIndexOf('::')
+    if (separator < 0) return []
+    const batchId = task.id.slice(0, separator)
+    const role = task.id.slice(separator + 2)
+    const matched = snapshots.find(snapshot => snapshot.batchId === batchId && snapshot.workflowRole === role)
+    return matched ? [{ ...matched, taskId: task.id }] : []
+  })
+}
+
+function persistedSchedulerStatus(
+  snapshot: WorkflowTaskSnapshot,
+): 'pending' | 'running' | 'succeeded' | 'failed' | 'blocked' | null {
+  if (snapshot.status === 'succeeded') return 'succeeded'
+  if (snapshot.status === 'running' || snapshot.status === 'waiting_user') return 'running'
+  if (snapshot.status === 'blocked') return 'blocked'
+  if (snapshot.status === 'failed' || snapshot.status === 'needs_fix') return 'failed'
+  if (
+    snapshot.status === 'pending'
+    || snapshot.status === 'waiting_dependency'
+    || snapshot.status === 'interrupted'
+    || snapshot.status === 'cancelled'
+    || snapshot.status === 'stale'
+  ) return 'pending'
+  return null
 }
 
 function completeWorkflowTask(

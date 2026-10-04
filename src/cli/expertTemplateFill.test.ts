@@ -26,6 +26,30 @@ describe('expert-template-fill CLI', () => {
     expect(() => parseExpertTemplateFillCliArgs(['--wat'])).toThrow('Unknown option')
   })
 
+  test('preserves an opt-in evidence absorption map when forwarding fields to the active session', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-absorption-cli-'))
+    roots.push(root)
+    const dataPath = path.join(root, 'report-fields.json')
+    await fs.writeFile(dataPath, JSON.stringify({
+      templateId: 'commercialization-research-classic-v1',
+      fields: { REPORT_TITLE: 'AI 视频翻译' },
+      evidenceAbsorption: {
+        version: 'cc-jiangxia-evidence-absorption/v1',
+        records: [{ sourceUrl: 'https://example.com/', disposition: 'used', fieldIds: ['REPORT_TITLE'], note: 'Supported title context.' }],
+      },
+    }))
+    let requestedBody: Record<string, unknown> | undefined
+    await runExpertTemplateFillCli({ dataPath, outputPath: path.join(root, 'report.html') }, {
+      env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-123' },
+      readFile: fs.readFile, mkdir: fs.mkdir, writeFile: fs.writeFile,
+      fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
+        requestedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>ok</html>' }), { status: 200 })
+      }) as typeof fetch,
+    })
+    expect((requestedBody?.payload as Record<string, unknown>).evidenceAbsorption).toMatchObject({ version: 'cc-jiangxia-evidence-absorption/v1' })
+  })
+
   test('submits compact fields to the current Expert session and writes rendered HTML', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
     roots.push(root)
@@ -104,6 +128,57 @@ describe('expert-template-fill CLI', () => {
       },
     })
     expect(await fs.readFile(outputPath, 'utf8')).toBe('<html>stdin</html>')
+  })
+
+  test('writes a direct-output Expert report only at the provided session workDir root', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
+    const sessionWorkDir = path.join(root, 'selected-session-directory')
+    roots.push(root)
+    const writes: string[] = []
+
+    const result = await runExpertTemplateFillCli(
+      { dataFromStdin: true, outputPath: '产品方向-商业化调研报告.html' },
+      {
+        env: {
+          CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237',
+          CC_JIANGXIA_EXPERT_SESSION_ID: 'session-workdir',
+          CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT: sessionWorkDir,
+        },
+        readFile: fs.readFile,
+        readStdin: async () => JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'session-root' } }),
+        mkdir: fs.mkdir,
+        writeFile: (async (filePath: string, content: string) => {
+          writes.push(filePath)
+          await fs.writeFile(filePath, content, 'utf8')
+        }) as typeof fs.writeFile,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>session-root</html>' }), { status: 200 })) as typeof fetch,
+      },
+    )
+
+    const expected = path.resolve(sessionWorkDir, '产品方向-商业化调研报告.html')
+    expect(result.outputPath).toBe(expected)
+    expect(writes).toEqual([expected])
+    expect(await fs.readFile(expected, 'utf8')).toBe('<html>session-root</html>')
+  })
+
+  test('rejects absolute paths and subdirectories for a direct-output Expert session', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-template-fill-cli-'))
+    roots.push(root)
+    const dependencies = {
+      env: {
+        CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237',
+        CC_JIANGXIA_EXPERT_SESSION_ID: 'session-workdir',
+        CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT: root,
+      },
+      readFile: fs.readFile,
+      readStdin: async () => JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'blocked' } }),
+      mkdir: fs.mkdir,
+      writeFile: fs.writeFile,
+      fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as typeof fetch,
+    }
+
+    await expect(runExpertTemplateFillCli({ dataFromStdin: true, outputPath: path.join(root, 'absolute.html') }, dependencies)).rejects.toThrow('filename directly')
+    await expect(runExpertTemplateFillCli({ dataFromStdin: true, outputPath: path.join('nested', 'report.html') }, dependencies)).rejects.toThrow('filename directly')
   })
 
   test('surfaces field validation returned by the bound template renderer', async () => {

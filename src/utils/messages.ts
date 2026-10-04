@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { feature } from 'bun:bundle'
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
@@ -2211,12 +2212,18 @@ export function normalizeMessagesForAPI(
               content: message.message.content.map(block => {
                 if (block.type === 'tool_use') {
                   const tool = tools.find(t => toolMatchesName(t, block.name))
-                  const normalizedInput = tool
-                    ? normalizeToolInputForAPI(
-                        tool,
-                        block.input as Record<string, unknown>,
-                      )
-                    : block.input
+                  // Invalid fine-grained arguments stay verbatim in the local
+                  // transcript, but API history requires an object root. This
+                  // error envelope is not executable input; its paired tool_result
+                  // already reports that the call was rejected without execution.
+                  const normalizedInput = typeof block.input === 'string'
+                    ? { _invalid_json: block.input }
+                    : tool
+                      ? normalizeToolInputForAPI(
+                          tool,
+                          block.input as Record<string, unknown>,
+                        )
+                      : block.input
                   const canonicalName = tool?.name ?? block.name
 
                   // When tool search is enabled, preserve all fields including 'caller'
@@ -2676,22 +2683,17 @@ export function normalizeContentFromAPI(
         if (typeof contentBlock.input === 'string') {
           const parsed = safeParseJSON(contentBlock.input)
           if (parsed === null && contentBlock.input.length > 0) {
-            // TET/FC-v3 diagnostic: the streamed tool input JSON failed to
-            // parse. We fall back to {} which means downstream validation
-            // sees empty input. The raw prefix goes to debug log only — no
-            // PII-tagged proto column exists for it yet.
+            // Keep the original input in the local tool block. Do not execute
+            // an invented {} or print potentially sensitive content in logs.
             logEvent('tengu_tool_input_json_parse_fail', {
               toolName: sanitizeToolNameForAnalytics(contentBlock.name),
               inputLen: contentBlock.input.length,
             })
-            if (process.env.USER_TYPE === 'ant') {
-              logForDebugging(
-                `tool input JSON parse fail: ${contentBlock.input.slice(0, 200)}`,
-                { level: 'warn' },
-              )
-            }
+            logForDebugging('TOOL_INPUT_JSON_INVALID tool=' + sanitizeToolNameForAnalytics(contentBlock.name)
+              + ' id=' + contentBlock.id + ' length=' + contentBlock.input.length
+              + ' sha256=' + createHash('sha256').update(contentBlock.input).digest('hex'), { level: 'warn' })
           }
-          normalizedInput = parsed ?? {}
+          normalizedInput = parsed ?? (contentBlock.input.trim() ? contentBlock.input : {})
         } else {
           normalizedInput = contentBlock.input
         }

@@ -74,14 +74,35 @@ describe('Expert research completion policy', () => {
     const result = evaluateExpertResearchDeliveryEligibility(policy, incomplete)
 
     expect(result.eligible).toBe(false)
-    expect(result.missing).toContain('仍缺少 1 个已回传浏览审计的研究子代理。')
-    expect(result.missing).toContain('仍缺少 1 个类型为 expert-evidence-reviewer 的已回传浏览审计子代理。')
+    expect(result.missing).toContain('仍缺少 1 个已回传研究结果的子代理。')
+    expect(result.missing).toContain('仍缺少 1 个类型为 expert-evidence-reviewer 的已回传研究结果子代理。')
   })
 
   it('treats access-limited engines as attempted while requiring diverse concrete pages', () => {
     const result = evaluateExpertResearchCompletion(policy, stateWithAudits())
 
     expect(result).toEqual({ complete: true, missing: [] })
+  })
+
+
+  it('allows an evidence-only reviewer to count as complete without changing researcher browser requirements', () => {
+    const reviewerWithoutBrowser = stateWithAudits()
+    reviewerWithoutBrowser.audits[2]!.entries.push(
+      { kind: 'search', searchEngine: '360', query: 'Markdown 阅读器 定价', target: 'https://www.so.com/s?q=Markdown', status: 'access_limited' },
+      { kind: 'url', target: 'https://github.com/markdown', status: 'opened' },
+    )
+    reviewerWithoutBrowser.audits[3] = {
+      agentId: 'research-evidence-review',
+      agentType: 'expert-evidence-reviewer',
+      recordedAt: '2026-08-06T00:00:00.000Z',
+      entries: [],
+    }
+    const evidenceOnlyPolicy: ExpertResearchCompletionPolicy = {
+      ...policy,
+      completedWithoutBrowserAuditAgentTypes: ['expert-evidence-reviewer'],
+    }
+
+    expect(evaluateExpertResearchCompletion(evidenceOnlyPolicy, reviewerWithoutBrowser)).toEqual({ complete: true, missing: [] })
   })
 
   it('rejects a policy whose typed minimums exceed its overall minimum', () => {

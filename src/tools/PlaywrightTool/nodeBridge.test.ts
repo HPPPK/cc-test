@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { describe, expect, test } from 'bun:test'
-import { PLAYWRIGHT_NODE_BOOTSTRAP, PLAYWRIGHT_NODE_RUNNER_PATH_ENV, PLAYWRIGHT_BROWSER_RUNNER_FILE, createPlaywrightBridgeRequest, createPlaywrightNodeBridgeInvocation, normalizePlaywrightNodeRunnerPath } from './nodeBridge.js'
+import { PLAYWRIGHT_NODE_BOOTSTRAP, PLAYWRIGHT_NODE_RUNNER_PATH_ENV, PLAYWRIGHT_BROWSER_RUNNER_FILE, createPlaywrightBridgeAbortSessionRequest, createPlaywrightBridgeRequest, createPlaywrightNodeBridgeInvocation, normalizePlaywrightNodeRunnerPath } from './nodeBridge.js'
 
 const request = {
   executablePath: 'C:\browser\chrome.exe',
@@ -28,6 +30,14 @@ describe('Playwright Node bridge', () => {
       type: 'run',
       sessionKey: 'desktop-session:main',
       request,
+    })
+  })
+
+  test('frames an out-of-band session abort for a bridge request that timed out', () => {
+    expect(createPlaywrightBridgeAbortSessionRequest('req-timeout', 'expert:session-1')).toEqual({
+      id: 'req-timeout',
+      type: 'abort-session',
+      sessionKey: 'expert:session-1',
     })
   })
 
@@ -79,4 +89,10 @@ describe('Playwright Node bridge', () => {
       },
     })
   })
+test('emits a live diagnostic when the persistent runner cannot apply browser window presentation', async () => {
+    const source = await readFile(path.join(import.meta.dir, 'nodeBridge.ts'), 'utf8')
+    expect(source).toContain("buffered.includes('Failed to apply browser window presentation')")
+    expect(source).toContain("console.error('[Playwright bridge] '")
+  })
+
 })

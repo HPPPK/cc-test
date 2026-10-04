@@ -15,6 +15,10 @@ import {
   routeWorkflowTask,
   terminalLabelRequiresConfirmation,
 } from './workflowTaskRouter.js'
+import {
+  DEVELOPMENT_IMPLEMENT_PHASE_ID,
+  DEVELOPMENT_WORKFLOW_TEMPLATE_ID,
+} from './workflowDevelopmentBatchAgentPolicy.js'
 
 const DEVELOPMENT_CONTEXT_LABELS = new Set<WorkflowLabel>([
   'new-product',
@@ -63,9 +67,9 @@ const CONFIRMATION_REQUIRED_ACTIONS = new Set(['installDependencies', 'migration
 
 const WORKFLOW_PHASE_EXECUTION_CONTRACT_TITLE = 'Stable phase execution contract'
 
-export type WorkflowSubagentRole = 'leader' | 'coder' | 'reviewer' | 'qa'
+export type WorkflowSubagentRole = 'leader' | 'coder' | 'reviewer' | 'qa' | 'debug'
 
-export const WORKFLOW_DELEGATED_AGENT_ROLES = ['coder', 'reviewer', 'qa'] as const
+export const WORKFLOW_DELEGATED_AGENT_ROLES = ['coder', 'reviewer', 'qa', 'debug'] as const
 export type WorkflowDelegatedAgentRole = typeof WORKFLOW_DELEGATED_AGENT_ROLES[number]
 
 export type WorkflowSubagentBriefInput = {
@@ -107,7 +111,12 @@ export type BuildWorkflowRuntimePromptInput = {
   inheritedArtifacts?: WorkflowArtifact[]
   projectContext?: string
   skillAvailability?: WorkflowSkillBindingResolution[]
-  brainstormingFallback?: string | null
+  brainstormingContract?: {
+    content: string
+    identity: string
+    source: 'workflow-pack' | 'bundled'
+    sourcePath: string
+  } | null
   userMessage: string
 }
 
@@ -417,7 +426,9 @@ export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowS
           ? '- criticalIssues\n- majorIssues\n- minorIssues\n- approvalStatus\n- summaryForLeader'
           : input.role === 'qa'
             ? '- commandsRun\n- scenarioResults\n- testsAddedOrUpdated\n- failures\n- summaryForLeader'
-            : '- decisions\n- nextPhase\n- userConfirmationsNeeded\n- summary',
+            : input.role === 'debug'
+              ? '- issueSummary\n- reproductionSteps\n- evidence\n- rootCause\n- suggestedRepairPath\n- readyForRepair'
+              : '- decisions\n- nextPhase\n- userConfirmationsNeeded\n- summary',
     ].filter(Boolean).join('\n\n'),
   }
 }
@@ -425,8 +436,10 @@ export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowS
 function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInput): string {
   if (!input.phase.subagentPolicy) return ''
 
+  const requiresDevelopmentBatchAgents = input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
+    && input.phase.id === DEVELOPMENT_IMPLEMENT_PHASE_ID
   const allowedRoles = subagentRolesForPolicy(input.phase.subagentPolicy)
-  const requiredRoles = allowedRoles.length ? allowedRoles : ['coder', 'reviewer']
+  const requiredRoles: WorkflowSubagentRole[] = allowedRoles.length ? allowedRoles : ['coder', 'reviewer']
   const briefs = requiredRoles.map((role) => buildSubagentBrief({
     run: input.run,
     phase: input.phase,
@@ -437,10 +450,17 @@ function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInpu
 
   return [
     'Subagent dispatch requirement',
-    '- This phase requires native Agent delegation when the Agent tool is visible.',
+    requiresDevelopmentBatchAgents
+      ? '- This default development workflow Stage 4 always requires real native Agent delegation for every Batch, regardless of effort, task size, file count, or perceived simplicity.'
+      : '- This phase requires native Agent delegation when the Agent tool is visible.',
     '- The leader must not perform production Write/Edit/MultiEdit/NotebookEdit before launching the required subagent brief.',
     '- Use Agent with non-empty description and prompt, subagent_type=general-purpose, and the matching top-level workflow_role (coder, reviewer, or qa). Put task, scope, evidence, and return shape in the delegated prompt. The runtime enforces the reviewer tool boundary from workflow_role.',
-    '- If Agent is not available, record fallback-contract explicitly before any leader-owned implementation or repair.',
+    requiresDevelopmentBatchAgents
+      ? '- Every Coder and Reviewer call must include workflow_parallel_plan: task_id is the current Batch ID and tasks is the same complete Stage 3 Batch list. The runtime compares that list with delivery-plan.md, expands each Batch into Coder -> Reviewer, allows only isolated Batch chains to overlap, persists real Agent receipts, and rejects prose or report-only claims.'
+      : '- If Agent is not available, record fallback-contract explicitly before any leader-owned implementation or repair.',
+    requiresDevelopmentBatchAgents
+      ? '- Every Reviewer final answer must include a machine-readable workflowReview object with reviewStatus=pass|needs-fix, requiredFixes as an array, and readyForNextBatch as a boolean. pass requires no fixes and true; needs-fix requires at least one fix and false.'
+      : '',
     '- After every subagent return, the leader must summarize changedFiles/testsRun/findings/blockers/risks and decide whether bounded fixes, validation, or phase completion is next.',
     `Required workflow roles: ${requiredRoles.join(', ')}`,
     ...briefs.map((brief) => [
@@ -457,7 +477,7 @@ function subagentRolesForPolicy(policy: unknown): WorkflowSubagentRole[] {
     ?? (policy as { leaderMaySpawn?: unknown }).leaderMaySpawn
   const rawRoles = Array.isArray(value) ? value : [value]
   const roles = rawRoles.filter((role): role is WorkflowSubagentRole =>
-    role === 'coder' || role === 'reviewer' || role === 'qa'
+    role === 'coder' || role === 'reviewer' || role === 'qa' || role === 'debug'
   )
   return Array.from(new Set(roles))
 }
@@ -613,19 +633,12 @@ export function buildWorkflowRuntimePrompt(input: BuildWorkflowRuntimePromptInpu
     `Completion criteria:\n${completionRequires.map((item) => `- ${item}`).join('\n')}`,
     `Transition authority: ${input.phase.transitionAuthority}`,
     formatSkillAvailability(input.skillAvailability ?? []),
-    input.brainstormingFallback
-      ? [
-          'Bundled brainstorming fallback is active. This is Jiangxia compatibility guidance, not a native ZIP or locally installed Superpowers Skill.',
-          'Apply this process only to the current discovery, scope, or planning work. If an approved design or accepted brainstorming artifact already exists in the conversation or workflow artifacts, reuse it and do not restart the exploration.',
-          'Bundled complete SKILL.md follows:',
-          input.brainstormingFallback,
-        ].join('\n\n')
-      : '',
+    formatBrainstormingContractInjection(input.brainstormingContract),
     'Actual tool availability policy: Workflow capabilities are semantic policy constraints, not a callable tool catalog. Only call a concrete tool when that tool is explicitly present in the current conversation tool list. If a capability is needed but no matching concrete tool is visible, use an available equivalent, record the limitation, or ask through the available structured question UI.',
     'Workflow routing protocol: pending-confirmation contract: submit_phase_completion records only the current phase result. A completion result waiting for user confirmation is a hard wait state: stop current-phase business progression; do not produce next-phase questions, plans, artifacts, operations, or nonessential tool calls; and wait only for controlled confirmation, rejection, retry, pause, stop, or explicitly supported recovery. Do not create a route in the same assistant turn as a ready completion, do not hide a route inside handoff, routeDecision, targetPhaseId fields, or ordinary assistant text, and do not claim or begin a target phase before the runtime accepts a separately authorized route. If the current phase is already blocked because validation found a repairable defect, do not ask the user to bypass the workflow or start edits outside its state: use request_workflow_route only when the current runtime state explicitly authorizes a rework_current_phase or jump_to_phase recovery. If request_workflow_route is unavailable or rejects the request, record the limitation and keep the current phase blocked/needs_user rather than claiming the route occurred.',
     'Unavailable tool recovery policy: if a tool call reports "No such tool available", treat that tool as unavailable for the rest of the turn. Do not retry it, do not call another unavailable tool with the same purpose, and do not use screen/computer-control tools to operate Terminal, an editor, Finder, or another app as a substitute for missing shell or file-writing tools. Continue by recording the limitation in the workflow handoff or asking one structured question.',
     'Workflow artifact policy under limited tools: required workflow artifacts are content obligations first. In route, scope, plan, and handoff phases, if no concrete file-writing tool is visible, write the artifact content in the phase handoff/answer instead of attempting file creation. Only create or read artifact files when the exact file tool is visible in the current tool list and the file path is known.',
-    'Filesystem exploration policy: inspect directories only with an available directory-listing or search tool, and inspect files only when the exact file path is known. Never use a file-read operation on the workspace root, home directory, .claude, .workflow, or any directory path. If directory listing, search, shell, file creation, or file editing is unavailable, treat that as a tool availability limit; do not guess paths, retry unavailable tools, or probe random home-directory paths. Ask the user for the correct project folder or file through AskUserQuestion or the structured question UI when the workspace is unclear. If a file operation reports "File does not exist", stop guessing and ask for the correct path or continue from known workflow artifacts. If a file edit/write operation reports "File has not been read yet", do not retry the edit blindly. Read the exact target file first when a concrete read tool is available, then retry once with the current file contents in mind. If no concrete read tool is visible, stop editing and ask one structured question or record the limitation in the workflow handoff.',
+    'Filesystem exploration policy: inspect directories only with an available directory-listing or search tool, and inspect files only when the exact file path is known. Never use a file-read operation on the workspace root, home directory, .claude, .workflow, or any directory path. If directory listing, search, shell, file creation, or file editing is unavailable, treat that as a tool availability limit; do not guess paths, retry unavailable tools, or probe random home-directory paths. Ask the user for the correct project folder or file through AskUserQuestion or the structured question UI when the workspace is unclear. If a file operation reports "File does not exist", stop guessing and ask for the correct path or continue from known workflow artifacts. If a file edit/write operation reports "File has not been read yet", do not retry the edit blindly. Read the exact target file first when a concrete read tool is available, then retry with the current file contents in mind and use any new error as correction feedback. If no concrete read tool is visible, do not guess paths; ask one structured question or record the limitation in the workflow handoff.',
     'AskUserQuestion policy: every workflow-generated question must use AskUserQuestion or the structured question UI. Ask one question at a time. Provide at least 3 options. Put the recommended option first and include "(Recommended)" in the label. Plain assistant text is not an approval gate. Any confirmation, yes/no choice, "should I...", "do you want me to...", or "想试试吗" workflow question must be emitted as AskUserQuestion or the structured question UI so the user gets clickable options. Do not put user-input requests, confirmation prompts, or clarification questions in normal assistant text. Normal assistant text may summarize progress or handoff results, but any sentence that expects the user to choose, confirm, answer, approve, reject, retry, continue, pause, stop, provide a path, or add a note must be represented as one structured AskUserQuestion. Allowed workflow question intents are confirm-workspace, confirm-scope, confirm-brainstorming, confirm-tech-stack, confirm-phase-transition, confirm-terminal-label, confirm-checkpoint-restore, confirm-handoff, clarify-requirement, choose-next-workflow, and record-user-note. Use the closest intent in the AskUserQuestion payload or option labels/descriptions when the current UI schema has no explicit intent field. For phase transitions use Continue (Recommended), Adjust, and Pause/Stop. Do not ask non-technical users to choose a tech stack; recommend one and ask them to confirm or request alternatives. When confirming a recommended tech stack, keep the option label as the stack name, but make each option description simple and user-facing. Explain what the choice means for the app, setup, and future changes in everyday words. Avoid specialist wording such as backend, rendering engine, database service, migrations, ORM, server-side, frontend stack, or deployment architecture unless the user used those words first. For optional visual brainstorming, browser display, local preview, or design sketch offers, do not promise to open anything unless a concrete preview/browser-opening control is available and the phase allows it. If confirmation is needed, ask one structured question with options such as "生成简版界面草图 (Recommended)", "先用文字确认范围", and "跳过视觉草图". If no preview tool is visible, provide a text or Mermaid sketch in the answer/handoff instead. Do not offer fake permission choices such as "grant terminal access" or "authorize write tools" unless the application provides a concrete permission control in the UI. If tools are unavailable, explain where the user can change execution permissions or offer a manual/pause path.',
     'user-facing error/copy/comment policy: explain 发生了什么, 用户可以怎么做, and 技术支持可用信息. Avoid vague messages like Failed or Something went wrong. Comments should explain why, edge cases, permissions, data integrity, or business rules.',
     uniqueArtifacts.length
@@ -646,6 +659,22 @@ function formatPhaseExecutionContract(
     ? input.phase.outputArtifacts.map((artifact) => artifact.filename ?? artifact.id).join(', ')
     : 'the phase answer/handoff artifact required by the template'
   const objective = input.phase.intent?.objective ?? input.phase.instructions
+  const brainstormingActive = Boolean(input.brainstormingContract)
+  const intakeClarification = brainstormingActive
+    ? '- Brainstorming is active: use the injected complete contract to resolve material unknowns one structured question at a time until the current phase has enough clarity. Do not reduce discovery to blocker-only questions.'
+    : '- If missing information blocks the current phase, ask one structured question; if it does not block, choose a conservative default, record the assumption, and continue.'
+  const explorationThinkingStyle = brainstormingActive
+    ? '- Follow the injected complete brainstorming contract for divergent -> convergent exploration. Do not replace it with a workflow-local fixed direction count or questionnaire.'
+    : '- Brainstorming or fuzzy-discovery phases must use a divergent -> convergent flow: list 3-5 candidate directions covering conservative, balanced, and innovative/high-risk routes; for each direction state user value, cost/complexity, risk, and fit; then converge to 1 recommended plan plus 1 backup option tied to user goals and repository constraints.'
+  const defaultQuestionPolicy = brainstormingActive
+    ? [
+        '- Do not replace unresolved material requirements with conservative defaults merely because they are not immediate blockers.',
+        '- Continue under the injected contract until purpose, constraints, success criteria, and material choices are clear enough for the current phase; do not stop because of a workflow-local preference to ask fewer questions.',
+      ]
+    : [
+        '- When a sensible default exists, recommend the default and ask for confirmation instead of open-ended wandering.',
+        '- If missing information is not blocking, proceed with a conservative default and record the assumption; do not loop on questions.',
+      ]
 
   return [
     WORKFLOW_PHASE_EXECUTION_CONTRACT_TITLE,
@@ -655,17 +684,16 @@ function formatPhaseExecutionContract(
     '- Do not jump to later implementation, verification, release, or follow-up work unless the current phase contract allows it.',
     'Required intake:',
     '- Before producing an answer, identify the user goal, hard constraints, known facts, unknowns, selected files, and inherited/current workflow artifacts.',
-    '- If missing information blocks the current phase, ask one structured question; if it does not block, choose a conservative default, record the assumption, and continue.',
+    intakeClarification,
     'Thinking style:',
     '- Match reasoning to the phase: discovery clarifies goals, debugging follows reproduce -> evidence -> root cause, planning narrows scope, implementation stays plan-scoped, and verification is evidence-first.',
-    '- Brainstorming or fuzzy-discovery phases must use a divergent -> convergent flow: list 3-5 candidate directions covering conservative, balanced, and innovative/high-risk routes; for each direction state user value, cost/complexity, risk, and fit; then converge to 1 recommended plan plus 1 backup option tied to user goals and repository constraints.',
+    explorationThinkingStyle,
     'AskQuestion policy:',
     '- Ask one primary question at a time, and first explain why the information is needed and what the answer will affect.',
     '- When options are useful, provide at least 3 mutually exclusive, actionable options.',
     '- Put the recommended option first and mark it with "(Recommended)" or "推荐".',
     '- Use plain language for non-technical users; do not force them to choose frameworks, tools, storage engines, or low-level architecture unless they used those terms first.',
-    '- When a sensible default exists, recommend the default and ask for confirmation instead of open-ended wandering.',
-    '- If missing information is not blocking, proceed with a conservative default and record the assumption; do not loop on questions.',
+    ...defaultQuestionPolicy,
     'Output contract:',
     '- User-visible output must state the current phase name, phase goal, in-scope work, out-of-scope work, key decisions/evidence, and next action.',
     `- Required outputs before transition: ${outputArtifacts}.`,
@@ -833,6 +861,12 @@ export function getWorkflowSubagentRoleToolPolicy(role: WorkflowSubagentRole): {
       disallowedTools: ['NotebookEdit'],
     }
   }
+  if (role === 'debug') {
+    return {
+      allowedTools: ['Read', 'Glob', 'Grep', 'LS', 'Bash', 'PowerShell', 'TodoWrite'],
+      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'AskUserQuestion'],
+    }
+  }
   return {
     allowedTools: ['Read', 'Glob', 'Grep', 'LS', 'AskUserQuestion', 'TodoWrite'],
     disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Agent'],
@@ -986,12 +1020,12 @@ function selectedExplorationMode(input: BuildWorkflowRuntimePromptInput): string
 function formatBrainstormingPolicy(input: BuildWorkflowRuntimePromptInput): string {
   const mode = input.sessionState.brainstormingMode ?? 'auto'
   if (mode === 'on') {
-    return 'Brainstorming: on. Force a requirement-clarification brainstorming step before scope, plan, or implementation. Ask one structured question at a time when clarification is needed.'
+    return 'Brainstorming: on. Use the complete runtime-managed brainstorming contract before scope, plan, or implementation. Ask one structured question at a time and continue with context-dependent follow-up questions until the current phase is clear enough; do not impose a fixed question count.'
   }
   if (mode === 'off') {
     return 'Brainstorming: off. Assume the user has a complete requirements document or made an explicit workflow choice. Do not add divergent brainstorming; strictly follow the user request, selected workflow, labels, effort, and supplied artifacts.'
   }
-  return 'Brainstorming: auto. Development/new-product or heavy effort uses full brainstorming; feature extension uses mini brainstorming only when unclear; debug workflows skip brainstorming and proceed to debug intake.'
+  return 'Brainstorming: auto. Development/new-product or heavy effort uses the complete runtime-managed brainstorming contract; feature extension uses mini brainstorming only when unclear; debug workflows skip brainstorming and proceed to debug intake.'
 }
 
 function ensureWorkflowRun(state: WorkflowSessionState, now: string): WorkflowRun {
@@ -1168,6 +1202,24 @@ function normalizeCriteria(criteria: unknown): string[] {
   return ['No completion criteria recorded.']
 }
 
+function formatBrainstormingContractInjection(
+  contract: BuildWorkflowRuntimePromptInput['brainstormingContract'],
+): string {
+  if (!contract) return ''
+  return [
+    'Brainstorming contract injection',
+    'The runtime injects this complete brainstorming contract exactly once for the current prompt. Do not wait for a recommendation or optional SkillTool decision.',
+    'Contract identity: ' + contract.identity,
+    'Contract source: ' + (contract.source === 'workflow-pack' ? 'current workflow ZIP override' : 'bundled Jiangxia Skill') + ' (' + contract.sourcePath + ')',
+    'When brainstorming is active, this complete contract takes priority over local workflow guidance that reduces clarification, uses conservative defaults for unresolved requirements, asks only blocking questions, says not to manufacture questions, or otherwise shortens requirement discovery.',
+    'This priority changes the requirement exploration method only. It does not override file permissions, phase boundaries, forbidden implementation or deployment, tool availability, confirmation gates, or dangerous-operation safeguards.',
+    'Follow the contract dynamically. Ask one structured question at a time, but continue with additional context-dependent questions until purpose, constraints, success criteria, and material design choices are clear enough for the current phase. Do not impose a fixed question list or a fixed minimum/maximum question count.',
+    'If an approved design or accepted brainstorming artifact already exists, reuse it and do not restart exploration unless new evidence creates a material gap.',
+    'Do not invoke SkillTool for this runtime-managed brainstorming contract. Do not recursively invoke brainstorming or inject a second copy.',
+    'Complete brainstorming SKILL.md follows:',
+    contract.content,
+  ].join('\n\n')
+}
 function formatSkillAvailability(items: WorkflowSkillBindingResolution[]): string {
   if (items.length === 0) return 'Active skill bindings: none'
   const nativeBrainstorming = items.some((item) =>

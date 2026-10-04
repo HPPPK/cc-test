@@ -110,6 +110,19 @@ export class WorkflowParallelScheduler {
     this.reconcilePendingTasks()
   }
 
+  hydrateTask(
+    taskId: string,
+    status: WorkflowParallelTaskStatus,
+    blockedReason?: string,
+  ): void {
+    const task = this.tasks.get(taskId)
+    if (!task) throw new Error(`Unknown workflow task: ${taskId}`)
+    task.status = status
+    if (blockedReason) task.blockedReason = blockedReason
+    else delete task.blockedReason
+    this.reconcilePendingTasks()
+  }
+
   tryStartTask(taskId: string): WorkflowParallelTaskStartResult {
     this.reconcilePendingTasks()
 
@@ -162,6 +175,34 @@ export class WorkflowParallelScheduler {
     const task = this.requireRunningTask(taskId)
     task.status = 'failed'
     task.blockedReason = reason
+    this.reconcilePendingTasks()
+  }
+
+  resetTaskAndDependents(taskId: string): void {
+    const target = this.tasks.get(taskId)
+    if (!target) throw new Error(`Unknown workflow task: ${taskId}`)
+    if (target.status === 'running') throw new Error(`Workflow task is already running: ${taskId}`)
+
+    const resetIds = new Set([taskId])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const candidate of this.tasks.values()) {
+        if (resetIds.has(candidate.id)) continue
+        if (candidate.dependsOn.some((dependencyId) => resetIds.has(dependencyId))) {
+          resetIds.add(candidate.id)
+          changed = true
+        }
+      }
+    }
+    for (const id of resetIds) {
+      const task = this.tasks.get(id)!
+      if (task.status === 'running') {
+        throw new Error(`Cannot reset workflow task while dependent work is running: ${id}`)
+      }
+      task.status = 'pending'
+      delete task.blockedReason
+    }
     this.reconcilePendingTasks()
   }
 

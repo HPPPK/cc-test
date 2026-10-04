@@ -142,7 +142,7 @@ async function collectForAnsweredIssue(input: {
   state = rebuildWorkflowCompletionContract(state, state.template as WorkflowTemplate, input.answerAt, 'Prepared current phase completion contract.')
   state = recordAskUserQuestionIssue(state, {
     requestId: 'question-after-output',
-    questions: [{ id: 'framing', question: 'Use the proposed framing?' }],
+    questions: [{ id: 'framing', question: 'Use the proposed framing?', blocksCompletion: true }],
     now: input.answerAt,
   })
   state = recordAskUserQuestionAnswer(state, {

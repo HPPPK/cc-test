@@ -37,8 +37,15 @@ import {
   applyWorkflowPhaseProgress,
   markWorkflowPhaseStarted,
   migrateWorkflowRuntimeContract,
+  recalculateWorkflowCompletionEligibility,
 } from './workflowCompletionGate.js'
 import { loadCurrentWorkflowTemplate } from './workflowRuntimeTemplateService.js'
+import {
+  attachWorkflowContextCapsule,
+  contextCapsulePrompt,
+  createWorkflowContextCapsule,
+  workflowUsesContextCapsule,
+} from './workflowContextCapsuleService.js'
 import { workflowSummaryFromState } from './workflowSummary.js'
 import {
   buildWorkflowRuntimePrompt,
@@ -47,8 +54,35 @@ import {
 import { resolveWorkflowSkillBindings } from './workflowSkillRegistry.js'
 import {
   BUNDLED_BRAINSTORMING_REFERENCE_ID,
-  loadBundledBrainstormingFallback,
+  loadWorkflowBrainstormingContract,
 } from './workflowBrainstormingFallback.js'
+import {
+  developmentBatchAgentBlockerReasons,
+  developmentBatchHandoffPrompt,
+  isDevelopmentImplementationPhase,
+  isDevelopmentPlanPhase,
+  prepareDevelopmentDeliveryPlanHandoff,
+} from './workflowDevelopmentBatchAgentPolicy.js'
+
+const PHASE_MODEL_PINNED_WORKFLOW_IDS = new Set([
+  "efficient-constrained-dev-debug-workflow-v5",
+  "feature-extension-workflow-v8",
+  "debug-repair-workflow-v8",
+])
+
+function pinnedActivePhaseModel(state: WorkflowSessionState, phase: WorkflowPhaseState): ModelSelector | null {
+  if (!PHASE_MODEL_PINNED_WORKFLOW_IDS.has(state.templateIdentity?.id ?? "")) return null
+  if (phase.status !== "running" || !phase.actualModel || !phase.startedAt) return null
+  const resolution = state.activeModelResolution
+  if (!resolution || typeof resolution !== "object" || Array.isArray(resolution)) return null
+  const actualModel = (resolution as Record<string, unknown>).actualModel
+  const providerId = (resolution as Record<string, unknown>).providerId
+  if (actualModel !== phase.actualModel) return null
+  return {
+    providerId: typeof providerId === "string" ? providerId : null,
+    modelId: phase.actualModel,
+  }
+}
 
 type WorkflowNotification = {
   type: 'system_notification'
@@ -223,6 +257,10 @@ function effectiveSkillBindings(
   })
 }
 
+function selectedWorkflowPackId(template: WorkflowTemplate): string {
+  const packId = (template as WorkflowTemplate & { packId?: unknown }).packId
+  return typeof packId === 'string' && packId.trim() ? packId.trim() : template.id
+}
 function nativeWorkflowSkillIds(
   catalog: WorkflowPhaseSkillCatalogEntry[],
   selectedWorkflowId: string | undefined,
@@ -236,12 +274,6 @@ function nativeWorkflowSkillIds(
     for (const alias of entry.aliases ?? []) ids.add(alias)
   }
   return ids
-}
-
-function hasNativeBrainstormingSkill(resolutions: WorkflowSkillBindingResolution[]): boolean {
-  return resolutions.some((resolution) => (
-    resolution.id === BUNDLED_BRAINSTORMING_REFERENCE_ID && resolution.availability === 'native'
-  ))
 }
 
 function withBundledBrainstormingFallback(
@@ -320,6 +352,67 @@ function nextPhaseId(state: WorkflowSessionState, phaseId: string): string | nul
   const index = phaseIndex(state, phaseId)
   if (index < 0) return null
   return state.phases[index + 1]?.id ?? null
+}
+
+function invalidateManagedWorkflowFromPhase(
+  state: WorkflowSessionState,
+  targetPhaseId: string,
+  requestedAt: string,
+): void {
+  if (!PHASE_MODEL_PINNED_WORKFLOW_IDS.has(state.templateIdentity?.id ?? "")) return
+  const targetIndex = phaseIndex(state, targetPhaseId)
+  if (targetIndex < 0) return
+
+  for (const phase of state.phases) {
+    if (phase.index < targetIndex) continue
+    phase.status = phase.id === targetPhaseId ? "running" : "created"
+    phase.startedAt = phase.id === targetPhaseId ? requestedAt : undefined
+    phase.completedAt = undefined
+    phase.completion = undefined
+    phase.artifactPointers = []
+    phase.actualModel = undefined
+    phase.fallbackReason = undefined
+    delete phase.blockedReason
+  }
+
+  const contract = state.runtimeContract
+  if (!contract) return
+  const phaseStates = { ...contract.phaseStates }
+  for (const phase of state.phases) {
+    if (phase.index < targetIndex) continue
+    const existing = phaseStates[phase.id]
+    if (!existing) continue
+    phaseStates[phase.id] = {
+      ...existing,
+      workStatus: phase.id === targetPhaseId ? "in-progress" : "not-started",
+      eligibility: "ineligible",
+      blockerReasons: ["Phase results were invalidated by a confirmed route to an earlier phase."],
+      issues: existing.issues.map(issue => ({ ...issue, status: "stale", updatedAt: requestedAt })),
+      artifactRequirements: existing.artifactRequirements.map(requirement => ({
+        ...requirement,
+        status: "pending",
+        artifactIds: [],
+        updatedAt: requestedAt,
+      })),
+      checks: existing.checks.map(check => ({ ...check, status: "stale", updatedAt: requestedAt })),
+      taskSnapshots: existing.taskSnapshots.map(task => ({ ...task, status: "stale", updatedAt: requestedAt })),
+      evaluatedAt: requestedAt,
+    }
+  }
+  const recalculated = recalculateWorkflowCompletionEligibility({
+    ...state,
+    runtimeContract: {
+      ...contract,
+      phaseStates,
+      audit: [...contract.audit, {
+        at: requestedAt,
+        type: "workflow-phases-invalidated",
+        phaseId: targetPhaseId,
+        summary: "Invalidated target and downstream phase results after a confirmed backward route.",
+      }],
+    },
+  }, undefined, requestedAt)
+  state.runtimeContract = recalculated.runtimeContract
 }
 
 function stateNotification(state: WorkflowSessionState): WorkflowNotification {
@@ -679,6 +772,22 @@ function validateCompletionSubmission(
   }
   assertFreshStateVersion(state, submission.stateVersion)
   const phase = assertActivePhase(state, submission.phaseId)
+  if (isReadyCompletionStatus(submission.status) && isDevelopmentImplementationPhase(state)) {
+    const phaseState = state.runtimeContract?.phaseStates[phase.id]
+    const reasons = phaseState ? developmentBatchAgentBlockerReasons(state, phaseState) : [
+      'Stage 4 Coder/Reviewer Agent completion state is unavailable.',
+    ]
+    if (reasons.length) {
+      throw workflowError(
+        'WORKFLOW_DEVELOPMENT_BATCH_AGENT_EVIDENCE_REQUIRED',
+        [
+          'The default development workflow Stage 4 cannot complete until every declared Batch has a real Coder Agent run followed by a real Reviewer Agent run.',
+          ...reasons.map((reason) => '- ' + reason),
+          'Continue the current phase, call Agent with workflow_role and the same complete workflow_parallel_plan, then retry completion. Do not ask the user to resolve this internal protocol issue.',
+        ].join('\n'),
+      )
+    }
+  }
   if (!isJsonObject(submission.handoff)) {
     throw workflowError('WORKFLOW_COMPLETION_INVALID', 'Completion submission handoff is required.')
   }
@@ -780,7 +889,7 @@ function formatWorkflowQuestionPolicy(): string {
     'For optional visual brainstorming, browser display, local preview, or design sketch offers, do not promise to open anything unless a concrete preview/browser-opening control is available and the phase allows it. If confirmation is needed, ask one structured question with options such as "鐢熸垚绠€鐗堢晫闈㈣崏鍥?(Recommended)", "鍏堢敤鏂囧瓧纭鑼冨洿", and "璺宠繃瑙嗚鑽夊浘". If no preview tool is visible, provide a text or Mermaid sketch in the answer/handoff instead.',
     'If submit_phase_completion or request_workflow_route returns "No such tool available", stop that turn immediately. Do not turn the failure into prose or AskUserQuestion: the runtime will rebuild the workflow tool binding and replay the required protocol action.',
     'If an ordinary non-protocol tool is missing or returns "No such tool available", do not retry it and do not use screen/computer-control tools to operate Terminal, an editor, Finder, or another app as a substitute. Record the limitation or ask one structured question.',
-    'If a file edit/write operation reports "File has not been read yet", do not retry the edit blindly. Read the exact target file first when a concrete read tool is available, then retry once with the current file contents in mind. If no concrete read tool is visible, stop editing and ask one structured question or record the limitation in the workflow handoff.',
+    'If a file edit/write operation reports "File has not been read yet", do not retry the edit blindly. Read the exact target file first when a concrete read tool is available, then retry with the current file contents in mind and use any new error as correction feedback. If no concrete read tool is visible, do not guess paths; ask one structured question or record the limitation in the workflow handoff.',
     'If a workflow artifact is required but no concrete file-writing tool is visible, write the artifact content in the phase handoff/answer instead of attempting file creation.',
     'Do not offer fake permission choices such as "grant terminal access" or "authorize write tools" unless the application provides a concrete permission control in the UI. If tools are unavailable, explain where the user can change execution permissions or offer a manual/pause path.',
   ].join('\n')
@@ -872,7 +981,10 @@ function formatRecommendedSkillsPromptBlock(snapshot: WorkflowPhaseSkillSnapshot
   if (!snapshot || snapshot.resolutions.length === 0) return ''
 
   const available = snapshot.resolutions.filter((resolution) => resolution.status === 'available')
-  const nativeSkillTool = available.filter(isNativeSkillToolRecommendation)
+  const runtimeManagedBrainstorming = available.filter(isBrainstormingRecommendation)
+  const nativeSkillTool = available.filter((resolution) => (
+    !isBrainstormingRecommendation(resolution) && isNativeSkillToolRecommendation(resolution)
+  ))
   const degraded = snapshot.resolutions.filter((resolution) => DEGRADED_RECOMMENDATION_STATUSES.has(resolution.status))
   const unavailable = snapshot.resolutions.filter((resolution) => UNAVAILABLE_RECOMMENDATION_STATUSES.has(resolution.status))
 
@@ -882,6 +994,12 @@ function formatRecommendedSkillsPromptBlock(snapshot: WorkflowPhaseSkillSnapshot
     'A higher priority recommendation is attention metadata only, not a safety override or permission grant.',
     'Invoke recommended skills only when the current task matches the skill and normal SkillTool permission checks allow it.',
     'Do not invoke SkillTool automatically for recommended skills; the runtime schedules no SkillTool calls from recommendations.',
+    runtimeManagedBrainstorming.length
+      ? [
+          'Runtime-managed brainstorming recommendation',
+          'The workflow runtime injects the complete brainstorming contract when the mode is active; do not invoke SkillTool for superpowers:brainstorming and do not create a second or recursive brainstorming run.',
+        ].join('\n')
+      : '',
     nativeSkillTool.length
       ? [
           'Native skill execution',
@@ -912,6 +1030,14 @@ function formatRecommendedSkillsPromptBlock(snapshot: WorkflowPhaseSkillSnapshot
   return sections.join('\n')
 }
 
+function isBrainstormingRecommendation(resolution: WorkflowPhaseSkillResolution): boolean {
+  const names = [
+    resolution.reference.name,
+    resolution.reference.referenceId,
+    resolution.resolvedSkill?.name,
+  ]
+  return names.some((name) => name === BUNDLED_BRAINSTORMING_REFERENCE_ID || name === 'brainstorming')
+}
 function isNativeSkillToolRecommendation(resolution: WorkflowPhaseSkillResolution): boolean {
   if (resolution.status !== 'available') return false
   const source = resolution.resolvedSkill?.source ?? resolution.reference.source
@@ -994,8 +1120,8 @@ function transitionRecord(input: {
     completionCheckId: null,
     createdAt: input.requestedAt,
     stateVersion: input.stateVersion,
-    ...(input.toPhaseId && input.request.nextPhaseContextStrategy === 'clear'
-      ? { nextPhaseContextStrategy: 'clear' as const }
+    ...(input.toPhaseId && input.request.nextPhaseContextStrategy && input.request.nextPhaseContextStrategy !== 'inherit'
+      ? { nextPhaseContextStrategy: input.request.nextPhaseContextStrategy }
       : {}),
   }
 }
@@ -1043,13 +1169,13 @@ function applyNextPhaseContextStrategy(
   toPhaseId: string | null,
   strategy: WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined,
 ): void {
-  if (toPhaseId && strategy === 'clear') {
-    state.nextPhaseContextStrategy = 'clear'
+  const resolved = strategy ?? state.defaultPhaseContextStrategy
+  if (toPhaseId && (resolved === 'clear' || resolved === 'capsule')) {
+    state.nextPhaseContextStrategy = resolved
     return
   }
   delete state.nextPhaseContextStrategy
 }
-
 function appendArtifact(state: WorkflowSessionState, artifact: WorkflowArtifactPointer): void {
   if (Array.isArray(state.artifactIndex)) {
     if (!state.artifactIndex.some((pointer) => pointer.artifactId === artifact.artifactId)) {
@@ -1286,19 +1412,21 @@ export class WorkflowRuntimeService {
     phase.skillProvenance = definition?.skillDeclarations ?? phase.skillProvenance ?? []
     await this.ensurePhaseSkillSnapshot(state, definition, input.requestedAt, template)
 
-    let actualModel: string | null = null
-    let providerId: string | null = null
-    let fallbackReason: string | undefined
+    const pinnedModel = pinnedActivePhaseModel(state, phase)
+    let actualModel: string | null = pinnedModel?.modelId ?? null
+    let providerId: string | null = pinnedModel?.providerId ?? null
+    let fallbackReason: string | undefined = phase.fallbackReason
 
-    if (requestedModel && await input.isRequestedModelAvailable(requestedModel)) {
+    if (!pinnedModel && requestedModel && await input.isRequestedModelAvailable(requestedModel)) {
       actualModel = requestedModel
-    } else {
+      fallbackReason = undefined
+    } else if (!pinnedModel) {
       const fallback = await input.resolveDefaultModel()
       providerId = fallback.providerId
       actualModel = fallback.modelId
-      if (requestedModel && actualModel) {
-        fallbackReason = `Requested model ${requestedModel} is unavailable; using main session default ${actualModel}.`
-      }
+      fallbackReason = requestedModel && actualModel
+        ? `Requested model ${requestedModel} is unavailable; using main session default ${actualModel}.`
+        : undefined
     }
 
     if (!actualModel) {
@@ -1395,19 +1523,21 @@ export class WorkflowRuntimeService {
     const outstandingQuestion = formatOutstandingWorkflowQuestion(input.state)
     const languagePolicy = workflowLanguagePolicy(input.userMessage, input.state.workflowLanguage)
     const skillCatalog = await this.loadSkillCatalog()
+    const workflowPackId = selectedWorkflowPackId(template)
     const resolvedSkillAvailability = definition
       ? resolveWorkflowSkillBindings(effectiveSkillBindings(definition, input.state), {
-          installedSkillIds: nativeWorkflowSkillIds(skillCatalog, template.id),
+          installedSkillIds: nativeWorkflowSkillIds(skillCatalog, workflowPackId),
           allowFallbackContracts: template.source !== 'pack',
         })
       : []
-    const bundledBrainstormingFallback = definition && shouldUseBrainstormingSkill(input.state) && !hasNativeBrainstormingSkill(resolvedSkillAvailability)
-      ? await loadBundledBrainstormingFallback(skillCatalog)
+    const brainstormingContract = definition && shouldUseBrainstormingSkill(input.state)
+      ? await loadWorkflowBrainstormingContract(skillCatalog, workflowPackId, template.id)
       : null
     const skillAvailability = withBundledBrainstormingFallback(
       resolvedSkillAvailability,
-      bundledBrainstormingFallback,
+      brainstormingContract?.source === 'bundled' ? brainstormingContract.content : null,
     )
+    const developmentBatchHandoff = developmentBatchHandoffPrompt(input.state)
     const strictRuntimePrompt = definition
       ? buildWorkflowRuntimePrompt({
         template,
@@ -1417,7 +1547,7 @@ export class WorkflowRuntimeService {
         inheritedArtifacts: activeWorkflowRun(input.state).artifacts,
         projectContext: activeWorkflowRun(input.state).artifacts.find((artifact) => artifact.filename === 'project-context.md')?.content,
         skillAvailability,
-        brainstormingFallback: bundledBrainstormingFallback,
+        brainstormingContract,
         userMessage: '',
       })
       : ''
@@ -1427,6 +1557,7 @@ export class WorkflowRuntimeService {
       `Active phase: ${phase.id}`,
       definition?.instructions ? `Phase instructions: ${definition.instructions}` : '',
       strictRuntimePrompt,
+      developmentBatchHandoff,
       checkpointRestorePrompt,
       languagePolicy,
       questionPolicy,
@@ -1441,9 +1572,11 @@ export class WorkflowRuntimeService {
       input.priorArtifactSummaries?.length
         ? `Prior artifacts:\n${input.priorArtifactSummaries.join('\n')}`
         : '',
-      input.state.nextPhaseContextStrategy === 'clear'
-        ? 'Context boundary: use only accepted handoff materials and prior workflow artifacts for this phase. Do not rely on inherited transcript history unless the user provides it again.'
-        : '',
+      input.state.nextPhaseContextStrategy === 'capsule'
+        ? contextCapsulePrompt(input.state)
+        : input.state.nextPhaseContextStrategy === 'clear'
+          ? 'Context boundary: use only accepted handoff materials and prior workflow artifacts for this phase. Do not rely on inherited transcript history unless the user provides it again.'
+          : '',
       skillProvenance.length
         ? `Skill guidance:\n${skillProvenance.map((skill) => `- ${sanitizeWorkflowToolNameText(skill.guidance)}`).join('\n')}`
         : '',
@@ -1701,7 +1834,10 @@ export class WorkflowRuntimeService {
     } else {
       delete current.blockedReason
       delete state.blockedReason
-      this.advanceToPhase(state, current, targetPhaseId, input.requestedAt)
+      this.advanceToPhase(state, current, targetPhaseId, input.requestedAt, {
+        routeRationale: input.request.rationale,
+        routeEvidence: input.request.evidence,
+      })
       state.pendingRoute = null
       applyNextPhaseContextStrategy(state, targetPhaseId, input.request.nextPhaseContextStrategy)
     }
@@ -1766,10 +1902,10 @@ export class WorkflowRuntimeService {
     ]
   }
 
-  private recordCompletionSubmission(
+  private async recordCompletionSubmission(
     input: SubmitPhaseCompletionInput,
     options: RecordCompletionSubmissionOptions,
-  ): SubmitPhaseCompletionResult {
+  ): Promise<SubmitPhaseCompletionResult> {
     input = {
       ...input,
       state: migrateWorkflowRuntimeContract(input.state, undefined, input.requestedAt),
@@ -1790,15 +1926,31 @@ export class WorkflowRuntimeService {
       }
     }
 
-    validateCompletionSubmission(input.state, input.submission)
+    let preparedState = input.state
+    if (isReadyCompletionStatus(input.submission.status) && isDevelopmentPlanPhase(input.state)) {
+      const preparation = await prepareDevelopmentDeliveryPlanHandoff(input.state, input.requestedAt)
+      if (!preparation.plan || preparation.issues.length) {
+        throw workflowError(
+          'WORKFLOW_DEVELOPMENT_DELIVERY_PLAN_INVALID',
+          [
+            'Stage 3 cannot complete because its Stage 4 handoff is not ready.',
+            ...preparation.issues.map((issue) => `- ${issue}`),
+            'Fix the exact active-run delivery-plan.md file, then retry Stage 3 completion. Do not advance to Stage 4 with an incomplete plan.',
+          ].join('\n'),
+        )
+      }
+      preparedState = preparation.state
+    }
+
+    validateCompletionSubmission(preparedState, input.submission)
     if (
       isReadyCompletionStatus(input.submission.status)
-      && input.state.pendingConfirmation?.status === 'pending'
+      && preparedState.pendingConfirmation?.status === 'pending'
     ) {
       throw workflowError('WORKFLOW_PENDING_CONFLICT', 'Workflow already has a pending completion.')
     }
 
-    const state = cloneState(input.state)
+    const state = cloneState(preparedState)
     const phase = validateCompletionSubmission(state, input.submission)
     const artifact = completionArtifact({
       state,
@@ -1819,7 +1971,7 @@ export class WorkflowRuntimeService {
       delete state.blockedReason
       clearAutoRecovery(state, phase.id)
       if (options.advanceReady) {
-        this.advanceToPhase(state, phase, toPhaseId, input.requestedAt)
+        this.advanceToPhase(state, phase, toPhaseId, input.requestedAt, input.submission.handoff)
         applyNextPhaseContextStrategy(state, toPhaseId, input.nextPhaseContextStrategy)
       } else {
         phase.status = 'pending-confirmation'
@@ -1915,7 +2067,11 @@ export class WorkflowRuntimeService {
   ): Promise<RuntimeResult> {
     const pending = state.pendingConfirmation
     const retryingBlockedPhase = state.runStatus === 'blocked'
-    if ((pending?.phaseId === current.id || retryingBlockedPhase) && !input.completion) {
+    // A Retry without a new completion payload means "redo this phase", never
+    // "advance this phase". Auto-recovery can already have restored runStatus to
+    // active before the user clicks Retry, so runStatus alone is not safe evidence
+    // that the phase should take the normal nextPhaseId() path.
+    if (!input.completion) {
       if (pending?.phaseId === current.id) {
         markArtifacts(
           state,
@@ -1930,8 +2086,10 @@ export class WorkflowRuntimeService {
       state.workflowStatus = 'running'
       state.status = 'running'
       state.runStatus = 'active'
+      state.activePhaseId = current.id
       state.pendingConfirmation = null
-      if (retryingBlockedPhase) state.pendingRoute = null
+      // Retry invalidates any route that was prepared for the prior attempt.
+      state.pendingRoute = null
       clearAutoRecovery(state, current.id)
       updateActiveWorkflowRun(state, input.requestedAt, {
         status: 'active',
@@ -2107,6 +2265,7 @@ export class WorkflowRuntimeService {
     }
     if (route?.intent === 'rework_current_phase') {
       route.status = 'approved'
+      invalidateManagedWorkflowFromPhase(state, current.id, input.requestedAt)
       current.status = 'running'
       current.completedAt = undefined
       delete current.blockedReason
@@ -2120,7 +2279,10 @@ export class WorkflowRuntimeService {
     } else {
       if (route) route.status = 'approved'
       if (isBlockedRecoveryRoute) delete current.blockedReason
-      this.advanceToPhase(state, current, targetPhaseId, input.requestedAt)
+      this.advanceToPhase(state, current, targetPhaseId, input.requestedAt, pending?.submission?.handoff ?? {
+        routeRationale: route?.rationale ?? input.request.action,
+        routeEvidence: route?.evidence ?? [],
+      })
       state.pendingRoute = null
       applyNextPhaseContextStrategy(state, targetPhaseId, input.request.nextPhaseContextStrategy)
     }
@@ -2324,7 +2486,7 @@ export class WorkflowRuntimeService {
     state.pendingConfirmation = null
 
     const toPhaseId = nextPhaseId(state, current.id)
-    this.advanceToPhase(state, current, toPhaseId, input.requestedAt)
+    this.advanceToPhase(state, current, toPhaseId, input.requestedAt, {})
     applyNextPhaseContextStrategy(state, toPhaseId, input.request.nextPhaseContextStrategy)
     const nextState = touchState(state, input.requestedAt)
     const transition = transitionRecord({
@@ -2380,6 +2542,7 @@ export class WorkflowRuntimeService {
     current: WorkflowPhaseState,
     toPhaseId: string | null,
     requestedAt: string,
+    handoff: JsonObject = {},
   ): void {
     current.status = 'completed'
     current.completedAt ||= requestedAt
@@ -2387,6 +2550,19 @@ export class WorkflowRuntimeService {
     if (!toPhaseId) {
       this.completeWorkflow(state, current, requestedAt)
       return
+    }
+    const currentIndex = phaseIndex(state, current.id)
+    const targetIndex = phaseIndex(state, toPhaseId)
+    if (targetIndex >= 0 && currentIndex >= 0 && targetIndex <= currentIndex) {
+      invalidateManagedWorkflowFromPhase(state, toPhaseId, requestedAt)
+    }
+    if (workflowUsesContextCapsule(state)) {
+      attachWorkflowContextCapsule(state, createWorkflowContextCapsule(state, {
+        fromPhaseId: current.id,
+        toPhaseId,
+        createdAt: requestedAt,
+        handoff,
+      }))
     }
     const next = state.phases.find((phase) => phase.id === toPhaseId)
     if (next) {
@@ -2399,6 +2575,8 @@ export class WorkflowRuntimeService {
       next.completedAt = undefined
       next.completion = undefined
       next.artifactPointers = []
+      next.actualModel = undefined
+      next.fallbackReason = undefined
       delete next.blockedReason
     }
     state.activePhaseId = toPhaseId

@@ -39,7 +39,7 @@ type WorkflowTransitionCommand = {
   transitionId?: string
   confirmationId?: string
   stateVersion?: number
-  nextPhaseContextStrategy?: 'inherit' | 'clear'
+  nextPhaseContextStrategy?: 'inherit' | 'clear' | 'capsule'
   handoff?: { summary: string; artifacts: unknown[] }
   rationale?: string
   evidence?: Array<{ kind: string; label: string; ref: string }>
@@ -91,11 +91,24 @@ export type PerSessionState = {
     input: unknown
     description?: string
   } | null
+  /** In-memory FIFO; pendingPermission is its displayed head for existing consumers. */
+  pendingPermissions?: NonNullable<PerSessionState['pendingPermission']>[]
   permissionResponse?: {
     requestId: string
+    toolUseId?: string
     status: 'submitting' | 'accepted' | 'rejected' | 'stale'
     message?: string
   }
+  /**
+   * Answers accepted by the server but not yet represented by a persisted
+   * tool_result. This survives tab/window remounts so a closed question never
+   * returns as a disabled but misleading input card.
+   */
+  answeredAskUserQuestions?: Record<string, {
+    requestId: string
+    status: 'submitting' | 'accepted'
+    answers: Record<string, string>
+  }>
   pendingComputerUsePermission: {
     requestId: string
     request: ComputerUsePermissionRequest
@@ -280,6 +293,8 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   activeToolName: null,
   activeThinkingId: null,
   pendingPermission: null,
+  pendingPermissions: [],
+  answeredAskUserQuestions: {},
   pendingComputerUsePermission: null,
   tokenUsage: { input_tokens: 0, output_tokens: 0 },
   elapsedSeconds: 0,
@@ -615,12 +630,198 @@ function appendPendingDelta(sessionId: string, text: string): void {
 }
 
 function clearPendingDelta(sessionId: string): void {
+  flushAuxiliaryDelta(sessionId, true)
   const flushTimer = flushTimerBySession.get(sessionId)
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimerBySession.delete(sessionId)
   }
   pendingDeltaBySession.delete(sessionId)
+}
+
+// Tool JSON and thinking have the same high-frequency transport as visible text.
+// Keep the first update immediate, then merge trailing fragments per session.
+type AuxiliaryDelta = { kind: 'toolInput' | 'thinking'; text: string; timer: ReturnType<typeof setTimeout>; apply: (text: string) => void }
+const auxiliaryDeltaBySession = new Map<string, AuxiliaryDelta>()
+const historyResyncNeeded = new Set<string>()
+const historyResyncInFlight = new Set<string>()
+const historyResyncAgain = new Set<string>()
+
+function flushAuxiliaryDelta(sessionId: string, discard = false): void {
+  const pending = auxiliaryDeltaBySession.get(sessionId)
+  if (!pending) return
+  clearTimeout(pending.timer)
+  auxiliaryDeltaBySession.delete(sessionId)
+  if (!discard && pending.text) pending.apply(pending.text)
+}
+
+function queueAuxiliaryDelta(sessionId: string, kind: AuxiliaryDelta['kind'], text: string, apply: (text: string) => void): void {
+  const existing = auxiliaryDeltaBySession.get(sessionId)
+  if (existing?.kind === kind) { existing.text += text; return }
+  flushAuxiliaryDelta(sessionId)
+  apply(text)
+  const pending: AuxiliaryDelta = {
+    kind, text: '', apply,
+    timer: setTimeout(() => flushAuxiliaryDelta(sessionId), 50),
+  }
+  auxiliaryDeltaBySession.set(sessionId, pending)
+}
+
+type InternalProcessDisposition = 'undecided' | 'process' | 'visible'
+
+type LiveTextClassifier = {
+  disposition: InternalProcessDisposition
+  pending: string
+}
+
+const INTERNAL_PROCESS_PREFIX = /^(?:let me|i(?:'ll| will| need to| should| have to| am going to)|we(?:'ll| will| need to| should| have to)|first(?:,?\s+i(?:'ll| will| need to))|next(?:,?\s+i(?:'ll| will| need to))|to\s+(?:investigate|verify|complete))\b/i
+const INTERNAL_PROCESS_SIGNAL = /\b(?:audit(?:\s*id)?|browser|playwright|subagents?|agents?|task|research|markdown|ledger|runtime|server|session|write|read|check|review|validate|dispatch)\b|<invoke\s+name=/i
+const INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION = /(?:\b(?:must|should|need(?:s)?\s+to|have\s+to)\s+(?:ask|use|call).{0,96}\bAskUserQuestion\b|\bAskUserQuestion\b.{0,96}\b(?:must|required|approval|confirm(?:ation)?)\b)/i
+const USER_FACING_CHINESE_PARAGRAPH = /\r?\n\s*\r?\n(?=(?:#{1,6}\s*)?[\u3400-\u9fff])/
+const liveTextClassifierBySession = new Map<string, LiveTextClassifier>()
+
+function startsWithUserFacingChinese(value: string): boolean {
+  return /^(?:\s|#{1,6}\s|[-*>]\s)*[\u3400-\u9fff]/.test(value)
+}
+
+function isInternalProcessNarration(value: string): boolean {
+  const normalized = value.trimStart()
+  return INTERNAL_PROCESS_PREFIX.test(normalized) && INTERNAL_PROCESS_SIGNAL.test(normalized)
+}
+
+function embeddedEnglishParagraphStart(value: string): number | undefined {
+  const match = /\r?\n\s*\r?\n(?=\s*[A-Za-z])/.exec(value)
+  return match?.index
+}
+
+function embeddedInternalProcessNarrationStart(value: string): number | undefined {
+  // A leading Chinese product answer can contain an English internal monologue
+  // after a blank line. Only inspect segments that actually begin after that
+  // separator: treating the beginning of the whole message as a boundary would
+  // incorrectly hide the visible Chinese paragraph too.
+  const boundary = /\r?\n\s*\r?\n/g
+  for (const match of value.matchAll(boundary)) {
+    const start = (match.index ?? 0) + match[0].length
+    const candidate = value.slice(start)
+    if (isInternalProcessNarration(candidate) || INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION.test(candidate)) {
+      return start
+    }
+  }
+  return undefined
+}
+
+function resolveInternalProcessDisposition(value: string): InternalProcessDisposition {
+  if (startsWithUserFacingChinese(value)) return 'visible'
+  const normalized = value.trimStart()
+  if (!INTERNAL_PROCESS_PREFIX.test(normalized)) return 'visible'
+  if (isInternalProcessNarration(normalized)) return 'process'
+  if (value.length >= 120 || USER_FACING_CHINESE_PARAGRAPH.test(value)) return 'visible'
+  return 'undecided'
+}
+
+function appendThinkingMessage(messages: UIMessage[], content: string, timestamp: number): UIMessage[] {
+  if (!content.trim()) return messages
+  const last = messages[messages.length - 1]
+  if (last?.type === 'thinking') {
+    return [...messages.slice(0, -1), { ...last, content: last.content + content }]
+  }
+  return [...messages, { id: nextId(), type: 'thinking', content, timestamp }]
+}
+
+function getLiveTextClassifier(sessionId: string): LiveTextClassifier {
+  const existing = liveTextClassifierBySession.get(sessionId)
+  if (existing) return existing
+  const created: LiveTextClassifier = { disposition: 'undecided', pending: '' }
+  liveTextClassifierBySession.set(sessionId, created)
+  return created
+}
+
+function appendLiveStreamText(
+  sessionId: string,
+  session: PerSessionState,
+  content: string,
+  timestamp: number,
+): Pick<PerSessionState, 'messages' | 'streamingText'> {
+  if (!content) return { messages: session.messages, streamingText: session.streamingText }
+
+  const classifier = getLiveTextClassifier(sessionId)
+  let messages = session.messages
+  let streamingText = session.streamingText
+  let remaining = content
+
+  if (classifier.disposition === 'undecided') {
+    classifier.pending += remaining
+    const disposition = resolveInternalProcessDisposition(classifier.pending)
+    if (disposition === 'undecided') return { messages, streamingText }
+    classifier.disposition = disposition
+    remaining = classifier.pending
+    classifier.pending = ''
+  }
+
+  if (classifier.disposition === 'process') {
+    const boundary = USER_FACING_CHINESE_PARAGRAPH.exec(remaining)
+    if (!boundary || boundary.index === undefined) {
+      return { messages: appendThinkingMessage(messages, remaining, timestamp), streamingText }
+    }
+    messages = appendThinkingMessage(messages, remaining.slice(0, boundary.index), timestamp)
+    classifier.disposition = 'visible'
+    remaining = remaining.slice(boundary.index + boundary[0].length)
+  }
+
+  if (classifier.pending) {
+    classifier.pending += remaining
+    const deferredNarration = classifier.pending.trimStart()
+    if (INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION.test(deferredNarration)) {
+      classifier.pending = ''
+      classifier.disposition = 'process'
+    }
+    return { messages, streamingText }
+  }
+
+  const embeddedProcessStart = embeddedInternalProcessNarrationStart(remaining)
+  if (embeddedProcessStart !== undefined) {
+    const visible = remaining.slice(0, embeddedProcessStart).trimEnd()
+    const internalNarration = remaining.slice(embeddedProcessStart).trimStart()
+    classifier.disposition = 'process'
+    return {
+      // Tool-control narration is neither an answer nor useful user-facing
+      // thinking. Drop it rather than exposing implementation instructions.
+      messages: INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION.test(internalNarration)
+        ? messages
+        : appendThinkingMessage(messages, internalNarration, timestamp),
+      streamingText: streamingText + visible,
+    }
+  }
+
+  const deferredEnglishParagraphStart = embeddedEnglishParagraphStart(remaining)
+  if (deferredEnglishParagraphStart !== undefined) {
+    classifier.pending = remaining.slice(deferredEnglishParagraphStart)
+    return {
+      messages,
+      streamingText: streamingText + remaining.slice(0, deferredEnglishParagraphStart).trimEnd(),
+    }
+  }
+
+  return { messages, streamingText: streamingText + remaining }
+}
+
+function flushLiveStreamText(
+  sessionId: string,
+  session: Pick<PerSessionState, 'messages' | 'streamingText'>,
+): Pick<PerSessionState, 'messages' | 'streamingText'> {
+  const classifier = liveTextClassifierBySession.get(sessionId)
+  if (!classifier?.pending) return session
+  const pending = classifier.pending
+  classifier.pending = ''
+  classifier.disposition = 'visible'
+  if (INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION.test(pending.trimStart())) {
+    return session
+  }
+  return { messages: session.messages, streamingText: session.streamingText + pending }
+}
+
+function clearLiveTextClassifier(sessionId: string): void {
+  liveTextClassifierBySession.delete(sessionId)
 }
 
 function appendAssistantTextMessage(
@@ -759,6 +960,44 @@ function mergeRestoredNestedToolActivities(
     : messages
 }
 
+/**
+ * History is authoritative for a completed top-level question. A tab switch can
+ * race a live card that was created before its tool_result persisted; retain
+ * unrelated live stream state, but replace that one stale question pair so it
+ * cannot render as answerable after the server has already accepted its answer.
+ */
+function mergeRestoredAnsweredAskUserQuestions(
+  messages: UIMessage[],
+  restoredMessages: UIMessage[],
+): UIMessage[] {
+  const completedQuestionUseIds = new Set<string>()
+  for (const message of restoredMessages) {
+    if (
+      message.type !== 'tool_use'
+      || message.parentToolUseId
+      || message.toolName !== 'AskUserQuestion'
+      || !message.toolUseId
+    ) continue
+    const hasPersistedResult = restoredMessages.some((candidate) =>
+      candidate.type === 'tool_result'
+      && !candidate.parentToolUseId
+      && candidate.toolUseId === message.toolUseId)
+    if (hasPersistedResult) completedQuestionUseIds.add(message.toolUseId)
+  }
+  if (completedQuestionUseIds.size === 0) return messages
+
+  const isCompletedQuestionPart = (message: UIMessage) =>
+    (message.type === 'tool_use' || message.type === 'tool_result')
+    && !message.parentToolUseId
+    && completedQuestionUseIds.has(message.toolUseId)
+
+  const authoritativeHistoryParts = restoredMessages.filter(isCompletedQuestionPart)
+  return [
+    ...messages.filter((message) => !isCompletedQuestionPart(message)),
+    ...authoritativeHistoryParts,
+  ].sort((a, b) => a.timestamp - b.timestamp)
+}
+
 function normalizeMemoryEventFiles(data: unknown): MemoryEventFile[] {
   if (!data || typeof data !== 'object') return []
   const writtenPaths = (data as { writtenPaths?: unknown }).writtenPaths
@@ -802,6 +1041,29 @@ function buildAgentCompletionNotification(
     body: preview.slice(0, AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS) + suffix,
     dedupeKey: `agent-completion:${sessionId}:${lastAssistant?.id ?? Date.now()}`,
   }
+}
+
+type PendingPermission = NonNullable<PerSessionState['pendingPermission']>
+
+// Legacy in-memory sessions/test fixtures may only have the displayed head.
+// No transcript or localStorage persistence shape is changed.
+function getPendingPermissions(session: PerSessionState): PendingPermission[] {
+  const requests = session.pendingPermissions ?? []
+  const head = session.pendingPermission
+  return head && !requests.some(request => request.requestId === head.requestId)
+    ? [head, ...requests]
+    : requests
+}
+
+function pendingPermissionsPatch(requests: PendingPermission[]): Pick<PerSessionState, 'pendingPermission' | 'pendingPermissions'> {
+  return { pendingPermissions: requests, pendingPermission: requests[0] ?? null }
+}
+
+function enqueuePendingPermission(session: PerSessionState, request: PendingPermission) {
+  const requests = getPendingPermissions(session)
+  return pendingPermissionsPatch(requests.some(item => item.requestId === request.requestId)
+    ? requests.map(item => item.requestId === request.requestId ? request : item)
+    : [...requests, request])
 }
 
 /** Helper: immutably update a specific session within the sessions record */
@@ -878,6 +1140,43 @@ function isWorkflowTransitionError(code: string): boolean {
   return code === 'CLI_NOT_RUNNING' || code.startsWith('WORKFLOW_')
 }
 
+// Older Sidecars reported strict visual quality-gate outcomes as transport
+// errors. They are recoverable delivery states, not failures of the chat.
+const LEGACY_STRICT_VISUAL_PROTOCOL_CODES = new Set([
+  'STRICT_VISUAL_ASK_USER_QUESTION_REQUIRED',
+  'STRICT_VISUAL_ASK_USER_QUESTION_RECOVERY_UNAVAILABLE',
+  'STRICT_VISUAL_REFERENCE_RESEARCH_REQUIRED',
+  'STRICT_VISUAL_REFERENCE_RESEARCH_RECOVERY_UNAVAILABLE',
+  'STRICT_VISUAL_IMAGE_GENERATION_REQUIRED',
+  'STRICT_VISUAL_IMAGE_GENERATION_RECOVERY_UNAVAILABLE',
+  'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED',
+  'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_RECOVERY_UNAVAILABLE',
+  'STRICT_VISUAL_RENDER_QA_REQUIRED',
+  'STRICT_VISUAL_RENDER_QA_RECOVERY_UNAVAILABLE',
+  'STRICT_VISUAL_REVIEW_REQUIRED',
+  'STRICT_VISUAL_REVIEW_RECOVERY_UNAVAILABLE',
+])
+
+function isLegacyStrictVisualProtocolError(code: string | undefined): boolean {
+  return typeof code === 'string' && LEGACY_STRICT_VISUAL_PROTOCOL_CODES.has(code)
+}
+
+function legacyStrictVisualProtocolNotice(code: string): string {
+  if (code.includes('IMAGE_GENERATION_REVIEW')) {
+    return '图片已经保留，但上一版本未完成自动像素复核；它不会被标记为已验收。你可以继续让我重新检查或重新生成。'
+  }
+  if (code.includes('IMAGE_GENERATION')) {
+    return '上一版本没有得到可验收的生成图片；你可以继续让我重试生成，或调整设计要求。'
+  }
+  if (code.includes('RENDER_QA') || code.includes('REVIEW')) {
+    return '页面草稿已保留，但上一版本未完成自动视觉校验；它不会被标记为已验收。你可以继续让我修订或重新检查。'
+  }
+  if (code.includes('REFERENCE_RESEARCH')) {
+    return '上一版本未完成参考网站的视觉整理；你可以继续提供参考，或让我改用内置参考来源。'
+  }
+  return '上一版本未完成必要的选择步骤；请继续告诉我你的选择，我会从当前进度继续。'
+}
+
 export const useChatStore = create<ChatStore>((set, get) => {
   const submitNextQueuedMessage = (sessionId: string): boolean => {
     const queued = peekQueuedOutboundUserMessage(sessionId)
@@ -913,6 +1212,43 @@ export const useChatStore = create<ChatStore>((set, get) => {
     return true
   }
 
+  // A reconnect may have missed tool results or the final message. Read the
+  // persisted transcript once the turn is idle; never replace a live/new turn
+  // with a late history response. A racing response is retried at the next idle.
+  const restoreDisconnectedHistory = async (sessionId: string): Promise<void> => {
+    if (!historyResyncNeeded.has(sessionId)) return
+    if (historyResyncInFlight.has(sessionId)) { historyResyncAgain.add(sessionId); return }
+    const before = get().sessions[sessionId]
+    if (!before || before.chatState !== 'idle' || before.connectionState !== 'connected') return
+    historyResyncInFlight.add(sessionId)
+    try {
+      const history = await fetchAndMapSessionHistory(sessionId)
+      const now = get().sessions[sessionId]
+      if (!now || now.chatState !== 'idle' || now.connectionState !== 'connected'
+        || now.messages !== before.messages || now.streamingText !== before.streamingText
+        || now.pendingPermission !== before.pendingPermission || now.localStopNonce !== before.localStopNonce) return
+      // An empty/eventually consistent response must not erase visible messages.
+      if (history.uiMessages.length === 0 && before.messages.length > 0) return
+      clearPendingDelta(sessionId)
+      if (now.elapsedTimer) clearInterval(now.elapsedTimer)
+      set((state) => ({ sessions: updateSessionIn(state.sessions, sessionId, () => ({
+        messages: mergeBackgroundTaskMessages(history.uiMessages, history.restoredBackgroundTasks),
+        activeGoal: history.activeGoal,
+        agentTaskNotifications: history.restoredNotifications,
+        backgroundAgentTasks: history.restoredBackgroundTasks,
+        streamingText: '', streamingToolInput: '', activeThinkingId: null,
+        activeToolUseId: null, activeToolName: null, elapsedTimer: null, statusVerb: '',
+      })) }))
+      historyResyncNeeded.delete(sessionId)
+    } catch {
+      // Leave the marker for the next reconnect/idle; a read failure must not
+      // clear messages, stop research, or synthesize a successful completion.
+    } finally {
+      historyResyncInFlight.delete(sessionId)
+      if (historyResyncAgain.delete(sessionId)) void restoreDisconnectedHistory(sessionId)
+    }
+  }
+
   const settleSessionIdle = (sessionId: string): void => {
     const session = get().sessions[sessionId]
     if (!session) return
@@ -928,6 +1264,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         streamingText: '',
         streamingToolInput: '',
         pendingPermission: null,
+        pendingPermissions: [],
         pendingComputerUsePermission: null,
         elapsedTimer: null,
         statusVerb: '',
@@ -948,6 +1285,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     const existing = get().sessions[sessionId]
     if (existing && wsManager.isConnected(sessionId)) return
+    if (existing) historyResyncNeeded.add(sessionId)
 
     set((s) => ({
       sessions: existing
@@ -972,6 +1310,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     let startupMessagesSent = false
     wsManager.onMessage(sessionId, (msg) => {
       if (msg.type === 'connected') {
+        if (startupMessagesSent) historyResyncNeeded.add(sessionId)
         set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ connectionState: 'connected' })) }))
 
         // A saved runtime selection must reach the server before any CLI starts.
@@ -997,7 +1336,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       get().handleServerMessage(sessionId, msg)
     })
 
-    get().loadHistory(sessionId)
+    if (!existing) get().loadHistory(sessionId)
     sessionsApi.getSlashCommands(sessionId)
       .then(({ commands }) => {
         if (get().sessions[sessionId]) {
@@ -1012,6 +1351,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   disconnectSession: (sessionId) => {
+    flushAuxiliaryDelta(sessionId, true)
+    historyResyncNeeded.delete(sessionId)
+    historyResyncAgain.delete(sessionId)
     const session = get().sessions[sessionId]
     if (session?.elapsedTimer) clearInterval(session.elapsedTimer)
     if (pendingDeltaBySession.has(sessionId)) {
@@ -1208,6 +1550,22 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   respondToPermission: (sessionId, requestId, allowed, options) => {
+    const session = get().sessions[sessionId]
+    const pendingPermission = session && getPendingPermissions(session).find(request => request.requestId === requestId)
+    const submittedAnswers = options?.updatedInput?.answers
+    const answers = submittedAnswers && typeof submittedAnswers === 'object' && !Array.isArray(submittedAnswers)
+      ? Object.entries(submittedAnswers).reduce<Record<string, string>>((current, [key, value]) => {
+          if (typeof value === 'string' && value.trim()) current[key] = value
+          return current
+        }, {})
+      : {}
+    const answeredToolUseId = allowed
+      && pendingPermission?.toolName === 'AskUserQuestion'
+      && pendingPermission.toolUseId
+      && Object.keys(answers).length > 0
+      ? pendingPermission.toolUseId
+      : null
+
     wsManager.send(sessionId, {
       type: 'permission_response',
       requestId,
@@ -1220,6 +1578,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
         ...session,
         permissionResponse: { requestId, status: 'submitting' },
         chatState: 'permission_pending',
+        ...(answeredToolUseId ? {
+          answeredAskUserQuestions: {
+            ...session.answeredAskUserQuestions,
+            [answeredToolUseId]: { requestId, status: 'submitting', answers },
+          },
+        } : {}),
       })),
     }))
   },
@@ -1231,9 +1595,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       response,
     })
     set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
         pendingComputerUsePermission: null,
-        chatState: response.userConsented === false ? 'idle' : 'tool_executing',
+        chatState: session.pendingPermission ? 'permission_pending' : response.userConsented === false ? 'idle' : 'tool_executing',
       })),
     }))
   },
@@ -1316,6 +1680,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   stopGeneration: (sessionId) => {
+    flushAuxiliaryDelta(sessionId)
     wsManager.send(sessionId, { type: 'stop_generation' })
     if (pendingDeltaBySession.has(sessionId)) {
       const text = consumePendingDelta(sessionId)
@@ -1336,6 +1701,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               : session.messages,
             chatState: 'idle',
             pendingPermission: null,
+            pendingPermissions: [],
             pendingComputerUsePermission: null,
             streamingText: restoreCandidate ? '' : session.streamingText,
             streamingToolInput: '',
@@ -1381,9 +1747,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
               s.backgroundAgentTasks ?? {},
               restoredBackgroundTasks,
             ),
-            messages: mergeRestoredNestedToolActivities(
-              mergeRestoredTerminalGoalEvents(
-                mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks),
+            messages: mergeRestoredAnsweredAskUserQuestions(
+              mergeRestoredNestedToolActivities(
+                mergeRestoredTerminalGoalEvents(
+                  mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks),
+                  uiMessages,
+                ),
                 uiMessages,
               ),
               uiMessages,
@@ -1442,6 +1811,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             streamingText: '',
             streamingToolInput: '',
             pendingPermission: null,
+            pendingPermissions: [],
             pendingComputerUsePermission: null,
             elapsedTimer: null,
             statusVerb: '',
@@ -1500,19 +1870,35 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   clearMessages: (sessionId) => {
+    clearPendingDelta(sessionId)
+    historyResyncNeeded.delete(sessionId)
     clearPendingTaskToolUseIds(sessionId)
     clearPendingToolParentUseIds(sessionId)
     clearQueuedOutboundUserMessages(sessionId)
-    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle', localStopNonce: null, undoableSubmittedMessage: null })) }))
+    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle', ...pendingPermissionsPatch([]), pendingComputerUsePermission: null, localStopNonce: null, undoableSubmittedMessage: null })) }))
   },
 
   handleServerMessage: (sessionId, msg) => {
     const update = (updater: (session: PerSessionState) => Partial<PerSessionState>) => {
-      set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, updater) }))
+      set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, (session) => {
+        const patch = updater(session)
+        const next = { ...session, ...patch }
+        // Stream/status events from other tools must not mask a real user wait.
+        return next.pendingPermission || next.pendingComputerUsePermission
+          ? { ...patch, chatState: 'permission_pending' }
+          : patch
+      }) }))
     }
+
+    const auxiliaryKind = msg.type === 'thinking' ? 'thinking'
+      : msg.type === 'content_delta' && msg.toolInput !== undefined && msg.text === undefined ? 'toolInput' : null
+    if (auxiliaryDeltaBySession.get(sessionId)?.kind !== auxiliaryKind) flushAuxiliaryDelta(sessionId)
 
     switch (msg.type) {
       case 'connected':
+        // The server follows connected with the authoritative pending-request replay.
+        // Discard only transient old requests, never answers or transcript content.
+        update(() => ({ ...pendingPermissionsPatch([]), pendingComputerUsePermission: null }))
         break
 
       case 'status':
@@ -1521,7 +1907,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
           break
         }
         update((session) => {
-          const pendingText = `${session.streamingText}${consumePendingDelta(sessionId)}`
+          const afterDelta = appendLiveStreamText(sessionId, session, consumePendingDelta(sessionId), Date.now())
+          const settled = msg.state === 'idle'
+            ? flushLiveStreamText(sessionId, afterDelta)
+            : afterDelta
+          const pendingText = settled.streamingText
           const hasPendingStreamText =
             session.chatState === 'streaming' && pendingText.trim().length > 0
           // Background task progress can arrive while the assistant is still
@@ -1540,12 +1930,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
             ...(msg.tokens ? { tokenUsage: { ...session.tokenUsage, output_tokens: msg.tokens } } : {}),
             ...(msg.state === 'idle' ? { activeThinkingId: null } : {}),
             ...(shouldFlush ? {
-              messages: appendAssistantTextMessage(session.messages, pendingText, Date.now()),
+              messages: appendAssistantTextMessage(settled.messages, pendingText, Date.now()),
               streamingText: '',
-            } : pendingText !== session.streamingText ? { streamingText: pendingText } : {}),
+            } : {
+              ...(settled.messages !== session.messages ? { messages: settled.messages } : {}),
+              ...(pendingText !== session.streamingText ? { streamingText: pendingText } : {}),
+            }),
           }
         })
-        if (msg.state === 'idle') {
+        const effectiveState = get().sessions[sessionId]?.chatState ?? msg.state
+        if (effectiveState === 'idle') clearLiveTextClassifier(sessionId)
+        if (effectiveState === 'idle') {
           clearRuntimeRollback(sessionId)
           const session = get().sessions[sessionId]
           if (session?.elapsedTimer) {
@@ -1556,9 +1951,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
           }
         }
         // Sync tab status
-        useTabStore.getState().updateTabStatus(sessionId, msg.state === 'idle' ? 'idle' : 'running')
-        if (msg.state === 'idle') {
+        useTabStore.getState().updateTabStatus(sessionId, effectiveState === 'idle' ? 'idle' : 'running')
+        if (effectiveState === 'idle') {
           submitNextQueuedMessage(sessionId)
+          void restoreDisconnectedHistory(sessionId)
         }
         break
 
@@ -1566,16 +1962,23 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (isLocallyStopped(get().sessions[sessionId])) break
         const session = get().sessions[sessionId]
         if (!session) break
-        const pendingText = `${session.streamingText}${consumePendingDelta(sessionId)}`
-        if (msg.blockType !== 'text' && pendingText.trim()) {
-          update((s) => ({
-            messages: appendAssistantTextMessage(s.messages, pendingText, Date.now()),
+        const afterDelta = appendLiveStreamText(sessionId, session, consumePendingDelta(sessionId), Date.now())
+        const settled = msg.blockType === 'text'
+          ? afterDelta
+          : flushLiveStreamText(sessionId, afterDelta)
+        if (msg.blockType !== 'text' && settled.streamingText.trim()) {
+          update(() => ({
+            messages: appendAssistantTextMessage(settled.messages, settled.streamingText, Date.now()),
             streamingText: '',
           }))
+        } else if (settled.messages !== session.messages || settled.streamingText !== session.streamingText) {
+          update(() => settled)
         }
+        if (msg.blockType !== 'text') clearLiveTextClassifier(sessionId)
         if (msg.blockType === 'text') {
           update((s) => ({
-            ...(pendingText !== s.streamingText ? { streamingText: pendingText } : {}),
+            ...(settled.streamingText !== s.streamingText ? { streamingText: settled.streamingText } : {}),
+            ...(settled.messages !== s.messages ? { messages: settled.messages } : {}),
             chatState: 'streaming',
             activeThinkingId: null,
             undoableSubmittedMessage: null,
@@ -1598,42 +2001,52 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (isLocallyStopped(get().sessions[sessionId])) break
         if (msg.text !== undefined) {
           if (!get().sessions[sessionId]) break
-          update(() => ({ undoableSubmittedMessage: null }))
+          if (get().sessions[sessionId]?.undoableSubmittedMessage) update(() => ({ undoableSubmittedMessage: null }))
           appendPendingDelta(sessionId, msg.text)
           if (!flushTimerBySession.has(sessionId)) {
             const timer = setTimeout(() => {
               const text = pendingDeltaBySession.get(sessionId) ?? ''
               pendingDeltaBySession.delete(sessionId)
               flushTimerBySession.delete(sessionId)
-              update((s) => ({ streamingText: s.streamingText + text }))
+              update((s) => appendLiveStreamText(sessionId, s, text, Date.now()))
             }, 50)
             flushTimerBySession.set(sessionId, timer)
           }
         }
-        if (msg.toolInput !== undefined) update((s) => ({ streamingToolInput: s.streamingToolInput + msg.toolInput }))
+        if (msg.toolInput !== undefined && get().sessions[sessionId]) {
+          queueAuxiliaryDelta(sessionId, 'toolInput', msg.toolInput, (text) => {
+            if (!isLocallyStopped(get().sessions[sessionId])) update((s) => ({ streamingToolInput: s.streamingToolInput + text }))
+          })
+        }
         break
 
       case 'thinking':
         if (isLocallyStopped(get().sessions[sessionId])) break
-        update((s) => {
-          const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
-          const base = pendingText.trim()
-            ? appendAssistantTextMessage(s.messages, pendingText, Date.now())
-            : s.messages
-          const last = base[base.length - 1]
-          if (last && last.type === 'thinking') {
-            const updated = [...base]
-            updated[updated.length - 1] = { ...last, content: last.content + msg.text }
-            return { messages: updated, chatState: 'thinking', activeThinkingId: last.id, streamingText: '' }
-          }
-          const id = nextId()
-          return {
-            messages: [...base, { id, type: 'thinking', content: msg.text, timestamp: Date.now() }],
-            chatState: 'thinking',
-            activeThinkingId: id,
-            streamingText: '',
-            undoableSubmittedMessage: null,
-          }
+        if (!get().sessions[sessionId]) break
+        queueAuxiliaryDelta(sessionId, 'thinking', msg.text, (text) => {
+          if (isLocallyStopped(get().sessions[sessionId])) return
+          update((s) => {
+            const afterDelta = appendLiveStreamText(sessionId, s, consumePendingDelta(sessionId), Date.now())
+            const settled = flushLiveStreamText(sessionId, afterDelta)
+            const base = settled.streamingText.trim()
+              ? appendAssistantTextMessage(settled.messages, settled.streamingText, Date.now())
+              : settled.messages
+            const last = base[base.length - 1]
+            if (last && last.type === 'thinking') {
+              const updated = [...base]
+              updated[updated.length - 1] = { ...last, content: last.content + text }
+              return { messages: updated, chatState: 'thinking', activeThinkingId: last.id, streamingText: '' }
+            }
+            const id = nextId()
+            return {
+              messages: [...base, { id, type: 'thinking', content: text, timestamp: Date.now() }],
+              chatState: 'thinking',
+              activeThinkingId: id,
+              streamingText: '',
+              undoableSubmittedMessage: null,
+            }
+          })
+          clearLiveTextClassifier(sessionId)
         })
         break
 
@@ -1644,15 +2057,28 @@ export const useChatStore = create<ChatStore>((set, get) => {
         const toolUseId = msg.toolUseId || session?.activeToolUseId || ''
         const parentToolUseId = msg.parentToolUseId ?? getPendingToolParentUseId(sessionId, toolUseId)
         rememberPendingToolParentUseId(sessionId, toolUseId, parentToolUseId)
-        update((s) => ({
-          messages: [...s.messages, {
-            id: nextId(), type: 'tool_use', toolName,
-            toolUseId,
-            input: msg.input, timestamp: Date.now(), parentToolUseId,
-          }],
-          activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
-          undoableSubmittedMessage: null,
-        }))
+        update((s) => {
+          const isReplayedAskUserQuestion = toolName === 'AskUserQuestion'
+            && !parentToolUseId
+            && toolUseId.length > 0
+          const alreadyVisible = isReplayedAskUserQuestion && s.messages.some((message) => (
+            message.type === 'tool_use'
+            && !message.parentToolUseId
+            && message.toolName === 'AskUserQuestion'
+            && message.toolUseId === toolUseId
+          ))
+          return {
+            messages: alreadyVisible
+              ? s.messages
+              : [...s.messages, {
+                  id: nextId(), type: 'tool_use', toolName,
+                  toolUseId,
+                  input: msg.input, timestamp: Date.now(), parentToolUseId,
+                }],
+            activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
+            undoableSubmittedMessage: null,
+          }
+        })
         if (toolName === 'TodoWrite' && Array.isArray((msg.input as any)?.todos)) {
           useCLITaskStore.getState().setTasksFromTodos((msg.input as any).todos, sessionId)
         } else if (TASK_TOOL_NAMES.has(toolName)) {
@@ -1673,6 +2099,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         const pendingParentToolUseId = consumePendingToolParentUseId(sessionId, msg.toolUseId)
         const parentToolUseId = msg.parentToolUseId ?? pendingParentToolUseId
         update((s) => ({
+          ...pendingPermissionsPatch(getPendingPermissions(s).filter(request => request.toolUseId !== msg.toolUseId)),
           messages: [...s.messages, {
             id: nextId(), type: 'tool_result', toolUseId: msg.toolUseId,
             content: msg.content, isError: msg.isError, timestamp: Date.now(), parentToolUseId,
@@ -1692,22 +2119,48 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       case 'permission_response_ack': {
         update((session) => {
-          const pendingMatches = session.pendingPermission?.requestId === msg.requestId
+          const requests = getPendingPermissions(session)
+          const pendingRequest = requests.find(request => request.requestId === msg.requestId)
+          const pendingMatches = Boolean(pendingRequest)
+          const acknowledgedAnswerEntry = Object.entries(session.answeredAskUserQuestions ?? {})
+            .find(([, answer]) => answer.requestId === msg.requestId)
           const permissionResponse = {
             requestId: msg.requestId,
+            ...(pendingRequest?.toolUseId
+              ? { toolUseId: pendingRequest.toolUseId }
+              : {}),
+            ...(acknowledgedAnswerEntry ? { toolUseId: acknowledgedAnswerEntry[0] } : {}),
             status: msg.status,
             ...(msg.message ? { message: msg.message } : {}),
           } as const
+          const answeredAskUserQuestions = acknowledgedAnswerEntry
+            ? (() => {
+                const [toolUseId, answer] = acknowledgedAnswerEntry
+                if (msg.status === 'accepted') {
+                  return {
+                    ...session.answeredAskUserQuestions,
+                    [toolUseId]: { ...answer, status: 'accepted' as const },
+                  }
+                }
+                const next = { ...session.answeredAskUserQuestions }
+                delete next[toolUseId]
+                return next
+              })()
+            : undefined
           if (msg.status === 'rejected') {
             return {
               permissionResponse,
               chatState: pendingMatches ? 'permission_pending' : session.chatState,
+              ...(answeredAskUserQuestions ? { answeredAskUserQuestions } : {}),
             }
           }
           return {
             permissionResponse,
-            pendingPermission: pendingMatches ? null : session.pendingPermission,
-            chatState: msg.status === 'accepted' ? 'tool_executing' : 'idle',
+            ...pendingPermissionsPatch(requests.filter(request => request.requestId !== msg.requestId)),
+            chatState: pendingMatches || acknowledgedAnswerEntry
+              ? msg.status === 'accepted' ? 'tool_executing' : 'idle'
+              : session.chatState,
+            ...(answeredAskUserQuestions ? { answeredAskUserQuestions } : {}),
           }
         })
         break
@@ -1715,50 +2168,83 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       case 'permission_request': {
         if (isLocallyStopped(get().sessions[sessionId])) break
+        const current = get().sessions[sessionId]
+        // Replayed/late frames must not revive an acknowledged or completed call.
+        if (current && (
+          (current.permissionResponse?.requestId === msg.requestId
+            && ['accepted', 'stale'].includes(current.permissionResponse.status))
+          || (msg.toolUseId && current.answeredAskUserQuestions?.[msg.toolUseId]?.status === 'accepted')
+          || (msg.toolUseId && current.messages.some(message => message.type === 'tool_result' && message.toolUseId === msg.toolUseId))
+        )) break
         const input = msg.input && typeof msg.input === 'object' && !Array.isArray(msg.input)
           ? msg.input as Record<string, unknown>
           : null
         const isExpertBrowserVerification = msg.toolName === 'Playwright'
           && input?.kind === 'expert-playwright-verification'
-        notifyDesktop({
-          dedupeKey: `permission:${msg.requestId}`,
-          cooldownScope: 'permission-prompt',
-          requestAttention: true,
-          title: isExpertBrowserVerification
-            ? '需要协助完成网站验证'
-            : 'Claude Code Jiangxia 需要你的确认',
-          body: isExpertBrowserVerification
-            ? '请在前台浏览器完成网站的正常验证，然后回到应用选择下一步。'
-            : msg.toolName
-              ? `${msg.toolName} 请求执行，正在等待允许。`
-              : '有一个工具请求正在等待允许。',
-          target: { type: 'session', sessionId },
-        })
+        // AskUserQuestion has its own in-chat choice card. A generic desktop
+        // permission toast incorrectly tells the user to allow a tool and can
+        // linger after the answer was already submitted.
+        if (msg.toolName !== 'AskUserQuestion') {
+          notifyDesktop({
+            dedupeKey: `permission:${msg.requestId}`,
+            cooldownScope: 'permission-prompt',
+            requestAttention: true,
+            title: isExpertBrowserVerification
+              ? '需要协助完成网站验证'
+              : 'Claude Code Jiangxia 需要你的确认',
+            body: isExpertBrowserVerification
+              ? '请在前台浏览器完成网站的正常验证，然后回到应用选择下一步。'
+              : msg.toolName
+                ? `${msg.toolName} 请求执行，正在等待允许。`
+                : '有一个工具请求正在等待允许。',
+            target: { type: 'session', sessionId },
+          })
+        }
         update((s) => ({
-          pendingPermission: {
+          ...enqueuePendingPermission(s, {
             requestId: msg.requestId,
             toolName: msg.toolName,
             toolUseId: msg.toolUseId,
             input: msg.input,
             description: msg.description,
-          },
-          pendingComputerUsePermission: null,
+          }),
           chatState: 'permission_pending',
           activeThinkingId: null,
           undoableSubmittedMessage: null,
-          messages:
-            msg.toolName === 'AskUserQuestion' || isExpertBrowserVerification
-              ? s.messages
-              : [...s.messages, {
-                  id: nextId(),
-                  type: 'permission_request',
-                  requestId: msg.requestId,
-                  toolName: msg.toolName,
-                  toolUseId: msg.toolUseId,
-                  input: msg.input,
-                  description: msg.description,
-                  timestamp: Date.now(),
-                }],
+          messages: (() => {
+            if (msg.toolName === 'AskUserQuestion' && msg.toolUseId) {
+              const hasQuestionCard = s.messages.some((message) => (
+                message.type === 'tool_use'
+                && !message.parentToolUseId
+                && message.toolName === 'AskUserQuestion'
+                && message.toolUseId === msg.toolUseId
+              ))
+              // Permission replay is the durable part of a workflow question.
+              // If its earlier tool_use_complete was missed during reconnect,
+              // rebuild the exact card from this authoritative request.
+              return hasQuestionCard
+                ? s.messages
+                : [...s.messages, {
+                    id: nextId(),
+                    type: 'tool_use',
+                    toolName: 'AskUserQuestion',
+                    toolUseId: msg.toolUseId,
+                    input: msg.input,
+                    timestamp: Date.now(),
+                  }]
+            }
+            if (isExpertBrowserVerification || s.messages.some(message => message.type === 'permission_request' && message.requestId === msg.requestId)) return s.messages
+            return [...s.messages, {
+              id: nextId(),
+              type: 'permission_request',
+              requestId: msg.requestId,
+              toolName: msg.toolName,
+              toolUseId: msg.toolUseId,
+              input: msg.input,
+              description: msg.description,
+              timestamp: Date.now(),
+            }]
+          })(),
         }))
         break
       }
@@ -1778,7 +2264,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
             requestId: msg.requestId,
             request: msg.request,
           },
-          pendingPermission: null,
           chatState: 'permission_pending',
           activeThinkingId: null,
           undoableSubmittedMessage: null,
@@ -1806,6 +2291,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           chatState: 'idle',
           activeThinkingId: null,
           pendingPermission: null,
+          pendingPermissions: [],
           pendingComputerUsePermission: null,
           elapsedTimer: null,
           localStopNonce: null,
@@ -1825,10 +2311,37 @@ export const useChatStore = create<ChatStore>((set, get) => {
           })
         }
         submitNextQueuedMessage(sessionId)
+        void restoreDisconnectedHistory(sessionId)
         break
       }
 
       case 'error':
+        if (isLegacyStrictVisualProtocolError(msg.code)) {
+          update((s) => {
+            const pendingText = `${s.streamingText}${consumePendingDelta(sessionId)}`
+            const messages = pendingText.trim()
+              ? appendAssistantTextMessage(s.messages, pendingText, Date.now())
+              : s.messages
+            return {
+              messages: [...messages, {
+                id: nextId(),
+                type: 'system',
+                content: legacyStrictVisualProtocolNotice(msg.code!),
+                timestamp: Date.now(),
+              }],
+              chatState: 'idle',
+              activeThinkingId: null,
+              streamingText: '',
+              pendingPermission: null,
+              pendingPermissions: [],
+              pendingComputerUsePermission: null,
+              localStopNonce: null,
+              undoableSubmittedMessage: null,
+            }
+          })
+          useTabStore.getState().updateTabStatus(sessionId, 'idle')
+          break
+        }
         if (msg.code === 'CLI_RESTART_FAILED') {
           restoreRuntimeSelectionAfterFailure(sessionId)
         }
@@ -1868,6 +2381,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             activeThinkingId: null,
             streamingText: '',
             pendingPermission: null,
+            pendingPermissions: [],
             pendingComputerUsePermission: null,
             localStopNonce: null,
             undoableSubmittedMessage: null,
@@ -1899,6 +2413,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
         useTabStore.getState().updateTabTitle(msg.sessionId, msg.title)
         break
       case 'system_notification':
+        if (msg.subtype === 'session_state') {
+          const snapshot = msg.data as { state?: ChatState; reconnected?: boolean }
+          if (snapshot.reconnected) historyResyncNeeded.add(sessionId)
+          if (snapshot.state && ['idle', 'thinking', 'tool_executing', 'streaming', 'permission_pending'].includes(snapshot.state)) {
+            get().handleServerMessage(sessionId, { type: 'status', state: snapshot.state })
+          }
+          break
+        }
         if (msg.subtype === 'expert_browser_activity') {
           const activity = normalizeExpertBrowserResearchActivity(msg.data)
           if (activity) update(() => ({ expertBrowserActivity: activity }))
@@ -1975,6 +2497,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             activeToolName: null,
             activeThinkingId: null,
             pendingPermission: null,
+            pendingPermissions: [],
             pendingComputerUsePermission: null,
             chatState: 'idle',
             elapsedTimer: null,
@@ -1996,7 +2519,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
           useTabStore.getState().updateTabTitle(sessionId, 'New Session')
           useTabStore.getState().updateTabStatus(sessionId, 'idle')
         }
-        if (msg.subtype === 'compact_boundary' || msg.subtype === 'workflow_welcome') {
+        if (
+          msg.subtype === 'compact_boundary'
+          || msg.subtype === 'workflow_welcome'
+          || msg.subtype === 'strict_visual_incomplete'
+        ) {
           update((session) => ({
             messages: [
               ...session.messages,
@@ -2007,7 +2534,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
                   ? msg.message
                   : msg.subtype === 'workflow_welcome'
                     ? 'Workflow is ready. Tell me what you want to do to start the first phase.'
-                    : 'Context compacted',
+                    : msg.subtype === 'strict_visual_incomplete'
+                      ? 'Visual review remains incomplete.'
+                      : 'Context compacted',
                 timestamp: Date.now(),
               },
             ],
@@ -2537,14 +3066,40 @@ function extractVisibleTeammateMessageContents(text: string): string[] {
   return contents
 }
 
-function pushAssistantHistoryText(
+type AssistantHistoryTextSegment =
+  | { type: 'thinking'; content: string }
+  | { type: 'visible'; content: string }
+
+function splitInternalProcessHistoryText(content: string): AssistantHistoryTextSegment[] {
+  const embeddedProcessStart = embeddedInternalProcessNarrationStart(content)
+  if (embeddedProcessStart !== undefined && embeddedProcessStart > 0) {
+    const visible = content.slice(0, embeddedProcessStart).trimEnd()
+    const internalNarration = content.slice(embeddedProcessStart).trimStart()
+    if (INTERNAL_PROCESS_ASK_USER_QUESTION_NARRATION.test(internalNarration)) {
+      return visible ? [{ type: 'visible', content: visible }] : []
+    }
+    return [
+      { type: 'visible', content: visible },
+      { type: 'thinking', content: internalNarration },
+    ].filter((segment): segment is AssistantHistoryTextSegment => Boolean(segment.content.trim()))
+  }
+
+  if (!isInternalProcessNarration(content)) return [{ type: 'visible', content }]
+  const boundary = USER_FACING_CHINESE_PARAGRAPH.exec(content)
+  if (!boundary || boundary.index === undefined) return [{ type: 'thinking', content }]
+  return [
+    { type: 'thinking', content: content.slice(0, boundary.index) },
+    { type: 'visible', content: content.slice(boundary.index + boundary[0].length) },
+  ].filter((segment): segment is AssistantHistoryTextSegment => Boolean(segment.content.trim()))
+}
+
+function appendAssistantHistoryVisibleText(
   messages: UIMessage[],
   content: string,
   timestamp: number,
   model?: string,
+  id?: string,
 ): void {
-  if (!content.trim()) return
-
   const last = messages[messages.length - 1]
   if (last?.type === 'assistant_text') {
     last.content += content
@@ -2553,12 +3108,32 @@ function pushAssistantHistoryText(
   }
 
   messages.push({
-    id: nextId(),
+    id: id ?? nextId(),
     type: 'assistant_text',
     content,
     timestamp,
     ...(model ? { model } : {}),
   })
+}
+
+function pushAssistantHistoryText(
+  messages: UIMessage[],
+  content: string,
+  timestamp: number,
+  model?: string,
+  id?: string,
+): void {
+  if (!content.trim()) return
+
+  for (const [index, segment] of splitInternalProcessHistoryText(content).entries()) {
+    if (!segment.content.trim()) continue
+    const segmentId = index === 0 ? id : undefined
+    if (segment.type === 'thinking') {
+      messages.push({ id: segmentId ?? nextId(), type: 'thinking', content: segment.content, timestamp })
+    } else {
+      appendAssistantHistoryVisibleText(messages, segment.content, timestamp, model, segmentId)
+    }
+  }
 }
 
 type HistoryMappingOptions = {
@@ -2569,6 +3144,8 @@ const WORKFLOW_PROMPT_TAIL_SECTION_HEADINGS = [
   'Workflow model provenance',
   'Workflow-only tools',
 ]
+
+const INTERNAL_EXPERT_RUNTIME_PROMPT_RE = /^<(expert-(?:research-[a-z0-9-]*(?:recovery|auto-continue)|post-review-evidence-absorption))>[\s\S]*<\/\1>$/i
 
 const WORKFLOW_PROMPT_GENERATED_SECTION_PREFIXES = [
   'Workflow mode',
@@ -2633,7 +3210,75 @@ function stripReferenceContextPrompt(content: string): string | null {
   return content
 }
 
+function isInternalExpertRuntimePromptText(content: string): boolean {
+  return INTERNAL_EXPERT_RUNTIME_PROMPT_RE.test(content.replace(/\r\n/g, '\n').trim())
+}
+
+function isInternalExpertRuntimePromptContent(content: unknown): boolean {
+  const textBlocks = extractHistoryTextBlocks(content)
+  return textBlocks.length > 0 && textBlocks.every(isInternalExpertRuntimePromptText)
+}
+
+function isInternalLoadedSkillPromptText(content: string): boolean {
+  const normalized = content.replace(/\r\n/g, '\n').trim()
+  return /^Base directory for this skill:\s*[^\n]+\n\s*\n---\s*\n\s*#\s+.+?<HARD-GATE>/is.test(normalized)
+}
+
+function isInternalLoadedSkillPromptContent(content: unknown): boolean {
+  const textBlocks = extractHistoryTextBlocks(content)
+  return textBlocks.length > 0 && textBlocks.every(isInternalLoadedSkillPromptText)
+}
+
+function isInternalAgentHistoryUserContent(content: unknown): boolean {
+  const textBlocks = extractHistoryTextBlocks(content)
+  return textBlocks.length > 0 && textBlocks.every((text) => (
+    isTeammateMessage(text)
+    || extractTaskNotificationXml(text) !== null
+    || isInternalLoadedSkillPromptText(text)
+  ))
+}
+
+function isExpertInternalHistoryDescendant(
+  message: MessageEntry,
+  messagesById: Map<string, MessageEntry>,
+  cache: Map<string, boolean>,
+): boolean {
+  const cached = cache.get(message.id)
+  if (cached !== undefined) return cached
+
+  let parentUuid = message.parentUuid
+  const visited = new Set<string>()
+  let result = false
+
+  while (parentUuid && !visited.has(parentUuid)) {
+    visited.add(parentUuid)
+    const cachedParent = cache.get(parentUuid)
+    if (cachedParent !== undefined) {
+      result = cachedParent
+      break
+    }
+
+    const parent = messagesById.get(parentUuid)
+    if (!parent) break
+    if (parent.type === 'user') {
+      if (isInternalExpertRuntimePromptContent(parent.content) || isInternalLoadedSkillPromptContent(parent.content)) {
+        result = true
+        break
+      }
+      if (!isInternalAgentHistoryUserContent(parent.content)) break
+    } else if (parent.type !== 'tool_result') {
+      parentUuid = parent.parentUuid
+      continue
+    }
+    parentUuid = parent.parentUuid
+  }
+
+  cache.set(message.id, result)
+  return result
+}
+
 function stripInternalUserPrompt(content: string): string | null {
+  if (isInternalExpertRuntimePromptText(content) || isInternalLoadedSkillPromptText(content)) return null
   const visibleContent = stripWorkflowInternalPrompt(content)
   if (visibleContent === null) return null
   return stripReferenceContextPrompt(visibleContent)
@@ -2777,10 +3422,17 @@ export function mapHistoryMessagesToUiMessages(
 ): UIMessage[] {
   const includeTeammateMessages = options?.includeTeammateMessages === true
   const uiMessages: UIMessage[] = []
+  const messagesById = new Map(messages.map((message) => [message.id, message]))
+  const internalExpertTurnCache = new Map<string, boolean>()
   let suppressTaskNotificationResponse = false
   let pendingGoalCommand: { name: string; args: string } | null = null
 
   for (const msg of messages) {
+    const suppressExpertAssistantProse = (
+      (msg.type === 'assistant' || msg.type === 'tool_use')
+      && isExpertInternalHistoryDescendant(msg, messagesById, internalExpertTurnCache)
+    )
+
     if (msg.type === 'user' && isTaskNotificationContent(msg.content)) {
       suppressTaskNotificationResponse = true
       continue
@@ -2849,15 +3501,22 @@ export function mapHistoryMessagesToUiMessages(
       continue
     }
     if (msg.type === 'assistant' && typeof msg.content === 'string') {
-      if (!msg.content.trim()) continue
-      uiMessages.push({ id: msg.id || nextId(), type: 'assistant_text', content: msg.content, timestamp, model: msg.model })
+      if (suppressExpertAssistantProse || !msg.content.trim()) continue
+      pushAssistantHistoryText(uiMessages, msg.content, timestamp, msg.model, msg.id || nextId())
       continue
     }
     if ((msg.type === 'assistant' || msg.type === 'tool_use') && Array.isArray(msg.content)) {
       for (const block of msg.content as AssistantHistoryBlock[]) {
-        if (block.type === 'thinking' && block.thinking) uiMessages.push({ id: nextId(), type: 'thinking', content: block.thinking, timestamp })
-        else if (block.type === 'text' && block.text) pushAssistantHistoryText(uiMessages, block.text, timestamp, msg.model)
-        else if (block.type === 'tool_use') uiMessages.push({ id: nextId(), type: 'tool_use', toolName: block.name ?? 'unknown', toolUseId: block.id ?? '', input: block.input, timestamp, parentToolUseId: msg.parentToolUseId })
+        if (block.type === 'thinking' && block.thinking) {
+          if (!suppressExpertAssistantProse) uiMessages.push({ id: nextId(), type: 'thinking', content: block.thinking, timestamp })
+        } else if (block.type === 'text' && block.text) {
+          if (!suppressExpertAssistantProse) pushAssistantHistoryText(uiMessages, block.text, timestamp, msg.model)
+        } else if (block.type === 'tool_use') {
+          const isInternalSkillOrTask = block.name === 'Skill' || TASK_RELATED_TOOL_NAMES.has(block.name ?? '')
+          if (!isInternalSkillOrTask || !suppressExpertAssistantProse) {
+            uiMessages.push({ id: nextId(), type: 'tool_use', toolName: block.name ?? 'unknown', toolUseId: block.id ?? '', input: block.input, timestamp, parentToolUseId: msg.parentToolUseId })
+          }
+        }
       }
       continue
     }

@@ -1,6 +1,4 @@
-﻿import * as fs from 'node:fs'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import { z } from 'zod/v4'
+﻿import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import type { ImageGenerationResult } from '../../server/services/imageGenerationService.js'
 import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
@@ -12,12 +10,9 @@ import {
   IMAGE_GENERATION_TOOL_PROMPT,
 } from './prompt.js'
 
-const MAX_INLINE_IMAGE_BYTES = 4 * 1024 * 1024
-
 const inputSchema = lazySchema(() => z.strictObject({
   operation: z.enum(['preflight', 'generate']).describe('Use preflight to check the configured Provider, or generate to request one real image.'),
   prompt: z.string().min(1).max(50_000).optional().describe('A production-quality image prompt. Required for generate. Describe subject, composition, constraints, and reference-image facts when relevant.'),
-  model: z.string().min(1).max(256).optional().describe('Optional image model override. Defaults to the desktop setting or gpt-image-2.'),
   size: z.string().regex(/^\d{3,4}x\d{3,4}$/).optional().describe('Requested pixel dimensions, such as 1536x1024.'),
   quality: z.enum(['auto', 'low', 'medium', 'high']).optional().describe('Requested rendering quality.'),
   output_format: z.enum(['png', 'jpeg', 'webp']).optional().describe('Raster file format for the delivered image.'),
@@ -70,6 +65,10 @@ function desktopServerUrl(): string | null {
   return value ? value.replace(/\/+$/, '') : null
 }
 
+function uiuxImageOnlyDelivery(): boolean {
+  return getJiangxiaEnvValue('UIUX_IMAGE_ONLY_DELIVERY') === '1'
+}
+
 function imageToolResultText(output: Output): string {
   const lines = [
     `Image generation status: ${output.status}.`,
@@ -80,6 +79,10 @@ function imageToolResultText(output: Output): string {
   if (output.imagePath) lines.push(`Image: ${output.imagePath}`)
   if (output.promptPath) lines.push(`Prompt record: ${output.promptPath}`)
   if (output.reportPath) lines.push(`Generation report: ${output.reportPath}`)
+  if (uiuxImageOnlyDelivery() && (output.status === 'failed' || output.status === 'unavailable')) {
+    lines.push('Real generation did not succeed. Explain this exact error and use AskUserQuestion for configure-then-retry, adjust the brief, or stop. The user has rejected substitute delivery; do not offer HTML or Python, and do not retry automatically.')
+    return lines.join('\n')
+  }
   if (output.fallback?.required) {
     lines.push(
       '',
@@ -99,6 +102,10 @@ function imageToolResultText(output: Output): string {
 }
 
 function withRequiredFallback(input: Input, output: Output): Output {
+  if (uiuxImageOnlyDelivery()) {
+    const { fallback: _fallback, ...result } = output
+    return result
+  }
   if (input.operation !== 'generate' || (output.status !== 'unavailable' && output.status !== 'failed')) {
     return output
   }
@@ -142,50 +149,23 @@ function withRequiredFallback(input: Input, output: Output): Output {
   }
 }
 
-function inlineImageContent(output: Output): ToolResultBlockParam['content'] | null {
-  if (output.status !== 'generated' || !output.imagePath || !output.mimeType) return null
-  try {
-    const image = fs.readFileSync(output.imagePath)
-    if (image.length === 0 || image.length > MAX_INLINE_IMAGE_BYTES) return null
-    return [
-      { type: 'text', text: imageToolResultText(output) },
-      {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: output.mimeType,
-          data: image.toString('base64'),
-        },
-      },
-    ] as ToolResultBlockParam['content']
-  } catch {
-    return null
-  }
-}
-
 async function callDesktopImagesApi(input: Input, signal: AbortSignal): Promise<Output> {
   const serverUrl = desktopServerUrl()
   if (!serverUrl) {
     return {
       status: 'unavailable',
       availability: 'unavailable',
-      model: input.model ?? 'gpt-image-2',
+      model: 'unconfigured',
       message: 'The desktop image service is not connected for this session.',
       errorCode: 'IMAGE_DESKTOP_SERVER_UNAVAILABLE',
     }
   }
 
-  const providerId = getJiangxiaEnvValue('PROVIDER_ID')?.trim()
   const action = input.operation === 'preflight' ? 'preflight' : 'generate'
   const body = input.operation === 'preflight'
-    ? {
-        ...(providerId ? { providerId } : {}),
-        ...(input.model ? { model: input.model } : {}),
-      }
+    ? {}
     : {
-        ...(providerId ? { providerId } : {}),
         prompt: input.prompt!,
-        ...(input.model ? { model: input.model } : {}),
         ...(input.size ? { size: input.size } : {}),
         ...(input.quality ? { quality: input.quality } : {}),
         ...(input.output_format ? { outputFormat: input.output_format } : {}),
@@ -216,7 +196,7 @@ async function callDesktopImagesApi(input: Input, signal: AbortSignal): Promise<
       return {
         status: 'failed',
         availability: 'unverified',
-        model: input.model ?? 'gpt-image-2',
+        model: 'unconfigured',
         message,
         errorCode: typeof (payload as { error?: unknown }).error === 'string'
           ? (payload as { error: string }).error
@@ -226,7 +206,7 @@ async function callDesktopImagesApi(input: Input, signal: AbortSignal): Promise<
     return {
       status: 'failed',
       availability: 'unverified',
-      model: input.model ?? 'gpt-image-2',
+      model: 'unconfigured',
       message: `Desktop image service returned an unreadable HTTP ${response.status} response.`,
       errorCode: 'IMAGE_DESKTOP_SERVER_INVALID_RESPONSE',
     }
@@ -235,7 +215,7 @@ async function callDesktopImagesApi(input: Input, signal: AbortSignal): Promise<
     return {
       status: 'failed',
       availability: 'unverified',
-      model: input.model ?? 'gpt-image-2',
+      model: 'unconfigured',
       message: 'Could not reach the desktop image service.',
       errorCode: 'IMAGE_DESKTOP_SERVER_NETWORK_ERROR',
     }
@@ -252,7 +232,9 @@ export const ImageGenerationTool = buildTool({
     return action === 'preflight' ? 'Claude wants to check image-generation availability' : 'Claude wants to generate a real image'
   },
   async prompt() {
-    return IMAGE_GENERATION_TOOL_PROMPT
+    return uiuxImageOnlyDelivery()
+      ? 'Generate real images with operation=generate through the independently configured image Provider/model. Read the returned Image path once for visual review. Preflight is diagnostic only. On failure, explain the error and call AskUserQuestion for configure-then-retry, brief adjustment, or stopping. This UIUX user rejected substitute deliverables; no automatic retries, Python drawings or HTML fallback.'
+      : IMAGE_GENERATION_TOOL_PROMPT
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -286,11 +268,14 @@ export const ImageGenerationTool = buildTool({
     return { data: withRequiredFallback(input, output) }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {
-    const content = inlineImageContent(output) ?? imageToolResultText(output)
+    // Generated PNGs can be megabytes when Base64-encoded. Echoing that binary back
+    // into the chat turn can overflow a chat model after the provider already
+    // successfully wrote the image to disk. Keep the continuation compact and let
+    // the user-facing response reference the verified image path instead.
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content,
+      content: imageToolResultText(output),
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

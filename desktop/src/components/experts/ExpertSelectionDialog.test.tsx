@@ -228,6 +228,7 @@ describe('ExpertSelectionDialog marketplace', () => {
 
     const background = screen.getByRole('radio', { name: /后台检索/ })
     expect(background).toBeChecked()
+    expect(screen.getByText(/网站需要验证时会弹出提示/)).toHaveTextContent('恢复后软件不再自动最小化或收回')
 
     fireEvent.click(screen.getByLabelText(/连接我主动开启的 Chrome/))
     expect(screen.queryByRole('radio', { name: /后台检索/ })).not.toBeInTheDocument()

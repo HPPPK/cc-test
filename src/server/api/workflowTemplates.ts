@@ -5,6 +5,7 @@
 } from '../services/workflowTemplateAuthoringService.js'
 import {
   WorkflowTemplateRegistryService,
+  WorkflowTemplateBundledUpdateError,
   resetWorkflowTemplateRegistryForTests,
   type WorkflowTemplateRegistryListResult,
   type WorkflowTemplateRegistryTemplate,
@@ -105,6 +106,11 @@ export async function handleWorkflowTemplatesApi(req: Request, url: URL, segment
       return methodNotAllowed(req.method)
     }
 
+    if (tail.length === 3 && tail[0] === 'user' && tail[2] === 'bundled-update') {
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return Response.json(await registryService.applyBundledWorkflowUpdate(decodeURIComponent(tail[1])))
+    }
+
     if (tail.length === 2) {
       const [source, id] = tail
       if (!isWorkflowSource(source)) {
@@ -121,6 +127,9 @@ export async function handleWorkflowTemplatesApi(req: Request, url: URL, segment
   } catch (error) {
     if (error instanceof WorkflowTemplateApiError) {
       return workflowError(error.status, error.code, error.message, error.details)
+    }
+    if (error instanceof WorkflowTemplateBundledUpdateError) {
+      return workflowError(error.status, error.code, error.message)
     }
     return workflowError(500, 'WORKFLOW_TEMPLATE_INTERNAL_ERROR', error instanceof Error ? error.message : String(error))
   }
@@ -793,6 +802,7 @@ function summarizeTemplate(template: WorkflowTemplateRegistryTemplate) {
     ...(template.requiredModelCapabilities ? { requiredModelCapabilities: template.requiredModelCapabilities } : {}),
     ...(template.packId ? { packId: template.packId } : {}),
     ...(template.packName ? { packName: template.packName } : {}),
+    ...(template.bundledUpdate ? { bundledUpdate: template.bundledUpdate } : {}),
   }
 }
 

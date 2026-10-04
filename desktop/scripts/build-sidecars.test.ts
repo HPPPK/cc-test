@@ -50,6 +50,21 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(source.indexOf('await buildBundledExpertPacks()')).toBeLessThan(source.indexOf('await copyBundledWorkflowPacks()'))
   })
 
+  it('blocks stale workflow ZIPs before copying and audits the copied layer', () => {
+    const source = readBuildScript()
+
+    expect(source).toContain('checkBundledWorkflowPacks')
+    expect(source).toContain("path.join(repoRoot, 'scripts', 'build-workflow-packs.ts')")
+    expect(source).toContain("'--check'")
+    expect(source.indexOf('await checkBundledWorkflowPacks()')).toBeLessThan(source.indexOf('await copyBundledWorkflowPacks()'))
+    expect(source).toContain('auditBundledWorkflowPacks')
+    expect(source).toContain("path.join(repoRoot, 'scripts', 'audit-workflow-packs.ts')")
+    expect(source).toContain("'--resource-dir'")
+    expect(source).toContain("'--output-file'")
+    expect(source).toContain("'workflow-pack-audit.json'")
+    expect(source.indexOf('await copyBundledWorkflowPacks()')).toBeLessThan(source.indexOf('await auditBundledWorkflowPacks()'))
+  })
+
   it('copies workflow packs next to the compiled sidecar', () => {
     const source = readBuildScript()
 

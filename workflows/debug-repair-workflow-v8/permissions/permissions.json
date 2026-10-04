@@ -1,0 +1,349 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "debug-repair-workflow-v8",
+      "phases": [
+        {
+          "id": "debug-memory-intake",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "dependency installs",
+              "migrations",
+              "deletes",
+              "deploy"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "debug-context.md and debug-work-order.md contain every user-requested item and initialize the fixed Debug Capsule fields with available user, log, and code evidence before investigation.",
+              "Record a task inventory for every user-requested item, with symptom, expected/actual behavior, evidence, suspected entry points, and accepted or explicitly deferred status.",
+              "Record whether tasks share a suspected root cause or are independent; do not merge them without evidence.",
+              "Record dependencies, target files, write scopes, validation cases, and any bounded question needed to confirm the inventory.",
+              "Handoff the complete Debug Capsule and task inventory; ask only one unresolved material question per AskUserQuestion call."
+            ]
+          }
+        },
+        {
+          "id": "debug-investigate",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "test",
+              "log",
+              "artifact",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "dependency installs",
+              "migrations",
+              "deletes",
+              "deploy"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "problem-report.md accounts for every accepted task with reproduction or could-not-reproduce evidence, a root-cause finding or uncertainty, and a planned terminal path before fixing.",
+              "Record one problem-report entry for every accepted task: task id, reproduction status, evidence, root-cause finding or uncertainty, impact, and minimal fix path.",
+              "Record why tasks were grouped or kept separate, including dependency, write-scope, and shared-resource reasoning for parallel investigation batches.",
+              "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+              "Handoff the updated Debug Capsule so debug-fix receives verified facts, excluded causes, root cause, and the smallest repair path without full chat history."
+            ]
+          }
+        },
+        {
+          "id": "debug-fix",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "edit-within-plan",
+              "test",
+              "artifact",
+              "question",
+              "subagent-coder",
+              "subagent-reviewer"
+            ],
+            "forbiddenActions": [
+              "out-of-scope edits",
+              "unconfirmed installs",
+              "unconfirmed migrations",
+              "unconfirmed deletes",
+              "unconfirmed deploy"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "Write",
+                "Edit",
+                "MultiEdit",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "migrations",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "fix-log.md accounts for every accepted task with code/review/test evidence and a fixed, user-deferred, could-not-reproduce, or blocked terminal status.",
+              "Record one fix-log entry for every accepted task: task id, batch, changed files, fix summary, tests/checks, reviewer feedback, and terminal status.",
+              "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+              "Never silently omit a remaining accepted task; record an explicit user deferral, could-not-reproduce outcome, or blocker instead.",
+              "Handoff the Debug Capsule with root cause, fix, changed files, Coder evidence, Reviewer result, and remaining regression work."
+            ]
+          }
+        },
+        {
+          "id": "debug-quality-preview",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "test",
+              "build",
+              "lint",
+              "review",
+              "preview-start",
+              "preview-stop",
+              "artifact",
+              "question",
+              "subagent-qa",
+              "subagent-reviewer",
+              "route"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "test-file edits",
+              "direct repair",
+              "subagent-coder",
+              "deploy without confirmation"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "migrations",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "quality-report.md and the Debug Capsule contain regression evidence for every accepted task and symptom; code failures have been routed to debug-fix and revalidated before completion.",
+              "Record regression evidence, log disposition, preview status, residual risks, and terminal status for every accepted symptom.",
+              "Route code-affecting failures to debug-fix and revalidate after the repaired batch passes Reviewer."
+            ]
+          }
+        },
+        {
+          "id": "debug-finish-memory",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "handoff",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "auto-start follow-up workflow"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+              "Record outcome, proof, residual risks, updated memory, next workflow choices, and the terminal status of every accepted debug task.",
+              "The archive is non-blocking: preserve diagnosis, fix and regression evidence, relevant project guidance/log updates, diagnostic/log references, and explicit residual risk for every accepted debug task."
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

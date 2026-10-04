@@ -261,6 +261,98 @@ describe('workflow task scheduling bridge', () => {
     expect(blockedReason).toBe('Dependency implementation failed: worktree initialization failed')
   })
 
+  test('reruns Coder before Reviewer after a Reviewer failure', async () => {
+    const batchPlan: WorkflowTaskSchedulePlan = {
+      taskId: 'B1',
+      tasks: [{
+        id: 'B1',
+        dependsOn: [],
+        writeScopes: ['src/**'],
+        resourceClaims: [],
+        executionMode: 'write',
+      }],
+    }
+    const order: string[] = []
+
+    await runWithinWorkflowTaskSchedule(
+      workflow,
+      batchPlan,
+      async () => {
+        order.push('coder-1')
+        return { status: 'succeeded' as const }
+      },
+      { role: 'coder' },
+    )
+    await runWithinWorkflowTaskSchedule(
+      workflow,
+      batchPlan,
+      async () => {
+        order.push('reviewer-needs-fix')
+        return { status: 'failed' as const, reason: 'needs fix' }
+      },
+      { role: 'reviewer' },
+    )
+    await runWithinWorkflowTaskSchedule(
+      workflow,
+      batchPlan,
+      async () => {
+        order.push('coder-2')
+        return { status: 'succeeded' as const }
+      },
+      { role: 'coder' },
+    )
+    await runWithinWorkflowTaskSchedule(
+      workflow,
+      batchPlan,
+      async () => {
+        order.push('reviewer-pass')
+        return { status: 'succeeded' as const }
+      },
+      { role: 'reviewer' },
+    )
+
+    expect(order).toEqual(['coder-1', 'reviewer-needs-fix', 'coder-2', 'reviewer-pass'])
+  })
+
+  test('hydrates a fresh scheduler lane from persisted Coder success after restart', async () => {
+    const persistedWorkflow = {
+      sessionId: 'feature-session',
+      activePhaseId: 'feature-implement',
+      templateIdentity: { id: 'feature-extension-workflow-v8', version: '20', source: 'pack' },
+      template: {
+        id: 'feature-extension-workflow-v8',
+        phases: [{ id: 'feature-implement', subagentPolicy: { maxParallel: 2 } }],
+      },
+      runtimeContract: {
+        phaseStates: {
+          'feature-implement': {
+            taskSnapshots: [
+              { taskId: 'B1::coder', batchId: 'B1', workflowRole: 'coder', status: 'succeeded' },
+              { taskId: 'B1::reviewer', batchId: 'B1', workflowRole: 'reviewer', status: 'pending' },
+            ],
+          },
+        },
+      },
+    }
+    const batchPlan: WorkflowTaskSchedulePlan = {
+      taskId: 'B1',
+      tasks: [{ id: 'B1', dependsOn: [], writeScopes: ['src/**'], resourceClaims: [], executionMode: 'write' }],
+    }
+    let reviewerStarted = false
+
+    await runWithinWorkflowTaskSchedule(
+      persistedWorkflow,
+      batchPlan,
+      async () => {
+        reviewerStarted = true
+        return { status: 'succeeded' as const }
+      },
+      { role: 'reviewer' },
+    )
+
+    expect(reviewerStarted).toBe(true)
+  })
+
   test('requires a workflow phase with an explicit concurrency policy', async () => {
     await expect(runWithinWorkflowTaskSchedule(
       undefined,

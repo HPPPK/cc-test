@@ -16,7 +16,10 @@ import { checkRemoteAgentEligibility, formatPreconditionError, getRemoteTaskSess
 import { assembleToolPool, assembleWorkflowToolPool } from '../../tools.js';
 import { asAgentId } from '../../types/ids.js';
 import { runWithAgentContext } from '../../utils/agentContext.js';
-import { resolveWorkflowRuntimeState } from '../../services/tools/workflowRuntimeStateBridge.js';
+import { recordDevelopmentBatchAgentProgressThroughDesktop, recordWorkflowAgentTaskProgressThroughDesktop, resolveWorkflowRuntimeState } from '../../services/tools/workflowRuntimeStateBridge.js';
+import { recordDevelopmentBatchAgentProgress } from '../../server/services/workflowDevelopmentBatchAgentProgress.js';
+import { isManagedWorkflowAgentImplementationPhase, recordWorkflowAgentTaskProgress, type WorkflowAgentTaskProgressInput } from '../../server/services/workflowAgentTaskStateService.js';
+import { isDevelopmentImplementationPhase, parseDevelopmentReviewerOutcome, validateDevelopmentBatchPlanForState, type DevelopmentBatchAgentProgressInput, type DevelopmentBatchAgentRole, type DevelopmentReviewerOutcome } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from '../../utils/cwd.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -46,7 +49,8 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
-import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, formatPlaywrightAudit, getLastToolUseName, recordFinalizedExpertAgentResearchAudit, requiresPlaywrightAudit, runAsyncAgentLifecycle, shouldSurfaceExpertEvidenceAgentFailure } from './agentToolUtils.js';
+import { agentToolResultSchema, appendExpertPostReviewEvidenceAbsorptionContext, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, formatPlaywrightAudit, getLastToolUseName, isFileFirstExpertResearchArtifactAgent, normalizeFinalizedExpertResearchArtifactContent, recordFinalizedExpertAgentResearchAudit, recordInterruptedExpertAgentResearchAudit, requiresPlaywrightAudit, runAsyncAgentLifecycle, shouldSurfaceExpertEvidenceAgentFailure } from './agentToolUtils.js';
+import { resolveExpertSubagentTypeForDispatch, type ExpertResearchSourceAssignment } from '../../services/tools/expertSubagentSkillRuntime.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
@@ -96,7 +100,7 @@ const workflowParallelPlanInputSchema = z.object({
   tasks: z.array(workflowParallelTaskInputSchema).min(1).describe('The complete structured task plan for the active workflow phase'),
 })
 
-const workflowRoleInputSchema = z.enum(['coder', 'reviewer', 'qa'])
+const workflowRoleInputSchema = z.enum(['coder', 'reviewer', 'qa', 'debug'])
 
 const baseInputSchema = lazySchema(() => z.object({
   description: z.string().describe('A short (3-5 word) description of the task'),
@@ -107,7 +111,9 @@ const baseInputSchema = lazySchema(() => z.object({
   model_id: z.string().optional().describe('Optional exact model ID for a spawned teammate. Requires provider_id so the runtime provider is explicit. This is passed through without alias parsing.'),
   run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.'),
   workflow_parallel_plan: workflowParallelPlanInputSchema.optional().describe('Optional structured workflow task plan. All background Agents in this phase must use the same complete plan.'),
-  workflow_role: workflowRoleInputSchema.optional().describe('Workflow-only worker role. Use coder, reviewer, or qa when an active workflow delegates work. Reviewer calls receive a non-editing child tool pool.')
+  workflow_role: workflowRoleInputSchema.optional().describe('Workflow-only worker role. Use coder, reviewer, qa, or debug when an active workflow delegates work. Reviewer calls receive a non-editing child tool pool.'),
+  research_artifact_path: z.string().optional().describe('File-first Expert worker: the one canonical Markdown target declared by the active pack, e.g. commercialization-research/02-competitors.md. Required by the commercialization research prompt for A/B/C source-package dispatch. The declared target resolves an omitted, general-purpose, or mismatched file-first research role before execution.'),
+  research_task_kind: z.enum(['source-batch', 'targeted-evidence']).optional().describe('Commercialization Expert researcher only: source-batch (default) processes the next assigned company-source URLs; targeted-evidence fills a specific product, competitor or route evidence gap without claiming or replacing a library batch.'),
 }));
 
 // Full schema combining base + multi-agent params + isolation
@@ -154,7 +160,7 @@ export function normalizeSubagentType(value: string | undefined): string | undef
 }
 
 export function resolveWorkflowSubagentType(
-  workflowRole: 'coder' | 'reviewer' | 'qa' | undefined,
+  workflowRole: 'coder' | 'reviewer' | 'qa' | 'debug' | undefined,
   normalizedSubagentType: string | undefined,
 ): string | undefined {
   if (!workflowRole) return normalizedSubagentType
@@ -322,11 +328,17 @@ export const AgentTool = buildTool({
     isolation,
     cwd,
     workflow_parallel_plan,
-    workflow_role
+    workflow_role,
+    research_artifact_path,
+    research_task_kind
   }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
     const startTime = Date.now();
     const model = isCoordinatorMode() ? undefined : modelParam;
-    const normalizedSubagentType = normalizeSubagentType(subagent_type);
+    const normalizedSubagentType = await resolveExpertSubagentTypeForDispatch({
+      agentType: normalizeSubagentType(subagent_type),
+      artifactPath: research_artifact_path,
+      workflowRole: workflow_role,
+    });
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState();
@@ -643,7 +655,8 @@ export const AgentTool = buildTool({
       isBuiltInAgent: isBuiltInAgent(selectedAgent),
       startTime,
       agentType: selectedAgent.agentType,
-      isAsync: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled
+      isAsync: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled,
+      researchSourceAssignment: undefined as ExpertResearchSourceAssignment | undefined,
     };
 
     // Use inline env check instead of coordinatorModule to avoid circular
@@ -672,12 +685,38 @@ export const AgentTool = buildTool({
       );
     }
     const activeWorkflow = workflowResolution.state;
+    const developmentBatchGuardActive = isDevelopmentImplementationPhase(activeWorkflow);
+    const developmentBatchRole: DevelopmentBatchAgentRole | undefined = developmentBatchGuardActive
+      && (workflow_role === 'coder' || workflow_role === 'reviewer')
+      ? workflow_role
+      : undefined;
+    const developmentDebugRole = developmentBatchGuardActive && workflow_role === 'debug';
+    const managedWorkflowTaskGuardActive = isManagedWorkflowAgentImplementationPhase(activeWorkflow);
+    const managedWorkflowTaskRole: DevelopmentBatchAgentRole | undefined = managedWorkflowTaskGuardActive
+      && (workflow_role === 'coder' || workflow_role === 'reviewer')
+      ? workflow_role
+      : undefined;
+    if (developmentBatchGuardActive && !developmentBatchRole && !developmentDebugRole) {
+      throw new Error('WORKFLOW_DEVELOPMENT_BATCH_ROLE_REQUIRED: Default development workflow Stage 4 Agent calls must use workflow_role=coder, workflow_role=reviewer, or the optional read-only workflow_role=debug. Debug cannot replace a Batch Coder or Reviewer.');
+    }
+    if (developmentBatchRole && !workflowTaskPlan) {
+      throw new Error('WORKFLOW_DEVELOPMENT_BATCH_PLAN_REQUIRED: Default development workflow Stage 4 Coder/Reviewer calls must include workflow_parallel_plan with the current Batch task_id and the complete Stage 3 Batch list.');
+    }
+    if (managedWorkflowTaskGuardActive && workflowTaskPlan && !managedWorkflowTaskRole) {
+      throw new Error('WORKFLOW_AGENT_TASK_ROLE_REQUIRED: Managed workflow implementation tasks must use workflow_role=coder or workflow_role=reviewer.');
+    }
+    if (developmentDebugRole && workflowTaskPlan) {
+      throw new Error('WORKFLOW_DEVELOPMENT_DEBUG_PLAN_FORBIDDEN: Optional read-only Debug investigation does not participate in the Coder/Reviewer Batch scheduler and must omit workflow_parallel_plan.');
+    }
     if (workflowTaskPlan) {
       if (!shouldRunAsync) {
         throw new Error('workflow_parallel_plan requires asynchronous Agent execution');
       }
-      await validateWorkflowTaskSchedule(activeWorkflow, workflowTaskPlan);
-    } else if (shouldRunAsync && await hasActiveWorkflowTaskSchedule(activeWorkflow)) {
+      if (developmentBatchRole && activeWorkflow) {
+        validateDevelopmentBatchPlanForState(activeWorkflow, workflowTaskPlan.tasks);
+      }
+      await validateWorkflowTaskSchedule(activeWorkflow, workflowTaskPlan, managedWorkflowTaskRole);
+    } else if (!developmentDebugRole && shouldRunAsync && await hasActiveWorkflowTaskSchedule(activeWorkflow)) {
       throw new Error('The active workflow phase is using a structured task plan. Every background Agent must provide that same workflow_parallel_plan.');
     }
     // Assemble the worker's tool pool independently of the parent's.
@@ -732,6 +771,12 @@ export const AgentTool = buildTool({
     const runAgentParams: Parameters<typeof runAgent>[0] = {
       agentDefinition: selectedAgent,
       promptMessages,
+      declaredResearchArtifactPath: research_artifact_path,
+      researchTaskKind: research_task_kind,
+      taskPrompt: prompt,
+      onExpertResearchAssignment: assignment => {
+        metadata.researchSourceAssignment = assignment;
+      },
       toolUseContext,
       canUseTool,
       isAsync: shouldRunAsync,
@@ -825,6 +870,82 @@ export const AgentTool = buildTool({
     };
     if (shouldRunAsync) {
       const asyncAgentId = earlyAgentId;
+      let workflowReviewerOutcome: DevelopmentReviewerOutcome | undefined;
+      const recordWorkflowTaskProgress = async (
+        status: DevelopmentBatchAgentProgressInput['status'],
+        reason?: string,
+        reviewerOutcome?: DevelopmentReviewerOutcome,
+      ): Promise<void> => {
+        if (!managedWorkflowTaskRole || !workflowTaskPlan || !activeWorkflow) return;
+
+        if (developmentBatchRole) {
+          const progress: DevelopmentBatchAgentProgressInput = {
+            phaseId: activeWorkflow.activePhaseId!,
+            role: developmentBatchRole,
+            batchId: workflowTaskPlan.taskId,
+            plan: workflowTaskPlan.tasks,
+            status,
+            agentId: asyncAgentId,
+            toolUseId: toolUseContext.toolUseId,
+            reason,
+            reviewerOutcome,
+            recordedAt: new Date().toISOString(),
+          };
+          if (await recordDevelopmentBatchAgentProgressThroughDesktop(progress)) return;
+
+          let updateError: unknown;
+          rootSetAppState(prev => {
+            try {
+              const workflow = (prev as { workflow?: unknown }).workflow;
+              return {
+                ...prev,
+                workflow: recordDevelopmentBatchAgentProgress(
+                  workflow as WorkflowSessionState,
+                  progress,
+                ),
+              };
+            } catch (error) {
+              updateError = error;
+              return prev;
+            }
+          });
+          if (updateError) throw updateError;
+          return;
+        }
+
+        const progress: WorkflowAgentTaskProgressInput = {
+          phaseId: activeWorkflow.activePhaseId!,
+          role: managedWorkflowTaskRole,
+          batchId: workflowTaskPlan.taskId,
+          plan: workflowTaskPlan.tasks,
+          status: reviewerOutcome?.reviewStatus === 'needs-fix' ? 'needs_fix' : status,
+          agentRunId: asyncAgentId,
+          toolUseId: toolUseContext.toolUseId,
+          reason,
+          reviewStatus: reviewerOutcome?.reviewStatus,
+          requiredFixes: reviewerOutcome?.requiredFixes,
+          recordedAt: new Date().toISOString(),
+        };
+        if (await recordWorkflowAgentTaskProgressThroughDesktop(progress)) return;
+
+        let updateError: unknown;
+        rootSetAppState(prev => {
+          try {
+            const workflow = (prev as { workflow?: unknown }).workflow;
+            return {
+              ...prev,
+              workflow: recordWorkflowAgentTaskProgress(
+                workflow as WorkflowSessionState,
+                progress,
+              ),
+            };
+          } catch (error) {
+            updateError = error;
+            return prev;
+          }
+        });
+        if (updateError) throw updateError;
+      };
       const agentBackgroundTask = registerAsyncAgent({
         agentId: asyncAgentId,
         description,
@@ -871,7 +992,9 @@ export const AgentTool = buildTool({
       };
 
       const runAsyncAgentInPreparedDirectory = () => wrapWithCwd(
-        () => runAsyncAgentLifecycle({
+        async () => {
+          await recordWorkflowTaskProgress('running');
+          const outcome = await runAsyncAgentLifecycle({
           taskId: agentBackgroundTask.agentId,
           abortController: agentBackgroundTask.abortController!,
           makeStream: onCacheSafeParams => runAgent({
@@ -889,8 +1012,27 @@ export const AgentTool = buildTool({
           rootSetAppState,
           agentIdForCleanup: asyncAgentId,
           enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
-          getWorktreeResult: cleanupWorktreeIfNeeded
-        }),
+          getWorktreeResult: cleanupWorktreeIfNeeded,
+          validateFinalMessage: managedWorkflowTaskRole === 'reviewer'
+            ? finalMessage => {
+                workflowReviewerOutcome = parseDevelopmentReviewerOutcome(finalMessage) ?? undefined;
+                if (!workflowReviewerOutcome) {
+                  return 'WORKFLOW_REVIEW_RESULT_INVALID: Reviewer must return workflowReview with reviewStatus, requiredFixes, and readyForNextBatch.';
+                }
+                if (workflowReviewerOutcome.reviewStatus === 'needs-fix') {
+                  return `WORKFLOW_REVIEW_NEEDS_FIX: ${workflowReviewerOutcome.requiredFixes.join('; ')}`;
+                }
+                return null;
+              }
+            : undefined
+          });
+          await recordWorkflowTaskProgress(
+            outcome.status === 'succeeded' ? 'succeeded' : 'failed',
+            outcome.status === 'failed' ? outcome.reason : undefined,
+            workflowReviewerOutcome,
+          );
+          return outcome;
+        },
         () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
       );
 
@@ -908,6 +1050,7 @@ export const AgentTool = buildTool({
             runAsyncAgentInPreparedDirectory,
             {
               signal: agentBackgroundTask.abortController!.signal,
+              role: managedWorkflowTaskRole,
               onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
               onBlocked: reason => {
                 const error = `Workflow task ${workflowTaskPlan.taskId} was blocked: ${reason}`;
@@ -936,6 +1079,9 @@ export const AgentTool = buildTool({
         // Worktree setup happens before runAsyncAgentLifecycle. Surface that
         // pre-lifecycle failure instead of leaving a registered task "running".
         const error = errorMessage(launchError);
+        void recordWorkflowTaskProgress('failed', error, workflowReviewerOutcome).catch(progressError =>
+          logForDebugging(`Failed to record development Batch launch failure: ${errorMessage(progressError)}`),
+        );
         failAsyncAgent(agentBackgroundTask.agentId, error, rootSetAppState);
         enqueueAgentNotification({
           taskId: agentBackgroundTask.agentId,
@@ -1193,6 +1339,18 @@ export const AgentTool = buildTool({
                       }
                     })();
                   } catch (error) {
+                    try {
+                      await recordInterruptedExpertAgentResearchAudit({
+                        agentId: backgroundedTaskId,
+                        agentType: metadata.agentType,
+                        prompt: metadata.prompt,
+                        messages: agentMessages,
+                        sourceAssignment: metadata.researchSourceAssignment,
+                        reason: error instanceof AbortError ? 'Agent was cancelled before normal completion.' : errorMessage(error),
+                      })
+                    } catch (auditError) {
+                      logForDebugging(`Interrupted Expert research audit failed: ${errorMessage(auditError)}`);
+                    }
                     if (error instanceof AbortError) {
                       // Transition status BEFORE worktree cleanup so
                       // TaskOutput unblocks even if git hangs (gh-20236).
@@ -1407,6 +1565,18 @@ export const AgentTool = buildTool({
         // TODO: Find a cleaner way to express this
         const lastMessage = agentMessages.findLast(_ => _.type !== 'system' && _.type !== 'progress');
         if (lastMessage && isSyntheticMessage(lastMessage)) {
+          try {
+            await recordInterruptedExpertAgentResearchAudit({
+              agentId: syncAgentId,
+              agentType: metadata.agentType,
+              prompt: metadata.prompt,
+              messages: agentMessages,
+              sourceAssignment: metadata.researchSourceAssignment,
+              reason: 'Agent was cancelled before normal completion.',
+            })
+          } catch (auditError) {
+            logForDebugging(`Interrupted Expert research audit failed: ${errorMessage(auditError)}`);
+          }
           logEvent('tengu_agent_tool_terminated', {
             agent_type: metadata.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             model: metadata.resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1426,6 +1596,18 @@ export const AgentTool = buildTool({
           // a partial transcript, but that is not completed research and must be
           // surfaced to the parent so it can retry or record a real limitation.
           if (shouldSurfaceExpertEvidenceAgentFailure(selectedAgent.agentType)) {
+            try {
+              await recordInterruptedExpertAgentResearchAudit({
+                agentId: syncAgentId,
+                agentType: metadata.agentType,
+                prompt: metadata.prompt,
+                messages: agentMessages,
+                sourceAssignment: metadata.researchSourceAssignment,
+                reason: errorMessage(syncAgentError),
+              })
+            } catch (auditError) {
+              logForDebugging(`Interrupted Expert research audit failed: ${errorMessage(auditError)}`);
+            }
             throw syncAgentError;
           }
 
@@ -1441,7 +1623,7 @@ export const AgentTool = buildTool({
           logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
         }
         const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
-        await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
+        const postReviewEvidenceAbsorption = await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
         if (feature('TRANSCRIPT_CLASSIFIER')) {
           const currentAppState = toolUseContext.getAppState();
           const handoffWarning = await classifyHandoffIfNeeded({
@@ -1459,6 +1641,7 @@ export const AgentTool = buildTool({
             }, ...agentResult.content];
           }
         }
+        appendExpertPostReviewEvidenceAbsorptionContext(agentResult, postReviewEvidenceAbsorption);
         return {
           data: {
             status: 'completed' as const,
@@ -1558,6 +1741,20 @@ The agent is now running and will receive instructions via mailbox.`
         type: 'text' as const,
         text: '(Subagent completed but returned no output.)'
       }];
+      // File-first Expert workers hand over only their fixed Markdown receipt.
+      // The parent must Read the declared file; no free-form research prose,
+      // classifier warning, or post-review instruction may leak through this result.
+      if (isFileFirstExpertResearchArtifactAgent(data.agentType)) {
+        return {
+          tool_use_id: toolUseID,
+          type: 'tool_result',
+          content: normalizeFinalizedExpertResearchArtifactContent(
+            data.agentType,
+            contentOrMarker,
+            data.artifactPath,
+          ),
+        };
+      }
       // Expert evidence agents need their transcript-derived Playwright audit even if
       // they later become one-shot agents. The audit is evidence provenance, not optional
       // conversational metadata.

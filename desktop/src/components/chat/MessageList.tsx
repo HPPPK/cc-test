@@ -421,6 +421,7 @@ function appendChildToolCall(
 }
 
 const WORKFLOW_QUESTION_CONTRACT_VIOLATION = 'WORKFLOW_QUESTION_CONTRACT_VIOLATION'
+const ASK_USER_QUESTION_INPUT_VALIDATION_ERROR = 'InputValidationError'
 
 function toolResultContentToText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -446,38 +447,68 @@ function isWorkflowQuestionContractFailure(result: ToolResult | undefined): bool
   )
 }
 
+function isAskUserQuestionInputValidationFailure(result: ToolResult | undefined): boolean {
+  return Boolean(
+    result?.isError
+      && toolResultContentToText(result.content).includes(ASK_USER_QUESTION_INPUT_VALIDATION_ERROR),
+  )
+}
+
+
 /**
- * A workflow can reject an invalid AskUserQuestion card and then retry with a
- * valid card in the same user turn. Keep the transcript intact, but hide the
- * superseded failed card and its internal contract error as soon as the valid
- * replacement card is available for the user to answer.
+ * Input-validation failures are model payload corrections, not a user decision:
+ * suppress their card immediately. Workflow contract failures remain visible
+ * until a valid replacement is demonstrably available.
  */
-export function filterRecoveredWorkflowQuestionContractFailures(messages: UIMessage[]): UIMessage[] {
+export function filterRecoveredAskUserQuestionFailures(messages: UIMessage[]): UIMessage[] {
   const toolResultsById = new Map<string, ToolResult>()
-  const askUserQuestionIndexesById = new Map<string, number>()
+  const askUserQuestionsById = new Map<string, { index: number; message: ToolCall }>()
 
   messages.forEach((message, index) => {
     if (message.type === 'tool_result') {
       toolResultsById.set(message.toolUseId, message)
     }
     if (message.type === 'tool_use' && message.toolName === 'AskUserQuestion') {
-      askUserQuestionIndexesById.set(message.toolUseId, index)
+      askUserQuestionsById.set(message.toolUseId, { index, message })
     }
   })
 
-  const recoveredRanges: Array<{ start: number; end: number; toolUseId: string }> = []
+  const recoveredRanges: Array<{ start: number; end: number; toolUseId: string; hideContractError: boolean }> = []
 
-  for (const [toolUseId, start] of askUserQuestionIndexesById) {
-    if (!isWorkflowQuestionContractFailure(toolResultsById.get(toolUseId))) continue
+  for (const [toolUseId, failed] of askUserQuestionsById) {
+    const failedResult = toolResultsById.get(toolUseId)
+    const isWorkflowContractFailure = isWorkflowQuestionContractFailure(failedResult)
+    const isInputValidationFailure = isAskUserQuestionInputValidationFailure(failedResult)
+    if (!isWorkflowContractFailure && !isInputValidationFailure) continue
 
-    for (let index = start + 1; index < messages.length; index += 1) {
+    // Input validation happens before the tool can deliver a real user request.
+    // It is a model-payload correction, so this failed card must never remain
+    // visible or turn into a second disabled form while the model retries.
+    if (isInputValidationFailure) {
+      recoveredRanges.push({
+        start: failed.index,
+        end: failed.index,
+        toolUseId,
+        hideContractError: false,
+      })
+      continue
+    }
+
+    for (let index = failed.index + 1; index < messages.length; index += 1) {
       const message = messages[index]!
       if (message.type === 'user_text') break
       if (message.type !== 'tool_use' || message.toolName !== 'AskUserQuestion') continue
 
       const retryResult = toolResultsById.get(message.toolUseId)
-      if (!isWorkflowQuestionContractFailure(retryResult)) {
-        recoveredRanges.push({ start, end: index, toolUseId })
+      const isRecoveredWorkflowQuestion = isWorkflowContractFailure
+        && !isWorkflowQuestionContractFailure(retryResult)
+      if (isRecoveredWorkflowQuestion) {
+        recoveredRanges.push({
+          start: failed.index,
+          end: index,
+          toolUseId,
+          hideContractError: isWorkflowContractFailure,
+        })
         break
       }
     }
@@ -493,12 +524,16 @@ export function filterRecoveredWorkflowQuestionContractFailures(messages: UIMess
       if (
         message.type === 'tool_result'
         && message.toolUseId === recovered.toolUseId
-        && isWorkflowQuestionContractFailure(message)
+        && (
+          isWorkflowQuestionContractFailure(message)
+          || isAskUserQuestionInputValidationFailure(message)
+        )
       ) {
         return false
       }
       if (
-        message.type === 'error'
+        recovered.hideContractError
+        && message.type === 'error'
         && message.code === WORKFLOW_QUESTION_CONTRACT_VIOLATION
         && index >= recovered.start
         && index <= recovered.end
@@ -511,7 +546,7 @@ export function filterRecoveredWorkflowQuestionContractFailures(messages: UIMess
 }
 
 export function buildRenderModel(messages: UIMessage[]): RenderModel {
-  const visibleMessages = filterRecoveredWorkflowQuestionContractFailures(messages)
+  const visibleMessages = filterRecoveredAskUserQuestionFailures(messages)
   const items: RenderItem[] = []
   const toolResultMap = new Map<string, ToolResult>()
   const childToolCallsByParent = new Map<string, ToolCall[]>()
@@ -1415,6 +1450,7 @@ export const MessageBlock = memo(function MessageBlock({
             toolUseId={message.toolUseId}
             input={message.input}
             result={toolResult?.content}
+            resultIsError={toolResult?.isError}
           />
         )
       }

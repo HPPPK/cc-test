@@ -1,0 +1,17 @@
+{
+  "name": "Bash",
+  "purpose": "仅归档本轮 Playwright 已返回、Read 已查看并记录来源的公开网页截图到当前 workDir/imgs/references。不得用于本地 HTML 渲染、启动服务、部署上传、安装依赖、扫描机器或修改用户项目；本地预览必须使用 PrototypePreview。",
+  "input": {
+    "command": "string"
+  },
+  "id": "bash",
+  "type": "hostBuiltinRef",
+  "hostToolId": "Bash",
+  "permissions": [
+    {
+      "id": "archive-public-reference-screenshots",
+      "description": "仅可复制本轮 Playwright 已返回、已用 Read 查看且来源已记录的公开网页截图到当前 workDir/imgs/references。"
+    }
+  ],
+  "network": "none"
+}

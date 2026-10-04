@@ -1,21 +1,13 @@
 ﻿import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import * as fs from 'node:fs/promises'
-import * as os from 'node:os'
-import * as path from 'node:path'
 import { findToolByName } from '../../Tool.js'
 import { getAllBaseTools } from '../../tools.js'
 import { ImageGenerationTool } from './ImageGenerationTool.js'
 
-const PIXEL_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9WQAAAABJRU5ErkJggg=='
 let originalServerUrl: string | undefined
-let originalProviderId: string | undefined
 let server: ReturnType<typeof Bun.serve> | null = null
-let tempDir = ''
 
 beforeEach(async () => {
   originalServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
-  originalProviderId = process.env.CC_JIANGXIA_PROVIDER_ID
-  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-generation-tool-'))
 })
 
 afterEach(async () => {
@@ -23,9 +15,6 @@ afterEach(async () => {
   server = null
   if (originalServerUrl === undefined) delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
   else process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = originalServerUrl
-  if (originalProviderId === undefined) delete process.env.CC_JIANGXIA_PROVIDER_ID
-  else process.env.CC_JIANGXIA_PROVIDER_ID = originalProviderId
-  await fs.rm(tempDir, { recursive: true, force: true })
 })
 
 function toolContext() {
@@ -64,7 +53,6 @@ describe('ImageGenerationTool', () => {
       },
     })
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
-    process.env.CC_JIANGXIA_PROVIDER_ID = 'bound-provider'
 
     const result = await ImageGenerationTool.call({ operation: 'preflight' }, toolContext(), null as never, null as never)
 
@@ -75,12 +63,11 @@ describe('ImageGenerationTool', () => {
     expect(result.data.fallback).toBeUndefined()
     expect(typeof block.content).toBe('string')
     expect(block.content).not.toContain('AskUserQuestion')
-    expect(received).toEqual({ path: '/api/images/preflight', body: { providerId: 'bound-provider' } })
+    expect(received).toEqual({ path: '/api/images/preflight', body: {} })
   })
 
-  test('sends a generation prompt to the desktop server and returns an inline visual result only for a real saved image', async () => {
-    const imagePath = path.join(tempDir, 'generated.png')
-    await fs.writeFile(imagePath, Buffer.from(PIXEL_PNG_BASE64, 'base64'))
+  test('sends a generation prompt to the desktop server and returns a compact result instead of echoing image bytes into chat context', async () => {
+    const imagePath = 'C:/workspace/output/imagegen/generated.png'
     let received: { path?: string; body?: Record<string, unknown> } = {}
     server = Bun.serve({
       port: 0,
@@ -88,7 +75,7 @@ describe('ImageGenerationTool', () => {
         received = { path: new URL(request.url).pathname, body: await request.json() as Record<string, unknown> }
         return Response.json({
           status: 'generated', availability: 'available', model: 'gpt-image-2', message: 'Generated a real provider image.',
-          imagePath, promptPath: `${imagePath}.prompt.md`, reportPath: `${imagePath}.report.json`, mimeType: 'image/png', bytes: 70,
+          imagePath, promptPath: `${imagePath}.prompt.md`, reportPath: `${imagePath}.report.json`, mimeType: 'image/png', bytes: 1_562_716,
         })
       },
     })
@@ -103,13 +90,16 @@ describe('ImageGenerationTool', () => {
     expect(ImageGenerationTool.isReadOnly({ operation: 'generate', prompt: 'x' })).toBe(false)
     expect(received.path).toBe('/api/images/generate')
     expect(received.body).toMatchObject({
-      providerId: 'bound-provider', prompt: 'Luxury tea on stone, editorial composition', size: '1536x1024', quality: 'high', outputFormat: 'png', fileName: 'tea.png',
+      prompt: 'Luxury tea on stone, editorial composition', size: '1536x1024', quality: 'high', outputFormat: 'png', fileName: 'tea.png',
     })
     expect((received.body?.workDir as string).length).toBeGreaterThan(0)
     expect(result.data.fallback).toBeUndefined()
     expect(block.type).toBe('tool_result')
-    expect(Array.isArray(block.content)).toBe(true)
-    expect((block.content as Array<{ type: string }>).map(item => item.type)).toEqual(['text', 'image'])
+    expect(typeof block.content).toBe('string')
+    expect(block.content).toContain('Image generation status: generated.')
+    expect(block.content).toContain(`Image: ${imagePath}`)
+    expect(block.content).not.toContain('iVBORw0KGgo')
+    expect(block.content.length).toBeLessThan(2_000)
   })
 
   test('requires AskUserQuestion fallback choices after a real image model is unavailable', async () => {
@@ -192,5 +182,31 @@ describe('ImageGenerationTool', () => {
     })
     expect(typeof block.content).toBe('string')
     expect(block.content).toContain('AskUserQuestion')
+  })
+})
+
+
+describe('UIUX image-only failure policy', () => {
+  test('asks for configuration or retry instead of proposing substitutes for the image-only session', async () => {
+    const previous = process.env.CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY
+    try {
+      process.env.CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY = '1'
+      server = Bun.serve({ port: 0, fetch: () => Response.json({
+        status: 'failed', availability: 'unverified', model: 'gpt-image-2',
+        message: 'Upstream rejected the request.', errorCode: 'IMAGE_PROVIDER_ERROR',
+      }) })
+      process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:' + server.port
+      const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'Design image' }, toolContext())
+      const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-only')
+      expect(result.data.fallback).toBeUndefined()
+      expect(block.content).toContain('AskUserQuestion')
+      expect(block.content).toContain('IMAGE_PROVIDER_ERROR')
+      expect(block.content).not.toContain('python_programmatic_image')
+      expect(block.content).not.toContain('html_css_visual_artifact')
+      expect(await ImageGenerationTool.prompt()).not.toContain('skill="hallmark"')
+    } finally {
+      if (previous === undefined) delete process.env.CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY
+      else process.env.CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY = previous
+    }
   })
 })

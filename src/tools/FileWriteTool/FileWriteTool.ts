@@ -2,6 +2,7 @@ import { dirname, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { expertTemplateFillPostWriteNotice } from '../../services/tools/expertTemplateFillRuntime.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
@@ -15,6 +16,7 @@ import {
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
+import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -53,7 +55,7 @@ import {
   userFacingName,
 } from './UI.js'
 
-const inputSchema = lazySchema(() =>
+const standardInputSchema = lazySchema(() =>
   z.strictObject({
     file_path: z
       .string()
@@ -63,7 +65,33 @@ const inputSchema = lazySchema(() =>
     content: z.string().describe('The content to write to the file'),
   }),
 )
-type InputSchema = ReturnType<typeof inputSchema>
+
+/**
+ * Only an opted-in template-fill Expert process receives this schema. The
+ * structured envelope is rendered before FileWriteTool reaches the filesystem,
+ * so ordinary Write callers remain strictly { file_path, content }.
+ */
+const templateFillExpertInputSchema = lazySchema(() =>
+  z.strictObject({
+    // These are optional only so an accidental empty provider call can reach the
+    // session-aware runtime and receive a concise repair instruction. A real
+    // report write remains strictly validated by that runtime.
+    file_path: z.string().optional().describe('For final delivery: use one .html/.htm filename in the current session workDir. The runtime also safely normalizes an absolute .html path only when its parent is exactly that workDir; never ask the user for a filename to repair an internal Write error. For an authorized research artifact: one declared relative .md path.'),
+    content: z.string().optional().describe('Final HTML delivery requires an empty string. Authorized research Markdown artifacts require non-empty Markdown content.'),
+    expert_output: z.strictObject({
+      templateId: z.string().min(1).describe('The session-bound fixed template ID.'),
+      fields: z.record(z.string(), z.unknown()).describe('Values keyed by the fixed report template field IDs. In mode="patch", include only fields that need correction. Before the first successful render, an undeclared field can be explicitly removed with null after moving any useful content into a valid field; required fields cannot be nulled; in mode="finalize", provide {} because the server reuses the reviewed draft unchanged.'),
+      mode: z.enum(['patch', 'finalize']).optional().describe('Before the first successful render, use patch to repair the retained failed candidate. After the first successful render, use patch only for reviewer-recorded MUST_PATCH items. Use finalize with empty fields only after the completeness review has no MUST_PATCH items, so the server finalizes the already-rendered draft without regenerating it.'),
+      evidenceAbsorption: z.unknown().optional().describe('Optional runtime evidence audit metadata. Do not reconstruct opened-URL records by hand unless specifically supplied by the runtime.'),
+    }).optional().describe('Structured Expert report fields. The runtime renders the fixed HTML template and writes the result.'),
+  }),
+)
+type InputSchema = ReturnType<typeof standardInputSchema>
+type TemplateFillExpertInputSchema = ReturnType<typeof templateFillExpertInputSchema>
+
+function isTemplateFillExpertWriteSession(): boolean {
+  return getJiangxiaEnvValue('EXPERT_TEMPLATE_FILL_WRITE')?.trim() === '1'
+}
 
 const outputSchema = lazySchema(() =>
   z.object({
@@ -111,7 +139,7 @@ export const FileWriteTool = buildTool({
   renderToolUseMessage,
   isResultTruncated,
   get inputSchema(): InputSchema {
-    return inputSchema()
+    return standardInputSchema()
   },
   get outputSchema(): OutputSchema {
     return outputSchema()
@@ -416,19 +444,41 @@ export const FileWriteTool = buildTool({
     }
   },
   mapToolResultToToolResultBlockParam({ filePath, type }, toolUseID) {
+    const outputReviewNotice = expertTemplateFillPostWriteNotice(filePath)
+    const withOutputReviewNotice = (message: string) => outputReviewNotice
+      ? message + '\n\n' + outputReviewNotice
+      : message
     switch (type) {
       case 'create':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: withOutputReviewNotice(`File created successfully at: ${filePath}`),
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: withOutputReviewNotice(`The file ${filePath} has been updated successfully.`),
         }
     }
   },
 } satisfies ToolDef<InputSchema, Output>)
+
+/**
+ * Same user-visible Write tool name, but only selected for a template-fill
+ * Expert child process. Keeping this separate prevents ordinary sessions from
+ * ever receiving the expert_output provider schema.
+ */
+export const ExpertTemplateFillWriteTool = {
+  ...FileWriteTool,
+  get inputSchema(): TemplateFillExpertInputSchema {
+    return templateFillExpertInputSchema()
+  },
+} as unknown as typeof FileWriteTool
+
+export function getFileWriteToolForCurrentRuntime(): typeof FileWriteTool {
+  return isTemplateFillExpertWriteSession()
+    ? ExpertTemplateFillWriteTool
+    : FileWriteTool
+}

@@ -1,0 +1,209 @@
+{
+  "version": 2,
+  "steps": [
+    {
+      "type": "message",
+      "id": "welcome",
+      "markdown": "我会按你的 PRD 先列屏幕清单和统一控件/视觉规范；未给配色会先确认。默认产品做8–12张任务/状态界面，落地页做8–10个实质区块，范围较小可调整。再交付低/中/高三份结构一致、各自包含完整界面的 HTML，不是生成图片。"
+    },
+    {
+      "type": "question",
+      "id": "prototypeType",
+      "question": "这次最想做哪一种页面原型？",
+      "required": true,
+      "options": [
+        {
+          "id": "product-landing",
+          "label": "产品落地页",
+          "description": "适合介绍产品价值、功能、CTA、FAQ 和转化路径。"
+        },
+        {
+          "id": "product-home",
+          "label": "产品首页/控制台",
+          "description": "适合展示登录后首页、核心模块和操作入口。"
+        },
+        {
+          "id": "interactive-tool",
+          "label": "轻量工具 Demo",
+          "description": "适合上传、输入、结果预览等前端交互概念验证。"
+        },
+        {
+          "id": "information-microsite",
+          "label": "主题信息微站",
+          "description": "适合把可信主题资料做成可理解、可追溯的页面；不是默认路线。"
+        }
+      ]
+    },
+    {
+      "type": "question",
+      "id": "researchScope",
+      "question": "这次需要怎样使用外部资料？",
+      "required": true,
+      "options": [
+        {
+          "id": "brief-only",
+          "label": "只用我的材料",
+          "description": "不做公开搜索；未提供的数字、评价、品牌资产一律不编造。"
+        },
+        {
+          "id": "provided-sources",
+          "label": "核验我给的链接",
+          "description": "只打开你提供的公开链接，核验能支持页面的事实。"
+        },
+        {
+          "id": "public-research",
+          "label": "做真实公开调研",
+          "description": "围绕明确问题多轮搜索、打开权威来源、记录来源和证据缺口。"
+        }
+      ]
+    },
+    {
+      "type": "form",
+      "id": "productBrief",
+      "title": "产品与页面内容",
+      "required": false,
+      "fields": [
+        {
+          "id": "productName",
+          "kind": "text",
+          "label": "产品/项目名称",
+          "required": false,
+          "placeholder": "例如：智研文档 SmartDoc"
+        },
+        {
+          "id": "coreValue",
+          "kind": "textarea",
+          "label": "核心价值",
+          "required": false,
+          "placeholder": "它为谁解决什么问题；尽量用一句具体的话说明。"
+        },
+        {
+          "id": "targetUsers",
+          "kind": "text",
+          "label": "目标用户",
+          "required": false,
+          "placeholder": "例如：项目经理、内容创作者、中小团队成员"
+        },
+        {
+          "id": "pageGoal",
+          "kind": "textarea",
+          "label": "页面目标",
+          "required": false,
+          "placeholder": "例如：让访客理解价值并点击下载；或演示一次上传—预览—导出的体验。"
+        },
+        {
+          "id": "primaryAction",
+          "kind": "text",
+          "label": "主行动按钮",
+          "required": false,
+          "placeholder": "例如：免费下载、预约演示、开始体验"
+        },
+        {
+          "id": "knownFacts",
+          "kind": "textarea",
+          "label": "已确认事实与限制",
+          "required": false,
+          "placeholder": "例如：支持的系统、真实价格、已上线功能、不能写的内容。没有就留空。"
+        },
+        {
+          "id": "sourceUrls",
+          "kind": "url-list",
+          "label": "已有公开链接",
+          "required": false,
+          "description": "可放官网、产品资料、官方公告、论文或数据页；仅会匿名只读打开。"
+        },
+        {
+          "id": "brandAssets",
+          "kind": "textarea",
+          "label": "可使用的品牌资产",
+          "required": false,
+          "placeholder": "例如：已授权 Logo 文件、品牌色、已有截图、公司名。未明确提供的不使用。"
+        },
+        {
+          "id": "language",
+          "kind": "select",
+          "label": "页面语言",
+          "required": false,
+          "options": [
+            {
+              "id": "zh-CN",
+              "label": "简体中文",
+              "description": "默认中文文案。"
+            },
+            {
+              "id": "en",
+              "label": "English",
+              "description": "英文页面。"
+            },
+            {
+              "id": "bilingual",
+              "label": "中英双语",
+              "description": "同一页面提供两种语言的关键内容。"
+            }
+          ]
+        },
+        {
+          "id": "referenceStyle",
+          "kind": "textarea",
+          "label": "参考风格/不想要的风格",
+          "required": false,
+          "placeholder": "例如：借鉴 Notion 的克制信息层级，不复制 Logo、文案或布局；不要紫色渐变模板感。"
+        },
+        {
+          "id": "demoContentConsent",
+          "kind": "checkbox",
+          "label": "允许使用明确标注的演示文案",
+          "required": false,
+          "description": "未提供真实评价、价格或链接时，只能使用“演示占位/待配置”标记，不会伪装成真实信息。"
+        },
+        {
+          "id": "brandPalette",
+          "kind": "textarea",
+          "label": "已确认配色（未给出时会先问你）",
+          "required": false,
+          "placeholder": "例如：主色 #1D4ED8、蓝白配色；或明确写“配色你定”。高级感/参考网站不等于配色授权。"
+        },
+        {
+          "id": "screenScope",
+          "kind": "textarea",
+          "label": "PRD与屏幕范围",
+          "required": false,
+          "placeholder": "提供 PRD 章节、必做任务/状态、排除项和页数。产品默认8–12屏；落地页8–10个内容区块；小范围不强凑。"
+        }
+      ]
+    },
+    {
+      "type": "question",
+      "id": "designIntent",
+      "question": "你希望第一版更接近哪种设计感觉？",
+      "required": false,
+      "options": [
+        {
+          "id": "quiet-confidence",
+          "label": "克制但有质感",
+          "description": "留白、精确排版、细节动效，适合专业软件与服务。"
+        },
+        {
+          "id": "vivid-product",
+          "label": "鲜明产品感",
+          "description": "高对比色和有节制的透明渐变，适合工具和创新产品。"
+        },
+        {
+          "id": "editorial-story",
+          "label": "编辑叙事感",
+          "description": "用标题、节奏和信息层级讲清产品价值。"
+        },
+        {
+          "id": "choose-for-me",
+          "label": "你来判断",
+          "description": "根据任务推荐布局和视觉基调；如果没给配色，仍会单独确认，不默认等于配色授权。"
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "id": "paletteGuidance",
+      "markdown": "如果你没有提供配色，也没有明确说“配色你定”，我会先用 AskUserQuestion 给出适合产品的具体配色供你确认；不会用“高级感/科技感”替你做颜色决定。已给出的颜色不重复问。"
+    }
+  ]
+}

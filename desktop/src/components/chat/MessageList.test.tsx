@@ -221,6 +221,91 @@ describe('recovered workflow question contract failures', () => {
     expect(model.toolResultMap.get('failed-question-tool')?.isError).toBe(true)
   })
 
+  it('suppresses a malformed AskUserQuestion input-validation card even before the model retry arrives', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'invalid-question',
+        type: 'tool_use',
+        toolName: 'AskUserQuestion',
+        toolUseId: 'invalid-question-tool',
+        input: {
+          questions: [{
+            id: 'market-scope',
+            prompt: 'Which markets should the research cover?',
+            blocksCompletion: false,
+            blockingReason: '',
+            choices: [{ id: 'china', label: 'China' }, { id: 'global', label: 'Global' }],
+          }],
+        },
+        timestamp: 1,
+      },
+      {
+        id: 'invalid-question-result',
+        type: 'tool_result',
+        toolUseId: 'invalid-question-tool',
+        content: '<tool_use_error>InputValidationError: expected blockingReason to contain at least one character</tool_use_error>',
+        isError: true,
+        timestamp: 2,
+      },
+    ]
+
+    const model = buildRenderModel(messages)
+
+    expect(model.renderItems).toHaveLength(0)
+    expect(model.toolResultMap.has('invalid-question-tool')).toBe(false)
+  })
+
+  it('hides a malformed AskUserQuestion after a semantically identical input-validation retry', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'invalid-question',
+        type: 'tool_use',
+        toolName: 'AskUserQuestion',
+        toolUseId: 'invalid-question-tool',
+        input: {
+          header: 'Research focus',
+          questions: [{
+            id: 'research-object',
+            prompt: 'Which research object should we analyze?',
+            choices: [{ id: 'new-product', label: 'New product' }, { id: 'existing-product', label: 'Existing product' }],
+          }],
+        },
+        timestamp: 1,
+      },
+      {
+        id: 'invalid-question-result',
+        type: 'tool_result',
+        toolUseId: 'invalid-question-tool',
+        content: '<tool_use_error>InputValidationError: AskUserQuestion failed because an unexpected parameter `header` was provided</tool_use_error>',
+        isError: true,
+        timestamp: 2,
+      },
+      {
+        id: 'retried-input-validation-question',
+        type: 'tool_use',
+        toolName: 'AskUserQuestion',
+        toolUseId: 'retried-input-validation-question-tool',
+        input: {
+          questions: [{
+            id: 'research-object',
+            prompt: 'Which research object should we analyze?',
+            choices: [{ id: 'new-product', label: 'New product' }, { id: 'existing-product', label: 'Existing product' }],
+          }],
+        },
+        timestamp: 3,
+      },
+    ]
+
+    const model = buildRenderModel(messages)
+
+    expect(model.renderItems).toHaveLength(1)
+    expect(model.renderItems[0]).toMatchObject({
+      kind: 'message',
+      message: { id: 'retried-input-validation-question', toolUseId: 'retried-input-validation-question-tool' },
+    })
+    expect(model.toolResultMap.has('invalid-question-tool')).toBe(false)
+  })
+
   it('keeps unrelated errors visible after a workflow question recovery', () => {
     const messages = recoveredQuestionMessages('debug-repair-workflow-v8')
     messages.splice(3, 0, {

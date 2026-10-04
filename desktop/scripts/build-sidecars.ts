@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { copyBundledImageRuntime } from './bundled-image-runtime.js'
 
 const desktopRoot = path.resolve(import.meta.dir, '..')
 const repoRoot = path.resolve(desktopRoot, '..')
@@ -52,11 +53,14 @@ if (scanExit !== 0) {
 
 await mkdir(binariesDir, { recursive: true })
 await buildBundledExpertPacks()
+await checkBundledWorkflowPacks()
 await buildBundledGitRuntime()
 await buildBundledNodeRuntime()
+await copyBundledImageRuntime(repoRoot, path.join(desktopRoot, 'src-tauri'), targetTriple)
 await buildBundledBrowserRuntime()
 await buildBundledPlaywrightRunner()
 await copyBundledWorkflowPacks()
+await auditBundledWorkflowPacks()
 await copyBundledSkills()
 
 // 单一合并 sidecar：server / cli 共享一份 bun runtime + 共享依赖代码。
@@ -80,6 +84,36 @@ async function buildBundledExpertPacks() {
   })
   const exitCode = await proc.exited
   if (exitCode !== 0) throw new Error(`[build-sidecars] build-expert-packs failed (exit ${exitCode})`)
+}
+
+async function checkBundledWorkflowPacks() {
+  const proc = Bun.spawn(['bun', 'run', path.join(repoRoot, 'scripts', 'build-workflow-packs.ts'), '--check'], {
+    cwd: repoRoot,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const exitCode = await proc.exited
+  if (exitCode !== 0) throw new Error(`[build-sidecars] check:workflow-packs failed (exit ${exitCode})`)
+}
+
+async function auditBundledWorkflowPacks() {
+  const proc = Bun.spawn([
+    'bun',
+    'run',
+    path.join(repoRoot, 'scripts', 'audit-workflow-packs.ts'),
+    '--resource-dir',
+    binariesDir,
+    '--layer',
+    'desktop-binaries',
+    '--output-file',
+    path.join(binariesDir, 'workflow-pack-audit.json'),
+  ], {
+    cwd: repoRoot,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const exitCode = await proc.exited
+  if (exitCode !== 0) throw new Error(`[build-sidecars] workflow pack audit failed (exit ${exitCode})`)
 }
 
 async function buildBundledBrowserRuntime() {
@@ -155,7 +189,16 @@ async function buildBundledPlaywrightRunner() {
     const logs = result.logs.map((log) => log.message).join('\n')
     throw new Error(`[build-sidecars] Failed to prepare the portable Node Playwright runner: ${logs || [runnerPath, ...missingRuntimePackages].join(', ')}`)
   }
-  console.log(`[build-sidecars] Bundled portable Node Playwright runner -> ${runnerPath}`)
+  const prototypeRunner = await Bun.build({
+    entrypoints: [path.join(repoRoot, 'src', 'tools', 'PrototypePreviewTool', 'prototype-preview-runner.ts')],
+    outdir: runtimeDir,
+    naming: 'prototype-preview-runner.cjs',
+    target: 'node', format: 'cjs',
+    minify: false,
+    external: PLAYWRIGHT_NODE_RUNNER_EXTERNALS,
+  })
+  if (!prototypeRunner.success) throw new Error('[build-sidecars] Failed to build PrototypePreview runner: ' + prototypeRunner.logs.map(log => log.message).join('; '))
+  console.log(`[build-sidecars] Bundled portable Node Playwright and PrototypePreview runners -> ${runtimeDir}`)
 }
 
 function getPlaywrightHostPlatform(triple: string): string {
@@ -401,7 +444,7 @@ async function compileExecutable({
     minify: { whitespace: true, identifiers: true, syntax: true },
     sourcemap: 'none',
     target: 'bun',
-    // 可选 npm 包：开 telemetry / 用 sharp 图像 / 用 Bedrock/Vertex 等
+    // 可选 npm 包：开 telemetry / 用 Bedrock/Vertex 等
     // 替代 provider 时才需要，全部不在顶层 package.json 里。标 external
     // 让 bun build 跳过解析；运行时 import 在没装时自然失败，由 try/catch
     // 或 feature() gate 兜底。
@@ -427,7 +470,6 @@ async function compileExecutable({
       // ant-internal / 可选工具
       '@anthropic-ai/mcpb',
       'fflate',
-      'sharp',
       'react-devtools-core',
     ],
     compile: {

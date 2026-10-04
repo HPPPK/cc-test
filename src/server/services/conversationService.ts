@@ -12,6 +12,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { ProviderService } from './providerService.js'
 import { sessionService } from './sessionService.js'
+import type { ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
 import { diagnosticsService } from './diagnosticsService.js'
 import {
   isMaterializedWorktreeLaunch,
@@ -71,7 +72,13 @@ type SessionProcess = {
   stderrLines: string[]
   outputDrain: Promise<void>
   sdkMessages: any[]
+  sdkUnparsedPayloads: Array<{
+    payload: string
+    reason: 'invalid_sdk_websocket_record' | 'invalid_ndjson_record'
+  }>
+  sdkPayloadBuffer?: string
   initMessage: any | null
+  expertRuntimeBindingKey?: string
   runtimePromptFilePath?: string
   pendingPermissionRequests: Map<
     string,
@@ -91,10 +98,13 @@ type SessionStartOptions = {
   effort?: string
   thinking?: 'enabled' | 'adaptive' | 'disabled'
   providerId?: string | null
+  /** Generic Desktop session identity for application-wide execution receipts. */
+  sessionId?: string
   disallowedTools?: string[]
   workflowSessionId?: string
   workflowSystemPrompt?: string
   expertSystemPrompt?: string
+  expertRuntimeBindingKey?: string
   appendSystemPromptFile?: string
   expertSessionId?: string
   /**
@@ -116,8 +126,16 @@ type SessionStartOptions = {
   expertClosePlaywrightWhenAgentDone?: boolean
   /** Remove AskUserQuestion from delegated agents only for this package-scoped session. */
   expertForbidSubagentAskUserQuestion?: boolean
+  /** Give every delegated Expert agent the full tool pool currently enabled by Desktop. */
+  expertFullToolAccess?: boolean
+  /** Enabled only by the exact UIUX generated-image-only runtime binding. */
+  uiuxImageOnlyDelivery?: boolean
   /** Final template output is rendered only by the Expert template-fill CLI. */
   expertTemplateFillWrite?: boolean
+  /** Package-scoped final output root; passed only by an opted-in Expert runtime. */
+  expertTemplateFillOutputRoot?: string
+  /** Session-only fixed Markdown artifact allowlist declared by this Expert ZIP. */
+  expertResearchArtifactPolicy?: ExpertResearchArtifactPolicy
   /** ZIP-declared final-delivery question and choice IDs for this active Expert only. */
   expertResearchDeliveryPolicy?: {
     questionId: string
@@ -348,7 +366,7 @@ export class ConversationService {
     //
     let childEnv: Record<string, string>
     try {
-      childEnv = await this.buildChildEnv(launchWorkDir, sdkUrl, launchOptions)
+      childEnv = await this.buildChildEnv(launchWorkDir, sdkUrl, { ...(launchOptions ?? {}), sessionId })
     } catch (error) {
       await removeSessionRuntimePromptFile(runtimePromptFilePath)
       throw error
@@ -400,8 +418,10 @@ export class ConversationService {
       stderrLines: [],
       outputDrain: Promise.resolve(),
       sdkMessages: [],
+      sdkUnparsedPayloads: [],
       initMessage: null,
       runtimePromptFilePath,
+      expertRuntimeBindingKey: systemPrompt ? options?.expertRuntimeBindingKey : undefined,
       pendingPermissionRequests: new Map(),
     }
     this.sessions.set(sessionId, session)
@@ -426,8 +446,18 @@ export class ConversationService {
     const startupExitCode = earlyExitCode ?? session.startupExitCode
     if (startupExitCode !== null) {
       await this.waitForProcessOutputDrain(session)
+
+      // A runtime/permission change can replace this process while its original
+      // startup promise is still awaiting the grace period. That older promise
+      // must only clean up its own prompt file: deleting by session id here
+      // would erase the newer process, close its SDK socket, and surface a
+      // misleading code 143 startup failure in Desktop.
+      if (!this.releaseFailedStartupSession(sessionId, session)) {
+        await removeSessionRuntimePromptFile(session.runtimePromptFilePath)
+        return
+      }
+
       const startupError = this.buildStartupError(sessionId, startupExitCode)
-      this.sessions.delete(sessionId)
       await removeSessionRuntimePromptFile(session.runtimePromptFilePath)
 
       if (this.clearStaleLock(sessionId)) {
@@ -497,6 +527,10 @@ export class ConversationService {
     return [...(this.sessions.get(sessionId)?.sdkMessages ?? [])]
   }
 
+  getSessionExpertRuntimeBindingKey(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.expertRuntimeBindingKey
+  }
+
   getSessionInitMessage(sessionId: string): any | null {
     return this.sessions.get(sessionId)?.initMessage ?? null
   }
@@ -514,6 +548,22 @@ export class ConversationService {
       },
       parent_tool_use_id: null,
       session_id: '',
+    })
+  }
+
+  sendInternalMessage(
+    sessionId: string,
+    content: string,
+  ): boolean {
+    return this.sendSdkMessage(sessionId, {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: this.buildUserContent(content, sessionId),
+      },
+      parent_tool_use_id: null,
+      session_id: '',
+      isSynthetic: true,
     })
   }
 
@@ -809,46 +859,36 @@ export class ConversationService {
 
   handleSdkPayload(sessionId: string, rawPayload: string): void {
     const session = this.sessions.get(sessionId)
-    if (!session) return
+    if (!session || !rawPayload) return
 
-    const lines = rawPayload
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-
-    for (const line of lines) {
-      try {
-        const msg = JSON.parse(line)
-        session.sdkMessages.push(msg)
-        if (session.sdkMessages.length > MAX_CAPTURED_SDK_MESSAGES) {
-          session.sdkMessages.splice(0, session.sdkMessages.length - MAX_CAPTURED_SDK_MESSAGES)
-        }
-        const sdkError = this.extractSdkErrorEvent(msg)
-        if (sdkError) {
-          void diagnosticsService.recordEvent({
-            type: sdkError.type,
-            severity: 'error',
-            sessionId,
-            summary: sdkError.summary,
-            details: sdkError.details,
-          })
-        }
-        if (msg?.type === 'system' && msg.subtype === 'init') {
-          session.initMessage = msg
-        }
-        if (
-          msg?.type === 'control_request' &&
-          msg.request?.subtype === 'can_use_tool' &&
-          typeof msg.request_id === 'string'
-        ) {
-          session.pendingPermissionRequests.set(msg.request_id, {
-            toolName:
-              typeof msg.request.tool_name === 'string'
-                ? msg.request.tool_name
-                : 'Unknown',
-            ...(typeof msg.request.tool_use_id === 'string'
-              ? { toolUseId: msg.request.tool_use_id }
-              : {}),
+    const emit = (msg: any): void => {
+      session.sdkMessages.push(msg)
+      if (session.sdkMessages.length > MAX_CAPTURED_SDK_MESSAGES) {
+        session.sdkMessages.splice(0, session.sdkMessages.length - MAX_CAPTURED_SDK_MESSAGES)
+      }
+      const sdkError = this.extractSdkErrorEvent(msg)
+      if (sdkError) {
+        void diagnosticsService.recordEvent({
+          type: sdkError.type,
+          severity: 'error',
+          sessionId,
+          summary: sdkError.summary,
+          details: sdkError.details,
+        })
+      }
+      if (msg?.type === 'system' && msg.subtype === 'init') {
+        session.initMessage = msg
+      }
+      if (msg?.type === 'control_request' && msg.request?.subtype === 'can_use_tool') {
+        const requestId = typeof msg.request_id === 'string' ? msg.request_id : undefined
+        if (requestId) {
+          session.pendingPermissionRequests.set(requestId, {
+            toolName: typeof msg.request.tool_name === 'string'
+              ? msg.request.tool_name
+              : 'Unknown',
+            toolUseId: typeof msg.request.tool_use_id === 'string'
+              ? msg.request.tool_use_id
+              : undefined,
             input:
               msg.request.input && typeof msg.request.input === 'object'
                 ? (msg.request.input as Record<string, unknown>)
@@ -861,15 +901,75 @@ export class ConversationService {
               : undefined,
           })
         }
-        for (const cb of session.outputCallbacks) {
-          cb(msg)
-        }
-      } catch {
-        console.warn(
-          `[ConversationService] Ignoring malformed SDK payload for ${sessionId}`,
-        )
+      }
+      for (const cb of session.outputCallbacks) {
+        cb(msg)
       }
     }
+
+    const quarantine = (
+      payload: string,
+      reason: 'invalid_sdk_websocket_record' | 'invalid_ndjson_record',
+    ): void => {
+      if (!payload) return
+      const unparsedPayloads = session.sdkUnparsedPayloads ?? (session.sdkUnparsedPayloads = [])
+      unparsedPayloads.push({ payload, reason })
+      void diagnosticsService.recordEvent({
+        type: 'sdk_transport_unparsed_record',
+        severity: 'warn',
+        sessionId,
+        summary: 'Preserved an unparsed SDK transport record',
+        details: {
+          reason,
+          characterCount: payload.length,
+          lineBreakCount: (payload.match(/\n/g) ?? []).length,
+          retainedInSession: true,
+        },
+      })
+    }
+
+    const tryParseAndEmit = (payload: string): boolean => {
+      try {
+        emit(JSON.parse(payload))
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    // The sidecar forwards `--output-format stream-json` as NDJSON. A
+    // WebSocket callback may end in the middle of one NDJSON record, so retain
+    // that suffix until its newline delimiter arrives. Do not invent JSON
+    // boundaries with brace matching: only an actual newline ends a record.
+    const pending = session.sdkPayloadBuffer ?? ''
+    if (!pending && tryParseAndEmit(rawPayload)) return
+
+    // A complete JSON WebSocket record after an unterminated opaque fragment is
+    // a proven application boundary. Preserve the fragment, then let the later
+    // terminal result/tool event reach the normal event pipeline.
+    if (pending && tryParseAndEmit(rawPayload)) {
+      session.sdkPayloadBuffer = ''
+      quarantine(pending, 'invalid_sdk_websocket_record')
+      return
+    }
+
+    const records = (pending + rawPayload).split('\n')
+    session.sdkPayloadBuffer = records.pop() ?? ''
+    for (const line of records) {
+      const record = line.endsWith('\r') ? line.slice(0, -1) : line
+      if (!record.trim()) continue
+      if (!tryParseAndEmit(record)) {
+        quarantine(record, 'invalid_ndjson_record')
+      }
+    }
+  }
+  private releaseFailedStartupSession(
+    sessionId: string,
+    session: SessionProcess,
+  ): boolean {
+    if (this.sessions.get(sessionId) !== session) return false
+    this.sessions.delete(sessionId)
+    return true
   }
 
   stopSession(sessionId: string): void {
@@ -1128,10 +1228,16 @@ export class ConversationService {
 
     const cleanEnv = await getProcessEnvWithTerminalShellEnvironment()
     delete cleanEnv.CLAUDE_CODE_OAUTH_TOKEN
+    delete cleanEnv.CC_JIANGXIA_SESSION_ID
+    delete cleanEnv.CC_HAHA_SESSION_ID
     delete cleanEnv.CC_JIANGXIA_WORKFLOW_SESSION_ID
     delete cleanEnv.CC_HAHA_WORKFLOW_SESSION_ID
     delete cleanEnv.CC_JIANGXIA_EXPERT_OUTPUT_TEMPLATE_GUARD
     delete cleanEnv.CC_HAHA_EXPERT_OUTPUT_TEMPLATE_GUARD
+    delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
+    delete cleanEnv.CC_HAHA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
+    delete cleanEnv.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY
+    delete cleanEnv.CC_HAHA_EXPERT_RESEARCH_ARTIFACT_POLICY
     delete cleanEnv.CC_JIANGXIA_EXPERT_SESSION_ID
     delete cleanEnv.CC_HAHA_EXPERT_SESSION_ID
     delete cleanEnv.CC_JIANGXIA_EXPERT_SHARED_PLAYWRIGHT_SESSION_ID
@@ -1150,6 +1256,10 @@ export class ConversationService {
     delete cleanEnv.CC_HAHA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE
     delete cleanEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
     delete cleanEnv.CC_HAHA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
+    delete cleanEnv.CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS
+    delete cleanEnv.CC_HAHA_EXPERT_FULL_TOOL_ACCESS
+    delete cleanEnv.CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY
+    delete cleanEnv.CC_HAHA_UIUX_IMAGE_ONLY_DELIVERY
     delete cleanEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
     delete cleanEnv.CC_HAHA_EXPERT_RESEARCH_DELIVERY_POLICY
     // The desktop server binds image requests to this session-scoped Provider.
@@ -1260,6 +1370,12 @@ export class ConversationService {
     }
 
     setJiangxiaEnvAliases(childEnv, 'SKIP_DOTENV', '1')
+    if (typeof options?.sessionId === 'string' && options.sessionId.trim()) {
+      // Generic session identity lets every built-in tool produce real receipts,
+      // rather than making observability an Expert-only privilege.
+      setJiangxiaEnvAliases(childEnv, 'SESSION_ID', options.sessionId.trim())
+      setJiangxiaEnvAliases(childEnv, 'AGENT_RUN_LEDGER_ENABLED', '1')
+    }
     if (typeof options?.providerId === 'string' && options.providerId.trim()) {
       // Non-secret session routing only. The image tool forwards this opaque id
       // to the desktop server, which resolves the saved credential itself.
@@ -1321,17 +1437,37 @@ export class ConversationService {
           JSON.stringify(options.expertBrowserVerificationFallbackSearchEngines),
         )
       }
+      if (options?.expertBrowserSearchPacing) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_BROWSER_SEARCH_PACING', '1')
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_BROWSER_SEARCH_MIN_INTERVAL_MS', String(options.expertBrowserSearchPacing.minIntervalMs))
+      }
       if (options?.expertClosePlaywrightWhenAgentDone) {
         setJiangxiaEnvAliases(childEnv, 'EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE', '1')
       }
       if (options?.expertForbidSubagentAskUserQuestion) {
         setJiangxiaEnvAliases(childEnv, 'EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION', '1')
       }
+      if (options?.uiuxImageOnlyDelivery) {
+        setJiangxiaEnvAliases(childEnv, 'UIUX_IMAGE_ONLY_DELIVERY', '1')
+      }
+      if (options?.expertFullToolAccess) {
+        setJiangxiaEnvAliases(childEnv, 'EXPERT_FULL_TOOL_ACCESS', '1')
+      }
 
       if (options?.expertSessionId) {
         setJiangxiaEnvAliases(childEnv, 'EXPERT_SESSION_ID', options.expertSessionId)
         if (options.expertTemplateFillWrite) {
           setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_WRITE', '1')
+        }
+        if (options.expertTemplateFillOutputRoot) {
+          setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_OUTPUT_ROOT', options.expertTemplateFillOutputRoot)
+        }
+        if (options.expertResearchArtifactPolicy) {
+          setJiangxiaEnvAliases(
+            childEnv,
+            'EXPERT_RESEARCH_ARTIFACT_POLICY',
+            JSON.stringify(options.expertResearchArtifactPolicy),
+          )
         }
         if (options.expertResearchDeliveryPolicy) {
           setJiangxiaEnvAliases(

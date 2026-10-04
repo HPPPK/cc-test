@@ -445,6 +445,39 @@ describe('Settings API', () => {
     expect(res.status).toBe(400)
   })
 
+  it('PUT /api/settings/user persists an explicit independent image-generation selection', async () => {
+    const update = makeRequest('PUT', '/api/settings/user', {
+      imageGeneration: {
+        enabled: true,
+        providerId: 'company-image-relay',
+        model: 'gpt-image-2',
+      },
+    })
+
+    expect((await handleSettingsApi(update.req, update.url, update.segments)).status).toBe(200)
+
+    const read = makeRequest('GET', '/api/settings/user')
+    expect(await (await handleSettingsApi(read.req, read.url, read.segments)).json()).toMatchObject({
+      imageGeneration: {
+        enabled: true,
+        providerId: 'company-image-relay',
+        model: 'gpt-image-2',
+      },
+    })
+  })
+
+  it('PUT /api/settings/user rejects an enabled image-generation setting without an explicit Provider/model', async () => {
+    const missingProvider = makeRequest('PUT', '/api/settings/user', {
+      imageGeneration: { enabled: true, model: 'gpt-image-2' },
+    })
+    const unknownField = makeRequest('PUT', '/api/settings/user', {
+      imageGeneration: { enabled: false, providerId: 'relay', model: 'gpt-image-2', apiKey: 'never-store-here' },
+    })
+
+    expect((await handleSettingsApi(missingProvider.req, missingProvider.url, missingProvider.segments)).status).toBe(400)
+    expect((await handleSettingsApi(unknownField.req, unknownField.url, unknownField.segments)).status).toBe(400)
+  })
+
   it('PUT /api/settings/user should sync thinking changes to active CLI sessions', async () => {
     const syncSpy = spyOn(conversationService, 'setMaxThinkingTokensForActiveSessions')
       .mockImplementation(() => 0)

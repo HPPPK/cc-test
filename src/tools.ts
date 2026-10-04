@@ -10,11 +10,12 @@ import { getJiangxiaEnvValue } from './utils/appIdentity.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
-import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js'
+import { getFileWriteToolForCurrentRuntime } from './tools/FileWriteTool/FileWriteTool.js'
 import { GlobTool } from './tools/GlobTool/GlobTool.js'
 import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js'
 import { PlaywrightTool } from './tools/PlaywrightTool/PlaywrightTool.js'
+import { PrototypePreviewTool } from './tools/PrototypePreviewTool/PrototypePreviewTool.js'
 import { ImageGenerationTool } from './tools/ImageGenerationTool/ImageGenerationTool.js'
 import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
 import { BriefTool } from './tools/BriefTool/BriefTool.js'
@@ -144,6 +145,7 @@ const WorkflowTool = feature('WORKFLOW_SCRIPTS')
 import type { ToolPermissionContext } from './Tool.js'
 import type { WorkflowSessionState } from './server/services/workflowTypes.js'
 import {
+  getWorkflowPhaseAlwaysLoadedTools,
   getWorkflowPhaseDisallowedTools,
   getWorkflowScopedToolNames,
 } from './server/services/workflowToolPolicy.js'
@@ -224,10 +226,11 @@ export function getAllBaseTools(): Tools {
     ExitPlanModeV2Tool,
     FileReadTool,
     FileEditTool,
-    FileWriteTool,
+    getFileWriteToolForCurrentRuntime(),
     NotebookEditTool,
     WebFetchTool,
     PlaywrightTool,
+    PrototypePreviewTool,
     ImageGenerationTool,
     TodoWriteTool,
     WebSearchTool,
@@ -438,8 +441,14 @@ export function assembleWorkflowToolPool(
     permissionContext,
   ).filter(tool => tool.isEnabled() && !disallowedToolNames.has(tool.name))
 
+  const phaseAlwaysLoadedToolNames = new Set(getWorkflowPhaseAlwaysLoadedTools(state))
+  const keepPhaseSchemaLoaded = (tool: Tool): Tool => {
+    if (!phaseAlwaysLoadedToolNames.has(tool.name) || tool.alwaysLoad === true) return tool
+    return Object.assign(Object.create(Object.getPrototypeOf(tool)), tool, { alwaysLoad: true }) as Tool
+  }
   const baseTools = assembleToolPool(permissionContext, mcpTools)
     .filter(tool => !disallowedToolNames.has(tool.name))
+    .map(keepPhaseSchemaLoaded)
 
   if (!workflowTools.length) {
     return baseTools

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-template-id="commercialization-research-classic-v1">
+<html lang="zh-CN" data-template-id="commercialization-research-classic-v4">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -36,6 +36,51 @@
     }
     p {
       margin: 8px 0;
+    }
+    .template-rich-text {
+      margin: 8px 0 14px;
+    }
+    .template-rich-text > :first-child {
+      margin-top: 0;
+    }
+    .template-rich-text > :last-child {
+      margin-bottom: 0;
+    }
+    .template-rich-text ul, .template-rich-text ol {
+      margin: 8px 0;
+    }
+    .template-rich-text li + li {
+      margin-top: 4px;
+    }
+    .template-rich-text strong {
+      color: #2a211c;
+      font-weight: 700;
+    }
+    .template-rich-text p {
+      margin: 8px 0;
+    }
+    .disclaim .template-rich-text {
+      margin: 6px 0 0;
+    }
+    .decision-card {
+      margin: 10px 0 22px;
+      padding: 16px 18px;
+      background: #1a1a1a;
+      color: #fff;
+      border-left: 4px solid #c8521c;
+    }
+    .decision-card .template-rich-text {
+      margin: 0;
+    }
+    .decision-card .template-rich-text strong {
+      color: #fff;
+    }
+    .decision-card .template-rich-text ul,
+    .decision-card .template-rich-text ol {
+      margin-bottom: 0;
+    }
+    blockquote.dark strong {
+      color: #fff;
     }
     a {
       color: #c8521c;
@@ -88,6 +133,11 @@
     .source-table {
       font-size: 13px;
     }
+    .template-empty-state td {
+      color: #666;
+      font-style: italic;
+      text-align: left;
+    }
     @media (max-width: 640px) {
       .page {
         padding: 22px 14px 40px;
@@ -107,17 +157,23 @@
 <body>
 <div class="page">
   <!--
-    商业化调研报告经典母版 v1
-    填充规则：保留 CSS、目录、章节顺序、标题层级和所有表头；仅替换 {{...}} 槽位或带 SLOT 注释的内容区域。
+    商业化调研报告经典母版 v4
+    填充规则：保留 CSS、目录、章节顺序、标题层级和所有表头；仅替换 {{...}} 槽位或带 SLOT 注释的内容区域；段落区域支持受控的 **加粗**、无序列表和有序列表，不接受原始 HTML、CSS 或脚本。
     缺少真实资料时，使用“需一手验证”“未获得用户材料，暂不判断”等表述，不得虚构数值、来源或结论。
   -->
 
   <h1>{{REPORT_TITLE}} · 商业化调研报告</h1>
   <p class="muted">采集日期：{{REPORT_DATE}}｜报告对象：{{REPORT_SCOPE}}</p>
+  <!-- REPORT_SCOPE 不得把候选入口、受限记录或后续渠道建议写成已覆盖平台；最终网页证据以“信息来源与说明”表中的 URL 为准。 -->
 
   <div class="disclaim">
     <strong>数据声明：</strong>
-    {{DATA_DECLARATION}}
+    <div class="template-rich-text"><!-- SLOT: DATA_DECLARATION --></div>
+  </div>
+
+  <div class="disclaim">
+    <strong>本轮证据状态：</strong>
+    <div class="template-rich-text"><!-- SLOT: EVIDENCE_STATUS_SUMMARY --></div>
   </div>
 
   <h2>目录</h2>
@@ -127,6 +183,7 @@
     <li><a href="#section3">目标人群与市场</a></li>
     <li><a href="#section4">盈利模式与定价策略</a></li>
     <li><a href="#section5">竞品分析：价格与方式</a></li>
+    <li><a href="#section6">验证闸门与下一步</a></li>
     <li><a href="#sources">信息来源与说明</a></li>
   </ol>
 
@@ -151,14 +208,14 @@
   </table>
 
   <h3>1.3 产品形态与使用场景</h3>
-  <!-- SLOT: PRODUCT_FORM_AND_SCENARIOS -->
+  <div class="template-rich-text"><!-- SLOT: PRODUCT_FORM_AND_SCENARIOS --></div>
 
   <h2 id="section2">二、立项推荐理由</h2>
 
   <h3>2.1 核心结论</h3>
-  <blockquote class="dark">
-    {{CORE_DECISION_CONCLUSION}}
-  </blockquote>
+  <div class="decision-card">
+    <div class="template-rich-text"><!-- SLOT: CORE_DECISION_CONCLUSION --></div>
+  </div>
 
   <h3>2.2 推荐做这个品的核心论据</h3>
   <table>
@@ -174,13 +231,13 @@
   </table>
 
   <h3>2.3 市场机会窗口</h3>
-  <!-- SLOT: MARKET_WINDOW_CONTENT -->
+  <div class="template-rich-text"><!-- SLOT: MARKET_WINDOW_CONTENT --></div>
 
   <h3>2.4 各平台流量热度统计 - 需求真实性的量化证据</h3>
   <table>
     <thead>
       <tr>
-        <th>平台/渠道</th>
+        <th>平台 / 渠道</th>
         <th>热度指标</th>
         <th>具体数据</th>
         <th>趋势判断</th>
@@ -192,15 +249,30 @@
     </tbody>
   </table>
 
+  <h3>2.5 关键反证与决策风险</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>反证 / 风险</th>
+        <th>当前依据</th>
+        <th>对立项的影响</th>
+        <th>优先应对或验证动作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- SLOT: RISKS_AND_COUNTEREVIDENCE_ROWS -->
+    </tbody>
+  </table>
+
   <h2 id="section3">三、目标人群与市场</h2>
 
   <h3>3.1 目标用户画像</h3>
   <table>
     <thead>
       <tr>
-        <th>维度</th>
-        <th>结论</th>
-        <th>说明</th>
+        <th>优先人群与触发任务</th>
+        <th>现有替代与可感知价值</th>
+        <th>当前依据与边界</th>
       </tr>
     </thead>
     <tbody>
@@ -209,15 +281,15 @@
   </table>
 
   <h3>3.2 用户需求与痛点</h3>
-  <!-- SLOT: USER_NEEDS_AND_PAIN_POINTS -->
+  <div class="template-rich-text"><!-- SLOT: USER_NEEDS_AND_PAIN_POINTS --></div>
 
   <h3>3.3 市场规模</h3>
   <table>
     <thead>
       <tr>
-        <th>层级</th>
-        <th>定义</th>
-        <th>估算</th>
+        <th>市场层级</th>
+        <th>定义与口径</th>
+        <th>可核验规模线索 / 暂不作数值结论</th>
       </tr>
     </thead>
     <tbody>
@@ -226,7 +298,7 @@
   </table>
 
   <h3>3.4 市场时机</h3>
-  <!-- SLOT: MARKET_TIMING_CONTENT -->
+  <div class="template-rich-text"><!-- SLOT: MARKET_TIMING_CONTENT --></div>
 
   <h2 id="section4">四、盈利模式与定价策略</h2>
 
@@ -243,10 +315,10 @@
       <!-- SLOT: MONETIZATION_MODEL_ROWS -->
     </tbody>
   </table>
-  <!-- SLOT: RECOMMENDED_MONETIZATION_MODEL -->
+  <div class="template-rich-text"><!-- SLOT: RECOMMENDED_MONETIZATION_MODEL --></div>
 
   <h3>4.2 定价策略</h3>
-  <!-- SLOT: PRICING_STRATEGY_CONTENT -->
+  <div class="template-rich-text"><!-- SLOT: PRICING_STRATEGY_CONTENT --></div>
 
   <h2 id="section5">五、竞品分析：价格与方式</h2>
 
@@ -302,10 +374,10 @@
   </table>
 
   <h3>5.4 机会缝隙</h3>
-  <!-- SLOT: OPPORTUNITY_GAP_CONTENT -->
+  <div class="template-rich-text"><!-- SLOT: OPPORTUNITY_GAP_CONTENT --></div>
 
   <h3>5.5 搜索引擎投放实况 - 获客路径上的真实对手</h3>
-  <!-- SLOT: SEARCH_ACQUISITION_NOTE -->
+  <div class="template-rich-text"><!-- SLOT: SEARCH_ACQUISITION_NOTE --></div>
   <table>
     <thead>
       <tr>
@@ -319,10 +391,30 @@
       <!-- SLOT: SEARCH_ACQUISITION_ROWS -->
     </tbody>
   </table>
-  <!-- SLOT: SEARCH_ACQUISITION_CONCLUSION -->
+  <div class="template-rich-text"><!-- SLOT: SEARCH_ACQUISITION_CONCLUSION --></div>
+
+  <h2 id="section6">六、验证闸门与下一步</h2>
+
+  <h3>6.1 决策闸门</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>待验证假设</th>
+        <th>为什么影响决策</th>
+        <th>最低成本验证</th>
+        <th>通过 / 否决信号</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- SLOT: VALIDATION_GATE_ROWS -->
+    </tbody>
+  </table>
+
+  <h3>6.2 建议执行顺序</h3>
+  <div class="template-rich-text"><!-- SLOT: NEXT_STEP_PLAN_CONTENT --></div>
 
   <h2 id="sources">信息来源与说明</h2>
-  <table class="source-table">
+  <table class="source-table" data-empty-state="本轮未取得可核验公开来源；报告中的外部结论均已明确标为证据缺口、待验证或有依据的 AI 推断。">
     <thead>
       <tr>
         <th>编号</th>

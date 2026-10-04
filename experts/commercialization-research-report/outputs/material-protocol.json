@@ -1,19 +1,24 @@
 {
-  "version": 4,
+  "version": 21,
   "primaryOutput": {
     "kind": "html",
     "templatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
-    "delivery": "Use one Bash invocation to pass a compact { templateId, fields } JSON payload through standard input to the built-in expert-template-fill CLI; do not use Write for report-fields.json or final HTML.",
+    "delivery": "Use structured Write with file_path as a .html/.htm filename in the session workDir, content as an empty string, and expert_output containing templateId and fields. The first acknowledged render is an HTML draft, not final delivery. After the 08 completeness review, use mode=patch for the smallest supported correction, or mode=finalize with empty fields when no correction is required. Follow the repair and acknowledgement lifecycle below; a failed or rejected attempt is not a successful delivery.",
     "fieldsDocument": {
       "requiredKeys": [
         "templateId",
         "fields"
       ],
       "writeTool": "Write",
-      "content": "JSON only; never HTML, CSS, headings, table headers, or a template copy."
+      "content": "Use Write.content as an empty string. Put templateId and template fields inside the top-level expert_output object; use its optional mode field for the existing patch or finalize lifecycle. Never provide HTML, CSS, headings, table headers, a template copy, or a temporary JSON file."
     },
-    "renderCommand": "cat <<'EXPERT_FIELDS' | \"$CLAUDE_CLI_PATH\" expert-template-fill --data-stdin --output \"<final-report.html>\"",
-    "destination": "Only the user-confirmed output folder and filename."
+    "destination": "Write directly into the active session workDir selected at the bottom of the current Desktop window. Do not ask for a final output location, hardcode a user path, use an intake output-folder override, or create a default report subdirectory.",
+    "autoDestination": {
+      "mode": "session-workdir-direct",
+      "filenamePattern": "<sanitized-product-direction>-商业化调研报告.html",
+      "rules": "The current session workDir is the sole default output directory. Pass only the sanitized filename to structured Write so the runtime writes directly into that workDir. Never ask for a final location, filename, or output path; never hardcode Desktop/user names, use an outputFolder intake override, or create a default relative directory. A deterministic Write filename/path/destination validation error is internal correction feedback: retry with the sanitized filename rather than asking the user."
+    },
+    "renderer": "No shell command is used. The server-side structured Write runtime renders the fixed HTML template after validation."
   },
   "requiredBeforeWrite": [
     "All report claims are marked as verified, inference, hypothesis, or evidence gap.",
@@ -21,10 +26,10 @@
     "Every final HTML claim, number, observation, access limitation, or no-result statement maps to at least one Playwright-opened URL or user-provided material.",
     "Every URL actually used by the final HTML is listed in the final sources table with a source type, date, and field coverage; accessed but unused URLs remain only in the research ledger.",
     "The evidence-review subagent has completed claim-by-claim and source-coverage review.",
-    "All public research that can be completed without the user is complete, and the user has explicitly selected accept_current_scope for the remaining evidence gaps and current report scope.",
-    "The user has confirmed the output path.",
-    "The inline fields JSON is complete and the expert-template-fill CLI will render the session-bound fixed HTML template without a generic Write call.",
-    "The final source table contains at least six distinct, actually used public URLs. They must cover at least four independent source domains whenever the public evidence allows it. Named competitors, price facts, channel facts, user/market signals, and SERP snapshots in final fields must each map to their own source row; do not replace a successfully opened source with a generic pending placeholder."
+    "Evidence gaps, access limitations, and unresolved assumptions are visibly labeled in the report; they do not require a delivery confirmation before rendering.",
+    "The structured Write fields are complete and the server-side runtime will render the session-bound fixed HTML template without model-authored HTML or a shell command.",
+    "When public evidence is available, the final source table should retain each actually used URL and seek broad source coverage rather than collapsing verified competitor, price, channel, user/market, or SERP evidence into generic placeholders. When browser access is genuinely unavailable or all relevant entry attempts fail, do not invent rows or block delivery: retain only actual source/access records and label every unsupported substantive field as an evidence gap.",
+    "The visible EVIDENCE_STATUS_SUMMARY separates verified facts, limited public observations, evidence-grounded AI inference, and remaining evidence gaps; do not label all researched material as pending."
   ],
   "supportingArtifacts": [
     "Candidate-and-access ledger: candidate or discovered URL, source type, discovery method, Playwright status, date, field coverage, result or limitation, and final-report usage. This is an internal audit artifact; raw query URLs, final redirects, and engine-by-engine execution traces are not rendered in the final HTML.",
@@ -32,7 +37,7 @@
     "Evidence-review findings and unresolved evidence gaps."
   ],
   "templateFieldGuide": {
-    "purpose": "这是“字段是什么意思”的教学指南。它帮助解释字段和相邻列的差别；示例是写法参考，不是要求把示例中的产品、数据或结论照搬。",
+    "purpose": "这是 v4 固定母版的字段写法指南。报告以用户提供的参考结构为最低基线，同时保留已核验事实、有限公开观察、基于证据的（AI推断）与证据缺口。示例只说明字段职责和表达格式，不要求固定字数、表格行数或来源数量，也不允许照抄示例中的结论或编造数字。段落区域允许受控 Markdown-light：**加粗**、以 - 开头的无序列表和以 1. 开头的有序列表；表格单元格仍填写纯文本，不写原始 HTML、CSS、脚本或 Markdown 表格。",
     "twoWorkedExamples": [
       {
         "product": "AI 视频翻译",
@@ -51,18 +56,23 @@
       },
       {
         "field": "REPORT_DATE",
-        "meaning": "本次报告形成或最后整理的日期；不把网页发布日期、统计年度混进来。",
+        "meaning": "本次报告形成或最后整理的日期；服务端以 Asia/Shanghai 当前日期写入最终 HTML，不把网页发布日期、统计年度混进来。",
         "example": "2026-07-29"
       },
       {
         "field": "REPORT_SCOPE",
-        "meaning": "本轮实际覆盖的市场、地区、平台、用户或问题边界；用来说明这份报告没有研究什么。",
+        "meaning": "本轮实际覆盖的产品、市场、用户与问题边界；只可概述已取得的证据类别。不得把候选入口、仅见超链接、受限记录或后续渠道建议写成“已覆盖平台”；实际采用的网页证据以来源表 URL 为准。",
         "example": "中国 C 端桌面端 AI 视频翻译立项预研；覆盖公开官网、应用商店、社区与内容平台线索。"
       },
       {
         "field": "DATA_DECLARATION",
-        "meaning": "数据来源和可靠性总说明。区分已核验公开信息、公开观察、（AI推断）方向性判断和证据缺口；推断须有依据且不得伪装成已验证事实。",
-        "example": "已核验事实来自本轮打开的官网/定价页/SERP（见来源表）；公开观察含内容平台供给；标（AI推断）的内容为有依据的方向性判断，非一手验证；用户付费与权威市场规模为本轮证据缺口。"
+        "meaning": "报告开头的证据边界说明。使用分点或短段落区分已核验事实、有限公开观察、（AI推断）和证据缺口；必须说明最终网页证据以来源表 URL 为准，未列入来源表不等于未取得：已取得但未采用、部分取得、候选、未取得、受限或后续建议分别按研究材料与具体浏览审计说明。",
+        "example": "**已核验事实**：竞品官网、套餐页和公开 Issue 已逐页打开，具体结论见来源表。\n- **有限公开观察**：公开讨论与内容页展示了具体任务和替代选择，不能外推整体规模。\n- **（AI推断）**：围绕首发差异、定价与渠道的方向判断均在正文标明依据和可推翻条件。\n- **证据缺口**：未取得真实转化率、CPC 或同口径市场规模。"
+      },
+      {
+        "field": "EVIDENCE_STATUS_SUMMARY",
+        "meaning": "本轮证据状态的可见摘要。按“已核验事实、有限公开观察、（AI推断）、证据缺口 / 待验证”组织；每一点都要说明它能支持什么和不能支持什么，不能把已打开的一手页面笼统写成待验证。",
+        "example": "**已核验事实**：官网套餐页确认了竞品公开价格、免费边界与功能分层。[1][2]\n**有限公开观察**：一则公开讨论具体呈现中键冲突与按程序屏蔽需求，但不能据此推断普通用户规模。[3]\n**（AI推断）**：在免费替代充分的前提下，首发价值更可能来自低学习成本与可靠性；可由任务测试推翻。[1][2][3]\n**证据缺口 / 待验证**：尚无同口径市场规模、真实付费转化率、CPC 或普遍中键偏好数据。"
       },
       {
         "field": "PRODUCT_ONE_SENTENCE_DEFINITION",
@@ -71,53 +81,58 @@
       },
       {
         "field": "PRODUCT_FORM_AND_SCENARIOS",
-        "meaning": "说明产品形态、关键使用场景和触发时刻；不要在此重复用户画像或定价。",
-        "example": "桌面端工具；用户拿到外语访谈视频后，先生成字幕，再校对术语并导出双语配音版本。"
+        "meaning": "1.3 产品形态与使用场景。用短段或分点依次交代：产品形态、技术架构 / 核心链路、典型使用场景、使用频次与留存触发、用户旅程、首发边界、差异假设与待验证问题。产品方案与外部事实要分开；没有用户行为证据时，频次、留存和差异写成候选判断或（AI推断）。",
+        "example": "**产品形态：** 本地桌面工具。\n- **技术架构 / 核心链路：** 用户触发入口 → 选择动作 → 完成任务。\n- **典型使用场景：** 在多个应用间切换时调用高频小动作。\n- **使用频次与留存触发：** 高频程度待任务测试；若减少重复切换，可能形成留存。\n- **用户旅程：** 安装 → 选择预设 → 首次完成任务 → 保存常用动作。\n- **首发边界：** 先交付核心动作，不承诺复杂自动化。\n- **差异假设与待验证问题：** （AI推断）低配置成本是否足以促成迁移，需访谈和对比测试。"
       },
       {
         "field": "CORE_DECISION_CONCLUSION",
-        "meaning": "立项结论本身：推荐、验证后再做或暂不推荐，并点出最关键的依据和风险。",
-        "example": "建议进入小范围验证：竞品供给和内容需求线索存在，但中文创作者的真实付费路径仍需访谈和落地页测试。"
+        "meaning": "当前决策结论，不只写“建议/不建议”。应清楚给出推荐级别、最强依据、最大的反证或不确定性，以及下一步由哪个闸门决定；可用加粗与分点呈现。",
+        "example": "**当前建议：条件性小范围验证。**\n- **为什么不是直接立项**：公开竞品与任务线索成立，但真实付费与稳定性迁移理由尚未验证。\n- **下一步决定点**：先用目标用户任务测试检验中键触发的可靠性和替代方案迁移动机；结果决定是否进入定价测试。"
       },
       {
         "field": "MARKET_WINDOW_CONTENT",
-        "meaning": "为什么是现在值得关注的外部变化，例如能力、平台、政策、内容供给或竞品空缺；没有明确变化就写待验证。",
-        "example": "（AI推断）生成式配音和自动字幕降低了基础制作门槛；依据为相关产品公开功能更新；仍需验证是否带来独立付费需求。"
+        "meaning": "2.3 市场机会窗口。依次写趋势信号、为什么是现在、机会成立条件、推翻条件。趋势信号只能来自已打开页面、用户材料或可核验数据；“为什么是现在”必须对应产品、技术、分发或替代方案的具体变化；成立条件和推翻条件要能影响继续、收缩或停止。",
+        "example": "**趋势信号：** 公开替代方案持续覆盖该任务 [n]。\n- **为什么是现在：** 新入口或分发方式降低了首次使用摩擦。\n- **机会成立条件：** 代表用户在真实任务中感觉到明显节省。\n- **推翻条件：** 现有免费替代已覆盖核心任务且无迁移动机。"
       },
       {
         "field": "USER_NEEDS_AND_PAIN_POINTS",
-        "meaning": "按任务链描述需求、卡点、现有替代方案和未验证处；不要把竞品功能数当成高频需求。查不到一手材料时可用（AI推断）并写依据，不可写成已验证高频痛点。",
-        "example": "（AI推断）跨语种短视频复用时，术语校对与音画同步可能造成反复返工；依据为竞品工作流公开描述；现有替代方案是剪辑软件加翻译/配音服务；仍需访谈验证。"
+        "meaning": "3.2 用户需求与痛点。写清任务现状、具体阻力、现有替代、可能的付费或迁移触发，以及哪些是已核验事实、有限观察、（AI推断）或待验证。不要把竞品功能数量、单帖热度或内容播放量升级为用户频次或付费意愿。",
+        "example": "**当前任务：** 用户在多个应用之间反复调用小动作。\n- **已核验事实：** 公开替代工具已覆盖快捷触发 [n]。\n- **有限观察：** 单条公开讨论提到快捷键冲突 [n]，不能外推频率。\n- **（AI推断）：** 若中断更少，可能形成迁移动机；需任务盲测。"
       },
       {
         "field": "MARKET_TIMING_CONTENT",
-        "meaning": "说明进入时机、等待理由或验证门槛；它回答“现在做、晚点做还是不做”。",
-        "example": "先用 4 周验证高意图场景与价格接受度；若访谈中可替代方案已足够且转化低，则不扩大投入。"
+        "meaning": "3.4 市场时机。说明品类所处阶段、支持该判断的事实或有限观察、机会、限制，以及下一步如何验证时机是否真实。不能用泛泛的“AI 热”“行业增长”替代具体阶段判断。",
+        "example": "**阶段判断：** 替代方案成熟、细分交互仍待验证。\n- **依据：** 多个公开产品已覆盖相邻任务 [n][n]。\n- **机会：** 可测试更低学习成本的入口。\n- **限制：** 尚无稳定的付费或频次证据。"
       },
       {
         "field": "RECOMMENDED_MONETIZATION_MODEL",
-        "meaning": "明确推荐哪一种收费组合及适用条件；与上表“可选模式”不同，这里要作出当前选择。",
-        "example": "建议免费试用 + 按时长/导出额度订阅；前提是用户对批量翻译与配音有持续任务。"
+        "meaning": "4.1 表格之后的推荐盈利模式。明确推荐什么、为什么适配当前产品、依据来自何处、最需要验证的商业假设和不适用条件。竞品的公开收费方式是事实；本品的收费适配性属于（AI推断）或测试建议，除非已有真实支付证据。",
+        "example": "**推荐主模式：** 免费核心能力 + 付费增强包（AI推断）。\n- **依据：** 可比产品存在免费层与付费边界 [n]。\n- **待验证：** 用户是否愿为更少配置或更稳定体验付费。\n- **不适用条件：** 若核心任务低频，订阅模式应收缩。"
       },
       {
         "field": "PRICING_STRATEGY_CONTENT",
-        "meaning": "给出价格结构、免费边界、升级触发和待验证项；不要把竞品页面价格直接当作本品最优价。",
-        "example": "先测试基础免费额度与专业版月订阅两档；升级触发放在批量处理、术语库和无水印导出，具体价格需结合访谈与支付测试。"
+        "meaning": "4.2 定价策略。依次说明定价逻辑、竞品价格锚点、建议测试方案、定价原则与边界。必须区分已核验竞品标价和本品的定价推演；没有支付数据时不能把测试价写成已验证价格。",
+        "example": "**定价锚点：** 已核验竞品采用买断或订阅 [n]。\n- **测试建议：** （AI推断）先用一个低摩擦试用页验证价值表达。\n- **定价原则：** 价格应与高频任务价值和免费层边界相匹配。\n- **待验证：** 真实支付方式与可接受区间。"
       },
       {
         "field": "OPPORTUNITY_GAP_CONTENT",
-        "meaning": "竞争格局中可切入、但尚未被充分满足的任务或人群；必须说清证据或假设。",
-        "example": "待验证机会：面向中文内容团队的“术语校对 + 配音一致性”闭环，可能比通用翻译更贴近工作流。"
+        "meaning": "5.4 机会缝隙。以已核验竞品覆盖、免费边界、任务差异和有限需求观察为依据，提出一个可测试的定位或首发切口；同时写清无法说明什么和可推翻条件。不能把竞品少、搜索失败或单点观察直接写成蓝海。",
+        "example": "**可测试机会：** （AI推断）在低配置、高频小任务中降低首次使用门槛。\n- **依据：** 相邻替代已覆盖深度能力，但学习成本较高 [n][n]。\n- **推翻条件：** 代表用户继续选择现有免费方案。"
+      },
+      {
+        "field": "NEXT_STEP_PLAN_CONTENT",
+        "meaning": "6.2 建议执行顺序。用有序步骤安排先验证什么、预期得到什么判断、什么信号触发下一步或停止；不是笼统的“继续调研”。每步可区分已知事实、（AI推断）和待验证。",
+        "example": "**第一优先：验证高频任务。**\n1. 用代表任务对比现有替代与原型。\n2. 访谈触发频次、失败成本和迁移动机。\n3. 仅在任务高频且替代不足时，再测试付费与渠道。"
       },
       {
         "field": "SEARCH_ACQUISITION_NOTE",
-        "meaning": "用最多两句说明采集日期、实际获得普通结果的入口和必要的受限状态；它不是执行台账。Google、百度、Bing、360 的逐引擎查询 URL、最终 URL、状态和限制原因必须保留在内部渠道证据包与运行日志中，但不得写进最终 HTML。Google 受限时只简短说明“Google 本轮受限，未据其 SERP 作出判断”；如该限制影响正文结论，可在来源表保留一条简短受限记录及链接。",
-        "example": "本轮于 2026-08-05 核验百度、Bing、360 的公开 SERP 与具体落地页；Google 受限，未据 Google SERP 作出 SEO 或 SEM 判断。SEO 仅统计普通自然结果，AI 总结和应用商店卡仅作为 SERP 特殊模块说明。"
+        "meaning": "5.5 搜索引擎投放实况与适用时的网站 SEO 样本观察。只概述本轮已核验的关键词方向、自然结果类型、广告观察、已打开官网 / 落地页中可支持的页面级 SEO 观察、访问边界和渠道含义；不要把逐引擎查询 URL、失败、验证码、临时参数或完整过程台账写进最终 HTML。逐引擎查询 URL、最终 URL、状态和限制原因必须保留在内部渠道证据包与运行日志中。不得生成 SEO 总分、站点级百分比、全站问题数量或无可复现依据的速度 / 移动端结论。",
+        "example": "**已观察：** 某关键词的普通自然结果包含官网与具体内容页 [n][n]。\n- **SEM：** 未观察到或未公开确认的广告位不作推断。\n- **边界：** 未取得完整排名快照时，只写已打开页面线索。"
       },
       {
         "field": "SEARCH_ACQUISITION_CONCLUSION",
-        "meaning": "根据搜索表给出渠道优先级和下一步验证，不用未观察到的广告数据硬下结论。",
-        "example": "优先测试“视频翻译/字幕翻译/AI 配音”任务词的内容落地页；是否投放 SEM 需取得真实关键词和转化数据后决定。"
+        "meaning": "基于实际可用渠道证据给出先测什么内容或词、为什么先测、用什么结果决定下一步；适用时可结合实际打开官网 / 落地页的样本级 SEO 观察提出修复或内容优先级。不能把单次 SERP 当作稳定排名或投放效果，也不能从少量页面样本推导全站诊断。",
+        "example": "**建议先测**：围绕“Quicker 替代”“鼠标快捷操作”“桌面动作面板”等任务词制作对比与场景内容。\n- **为什么**：这些词更接近用户已有替代路径，而非泛泛的“效率软件”。\n- **下一步**：用落地页点击、试用启动和访谈来源记录验证内容是否带来高意图，而不是据单次 SERP 直接投放。"
       },
       {
         "field": "REPORT_FOOTNOTE",
@@ -179,41 +194,73 @@
         ]
       },
       {
-        "field": "PLATFORM_HEAT_ROWS",
-        "meaning": "每行是一种平台或渠道上的可复核信号；不是把不同口径的数字相加成市场规模。",
+        "field": "RISKS_AND_COUNTEREVIDENCE_ROWS",
+        "meaning": "每行是一条可能推翻、收缩或延后当前建议的反证或风险。必须把已知依据、对立项的影响和最低成本应对写完整；不要把“尚未查到”误写成负面事实。",
         "columns": [
           [
-            "平台/渠道",
-            "信号来自哪里。",
-            "B站搜索结果页"
+            "反证 / 风险",
+            "可能推翻当前判断的替代、限制或失败条件。",
+            "免费替代已覆盖核心任务，用户没有明确迁移动机"
           ],
           [
-            "热度指标",
-            "该平台实际可见的指标名称。",
-            "相关视频与讨论线索"
+            "当前依据",
+            "已核验事实、有限观察或明确的证据缺口。",
+            "有限观察：公开讨论出现替代工具选择；真实迁移率未取得"
           ],
           [
-            "具体数据",
-            "原始数字或可见现象；不确定则写未取得。",
-            "2026-07-29 可访问结果中存在多条相关教程，精确播放量未统一采集"
+            "对立项的影响",
+            "该风险成立后，应该收缩、延后或否决哪一项决策。",
+            "若不能证明可靠性或迁移价值，暂不应投入正式获客预算"
           ],
           [
-            "趋势判断",
-            "基于该信号的有限判断。",
-            "仅说明内容供给存在，不能证明需求规模"
-          ],
-          [
-            "数据时效",
-            "数字或页面的日期/采集日。",
-            "采集于 2026-07-29"
+            "优先应对或验证动作",
+            "可执行、低成本的应对或验证办法。",
+            "用三个高频任务做对比测试，并访谈现有替代方案用户"
           ]
         ],
         "rowExample": [
-          "B站搜索结果页",
-          "相关视频与讨论线索",
-          "存在多条相关教程，精确播放量未统一采集",
-          "内容供给存在，不等于付费需求",
-          "采集于 2026-07-29"
+          "免费替代已覆盖核心任务，用户没有明确迁移动机",
+          "有限观察：公开讨论出现替代工具选择；真实迁移率未取得",
+          "若不能证明可靠性或迁移价值，暂不应投入正式获客预算",
+          "用三个高频任务做对比测试，并访谈现有替代方案用户"
+        ]
+      },
+      {
+        "field": "PLATFORM_HEAT_ROWS",
+        "meaning": "2.4 各平台流量热度统计 - 需求真实性的量化证据。每行对应一个真实可复核的平台、渠道或用户材料。可用公开数值时写指标、具体数据、周期、来源和时效；没有稳定同口径数字时，具体数据写“未取得公开稳定口径 / 需一手验证”，仍可保留已打开页面的有限观察，但不能为了量化编数字。趋势判断只能基于时间序列或明确页面变化，单点观察必须写清不能外推什么。",
+        "columns": [
+          [
+            "平台 / 渠道",
+            "信号来自哪里",
+            "公开 Issue / 应用商店 / 内容平台"
+          ],
+          [
+            "热度指标",
+            "可复核的指标名称；没有同口径数据时明确写未取得",
+            "公开讨论数（如页面明确显示） / 未取得稳定公开口径"
+          ],
+          [
+            "具体数据",
+            "数字必须写定义、周期和来源；没有可靠数值时如实说明",
+            "页面显示的指标、周期与 [n]；或“未取得公开稳定口径”"
+          ],
+          [
+            "趋势判断",
+            "只写数据可支持的变化或有限判断，同时标出不可外推边界",
+            "单点观察支持该任务存在；不能推出总体需求或付费意愿"
+          ],
+          [
+            "数据时效",
+            "页面日期或采集日期，以及必要边界",
+            "采集于 2026-08-17；单点公开观察"
+          ]
+        ],
+        "rowExample": [
+          "公开社区",
+          "相关任务讨论",
+          "未取得稳定公开口径；页面呈现具体任务与替代选择 [n]",
+          "有限观察：支持任务存在；不能推出人群比例、频率或付费意愿",
+          "本轮采集日期；单点公开观察"
         ]
       },
       {
@@ -221,19 +268,19 @@
         "meaning": "每行是一个画像维度。结论写当前画像，说明写任务、证据或待验证原因；不要凭功能数量写“高频”。",
         "columns": [
           [
-            "维度",
-            "画像维度，而不是用户昵称。",
-            "角色与任务"
+            "优先人群与触发任务",
+            "写具体人群、使用环境和触发任务，而不是抽象年龄/职业标签。",
+            "高频使用多款桌面软件的个人效率工具用户；在文件、网页和聊天之间反复调用小动作。"
           ],
           [
-            "结论",
-            "当前已验证画像或待验证假设。",
-            "待验证：跨语种复用视频的内容创作者"
+            "现有替代与可感知价值",
+            "写其当前如何完成任务，以及本品需带来的可感知改善；不是宣称已愿意付费。",
+            "现用快捷键、Quicker 或脚本；若中键入口减少记忆和切换，可能降低临时动作成本。"
           ],
           [
-            "说明",
-            "触发、痛点、替代方案、购买者和证据情况。",
-            "触发为拿到外语素材后需快速发布；现用剪辑软件+翻译工具；购买者是否为创作者本人需访谈。"
+            "当前依据与边界",
+            "写支持该画像的公开事实、有限观察或 AI 推断，并说明不能外推什么。",
+            "公开讨论支持具体冲突与替代选择；普通办公用户覆盖范围仍需访谈。"
           ]
         ],
         "rowExample": [
@@ -247,19 +294,19 @@
         "meaning": "每行说明 TAM/SAM/SOM 或其他市场层级的定义和当前估算状态。估算不能由无来源比例推出来。",
         "columns": [
           [
-            "层级",
-            "市场层级或范围名称。",
-            "SAM（可服务市场）"
+            "市场层级",
+            "写具体层级，例如“桌面效率工具的高阶个人用户”，不要偷换成全体 PC 用户。",
+            "首发可达：已有自动化或快捷工具使用经验的个人用户。"
           ],
           [
-            "定义",
-            "该层级覆盖的人群、地区、产品和时间口径。",
-            "中国有跨语种视频处理任务、且可通过桌面端服务的付费场景"
+            "定义与口径",
+            "说明这个层级包含什么、不包含什么，防止把移动端或不相干大市场混入。",
+            "仅讨论 Windows 桌面端的效率/自动化任务，不把移动端安装量当作需求。"
           ],
           [
-            "估算",
-            "已核验数字、计算公式或明确的证据缺口。",
-            "未取得可复核的付费人群基数；本轮不输出金额规模，建议以访谈和投放测试补齐。"
+            "可核验规模线索 / 暂不作数值结论",
+            "有可靠底数时写来源和口径；无可靠底数时保留明确边界和补数路径，不能硬估 TAM/SAM/SOM。",
+            "暂不作数值结论；下一步通过目标用户访谈、商店页与渠道数据补足。"
           ]
         ],
         "rowExample": [
@@ -278,14 +325,14 @@
             "订阅制"
           ],
           [
-            "说明",
-            "用户为何付费、按什么计费。",
-            "按月提供批量翻译、配音和术语库额度"
+            "收费对象和触发场景",
+            "写谁在什么任务/价值节点上升级，而不是只写“订阅”或“买断”。",
+            "个人用户在需要更多预设、跨应用规则或同步备份时升级。"
           ],
           [
-            "适配性",
-            "与任务频率、成本和替代方案的匹配。",
-            "若用户持续处理视频则较适配；任务偶发时需与按量包对照验证"
+            "适配性与前提",
+            "说明为什么可能适合，以及尚未验证的前提、风险或用户验证动作。",
+            "适合低频开始、持续使用后出现高级需求的工具；前提是升级边界能被用户感知。"
           ]
         ],
         "rowExample": [
@@ -480,7 +527,7 @@
       },
       {
         "field": "SOURCE_ROWS",
-        "meaning": "每行是一条最终报告实际使用的已打开 URL 或搜索快照 URL。内容摘要说明“它支持哪条信息 / 不能支持什么”；不同关键词快照、不同数字或不同页面不得合并成一行综合来源。",
+        "meaning": "每行是一条最终报告实际使用的已打开 URL 或搜索快照 URL。内容摘要说明“它支持哪条信息 / 不能支持什么”；不同关键词快照、不同数字或不同页面不得合并成一行综合来源。 若本轮没有任何可核验公开 URL，提交空数组 []：母版会显示证据缺口空状态；不得把“未取得”“待验证”、用户描述或其他非 URL 文本伪装成来源行。",
         "columns": [
           [
             "编号",
@@ -515,54 +562,202 @@
           "访问于 2026-07-29",
           "https://example.com/pricing"
         ]
+      },
+      {
+        "field": "VALIDATION_GATE_ROWS",
+        "meaning": "每行是一个会改变“做 / 不做 / 如何做”决策的验证闸门。验证动作要足够小、可观察，信号要说明什么结果支持继续、什么结果要求收缩或停止。",
+        "columns": [
+          [
+            "待验证假设",
+            "尚不能当作事实、但会显著影响决策的前提。",
+            "目标用户愿意为更可靠的中键触发付费"
+          ],
+          [
+            "为什么影响决策",
+            "该假设与立项、定价、差异化或渠道投入的关系。",
+            "若可靠性不是痛点或免费工具已充分满足，付费空间会明显缩小"
+          ],
+          [
+            "最低成本验证",
+            "最小样本、原型、访谈、落地页或任务测试，不写泛泛“继续调研”。",
+            "用可点击原型跑三项常见任务，并配合 5–8 名目标用户访谈"
+          ],
+          [
+            "通过 / 否决信号",
+            "什么观察支持继续，什么结果要求收缩、改题或停止。",
+            "通过：多数受访者愿意替换现有方案；否决：核心任务低频且无明确迁移动机"
+          ]
+        ],
+        "rowExample": [
+          "目标用户愿意为更可靠的中键触发付费",
+          "若可靠性不是痛点或免费工具已充分满足，付费空间会明显缩小",
+          "用可点击原型跑三项常见任务，并配合 5–8 名目标用户访谈",
+          "通过：多数受访者愿意替换现有方案；否决：核心任务低频且无明确迁移动机"
+        ]
       }
     ]
   },
   "researchBrowser": {
-    "sharePlaywrightSessionAcrossAgents": false,
-    "closePlaywrightWhenAgentDone": true,
+    "sharePlaywrightSessionAcrossAgents": true,
+    "closePlaywrightWhenAgentDone": false,
     "allowUserAuthorizedCdp": true,
     "managedPresentationDefault": "assistable_background",
     "allowManagedPresentationChoice": true,
     "desktopHumanVerificationHandoff": true,
-    "verificationFallbackSearchEngines": ["Google", "百度", "Bing", "360"],
-    "forbidSubagentAskUserQuestion": true
-  },
-  "researchDelivery": {
-    "requireExplicitUserDecisionBeforeFinalOutput": true,
-    "questionId": "research-delivery:commercialization-report",
-    "acceptedChoiceId": "accept_current_scope",
-    "continueChoiceIds": [
-      "provide_material_and_continue"
-    ],
-    "pauseChoiceIds": [
-      "pause_research"
-    ]
-  },
-  "researchCompletion": {
-    "finalOutputBehavior": "allow-with-evidence-gaps",
-    "trackedAgentTypes": [
-      "expert-evidence-researcher",
-      "expert-evidence-reviewer"
-    ],
-    "minimumCompletedAgents": 4,
-    "minimumCompletedAgentsByType": {
-      "expert-evidence-researcher": 3,
-      "expert-evidence-reviewer": 1
-    },
-    "requiredSearchEngines": [
+    "verificationFallbackSearchEngines": [
       "Google",
       "百度",
       "Bing",
       "360"
     ],
-    "minimumDistinctSearchQueries": 2,
-    "minimumOpenedSpecificPublicPages": 8,
-    "minimumDistinctOpenedSourceDomains": 4,
-    "requireConcreteSourcePerAgent": true,
-    "finalSourceCoverage": {
-      "fieldId": "SOURCE_ROWS",
-      "minimumRows": 6
+    "forbidSubagentAskUserQuestion": true,
+    "searchEnginePacing": {
+      "enabled": true,
+      "minIntervalMs": 3000
     }
+  },
+  "postReviewEvidenceAbsorption": {
+    "required": true,
+    "userInteraction": "none",
+    "before": "template-fill",
+    "inputs": [
+      "product-and-competitor evidence ledger",
+      "demand-and-market evidence ledger",
+      "commercialization-and-channel evidence ledger",
+      "independent reviewer verdicts"
+    ],
+    "rules": [
+      "After the independent reviewer returns and before the final structured template-fill Write, absorb the relevant evidence into the report fields and prepare the final audited source table.",
+      "Keep verified evidence in its applicable report fields; keep partially verified evidence only within its supported scope; narrow rejected or evidence-gap items instead of discarding unrelated supported findings.",
+      "Absorb relevant concrete details from the ledgers into the appropriate product, user/market, monetization, competitor, and acquisition fields before rendering.",
+      "Prepare a chapter-ready report material package, not a compact conclusion summary. Preserve every distinct decision-relevant detail that changes product scope, scenario, user task, pain point, competitive comparison, pricing, channel, risk, or validation design. When direct evidence is unavailable, do not collapse a section into a one-line evidence gap: add a clearly labeled AI inference grounded in the available facts, mechanism, analogues, and counterevidence, with scope and a falsification condition. Never invent exact market size, search volume, CPC, conversion, or willingness-to-pay numbers.",
+      "The server derives dispositions and the internal field-to-source absorption ledger from final fields and browser audits. It restores only report-used audited URLs omitted from SOURCE_ROWS, using their specific supporting report passage. The complete visit inventory remains in 06; visiting an entry does not make it a cited fact. Do not hand-copy raw opened-URL records, fieldCoverage, or claim-by-claim fieldEvidence.",
+      "Before rendering, distinguish acquired material from final selection in REPORT_SCOPE, DATA_DECLARATION, EVIDENCE_STATUS_SUMMARY and channel wording: acquired-but-unused is not unobtained or access-limited. Report-used claims require the exact page in SOURCE_ROWS; restore supported missing citations rather than downgrading acquired evidence. This is a wording-truth rule, not a fixed-platform quota or a reason to block an evidence-gap report.",
+      "Every audited URL actually used to support report facts or observations must be included in SOURCE_ROWS with its supported fields and collection date. Pure limitations or future SEO suggestions do not require an arbitrary SERP citation. Other visits remain fully visible in 06, linked from the report declaration, rather than becoming generic source padding. access_limited, failed, pending, unexecuted candidates, CAPTCHA pages, and incoherent redirects remain only in 06-browser-audit.md.",
+      "This is an internal completion phase: do not call AskUserQuestion, do not request delivery confirmation, and do not interrupt rendering once the required field-to-source absorption is complete. If no audited public URL remains usable, set SOURCE_ROWS to [] and render the evidence-gap report; do not ask the user for links, retry consent, or a delivery decision.",
+      "Do not use fixed word counts, fixed table row counts, or fixed source counts as a proxy for completeness.",
+      "Google, 百度, Bing, and 360 are separate search engines. A homepage or entry page is not a SERP. Only an audited keyword results page supports an observation about that engine; entry_opened, access_limited, failed, or pending supports only an explicit limited/not-obtained statement when that limitation directly bounds a specific SEO/SEM claim. Do not name an engine merely to disclose an internal connection, navigation, or access failure: when another public entry or concrete page supports the field, keep the failed attempt only in the internal audit and omit it from final fields and SOURCE_ROWS.",
+      "Only an HTML draft that was written and acknowledged enters the 08 completeness-review lifecycle. If a first complete Write is rejected before rendering, keep the process-local candidate and use the same path/templateId with mode=\"patch\" to correct only the reported fields; this does not create an HTML draft or start 08. If that server process restarted and the candidate is unavailable, resubmit the complete fields. After an initial HTML draft is written and acknowledged, make exactly one successfully committed terminal Write (rejected or unsaved attempts may be corrected and retried on the same draft without restarting research): mode=\"patch\" with only the smallest source-supported correction explicitly requested by 08, or mode=\"finalize\" with empty fields when no patch is needed. A patch whose Write and acknowledgement succeed is final delivery; do not send a second finalize.",
+      "For the risk/counterevidence and validation-gate fields, retain grounded counterevidence, decision conditions, and low-cost test logic. A clearly labeled AI inference may explain a decision gate only when its evidence basis and falsification condition are visible; do not invent a passing metric or market number.",
+      "Treat the source-task-pool table in 06 as planning/audit context, not evidence by itself. The 119 company-core entries and maintained-open entries are split once across A/B/C, then executed in parallel waves of at most 10 still-unterminated URLs per lane. Each entry receives one bounded browser outcome; opened, access_limited, and failed/no-result are terminal, while pending or unexecuted remains incomplete until the existing bounded retry policy records a truthful interrupted gap. The server advances only from real terminal receipts and dispatches only the next remaining wave; a dispatch or recovery fingerprint is never completion evidence. D, E, 08, and final HTML wait for terminal coverage, not successful access. Never turn an unexecuted candidate into a platform-coverage claim or access-limit claim.",
+      "Keep exact source identity through 07: a detail may cite [S1], with [S1]: audit:<exact-audit-id> copied from 06, or one complete audited URL per label. This applies to articles and videos as well as SERPs. Preserve all article/query parameters; do not reconstruct a URL from a title, domain, /s prefix, login page, or platform name. Reuse the label in report prose and SOURCE_ROWS; the runtime resolves the exact successful audit to its final URL and preserves distinct repeated-query audit IDs. These are optional native Markdown references, not a new format gate; full URLs remain supported and missing labels do not block completion.",
+      "An empty correction list or optional review section is not a patch requirement. Negated search observations and prohibitions on substituting another engine are not positive SERP claims; independently affirmative claims remain subject to the existing evidence review.",
+      "Report-worker Read permissions include its own declared output for save verification: E may Read 07 and the output reviewer may Read 08, without access to additional research sources or arbitrary files. A partial E response after an execution error is not completed absorption; preserve saved material and surface the actual error.",
+      "Missing concrete evidence remains candidate or unverified. Use access-limited or no-result only when the exact browser audit records that outcome. Do not demand user permission to finish because a research gap remains; keep detailed evidence and bounded inference without a compact-summary target.",
+      "E reads the brief and independent review to EOF first; all registered research parts have already been reviewed by D. Consult only relevant ranges of declared raw parts/06 for missing source identities, details or conflicts. Save substantive chapter-ready material using Read/Write only; Write overwrites, so each incremental save keeps the accumulated details and references. A header, outline or compaction summary alone is not completed absorption.",
+      "Every actually used page retains its exact audited URL. Ordinary Markdown reference definitions, inline links and explicit source-table labels are supported without a new format gate. Never collapse several posts/comments to one representative URL or replace a query with a homepage.",
+      "A public price/free tier proves a commercial offer, not conversion, profitability or paid willingness. One competitor allowing free commercial use does not prove commercial licensing impossible for the category. Preserve bounded AI inference with its basis and falsification conditions; correct only affected fields in the existing review/patch step, with no new browsing, agents or review rounds."
+    ],
+    "reviewerAgentType": "expert-evidence-reviewer",
+    "sourceAgentTypes": [
+      "expert-evidence-researcher"
+    ],
+    "sourceFieldId": "SOURCE_ROWS",
+    "requireSourceFieldMapping": true,
+    "searchEvidenceFieldIds": [
+      "SEARCH_ACQUISITION_NOTE",
+      "SEARCH_ACQUISITION_ROWS",
+      "SEARCH_ACQUISITION_CONCLUSION"
+    ],
+    "allowReasonedInference": true,
+    "requireEvidenceStatusSummary": true,
+    "evidenceStatusSummaryFieldId": "EVIDENCE_STATUS_SUMMARY",
+    "fieldGranularityGuidance": [
+      {
+        "fieldId": "CORE_FUNCTION_ROWS",
+        "instruction": "每行把具体能力、触发任务、用户当前做法或阻力、可见用户价值、MVP/加分优先级和对应来源或推演边界连在一起；不要把功能名清单当成用户价值。"
+      },
+      {
+        "fieldId": "PRODUCT_FORM_AND_SCENARIOS",
+        "instruction": "写清产品形态、技术/交互链路、典型使用场景、当前替代、使用频次证据状态、用户旅程和首发边界；未知频次不得猜成高频。"
+      },
+      {
+        "fieldId": "RECOMMENDATION_RATIONALE_ROWS",
+        "instruction": "每条理由都写支持它的具体产品输入或页面观察、能说明什么、不能说明什么，以及为何导向当前建议；有依据的推断必须附可推翻条件。"
+      },
+      {
+        "fieldId": "MARKET_WINDOW_CONTENT",
+        "instruction": "区分趋势信号、为什么是现在、机会成立条件和推翻条件；趋势页或单次公开观察不能替代市场规模或真实付费结论。"
+      },
+      {
+        "fieldId": "PLATFORM_HEAT_ROWS",
+        "instruction": "每行必须标识具体平台、具体页面或明确搜索引擎查询快照；写清可见指标或原始观察、时效、来源编号和不能外推的范围。不得使用“社区”“内容”“搜索发现入口”等泛称代替平台。"
+      },
+      {
+        "fieldId": "TARGET_USER_PROFILE_ROWS",
+        "instruction": "每行必须包含角色或候选角色、具体触发任务、当前替代或绕法、候选价值、对应来源或明确的推演边界；不能只写抽象人群标签。"
+      },
+      {
+        "fieldId": "USER_NEEDS_AND_PAIN_POINTS",
+        "instruction": "每个痛点必须回到具体任务、当前做法、实际阻力或公开表达、来源编号和不可外推范围；没有用户材料时明确写证据缺口与下一条来源路线。"
+      },
+      {
+        "fieldId": "COMPETITOR_LANDSCAPE_ROWS",
+        "instruction": "按实际发现的竞争范式保留具体产品与本轮核验的功能、平台、免费边界或替代关系；不得因一个候选页失败而缩成单一竞品，也不能用另一产品补缺失字段。"
+      },
+      {
+        "fieldId": "COMPETITOR_GTM_ROWS",
+        "instruction": "写具体产品、具体分发/内容/商店或官网页面观察及其边界；第一方页面可证明分发入口，不能单独证明获客效果或用户需求。"
+      },
+      {
+        "fieldId": "SEARCH_ACQUISITION_ROWS",
+        "instruction": "区分具体 SERP 快照、独立打开的内容或落地页、广告模块和 AI/富媒体特殊模块；不能把搜索摘要、候选链接或特殊模块写成稳定排名、流量、搜索量或投放结论。"
+      },
+      {
+        "fieldId": "VALIDATION_GATE_ROWS",
+        "instruction": "每个闸门写具体待验证假设、与本轮证据的关系、最小验证动作和会改变继续/停止决定的条件；不得虚构通过阈值、市场数字或转化率。"
+      }
+    ],
+    "absorberAgentType": "expert-evidence-absorber",
+    "materialPackage": {
+      "mode": "chapter-ready-material-pack-v1",
+      "rule": "Organize 07 by report chapter/field family. Within each chapter retain verified facts, bounded observations, grounded AI inference with basis and falsification condition, counterevidence/risk, gaps, candidate report fields, and audit/source references. Distinct usable details must not be compressed into generic phrases such as “demand exists”, “competitors are many”, or “channels await validation”."
+    }
+  },
+  "researchEvidenceReview": {
+    "reviewerAgentType": "expert-evidence-reviewer",
+    "sourceAgentTypes": [
+      "expert-evidence-researcher"
+    ],
+    "maxRecords": 8,
+    "maxCharactersPerRecord": 24000,
+    "reviewerEvidenceOnly": true,
+    "mode": "upstream-evidence-only",
+    "rules": [
+      "For file-first researchArtifacts, the reviewer must Read only the runtime-declared brief, all registered researcher Markdown parts, and server-generated browser audit; do not scan the workDir or call Playwright. Legacy packages without researchArtifacts may review only injected handoffs.",
+      "For each important claim, return verified, partially_verified, rejected, or evidence_gap plus include, merge, internal-only, or exclude placement guidance.",
+      "An opened upstream URL remains candidate evidence unless its actual claim is contradicted, unsupported, or outside scope; lack of a reviewer browser call is not itself a reason to downgrade it.",
+      "Return placement guidance with each verdict: include or merge details must identify their supported chapter/field; rejected or internal-only items are the only material omitted from the final report.",
+      "Review report-field specificity in addition to URL validity: generic labels such as “community”, “content platform”, “users have demand”, or “channel to explore” are not directly includable unless the record names a concrete page/platform, task or observation, supported field, and evidence boundary. For a weak item, return partially_verified or evidence_gap together with the next same-field source route."
+    ]
+  },
+  "researchArtifacts": {
+    "mode": "markdown-path-only",
+    "directory": "commercialization-research",
+    "briefPath": "commercialization-research/01-research-brief.md",
+    "researcherPaths": [
+      "commercialization-research/02-competitors.md",
+      "commercialization-research/03-user-needs.md",
+      "commercialization-research/04-channels.md"
+    ],
+    "reviewerPath": "commercialization-research/05-evidence-review.md",
+    "auditPath": "commercialization-research/06-browser-audit.md",
+    "maxCharacters": 90000,
+    "rule": "File-first handoff: the parent writes the dynamic brief first; every researcher continuously saves its assigned Markdown as a durable evidence ledger, checkpointing after each 6–10 assigned entries. The company PM core catalog contains 119 entries. The server assigns every core entry and every maintained-open entry to exactly one of the 02/03/04 researchers, so the three packages collectively cover the full task pool without giving all links to every worker. Each assigned entry gets one bounded Playwright outcome: opened, access_limited, or failed/no-result; pending is not completion. Success, deep reading, final citation, fixed row formats, and repeated retries are not required. The server executes the A/B/C queues in parallel waves of at most 10 still-unterminated URLs per lane and dispatches only the next remainder after real terminal receipts are persisted. opened, access_limited, failed/no-result, and truthful runtime interrupted records leave the queue. A still-running wave is not re-dispatched. An ended unchanged wave gets at most one targeted retry; if it ends again without receipts, remaining entries become interrupted (unexecuted/incomplete, not visited, no-result, or website-restricted), allowing D and subsequent stages to continue. A dispatch or recovery fingerprint is never completion evidence. Human verification shares a two-minute wait budget; if unresolved, preserve the page, release shared blocking, and continue public alternatives with verification_deferred. Never describe a timeout as user refusal or successful verification. Direct competitors already named in the brief are collectively covered by A for official site, price, stores, GitHub/Gitee/docs; B for Bilibili, YouTube, Reddit, Xiaohongshu, Zhihu, Baidu Tieba, and Weibo; and C for X, SEO, acquisition, and distribution routes. A direct competitor newly discovered during parallel work must be covered by its discoverer because sibling workers may not see it. No-result and access-limited are valid terminal platform outcomes. Planned concrete-content routes in ordinary brief prose/tables are also executable tasks; Required route blocks only refine their owner and primary/fallback hosts. A homepage extract is not a concrete social-content success. Count distinct actual tool calls, grouping all pages in one script. Ordinary primary homepages are not targeted attempts. A primary real limitation/failure/no-result or two targeted search/concrete-page calls without extraction leads to the same-field fallback, never silently skips it. Fallback extraction or real limitation/failure/no-result ends the route; two fallback calls with no concrete evidence end as unresolved, not verified or website-restricted. Give targeted product evidence a turn before further catalog waves. The server-generated 06 browser audit records every attempted, limited, failed, interrupted, pending, and unexecuted route. SOURCE_ROWS retains actual report-used audited evidence with a specific supporting observation. The server restores missing report-used URLs only; the full visit inventory stays in 06 and the report declaration points to it, without promoting every opened root into a citation. A dedicated evidence-absorption worker writes one chapter-ready material package that preserves detailed verified observations and, where direct evidence is unavailable, bounded AI inference with basis and falsification conditions rather than compressed placeholders. Write/Edit and Read-back are checkpoints, not completion. Each worker creates its own runtime-assigned .parts Markdown, then uses Edit for its own checkpoints; subsequent workers create new parts rather than appending to a shared ledger; do not detour through shell or nested workers. Rejected initial template fields remain a bounded process-local repair candidate; patch can correct them before a first render without creating a draft or starting 08. The parent renders one initial fixed-template HTML draft; the output reviewer writes 08; then the parent makes exactly one successfully committed terminal Write (rejected or unsaved attempts may be corrected and retried on the same draft without restarting research): a minimal mode=\"patch\" when 08 requests a supported correction, otherwise mode=\"finalize\" with empty fields. Durable final delivery is terminal and must stop further recovery, review, patch, or finalize work. Negated findings and optional suggestions are not patch requirements; use natural-language findings without adding a mandatory marker. Rejected patch fields never replace the reviewed draft; validation, disk write, and content acknowledgement must all succeed before commit. A legacy polluted draft may be recovered only from historical fields that exactly reproduce the current reviewed HTML, without deleting unknown fields or rewriting history. Repeated identical Write failures with unchanged draft and review produce a visible delivery diagnostic rather than endless automatic turns; retained materials are not a completed delivery, and corrected state can resume the same session. Rendering is preparation only. Write must save the exact rendered file and the runtime must acknowledge its contents before 08 or final-delivery state is committed. A failed disk write retains fields and review state; retry the same Write. A lost acknowledgement is retried without redoing research or rewriting fields. The model never calls the internal commit endpoint or supplies internal receipts.",
+    "absorptionPath": "commercialization-research/07-report-field-absorption.md",
+    "completionReviewPath": "commercialization-research/08-report-completeness-review.md",
+    "routeCompletion": {
+      "mode": "dynamic-route-status-v2",
+      "requireAttemptedRequiredRoutes": true
+    },
+    "researcherParts": true,
+    "splitting": "A/B/C researcherPaths declare ownership lanes, not a file-count limit. Each worker writes one independent <lane-stem>.parts/<agentId>.md. D reviews all registered parts; E consumes the full independent review and consults raw parts only for targeted details/source checks. maxCharacters is a legacy splitting hint, never a save/audit rejection gate. D reads every input file in offset/limit pages until EOF; E fully reads brief/05 and only needed ranges of raw parts/06. For parent 07/08 handoffs, full-file and complete paginated Reads are equivalent: accumulate successful ranges for the same file revision to EOF, excluding gaps, failed reads and child-only reads."
+  },
+  "researchTaskPurpose": {
+    "parameter": "research_task_kind",
+    "default": "source-batch",
+    "sourceBatch": "Process the assigned current A/B/C source-library wave. Only actual terminal audit receipts advance its queue.",
+    "targetedEvidence": "Use targeted-evidence for a specific product, competitor or Required route gap. Keep the same research_artifact_path and real browser audits but do not claim an unrelated library batch or synthesize interruptions for it.",
+    "handoff": "Both purposes write full content only to the assigned Markdown and return only its path plus a short status. Serialize tasks writing the same Markdown. The 119 core plus maintained-open queue, bounded retry policy and downstream review gates remain unchanged."
   }
 }

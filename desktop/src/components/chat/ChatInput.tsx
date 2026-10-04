@@ -1183,16 +1183,41 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
         : session),
     }))
 
-    // Expert prompts, skills, and output templates are server-managed runtime
-    // context. Never send them as a visible user message or transcript entry.
-    // Send only this public, QClaw-style kickoff question. Its normal user turn
-    // starts the CLI, which receives the hidden expert runtime on the server.
-    sendMessage(
-      activeTabId,
-      `介绍一下「${expert.name}」，你可以帮我做什么？`,
-      undefined,
-      { suppressSessionTitle: true },
-    )
+    // Commercialization research receives the user's first product description
+    // as a normal model turn. The Expert itself decides whether a product-specific
+    // AskUserQuestion card is needed; it never runs a server-owned static survey.
+    if (expert.id === 'commercialization-research-report') {
+      useChatStore.setState((state) => {
+        const chatSession = state.sessions[activeTabId]
+        if (!chatSession) return state
+        const welcome = '我是「新品商业化调研报告」专家。\n\n我会围绕竞品与替代方案、真实用户问题、付费与定价、市场机会、渠道与 SEO/SEM 线索，生成有来源边界的商业化调研报告。\n\n请直接描述想调研的产品；也可以粘贴链接、上传截图或已有材料。我会先理解产品，只有确实缺少会改变调研范围的信息时，才用与该产品相关的卡片向你追问。'
+        if (chatSession.messages.some((item) => item.type === 'assistant_text' && item.content === welcome)) return state
+        return {
+          sessions: {
+            ...state.sessions,
+            [activeTabId]: {
+              ...chatSession,
+              messages: [...chatSession.messages, {
+                id: 'commercialization-expert-welcome-' + Date.now(),
+                type: 'assistant_text',
+                content: welcome,
+                timestamp: Date.now(),
+              }],
+            },
+          },
+        }
+      })
+    } else {
+      // Expert prompts, skills, and output templates are server-managed runtime
+      // context. Never send them as a visible user message or transcript entry.
+      // Keep the established normal kickoff behavior for every other Expert.
+      sendMessage(
+        activeTabId,
+        `介绍一下「${expert.name}」，你可以帮我做什么？`,
+        undefined,
+        { suppressSessionTitle: true },
+      )
+    }
 
     useUIStore.getState().addToast({
       type: 'success',

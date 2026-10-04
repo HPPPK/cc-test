@@ -108,6 +108,71 @@ describe('ExpertPackRegistryService', () => {
       .resolves.toBe('# Bundled latest prompt')
   })
 
+  it('offers a bundled update for a user-owned override, preserves a backup, and resumes managed updates', async () => {
+    const service = await makeService()
+    const bundleDir = await mkdtemp(path.join(tmpdir(), 'bundled-expert-pack-'))
+    tempRoots.push(bundleDir)
+    const first = validPackEntries()
+    first['experts/custom/prompts/system.md'] = '# Official first prompt\n'
+    const bundledPath = path.join(bundleDir, 'custom-expert-pack.zip')
+    await writeFile(bundledPath, await adapter.write(first))
+    process.env.CLAUDE_EXPERT_PACKS_DIR = bundleDir
+    resetExpertPackRegistryForTests()
+
+    await service.listPacks()
+    await service.updateExpertPack('custom-expert-pack', { name: 'My local custom pack' })
+
+    const latest = validPackEntries({ version: '1.1.0' })
+    latest['experts/custom/prompts/system.md'] = '# Official latest prompt\n'
+    await writeFile(bundledPath, await adapter.write(latest))
+    resetExpertPackRegistryForTests()
+
+    const updateCandidate = (await service.listPacks()).find((pack) => pack.packId === 'custom-expert-pack')
+    expect(updateCandidate).toEqual(expect.objectContaining({
+      name: 'My local custom pack',
+      bundledUpdate: {
+        kind: 'version',
+        localVersion: '1.0.0',
+        bundledVersion: '1.1.0',
+      },
+    }))
+
+    const updated = await service.applyBundledExpertPackUpdate('custom-expert-pack')
+    expect(updated).toEqual(expect.objectContaining({
+      previousVersion: '1.0.0',
+      bundledVersion: '1.1.0',
+      backupFilename: expect.stringMatching(/^custom-expert-pack\.backup-1.0.0-/),
+    }))
+    await expect(readFile(path.join(getExpertPackStorageDir(), 'backups', updated.backupFilename))).resolves.toBeDefined()
+    await expect(service.readPackText('custom-expert-pack', 'experts/custom/prompts/system.md'))
+      .resolves.toBe('# Official latest prompt\n')
+
+    resetExpertPackRegistryForTests()
+    const afterUpdate = (await service.listPacks()).find((pack) => pack.packId === 'custom-expert-pack')
+    expect(afterUpdate).toEqual(expect.objectContaining({ version: '1.1.0' }))
+    expect(afterUpdate?.bundledUpdate).toBeUndefined()
+    expect((await service.listPacks()).filter((pack) => pack.packId === 'custom-expert-pack')).toHaveLength(1)
+  })
+
+  it('does not offer an update when ZIP text differs only by line endings', async () => {
+    const service = await makeService()
+    const bundleDir = await mkdtemp(path.join(tmpdir(), 'bundled-expert-pack-'))
+    tempRoots.push(bundleDir)
+    const official = validPackEntries()
+    official['experts/custom/prompts/system.md'] = '# Same prompt\n\nKeep this rule.\n'
+    await writeFile(path.join(bundleDir, 'custom-expert-pack.zip'), await adapter.write(official))
+    process.env.CLAUDE_EXPERT_PACKS_DIR = bundleDir
+    resetExpertPackRegistryForTests()
+
+    const local = validPackEntries()
+    local['experts/custom/prompts/system.md'] = '# Same prompt\r\n\r\nKeep this rule.\r\n'
+    await service.importExpertPackZip(await adapter.write(local))
+    resetExpertPackRegistryForTests()
+
+    const pack = (await service.listPacks()).find((candidate) => candidate.packId === 'custom-expert-pack')
+    expect(pack?.bundledUpdate).toBeUndefined()
+  })
+
   it('exposes and updates portable expert category metadata from the ZIP manifest', async () => {
     const service = await makeService()
     await service.importExpertPackZip(await adapter.write(validPackEntries({
@@ -248,6 +313,27 @@ describe('ExpertPackRegistryService', () => {
     expect(await zip.readText('experts/custom-expert/output-protocol.json')).toBe('{"status":"ok"}')
   })
 
+
+  it('preserves prototype visual workflow policy when updating a self-contained Expert ZIP', async () => {
+    const service = await makeService()
+    await service.importExpertPackZip(await adapter.write(validPackEntries()))
+
+    const updated = await service.updateExpertPack('custom-expert-pack', {
+      runtimePolicy: {
+        mode: 'prototype-visual-workflow',
+        allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+        requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+      },
+    })
+
+    expect(updated.manifest.runtimePolicy).toEqual({
+      mode: 'prototype-visual-workflow',
+      allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
+      requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
+    })
+    expect(updated.experts[0]?.runtimePolicy).toEqual(updated.manifest.runtimePolicy)
+  })
+
   it('adds self-contained Skill files during an Expert ZIP update and reloads the saved ZIP', async () => {
     const service = await makeService()
     await service.importExpertPackZip(await adapter.write(validPackEntries()))
@@ -344,6 +430,29 @@ describe('ExpertPackRegistryService', () => {
 
     await expect(service.getExpert('custom-expert')).resolves.toBeNull()
     await expect(service.listPacks()).resolves.toEqual([])
+  })
+
+  it('keeps an explicitly deleted bundled Expert ZIP deleted across a fresh Registry instance', async () => {
+    const service = await makeService()
+    const bundleDir = await mkdtemp(path.join(tmpdir(), 'bundled-expert-pack-'))
+    tempRoots.push(bundleDir)
+    await writeFile(path.join(bundleDir, 'custom-expert-pack.zip'), await adapter.write(validPackEntries()))
+    process.env.CLAUDE_EXPERT_PACKS_DIR = bundleDir
+    resetExpertPackRegistryForTests()
+
+    await expect(service.getExpert('custom-expert')).resolves.toEqual(expect.objectContaining({ id: 'custom-expert' }))
+    await service.deleteExpertPack('custom-expert-pack')
+
+    await expect(service.getExpert('custom-expert')).resolves.toBeNull()
+    await expect(readFile(path.join(getExpertPackStorageDir(), 'custom-expert-pack.zip'))).rejects.toThrow()
+
+    resetExpertPackRegistryForTests()
+    const freshService = new ExpertPackRegistryService()
+    await expect(freshService.getExpert('custom-expert')).resolves.toBeNull()
+    await expect(freshService.listPacks()).resolves.toEqual([])
+
+    await freshService.importExpertPackZip(await adapter.write(validPackEntries()))
+    await expect(freshService.getExpert('custom-expert')).resolves.toEqual(expect.objectContaining({ id: 'custom-expert' }))
   })
 
   it('imports a valid package and shows it in installed experts', async () => {

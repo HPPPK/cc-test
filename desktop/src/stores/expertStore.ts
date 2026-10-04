@@ -18,7 +18,7 @@ type ExpertStore = {
   loadExperts: () => Promise<void>
   enterExpertMode: (sessionId: string, expertId: string, researchBrowserOptions?: ExpertResearchBrowserStartOptions) => Promise<ExpertSessionSummary>
   exitExpertMode: (sessionId: string) => Promise<ExpertSessionSummary>
-  submitIntakeStep: (sessionId: string, input: { stepId?: string; answer?: unknown; answers?: Record<string, unknown> }) => Promise<ExpertSessionSummary>
+  submitIntakeStep: (sessionId: string, input: { stepId?: string; answer?: unknown; answers?: Record<string, unknown>; choiceId?: string }) => Promise<ExpertSessionSummary>
   runExpertAgent: (sessionId: string, input: { expertId?: string; projectRoot?: string; title?: string; notes?: string }, onProgress?: (content: string) => void) => Promise<{ expert: ExpertSessionSummary; materialRef: ExpertMaterialRef }>
   writePlaceholderMaterial: (sessionId: string, input: { expertId?: string; projectRoot?: string; title?: string; notes?: string }, onProgress?: (content: string) => void) => Promise<{ expert: ExpertSessionSummary; materialRef: ExpertMaterialRef }>
   exportPack: (packId: string) => Promise<boolean>

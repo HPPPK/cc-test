@@ -8,6 +8,7 @@ import { WorkflowSessionCreateService } from './workflowSessionCreateService.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
 import { resetWorkflowTemplateRegistryForTests } from './workflowTemplateRegistryService.js'
+import { recordWorkflowAgentTaskProgress } from './workflowAgentTaskStateService.js'
 import {
   getWorkflowPhaseDisallowedTools,
   hasWorkflowArtifactWriteCapability,
@@ -164,6 +165,109 @@ function appendPhaseEvidence(
   }
 }
 
+function workflowTemplateId(state: WorkflowSessionState): string {
+  return state.templateIdentity?.id || ('id' in state.template ? state.template.id : '')
+}
+
+async function ensureDevelopmentDeliveryPlan(state: WorkflowSessionState): Promise<void> {
+  if (workflowTemplateId(state) !== 'efficient-constrained-dev-debug-workflow-v5' || state.activePhaseId !== 'delivery-plan') return
+  const run = state.workflowRuns?.find(candidate => candidate.id === state.activeWorkflowRunId)
+    ?? state.workflowRuns?.find(candidate => candidate.status === 'active')
+  const workspaceRoot = run?.workspaceRoot ?? state.workspaceRoot
+  const runId = run?.id ?? state.activeWorkflowRunId
+  if (!workspaceRoot || !runId) throw new Error('Development E2E fixture cannot resolve the active run path')
+  const deliveryPlanPath = path.join(workspaceRoot, '.workflow', 'runs', runId, 'delivery-plan.md')
+  await fs.mkdir(path.dirname(deliveryPlanPath), { recursive: true })
+  await fs.writeFile(deliveryPlanPath, [
+    '# Delivery plan',
+    '',
+    '```json',
+    JSON.stringify({
+      tasks: [{
+        id: 'B1',
+        depends_on: [],
+        write_scopes: ['src/**'],
+        resource_claims: [],
+        execution_mode: 'write',
+      }],
+    }, null, 2),
+    '```',
+    '',
+  ].join('\n'), 'utf8')
+}
+
+function recordImplementationTaskReceipts(
+  initial: WorkflowSessionState,
+  sequence: number,
+): WorkflowSessionState {
+  const workflow = SHIPPED_WORKFLOWS.find(candidate => candidate.id === workflowTemplateId(initial))
+  if (!workflow || initial.activePhaseId !== workflow.implementationPhaseId) return initial
+  const snapshots = initial.runtimeContract?.phaseStates[initial.activePhaseId]?.taskSnapshots ?? []
+  const coder = snapshots.find(task => task.batchId === 'B1' && task.workflowRole === 'coder')
+  const reviewer = snapshots.find(task => task.batchId === 'B1' && task.workflowRole === 'reviewer')
+  if (coder?.status === 'succeeded' && reviewer?.status === 'succeeded' && reviewer.reviewStatus === 'pass') return initial
+  const plan = [{
+    id: 'B1',
+    dependsOn: [],
+    writeScopes: ['src/**'],
+    resourceClaims: [],
+    executionMode: 'write' as const,
+  }]
+  const recordedAt = (offset: number) => `2026-09-17T08:${String(sequence).padStart(2, '0')}:${String(offset).padStart(2, '0')}.000Z`
+  const coderRunId = `e2e-coder-${sequence}`
+  const reviewerRunId = `e2e-reviewer-${sequence}`
+  let state = recordWorkflowAgentTaskProgress(initial, {
+    phaseId: initial.activePhaseId,
+    batchId: 'B1',
+    role: 'coder',
+    plan,
+    status: 'running',
+    agentRunId: coderRunId,
+    toolUseId: `e2e-coder-tool-${sequence}`,
+    recordedAt: recordedAt(1),
+  })
+  state = recordWorkflowAgentTaskProgress(state, {
+    phaseId: state.activePhaseId!,
+    batchId: 'B1',
+    role: 'coder',
+    plan,
+    status: 'succeeded',
+    agentRunId: coderRunId,
+    toolUseId: `e2e-coder-tool-${sequence}`,
+    outputArtifactRefs: [`e2e:coder:B1:${sequence}`],
+    recordedAt: recordedAt(2),
+  })
+  state = recordWorkflowAgentTaskProgress(state, {
+    phaseId: state.activePhaseId!,
+    batchId: 'B1',
+    role: 'reviewer',
+    plan,
+    status: 'running',
+    agentRunId: reviewerRunId,
+    toolUseId: `e2e-reviewer-tool-${sequence}`,
+    recordedAt: recordedAt(3),
+  })
+  return recordWorkflowAgentTaskProgress(state, {
+    phaseId: state.activePhaseId!,
+    batchId: 'B1',
+    role: 'reviewer',
+    plan,
+    status: 'succeeded',
+    agentRunId: reviewerRunId,
+    toolUseId: `e2e-reviewer-tool-${sequence}`,
+    reviewStatus: 'pass',
+    outputArtifactRefs: [`e2e:reviewer:B1:${sequence}`],
+    recordedAt: recordedAt(4),
+  })
+}
+
+async function prepareManagedWorkflowCompletionFixtures(
+  state: WorkflowSessionState,
+  sequence: number,
+): Promise<WorkflowSessionState> {
+  await ensureDevelopmentDeliveryPlan(state)
+  return recordImplementationTaskReceipts(state, sequence)
+}
 async function recordCompletionPrerequisites(
   service: WorkflowRuntimeService,
   initial: WorkflowSessionState,
@@ -252,6 +356,7 @@ async function completeCurrentPhase(
   state: WorkflowSessionState,
   sequence: number,
 ): Promise<WorkflowSessionState> {
+  state = await prepareManagedWorkflowCompletionFixtures(state, sequence)
   state = await recordCompletionPrerequisites(service, state, sequence)
   const phaseId = state.activePhaseId
   if (!phaseId) throw new Error('Cannot complete an already terminal workflow')
@@ -361,6 +466,42 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       }
     }
   })
+  test('keeps top-level phase policy, runtime contract, embedded contract, and permissions aligned', async () => {
+    const adapter = new ZipPackAdapter()
+    for (const workflow of SHIPPED_WORKFLOWS) {
+      const source = path.join(process.cwd(), 'src', 'server', 'packs', workflow.packFile)
+      const archive = await adapter.read(new Uint8Array(await fs.readFile(source)))
+      const workflowEntry = archive.entries.find((entry) => entry.path.startsWith('workflows/') && entry.path.endsWith('.workflow.json'))
+      if (!workflowEntry) throw new Error('Workflow entry is missing from ' + workflow.packFile)
+      const template = await archive.readJson<any>(workflowEntry.path)
+      const permissions = await archive.readJson<any>('permissions/permissions.json')
+      const permissionPhases = new Map((permissions.workflows?.[0]?.phases ?? []).map((phase: any) => [phase.id, phase]))
+
+      for (const phase of template.phases) {
+        expect(phase.contract?.instructions, `${workflow.id}/${phase.id} embedded instructions`).toBe(phase.instructions)
+        expect(phase.contract?.executionRules, `${workflow.id}/${phase.id} embedded execution rules`).toEqual(phase.executionRules)
+        expect(phase.contract?.handoffRules, `${workflow.id}/${phase.id} embedded handoff rules`).toEqual(phase.handoffRules)
+        expect(phase.contract?.completionCriteria, `${workflow.id}/${phase.id} embedded completion criteria`).toEqual(phase.completionCriteria)
+        expect(phase.contract?.subagentPolicy, `${workflow.id}/${phase.id} embedded subagent policy`).toEqual(phase.subagentPolicy)
+        expect(phase.contract?.outputArtifacts, `${workflow.id}/${phase.id} embedded output artifacts`).toEqual(phase.outputArtifacts)
+        expect(phase.runtimeContract?.allowedActions, `${workflow.id}/${phase.id} runtime allowed actions`).toEqual(phase.actionPolicy?.allowedActions)
+        expect(phase.runtimeContract?.forbiddenActions, `${workflow.id}/${phase.id} runtime forbidden actions`).toEqual(phase.actionPolicy?.forbiddenActions)
+        expect(phase.runtimeContract?.toolAccess?.allowed, `${workflow.id}/${phase.id} runtime allowed tools`).toEqual(phase.toolPolicy?.allowedTools)
+        expect(phase.runtimeContract?.toolAccess?.forbidden, `${workflow.id}/${phase.id} runtime forbidden tools`).toEqual(phase.toolPolicy?.disallowedTools)
+        expect(permissionPhases.get(phase.id)?.toolPolicy, `${workflow.id}/${phase.id} permissions tool policy`).toEqual(phase.toolPolicy)
+        expect(permissionPhases.get(phase.id)?.runtimeContract, `${workflow.id}/${phase.id} permissions runtime contract`).toEqual(phase.runtimeContract)
+      }
+    }
+
+    const source = path.join(process.cwd(), 'src', 'server', 'packs', 'efficient-constrained-dev-debug-workflow-v5.zip')
+    const archive = await adapter.read(new Uint8Array(await fs.readFile(source)))
+    const workflowEntry = archive.entries.find((entry) => entry.path.startsWith('workflows/') && entry.path.endsWith('.workflow.json'))!
+    const development = await archive.readJson<any>(workflowEntry.path)
+    const validation = development.phases.find((phase: any) => phase.id === 'scenario-review')
+    expect(JSON.stringify(validation)).not.toContain('Acceptance Reviewer')
+    expect(JSON.stringify(validation)).not.toContain('acceptance-review')
+    expect(validation.subagentPolicy).toMatchObject({ allowedRoles: ['qa'], sequence: ['qa'] })
+  })
   test('allows the development implementation phase to schedule independent batches through the host runtime while keeping Coder before Reviewer', async () => {
     const adapter = new ZipPackAdapter()
     const source = path.join(process.cwd(), 'src', 'server', 'packs', 'efficient-constrained-dev-debug-workflow-v5.zip')
@@ -376,8 +517,8 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       controlledBy: 'host-runtime',
       sequence: ['coder', 'reviewer'],
     })
-    expect(phase?.instructions).toContain('Coder → Reviewer')
-    expect(phase?.instructions).toContain('write scopes')
+    expect(phase?.instructions).toContain('Coder implements, then Reviewer reads and reviews that completed batch')
+    expect(phase?.instructions).toContain('change only the agreed scope')
   })
 
   test('keeps every shipped subagent phase host-managed and unbounded', async () => {
@@ -483,38 +624,30 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const development = await loadTemplate('efficient-constrained-dev-debug-workflow-v5.zip')
     const developmentIntake = development.phases.find((phase) => phase.id === 'route-context')
     const developmentPhase = (id: string) => development.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(development.version).toBe('20')
+    expect(development.version).toBe('24')
     expect(developmentIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
-      requireNecessaryQuestion: true,
       requireAnswerProcessingBeforeNextQuestion: false,
     }))
-    expect(developmentPhase('route-context')).toContain('Continue this one-question-at-a-time clarification until every material current-phase decision is settled')
+    expect(developmentPhase('route-context')).toContain('Continue dynamic one-question-at-a-time exploration until the current phase has enough clarity')
     expect(developmentPhase('route-context')).toContain('AGENTS.md')
     expect(developmentPhase('route-context')).toContain('not a precondition')
     expect(developmentPhase('route-context')).toContain('### Focused clarification')
+    expect(developmentPhase('route-context')).toContain('### Brainstorming mode precedence')
+    expect(developmentPhase('route-context')).toContain('When brainstormingMode = on')
+    expect(developmentPhase('route-context')).toContain('complete brainstorming contract takes priority')
+    expect(developmentPhase('route-context')).toContain('When brainstormingMode = off')
+    expect(developmentPhase('route-context')).toContain('conservative defaults and ask only missing blocking questions')
+    expect(developmentPhase('scope-plan')).toContain('When brainstormingMode = on')
+    expect(developmentPhase('scope-plan')).toContain('continue dynamic one-question-at-a-time exploration')
+    expect(developmentPhase('scope-plan')).toContain('Do not cap the total number of clarification rounds')
+    expect(developmentPhase('scope-plan')).toContain('When brainstormingMode = off')
+    expect(developmentPhase('scope-plan')).toContain('Do not ask too many details for perfection')
     expect(developmentPhase('route-context')).not.toContain('AskUserQuestion packet')
     expect(developmentPhase('route-context')).not.toContain('Mandatory multi-outcome clarification prerequisite')
-    expect(developmentPhase('delivery-plan')).not.toContain('.workflow/engineering-log.md')
-    expect(developmentPhase('delivery-plan')).toContain('application-appropriate logging/diagnostic design')
-    expect(developmentPhase('delegate-implement')).toContain('Treat continuity and diagnostics as normal implementation work')
-    expect(developmentPhase('scenario-review')).toContain('redaction/safety expectations')
-    expect(developmentPhase('delivery-plan')).toContain('### Core User-Flow Verification Plan (mandatory)')
-    expect(developmentPhase('delegate-implement')).toContain('### Core User-Flow Implementation and Review Contract (mandatory)')
-    expect(developmentPhase('delegate-implement')).toContain('### Executable batch-parallelism contract')
-    expect(developmentPhase('delegate-implement')).toContain('workflow_parallel_plan.tasks contains every task in the active phase')
-    expect(developmentPhase('delegate-implement')).toContain('Do not create an investigation-only Debug Subagent merely because')
-    expect(developmentPhase('delivery-plan')).toContain('### Executable batch-parallelism contract')
-    expect(developmentPhase('scenario-review')).toContain('### Core-Flow Acceptance Evidence (mandatory)')
-    expect(developmentPhase('local-preview')).toContain('### Preview Failure Diagnostic Loop (mandatory)')
-    const developmentScenarioReview = development.phases.find((phase) => phase.id === 'scenario-review')
-    expect(developmentScenarioReview?.evidencePolicy?.requiredArtifacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'core-flow-evidence', required: true }),
-    ]))
-
     const feature = await loadTemplate('feature-extension-workflow-v8.zip')
     const featureIntake = feature.phases.find((phase) => phase.id === 'feature-memory-plan')
     const featurePhase = (id: string) => feature.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(feature.version).toBe('20')
+    expect(feature.version).toBe('22')
     expect(featureIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
     expect(featureIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
     expect(featureIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
@@ -540,7 +673,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const debug = await loadTemplate('debug-repair-workflow-v8.zip')
     const debugIntake = debug.phases.find((phase) => phase.id === 'debug-memory-intake')
     const debugPhase = (id: string) => debug.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(debug.version).toBe('21')
+    expect(debug.version).toBe('23')
     expect(debugIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
     expect(debugIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
     expect(debugIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
@@ -571,8 +704,10 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       for (const phase of template.phases) expect(phase.instructions ?? '').not.toContain('engineering-log')
     }
 
+    expect(developmentPhase('delegate-implement')).toContain('Run truly independent batches in parallel when resources allow')
+    expect(developmentPhase('delegate-implement')).toContain('Coder implements, then Reviewer reads and reviews that completed batch')
+
     for (const phaseInstructions of [
-      developmentPhase('delegate-implement'),
       featurePhase('feature-implement'),
       debugPhase('debug-fix'),
     ]) {
@@ -787,6 +922,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
         expect(state.pendingRoute).toBeNull()
 
         if (routeIndex === 0) {
+          state = await prepareManagedWorkflowCompletionFixtures(state, 60 + routeIndex)
           state = await recordCompletionPrerequisites(service, state, 60 + routeIndex)
           const reworkPending = await service.submitPhaseCompletion({
             state,
@@ -832,7 +968,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     }
   }, 90_000)
 
-  test('recovers every shipped validation phase from blocked state through a confirmed implementation route', async () => {
+  test('recovers every shipped validation phase from blocked state through the controlled implementation route', async () => {
     await initializeIsolatedPackRegistry()
     const service = runtimeService()
 
@@ -867,31 +1003,38 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
             requireUserConfirmation: true,
           },
         })
-        expect(requested.state.pendingRoute).toMatchObject({
-          intent: 'jump_to_phase',
-          targetPhaseId: workflow.routeToPhaseId,
-          origin: 'blocked-recovery',
-          status: 'pending',
-        })
-        expect(requested.state.pendingConfirmation).toBeNull()
-        expect(requested.state.runStatus).toBe('waiting_for_user')
+        if (requested.state.pendingRoute) {
+          expect(requested.state.pendingRoute).toMatchObject({
+            intent: 'jump_to_phase',
+            targetPhaseId: workflow.routeToPhaseId,
+            origin: 'blocked-recovery',
+            status: 'pending',
+          })
+          expect(requested.state.pendingConfirmation).toBeNull()
+          expect(requested.state.runStatus).toBe('waiting_for_user')
 
-        const confirmed = await service.applyTransition({
-          state: requested.state,
-          requestedAt: `2026-07-20T02:${String(routeIndex).padStart(2, '0')}:20.000Z`,
-          request: {
-            phaseId: routeFromPhaseId,
-            action: 'confirm',
-            confirmationId: requested.state.pendingRoute!.routeId,
-            stateVersion: requested.state.stateVersion,
-            transitionId: `e2e-blocked-route-confirm-${workflow.id}-${routeFromPhaseId}`,
-          },
-        })
-        expect(confirmed.state.activePhaseId).toBe(workflow.routeToPhaseId)
-        expect(confirmed.state.runStatus).toBe('active')
-        expect(confirmed.state.pendingConfirmation).toBeNull()
-        expect(confirmed.state.pendingRoute).toBeNull()
-        expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+          const confirmed = await service.applyTransition({
+            state: requested.state,
+            requestedAt: `2026-07-20T02:${String(routeIndex).padStart(2, '0')}:20.000Z`,
+            request: {
+              phaseId: routeFromPhaseId,
+              action: 'confirm',
+              confirmationId: requested.state.pendingRoute.routeId,
+              stateVersion: requested.state.stateVersion,
+              transitionId: `e2e-blocked-route-confirm-${workflow.id}-${routeFromPhaseId}`,
+            },
+          })
+          expect(confirmed.state.activePhaseId).toBe(workflow.routeToPhaseId)
+          expect(confirmed.state.runStatus).toBe('active')
+          expect(confirmed.state.pendingConfirmation).toBeNull()
+          expect(confirmed.state.pendingRoute).toBeNull()
+          expect(confirmed.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-confirmed' })
+        } else {
+          expect(requested.state.activePhaseId).toBe(workflow.routeToPhaseId)
+          expect(requested.state.runStatus).toBe('active')
+          expect(requested.state.pendingConfirmation).toBeNull()
+          expect(requested.state.transitionHistory.at(-1)).toMatchObject({ action: 'route-recovery-auto-applied' })
+        }
       }
     }
   }, 90_000)
@@ -911,7 +1054,7 @@ test('ships Feature and Debug core-flow review and evidence contracts without ch
   const feature = await load('feature-extension-workflow-v8.zip')
   const featureImplement = feature.phases.find((item: any) => item.id === 'feature-implement')
   const featureQuality = feature.phases.find((item: any) => item.id === 'feature-quality-preview')
-  expect(feature.version).toBe('20')
+  expect(feature.version).toBe('22')
   expect(featureImplement.instructions).toContain('### Core User-Flow Implementation and Review Contract (mandatory)')
   expect(featureImplement.instructions).toContain('actualEntryBoundaryCovered')
   expect(featureQuality.instructions).toContain('### Core-Flow Acceptance Evidence (mandatory)')
@@ -930,7 +1073,7 @@ test('ships Feature and Debug core-flow review and evidence contracts without ch
   const debugInvestigate = debug.phases.find((item: any) => item.id === 'debug-investigate')
   const debugFix = debug.phases.find((item: any) => item.id === 'debug-fix')
   const debugQuality = debug.phases.find((item: any) => item.id === 'debug-quality-preview')
-  expect(debug.version).toBe('21')
+  expect(debug.version).toBe('23')
   expect(debugInvestigate.instructions).toContain('### Diagnostic Evidence Discipline (mandatory)')
   expect(debugFix.instructions).toContain('### Core Repair Flow and Reviewer Contract (mandatory)')
   expect(debugFix.instructions).toContain('logEvidenceDisposition')

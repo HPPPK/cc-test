@@ -31,6 +31,8 @@ type PlaywrightAction = {
 export type PlaywrightRunnerRequest = {
   executablePath?: string
   connection?: { kind: 'cdp'; endpoint: string }
+  /** Expert-owned context key. Agents may share cookies while retaining separate tabs. */
+  sharedContextKey?: string
   actions: PlaywrightAction[]
   visible: boolean
   /** Runtime-owned presentation, never supplied by the model input schema. */
@@ -39,6 +41,7 @@ export type PlaywrightRunnerRequest = {
   activityControl?: { endpoint: string; sessionId: string; browserKey?: string }
   slowMoMs: number
   locale?: string
+  screenshotFullPage?: boolean
   screenshotPath?: string
   pageTimeoutMs: number
   networkIdleTimeoutMs: number
@@ -53,8 +56,18 @@ type PlaywrightRunnerResult = {
   title: string
   text: string
   links: Array<{ text: string; url: string }>
-  steps: Array<{ index: number; type: PlaywrightAction['type']; outcome: 'success' | 'failed'; url: string; title?: string; detail?: string; screenshotPath?: string }>
+  steps: Array<{ index: number; type: PlaywrightAction['type']; outcome: 'success' | 'failed'; url: string; title?: string; detail?: string; screenshotPath?: string; scriptPages?: Array<{ requestedUrl: string; finalUrl?: string; title?: string; status: 'opened' | 'access_limited' | 'failed'; detail?: string }> }>
   accessLimited: boolean
+  verificationWindowPresentationConfirmed?: boolean
+  verificationGateId?: string
+  sharedHumanVerificationBlocked?: boolean
+  accessDiagnostics?: {
+    connectionKind: 'managed' | 'cdp'
+    searchEngine?: 'Google' | '百度' | 'Bing' | '360'
+    observedAt: string
+    pacingWaitedMs?: number
+    verificationKind?: string
+  }
   screenshotPath?: string
   error?: string
 }
@@ -62,6 +75,12 @@ type PlaywrightRunnerResult = {
 type BridgeRequest =
   | { id: string; type: 'run'; sessionKey: string; request: PlaywrightRunnerRequest }
   | { id: string; type: 'close-session'; sessionKey: string }
+  /**
+   * Best-effort recovery for a runner request which outlived its caller.
+   * The runner serializes this recovery with the same shared-context queue,
+   * so it cannot close pages underneath an active sibling browser action.
+   */
+  | { id: string; type: 'abort-session'; sessionKey: string }
   | { id: string; type: 'present-session'; sessionKey: string; presentation: 'minimized' | 'foreground' }
 
 type BridgeResponse = {
@@ -123,6 +142,10 @@ export function createPlaywrightBridgeRequest(id: string, sessionKey: string, re
   return { id, type: 'run', sessionKey, request }
 }
 
+export function createPlaywrightBridgeAbortSessionRequest(id: string, sessionKey: string): BridgeRequest {
+  return { id, type: 'abort-session', sessionKey }
+}
+
 function bridgeFailure(state: PersistentBridge, detail: string): void {
   for (const pending of state.pending.values()) {
     clearTimeout(pending.timeout)
@@ -143,6 +166,11 @@ async function consumeBridgeStream(state: PersistentBridge, stream: ReadableStre
       buffered += decoder.decode(value, { stream: true })
       if (kind === 'stderr') {
         state.stderr = (state.stderr + buffered).slice(-4_000)
+        // A live presentation failure must be diagnosable while the persistent
+        // runner remains alive; previously stderr was visible only after exit.
+        if (buffered.includes('Failed to apply browser window presentation')) {
+          console.error('[Playwright bridge] ' + buffered.trim())
+        }
         buffered = ''
         continue
       }
@@ -203,10 +231,27 @@ function getPersistentBridge(env: NodeJS.ProcessEnv): PersistentBridge {
   return persistentBridge
 }
 
+/**
+ * The caller has already received a timeout. Do not await another bridge
+ * request here: the original action may be holding that session's queue.
+ * The runner handles abort-session outside that queue, closes only the
+ * affected browser session, and lets later work reopen it cleanly.
+ */
+function abortTimedOutBridgeSession(state: PersistentBridge, sessionKey: string): void {
+  const abortRequest = createPlaywrightBridgeAbortSessionRequest(nextRequestId(state), sessionKey)
+  try {
+    state.proc.stdin.write(JSON.stringify(abortRequest) + '\n')
+  } catch {
+    // The existing bridge exit listener handles a dead runner. The original
+    // caller must still receive its timeout rather than waiting on cleanup.
+  }
+}
+
 function invokeBridge<T extends PlaywrightRunnerResult | undefined>(state: PersistentBridge, request: BridgeRequest, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => {
       state.pending.delete(request.id)
+      abortTimedOutBridgeSession(state, request.sessionKey)
       reject(new Error('The managed Node Playwright bridge timed out after ' + timeoutMs + 'ms.'))
     }, timeoutMs)
     state.pending.set(request.id, { resolve: resolve as PendingRequest['resolve'], reject, timeout })
@@ -232,6 +277,15 @@ export async function runPlaywrightWithNodeBridge(sessionKey: string, request: P
   return result
 }
 
+/** Cancels ordinary work but never tears down a preserved human-verification tab. */
+export async function abortPlaywrightBrowserSession(sessionKey: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (!persistentBridge) return
+  const state = persistentBridge
+  const message = createPlaywrightBridgeAbortSessionRequest(nextRequestId(state), sessionKey)
+  await invokeBridge<undefined>(state, message, 10_000)
+}
+
+/** Explicit session teardown for Expert exit/shutdown paths. */
 export async function closePlaywrightBrowserSession(sessionKey: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   if (!persistentBridge) return
   const state = persistentBridge

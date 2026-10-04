@@ -63,14 +63,8 @@ type OutputSchema = ReturnType<typeof outputSchema>
 type Input = z.infer<InputSchema>
 type Output = z.infer<OutputSchema>
 
-type WorkflowSubmitFailureRecovery = {
-  phaseId: string | null
-  attempts: number
-}
-
 type AppStateWithWorkflow = ReturnType<ToolUseContext['getAppState']> & {
   workflow?: WorkflowSessionState
-  workflowSubmitFailureRecovery?: WorkflowSubmitFailureRecovery
 }
 
 function workflowStateFromContext(context: ToolUseContext): WorkflowSessionState | null {
@@ -270,103 +264,22 @@ function isRecoverableSubmissionInputFailure(
   ].some((field) => normalized.includes(field))
 }
 
-function workflowStateForFailure(context: ToolUseContext): WorkflowSessionState | null {
-  return workflowStateFromContext(context)
-}
-
-async function blockCompletionRecovery(
-  context: ToolUseContext,
-  message: string,
-  attempts: number,
-): Promise<void> {
-  const desktop = getDesktopWorkflowApiContext()
-  if (desktop) {
-    const latest = await fetchDesktopWorkflowState(desktop)
-    const phaseId = typeof latest.activePhaseId === 'string' ? latest.activePhaseId : null
-    const stateVersion = typeof latest.stateVersion === 'number' ? latest.stateVersion : null
-    if (!phaseId || stateVersion === null) throw new Error('Current workflow phase is unavailable.')
-    const response = await fetch(
-      `${desktop.serverUrl}/api/sessions/${encodeURIComponent(desktop.sessionId)}/workflow/transition`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          action: 'blocked',
-          phaseId,
-          stateVersion,
-          transitionId: `submit-recovery-blocked:${phaseId}:${stateVersion}:${attempts}`,
-          handoff: { failureKind: 'submit_phase_completion', attempts },
-          rationale: message,
-          evidence: [],
-        }),
-      },
-    )
-    if (!response.ok) throw new Error(`Unable to block workflow after submit failure (HTTP ${response.status}).`)
-    return
-  }
-
-  const state = workflowStateForFailure(context)
-  if (!state?.activePhaseId) return
-  const result = await new WorkflowRuntimeService().submitPhaseCompletion({
-    state,
-    requestedAt: new Date().toISOString(),
-    transitionId: `submit-recovery-blocked:${state.activePhaseId}:${state.stateVersion}:${attempts}`,
-    submission: {
-      phaseId: state.activePhaseId,
-      stateVersion: state.stateVersion,
-      status: 'blocked',
-      handoff: { failureKind: 'submit_phase_completion', attempts },
-      rationale: message,
-      evidence: [],
-    },
-  })
-  context.setAppState((previous) => ({
-    ...previous,
-    workflow: result.state,
-    workflowSubmitFailureRecovery: undefined,
-  }) as ReturnType<ToolUseContext['getAppState']>)
-}
-
 export async function handleSubmitPhaseCompletionFailure(
-  context: ToolUseContext,
+  _context: ToolUseContext,
   failureMessage: string,
   failedInput?: { status?: unknown },
 ): Promise<{ retryAllowed: boolean; message: string }> {
-  const appState = context.getAppState() as AppStateWithWorkflow
-  const phaseId = appState.workflow?.activePhaseId ?? null
-  const prior = appState.workflowSubmitFailureRecovery
-  const attempts = prior?.phaseId === phaseId ? prior.attempts + 1 : 1
-  const recoverable = isRecoverableSubmissionInputFailure(failureMessage, failedInput)
+  const correction = isUnavailableCompletionStatusInputFailure(failureMessage, failedInput)
+    ? 'Use the allowed completion status unable, not unavailable.'
+    : isRecoverableSubmissionInputFailure(failureMessage, failedInput)
+      ? 'Correct the structured submit_phase_completion input named in the error.'
+      : 'Review the exact error, correct the current submit_phase_completion input or supporting evidence, and submit again.'
 
-  if (recoverable && attempts === 1) {
-    context.setAppState((previous) => ({
-      ...previous,
-      workflowSubmitFailureRecovery: { phaseId, attempts },
-    }) as ReturnType<ToolUseContext['getAppState']>)
-    return {
-      retryAllowed: true,
-      message: `WORKFLOW_SUBMIT_RETRY_ALLOWED: ${failureMessage} ${isUnavailableCompletionStatusInputFailure(failureMessage, failedInput) ? 'Use the allowed completion status unable, not unavailable, then retry once.' : 'Correct the structured submit_phase_completion input and retry once.'} Do not advance or route the workflow before a successful submission.`,
-    }
-  }
-
-  const reason = recoverable
-    ? `阶段完成提交连续失败两次：${failureMessage}`
-    : `阶段完成提交无法安全恢复：${failureMessage}`
-  try {
-    await blockCompletionRecovery(context, reason, attempts)
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    return {
-      retryAllowed: false,
-      message: `WORKFLOW_SUBMIT_BLOCKED: ${reason} The workflow could not persist the blocked state: ${detail}`,
-    }
-  }
   return {
-    retryAllowed: false,
-    message: `WORKFLOW_SUBMIT_BLOCKED: ${reason} 当前阶段已阻塞，不能进入下一阶段。只可调整当前结果、查看产物、暂停或退出工作流。`,
+    retryAllowed: true,
+    message: `WORKFLOW_SUBMIT_RETRY_ALLOWED: ${failureMessage} ${correction} Keep the workflow in its current phase until a submit_phase_completion call succeeds; do not advance or route the workflow yet.`,
   }
 }
-
 export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
   name: SUBMIT_PHASE_COMPLETION_TOOL_NAME,
   maxResultSizeChars: 100_000,
@@ -424,10 +337,6 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
     return { result: true }
   },
   async call(input, context) {
-    context.setAppState((previous) => ({
-      ...previous,
-      workflowSubmitFailureRecovery: undefined,
-    }) as ReturnType<ToolUseContext['getAppState']>)
     const desktop = getDesktopWorkflowApiContext()
     if (desktop) {
       return await submitThroughDesktopApi(input, context, desktop)

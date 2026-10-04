@@ -1,0 +1,14 @@
+{
+  "name": "AskUserQuestion",
+  "purpose": "补齐或确认会影响原型内容、研究范围、品牌资产、演示内容和设计方向的关键信息。",
+  "id": "ask-user-question",
+  "type": "hostBuiltinRef",
+  "hostToolId": "AskUserQuestion",
+  "permissions": [
+    {
+      "id": "prototype-brief-confirmation",
+      "description": "仅用于补齐产品事实、调研范围、页面/屏幕范围、未提供的配色、品牌资产授权和演示内容标识；已有答案不重复问，缺配色且未被明确委托时必须确认。"
+    }
+  ],
+  "network": "none"
+}

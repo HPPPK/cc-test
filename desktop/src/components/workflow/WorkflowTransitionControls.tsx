@@ -3,6 +3,7 @@ import { createWorkflowTransitionId } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
 import { formatWorkflowPhaseSummary } from './workflowPhaseDisplay'
+import { notifyDesktop } from '../../lib/desktopNotifications'
 
 export type WorkflowTransitionCommand = {
   phaseId: string
@@ -10,7 +11,7 @@ export type WorkflowTransitionCommand = {
   transitionId?: string
   confirmationId?: string
   stateVersion?: number
-  nextPhaseContextStrategy?: 'inherit' | 'clear'
+  nextPhaseContextStrategy?: 'inherit' | 'clear' | 'capsule'
   handoff?: {
     summary: string
     artifacts: unknown[]
@@ -32,6 +33,7 @@ type WorkflowTransitionControlsProps = {
   transitionResetKey?: number
   transitionSyncing?: boolean
   embedded?: boolean
+  sessionId?: string
   onConfirm: (command: WorkflowTransitionCommand) => void
   onReject: (command: WorkflowTransitionCommand) => void
   onRetry: (command: WorkflowTransitionCommand) => void
@@ -46,6 +48,7 @@ export function WorkflowTransitionControls({
   transitionResetKey = 0,
   transitionSyncing = false,
   embedded = false,
+  sessionId,
   onConfirm,
   onReject,
   onRetry,
@@ -76,16 +79,25 @@ export function WorkflowTransitionControls({
     ),
   )
   const automaticRecoveryExpiresAt = workflow?.autoRecovery?.expiresAt
+  // Recovery state belongs to the server's workflow snapshot. Do not surface a
+  // manual-action card while that snapshot says the automatic recovery window is
+  // still active, even if a stale phase id briefly reaches the UI first.
   const automaticRecoveryIsActive = Boolean(
-    blocked
-    && phaseId
-    && workflow?.autoRecovery?.phaseId === phaseId
+    workflow?.autoRecovery
     && typeof automaticRecoveryExpiresAt === 'string'
     && !Number.isNaN(Date.parse(automaticRecoveryExpiresAt))
     && Date.parse(automaticRecoveryExpiresAt) > clockNow,
   )
   const confirmationId = workflow?.pendingConfirmationId
   const workflowStateKey = `${phaseId ?? 'missing'}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
+  const pendingRouteId = workflow?.pendingRoute?.status === 'pending'
+    ? workflow.pendingRoute.routeId
+    : null
+  const pendingWorkflowActionId = pendingRouteId
+    ? `route:${pendingRouteId}`
+    : workflow?.pendingConfirmation && confirmationId
+      ? `confirmation:${confirmationId}`
+      : null
 
   useEffect(() => {
     const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
@@ -97,6 +109,18 @@ export function WorkflowTransitionControls({
     lastWorkflowStateRef.current = workflowStateKey
     lastResetKeyRef.current = transitionResetKey
   }, [transitionResetKey, workflowStateKey])
+
+  useEffect(() => {
+    if (!pendingWorkflowActionId) return
+
+    void notifyDesktop({
+      dedupeKey: `workflow-user-action:${sessionId ?? 'current'}:${pendingWorkflowActionId}`,
+      title: t('workflows.transition.confirmTitle'),
+      body: t('workflows.transition.confirmDescription'),
+      requestAttention: true,
+      ...(sessionId ? { target: { type: 'session' as const, sessionId } } : {}),
+    })
+  }, [pendingWorkflowActionId, sessionId, t])
 
   useEffect(() => {
     if (!automaticRecoveryExpiresAt) return undefined

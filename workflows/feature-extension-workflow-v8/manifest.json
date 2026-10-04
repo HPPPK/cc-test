@@ -1,0 +1,299 @@
+{
+  "packId": "feature-extension-workflow-v8",
+  "name": "功能扩展流程",
+  "version": "22",
+  "schemaVersion": 2,
+  "type": "workflow-pack",
+  "description": "Lightweight follow-up workflow for extending an existing project with inherited .workflow memory.",
+  "entrypoints": {
+    "workflows": [
+      "workflows/feature-extension-workflow-v8.workflow.json"
+    ],
+    "experts": [],
+    "skills": [
+      "skills/superpowers-writing-plans/SKILL.md",
+      "skills/superpowers-subagent-driven-development/SKILL.md",
+      "skills/superpowers-requesting-code-review/SKILL.md",
+      "skills/superpowers-test-driven-development/SKILL.md",
+      "skills/superpowers-verification-before-completion/SKILL.md",
+      "skills/workflow-lightweight-batch-review/SKILL.md"
+    ]
+  },
+  "permissions": [],
+  "modelRequirements": {
+    "schemaVersion": 1,
+    "workflows": [
+      {
+        "id": "feature-extension-workflow-v8",
+        "phases": [
+          {
+            "id": "feature-memory-plan"
+          },
+          {
+            "id": "feature-implement"
+          },
+          {
+            "id": "feature-quality-preview"
+          },
+          {
+            "id": "feature-finish-memory"
+          }
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "workflowSchemaVersion": 2,
+    "selfContained": true
+  },
+  "dependencies": {
+    "packagedSkills": [
+      {
+        "id": "superpowers:writing-plans",
+        "identity": "superpowers:writing-plans",
+        "safeName": "superpowers-writing-plans",
+        "entrypoint": "skills/superpowers-writing-plans/SKILL.md",
+        "root": "skills/superpowers-writing-plans",
+        "contentHash": "sha256-239cd2f530a9c9372d3d8e7c66fb7aeed21547565fe8f53b6e34b67730e7b6b4",
+        "source": "superpowers",
+        "references": [
+          "superpowers:writing-plans"
+        ],
+        "aliases": [
+          "superpowers:writing-plans",
+          "writing-plans"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-memory-plan",
+            "field": "skillBindings",
+            "reference": "superpowers:writing-plans",
+            "name": "superpowers:writing-plans",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:writing-plans"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 8141
+      },
+      {
+        "id": "superpowers:subagent-driven-development",
+        "identity": "superpowers:subagent-driven-development",
+        "safeName": "superpowers-subagent-driven-development",
+        "entrypoint": "skills/superpowers-subagent-driven-development/SKILL.md",
+        "root": "skills/superpowers-subagent-driven-development",
+        "contentHash": "sha256-ab9767e68747c857cc12f45dba9b5947f5a2280e6e00f5c8d22450aa593b2b97",
+        "source": "superpowers",
+        "references": [
+          "superpowers:subagent-driven-development"
+        ],
+        "aliases": [
+          "subagent-driven-development",
+          "superpowers:subagent-driven-development"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:subagent-driven-development",
+            "name": "superpowers:subagent-driven-development",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:subagent-driven-development"
+          }
+        ],
+        "fileCount": 5,
+        "totalBytes": 20502
+      },
+      {
+        "id": "superpowers:requesting-code-review",
+        "identity": "superpowers:requesting-code-review",
+        "safeName": "superpowers-requesting-code-review",
+        "entrypoint": "skills/superpowers-requesting-code-review/SKILL.md",
+        "root": "skills/superpowers-requesting-code-review",
+        "contentHash": "sha256-69a5600e8606fdf36176504fdb48616c4d2f85a567e21eadcd1f6791863178e7",
+        "source": "superpowers",
+        "references": [
+          "superpowers:requesting-code-review"
+        ],
+        "aliases": [
+          "requesting-code-review",
+          "superpowers:requesting-code-review"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:requesting-code-review",
+            "name": "superpowers:requesting-code-review",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:requesting-code-review"
+          },
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-quality-preview",
+            "field": "skillBindings",
+            "reference": "superpowers:requesting-code-review",
+            "name": "superpowers:requesting-code-review",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:requesting-code-review"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 8002
+      },
+      {
+        "id": "superpowers:test-driven-development",
+        "identity": "superpowers:test-driven-development",
+        "safeName": "superpowers-test-driven-development",
+        "entrypoint": "skills/superpowers-test-driven-development/SKILL.md",
+        "root": "skills/superpowers-test-driven-development",
+        "contentHash": "sha256-d6a45abb369e0ed1784946a078433f1b9d518247f9770789d30e0c3966dd4115",
+        "source": "superpowers",
+        "references": [
+          "superpowers:test-driven-development"
+        ],
+        "aliases": [
+          "superpowers:test-driven-development",
+          "test-driven-development"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:test-driven-development",
+            "name": "superpowers:test-driven-development",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:test-driven-development"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 18928
+      },
+      {
+        "id": "superpowers:verification-before-completion",
+        "identity": "superpowers:verification-before-completion",
+        "safeName": "superpowers-verification-before-completion",
+        "entrypoint": "skills/superpowers-verification-before-completion/SKILL.md",
+        "root": "skills/superpowers-verification-before-completion",
+        "contentHash": "sha256-bac5e29bfde3fe03a052ca77a6944355c0fa672c3acf3d4854c212e1a4ee1c44",
+        "source": "superpowers",
+        "references": [
+          "superpowers:verification-before-completion"
+        ],
+        "aliases": [
+          "superpowers:verification-before-completion",
+          "verification-before-completion"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-quality-preview",
+            "field": "skillBindings",
+            "reference": "superpowers:verification-before-completion",
+            "name": "superpowers:verification-before-completion",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:verification-before-completion"
+          }
+        ],
+        "fileCount": 2,
+        "totalBytes": 4490
+      },
+      {
+        "id": "workflow:lightweight-batch-review",
+        "identity": "workflow:lightweight-batch-review",
+        "safeName": "workflow-lightweight-batch-review",
+        "entrypoint": "skills/workflow-lightweight-batch-review/SKILL.md",
+        "root": "skills/workflow-lightweight-batch-review",
+        "contentHash": "sha256-7952e21df8656726b8ef7aa6370f4695b2eae44dd7e30680bf228e057607e320",
+        "source": "bundled",
+        "references": [
+          "workflow:lightweight-batch-review"
+        ],
+        "aliases": [
+          "lightweight-batch-review",
+          "workflow:lightweight-batch-review"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "feature-extension-workflow-v8",
+            "phaseId": "feature-implement",
+            "field": "skillBindings",
+            "reference": "workflow:lightweight-batch-review",
+            "name": "workflow:lightweight-batch-review",
+            "namespace": "workflow",
+            "referenceId": "workflow:lightweight-batch-review"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 1652
+      }
+    ],
+    "requiredHostTools": [
+      {
+        "name": "Agent",
+        "supported": true
+      },
+      {
+        "name": "AskUserQuestion",
+        "supported": true
+      },
+      {
+        "name": "Bash",
+        "supported": true
+      },
+      {
+        "name": "Edit",
+        "supported": true
+      },
+      {
+        "name": "Glob",
+        "supported": true
+      },
+      {
+        "name": "Grep",
+        "supported": true
+      },
+      {
+        "name": "LS",
+        "supported": true
+      },
+      {
+        "name": "MultiEdit",
+        "supported": true
+      },
+      {
+        "name": "PowerShell",
+        "supported": true
+      },
+      {
+        "name": "Read",
+        "supported": true
+      },
+      {
+        "name": "Write",
+        "supported": true
+      },
+      {
+        "name": "request_workflow_route",
+        "supported": true
+      },
+      {
+        "name": "submit_phase_completion",
+        "supported": true
+      },
+      {
+        "name": "workflow_artifact_write",
+        "supported": true
+      },
+      {
+        "name": "workflow_template_authoring",
+        "supported": true
+      }
+    ],
+    "blockedExternalDependencies": []
+  }
+}

@@ -1,4 +1,6 @@
 import type { WorkflowSessionState } from '../../server/services/workflowTypes.js'
+import type { DevelopmentBatchAgentProgressInput } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js'
+import type { WorkflowAgentTaskProgressInput } from '../../server/services/workflowAgentTaskStateService.js'
 import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -72,4 +74,68 @@ export async function resolveWorkflowRuntimeState(
     logForDebugging(reason)
     return { source: 'desktop-unavailable', reason }
   }
+}
+
+export async function recordWorkflowAgentTaskProgressThroughDesktop(
+  input: WorkflowAgentTaskProgressInput,
+): Promise<boolean> {
+  const desktop = getDesktopWorkflowContext()
+  if (!desktop) return false
+
+  let response: Response
+  try {
+    response = await fetch(
+      `${desktop.serverUrl}/api/sessions/${encodeURIComponent(desktop.sessionId)}/workflow/agent-task-progress`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    )
+  } catch (error) {
+    throw new Error(`WORKFLOW_AGENT_TASK_RECEIPT_UNAVAILABLE: ${errorMessage(error)}`)
+  }
+
+  if (!response.ok) {
+    let message = `Desktop returned HTTP ${response.status} while recording Workflow Agent task progress.`
+    try {
+      const payload = await response.json() as { message?: unknown, error?: unknown }
+      const detail = typeof payload.message === 'string' ? payload.message : typeof payload.error === 'string' ? payload.error : ''
+      if (detail) message = detail
+    } catch {}
+    throw new Error(message)
+  }
+  return true
+}
+
+export async function recordDevelopmentBatchAgentProgressThroughDesktop(
+  input: DevelopmentBatchAgentProgressInput,
+): Promise<boolean> {
+  const desktop = getDesktopWorkflowContext()
+  if (!desktop) return false
+
+  let response: Response
+  try {
+    response = await fetch(
+      `${desktop.serverUrl}/api/sessions/${encodeURIComponent(desktop.sessionId)}/workflow/development-batch-agent-progress`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    )
+  } catch (error) {
+    throw new Error(`WORKFLOW_DEVELOPMENT_BATCH_RECEIPT_UNAVAILABLE: ${errorMessage(error)}`)
+  }
+
+  if (!response.ok) {
+    let message = `Desktop returned HTTP ${response.status} while recording Batch Agent progress.`
+    try {
+      const payload = await response.json() as { message?: unknown, error?: unknown }
+      const detail = typeof payload.message === 'string' ? payload.message : typeof payload.error === 'string' ? payload.error : ''
+      if (detail) message = detail
+    } catch {}
+    throw new Error(message)
+  }
+  return true
 }

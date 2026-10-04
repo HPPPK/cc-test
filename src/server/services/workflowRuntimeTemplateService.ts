@@ -1,4 +1,5 @@
-﻿import { PackRegistryService } from './packRegistryService.js'
+﻿import { createHash } from 'node:crypto'
+import { PackRegistryService } from './packRegistryService.js'
 import type { WorkflowTemplateRegistryPhase, WorkflowTemplateRegistryTemplate } from './workflowTemplateValidation.js'
 import type {
   WorkflowPhaseSkillReference,
@@ -16,21 +17,81 @@ export function setWorkflowRuntimeTemplateLoaderForTests(
 }
 
 
-export async function loadCurrentWorkflowTemplate(
-  state: Pick<WorkflowSessionState, 'templateIdentity' | 'template'>,
-): Promise<WorkflowTemplate | null> {
-  if (testLoaderOverride) return testLoaderOverride(state)
+const PINNED_WORKFLOW_IDS = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
 
+export function workflowTemplateSnapshotHash(template: WorkflowTemplate): string {
+  return 'sha256-' + createHash('sha256').update(JSON.stringify(template)).digest('hex')
+}
+
+export function resolveWorkflowTemplateForRun(
+  state: Pick<WorkflowSessionState, 'templateIdentity' | 'template' | 'templateSnapshot' | 'templateSnapshotHash' | 'sourceTemplateStatus'>,
+  installedTemplate: WorkflowTemplate | null,
+): WorkflowTemplate | null {
+  const expectedId = state.templateIdentity?.id
+    ?? (state.template && typeof state.template === 'object' && 'id' in state.template ? state.template.id : undefined)
+  const expectedVersion = String(state.templateIdentity?.version ?? '')
+  const snapshot = state.templateSnapshot
+
+  if (snapshot) {
+    const snapshotHash = workflowTemplateSnapshotHash(snapshot)
+    const matchesIdentity = snapshot.id === expectedId && String(snapshot.version) === expectedVersion
+    const matchesRecordedHash = !state.templateSnapshotHash || state.templateSnapshotHash === snapshotHash
+    if (!matchesIdentity || !matchesRecordedHash) {
+      state.sourceTemplateStatus = 'stale-template'
+      return null
+    }
+    state.templateSnapshotHash = snapshotHash
+    return snapshot
+  }
+
+  if (!installedTemplate || installedTemplate.id !== expectedId || String(installedTemplate.version) !== expectedVersion) {
+    state.sourceTemplateStatus = installedTemplate ? 'stale-template' : 'missing-template'
+    return null
+  }
+
+  const installedHash = workflowTemplateSnapshotHash(installedTemplate)
+  const expectedHash = state.templateIdentity?.contentHash
+  if (!expectedHash || (expectedHash !== installedHash && expectedHash !== installedTemplate.contentHash)) {
+    state.sourceTemplateStatus = 'stale-template'
+    return null
+  }
+
+  state.templateSnapshot = installedTemplate
+  state.templateSnapshotHash = installedHash
+  state.sourceTemplateStatus = 'current'
+  return installedTemplate
+}
+
+export async function loadCurrentWorkflowTemplate(
+  state: Pick<WorkflowSessionState, 'templateIdentity' | 'template' | 'templateSnapshot' | 'templateSnapshotHash' | 'sourceTemplateStatus'>,
+): Promise<WorkflowTemplate | null> {
   const workflowId = state.templateIdentity?.id
     ?? (state.template && typeof state.template === 'object' && 'id' in state.template ? state.template.id : undefined)
   if (!workflowId) return null
 
-  try {
-    const template = await new PackRegistryService().loadStoredWorkflowTemplate(workflowId)
-    return toWorkflowTemplate(template)
-  } catch {
-    return null
+  if (PINNED_WORKFLOW_IDS.has(workflowId) && state.templateSnapshot) {
+    return resolveWorkflowTemplateForRun(state, null)
   }
+
+  let installed: WorkflowTemplate | null = null
+  if (testLoaderOverride) {
+    installed = await testLoaderOverride(state as WorkflowSessionState)
+  } else {
+    try {
+      const template = await new PackRegistryService().loadStoredWorkflowTemplate(workflowId)
+      installed = toWorkflowTemplate(template)
+    } catch {
+      installed = null
+    }
+  }
+
+  return PINNED_WORKFLOW_IDS.has(workflowId)
+    ? resolveWorkflowTemplateForRun(state, installed)
+    : installed
 }
 
 export function toWorkflowTemplate(

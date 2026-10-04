@@ -11,6 +11,8 @@ type HumanVerificationPayload = {
   browserSessionKey?: unknown
   verification?: unknown
   joinExisting?: unknown
+  verificationGateId?: unknown
+  action?: unknown
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -31,7 +33,9 @@ export async function handleExpertHumanVerificationsApi(
   const payload = record(await req.json().catch(() => null)) as HumanVerificationPayload | null
   const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : ''
   const joinExisting = payload?.joinExisting === true
-  if (!sessionId || (!joinExisting && !isExpertBrowserVerificationContext(payload?.verification))) {
+  const verificationGateId = typeof payload?.verificationGateId === 'string' ? payload.verificationGateId.trim() : ''
+  const autoDetectedCompleted = payload?.action === 'auto_detected_completed'
+  if (!sessionId || (!autoDetectedCompleted && !joinExisting && !isExpertBrowserVerificationContext(payload?.verification))) {
     throw ApiError.badRequest('Invalid Expert browser verification request.')
   }
 
@@ -45,10 +49,21 @@ export async function handleExpertHumanVerificationsApi(
     throw new ApiError(403, 'The current session is not an active Expert session authorized to request visible browser verification.', 'FORBIDDEN')
   }
 
+  if (autoDetectedCompleted) {
+    const browserSessionKey = typeof payload?.browserSessionKey === 'string' ? payload.browserSessionKey.trim() : ''
+    if (!browserSessionKey) throw ApiError.badRequest('Missing Expert browser session key for automatic verification recovery.')
+    const resolved = expertHumanVerificationService.resolveAutoDetectedVerification(sessionId, browserSessionKey)
+    if (!resolved) throw new ApiError(409, 'The visible verification page is no longer pending for this browser session.', 'CONFLICT')
+    return Response.json({ resolved: true })
+  }
+
   const response = joinExisting
-    ? await expertHumanVerificationService.waitForActiveVerification(sessionId)
+    ? await expertHumanVerificationService.waitForActiveVerification(sessionId, {
+      ...(verificationGateId ? { verificationGateId } : {}),
+    })
     : await expertHumanVerificationService.requestVerification({
       sessionId,
+      ...(verificationGateId ? { verificationGateId } : {}),
       ...(typeof payload.agentId === 'string' && payload.agentId.trim() ? { agentId: payload.agentId.trim() } : {}),
       ...(typeof payload.toolUseId === 'string' && payload.toolUseId.trim() ? { toolUseId: payload.toolUseId.trim() } : {}),
       ...(typeof payload.browserSessionKey === 'string' && payload.browserSessionKey.trim() ? { browserSessionKey: payload.browserSessionKey.trim() } : {}),

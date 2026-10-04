@@ -1,0 +1,716 @@
+{
+  "packId": "efficient-constrained-dev-debug-workflow-v5",
+  "name": "引导式产品开发流程",
+  "version": "24",
+  "schemaVersion": 2,
+  "type": "workflow-pack",
+  "description": "从需求梳理到产品交付，循序渐进构建完整方案",
+  "entrypoints": {
+    "workflows": [
+      "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json"
+    ],
+    "experts": [],
+    "skills": [
+      "skills/superpowers-brainstorming/SKILL.md",
+      "skills/superpowers-writing-plans/SKILL.md",
+      "skills/spec-kit-plus-plan/SKILL.md",
+      "skills/spec-kit-plus-tasks/SKILL.md",
+      "skills/codex-todo-planning/SKILL.md",
+      "skills/claude-code-todo-write/SKILL.md",
+      "skills/superpowers-subagent-driven-development/SKILL.md",
+      "skills/superpowers-test-driven-development/SKILL.md",
+      "skills/superpowers-requesting-code-review/SKILL.md",
+      "skills/codex-edit-and-test/SKILL.md",
+      "skills/claude-code-read-grep-edit-bash-todo/SKILL.md",
+      "skills/superpowers-verification-before-completion/SKILL.md",
+      "skills/spec-kit-plus-testing/SKILL.md",
+      "skills/spec-kit-plus-check/SKILL.md",
+      "skills/codex-test-generation/SKILL.md",
+      "skills/workflow-local-preview-runner/SKILL.md",
+      "skills/superpowers-finishing-a-development-branch/SKILL.md",
+      "skills/workflow-memory-update/SKILL.md",
+      "skills/workflow-lightweight-batch-review/SKILL.md"
+    ]
+  },
+  "permissions": [],
+  "modelRequirements": {
+    "schemaVersion": 1,
+    "workflows": [
+      {
+        "id": "efficient-constrained-dev-debug-workflow-v5",
+        "phases": [
+          {
+            "id": "route-context"
+          },
+          {
+            "id": "scope-plan"
+          },
+          {
+            "id": "delivery-plan"
+          },
+          {
+            "id": "delegate-implement"
+          },
+          {
+            "id": "scenario-review"
+          },
+          {
+            "id": "local-preview"
+          },
+          {
+            "id": "finish-memory"
+          }
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "workflowSchemaVersion": 2,
+    "selfContained": true
+  },
+  "dependencies": {
+    "packagedSkills": [
+      {
+        "id": "superpowers:brainstorming",
+        "identity": "superpowers:brainstorming",
+        "safeName": "superpowers-brainstorming",
+        "entrypoint": "skills/superpowers-brainstorming/SKILL.md",
+        "root": "skills/superpowers-brainstorming",
+        "contentHash": "sha256-5f3f96c4779eff826afb2246098338d039bf1decf1e883154b91fbebb25b67df",
+        "source": "superpowers",
+        "references": [
+          "superpowers:brainstorming"
+        ],
+        "aliases": [
+          "brainstorming",
+          "superpowers:brainstorming"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scope-plan",
+            "field": "skillBindings",
+            "reference": "superpowers:brainstorming",
+            "name": "superpowers:brainstorming",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:brainstorming"
+          }
+        ],
+        "fileCount": 9,
+        "totalBytes": 53469
+      },
+      {
+        "id": "superpowers:writing-plans",
+        "identity": "superpowers:writing-plans",
+        "safeName": "superpowers-writing-plans",
+        "entrypoint": "skills/superpowers-writing-plans/SKILL.md",
+        "root": "skills/superpowers-writing-plans",
+        "contentHash": "sha256-239cd2f530a9c9372d3d8e7c66fb7aeed21547565fe8f53b6e34b67730e7b6b4",
+        "source": "superpowers",
+        "references": [
+          "superpowers:writing-plans"
+        ],
+        "aliases": [
+          "superpowers:writing-plans",
+          "writing-plans"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delivery-plan",
+            "field": "skillBindings",
+            "reference": "superpowers:writing-plans",
+            "name": "superpowers:writing-plans",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:writing-plans"
+          },
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scope-plan",
+            "field": "skillBindings",
+            "reference": "superpowers:writing-plans",
+            "name": "superpowers:writing-plans",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:writing-plans"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 8141
+      },
+      {
+        "id": "spec-kit-plus:plan",
+        "identity": "spec-kit-plus:plan",
+        "safeName": "spec-kit-plus-plan",
+        "entrypoint": "skills/spec-kit-plus-plan/SKILL.md",
+        "root": "skills/spec-kit-plus-plan",
+        "contentHash": "sha256-fb12299e1cdbf7c8a5b556f970573a9121f78458947a64bb0e56718e076302c1",
+        "source": "bundled",
+        "references": [
+          "spec-kit-plus:plan"
+        ],
+        "aliases": [
+          "sp-plan",
+          "spec-kit-plus:plan"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delivery-plan",
+            "field": "skillBindings",
+            "reference": "spec-kit-plus:plan",
+            "name": "spec-kit-plus:plan",
+            "namespace": "spec-kit-plus",
+            "referenceId": "spec-kit-plus:plan"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 114664
+      },
+      {
+        "id": "spec-kit-plus:tasks",
+        "identity": "spec-kit-plus:tasks",
+        "safeName": "spec-kit-plus-tasks",
+        "entrypoint": "skills/spec-kit-plus-tasks/SKILL.md",
+        "root": "skills/spec-kit-plus-tasks",
+        "contentHash": "sha256-8777c67402cf597e846d2ee8344d54d0f6c7b322761fed227995e1a20b7a5383",
+        "source": "bundled",
+        "references": [
+          "spec-kit-plus:tasks"
+        ],
+        "aliases": [
+          "sp-tasks",
+          "spec-kit-plus:tasks"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delivery-plan",
+            "field": "skillBindings",
+            "reference": "spec-kit-plus:tasks",
+            "name": "spec-kit-plus:tasks",
+            "namespace": "spec-kit-plus",
+            "referenceId": "spec-kit-plus:tasks"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 130462
+      },
+      {
+        "id": "codex:todo-planning",
+        "identity": "codex:todo-planning",
+        "safeName": "codex-todo-planning",
+        "entrypoint": "skills/codex-todo-planning/SKILL.md",
+        "root": "skills/codex-todo-planning",
+        "contentHash": "sha256-9a78c3f8ef58a630bc42a4633f1e3a1c7d5711a344f67009474c0b7325402869",
+        "source": "bundled",
+        "references": [
+          "codex:todo-planning"
+        ],
+        "aliases": [
+          "codex:todo-planning",
+          "todo-planning"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delivery-plan",
+            "field": "skillBindings",
+            "reference": "codex:todo-planning",
+            "name": "codex:todo-planning",
+            "namespace": "codex",
+            "referenceId": "codex:todo-planning"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 550
+      },
+      {
+        "id": "claude-code:todo-write",
+        "identity": "claude-code:todo-write",
+        "safeName": "claude-code-todo-write",
+        "entrypoint": "skills/claude-code-todo-write/SKILL.md",
+        "root": "skills/claude-code-todo-write",
+        "contentHash": "sha256-95807129ee3a0f8092cf5704cb47d7eaa6151e59f93ada86d06eea2341e2b012",
+        "source": "bundled",
+        "references": [
+          "claude-code:todo-write"
+        ],
+        "aliases": [
+          "claude-code:todo-write",
+          "todo-write"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delivery-plan",
+            "field": "skillBindings",
+            "reference": "claude-code:todo-write",
+            "name": "claude-code:todo-write",
+            "namespace": "claude-code",
+            "referenceId": "claude-code:todo-write"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 461
+      },
+      {
+        "id": "superpowers:subagent-driven-development",
+        "identity": "superpowers:subagent-driven-development",
+        "safeName": "superpowers-subagent-driven-development",
+        "entrypoint": "skills/superpowers-subagent-driven-development/SKILL.md",
+        "root": "skills/superpowers-subagent-driven-development",
+        "contentHash": "sha256-ab9767e68747c857cc12f45dba9b5947f5a2280e6e00f5c8d22450aa593b2b97",
+        "source": "superpowers",
+        "references": [
+          "superpowers:subagent-driven-development"
+        ],
+        "aliases": [
+          "subagent-driven-development",
+          "superpowers:subagent-driven-development"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:subagent-driven-development",
+            "name": "superpowers:subagent-driven-development",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:subagent-driven-development"
+          }
+        ],
+        "fileCount": 5,
+        "totalBytes": 20502
+      },
+      {
+        "id": "superpowers:test-driven-development",
+        "identity": "superpowers:test-driven-development",
+        "safeName": "superpowers-test-driven-development",
+        "entrypoint": "skills/superpowers-test-driven-development/SKILL.md",
+        "root": "skills/superpowers-test-driven-development",
+        "contentHash": "sha256-d6a45abb369e0ed1784946a078433f1b9d518247f9770789d30e0c3966dd4115",
+        "source": "superpowers",
+        "references": [
+          "superpowers:test-driven-development"
+        ],
+        "aliases": [
+          "superpowers:test-driven-development",
+          "test-driven-development"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:test-driven-development",
+            "name": "superpowers:test-driven-development",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:test-driven-development"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 18928
+      },
+      {
+        "id": "superpowers:requesting-code-review",
+        "identity": "superpowers:requesting-code-review",
+        "safeName": "superpowers-requesting-code-review",
+        "entrypoint": "skills/superpowers-requesting-code-review/SKILL.md",
+        "root": "skills/superpowers-requesting-code-review",
+        "contentHash": "sha256-69a5600e8606fdf36176504fdb48616c4d2f85a567e21eadcd1f6791863178e7",
+        "source": "superpowers",
+        "references": [
+          "superpowers:requesting-code-review"
+        ],
+        "aliases": [
+          "requesting-code-review",
+          "superpowers:requesting-code-review"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "superpowers:requesting-code-review",
+            "name": "superpowers:requesting-code-review",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:requesting-code-review"
+          },
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "superpowers:requesting-code-review",
+            "name": "superpowers:requesting-code-review",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:requesting-code-review"
+          }
+        ],
+        "fileCount": 3,
+        "totalBytes": 8002
+      },
+      {
+        "id": "codex:edit-and-test",
+        "identity": "codex:edit-and-test",
+        "safeName": "codex-edit-and-test",
+        "entrypoint": "skills/codex-edit-and-test/SKILL.md",
+        "root": "skills/codex-edit-and-test",
+        "contentHash": "sha256-f6600776cdd9298703619d92a58e68ba6ff557a7d5cbf1cf4fa7bb9ba6fc7614",
+        "source": "bundled",
+        "references": [
+          "codex:edit-and-test"
+        ],
+        "aliases": [
+          "codex:edit-and-test",
+          "edit-and-test"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "codex:edit-and-test",
+            "name": "codex:edit-and-test",
+            "namespace": "codex",
+            "referenceId": "codex:edit-and-test"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 607
+      },
+      {
+        "id": "claude-code:read-grep-edit-bash-todo",
+        "identity": "claude-code:read-grep-edit-bash-todo",
+        "safeName": "claude-code-read-grep-edit-bash-todo",
+        "entrypoint": "skills/claude-code-read-grep-edit-bash-todo/SKILL.md",
+        "root": "skills/claude-code-read-grep-edit-bash-todo",
+        "contentHash": "sha256-b316fe7101a08f329e90e801a0e86ba9611f69b77e44e0897906cc33a0af7bb6",
+        "source": "bundled",
+        "references": [
+          "claude-code:read-grep-edit-bash-todo"
+        ],
+        "aliases": [
+          "claude-code:read-grep-edit-bash-todo",
+          "read-grep-edit-bash-todo"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "claude-code:read-grep-edit-bash-todo",
+            "name": "claude-code:read-grep-edit-bash-todo",
+            "namespace": "claude-code",
+            "referenceId": "claude-code:read-grep-edit-bash-todo"
+          },
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "claude-code:read-grep-edit-bash-todo",
+            "name": "claude-code:read-grep-edit-bash-todo",
+            "namespace": "claude-code",
+            "referenceId": "claude-code:read-grep-edit-bash-todo"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 596
+      },
+      {
+        "id": "superpowers:verification-before-completion",
+        "identity": "superpowers:verification-before-completion",
+        "safeName": "superpowers-verification-before-completion",
+        "entrypoint": "skills/superpowers-verification-before-completion/SKILL.md",
+        "root": "skills/superpowers-verification-before-completion",
+        "contentHash": "sha256-bac5e29bfde3fe03a052ca77a6944355c0fa672c3acf3d4854c212e1a4ee1c44",
+        "source": "superpowers",
+        "references": [
+          "superpowers:verification-before-completion"
+        ],
+        "aliases": [
+          "superpowers:verification-before-completion",
+          "verification-before-completion"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "superpowers:verification-before-completion",
+            "name": "superpowers:verification-before-completion",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:verification-before-completion"
+          }
+        ],
+        "fileCount": 2,
+        "totalBytes": 4490
+      },
+      {
+        "id": "spec-kit-plus:testing",
+        "identity": "spec-kit-plus:testing",
+        "safeName": "spec-kit-plus-testing",
+        "entrypoint": "skills/spec-kit-plus-testing/SKILL.md",
+        "root": "skills/spec-kit-plus-testing",
+        "contentHash": "sha256-15f470ea24525aa498330cf5234e403d60fdea5bc1a1080877791bc4a28bed65",
+        "source": "bundled",
+        "references": [
+          "spec-kit-plus:testing"
+        ],
+        "aliases": [
+          "sp-testing",
+          "spec-kit-plus:testing"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "spec-kit-plus:testing",
+            "name": "spec-kit-plus:testing",
+            "namespace": "spec-kit-plus",
+            "referenceId": "spec-kit-plus:testing"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 480
+      },
+      {
+        "id": "spec-kit-plus:check",
+        "identity": "spec-kit-plus:check",
+        "safeName": "spec-kit-plus-check",
+        "entrypoint": "skills/spec-kit-plus-check/SKILL.md",
+        "root": "skills/spec-kit-plus-check",
+        "contentHash": "sha256-916e5f0785d32b0f7d853588be4af04295638b8d55de51c67d32a4040804cc92",
+        "source": "bundled",
+        "references": [
+          "spec-kit-plus:check"
+        ],
+        "aliases": [
+          "sp-check",
+          "spec-kit-plus:check"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "spec-kit-plus:check",
+            "name": "spec-kit-plus:check",
+            "namespace": "spec-kit-plus",
+            "referenceId": "spec-kit-plus:check"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 508
+      },
+      {
+        "id": "codex:test-generation",
+        "identity": "codex:test-generation",
+        "safeName": "codex-test-generation",
+        "entrypoint": "skills/codex-test-generation/SKILL.md",
+        "root": "skills/codex-test-generation",
+        "contentHash": "sha256-0e32092498fcd0b4eac07c06036e3c24082b43caca70444f1d69fece9d444451",
+        "source": "bundled",
+        "references": [
+          "codex:test-generation"
+        ],
+        "aliases": [
+          "codex:test-generation",
+          "test-generation"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "scenario-review",
+            "field": "skillBindings",
+            "reference": "codex:test-generation",
+            "name": "codex:test-generation",
+            "namespace": "codex",
+            "referenceId": "codex:test-generation"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 572
+      },
+      {
+        "id": "workflow:local-preview-runner",
+        "identity": "workflow:local-preview-runner",
+        "safeName": "workflow-local-preview-runner",
+        "entrypoint": "skills/workflow-local-preview-runner/SKILL.md",
+        "root": "skills/workflow-local-preview-runner",
+        "contentHash": "sha256-d79c9275b617c4449638c8229296e3e4a4065b393ab0d8c01e36c8829643381a",
+        "source": "bundled",
+        "references": [
+          "workflow:local-preview-runner"
+        ],
+        "aliases": [
+          "local-preview-runner",
+          "workflow:local-preview-runner"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "local-preview",
+            "field": "skillBindings",
+            "reference": "workflow:local-preview-runner",
+            "name": "workflow:local-preview-runner",
+            "namespace": "workflow",
+            "referenceId": "workflow:local-preview-runner"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 662
+      },
+      {
+        "id": "superpowers:finishing-a-development-branch",
+        "identity": "superpowers:finishing-a-development-branch",
+        "safeName": "superpowers-finishing-a-development-branch",
+        "entrypoint": "skills/superpowers-finishing-a-development-branch/SKILL.md",
+        "root": "skills/superpowers-finishing-a-development-branch",
+        "contentHash": "sha256-a3706122b81299b25079e120b779a4b6d95c717572e082e739c8a991c75c2b90",
+        "source": "superpowers",
+        "references": [
+          "superpowers:finishing-a-development-branch"
+        ],
+        "aliases": [
+          "finishing-a-development-branch",
+          "superpowers:finishing-a-development-branch"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "finish-memory",
+            "field": "skillBindings",
+            "reference": "superpowers:finishing-a-development-branch",
+            "name": "superpowers:finishing-a-development-branch",
+            "namespace": "superpowers",
+            "referenceId": "superpowers:finishing-a-development-branch"
+          }
+        ],
+        "fileCount": 2,
+        "totalBytes": 7464
+      },
+      {
+        "id": "workflow:memory-update",
+        "identity": "workflow:memory-update",
+        "safeName": "workflow-memory-update",
+        "entrypoint": "skills/workflow-memory-update/SKILL.md",
+        "root": "skills/workflow-memory-update",
+        "contentHash": "sha256-012aa17a9b1832c6f557671dd258a9d850aa56df531ee59e16c20bf7511d41ec",
+        "source": "bundled",
+        "references": [
+          "workflow:memory-update"
+        ],
+        "aliases": [
+          "memory-update",
+          "workflow:memory-update"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "finish-memory",
+            "field": "skillBindings",
+            "reference": "workflow:memory-update",
+            "name": "workflow:memory-update",
+            "namespace": "workflow",
+            "referenceId": "workflow:memory-update"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 590
+      },
+      {
+        "id": "workflow:lightweight-batch-review",
+        "identity": "workflow:lightweight-batch-review",
+        "safeName": "workflow-lightweight-batch-review",
+        "entrypoint": "skills/workflow-lightweight-batch-review/SKILL.md",
+        "root": "skills/workflow-lightweight-batch-review",
+        "contentHash": "sha256-7952e21df8656726b8ef7aa6370f4695b2eae44dd7e30680bf228e057607e320",
+        "source": "bundled",
+        "references": [
+          "workflow:lightweight-batch-review"
+        ],
+        "aliases": [
+          "lightweight-batch-review",
+          "workflow:lightweight-batch-review"
+        ],
+        "referenceMappings": [
+          {
+            "workflowId": "efficient-constrained-dev-debug-workflow-v5",
+            "phaseId": "delegate-implement",
+            "field": "skillBindings",
+            "reference": "workflow:lightweight-batch-review",
+            "name": "workflow:lightweight-batch-review",
+            "namespace": "workflow",
+            "referenceId": "workflow:lightweight-batch-review"
+          }
+        ],
+        "fileCount": 1,
+        "totalBytes": 1652
+      }
+    ],
+    "requiredHostTools": [
+      {
+        "name": "Agent",
+        "supported": true
+      },
+      {
+        "name": "AskUserQuestion",
+        "supported": true
+      },
+      {
+        "name": "Bash",
+        "supported": true
+      },
+      {
+        "name": "Edit",
+        "supported": true
+      },
+      {
+        "name": "Glob",
+        "supported": true
+      },
+      {
+        "name": "Grep",
+        "supported": true
+      },
+      {
+        "name": "LS",
+        "supported": true
+      },
+      {
+        "name": "MultiEdit",
+        "supported": true
+      },
+      {
+        "name": "PowerShell",
+        "supported": true
+      },
+      {
+        "name": "Read",
+        "supported": true
+      },
+      {
+        "name": "Write",
+        "supported": true
+      },
+      {
+        "name": "request_workflow_route",
+        "supported": true
+      },
+      {
+        "name": "submit_phase_completion",
+        "supported": true
+      },
+      {
+        "name": "workflow_artifact_write",
+        "supported": true
+      },
+      {
+        "name": "workflow_template_authoring",
+        "supported": true
+      }
+    ],
+    "blockedExternalDependencies": []
+  }
+}

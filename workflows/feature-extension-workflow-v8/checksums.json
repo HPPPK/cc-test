@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "sha256",
+  "sourceRevision": "sha256-38277a927685f563ed5763dc32859d6ccc70814f8c7b9801e6ac5ae1731f6e23",
+  "files": {
+    "README.md": "sha256-3ab67d8b6fcb072c843b8db60e10a01101ecd2abd02d933809871225f3a162bd",
+    "manifest.json": "sha256-802cd63f695c9505c4a054f218e7828de30e91918aa8c521a10d55a1c8079a9a",
+    "model-capabilities/requirements.json": "sha256-cde463416554ed67aa14f87d842016e28e3ba248fce8826d83d978e896e6e6f6",
+    "permissions/permissions.json": "sha256-53f6672167756e6d3e9fa7dc473498eaf567c6cf9acab09b1d602b73d0eea014",
+    "skills/superpowers-requesting-code-review/SKILL.md": "sha256-5a3a44a3667800e2dc836829c6b92fada51e6dc58ac144ec05fe59f47d6bcd84",
+    "skills/superpowers-requesting-code-review/agents/openai.yaml": "sha256-1917e3cf2c957e7512343e622b002a873f325fbf931bed77d71afb5a02ca431d",
+    "skills/superpowers-requesting-code-review/code-reviewer.md": "sha256-595d91d05d5ecba530bd52e1e53c5173d820ab5d4bc223eb7820d69a9ab1c403",
+    "skills/superpowers-subagent-driven-development/SKILL.md": "sha256-905a2b9be59b734dbe166525ad31dcaaf712a75926135adee1f554557aba5744",
+    "skills/superpowers-subagent-driven-development/agents/openai.yaml": "sha256-58ef494a996998f2a486a0764b769bdf02e9c148b050b38603dbcdb364ae2771",
+    "skills/superpowers-subagent-driven-development/code-quality-reviewer-prompt.md": "sha256-2eeb3bf63fccfbee042812dc94e7032048603f0f8c3827b4b53af9e4cef19b30",
+    "skills/superpowers-subagent-driven-development/implementer-prompt.md": "sha256-a416193f881e5a712c988fffabfe1d5a97bffcd091eb95577c84fe2136588617",
+    "skills/superpowers-subagent-driven-development/spec-reviewer-prompt.md": "sha256-631980e472eec5394de8b89b69d432e54fd3f7f523ecf9afa7eb4cda0c9b2baf",
+    "skills/superpowers-test-driven-development/SKILL.md": "sha256-7dee67b4af6bdccc7a914ca34533184d64592d0f5b23aeae631538168db14994",
+    "skills/superpowers-test-driven-development/agents/openai.yaml": "sha256-d1fd223b137ce6eca628d521031213a2dc002a97865f00e2f6fce03529b9ca05",
+    "skills/superpowers-test-driven-development/testing-anti-patterns.md": "sha256-bde453bc258f06543987477c837939afaa774ea2acbd9f308d702fc452bc4283",
+    "skills/superpowers-verification-before-completion/SKILL.md": "sha256-ea52d15aabaf72bc6b558efe2c126f161b53961090ddcd712000273bfe8c7b6c",
+    "skills/superpowers-verification-before-completion/agents/openai.yaml": "sha256-0eaad1a982ab8c95d8b938f1567f207dbc6fd9d172707b1e268e0cc8ab999705",
+    "skills/superpowers-writing-plans/SKILL.md": "sha256-4fd4627d2c02367879c0307d7249270bed633317ff9be82e926a6d57bf5d331b",
+    "skills/superpowers-writing-plans/agents/openai.yaml": "sha256-de6a2f3d9de78d9c5027512ab1abab998f9acbef70960ecdbad525f4dce2e1bb",
+    "skills/superpowers-writing-plans/plan-document-reviewer-prompt.md": "sha256-6fce2aa83c63715697e9dd86050c820716100b91efbd9f12bab8477ecc060256",
+    "skills/workflow-lightweight-batch-review/SKILL.md": "sha256-7952e21df8656726b8ef7aa6370f4695b2eae44dd7e30680bf228e057607e320",
+    "tools/host-tools.json": "sha256-6420b72ec5186cf3660186fec080bf2008f02a9d694556b620ed0a7d0482cd60",
+    "workflows/feature-extension-workflow-v8.workflow.json": "sha256-da6c92a7c99d8fc4f004b0d0d60baa38b58179442f3121c2253f317608118e2c"
+  }
+}

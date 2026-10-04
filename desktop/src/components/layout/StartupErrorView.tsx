@@ -34,7 +34,7 @@ export function StartupErrorView({ error }: StartupErrorViewProps) {
   const t = useTranslation()
   const { message, logs, diagnostics } = useMemo(() => splitStartupError(error), [error])
   const [copied, setCopied] = useState(false)
-  const copyResetTimeout = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const copyResetTimeout = useRef<number | null>(null)
 
   useEffect(() => () => {
     if (copyResetTimeout.current !== null) {

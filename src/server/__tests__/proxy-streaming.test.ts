@@ -256,6 +256,32 @@ describe('openaiChatStreamToAnthropic', () => {
     )
   })
 
+  test('moves a DeepSeek-style internal execution monologue out of visible streamed text', async () => {
+    const sseChunks = [
+      'data: {"id":"c-process","object":"chat.completion.chunk","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"Let me "},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-process","object":"chat.completion.chunk","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"check the Playwright audit records and reconcile"},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-process","object":"chat.completion.chunk","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":" the researcher Markdown before I report the result."},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-process","object":"chat.completion.chunk","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"\\n\\n暂时收敛：真实来源已经保留，正在继续补齐审计回执。"},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-process","object":"chat.completion.chunk","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]
+
+    const events = await collectSse(openaiChatStreamToAnthropic(makeStream(sseChunks), 'deepseek-v4-flash'))
+    const thinking = events
+      .filter((event) => event.event === 'content_block_delta' && (event.data.delta as Record<string, unknown>)?.type === 'thinking_delta')
+      .map((event) => (event.data.delta as Record<string, unknown>).thinking)
+      .join('')
+    const visible = events
+      .filter((event) => event.event === 'content_block_delta' && (event.data.delta as Record<string, unknown>)?.type === 'text_delta')
+      .map((event) => (event.data.delta as Record<string, unknown>).text)
+      .join('')
+
+    expect(thinking).toContain('Let me check the Playwright audit records')
+    expect(thinking).toContain('before I report the result.')
+    expect(visible).toContain('暂时收敛')
+    expect(visible).not.toContain('Let me check')
+  })
+
   test('reasoning field (GLM-5, Cerebras, Groq)', async () => {
     const sseChunks = [
       'data: {"id":"c5","object":"chat.completion.chunk","created":0,"model":"glm-5","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"Thinking here"},"finish_reason":null}]}\n\n',

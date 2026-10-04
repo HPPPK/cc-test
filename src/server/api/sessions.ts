@@ -42,9 +42,14 @@ import { WorkflowSessionLinkService } from '../services/workflowSessionLinkServi
 import { validateWorkflowWorkspaceRoot } from '../services/workflowWorkspacePolicy.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
 import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
+import { recordDevelopmentBatchAgentProgress } from '../services/workflowDevelopmentBatchAgentProgress.js'
+import type { DevelopmentBatchAgentProgressInput } from '../services/workflowDevelopmentBatchAgentPolicy.js'
+import { reconcileWorkflowAgentTasks, recordWorkflowAgentTaskProgressWithLedger } from '../services/workflowAgentTaskStateService.js'
+import type { WorkflowAgentTaskProgressInput } from '../services/workflowAgentTaskStateService.js'
 import { collectRuntimeVerifiedOutputEvidence, getRuntimeResolvableAnsweredIssueIds } from '../services/workflowCompletionEvidenceService.js'
 import { WorkflowPreviewService } from '../services/workflowPreviewService.js'
 import { enqueueWorkflowSessionTransition } from '../services/workflowTransitionCoordinator.js'
+import { agentRunLedgerService } from '../services/agentRunLedgerService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
 import {
   createWorkflowGitCheckpoint,
@@ -468,32 +473,75 @@ async function handleSessionExpertRoute(
     if (!expertId) throw ApiError.badRequest('请选择一个专家。')
     return Response.json({ expert: await expertSessionService.enterExpertMode(sessionId, expertId, body.researchBrowserConnection, body.researchBrowserPresentation) })
   }
+  if (action === 'template-fill-commit') {
+    if (req.method !== 'POST') throw new ApiError(405, 'Method ' + req.method + ' not allowed', 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    return Response.json(await expertSessionService.commitTemplateFillWrite(sessionId, { receipt: body.receipt, outputPath: body.outputPath }))
+  }
   if (action === 'template-fill') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const body = await readOptionalObjectBody(req)
-    return Response.json(await expertSessionService.renderTemplateFill(sessionId, body.payload))
+    return Response.json(await expertSessionService.renderTemplateFill(sessionId, body.payload, { outputPath: body.outputPath }))
   }
   if (action === 'subagent-skill-context') {
     if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const agentType = url.searchParams.get('agentType') ?? ''
     if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
-    return Response.json(await expertSessionService.getSubagentSkillContext(sessionId, agentType))
+    return Response.json(await expertSessionService.getSubagentSkillContext(sessionId, agentType, url.searchParams.get('researchTaskKind')))
   }
   if (action === 'subagent-research-evidence-context') {
     if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const agentType = url.searchParams.get('agentType') ?? ''
     if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
-    return Response.json(await expertSessionService.getSubagentResearchEvidenceContext(sessionId, agentType))
+    const evidenceContext = await expertSessionService.getSubagentResearchEvidenceContext(sessionId, agentType)
+    // The endpoint is probed by every delegated agent, while only the ZIP-designated
+    // reviewer receives evidence. JSON responses cannot encode undefined.
+    return Response.json(evidenceContext ?? null)
+  }
+  if (action === 'post-review-evidence-absorption-context') {
+    if (req.method !== 'GET') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const agentType = url.searchParams.get('agentType') ?? ''
+    if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
+    return Response.json((await expertSessionService.getPostReviewEvidenceAbsorptionContext(sessionId, agentType)) ?? null)
+  }
+  if (action === 'research-source-dispatch') {
+    if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    const dispatch = await expertSessionService.recordResearchSourceDispatch(sessionId, {
+      agentId: body.agentId,
+      agentType: body.agentType,
+      artifactPath: body.artifactPath,
+      batchFingerprint: body.batchFingerprint,
+      coreEntryCount: body.coreEntryCount,
+      openEntryCount: body.openEntryCount,
+    })
+    return Response.json({
+      accepted: true,
+      artifactPath: dispatch.receipt.artifactPath,
+      batchFingerprint: dispatch.receipt.batchFingerprint,
+      dispatchedAt: dispatch.receipt.dispatchedAt,
+    })
   }
   if (action === 'research-audit') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
     const body = await readOptionalObjectBody(req)
-    return Response.json(await expertSessionService.recordResearchAudit(sessionId, {
+    const audit = await expertSessionService.recordResearchAudit(sessionId, {
       agentId: body.agentId,
       agentType: body.agentType,
       entries: body.entries,
+      artifactPath: body.artifactPath,
       content: body.content,
-    }))
+      interrupted: body.interrupted === true,
+      completed: body.completed === true,
+    })
+    // This endpoint is an acknowledgement channel for background researchers.
+    // Never echo the complete persisted Expert metadata: bindings can carry
+    // runtime-only values and are not part of this public API contract.
+    return Response.json({
+      accepted: true,
+      researchCompletionUpdatedAt: audit.researchCompletion.updatedAt,
+      ...(audit.researchEvidence ? { researchEvidenceUpdatedAt: audit.researchEvidence.updatedAt } : {}),
+    })
   }
   if (action === 'research-delivery') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
@@ -519,6 +567,7 @@ async function handleSessionExpertRoute(
       stepId: typeof body.stepId === 'string' ? body.stepId : undefined,
       answer: body.answer,
       answers: body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers as Record<string, unknown> : undefined,
+      choiceId: typeof body.choiceId === 'string' ? body.choiceId : undefined,
     }))
   }
   if (action === 'run') {
@@ -608,6 +657,12 @@ async function handleWorkflowSessionRoute(
     case 'completion-progress':
       if (req.method !== 'POST') return methodNotAllowed(req.method)
       return await updateWorkflowCompletionProgress(req, sessionId)
+    case 'development-batch-agent-progress':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await updateDevelopmentBatchAgentProgress(req, sessionId)
+    case 'agent-task-progress':
+      if (req.method !== 'POST') return methodNotAllowed(req.method)
+      return await updateWorkflowAgentTaskProgress(req, sessionId)
     case 'start':
       if (req.method !== 'POST') return methodNotAllowed(req.method)
       return await startLinkedWorkflow(req, sessionId)
@@ -1255,12 +1310,35 @@ function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
 
 async function getWorkflowState(sessionId: string): Promise<Response> {
   const workflowMetadata = await requireWorkflowSession(sessionId)
-  const stateRead = await workflowSessionStateService.readState(sessionId)
-  if (!stateRead.exists || !stateRead.state) {
-    throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
-  }
-  const state = projectWorkflowStateForApi(stateRead.state, workflowMetadata)
-  return Response.json({ state, workflow: workflowSummaryFromState(stateRead.state) })
+  return await enqueueWorkflowSessionTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    const reconciled = await reconcileWorkflowAgentTasks(
+      stateRead.state,
+      (ownerSessionId, runId) => agentRunLedgerService.getRun(ownerSessionId, runId),
+    )
+    let authoritative = stateRead.state
+    let projectionMetadata = workflowMetadata
+    if (reconciled !== stateRead.state) {
+      const { state: written, pointer } = await workflowSessionStateService.writeState(
+        sessionId,
+        reconciled,
+        { expectedStateVersion: stateRead.state.stateVersion },
+      )
+      authoritative = written
+      projectionMetadata = stateToWorkflowMetadata(written, pointer)
+      const detail = await sessionService.getSession(sessionId)
+      await workflowSessionCreateService.appendWorkflowMetadata(
+        sessionId,
+        detail.workDir || process.cwd(),
+        projectionMetadata,
+      )
+    }
+    const state = projectWorkflowStateForApi(authoritative, projectionMetadata)
+    return Response.json({ state, workflow: workflowSummaryFromState(authoritative) })
+  })
 }
 
 function projectWorkflowStateForApi(
@@ -1574,6 +1652,122 @@ async function updateWorkflowCompletionProgress(req: Request, sessionId: string)
   })
 }
 
+async function updateWorkflowAgentTaskProgress(req: Request, sessionId: string): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw ApiError.badRequest('Workflow Agent task progress must be an object')
+  }
+
+  return await enqueueWorkflowSessionTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    const progress = body as WorkflowAgentTaskProgressInput
+    let state: WorkflowSessionState
+    try {
+      state = await recordWorkflowAgentTaskProgressWithLedger(
+        stateRead.state,
+        progress,
+        event => agentRunLedgerService.appendEvent(event),
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const code = /^([A-Z0-9_]+):/.exec(message)?.[1] ?? 'WORKFLOW_AGENT_TASK_PROGRESS_INVALID'
+      throw workflowError(409, code, message)
+    }
+
+    if (state === stateRead.state) {
+      return Response.json({
+        ok: true,
+        unchanged: true,
+        state,
+        workflow: workflowSummaryFromState(state),
+      })
+    }
+
+    const { pointer } = await workflowSessionStateService.writeState(
+      sessionId,
+      state,
+      { expectedStateVersion: stateRead.state.stateVersion },
+    )
+    const detail = await sessionService.getSession(sessionId)
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      detail.workDir || process.cwd(),
+      stateToWorkflowMetadata(state, pointer),
+    )
+    return Response.json({
+      ok: true,
+      state,
+      workflow: workflowSummaryFromState(state),
+    })
+  })
+}
+
+async function updateDevelopmentBatchAgentProgress(req: Request, sessionId: string): Promise<Response> {
+  await requireWorkflowSession(sessionId)
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw ApiError.badRequest('Development Batch Agent progress must be an object')
+  }
+
+  return await enqueueWorkflowSessionTransition(sessionId, async () => {
+    const stateRead = await workflowSessionStateService.readState(sessionId)
+    if (!stateRead.exists || !stateRead.state) {
+      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+    }
+    let state: WorkflowSessionState
+    try {
+      state = recordDevelopmentBatchAgentProgress(
+        stateRead.state,
+        body as DevelopmentBatchAgentProgressInput,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const code = /^([A-Z0-9_]+):/.exec(message)?.[1] ?? 'WORKFLOW_DEVELOPMENT_BATCH_AGENT_PROGRESS_INVALID'
+      throw workflowError(409, code, message)
+    }
+
+    if (state === stateRead.state) {
+      return Response.json({
+        ok: true,
+        unchanged: true,
+        state,
+        workflow: workflowSummaryFromState(state),
+      })
+    }
+
+    const { pointer } = await workflowSessionStateService.writeState(
+      sessionId,
+      state,
+      { expectedStateVersion: stateRead.state.stateVersion },
+    )
+    const detail = await sessionService.getSession(sessionId)
+    await workflowSessionCreateService.appendWorkflowMetadata(
+      sessionId,
+      detail.workDir || process.cwd(),
+      stateToWorkflowMetadata(state, pointer),
+    )
+    return Response.json({
+      ok: true,
+      state,
+      workflow: workflowSummaryFromState(state),
+    })
+  })
+}
+
 async function persistWorkflowFinalReportIfReady(state: WorkflowSessionState): Promise<void> {
   if (!state.finalReportRef) return
   await workflowReportStore.createFinalReport(state.sessionId, buildWorkflowFinalReport(state))
@@ -1833,7 +2027,7 @@ function isCompletionSubmissionAction(action: unknown): action is CompletionSubm
 function isSupportedNextPhaseContextStrategy(
   strategy: unknown,
 ): strategy is WorkflowTransitionRequest['nextPhaseContextStrategy'] | undefined {
-  return strategy === undefined || strategy === 'inherit' || strategy === 'clear'
+  return strategy === undefined || strategy === 'inherit' || strategy === 'clear' || strategy === 'capsule'
 }
 
 function toCompletionSubmission(request: WorkflowBoundaryTransitionRequest): CompletionSubmission {

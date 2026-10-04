@@ -10,7 +10,7 @@ function isEnabled(env: NodeJS.ProcessEnv): boolean {
 /**
  * Expert-only lifecycle cleanup. The normal Playwright tool remains reusable;
  * a package must explicitly opt in before a completed delegated agent closes
- * its own isolated browser context.
+ * its own logical page set. A shared BrowserContext remains alive while sibling agents still use it.
  */
 export async function closeCompletedExpertAgentPlaywrightBrowser(
   agentId: string,

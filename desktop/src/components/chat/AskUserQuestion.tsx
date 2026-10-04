@@ -3,6 +3,7 @@ import { useChatStore } from '../../stores/chatStore'
 import { useTabStore } from '../../stores/tabStore'
 import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
+import { notifyDesktop } from '../../lib/desktopNotifications'
 
 type QuestionOption = {
   id?: string
@@ -18,6 +19,8 @@ type Question = {
   choices?: QuestionOption[]
   options?: QuestionOption[]
   multiSelect?: boolean
+  /** Only server-authored Expert Intake cards use this to unlock free text. */
+  intakeFreeTextOptionId?: string
 }
 
 type AskUserInput = {
@@ -35,6 +38,7 @@ type Props = {
   toolUseId: string
   input: unknown
   result?: unknown
+  resultIsError?: boolean
 }
 
 /**
@@ -150,14 +154,18 @@ function parsePersistedResultAnswers(result: unknown, questions: Question[]): Re
   return answers
 }
 
-export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) {
+export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsError = false }: Props) {
   const { respondToPermission } = useChatStore()
   const activeTabId = useTabStore((s) => s.activeTabId)
   const targetSessionId = sessionId ?? activeTabId
   const pendingPermission = useChatStore((s) => targetSessionId ? s.sessions[targetSessionId]?.pendingPermission : undefined)
   const permissionResponse = useChatStore((s) => targetSessionId ? s.sessions[targetSessionId]?.permissionResponse : undefined)
+  const answeredQuestion = useChatStore((s) => targetSessionId
+    ? s.sessions[targetSessionId]?.answeredAskUserQuestions?.[toolUseId]
+    : undefined)
   const t = useTranslation()
   const questions = parseInput(input)
+  const questionPreview = questionText(questions[0] ?? {}).trim()
   const inputObject = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
   const [activeTab, setActiveTab] = useState(0)
   const [selections, setSelections] = useState<QuestionSelections>({})
@@ -203,38 +211,109 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   }, [questions, result])
   const resultText = resultContentToText(result)?.trim() ?? ''
   const hasStructuredAnswers = Object.keys(resultAnswers).length > 0
+  const acceptedAnswers = hasStructuredAnswers
+    ? resultAnswers
+    : answeredQuestion?.status === 'accepted'
+      ? answeredQuestion.answers
+      : {}
+  const hasAcceptedAnswers = Object.keys(acceptedAnswers).length > 0
+  // Persist this pending submission at session scope too: a tab/window remount
+  // must not revive the full form during the short acknowledgement race. A
+  // rejected acknowledgement removes this entry and reopens the question.
+  const submittedAnswers = answeredQuestion?.status === 'submitting'
+    ? answeredQuestion.answers
+    : {}
+  const hasSubmittedAnswers = Object.keys(submittedAnswers).length > 0
   const hasTerminalResult = hasStructuredAnswers || resultText.length > 0
+  const hasTerminalFailure = resultIsError
+    || resultText.includes('<tool_use_error>')
+    || resultText.startsWith('Tool permission request failed:')
 
-  const pendingRequest = pendingPermission?.toolUseId === toolUseId ? pendingPermission : null
+  // A tool_use event is only a model proposal. The card becomes actionable
+  // when the server has bound that exact tool use to the active permission
+  // request. This prevents a failed/retried tool invocation from rendering a
+  // second disabled question form beside the real one.
+  const pendingRequest = pendingPermission?.toolName === 'AskUserQuestion'
+    && pendingPermission.toolUseId === toolUseId
+    ? pendingPermission
+    : null
+  // If an acknowledgement reaches an older card before the transcript has
+  // flushed its tool_result, close only the exact acknowledged question. This
+  // prevents a tab/window remount from reviving a non-functional form without
+  // hiding any other pending question in the same session.
+  const hasLegacyAcceptedAcknowledgement = !hasStructuredAnswers
+    && !answeredQuestion
+    && !pendingRequest
+    && permissionResponse?.status === 'accepted'
+    && permissionResponse.toolUseId === toolUseId
+  const hasClosedAnswer = hasAcceptedAnswers || hasSubmittedAnswers || hasLegacyAcceptedAcknowledgement
   const answeredText = useMemo(() => {
-    if (hasStructuredAnswers) {
+    const compactAnswers = hasAcceptedAnswers ? acceptedAnswers : submittedAnswers
+    if (Object.keys(compactAnswers).length > 0) {
       return questions
-        .map((question) => resultAnswers[questionKey(question)])
+        .map((question) => compactAnswers[questionKey(question)])
         .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
         .join(', ')
     }
+    if (hasLegacyAcceptedAcknowledgement) return t('question.completed')
     if (resultText) return resultText
     return questions
       .map((question, index) => freeTexts[index]?.trim() || getSelectedAnswer(question, selections[index]))
       .filter(Boolean)
       .join('; ')
-  }, [freeTexts, hasStructuredAnswers, questions, resultAnswers, resultText, selections])
-  const submitted = hasTerminalResult || hasSubmitted
+  }, [acceptedAnswers, freeTexts, hasAcceptedAnswers, hasLegacyAcceptedAcknowledgement, questions, resultText, selections, submittedAnswers, t])
+  const compactAnswerPrefix = hasSubmittedAnswers
+    ? t('question.submittedPrefix')
+    : t('question.answeredPrefix')
+  const submitted = hasTerminalResult || hasClosedAnswer || hasSubmitted
   const interactionLocked = submitted || submissionStatus === 'submitting' || submissionStatus === 'stale'
-  const terminalWithoutAnswers = submitted && !hasStructuredAnswers && resultText.length > 0
+  const terminalWithoutAnswers = submitted && !hasAcceptedAnswers && resultText.length > 0
 
-  if (hasStructuredAnswers) {
+  useEffect(() => {
+    if (!pendingRequest || hasTerminalResult || !targetSessionId) return
+
+    void notifyDesktop({
+      dedupeKey: `ask-user-question:${targetSessionId}:${pendingRequest.requestId}`,
+      title: t('question.needsInput'),
+      ...(questionPreview ? { body: questionPreview.slice(0, 160) } : {}),
+      requestAttention: true,
+      target: { type: 'session', sessionId: targetSessionId },
+    })
+  }, [hasTerminalResult, pendingRequest?.requestId, questionPreview, t, targetSessionId])
+
+  // Historical completed cards remain compact, and terminal failures retain
+  // their alert. A non-terminal tool use without a matching pending request is
+  // either queued behind another request or a superseded proposal. The store
+  // promotes queued requests after the displayed request is resolved.
+  if (!pendingRequest && !hasTerminalResult && !hasClosedAnswer) return null
+
+  if (hasClosedAnswer) {
     return (
       <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/30 bg-[var(--color-surface-container-low)] px-3 py-2">
         <div className="flex items-start gap-2 text-xs text-[var(--color-text-secondary)]">
           <span className="material-symbols-outlined mt-[1px] text-[14px] text-[var(--color-success)]">check_circle</span>
           <span>
-            {t('question.answeredPrefix')}<strong>{answeredText}</strong>
+            {compactAnswerPrefix}<strong>{answeredText}</strong>
           </span>
         </div>
       </div>
     )
   }
+
+  if (hasTerminalFailure) {
+    return (
+      <div
+        role="alert"
+        className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-error)]/30 bg-[var(--color-error-container)]/20 px-3 py-2"
+      >
+        <div className="flex items-start gap-2 text-xs text-[var(--color-error)]">
+          <span className="material-symbols-outlined mt-[1px] text-[14px]">error</span>
+          <span className="whitespace-pre-wrap break-words">{resultText || t('question.completed')}</span>
+        </div>
+      </div>
+    )
+  }
+
 
   const handleSelect = (qIndex: number, optionKey: string) => {
     if (interactionLocked) return
@@ -289,7 +368,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
       }
       return next
     })
-    if (value.trim()) {
+    if (value.trim() && !questions[qIndex]?.intakeFreeTextOptionId) {
       setSelections((prev) => {
         if (!prev[qIndex]) return prev
         const next = { ...prev }
@@ -326,7 +405,8 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
     const answerChoiceIds = questions.reduce<Record<string, string[]>>((acc, question, index) => {
       const key = questionKey(question)
       const isRuntimeBoundResearchQuestion = key.startsWith('research-recovery:') || key.startsWith('research-delivery:')
-      if (!isRuntimeBoundResearchQuestion || freeTexts[index]?.trim()) return acc
+      const isServerBoundExpertIntakeQuestion = key.startsWith('expert-intake:')
+      if ((!isRuntimeBoundResearchQuestion && !isServerBoundExpertIntakeQuestion) || (freeTexts[index]?.trim() && !isServerBoundExpertIntakeQuestion)) return acc
       const selected = selections[index] ?? []
       if (selected.length > 0) acc[key] = selected
       return acc
@@ -345,11 +425,22 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
   }
 
   // A response to any question is enough to continue; unanswered question tabs remain optional.
-  const hasAnswer = questions.some((_, i) =>
-    Boolean(freeTexts[i]?.trim()) || (selections[i]?.length ?? 0) > 0,
-  )
-
+  // Commercialization Intake uses a stricter variant: “其他 / 我补充说明”
+  // must contain the actual supplement, not merely the option label.
+  const hasAnswer = questions.some((question, i) => {
+    const freeText = Boolean(freeTexts[i]?.trim())
+    const selected = selections[i] ?? []
+    const freeTextOptionId = question.intakeFreeTextOptionId
+    if (freeTextOptionId && selected.includes(freeTextOptionId)) return freeText
+    return freeText || selected.length > 0
+  })
   if (!activeQuestion) return null
+
+  const activeIntakeFreeTextOptionId = activeQuestion.intakeFreeTextOptionId
+  const activeIntakeFreeTextSelected = Boolean(
+    activeIntakeFreeTextOptionId && selections[safeActiveTab]?.includes(activeIntakeFreeTextOptionId),
+  )
+  const showFreeTextInput = !activeIntakeFreeTextOptionId || activeIntakeFreeTextSelected
 
   return (
     <div className={`mb-4 rounded-[var(--radius-lg)] border overflow-hidden ${
@@ -480,10 +571,10 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result }: Props) 
         )}
 
         {/* Free text input */}
-        {!interactionLocked && (
+        {!interactionLocked && showFreeTextInput && (
           <div>
             <label className="text-xs text-[var(--color-text-tertiary)] mb-1.5 block">
-              {t('question.customResponse')}
+              {activeIntakeFreeTextOptionId ? '补充说明' : t('question.customResponse')}
             </label>
             <textarea
               value={freeTexts[safeActiveTab] ?? ''}

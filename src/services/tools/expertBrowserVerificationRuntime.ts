@@ -1,16 +1,33 @@
+import { searchEngineForUrl } from '../../utils/searchEngineSurface.js'
+import { HUMAN_VERIFICATION_WAIT_MS } from '../../tools/PlaywrightTool/verificationSessionPolicy.js'
 import type { ToolResult } from '../../Tool.js'
+import { detectHumanVerificationKind } from '../../tools/PlaywrightTool/pageAccessAssessment.js'
 
 const HUMAN_VERIFICATION_REQUIRED = 'EXPERT_HUMAN_VERIFICATION_REQUIRED:'
 const HUMAN_VERIFICATION_PENDING = 'EXPERT_HUMAN_VERIFICATION_PENDING:'
 
+const SEARCH_ENGINES = ['Google', '百度', 'Bing', '360'] as const
+type ExpertSearchEngine = (typeof SEARCH_ENGINES)[number]
+
+type AccessDiagnostics = {
+  connectionKind: 'managed' | 'cdp'
+  searchEngine?: ExpertSearchEngine
+  observedAt: string
+  pacingWaitedMs?: number
+  verificationKind?: string
+}
+
 type PlaywrightResultData = {
   url?: unknown
   title?: unknown
+  text?: unknown
   error?: unknown
+  accessLimited?: unknown
+  accessDiagnostics?: unknown
+  verificationWindowPresentationConfirmed?: unknown
+  verificationGateId?: unknown
+  sharedHumanVerificationBlocked?: unknown
 }
-
-const SEARCH_ENGINES = ['Google', '百度', 'Bing', '360'] as const
-type ExpertSearchEngine = (typeof SEARCH_ENGINES)[number]
 const MAX_HUMAN_VERIFICATION_HANDOFFS = 8
 const MAX_HUMAN_VERIFICATION_WAIT_RECONNECTS = 3
 
@@ -21,13 +38,14 @@ type ExpertVerificationRuntimeConfig = {
 }
 
 type ExpertVerificationResponse = {
-  resolution: 'verification_completed' | 'switch_public_entry' | 'record_evidence_gap'
+  resolution: 'verification_completed' | 'switch_public_entry' | 'record_evidence_gap' | 'verification_deferred'
 }
 
 type FetchLike = typeof fetch
 
 type JsonRecord = Record<string, unknown>
 type PlaywrightStep = JsonRecord & { index?: number }
+type VerificationHistoryEntry = JsonRecord & { stepIndex?: number }
 type FallbackContinuation = { input: JsonRecord; engine: ExpertSearchEngine }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -66,29 +84,21 @@ function resolveRuntimeConfig(env: NodeJS.ProcessEnv): ExpertVerificationRuntime
     : null
 }
 
-function verificationState(value: unknown): { data: PlaywrightResultData & Record<string, unknown>; joinsExisting: boolean } | null {
+function verificationState(value: unknown): { data: PlaywrightResultData & Record<string, unknown>; joinsExisting: boolean; sharedHumanVerificationBlocked: boolean } | null {
   const data = record(value)
   if (!data || typeof data.error !== 'string') return null
-  if (data.error.includes(HUMAN_VERIFICATION_REQUIRED)) return { data, joinsExisting: false }
-  if (data.error.includes(HUMAN_VERIFICATION_PENDING)) return { data, joinsExisting: true }
+  const sharedHumanVerificationBlocked = data.sharedHumanVerificationBlocked === true
+  if (data.error.includes(HUMAN_VERIFICATION_REQUIRED)) return { data, joinsExisting: false, sharedHumanVerificationBlocked }
+  if (data.error.includes(HUMAN_VERIFICATION_PENDING)) return { data, joinsExisting: true, sharedHumanVerificationBlocked }
   return null
 }
 
-function searchEngineFor(url: string): ExpertSearchEngine | undefined {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase()
-    if (hostname.includes('google.')) return 'Google'
-    if (hostname.includes('baidu.')) return '百度'
-    if (hostname.includes('bing.')) return 'Bing'
-    if (hostname === 'so.com' || hostname.endsWith('.so.com')) return '360'
-  } catch {
-    // The Playwright result still carries the exact runtime error even when the URL is malformed.
-  }
-  return undefined
-}
+const searchEngineFor = searchEngineForUrl
 
 function guidanceFor(resolution: ExpertVerificationResponse['resolution'], url: string): string {
   switch (resolution) {
+    case 'verification_deferred':
+      return 'EXPERT_HUMAN_VERIFICATION_DEFERRED: 验证等待已到时限；原验证页面保留，未宣称验证成功或用户放弃。记录当前限制并继续其它公开入口，不要重复等待同一验证。'
     case 'verification_completed':
       return [
         'EXPERT_HUMAN_VERIFICATION_RESOLVED: The user completed the visible website verification.',
@@ -124,10 +134,14 @@ function actionIsNavigation(value: unknown): boolean {
 function completedActionCount(data: unknown): number {
   const steps = asRecord(data)?.steps
   if (!Array.isArray(steps)) return 0
-  const indexes = steps
-    .map((step) => asRecord(step)?.index)
-    .filter((index): index is number => typeof index === 'number' && Number.isInteger(index))
-  return indexes.length > 0 ? Math.max(...indexes) + 1 : 0
+  const normalized = steps
+    .map((step) => asRecord(step))
+    .flatMap((step) => typeof step?.index === 'number' && Number.isInteger(step.index)
+      ? [{ index: step.index, outcome: step.outcome }]
+      : [])
+  const firstFailure = normalized.find((step) => step.outcome === 'failed')
+  if (firstFailure) return firstFailure.index
+  return normalized.length > 0 ? Math.max(...normalized.map((step) => step.index)) + 1 : 0
 }
 
 function queryFromUrl(value: unknown): string | undefined {
@@ -227,7 +241,11 @@ export function buildExpertFallbackPlaywrightContinuation(
   const dataRecord = asRecord(data)
   const url = typeof dataRecord?.url === 'string' ? dataRecord.url : ''
   const currentEngine = searchEngineFor(url)
-  const query = queryFromUrl(url) ?? queryFromInput(original) ?? queryFromDirectPublicTarget(original)
+  // The result URL may already be a CAPTCHA interstitial. Its q/wd value can be
+  // a provider-generated challenge token, not the user's actual search phrase.
+  // Prefer the original requested actions, which retain the real query across
+  // every human-verification handoff.
+  const query = queryFromInput(original) ?? queryFromDirectPublicTarget(original) ?? queryFromUrl(url)
   const engine = nextFallbackSearchEngine(currentEngine, fallbackSearchEngines, attemptedEngines)
   if (!query || !engine) return undefined
 
@@ -252,6 +270,17 @@ function buildExpertVerificationRelease(input: unknown): JsonRecord | undefined 
     ...original,
     actions: [],
     verification_resolution: 'record_evidence_gap',
+  }
+}
+
+/** A sibling never owns another worker's CAPTCHA decision. Once the owner has
+ * resolved it, retry the sibling's original browser action unchanged. */
+function buildSharedBrowserRetryContinuation(input: unknown): JsonRecord | undefined {
+  const original = asRecord(input)
+  if (!original || !Array.isArray(original.actions)) return undefined
+  return {
+    ...original,
+    verification_resolution: 'verified',
   }
 }
 
@@ -286,6 +315,23 @@ export function buildExpertVerifiedPlaywrightContinuation(input: unknown, data: 
   }
 }
 
+function verificationHistoryFrom(data: JsonRecord): VerificationHistoryEntry[] {
+  const prior = Array.isArray(data.verificationHistory)
+    ? data.verificationHistory.map(asRecord).filter((entry): entry is VerificationHistoryEntry => Boolean(entry))
+    : []
+  const error = typeof data.error === 'string' ? data.error : ''
+  const verificationObserved = data.accessLimited === true
+    || error.includes(HUMAN_VERIFICATION_REQUIRED)
+    || error.includes(HUMAN_VERIFICATION_PENDING)
+  if (!verificationObserved) return prior
+
+  const stepIndex = Math.max(0, completedActionCount(data) - 1)
+  return [...prior, {
+    stepIndex,
+    ...(typeof data.url === 'string' ? { url: data.url } : {}),
+    ...(error ? { detail: error } : {}),
+  }]
+}
 function mergeVerifiedPlaywrightContinuation<T>(
   initial: ToolResult<T>,
   resumed: ToolResult<T>,
@@ -301,12 +347,14 @@ function mergeVerifiedPlaywrightContinuation<T>(
     ...initialSteps,
     ...resumedSteps.map((step, index) => ({ ...step, index: offset + index })),
   ]
+  const verificationHistory = verificationHistoryFrom(initialData)
 
   return {
     ...resumed,
     data: {
       ...resumedData,
       steps: mergedSteps,
+      ...(verificationHistory.length > 0 ? { verificationHistory } : {}),
     } as T,
   }
 }
@@ -326,6 +374,31 @@ function withVerificationError<T>(result: ToolResult<T>, error: string): ToolRes
     : result
 }
 
+function accessDiagnosticsFor(
+  data: Record<string, unknown>,
+  diagnostics: AccessDiagnostics,
+): AccessDiagnostics {
+  if (diagnostics.verificationKind) return diagnostics
+  const url = typeof data.url === 'string' ? data.url : ''
+  const title = typeof data.title === 'string' ? data.title : ''
+  const text = [data.text, data.error].filter((value): value is string => typeof value === 'string').join('\n')
+  const verificationKind = detectHumanVerificationKind(url, title, text)
+  return verificationKind ? { ...diagnostics, verificationKind } : diagnostics
+}
+
+function attachAccessDiagnostics<T>(
+  result: ToolResult<T>,
+  diagnostics: AccessDiagnostics | undefined,
+): ToolResult<T> {
+  if (!diagnostics) return result
+  const data = asRecord(result.data)
+  if (!data || data.accessLimited !== true) return result
+  return {
+    ...result,
+    data: { ...data, accessDiagnostics: accessDiagnosticsFor(data, diagnostics) } as T,
+  }
+}
+
 async function requestVerificationResolution(
   config: ExpertVerificationRuntimeConfig,
   state: { data: PlaywrightResultData & Record<string, unknown>; joinsExisting: boolean },
@@ -335,10 +408,12 @@ async function requestVerificationResolution(
   const title = typeof state.data.title === 'string' ? state.data.title : undefined
   const endpoint = new URL('/api/expert-human-verifications', config.serverUrl)
   let joinExisting = state.joinsExisting
+  const deadline = Date.now() + HUMAN_VERIFICATION_WAIT_MS + 5_000
 
   for (let reconnectCount = 0; ; reconnectCount += 1) {
     try {
       const response = await (params.fetchImpl ?? fetch)(endpoint, {
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -346,6 +421,9 @@ async function requestVerificationResolution(
           ...(params.agentId ? { agentId: params.agentId } : {}),
           ...(params.toolUseId ? { toolUseId: params.toolUseId } : {}),
           ...(params.browserSessionKey ? { browserSessionKey: params.browserSessionKey } : {}),
+          ...(typeof state.data.verificationGateId === 'string' && state.data.verificationGateId.trim()
+            ? { verificationGateId: state.data.verificationGateId.trim() }
+            : {}),
           ...(joinExisting
             ? { joinExisting: true }
             : {
@@ -353,18 +431,21 @@ async function requestVerificationResolution(
                   url,
                   ...(title ? { title } : {}),
                   detail: state.data.error,
+                  ...(typeof state.data.verificationWindowPresentationConfirmed === 'boolean'
+                    ? { windowPresentationConfirmed: state.data.verificationWindowPresentationConfirmed }
+                    : {}),
                   ...(searchEngineFor(url) ? { engine: searchEngineFor(url) } : {}),
                 },
               }),
         }),
       })
       const payload = await response.json().catch(() => null) as ExpertVerificationResponse | null
-      if (!response.ok || !payload || !['verification_completed', 'switch_public_entry', 'record_evidence_gap'].includes(payload.resolution)) {
+      if (!response.ok || !payload || !['verification_completed', 'switch_public_entry', 'record_evidence_gap', 'verification_deferred'].includes(payload.resolution)) {
         throw new Error('The Desktop browser-verification handoff did not return a valid user resolution.')
       }
       return payload
     } catch (error) {
-      if (reconnectCount >= MAX_HUMAN_VERIFICATION_WAIT_RECONNECTS || !shouldReconnectHumanVerificationWait(error)) throw error
+      if (Date.now() >= deadline || reconnectCount >= MAX_HUMAN_VERIFICATION_WAIT_RECONNECTS || !shouldReconnectHumanVerificationWait(error)) throw error
       // The original Desktop request may have timed out at the HTTP layer while
       // its visible CAPTCHA and service-side decision are still alive. Rejoin it
       // instead of opening a second modal or abandoning the paused browser page.
@@ -375,8 +456,8 @@ async function requestVerificationResolution(
 
 /**
  * This is an Expert-runtime adapter, not part of the shared Playwright tool.
- * It observes a real Playwright CAPTCHA result, hands the already-visible page
- * to Desktop, then either resumes that exact call or—only after an explicit
+ * It observes a real Playwright CAPTCHA result, hands the preserved page to
+ * Desktop's dedicated verification prompt, then either resumes that exact call or—only after an explicit
  * refusal—tries the next package-declared public search entry. A later CAPTCHA
  * from a runtime-owned continuation opens a new Desktop handoff for that exact
  * visible page rather than leaking a model AskUserQuestion or abandoning work.
@@ -391,6 +472,7 @@ export async function coordinateExpertBrowserVerification<T>(params: {
   resume?: (input: unknown) => Promise<ToolResult<T>>
   env?: NodeJS.ProcessEnv
   fetchImpl?: FetchLike
+  accessDiagnostics?: AccessDiagnostics
 }): Promise<ToolResult<T>> {
   if (params.toolName !== 'Playwright') return params.result
 
@@ -404,24 +486,33 @@ export async function coordinateExpertBrowserVerification<T>(params: {
 
   for (let handoffCount = 0; handoffCount < MAX_HUMAN_VERIFICATION_HANDOFFS; handoffCount += 1) {
     const state = verificationState(currentResult.data)
-    if (!state || typeof state.data.error !== 'string') return aggregateResult
+    if (!state || typeof state.data.error !== 'string') return attachAccessDiagnostics(aggregateResult, params.accessDiagnostics)
 
     const url = typeof state.data.url === 'string' ? state.data.url : ''
     const currentEngine = searchEngineFor(url)
-    if (currentEngine) attemptedEngines.add(currentEngine)
+    if (currentEngine && !state.sharedHumanVerificationBlocked) attemptedEngines.add(currentEngine)
 
     let resolution: ExpertVerificationResponse
     try {
       resolution = await requestVerificationResolution(config, state, params)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_HANDOFF_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.')
+      return attachAccessDiagnostics(withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_HANDOFF_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.'), params.accessDiagnostics)
     }
 
-    if (!params.resume) return withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url))
+    if (!params.resume) return attachAccessDiagnostics(withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url)), params.accessDiagnostics)
 
     let continuation: JsonRecord | undefined
-    if (resolution.resolution === 'verification_completed') {
+    if (state.sharedHumanVerificationBlocked) {
+      continuation = buildSharedBrowserRetryContinuation(currentInput)
+    } else if (resolution.resolution === 'verification_deferred') {
+      const release = buildExpertVerificationRelease(currentInput)
+      if (release) {
+        try { await params.resume(release) } catch { /* The runner's shared expiry also releases an unreachable owner. */ }
+      }
+      // Retain the original attempted URL and actions, not a new blank tab.
+      return attachAccessDiagnostics(withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url)), params.accessDiagnostics)
+    } else if (resolution.resolution === 'verification_completed') {
       continuation = buildExpertVerifiedPlaywrightContinuation(currentInput, currentResult.data)
     } else if (resolution.resolution === 'switch_public_entry') {
       const fallback = buildExpertFallbackPlaywrightContinuation(
@@ -439,32 +530,32 @@ export async function coordinateExpertBrowserVerification<T>(params: {
         // stuck waiting for another human-verification decision.
         const release = buildExpertVerificationRelease(currentInput)
         if (!release) {
-          return withVerificationError(
+          return attachAccessDiagnostics(withVerificationError(
             aggregateResult,
             config.fallbackSearchEngines.length > 0
               ? 'EXPERT_HUMAN_VERIFICATION_FALLBACK_UNAVAILABLE: The user explicitly declined verification, but this browser call has no recoverable search query or direct target. Keep only this page as access-limited and continue the remaining research; do not wait for another verification choice.'
               : guidanceFor(resolution.resolution, url),
-          )
+          ), params.accessDiagnostics)
         }
         try {
           const released = await params.resume(release)
           const merged = mergeVerifiedPlaywrightContinuation(aggregateResult, released)
-          return withVerificationError(
+          return attachAccessDiagnostics(withVerificationError(
             merged,
             config.fallbackSearchEngines.length > 0
               ? 'EXPERT_HUMAN_VERIFICATION_FALLBACK_UNAVAILABLE: The user explicitly declined verification. This held page was released as access-limited because the call had no recoverable search query or direct public target; continue the remaining research without reopening this modal.'
               : guidanceFor(resolution.resolution, url),
-          )
+          ), params.accessDiagnostics)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
-          return withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_RELEASE_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.')
+          return attachAccessDiagnostics(withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_RELEASE_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.'), params.accessDiagnostics)
         }
       }
     } else {
       continuation = buildExpertVerificationRelease(currentInput)
     }
 
-    if (!continuation) return withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url))
+    if (!continuation) return attachAccessDiagnostics(withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url)), params.accessDiagnostics)
 
     try {
       const resumed = await params.resume(continuation)
@@ -473,12 +564,12 @@ export async function coordinateExpertBrowserVerification<T>(params: {
       currentInput = continuation
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_RESUME_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.')
+      return attachAccessDiagnostics(withVerificationError(aggregateResult, 'EXPERT_HUMAN_VERIFICATION_RESUME_FAILED: ' + message + ' The visible page remains preserved; do not claim this page was verified.'), params.accessDiagnostics)
     }
   }
 
-  return withVerificationError(
+  return attachAccessDiagnostics(withVerificationError(
     aggregateResult,
     'EXPERT_HUMAN_VERIFICATION_HANDOFF_EXHAUSTED: Repeated visible verification pages exceeded the bounded runtime handoff limit. The latest page remains preserved; do not claim it was verified.',
-  )
+  ), params.accessDiagnostics)
 }

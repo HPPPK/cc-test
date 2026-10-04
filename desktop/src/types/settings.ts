@@ -18,6 +18,13 @@ export type WebSearchSettings = {
   braveApiKey?: string
 }
 
+/** A user-selected image Provider/model, intentionally independent of chat runtime. */
+export type ImageGenerationSettings = {
+  enabled: boolean
+  providerId?: string
+  model?: string
+}
+
 export type UpdateProxyMode = 'system' | 'manual'
 
 export type UpdateProxySettings = {
@@ -61,6 +68,7 @@ export type UserSettings = {
   skipWebFetchPreflight?: boolean
   desktopNotificationsEnabled?: boolean
   webSearch?: WebSearchSettings
+  imageGeneration?: ImageGenerationSettings
   updateProxy?: Partial<UpdateProxySettings>
   language?: string
   desktopTerminal?: Partial<DesktopTerminalSettings>

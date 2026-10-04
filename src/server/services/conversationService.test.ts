@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
+import { sessionService } from './sessionService.js'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -29,6 +30,7 @@ type ChildEnvBuilder = {
     sdkUrl?: string,
     options?: {
       expertSystemPrompt?: string
+      sessionId?: string
       expertSessionId?: string
       expertSharedPlaywrightSessionId?: string
       expertPlaywrightCdpEndpoint?: string
@@ -37,6 +39,8 @@ type ChildEnvBuilder = {
       expertBrowserVerificationFallbackSearchEngines?: Array<'Google' | '百度' | 'Bing' | '360'>
       expertClosePlaywrightWhenAgentDone?: boolean
       expertForbidSubagentAskUserQuestion?: boolean
+      expertFullToolAccess?: boolean
+      uiuxImageOnlyDelivery?: boolean
       expertTemplateFillWrite?: boolean
       expertResearchDeliveryPolicy?: {
         questionId: string
@@ -173,7 +177,28 @@ describe('ConversationService expert tool policy', () => {
     })
     expect(expertEnv.CC_HAHA_EXPERT_RESEARCH_DELIVERY_POLICY).toBe(expertEnv.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY)
   })
-  test('forwards browser-verification handoff and delegated-Ask isolation only when an Expert package opts in', async () => {
+  test('injects a generic receipt session id and removes inherited stale aliases', async () => {
+    const previousSessionId = process.env.CC_JIANGXIA_SESSION_ID
+    const previousLegacySessionId = process.env.CC_HAHA_SESSION_ID
+    try {
+      process.env.CC_JIANGXIA_SESSION_ID = 'stale-session'
+      process.env.CC_HAHA_SESSION_ID = 'stale-legacy-session'
+      const service = new ConversationService() as unknown as ChildEnvBuilder
+      const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+      const activeEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', { sessionId: 'active-session-123' })
+      expect(ordinaryEnv.CC_JIANGXIA_SESSION_ID).toBeUndefined()
+      expect(ordinaryEnv.CC_HAHA_SESSION_ID).toBeUndefined()
+      expect(activeEnv.CC_JIANGXIA_SESSION_ID).toBe('active-session-123')
+      expect(activeEnv.CC_HAHA_SESSION_ID).toBe('active-session-123')
+      expect(activeEnv.CC_JIANGXIA_AGENT_RUN_LEDGER_ENABLED).toBe('1')
+    } finally {
+      if (previousSessionId === undefined) delete process.env.CC_JIANGXIA_SESSION_ID
+      else process.env.CC_JIANGXIA_SESSION_ID = previousSessionId
+      if (previousLegacySessionId === undefined) delete process.env.CC_HAHA_SESSION_ID
+      else process.env.CC_HAHA_SESSION_ID = previousLegacySessionId
+    }
+  })
+  test('forwards browser-verification handoff, delegated-Ask isolation, and full subagent tool access only for active Experts', async () => {
     const service = new ConversationService() as unknown as ChildEnvBuilder
     const ordinaryEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
     const optedInEnv = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', {
@@ -182,18 +207,22 @@ describe('ConversationService expert tool policy', () => {
       expertBrowserVerificationFallbackSearchEngines: ['Google', '百度', 'Bing', '360'],
       expertClosePlaywrightWhenAgentDone: true,
       expertForbidSubagentAskUserQuestion: true,
+      expertFullToolAccess: true,
     })
 
     expect(ordinaryEnv.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF).toBeUndefined()
     expect(ordinaryEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES).toBeUndefined()
     expect(ordinaryEnv.CC_JIANGXIA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE).toBeUndefined()
     expect(ordinaryEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION).toBeUndefined()
+    expect(ordinaryEnv.CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS).toBeUndefined()
     expect(optedInEnv.CC_JIANGXIA_EXPERT_SESSION_ID).toBe('expert-session-123')
     expect(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF).toBe('1')
     expect(JSON.parse(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES ?? '')).toEqual(['Google', '百度', 'Bing', '360'])
     expect(optedInEnv.CC_HAHA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES).toBe(optedInEnv.CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES)
     expect(optedInEnv.CC_JIANGXIA_EXPERT_CLOSE_PLAYWRIGHT_WHEN_AGENT_DONE).toBe('1')
     expect(optedInEnv.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION).toBe('1')
+    expect(optedInEnv.CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS).toBe('1')
+    expect(optedInEnv.CC_HAHA_EXPERT_FULL_TOOL_ACCESS).toBe('1')
     expect(optedInEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE).toBeUndefined()
   })
 
@@ -288,4 +317,71 @@ describe('ConversationService expert tool policy', () => {
       await fs.rm(directory, { recursive: true, force: true })
     }
   })
+})
+
+
+describe('UIUX image-only child environment', () => {
+  test('opts in only this session and strips inherited image-only aliases from other sessions', async () => {
+    const keys = ['CC_JIANGXIA_UIUX_IMAGE_ONLY_DELIVERY', 'CC_HAHA_UIUX_IMAGE_ONLY_DELIVERY']
+    const previous = keys.map(key => process.env[key])
+    try {
+      for (const key of keys) process.env[key] = '1'
+      const service = new ConversationService() as unknown as ChildEnvBuilder
+      const ordinary = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test')
+      const optedIn = await service.buildChildEnv(process.cwd(), 'ws://127.0.0.1:57420/sdk/test', { uiuxImageOnlyDelivery: true })
+      for (const key of keys) {
+        expect(ordinary[key]).toBeUndefined()
+        expect(optedIn[key]).toBe('1')
+      }
+    } finally {
+      keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i] })
+    }
+  })
+})
+
+describe('ConversationService loaded Expert binding', () => {
+  test('records only the binding actually launched with a prompt and clears it with the process', async () => {
+    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-process-binding-'))
+    const service = new ConversationService()
+    const internals = service as any
+    const launchInfo = spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    const metadata = spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue(undefined)
+    const env = spyOn(internals, 'buildChildEnv').mockResolvedValue({})
+    const spawn = spyOn(Bun, 'spawn').mockImplementation((() => {
+      let exit!: (code: number) => void
+      const exited = new Promise<number>(resolve => { exit = resolve })
+      return {
+        exited, kill: () => exit(0),
+        stdout: new ReadableStream({ start(controller) { controller.close() } }),
+        stderr: new ReadableStream({ start(controller) { controller.close() } }),
+      }
+    }) as any)
+    const id = 'expert-binding-unit-session'
+    try {
+      expect(service.getSessionExpertRuntimeBindingKey(id)).toBeUndefined()
+      await service.startSession(id, workDir, 'ws://127.0.0.1/sdk/unit', {
+        expertSystemPrompt: 'fixture expert instructions', expertRuntimeBindingKey: 'binding-a',
+      })
+      expect(service.getSessionExpertRuntimeBindingKey(id)).toBe('binding-a')
+      const promptPath = internals.sessions.get(id).runtimePromptFilePath
+      expect(await fs.readFile(promptPath, 'utf8')).toBe('fixture expert instructions')
+      expect(spawn.mock.calls[0][0]).toContain('--append-system-prompt-file')
+      await service.startSession(id, workDir, 'ws://127.0.0.1/sdk/unit', {
+        expertSystemPrompt: 'not launched', expertRuntimeBindingKey: 'binding-b',
+      })
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(service.getSessionExpertRuntimeBindingKey(id)).toBe('binding-a')
+      await service.stopSessionAndWait(id)
+      expect(service.getSessionExpertRuntimeBindingKey(id)).toBeUndefined()
+      await service.startSession(id, workDir, 'ws://127.0.0.1/sdk/unit', { expertRuntimeBindingKey: 'unloaded' })
+      expect(service.getSessionExpertRuntimeBindingKey(id)).toBeUndefined()
+    } finally {
+      await service.stopSessionAndWait(id)
+      spawn.mockRestore()
+      env.mockRestore()
+      metadata.mockRestore()
+      launchInfo.mockRestore()
+      await fs.rm(workDir, { recursive: true, force: true })
+    }
+  }, 15_000)
 })

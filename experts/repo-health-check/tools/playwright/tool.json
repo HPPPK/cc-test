@@ -1,0 +1,15 @@
+{
+  "id": "playwright",
+  "name": "公开仓库浏览",
+  "type": "hostBuiltinRef",
+  "purpose": "打开用户指定的公开 GitHub/Gitee 仓库及必要的同站公开页面，读取真实可见的 README、文件内容和 CI/元信息。",
+  "entrypoint": "tools/playwright/tool.json",
+  "hostToolId": "Playwright",
+  "permissions": [
+    {
+      "id": "research-public-repository",
+      "description": "仅通过当前会话可用的 Playwright 读取用户指定的公开 GitHub/Gitee 仓库及理解该仓库所必需的同站公开子页面；不登录、不克隆、不绕过访问控制。"
+    }
+  ],
+  "network": "declared"
+}

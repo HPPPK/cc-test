@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "feature-extension-workflow-v8",
+      "phases": [
+        {
+          "id": "feature-memory-plan"
+        },
+        {
+          "id": "feature-implement"
+        },
+        {
+          "id": "feature-quality-preview"
+        },
+        {
+          "id": "feature-finish-memory"
+        }
+      ]
+    }
+  ]
+}

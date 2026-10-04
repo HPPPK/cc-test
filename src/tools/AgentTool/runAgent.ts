@@ -1,3 +1,5 @@
+import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
+import { createResearcherPartPath, researchArtifactRootPath, isFileFirstExpertResearchAgentType } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
@@ -57,11 +59,24 @@ import { clearSessionHooks } from '../../utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from '../../utils/hooks.js'
 import { createUserMessage } from '../../utils/messages.js'
 import {
+  currentExpertTemplateOutputReviewContext,
+  isCurrentExpertTemplateOutputReviewReportPath,
+} from '../../services/tools/expertTemplateFillRuntime.js'
+import {
   formatExpertSubagentResearchEvidenceContext,
   formatExpertSubagentSkillContext,
   loadExpertSubagentResearchEvidenceContext,
   loadExpertSubagentSkillContext,
+  recordExpertSubagentResearchSourceDispatch,
+  resolveExpertAssignedResearchSourceBatch,
+  type ExpertResearchSourceAssignment,
+  type ExpertResearchTaskKind,
 } from '../../services/tools/expertSubagentSkillRuntime.js'
+import {
+  resolveExpertResearchArtifactPath,
+  resolveRuntimeExpertResearchArtifactPolicy,
+  type ExpertResearchArtifactKind,
+} from '../../server/services/expertResearchArtifactPolicyService.js'
 import { getAgentModel } from '../../utils/model/agent.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
 import {
@@ -251,9 +266,273 @@ function isRecordableMessage(
   )
 }
 
+type FileFirstResearchArtifactPaths = {
+  briefPath: string
+  researcherPaths: string[]
+  researcherParts?: boolean
+  reviewerPath: string
+  auditPath: string
+  absorptionPath?: string
+  completionReviewPath?: string
+}
+
+export function formatFileFirstOutputReviewContext(input: {
+  briefPath: string
+  absorptionPath: string
+  reportPath: string
+  targetPath: string
+}): string {
+  return [
+    '<expert-rendered-output-review>',
+    'Review the current rendered report for omitted or flattened decision-relevant details and source-supported corrections, including wrong source attribution or meaning-changing errors. Do not browse, do not ask the user, do not write HTML, and do not discover other files.',
+    'Read only these exact inputs:',
+    '- ' + input.briefPath,
+    '- ' + input.absorptionPath,
+    '- ' + input.reportPath,
+    'Write only this Markdown review: ' + input.targetPath,
+    'You may also Read that exact output Markdown for save verification; it is not an additional research source.',
+    'After Write and the required Read-back verification, return exactly one short file receipt: `已写入：' + input.targetPath + '；状态：已 Read 验证。`',
+    'If the file was not verified saved, return exactly one short factual receipt: `未写入：' + input.targetPath + '；状态：<brief factual reason>`.',
+    'Do not repeat findings, evidence, URLs, review prose, limitations, error history, or next steps outside that Markdown. The parent must Read this declared Markdown itself; the receipt is not a completion gate.',
+    '</expert-rendered-output-review>',
+  ].join('\n')
+}
+
+function exactResearchArtifactPath(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const value = (input as Record<string, unknown>).file_path
+  return typeof value === 'string' && value.trim() === value && value.endsWith('.md') && !/[\r\n]/.test(value)
+    ? value
+    : undefined
+}
+
+function researchArtifactPolicyValue(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const value = env.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY ?? env.CC_HAHA_EXPERT_RESEARCH_ARTIFACT_POLICY
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function researchArtifactOutputRoot(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const value = env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT ?? env.CC_HAHA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function safeRelativeResearchArtifactPath(value: string): string | undefined {
+  const normalized = value.replace(/\\/g, '/')
+  return normalized.startsWith('/') || /^[a-zA-Z]:\//.test(normalized) || normalized.split('/').some((part) => !part || part === '.' || part === '..')
+    ? undefined
+    : normalized
+}
+
+/**
+ * Tool inputs may use either the declared relative artifact path or the same
+ * file's absolute path under this Expert session work directory. The contract
+ * itself remains relative-only; this turns both spellings into that declaration.
+ */
+function canonicalResearchArtifactPath(
+  input: unknown,
+  allowedKinds: ExpertResearchArtifactKind[],
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const artifactPath = exactResearchArtifactPath(input)
+  if (!artifactPath) return undefined
+  const serializedPolicy = researchArtifactPolicyValue(env)
+  const outputRoot = researchArtifactOutputRoot(env)
+  if (!serializedPolicy || !outputRoot) {
+    // Compatibility for a non-file-first test/old context: retain only a safe
+    // relative spelling. An absolute path requires the session root above.
+    return safeRelativeResearchArtifactPath(artifactPath)
+  }
+  try {
+    const policy = resolveRuntimeExpertResearchArtifactPolicy(serializedPolicy)
+    if (!policy) return undefined
+    return resolveExpertResearchArtifactPath({
+      workDir: outputRoot,
+      policy,
+      artifactPath,
+      allowedKinds,
+    }).relativePath
+  } catch {
+    return undefined
+  }
+}
+
+/** One Read boundary for report workers; the same predicate is used by the runner and regressions. */
+export function reportWorkerReadError(input: unknown, context: {
+  agentType: string
+  artifactPaths: FileFirstResearchArtifactPaths
+  reportPath?: string
+}): string | undefined {
+  const { agentType, artifactPaths } = context
+  if (agentType === 'expert-evidence-output-reviewer') {
+    const allowed = new Set([artifactPaths.briefPath, ...(artifactPaths.absorptionPath ? [artifactPaths.absorptionPath] : []), ...(artifactPaths.completionReviewPath ? [artifactPaths.completionReviewPath] : [])])
+    const requested = canonicalResearchArtifactPath(input, ['research-brief', 'field-absorption', 'final-output-review'])
+    const rawPath = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>).file_path : undefined
+    if ((!requested || !allowed.has(requested)) && !isCurrentExpertTemplateOutputReviewReportPath(rawPath, context.reportPath)) {
+      return 'This Expert output-review worker may Read only the declared brief, the declared report-field absorption Markdown, the exact HTML draft rendered in this same session, and its own declared completeness Markdown for save verification. It may not scan the workDir or read researcher ledgers, browser audits, or other files.'
+    }
+  }
+  if (agentType === 'expert-evidence-absorber') {
+    const allowed = new Set([artifactPaths.briefPath, ...artifactPaths.researcherPaths, artifactPaths.reviewerPath, artifactPaths.auditPath, ...(artifactPaths.absorptionPath ? [artifactPaths.absorptionPath] : [])])
+    const requested = canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit', 'field-absorption'])
+    if (!requested || !allowed.has(requested)) {
+      return 'This Expert evidence absorption worker may Read only the declared brief, researcher reports, evidence review, browser audit, and its own declared absorption Markdown for save verification. It may not scan the workDir or read another file.'
+    }
+  }
+  return undefined
+}
+
+function isExactResearchArtifactWrite(
+  input: unknown,
+  expectedPath: string,
+  expectedKind: ExpertResearchArtifactKind,
+): boolean {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
+  const record = input as Record<string, unknown>
+  return canonicalResearchArtifactPath(input, [expectedKind]) === expectedPath
+    && typeof record.content === 'string'
+    && record.content.trim().length > 0
+}
+
+/**
+ * Researcher Markdown is a durable, incremental evidence ledger. The runner
+ * enforces ownership and a real non-empty checkpoint only; route coverage,
+ * source diversity, and browser limitations are reviewed after saving from the
+ * server-generated audit instead of blocking a child from recording evidence.
+ */
+export function researcherArtifactWriteError(
+  input: unknown,
+  expectedPath: string | undefined,
+): string | undefined {
+  if (expectedPath && isExactResearchArtifactWrite(input, expectedPath, 'researcher-report')) return undefined
+  return 'This Expert evidence researcher must Write only its one task-assigned Markdown path with non-empty content. Save incremental evidence checkpoints to that path; do not write any other file.'
+}
+
+/** Incremental updates use the same exact destination as Write; tool availability
+ * must not send a worker into shell or nested-agent detours to save its ledger. */
+export function researcherArtifactEditError(input: unknown, expectedPath: string | undefined): string | undefined {
+  const edit = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : undefined
+  if (expectedPath && canonicalResearchArtifactPath(input, ['researcher-report']) === expectedPath
+    && typeof edit?.old_string === 'string' && typeof edit.new_string === 'string' && edit.new_string.trim()) return undefined
+  return 'This Expert evidence researcher may Edit only its assigned Markdown with a non-empty replacement. Read it first, preserve earlier evidence, and Read back the saved checkpoint.'
+}
+
+/**
+ * Finds the single researcher ledger named by the parent task. Parent prompts
+ * may carry Windows absolute paths, while the ZIP policy is deliberately
+ * relative with forward slashes. JSON serialization also escapes every `\`,
+ * so collapse either spelling before comparing instead of treating a valid
+ * Windows target as an unassigned file.
+ */
+function researchArtifactMatchesInSerializedPrompt(serializedPrompt: string, candidates: string[]): string[] {
+  const normalized = serializedPrompt.replace(/\.parts\/[A-Za-z0-9_-]+\.md/g, '.md')
+  return candidates.filter((candidate) => normalized.includes(candidate.replace(/\\+/g, '/')))
+}
+
+/**
+ * The fork prefix deliberately contains every sibling Agent tool call for prompt
+ * cache reuse. The final fork-worker directive is the only per-child message,
+ * so resolve its assigned ledger before looking at the shared prefix.
+ */
+export function assignedResearchArtifactPath(
+  promptMessages: Message[],
+  candidates: string[],
+): string | undefined {
+  for (const message of [...promptMessages].reverse()) {
+    const serializedMessage = JSON.stringify(message).replace(/\\+/g, '/')
+    if (!serializedMessage.includes('<forked-worker>')) continue
+    const matches = researchArtifactMatchesInSerializedPrompt(serializedMessage, candidates)
+    if (matches.length === 1) return matches[0]
+  }
+
+  for (const message of [...promptMessages].reverse()) {
+    const matches = researchArtifactMatchesInSerializedPrompt(JSON.stringify(message).replace(/\\+/g, '/'), candidates)
+    if (matches.length === 1) return matches[0]
+  }
+  return undefined
+}
+
+export function assignedResearchArtifactPathFromTask(
+  declaredResearchArtifactPath: string | undefined,
+  taskPrompt: string | undefined,
+  candidates: string[],
+): string | undefined {
+  const declaredMatches = declaredResearchArtifactPath
+    ? researchArtifactMatchesInSerializedPrompt(declaredResearchArtifactPath.replace(/\\+/g, '/'), candidates)
+    : []
+  if (declaredResearchArtifactPath && declaredMatches.length !== 1) return undefined
+
+  const taskMatches = taskPrompt
+    ? researchArtifactMatchesInSerializedPrompt(taskPrompt.replace(/\\+/g, '/'), candidates)
+    : []
+  if (taskPrompt && taskMatches.length > 1) return undefined
+
+  const declared = declaredMatches[0]
+  const task = taskMatches[0]
+  if (declared && task && declared !== task) return undefined
+  return declared ?? task
+}
+
+export function buildExpertSubagentPackagePrompt(input: {
+  agentId?: string
+  agentType: string
+  promptMessages: Message[]
+  /** Explicit target supplied by the current Agent tool call, never sibling history. */
+  declaredResearchArtifactPath?: string
+  researchTaskKind?: ExpertResearchTaskKind
+  /** Compatibility fallback scoped to the current Agent tool call only. */
+  taskPrompt?: string
+  expertSkillContext: Awaited<ReturnType<typeof loadExpertSubagentSkillContext>>
+}): {
+  researchArtifactPaths?: FileFirstResearchArtifactPaths
+  researcherTargetPath?: string
+  prompt?: string
+} {
+  const isTargeted = input.agentType === 'expert-evidence-researcher' && input.researchTaskKind === 'targeted-evidence'
+  const explicitCommercializationResearcher = input.agentType === 'expert-evidence-researcher'
+    && [input.declaredResearchArtifactPath, input.taskPrompt].some((value) => (
+      typeof value === 'string'
+      && /(?:^|[\/\s"'(])commercialization-research[\/]0[234]-[^\/\s"'),;:]+\.md(?:$|[\s"'),;:])/i.test(value.replace(/\\/g, '/'))
+    ))
+  if (explicitCommercializationResearcher && (
+    input.expertSkillContext?.expertId !== 'commercialization-research-report'
+    || !input.expertSkillContext.artifactPaths
+    || (!isTargeted && !(input.expertSkillContext.researchSourcePlan?.batches.length))
+  )) {
+    throw new Error('EXPERT_RESEARCH_SOURCE_CONTEXT_REQUIRED: The commercialization research task context was not loaded after the bounded retry. Keep its assigned 02/03/04 Markdown; source-batch tasks also require their server source package.')
+  }
+  const researchArtifactPaths = input.expertSkillContext?.artifactPaths as FileFirstResearchArtifactPaths | undefined
+  const assignedLanePath = input.agentType === 'expert-evidence-researcher' && researchArtifactPaths
+    ? assignedResearchArtifactPathFromTask(
+        input.declaredResearchArtifactPath,
+        input.taskPrompt,
+        researchArtifactPaths.researcherPaths,
+      ) ?? (input.declaredResearchArtifactPath === undefined && input.taskPrompt === undefined
+        ? assignedResearchArtifactPath(input.promptMessages, researchArtifactPaths.researcherPaths)
+        : undefined)
+    : undefined
+  const researcherTargetPath = assignedLanePath && researchArtifactPaths?.researcherParts && input.agentId
+    ? createResearcherPartPath(assignedLanePath, input.agentId) : assignedLanePath
+  const hasSourcePlan = !isTargeted && input.agentType === 'expert-evidence-researcher'
+    && (input.expertSkillContext?.researchSourcePlan?.batches.length ?? 0) > 0
+  if ((hasSourcePlan || isTargeted) && !researcherTargetPath) {
+    throw new Error('EXPERT_RESEARCH_SOURCE_ASSIGNMENT_REQUIRED: The current research task did not declare exactly one matching 02/03/04 Markdown path. Use the same unique artifact path for source-batch and targeted-evidence tasks.')
+  }
+  if (hasSourcePlan && researcherTargetPath && !resolveExpertAssignedResearchSourceBatch(input.expertSkillContext, researcherTargetPath)) {
+    throw new Error('EXPERT_RESEARCH_SOURCE_ASSIGNMENT_REQUIRED: The declared researcher path has no matching A/B/C source package. Refuse to start rather than running with an empty assignment.')
+  }
+  return {
+    ...(researchArtifactPaths ? { researchArtifactPaths } : {}),
+    ...(researcherTargetPath ? { researcherTargetPath } : {}),
+    ...(input.expertSkillContext ? { prompt: formatExpertSubagentSkillContext({ ...input.expertSkillContext, ...(isTargeted ? { researchTaskKind: 'targeted-evidence' as const } : {}) }, { researcherTargetPath }) } : {}),
+  }
+}
+
 export async function* runAgent({
   agentDefinition,
   promptMessages,
+  declaredResearchArtifactPath,
+  researchTaskKind,
+  taskPrompt,
   toolUseContext,
   canUseTool,
   isAsync,
@@ -267,6 +546,7 @@ export async function* runAgent({
   availableTools,
   allowedTools,
   onCacheSafeParams,
+  onExpertResearchAssignment,
   contentReplacementState,
   useExactTools,
   worktreePath,
@@ -276,6 +556,13 @@ export async function* runAgent({
 }: {
   agentDefinition: AgentDefinition
   promptMessages: Message[]
+  /** Structured per-call A/B/C target from AgentTool; never inferred from fork siblings. */
+  declaredResearchArtifactPath?: string
+  researchTaskKind?: ExpertResearchTaskKind
+  /** Current Agent task text, used only as a backward-compatible single-path fallback. */
+  taskPrompt?: string
+  /** Receives the resolved source batch before the child model starts. */
+  onExpertResearchAssignment?: (assignment: ExpertResearchSourceAssignment | undefined) => void
   toolUseContext: ToolUseContext
   canUseTool: CanUseToolFn
   isAsync: boolean
@@ -415,6 +702,10 @@ export async function* runAgent({
       ? systemContextNoGit
       : baseSystemContext
 
+  // Enabled only after the package context below has actually loaded. This
+  // changes permission transport, not authorization or path/tool restrictions.
+  let desktopExpertPermissionRelay = false
+
   // Override permission mode if agent defines one
   // However, don't override if parent is in bypassPermissions or acceptEdits mode - those should always take precedence
   // For async agents, also set shouldAvoidPermissionPrompts since they can't show UI
@@ -439,29 +730,19 @@ export async function* runAgent({
       }
     }
 
-    // Set flag to auto-deny prompts for agents that can't show UI
-    // Use explicit canShowPermissionPrompts if provided, otherwise:
-    //   - bubble mode: always show prompts (bubbles to parent terminal)
-    //   - default: !isAsync (sync agents show prompts, async agents don't)
-    const shouldAvoidPrompts =
-      canShowPermissionPrompts !== undefined
-        ? !canShowPermissionPrompts
-        : agentPermissionMode === 'bubble'
-          ? false
-          : isAsync
-    if (shouldAvoidPrompts) {
+    const promptPolicy = resolveAgentPermissionPromptPolicy({
+      isAsync,
+      canShowPermissionPrompts,
+      agentPermissionMode,
+      desktopExpertBound: desktopExpertPermissionRelay,
+    })
+    if (promptPolicy.shouldAvoidPermissionPrompts || desktopExpertPermissionRelay) {
       toolPermissionContext = {
         ...toolPermissionContext,
-        shouldAvoidPermissionPrompts: true,
+        shouldAvoidPermissionPrompts: promptPolicy.shouldAvoidPermissionPrompts,
       }
     }
-
-    // For background agents that can show prompts, await automated checks
-    // (classifier, permission hooks) before showing the permission dialog.
-    // Since these are background agents, waiting is fine — the user should
-    // only be interrupted when automated checks can't resolve the permission.
-    // This applies to bubble mode (always) and explicit canShowPermissionPrompts.
-    if (isAsync && !shouldAvoidPrompts) {
+    if (promptPolicy.awaitAutomatedChecksBeforePrompt) {
       toolPermissionContext = {
         ...toolPermissionContext,
         awaitAutomatedChecksBeforeDialog: true,
@@ -564,15 +845,62 @@ export async function* runAgent({
   // runtime prompt. Delegated agents do not inherit that prompt, so fetch only
   // the package-declared Skill bindings for this specific Expert agent type.
   const [expertSkillContext, expertResearchEvidenceContext] = await Promise.all([
-    loadExpertSubagentSkillContext(agentDefinition.agentType),
+    loadExpertSubagentSkillContext(agentDefinition.agentType, undefined, { researchTaskKind }),
     loadExpertSubagentResearchEvidenceContext(agentDefinition.agentType),
   ])
-  const expertSubagentSkills = formatExpertSubagentSkillContext(expertSkillContext)
+  // File-first research artifacts are intentionally scoped to one child task.
+  // The parent task states exactly one target path. The runner enforces that the
+  // researcher cannot overwrite a sibling's ledger or use Write for final HTML.
+  const expertPackagePrompt = buildExpertSubagentPackagePrompt({
+    agentId,
+    agentType: agentDefinition.agentType,
+    promptMessages,
+    declaredResearchArtifactPath,
+    researchTaskKind,
+    taskPrompt,
+    expertSkillContext,
+  })
+  desktopExpertPermissionRelay = Boolean(
+    expertSkillContext?.artifactPaths
+    && isFileFirstExpertResearchAgentType(agentDefinition.agentType)
+    && getJiangxiaEnvValue('EXPERT_SESSION_ID')
+    && getJiangxiaEnvValue('DESKTOP_SERVER_URL'),
+  )
+  const researchArtifactPaths = expertPackagePrompt.researchArtifactPaths
+  const researcherTargetPath = expertPackagePrompt.researcherTargetPath
+  const expertSubagentSkills = expertPackagePrompt.prompt
   if (expertSubagentSkills) {
     initialMessages.push(createUserMessage({
       content: [{ type: 'text', text: expertSubagentSkills }],
       isMeta: true,
     }))
+  }
+  // The source assignment is now in the child context. Persist only a compact
+  // receipt for diagnostics; a failed receipt transport never blocks research.
+  const sourceBatch = researchTaskKind === 'targeted-evidence'
+    ? undefined
+    : resolveExpertAssignedResearchSourceBatch(expertSkillContext, researcherTargetPath)
+  onExpertResearchAssignment?.(
+    sourceBatch && researcherTargetPath
+      ? {
+          artifactPath: researcherTargetPath,
+          candidateUrls: sourceBatch.entries.map((entry) => entry.candidateUrl),
+        }
+      : undefined,
+  )
+  if (
+    agentDefinition.agentType === 'expert-evidence-researcher'
+    && researcherTargetPath
+    && sourceBatch?.batchFingerprint
+  ) {
+    await recordExpertSubagentResearchSourceDispatch({
+      agentId,
+      agentType: agentDefinition.agentType,
+      artifactPath: researchArtifactRootPath(researcherTargetPath),
+      batchFingerprint: sourceBatch.batchFingerprint,
+      coreEntryCount: sourceBatch.entries.filter((entry) => entry.tier === 'core').length,
+      openEntryCount: sourceBatch.entries.filter((entry) => entry.tier === 'open').length,
+    })
   }
   const expertResearchEvidence = formatExpertSubagentResearchEvidenceContext(expertResearchEvidenceContext)
   if (expertResearchEvidence) {
@@ -581,21 +909,129 @@ export async function* runAgent({
       isMeta: true,
     }))
   }
-  // A ZIP can declare that the evidence reviewer receives only the completed
-  // upstream handoff. Keep its normal prompt, but deny file/browser rediscovery
-  // at execution time for this one session; all other agents retain their tool
-  // capabilities unchanged.
-  const canUseAgentTool: CanUseToolFn = expertResearchEvidenceContext?.reviewerEvidenceOnly
-    ? async (tool, input, context, assistantMessage, toolUseID, forceDecision) => {
-        if (toolMatchesName(tool, 'Read') || toolMatchesName(tool, 'Playwright')) {
+  const reviewerArtifactPaths = (expertResearchEvidenceContext?.artifactPaths ?? researchArtifactPaths) as FileFirstResearchArtifactPaths | undefined
+  const absorptionTargetPath = agentDefinition.agentType === 'expert-evidence-absorber'
+    ? researchArtifactPaths?.absorptionPath
+    : undefined
+  const outputReviewTargetPath = agentDefinition.agentType === 'expert-evidence-output-reviewer'
+    ? researchArtifactPaths?.completionReviewPath
+    : undefined
+  const outputReviewContext = agentDefinition.agentType === 'expert-evidence-output-reviewer'
+    ? currentExpertTemplateOutputReviewContext() ?? expertSkillContext?.outputReview
+    : undefined
+  if (agentDefinition.agentType === 'expert-evidence-output-reviewer') {
+    if (!outputReviewTargetPath || !outputReviewContext) {
+      throw new Error('EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED: The output reviewer may run only after the same Expert session has successfully rendered its initial HTML draft.')
+    }
+    initialMessages.push(createUserMessage({
+      content: [{
+        type: 'text',
+        text: formatFileFirstOutputReviewContext({
+          briefPath: outputReviewContext.briefPath,
+          absorptionPath: outputReviewContext.absorptionPath,
+          reportPath: outputReviewContext.reportPath,
+          targetPath: outputReviewTargetPath,
+        }),
+      }],
+      isMeta: true,
+    }))
+  }
+
+  const canUseAgentTool: CanUseToolFn = async (tool, input, context, assistantMessage, toolUseID, forceDecision) => {
+    if (agentDefinition.agentType === 'expert-evidence-researcher' && researchArtifactPaths) {
+      if (toolMatchesName(tool, 'Read')) {
+        const requestedPath = canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit'])
+        if (!requestedPath || (requestedPath !== researchArtifactPaths.briefPath && requestedPath !== researcherTargetPath)) {
           return {
             behavior: 'deny' as const,
-            message: 'This Expert evidence reviewer must assess the injected upstream research handoff. Do not use Read or Playwright to rediscover workdir files or pages.',
+            message: 'This Expert evidence researcher may Read only the session brief and its own assigned Markdown report. It may not inspect sibling reports, the review, the browser audit, or other workDir files.',
           }
         }
-        return canUseTool(tool, input, context, assistantMessage, toolUseID, forceDecision)
       }
-    : canUseTool
+      if (toolMatchesName(tool, 'Edit')) {
+        const editError = researcherArtifactEditError(input, researcherTargetPath)
+        if (editError) return { behavior: 'deny' as const, message: editError, decisionReason: { type: 'asyncAgent' as const, reason: editError } }
+      }
+      if (toolMatchesName(tool, 'Write')) {
+        const writeError = researcherArtifactWriteError(input, researcherTargetPath)
+        if (writeError) {
+          return {
+            behavior: 'deny' as const,
+            message: writeError,
+          }
+        }
+      }
+    }
+
+    if (agentDefinition.agentType === 'expert-evidence-output-reviewer' && researchArtifactPaths) {
+      if (toolMatchesName(tool, 'Read')) {
+        const error = reportWorkerReadError(input, { agentType: agentDefinition.agentType, artifactPaths: researchArtifactPaths, reportPath: outputReviewContext?.reportPath })
+        if (error) return { behavior: 'deny' as const, message: error }
+      }
+      if (toolMatchesName(tool, 'Write')) {
+        if (!outputReviewTargetPath || !isExactResearchArtifactWrite(input, outputReviewTargetPath, 'final-output-review')) {
+          return {
+            behavior: 'deny' as const,
+            message: 'This Expert output-review worker must Write only the declared report-completeness Markdown with non-empty content. Do not write HTML or any other workspace file.',
+          }
+        }
+      }
+    }
+
+    if (agentDefinition.agentType === 'expert-evidence-absorber' && researchArtifactPaths) {
+      if (toolMatchesName(tool, 'Read')) {
+        const error = reportWorkerReadError(input, { agentType: agentDefinition.agentType, artifactPaths: researchArtifactPaths })
+        if (error) return { behavior: 'deny' as const, message: error }
+      }
+      if (toolMatchesName(tool, 'Write')) {
+        if (!absorptionTargetPath || !isExactResearchArtifactWrite(input, absorptionTargetPath, 'field-absorption')) {
+          return {
+            behavior: 'deny' as const,
+            message: 'This Expert evidence absorption worker must Write only the declared report-field absorption Markdown with non-empty content. Do not write a report HTML file or any other workspace path.',
+          }
+        }
+      }
+    }
+
+    if (expertResearchEvidenceContext?.reviewerEvidenceOnly) {
+      if (toolMatchesName(tool, 'Playwright')) {
+        return {
+          behavior: 'deny' as const,
+          message: 'This Expert evidence reviewer must not call Playwright. Review only the declared upstream research artifacts.',
+        }
+      }
+      if (toolMatchesName(tool, 'Read')) {
+        const requestedPath = canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit'])
+        const declaredArtifactPaths = reviewerArtifactPaths && new Set([
+          reviewerArtifactPaths.briefPath,
+          ...reviewerArtifactPaths.researcherPaths,
+          reviewerArtifactPaths.reviewerPath,
+          reviewerArtifactPaths.auditPath,
+        ])
+        if (!requestedPath || !declaredArtifactPaths?.has(requestedPath)) {
+          return {
+            behavior: 'deny' as const,
+            message: 'This Expert evidence reviewer may Read only the exact Markdown artifacts declared for this review. Do not scan the workDir or read tool-result files.',
+          }
+        }
+      }
+      if (toolMatchesName(tool, 'Write')) {
+        if (!reviewerArtifactPaths || !isExactResearchArtifactWrite(input, reviewerArtifactPaths.reviewerPath, 'evidence-review')) {
+          return {
+            behavior: 'deny' as const,
+            message: 'This Expert evidence reviewer must Write only the declared evidence-review Markdown with non-empty content. Do not write any other file.',
+          }
+        }
+      }
+    }
+
+    const decision = await canUseTool(tool, input, context, assistantMessage, toolUseID, forceDecision)
+    if (decision.behavior === 'allow' && researchArtifactPaths && toolMatchesName(tool, 'Read')
+      && canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit', 'field-absorption', 'final-output-review'])) {
+      return { ...decision, updatedInput: pageExpertResearchRead(decision.updatedInput ?? input) }
+    }
+    return decision
+  }
 
   // Register agent's frontmatter hooks (scoped to agent lifecycle)
   // Pass isAgent=true to convert Stop hooks to SubagentStop (since subagents trigger SubagentStop)
@@ -1013,4 +1449,28 @@ function resolveSkillName(
   }
 
   return null
+}
+
+/** Bound a read page, not the amount of evidence that may be saved or read in total. */
+export function pageExpertResearchRead(input: unknown): Record<string, unknown> {
+  const value = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+  return { ...value, offset: typeof value.offset === 'number' && value.offset > 0 ? value.offset : 1,
+    limit: typeof value.limit === 'number' && value.limit > 0 ? Math.min(value.limit, 200) : 200 }
+}
+
+/** Desktop can relay background permission cards; ordinary headless agents cannot.
+ * This never allows a tool: existing rules, hooks and user decisions still apply.
+ */
+export function resolveAgentPermissionPromptPolicy(input: {
+  isAsync: boolean
+  canShowPermissionPrompts?: boolean
+  agentPermissionMode?: string
+  desktopExpertBound: boolean
+}): { shouldAvoidPermissionPrompts: boolean; awaitAutomatedChecksBeforePrompt: boolean } {
+  const shouldAvoidPermissionPrompts = input.canShowPermissionPrompts !== undefined
+    ? !input.canShowPermissionPrompts
+    : input.agentPermissionMode === 'bubble' || input.desktopExpertBound
+      ? false
+      : input.isAsync
+  return { shouldAvoidPermissionPrompts, awaitAutomatedChecksBeforePrompt: input.isAsync && !shouldAvoidPermissionPrompts }
 }

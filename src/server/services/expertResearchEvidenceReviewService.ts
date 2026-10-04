@@ -13,6 +13,8 @@ export type ExpertResearchEvidenceRecord = {
   agentType: string
   recordedAt: string
   content: string
+  /** Session-relative Markdown artifact path when this ZIP opts into file-first handoffs. */
+  artifactPath?: string
   entries: ExpertResearchAuditEntry[]
 }
 
@@ -25,13 +27,16 @@ type JsonRecord = Record<string, unknown>
 
 const MAX_RECORDS = 16
 const MAX_CHARACTERS_PER_RECORD = 48_000
+const MAX_AUDIT_ENTRIES_PER_ARTIFACT = 256
 const VALID_STATUSES = new Set<ExpertResearchAuditEntry['status']>([
   'opened',
   'access_limited',
   'failed',
   'pending',
+  'interrupted',
 ])
 const VALID_ENGINES = new Set(['Google', '百度', 'Bing', '360'])
+const VALID_SEARCH_RESULT_STATUSES = new Set(['results_observed', 'entry_opened', 'access_limited', 'failed', 'pending', 'interrupted'])
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -75,10 +80,15 @@ function normalizeAuditEntry(value: unknown): ExpertResearchAuditEntry | undefin
   return {
     target,
     status: status as ExpertResearchAuditEntry['status'],
+    ...(text(value.auditId) ? { auditId: text(value.auditId) } : {}),
     ...(kind ? { kind } : {}),
     ...(searchEngine ? { searchEngine } : {}),
     ...(text(value.query) ? { query: text(value.query) } : {}),
+    ...(typeof value.searchResultStatus === 'string' && VALID_SEARCH_RESULT_STATUSES.has(value.searchResultStatus)
+      ? { searchResultStatus: value.searchResultStatus as ExpertResearchAuditEntry['searchResultStatus'] }
+      : {}),
     ...(text(value.finalUrl) ? { finalUrl: text(value.finalUrl) } : {}),
+    ...(Array.isArray(value.actionTypes) ? { actionTypes: [...new Set(value.actionTypes.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()))].slice(0, 64) } : {}),
     ...(text(value.detail) ? { detail: text(value.detail) } : {}),
   }
 }
@@ -132,6 +142,7 @@ export function recordExpertResearchEvidence(
     agentType: unknown
     recordedAt: string
     content: unknown
+    artifactPath?: unknown
     entries: unknown
   },
 ): ExpertResearchEvidenceState {
@@ -144,23 +155,49 @@ export function recordExpertResearchEvidence(
   if (!Array.isArray(input.entries)) {
     throw new Error('研究证据缺少 entries。')
   }
-  const entries = input.entries
+  const artifactPath = text(input.artifactPath)
+  const freshEntries = input.entries
     .map(normalizeAuditEntry)
     .filter((entry): entry is ExpertResearchAuditEntry => Boolean(entry))
-    .slice(0, 64)
-  if (entries.length === 0) {
+  if (freshEntries.length === 0) {
     throw new Error('研究证据没有可验证的 Playwright 记录。')
   }
+  // A narrow recovery intentionally overwrites the same Markdown artifact with a
+  // newer agent id. Keep the earlier real browser attempts for that artifact so
+  // a primary access-limit plus a fallback success remains one truthful ledger.
+  const retainedEntries = artifactPath
+    ? (previous?.records ?? [])
+        .filter((item) => item.artifactPath === artifactPath)
+        .flatMap((item) => item.entries)
+    : []
+  const seenEntries = new Set<string>()
+  const entries = [...retainedEntries, ...freshEntries].filter((entry) => {
+    const key = [
+      entry.auditId ?? '',
+      entry.target,
+      entry.kind ?? '',
+      entry.status,
+      entry.finalUrl ?? '',
+      (entry.actionTypes ?? []).join(','),
+    ].join('\u0000')
+    if (seenEntries.has(key)) return false
+    seenEntries.add(key)
+    return true
+  })
+  // File-backed audits are the durable source ledger, not a rolling chat buffer.
+  if (!artifactPath && entries.length > MAX_AUDIT_ENTRIES_PER_ARTIFACT) entries.splice(0, entries.length - MAX_AUDIT_ENTRIES_PER_ARTIFACT)
   const record: ExpertResearchEvidenceRecord = {
     agentId,
     agentType: sourceAgentType,
     recordedAt: input.recordedAt,
     content: content.slice(0, policy.maxCharactersPerRecord),
+    ...(artifactPath ? { artifactPath } : {}),
     entries,
   }
   const records = [
-    ...(previous?.records ?? []).filter((item) => item.agentId !== agentId),
+    ...(previous?.records ?? []).filter((item) => item.agentId !== agentId && (!artifactPath || item.artifactPath !== artifactPath)),
     record,
-  ].slice(-policy.maxRecords)
-  return { records, updatedAt: input.recordedAt }
+  ]
+  const pathless = new Set(records.filter((item) => !item.artifactPath).slice(-policy.maxRecords))
+  return { records: records.filter((item) => item.artifactPath || pathless.has(item)), updatedAt: input.recordedAt }
 }

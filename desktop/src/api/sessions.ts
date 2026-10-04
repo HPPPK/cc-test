@@ -33,6 +33,7 @@ import type {
   WorkflowTemplateImportCommitResponse,
   WorkflowTemplateImportPreviewRequest,
   WorkflowTemplateImportPreviewResponse,
+  WorkflowTemplateListItem,
   WorkflowTemplateMutationResponse,
   WorkflowTemplateSource,
   WorkflowTemplateUpdateRequest,
@@ -126,13 +127,40 @@ export type {
   WorkflowTemplatesResponse,
   WorkflowTransitionResponse,
 }
+export type WorkflowTemplateBundledUpdate = {
+  kind?: 'version' | 'content'
+  localVersion?: string
+  bundledVersion?: string
+  localSha256?: string
+  bundledSha256?: string
+}
+
+export type WorkflowTemplateListItemWithBundledUpdate = WorkflowTemplateListItem & {
+  bundledUpdate?: boolean | WorkflowTemplateBundledUpdate
+  localVersion?: string
+  bundledVersion?: string
+  localSha256?: string
+  bundledSha256?: string
+}
+
+export type WorkflowTemplatesWithBundledUpdatesResponse = Omit<WorkflowTemplatesResponse, 'templates'> & {
+  templates: WorkflowTemplateListItemWithBundledUpdate[]
+}
+
+export type WorkflowTemplateBundledUpdateResult = {
+  backupFilename: string
+  previousVersion: string
+  installedVersion: string
+  installedSha256: string
+}
+
 export type WorkflowTransitionRequest = {
   phaseId: string
   stateVersion?: number
   action: WorkflowTransitionAction
   transitionId?: string
   confirmationId?: string
-  nextPhaseContextStrategy?: 'inherit' | 'clear'
+  nextPhaseContextStrategy?: 'inherit' | 'clear' | 'capsule'
   handoff?: WorkflowTransitionHandoff
   rationale?: string
   evidence?: unknown[]
@@ -438,7 +466,7 @@ export const sessionsApi = {
   },
 
   listWorkflowTemplates() {
-    return api.get<WorkflowTemplatesResponse>('/api/workflows/templates')
+    return api.get<WorkflowTemplatesWithBundledUpdatesResponse>('/api/workflows/templates')
   },
 
   getWorkflowTemplate(source: WorkflowTemplateSource, id: string) {
@@ -468,6 +496,12 @@ export const sessionsApi = {
     )
   },
 
+  applyBundledUpdate(id: string) {
+    return api.post<WorkflowTemplateBundledUpdateResult>(
+      `/api/workflows/templates/user/${encodeURIComponent(id)}/bundled-update`,
+      {},
+    )
+  },
   duplicateWorkflowTemplate(body: WorkflowTemplateDuplicateRequest) {
     return api.post<WorkflowTemplateMutationResponse>('/api/workflows/templates/duplicate', body)
   },

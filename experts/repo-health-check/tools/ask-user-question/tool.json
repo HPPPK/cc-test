@@ -1,0 +1,10 @@
+{
+  "id": "ask-user-question",
+  "name": "提问",
+  "type": "hostBuiltinRef",
+  "purpose": "只为来源、项目路径、体检范围、目标或关键取舍使用结构化问题卡。",
+  "entrypoint": "tools/ask-user-question/tool.json",
+  "hostToolId": "AskUserQuestion",
+  "permissions": [],
+  "network": "none"
+}

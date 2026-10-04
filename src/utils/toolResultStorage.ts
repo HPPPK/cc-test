@@ -84,6 +84,8 @@ export type PersistedToolResult = {
   isJson: boolean
   preview: string
   hasMore: boolean
+  /** Complete, small structured fragments retained after the human-readable body is persisted. */
+  machineReadableArtifacts?: string
 }
 
 // Error result when persistence fails
@@ -107,6 +109,23 @@ export function getToolResultsDir(): string {
 
 // Preview size in bytes for the reference message
 export const PREVIEW_SIZE_BYTES = 2000
+
+// Persisted output normally keeps only a short human-readable preview. These
+// self-contained fragments are intentionally retained in full so a runtime
+// consumer can still inspect factual action metadata after the larger body was
+// moved to disk. This list is deliberately narrow: it is not a general way to
+// keep arbitrary tool output in the prompt.
+const MACHINE_READABLE_ARTIFACT_PATTERNS = [
+  /<playwright-action-ledger\s+encoding="base64">[A-Za-z0-9+/=]+<\/playwright-action-ledger>/gi,
+] as const
+
+export function extractMachineReadableToolResultArtifacts(content: string): string | undefined {
+  const artifacts = new Set<string>()
+  for (const pattern of MACHINE_READABLE_ARTIFACT_PATTERNS) {
+    for (const match of content.matchAll(pattern)) artifacts.add(match[0])
+  }
+  return artifacts.size > 0 ? [...artifacts].join('\n') : undefined
+}
 
 /**
  * Get the filepath where a tool result would be persisted.
@@ -153,6 +172,7 @@ export async function persistToolResult(
   await ensureToolResultsDir()
   const filepath = getToolResultPath(toolUseId, isJson)
   const contentStr = isJson ? jsonStringify(content, null, 2) : content
+  const machineReadableArtifacts = extractMachineReadableToolResultArtifacts(contentStr)
 
   // tool_use_id is unique per invocation and content is deterministic for a
   // given id, so skip if the file already exists. This prevents re-writing
@@ -180,6 +200,7 @@ export async function persistToolResult(
     isJson,
     preview,
     hasMore,
+    ...(machineReadableArtifacts ? { machineReadableArtifacts } : {}),
   }
 }
 
@@ -194,6 +215,11 @@ export function buildLargeToolResultMessage(
   message += `Preview (first ${formatFileSize(PREVIEW_SIZE_BYTES)}):\n`
   message += result.preview
   message += result.hasMore ? '\n...\n' : '\n'
+  if (result.machineReadableArtifacts) {
+    message += 'Machine-readable metadata retained for runtime auditing:\n'
+    message += result.machineReadableArtifacts
+    message += '\n'
+  }
   message += PERSISTED_OUTPUT_CLOSING_TAG
   return message
 }

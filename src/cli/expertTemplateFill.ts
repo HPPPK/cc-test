@@ -103,6 +103,7 @@ function parseFieldsDocument(content: string): ExpertTemplateFillPayload {
     format: EXPERT_TEMPLATE_FILL_FORMAT,
     templateId: document.templateId.trim(),
     fields: document.fields,
+    ...(document.evidenceAbsorption !== undefined ? { evidenceAbsorption: document.evidenceAbsorption } : {}),
   }
 }
 
@@ -115,6 +116,20 @@ async function responseMessage(response: Response): Promise<string> {
     // Use the HTTP status below when the server has no JSON error body.
   }
   return `Template renderer returned HTTP ${response.status}.`
+}
+
+function resolveExpertTemplateFillOutputPath(
+  outputPath: string,
+  env: Record<string, string | undefined>,
+): string {
+  const outputRoot = (env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
+    ?? env.CC_HAHA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT)?.trim()
+  if (!outputRoot) return path.resolve(outputPath)
+
+  if (path.isAbsolute(outputPath) || path.basename(outputPath) !== outputPath || outputPath === '.' || outputPath === '..') {
+    throw new Error('This Expert writes reports only as a filename directly in the current session workDir.')
+  }
+  return path.resolve(outputRoot, outputPath)
 }
 
 function readExpertTemplateFillStdin(): Promise<string> {
@@ -170,6 +185,7 @@ export async function runExpertTemplateFillCli(
     : await dependencies.readFile(options.dataPath!, 'utf8')
   const payload = parseFieldsDocument(fieldsDocument)
   const serverUrl = resolveServerUrl(options.serverUrl ?? dependencies.env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? dependencies.env.DESKTOP_SERVER_URL)
+  const resolvedOutputPath = resolveExpertTemplateFillOutputPath(options.outputPath, dependencies.env)
   const sessionId = (options.sessionId ?? dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID)?.trim()
   if (!sessionId) throw new Error('Missing Expert session ID. Run this command from the active Expert session, or pass --session-id.')
 
@@ -190,10 +206,9 @@ export async function runExpertTemplateFillCli(
     throw new Error('The Desktop Expert template renderer returned an invalid result.')
   }
 
-  const outputPath = path.resolve(options.outputPath)
-  await ensureOutputDirectory(path.dirname(outputPath), dependencies)
-  await dependencies.writeFile(outputPath, body.content, 'utf8')
-  return { outputPath, templateId: body.templateId, bytes: Buffer.byteLength(body.content, 'utf8') }
+  await ensureOutputDirectory(path.dirname(resolvedOutputPath), dependencies)
+  await dependencies.writeFile(resolvedOutputPath, body.content, 'utf8')
+  return { outputPath: resolvedOutputPath, templateId: body.templateId, bytes: Buffer.byteLength(body.content, 'utf8') }
 }
 
 export async function expertTemplateFillMain(args: string[]): Promise<void> {

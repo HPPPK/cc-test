@@ -190,6 +190,123 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
 }
 
 describe('chatStore history mapping', () => {
+  it('reconciles existing UI history when a socket is recreated after server cleanup', async () => {
+    const sid = 'reconnect-remounted-socket'
+    useChatStore.setState({ sessions: { [sid]: makeSession({ messages: [{ id: 'stale', type: 'assistant_text', content: '旧结果', timestamp: 1 }], connectionState: 'disconnected' }) } })
+    vi.mocked(sessionsApi.getMessages).mockResolvedValue({ messages: [{ id: 'full', type: 'assistant', timestamp: '2026-09-16T04:13:00.000Z', content: [{ type: 'text', text: '断线期间完成的结果' }] }] } as any)
+    useChatStore.getState().connectToSession(sid)
+    const handler = onMessageMock.mock.calls.find(([id]) => id === sid)![1]
+    handler({ type: 'connected', sessionId: sid })
+    handler({ type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: false } })
+    await vi.waitFor(() => expect(useChatStore.getState().sessions[sid]!.messages.some(m => m.type === 'assistant_text' && m.content === '断线期间完成的结果')).toBe(true))
+    useChatStore.getState().disconnectSession(sid)
+    vi.mocked(sessionsApi.getMessages).mockResolvedValue({ messages: [] })
+  })
+
+  it('retries history reconciliation if a newer turn completes before the previous history read returns', async () => {
+    const sid = 'reconnect-fast-completion'
+    useChatStore.setState({ sessions: { [sid]: makeSession() } })
+    let resolveHistory!: (value: any) => void
+    vi.mocked(sessionsApi.getMessages).mockImplementationOnce(() => new Promise(resolve => { resolveHistory = resolve }))
+    useChatStore.getState().handleServerMessage(sid, { type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true } })
+    useChatStore.getState().handleServerMessage(sid, { type: 'content_start', blockType: 'text' })
+    useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', text: '部分回复' })
+    useChatStore.getState().handleServerMessage(sid, { type: 'message_complete', usage: { input_tokens: 0, output_tokens: 1 } })
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({ messages: [{ id: 'full', type: 'assistant', timestamp: '2026-09-16T04:13:00.000Z', content: [{ type: 'text', text: '补回完整结果' }] }] } as any)
+    resolveHistory({ messages: [] })
+    await vi.waitFor(() => expect(useChatStore.getState().sessions[sid]!.messages.some(m => m.type === 'assistant_text' && m.content === '补回完整结果')).toBe(true))
+  })
+
+  it('never overwrites a live turn with a late reconnect history response and retries at completion', async () => {
+    const sid = 'reconnect-history-race'
+    useChatStore.setState({ sessions: { [sid]: makeSession() } })
+    let resolveHistory!: (value: any) => void
+    vi.mocked(sessionsApi.getMessages).mockImplementationOnce(() => new Promise(resolve => { resolveHistory = resolve }))
+    useChatStore.getState().handleServerMessage(sid, { type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true } })
+    useChatStore.getState().handleServerMessage(sid, { type: 'content_start', blockType: 'text' })
+    useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', text: '新回复' })
+    resolveHistory({ messages: [{ id: 'old-result', type: 'assistant', timestamp: '2026-09-16T04:12:00.000Z', content: [{ type: 'text', text: '旧回复' }] }] })
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(useChatStore.getState().sessions[sid]!.chatState).toBe('streaming')
+    expect(useChatStore.getState().sessions[sid]!.messages.some(m => m.type === 'assistant_text' && m.content === '旧回复')).toBe(false)
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({ messages: [{ id: 'new-result', type: 'assistant', timestamp: '2026-09-16T04:13:00.000Z', content: [{ type: 'text', text: '新回复（完整历史）' }] }] } as any)
+    useChatStore.getState().handleServerMessage(sid, { type: 'message_complete', usage: { input_tokens: 0, output_tokens: 1 } })
+    await vi.waitFor(() => expect(useChatStore.getState().sessions[sid]!.messages.some(m => m.type === 'assistant_text' && m.content === '新回复（完整历史）')).toBe(true))
+  })
+
+  it('keeps tool-input buffers isolated and flushes them before a new tool block', () => {
+    vi.useFakeTimers()
+    const a = 'tool-buffer-a', b = 'tool-buffer-b'
+    useChatStore.setState({ sessions: { [a]: makeSession(), [b]: makeSession() } })
+    try {
+      for (const sid of [a, b]) for (let i = 0; i < 10; i++) useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', toolInput: sid })
+      useChatStore.getState().handleServerMessage(a, { type: 'content_start', blockType: 'tool_use', toolUseId: 'new-tool', toolName: 'Read' })
+      vi.advanceTimersByTime(50)
+      expect(useChatStore.getState().sessions[a]!.streamingToolInput).toBe('')
+      expect(useChatStore.getState().sessions[b]!.streamingToolInput).toBe(b.repeat(10))
+    } finally { useChatStore.getState().disconnectSession(a); useChatStore.getState().disconnectSession(b); vi.useRealTimers() }
+  })
+
+  it('batches thousands of tool-input fragments without losing bytes or reviving a stopped session', () => {
+    vi.useFakeTimers()
+    const sid = 'batched-tool-fragments'
+    useChatStore.setState({ sessions: { [sid]: makeSession() } })
+    let updates = 0
+    const unsubscribe = useChatStore.subscribe(() => { updates++ })
+    try {
+      useChatStore.getState().handleServerMessage(sid, { type: 'content_start', blockType: 'tool_use', toolUseId: 't', toolName: 'Write' })
+      updates = 0
+      for (let i = 0; i < 5000; i++) useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', toolInput: '字' })
+      expect(updates).toBeLessThan(5)
+      vi.advanceTimersByTime(50)
+      expect(useChatStore.getState().sessions[sid]!.streamingToolInput).toBe('字'.repeat(5000))
+      useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', toolInput: 'end' })
+      useChatStore.getState().stopGeneration(sid)
+      vi.advanceTimersByTime(100)
+      expect(useChatStore.getState().sessions[sid]!.streamingToolInput).toBe('')
+      expect(useChatStore.getState().sessions[sid]!.chatState).toBe('idle')
+    } finally { unsubscribe(); useChatStore.getState().disconnectSession(sid); vi.useRealTimers() }
+  })
+
+  it('batches thinking fragments and flushes before the following tool starts', () => {
+    vi.useFakeTimers()
+    const sid = 'batched-thinking-fragments'
+    useChatStore.setState({ sessions: { [sid]: makeSession() } })
+    let updates = 0
+    const unsubscribe = useChatStore.subscribe(() => { updates++ })
+    try {
+      for (let i = 0; i < 1000; i++) useChatStore.getState().handleServerMessage(sid, { type: 'thinking', text: '想' })
+      expect(updates).toBeLessThan(5)
+      useChatStore.getState().handleServerMessage(sid, { type: 'content_start', blockType: 'tool_use', toolUseId: 't2', toolName: 'Read' })
+      expect(useChatStore.getState().sessions[sid]!.messages.filter(m => m.type === 'thinking').map(m => m.content).join('')).toBe('想'.repeat(1000))
+      vi.advanceTimersByTime(100)
+      expect(useChatStore.getState().sessions[sid]!.chatState).toBe('tool_executing')
+    } finally { unsubscribe(); useChatStore.getState().disconnectSession(sid); vi.useRealTimers() }
+  })
+
+  it('does not invalidate the whole store for every text fragment', () => {
+    vi.useFakeTimers()
+    const sid = 'batched-text-fragments'
+    useChatStore.setState({ sessions: { [sid]: makeSession({ undoableSubmittedMessage: null }) } })
+    let updates = 0
+    const unsubscribe = useChatStore.subscribe(() => { updates++ })
+    try {
+      for (let i = 0; i < 1000; i++) useChatStore.getState().handleServerMessage(sid, { type: 'content_delta', text: '字' })
+      expect(updates).toBeLessThan(5)
+      vi.advanceTimersByTime(50)
+      expect(useChatStore.getState().sessions[sid]!.streamingText).toBe('字'.repeat(1000))
+    } finally { unsubscribe(); useChatStore.getState().disconnectSession(sid); vi.useRealTimers() }
+  })
+
+  it('restores a result completed while disconnected from the authoritative history', async () => {
+    const sid = 'offline-history-result'
+    useChatStore.setState({ sessions: { [sid]: makeSession() } })
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({ messages: [{ id: 'final-offline', type: 'assistant', timestamp: '2026-09-16T04:12:00.000Z', content: [{ type: 'text', text: '完整最终结果' }] }] } as any)
+    useChatStore.getState().handleServerMessage(sid, { type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true } })
+    await vi.waitFor(() => expect(useChatStore.getState().sessions[sid]!.messages.some(m => m.type === 'assistant_text' && m.content === '完整最终结果')).toBe(true))
+    expect(useChatStore.getState().sessions[sid]!.chatState).toBe('idle')
+  })
+
   beforeEach(() => {
     sendMock.mockReset()
     sendWorkflowTransitionMock.mockReset()
@@ -305,6 +422,67 @@ describe('chatStore history mapping', () => {
     expect(messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'tool_use', toolName: 'Playwright', toolUseId: 'browser-child', parentToolUseId: 'agent-parent' }),
       expect.objectContaining({ type: 'tool_result', toolUseId: 'browser-child', parentToolUseId: 'agent-parent', content: 'opened Bing' }),
+    ]))
+  })
+
+  it('replaces a live unanswered AskUserQuestion card with its persisted answered pair after history reload', async () => {
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({
+      messages: [
+        {
+          id: 'history-question-use',
+          type: 'assistant',
+          timestamp: '2026-04-06T00:00:01.000Z',
+          content: [{
+            type: 'tool_use',
+            name: 'AskUserQuestion',
+            id: 'question-1',
+            input: { prompt: '历史中的已回答问题', choices: ['选项 A', '选项 B'] },
+          }],
+        },
+        {
+          id: 'history-question-result',
+          type: 'user',
+          timestamp: '2026-04-06T00:00:02.000Z',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'question-1',
+            content: 'User has answered your questions: 选项 A',
+            is_error: false,
+          }],
+        },
+      ],
+    })
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [{
+            id: 'live-stale-question',
+            type: 'tool_use',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'question-1',
+            input: { prompt: '旧的未回答卡片', choices: ['过时选项'] },
+            timestamp: 0,
+          }],
+        }),
+      },
+    })
+
+    await useChatStore.getState().loadHistory(TEST_SESSION_ID)
+
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages.filter((message) => message.type === 'tool_use' && message.toolUseId === 'question-1')).toEqual([
+      expect.objectContaining({
+        toolName: 'AskUserQuestion',
+        input: { prompt: '历史中的已回答问题', choices: ['选项 A', '选项 B'] },
+      }),
+    ])
+    expect(messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'tool_result',
+        toolUseId: 'question-1',
+        content: 'User has answered your questions: 选项 A',
+        isError: false,
+      }),
     ]))
   })
 
@@ -568,6 +746,43 @@ describe('chatStore history mapping', () => {
         content: '第一段：Windows 下的桌面端输出。\r\n第二段：刷新后也不应该被拆开。',
       },
     ])
+  })
+
+  it('restores internal English execution narration as collapsed thinking instead of visible assistant text', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'assistant-process-history',
+        type: 'assistant',
+        timestamp: '2026-04-06T00:00:00.000Z',
+        model: 'deepseek-v4-flash',
+        content: 'Let me check the Playwright audit records before I report the result.\n\n暂时收敛：继续补齐可追溯来源。',
+      },
+    ]
+
+    expect(mapHistoryMessagesToUiMessages(messages)).toMatchObject([
+      { id: 'assistant-process-history', type: 'thinking', content: 'Let me check the Playwright audit records before I report the result.' },
+      { type: 'assistant_text', content: '暂时收敛：继续补齐可追溯来源。' },
+    ])
+  })
+
+  it('keeps a Chinese product-plan paragraph visible while restoring an embedded English approval monologue as thinking', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'assistant-mixed-plan-history',
+        type: 'assistant',
+        timestamp: '2026-08-27T00:00:00.000Z',
+        model: 'gpt-5.6-luna',
+        content: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。\n\nUEFN style needs likely user wants proceed? Must ask approval via AskUserQuestion, with choices.',
+      },
+    ]
+
+    const uiMessages = mapHistoryMessagesToUiMessages(messages)
+    expect(uiMessages).toMatchObject([
+      { type: 'assistant_text', content: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。' },
+    ])
+    expect(uiMessages).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ content: expect.stringContaining('Must ask approval via AskUserQuestion') }),
+    ]))
   })
 
   it('skips whitespace-only assistant transcript messages', () => {
@@ -916,6 +1131,79 @@ Phase instructions: collect inputs
     expect(mapHistoryMessagesToUiMessages(messages)).toEqual([])
   })
 
+  it('does not restore internal Expert runtime prompts or their automatic prose', () => {
+    const messages: MessageEntry[] = [
+      { id: 'original-user', type: 'user', content: 'Original request', timestamp: '2026-08-28T07:30:00.000Z' },
+      {
+        id: 'internal-recovery',
+        parentUuid: 'original-user',
+        type: 'user',
+        content: '<expert-research-source-batch-recovery>\ninternal recovery\n</expert-research-source-batch-recovery>',
+        timestamp: '2026-08-28T07:31:00.000Z',
+      },
+      {
+        id: 'internal-prose',
+        parentUuid: 'internal-recovery',
+        type: 'assistant',
+        content: [{ type: 'text', text: 'This batch includes open-platform sources.' }],
+        timestamp: '2026-08-28T07:31:01.000Z',
+      },
+      {
+        id: 'internal-tool',
+        parentUuid: 'internal-prose',
+        type: 'tool_use',
+        content: [{ type: 'tool_use', id: 'agent-recovery', name: 'Agent', input: { description: 'continue research' } }],
+        timestamp: '2026-08-28T07:31:02.000Z',
+      },
+      {
+        id: 'internal-tool-result',
+        parentUuid: 'internal-tool',
+        type: 'tool_result',
+        content: [{ type: 'tool_result', tool_use_id: 'agent-recovery', content: 'done' }],
+        timestamp: '2026-08-28T07:31:03.000Z',
+      },
+      {
+        id: 'internal-post-tool-prose',
+        parentUuid: 'internal-tool-result',
+        type: 'assistant',
+        content: [{ type: 'text', text: 'Internal post-tool explanation.' }],
+        timestamp: '2026-08-28T07:31:04.000Z',
+      },
+      {
+        id: 'actual-user',
+        parentUuid: 'internal-post-tool-prose',
+        type: 'user',
+        content: 'Actual user follow-up',
+        timestamp: '2026-08-28T07:32:00.000Z',
+      },
+      {
+        id: 'actual-assistant',
+        parentUuid: 'actual-user',
+        type: 'assistant',
+        content: [{ type: 'text', text: 'Visible answer to the actual user' }],
+        timestamp: '2026-08-28T07:32:01.000Z',
+      },
+      {
+        id: 'normal-reference',
+        parentUuid: 'actual-assistant',
+        type: 'user',
+        content: 'I saw <expert-research-source-batch-recovery> in a diagnostic.',
+        timestamp: '2026-08-28T07:33:00.000Z',
+      },
+    ]
+
+    const restored = mapHistoryMessagesToUiMessages(messages)
+    const serialized = JSON.stringify(restored)
+
+    expect(serialized).not.toContain('internal recovery')
+    expect(serialized).not.toContain('This batch includes open-platform sources.')
+    expect(serialized).not.toContain('Internal post-tool explanation.')
+    expect(serialized).toContain('continue research')
+    expect(serialized).toContain('Actual user follow-up')
+    expect(serialized).toContain('Visible answer to the actual user')
+    expect(serialized).toContain('I saw <expert-research-source-batch-recovery> in a diagnostic.')
+  })
+
   it('stores server-materialized attachment prefixes for rewind matching', () => {
     useChatStore.setState({
       sessions: {
@@ -1137,6 +1425,169 @@ Phase instructions: collect inputs
     ])
   })
 
+  it('rebuilds an AskUserQuestion card from a replayed permission request and deduplicates its later tool event', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession(),
+      },
+    })
+
+    const questionInput = {
+      questions: [{
+        id: 'ui-direction',
+        prompt: 'Which UI direction should the first version use?',
+        choices: [{ id: 'simple', label: 'Simple default', description: 'Keep it practical.' }],
+      }],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'replayed-question-request',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'replayed-question-tool-use',
+      input: questionInput,
+    })
+
+    let messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages.filter((message) => (
+      message.type === 'tool_use'
+      && message.toolName === 'AskUserQuestion'
+      && message.toolUseId === 'replayed-question-tool-use'
+    ))).toHaveLength(1)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toEqual(expect.objectContaining({
+      requestId: 'replayed-question-request',
+      toolUseId: 'replayed-question-tool-use',
+    }))
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'replayed-question-tool-use',
+      input: questionInput,
+    })
+
+    messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages.filter((message) => (
+      message.type === 'tool_use'
+      && message.toolName === 'AskUserQuestion'
+      && message.toolUseId === 'replayed-question-tool-use'
+    ))).toHaveLength(1)
+  })
+
+  it('keeps a live XML execution monologue out of the visible assistant stream', async () => {
+    vi.useFakeTimers()
+    try {
+      useChatStore.setState({
+        sessions: {
+          [TEST_SESSION_ID]: makeSession(),
+        },
+      })
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_start',
+        blockType: 'text',
+      })
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_delta',
+        text: 'I will issue the finalize write as the single closing action. <invoke name="Write"><parameter name="file_path">report.html</parameter></invoke>',
+      })
+      await vi.advanceTimersByTimeAsync(50)
+
+      const streaming = useChatStore.getState().sessions[TEST_SESSION_ID]
+      expect(streaming?.streamingText).toBe('')
+      expect(streaming?.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'thinking',
+          content: expect.stringContaining('<invoke name="Write">'),
+        }),
+      ]))
+
+      expect(streaming?.messages.some((message) => message.type === 'assistant_text')).toBe(false)
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_start',
+        blockType: 'tool_use',
+        toolName: 'Write',
+        toolUseId: 'write-1',
+      })
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_start',
+        blockType: 'text',
+      })
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_delta',
+        text: '用户可见的中文结果。',
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.streamingText).toBe('用户可见的中文结果。')
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, { type: 'status', state: 'idle' })
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'assistant_text', content: '用户可见的中文结果。' }),
+      ]))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('moves an embedded English approval monologue out of a live Chinese product-plan reply', async () => {
+    vi.useFakeTimers()
+    try {
+      useChatStore.setState({ sessions: { [TEST_SESSION_ID]: makeSession() } })
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, { type: 'content_start', blockType: 'text' })
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_delta',
+        text: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。\n\nUEFN style needs likely user wants proceed? Must ask approval via AskUserQuestion, with choices. Also task 3 complete?',
+      })
+      await vi.advanceTimersByTimeAsync(50)
+
+      const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+      expect(session?.streamingText).toBe('视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。')
+      expect(session?.messages).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('Must ask approval via AskUserQuestion') }),
+      ]))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+
+
+  it('does not expose a split AskUserQuestion execution monologue in a live Chinese reply', async () => {
+    vi.useFakeTimers()
+    try {
+      useChatStore.setState({ sessions: { [TEST_SESSION_ID]: makeSession() } })
+      // The module-level classifier is normally cleared by the preceding idle
+      // status. Reproduce that real turn boundary inside this isolated test.
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, { type: 'status', state: 'idle' })
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, { type: 'content_start', blockType: 'text' })
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_delta',
+        text: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。\n\nUEFN style needs likely user wants proceed?',
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.streamingText).toBe('视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。')
+
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+        type: 'content_delta',
+        text: ' Must ask approval via AskUserQuestion, with choices.',
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      useChatStore.getState().handleServerMessage(TEST_SESSION_ID, { type: 'status', state: 'idle' })
+
+      const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+      expect(session?.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'assistant_text', content: '视觉方案：旧相册纸张的温度，先呈现待修复照片与修复预览。' }),
+      ]))
+      expect(session?.messages).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('AskUserQuestion') }),
+      ]))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('retains live parent linkage when only content_start carries the parent id', () => {
     useChatStore.setState({
       sessions: {
@@ -1211,6 +1662,54 @@ Phase instructions: collect inputs
       cliCommand,
       projectCommand,
     ])
+  })
+
+  it('normalizes legacy strict visual error events as neutral system notices', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({ chatState: 'thinking' }),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'error',
+      code: 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED',
+      message: 'The strict UIUX Expert generated an image but did not read and complete the required image-based review.',
+    })
+
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages).toContainEqual(expect.objectContaining({
+      type: 'system',
+      content: expect.stringContaining('图片已经保留'),
+    }))
+    expect(messages).not.toContainEqual(expect.objectContaining({
+      type: 'error',
+    }))
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({ chatState: 'idle' })
+    expect(updateTabStatusMock).toHaveBeenLastCalledWith(TEST_SESSION_ID, 'idle')
+  })
+
+  it('renders strict visual incompleteness as a neutral system notice rather than an error', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({ chatState: 'thinking' }),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'strict_visual_incomplete',
+      message: '图片已经保留，但本轮自动像素复核没有完成。',
+      data: { code: 'STRICT_VISUAL_IMAGE_GENERATION_REVIEW_REQUIRED' },
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toContainEqual(expect.objectContaining({
+      type: 'system',
+      content: '图片已经保留，但本轮自动像素复核没有完成。',
+    }))
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).not.toContainEqual(expect.objectContaining({
+      type: 'error',
+    }))
   })
 
   it('updates workflow session metadata from websocket workflow_state notifications', () => {
@@ -2077,13 +2576,70 @@ Phase instructions: collect inputs
       type: 'tool_use',
       toolUseId: 'tool-ask-1',
     })
-    expect(notifyDesktopMock).toHaveBeenCalledWith({
-      dedupeKey: 'permission:perm-ask-1',
-      cooldownScope: 'permission-prompt',
-      requestAttention: true,
-      title: 'Claude Code Jiangxia 需要你的确认',
-      body: 'AskUserQuestion 请求执行，正在等待允许。',
-      target: { type: 'session', sessionId: TEST_SESSION_ID },
+    // The structured in-chat card is the actionable control. Do not also send a
+    // generic operating-system permission toast that can linger after answer.
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+  })
+
+  it('retains an acknowledged AskUserQuestion answer while history has not persisted its tool result', async () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          messages: [{
+            id: 'ask-1',
+            type: 'tool_use',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'tool-ask-1',
+            input: {
+              questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+            },
+            timestamp: 1,
+          }],
+          chatState: 'permission_pending',
+          pendingPermission: {
+            requestId: 'perm-ask-1',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'tool-ask-1',
+            input: {
+              questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+            },
+          },
+        }),
+      },
+    })
+
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'perm-ask-1', true, {
+      updatedInput: {
+        questions: [{ question: 'Should we persist data?', options: [{ label: 'No' }, { label: 'Yes' }] }],
+        answers: { 'Should we persist data?': 'Yes' },
+      },
+    })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.answeredAskUserQuestions).toEqual({
+      'tool-ask-1': {
+        requestId: 'perm-ask-1',
+        status: 'submitting',
+        answers: { 'Should we persist data?': 'Yes' },
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_response_ack',
+      requestId: 'perm-ask-1',
+      status: 'accepted',
+    })
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({ messages: [] })
+
+    await useChatStore.getState().loadHistory(TEST_SESSION_ID)
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingPermission: null,
+      answeredAskUserQuestions: {
+        'tool-ask-1': {
+          requestId: 'perm-ask-1',
+          status: 'accepted',
+          answers: { 'Should we persist data?': 'Yes' },
+        },
+      },
     })
   })
 
@@ -4052,4 +4608,247 @@ Phase instructions: collect inputs
     } as never)
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.expertBrowserActivity).toBeNull()
   })
+  it('clears an automatically recovered Expert verification request when the server acknowledges it', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: makeSession({
+          chatState: 'permission_pending',
+          pendingPermission: {
+            requestId: 'expert-verification-auto',
+            toolName: 'Playwright',
+            input: {
+              kind: 'expert-playwright-verification',
+              verification: {
+                url: 'https://www.google.com/sorry/index',
+                engine: 'Google',
+              },
+              queue: { remaining: 0 },
+            },
+          },
+        }),
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_response_ack',
+      requestId: 'expert-verification-auto',
+      status: 'accepted',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]).toMatchObject({
+      pendingPermission: null,
+      permissionResponse: {
+        requestId: 'expert-verification-auto',
+        status: 'accepted',
+      },
+      chatState: 'tool_executing',
+    })
+  })
+
+  it('does not restore loaded global Skill instructions or their Task descendants as chat content', () => {
+    const messages: MessageEntry[] = [
+      { id: 'request', type: 'user', content: '做一个原型图demo', timestamp: '2026-09-07T06:10:00.000Z' },
+      {
+        id: 'loaded-skill',
+        parentUuid: 'request',
+        type: 'user',
+        content: 'Base directory for this skill: C:/Users/test/.claude/skills/brainstorming\n\n---\n\n# Brainstorming Ideas Into Designs\n\n<HARD-GATE>\nDo NOT write code before approval.\n</HARD-GATE>',
+        timestamp: '2026-09-07T06:10:01.000Z',
+      },
+      {
+        id: 'internal-task',
+        parentUuid: 'loaded-skill',
+        type: 'assistant',
+        content: [{ type: 'tool_use', id: 'task-1', name: 'TaskCreate', input: { subject: '探索当前项目上下文' } }],
+        timestamp: '2026-09-07T06:10:02.000Z',
+      },
+      {
+        id: 'internal-prose',
+        parentUuid: 'internal-task',
+        type: 'assistant',
+        content: [{ type: 'text', text: 'I need to explore the current project context.' }],
+        timestamp: '2026-09-07T06:10:03.000Z',
+      },
+      { id: 'follow-up', parentUuid: 'internal-prose', type: 'user', content: '继续生成 HTML', timestamp: '2026-09-07T06:10:04.000Z' },
+      {
+        id: 'visible-answer',
+        parentUuid: 'follow-up',
+        type: 'assistant',
+        content: [{ type: 'text', text: '我会生成三份 HTML。' }],
+        timestamp: '2026-09-07T06:10:05.000Z',
+      },
+    ]
+
+    const serialized = JSON.stringify(mapHistoryMessagesToUiMessages(messages))
+    expect(serialized).not.toContain('Brainstorming Ideas Into Designs')
+    expect(serialized).not.toContain('探索当前项目上下文')
+    expect(serialized).not.toContain('I need to explore')
+    expect(serialized).toContain('做一个原型图demo')
+    expect(serialized).toContain('继续生成 HTML')
+    expect(serialized).toContain('我会生成三份 HTML。')
+  })
+
+})
+
+
+describe('chatStore concurrent permission queue', () => {
+  const id = 'concurrent-questions'
+  const request = (suffix: string, toolName = 'AskUserQuestion') => ({
+    type: 'permission_request' as const,
+    requestId: 'request-' + suffix,
+    toolUseId: 'tool-' + suffix,
+    toolName,
+    input: { questions: [{ question: 'Question ' + suffix, options: [{ label: 'Yes' }, { label: 'No' }] }] },
+  })
+  const emit = (msg: Parameters<ReturnType<typeof useChatStore.getState>['handleServerMessage']>[1]) =>
+    useChatStore.getState().handleServerMessage(id, msg)
+  const state = () => useChatStore.getState().sessions[id]!
+  const answer = (suffix: string) => useChatStore.getState().respondToPermission(id, 'request-' + suffix, true, {
+    updatedInput: { answers: { ['Question ' + suffix]: 'Yes' } },
+  })
+  const ack = (suffix: string, status: 'accepted' | 'rejected' | 'stale' = 'accepted') =>
+    emit({ type: 'permission_response_ack', requestId: 'request-' + suffix, status })
+
+  beforeEach(() => {
+    sendMock.mockClear()
+    useChatStore.setState({ sessions: { [id]: makeSession() } })
+  })
+
+  it('retains both requests and presents the first until it has been answered', () => {
+    emit(request('1'))
+    emit(request('2'))
+    expect(state().pendingPermission?.requestId).toBe('request-1')
+    expect(state().pendingPermissions?.map(p => p.requestId)).toEqual(['request-1', 'request-2'])
+    expect(state().messages.filter(m => m.type === 'tool_use')).toHaveLength(2)
+    answer('1')
+    ack('1')
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    expect(state().chatState).toBe('permission_pending')
+    emit({ type: 'tool_result', toolUseId: 'tool-1', content: 'First answered', isError: false })
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    expect(state().chatState).toBe('permission_pending')
+    answer('2')
+    ack('2')
+    expect(state().pendingPermission).toBeNull()
+    expect(state().pendingPermissions).toEqual([])
+    expect(sendMock.mock.calls.map(([, m]) => m.requestId)).toEqual(['request-1', 'request-2'])
+  })
+
+  it('matches an out-of-order answer to its own request, not the currently displayed card', () => {
+    emit(request('1'))
+    emit(request('2'))
+    answer('2')
+    expect(state().answeredAskUserQuestions?.['tool-2']?.requestId).toBe('request-2')
+    expect(state().answeredAskUserQuestions?.['tool-1']).toBeUndefined()
+    ack('2')
+    expect(state().pendingPermission?.requestId).toBe('request-1')
+    expect(state().chatState).toBe('permission_pending')
+    ack('missing', 'stale')
+    expect(state().pendingPermission?.requestId).toBe('request-1')
+    expect(state().chatState).toBe('permission_pending')
+  })
+
+  it('keeps rejected requests answerable and advances only the acknowledged request', () => {
+    emit(request('1'))
+    emit(request('2'))
+    answer('1')
+    ack('1', 'rejected')
+    expect(state().pendingPermission?.requestId).toBe('request-1')
+    expect(state().answeredAskUserQuestions?.['tool-1']).toBeUndefined()
+    answer('1')
+    ack('1')
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    ack('1')
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    expect(state().chatState).toBe('permission_pending')
+  })
+
+  it('deduplicates reconnect replay and never revives an accepted question', () => {
+    emit(request('1'))
+    emit(request('2'))
+    emit(request('1'))
+    emit(request('2'))
+    expect(state().pendingPermissions).toHaveLength(2)
+    expect(state().messages.filter(m => m.type === 'tool_use')).toHaveLength(2)
+    answer('1')
+    ack('1')
+    emit(request('1'))
+    expect(state().pendingPermissions?.map(p => p.requestId)).toEqual(['request-2'])
+    emit({ type: 'tool_result', toolUseId: 'tool-2', content: 'Answered in another window', isError: false })
+    emit(request('2'))
+    expect(state().pendingPermissions).toEqual([])
+  })
+
+  it('preserves the next request when a tool result arrives before its acknowledgement', () => {
+    emit(request('1'))
+    emit(request('2'))
+    answer('1')
+    emit({ type: 'tool_result', toolUseId: 'tool-1', content: 'Done', isError: false })
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    ack('1')
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    expect(state().chatState).toBe('permission_pending')
+  })
+
+  it('keeps ordinary permissions and question requests in the same non-destructive queue', () => {
+    emit(request('bash', 'Bash'))
+    emit(request('1'))
+    expect(state().pendingPermission?.toolName).toBe('Bash')
+    ack('bash')
+    expect(state().pendingPermission?.toolName).toBe('AskUserQuestion')
+    expect(state().chatState).toBe('permission_pending')
+  })
+
+  it('does not let a Computer Use approval erase pending questions or vice versa', () => {
+    emit(request('1'))
+    emit({ type: 'computer_use_permission_request', requestId: 'computer', request: { reason: 'Test', actions: [] } } as any)
+    emit(request('2'))
+    expect(state().pendingPermission?.requestId).toBe('request-1')
+    expect(state().pendingComputerUsePermission?.requestId).toBe('computer')
+    useChatStore.getState().respondToComputerUsePermission(id, 'computer', { userConsented: true } as any)
+    expect(state().chatState).toBe('permission_pending')
+    expect(state().pendingPermissions).toHaveLength(2)
+  })
+
+  it.each(['stop', 'complete', 'error', 'clear', 'settle'] as const)('clears the entire queue on %s without reviving old requests', (action) => {
+    emit(request('1'))
+    emit(request('2'))
+    if (action === 'stop') useChatStore.getState().stopGeneration(id)
+    if (action === 'complete') emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    if (action === 'error') emit({ type: 'error', message: 'Terminated', code: 'CLI_ERROR' })
+    if (action === 'clear') emit({ type: 'system_notification', subtype: 'session_cleared' })
+    if (action === 'settle') useChatStore.getState().settleSessionIdle(id)
+    expect(state().pendingPermission).toBeNull()
+    expect(state().pendingPermissions).toEqual([])
+  })
+  it('keeps the tab waiting when another tool emits status while a question is pending', () => {
+    emit(request('1'))
+    emit(request('2'))
+    emit({ type: 'status', state: 'idle' })
+    expect(state().chatState).toBe('permission_pending')
+    expect(updateTabStatusMock).toHaveBeenLastCalledWith(id, 'running')
+  })
+
+  it('rebuilds pending requests from reconnect replay rather than retaining a remotely answered head', () => {
+    emit(request('1'))
+    emit(request('2'))
+    emit({ type: 'connected', sessionId: id })
+    emit(request('2'))
+    expect(state().pendingPermissions?.map(p => p.requestId)).toEqual(['request-2'])
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+  })
+
+  it('keeps queues isolated between sessions and supports legacy single-request state', () => {
+    useChatStore.setState({ sessions: {
+      [id]: makeSession({ pendingPermission: request('legacy') }),
+      other: makeSession(),
+    } })
+    emit(request('2'))
+    expect(state().pendingPermission?.requestId).toBe('request-legacy')
+    useChatStore.getState().handleServerMessage('other', request('other'))
+    ack('legacy')
+    expect(state().pendingPermission?.requestId).toBe('request-2')
+    expect(useChatStore.getState().sessions.other!.pendingPermission?.requestId).toBe('request-other')
+  })
+
 })

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "packs": [
+    {
+      "packId": "debug-repair-workflow-v8",
+      "packVersion": "23",
+      "workflowVersion": "23",
+      "sha256": "da559ae02ca0c532e2a65323715ee4047d46241c420c4be2ab14125bd788a767",
+      "entrypoint": "workflows/debug-repair-workflow-v8.workflow.json",
+      "sourceRevision": "sha256-76fd2d5d80fe9cc40eb7226ab5bc2a8bcf4c0b6903d3dac0f1878ebad2827f8a",
+      "filename": "debug-repair-workflow-v8.zip"
+    },
+    {
+      "packId": "efficient-constrained-dev-debug-workflow-v5",
+      "packVersion": "24",
+      "workflowVersion": "24",
+      "sha256": "121cab4cdc153a4b0566c20fcb690f590092f30e1e0feba72be22a278de0fdef",
+      "entrypoint": "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json",
+      "sourceRevision": "sha256-cf7c6141446321e7a6dd6be45f414225cb904178c2f4754ed693f7c0a853b513",
+      "filename": "efficient-constrained-dev-debug-workflow-v5.zip"
+    },
+    {
+      "packId": "feature-extension-workflow-v8",
+      "packVersion": "22",
+      "workflowVersion": "22",
+      "sha256": "7d9fa431221599ef111d4f597f59b4c5570425fc0b6e87e32fc8664511290d99",
+      "entrypoint": "workflows/feature-extension-workflow-v8.workflow.json",
+      "sourceRevision": "sha256-38277a927685f563ed5763dc32859d6ccc70814f8c7b9801e6ac5ae1731f6e23",
+      "filename": "feature-extension-workflow-v8.zip"
+    }
+  ]
+}

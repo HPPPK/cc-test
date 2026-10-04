@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -14,7 +15,10 @@ import {
   type WorkflowTemplateRegistryTemplate,
   type WorkflowTemplateValidationIssue,
 } from './workflowTemplateValidation.js'
-import { PackRegistryService } from './packRegistryService.js'
+import {
+  PackRegistryService,
+  getWorkflowPackStorageDir,
+} from './packRegistryService.js'
 import {
   resolveWorkflowPhaseSkills,
   type WorkflowPhaseSkillCatalogEntry,
@@ -39,6 +43,31 @@ export type WorkflowTemplateRegistryListResult = {
   invalidTemplates: WorkflowTemplateValidationIssue[]
 }
 
+export type WorkflowTemplateBundledUpdate = {
+  kind: 'version' | 'content'
+  localVersion: string
+  bundledVersion: string
+  localSha256: string
+  bundledSha256: string
+}
+
+export type WorkflowTemplateBundledUpdateResult = {
+  backupFilename: string
+  previousVersion: string
+  installedVersion: string
+  installedSha256: string
+}
+
+export class WorkflowTemplateBundledUpdateError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status: 404 | 409 = 409,
+  ) {
+    super(message)
+  }
+}
+
 type WorkflowConfigFile = {
   schemaVersion: 1
   templates?: unknown[]
@@ -46,7 +75,62 @@ type WorkflowConfigFile = {
   [key: string]: unknown
 }
 
+type ManagedBundledWorkflowPackState = {
+  schemaVersion: 1
+  packs: Record<string, {
+    installedVersion: string
+    installedSha256: string
+    bundledSha256: string
+  }>
+}
+
+type ManagedBundledWorkflowPack = {
+  workflowId: string
+  version: string
+  data: Uint8Array
+  sha256: string
+}
+
+type ManagedBundledWorkflowReconciliation = {
+  updates: Map<string, WorkflowTemplateBundledUpdate>
+  protectedLocalPacks: Map<string, { data: Uint8Array; sha256: string }>
+}
+
 const USER_CONFIG_SCHEMA_VERSION = WORKFLOW_TEMPLATE_SCHEMA_VERSION
+const MANAGED_BUNDLED_WORKFLOW_PACKS_FILE = 'managed-bundled-workflow-packs.json'
+const MANAGED_BUNDLED_WORKFLOW_IDS = new Set([
+  'efficient-constrained-dev-debug-workflow-v5',
+  'feature-extension-workflow-v8',
+  'debug-repair-workflow-v8',
+])
+const KNOWN_PREVIOUS_OFFICIAL_WORKFLOW_PACK_SHA256 = new Map<string, ReadonlySet<string>>([
+  ['efficient-constrained-dev-debug-workflow-v5', new Set([
+    '5aee81e834a5a97f6d7bce9ccfe50dd10744342e20568917b305d3abd36eebe6',
+    'a9d79c1ef8ab146af8fd841acd005f403bedf7be883e61cdb3461c50e3353a08',
+    'be16b990f40f67ff19a07c54bf7ae1bc55af400eb36e881e3a97c5570e470830',
+    '4ebf5430a08a95682ac83f639b3c12570914c5f484cee176825fd7e7bb0546b7',
+    '8094aa865a9044d9a422decb2393c00f97583835a149456c97b4ba1d3deb47fa',
+    'c13c7fd9d66a644fe1a57042e13259de0da212134c6acaca7a8966c0c3599e35',
+    'f5eab29bd11cc5bd60fd5bbfaf2c7bcade910419d143b30d38fcbaf5f8a8e49d',
+  ])],
+  ['feature-extension-workflow-v8', new Set([
+    'ee9e6642fdf3af446b840ecf50397ac0175508e167f0c2381c02db56c12db117',
+    '6752acd0bf576a8177ec62c0104b6871bc7b779059e31ad2d10c48f58dc6fa1c',
+    'c5e3f017ba30167a9425d1d1ca334b802ccce28b7f115bc9bbd6f0587d8957eb',
+    '025cb1d20f927c81485f0c3a4e69c849bcc0cc6f64388f26c21981f12dda51a4',
+    'd8cb9dacaa96959cd92803d8084d60b926417cb9fde1233a95cafc5f5ba92cef',
+    '110235422d8b2d715a7d0c555dd024d216008ba83aa45d5b60393868adfb4fcb',
+  ])],
+  ['debug-repair-workflow-v8', new Set([
+    '10f90783a1df9b7cea7c6d153c42fd0edde080314fc026c69e794f802e4e641c',
+    'a5b11ff2204e2d9a13a5ecf190c7b5f115d105025e35e2df4c101c4aaf1c5c97',
+    '2ef5f11e9e0ac94633bde8b947b16480385cc08addd188665432207847cae8f2',
+    'eed56c8e5fa4bcc987ca031e3d5b5df5916da0faa342bbd8e9722d2882fcb132',
+    '9a4ab7a63b162aa67a6540d23a302df0e1cfd09b063d1a9d531dc32bbededaa5',
+    'dd887d61bff653781fdcd21bebdb4d19d97f402929eaeebbf44eeb9bc4ec83e7',
+    '2b5a834855f42d8e54ab7dea40350b03638ebb4cbf3bd838bb5ffc9f44cb76b1',
+  ])],
+])
 const TEMPLATE_VALIDATION_SUPPORTED_SKILL_SOURCES: WorkflowPhaseSkillSource[] = [
   'superpowers',
   'spec-kit-plus',
@@ -80,6 +164,10 @@ function getConfigDir(): string {
 
 function getWorkflowConfigPath(): string {
   return getAppStoragePath(getConfigDir(), 'workflows.json')
+}
+
+function getManagedBundledWorkflowPacksPath(): string {
+  return getAppStoragePath(getConfigDir(), 'workflows', MANAGED_BUNDLED_WORKFLOW_PACKS_FILE)
 }
 
 const BUNDLED_SKILLS_DIR_ENV = 'CLAUDE_BUNDLED_SKILLS_DIR'
@@ -480,6 +568,98 @@ export class WorkflowTemplateRegistryService {
     resetWorkflowTemplateRegistryForTests()
   }
 
+  async applyBundledWorkflowUpdate(workflowId: string): Promise<WorkflowTemplateBundledUpdateResult> {
+    assertManagedBundledWorkflowId(workflowId)
+    const packRegistry = new PackRegistryService()
+    const bundled = await findManagedBundledWorkflowPack(packRegistry, workflowId)
+    if (!bundled) {
+      throw new WorkflowTemplateBundledUpdateError(
+        'WORKFLOW_BUNDLED_UPDATE_NOT_FOUND',
+        `No bundled update is available for workflow: ${workflowId}`,
+        404,
+      )
+    }
+
+    const localPath = managedWorkflowPackPath(workflowId)
+    let localData: Uint8Array
+    try {
+      localData = new Uint8Array(await fs.readFile(localPath))
+    } catch (error) {
+      if (errnoCode(error) === 'ENOENT') {
+        throw new WorkflowTemplateBundledUpdateError(
+          'WORKFLOW_BUNDLED_UPDATE_LOCAL_NOT_FOUND',
+          `A local workflow ZIP was not found for: ${workflowId}`,
+          404,
+        )
+      }
+      throw error
+    }
+
+    const localSha256 = sha256Bytes(localData)
+    if (localSha256 === bundled.sha256) {
+      throw new WorkflowTemplateBundledUpdateError(
+        'WORKFLOW_BUNDLED_UPDATE_NOT_AVAILABLE',
+        `The local workflow ZIP already matches the bundled workflow: ${workflowId}`,
+      )
+    }
+
+    const localTemplate = await packRegistry.loadStoredWorkflowTemplate(workflowId).catch(() => null)
+    if (!localTemplate) {
+      throw new WorkflowTemplateBundledUpdateError(
+        'WORKFLOW_BUNDLED_UPDATE_LOCAL_INVALID',
+        `The local workflow ZIP cannot be read safely: ${workflowId}`,
+      )
+    }
+    if (compareWorkflowVersions(bundled.version, localTemplate.version) < 0) {
+      throw new WorkflowTemplateBundledUpdateError(
+        'WORKFLOW_BUNDLED_UPDATE_WOULD_DOWNGRADE',
+        `The bundled workflow is older than the local workflow: ${workflowId}`,
+      )
+    }
+
+    const backupFilename = await backupManagedWorkflowPack(workflowId, localData, localTemplate.version)
+    let previousState: ManagedBundledWorkflowPackState | null = null
+    let installedSha256 = ''
+    try {
+      await replaceManagedWorkflowPack(localPath, bundled.data, bundled.sha256)
+      installedSha256 = sha256Bytes(new Uint8Array(await fs.readFile(localPath)))
+      if (installedSha256 !== bundled.sha256) {
+        throw new Error(`Installed workflow ZIP failed SHA-256 verification: ${workflowId}`)
+      }
+
+      previousState = await readManagedBundledWorkflowPackState()
+      const nextState = cloneManagedBundledWorkflowPackState(previousState)
+      nextState.packs[workflowId] = {
+        installedVersion: bundled.version,
+        installedSha256,
+        bundledSha256: bundled.sha256,
+      }
+      await writeManagedBundledWorkflowPackState(nextState)
+    } catch (error) {
+      try {
+        await replaceManagedWorkflowPack(localPath, localData, localSha256)
+        if (previousState) await writeManagedBundledWorkflowPackState(previousState)
+      } catch (rollbackError) {
+        throw new WorkflowTemplateBundledUpdateError(
+          'WORKFLOW_BUNDLED_UPDATE_ROLLBACK_FAILED',
+          `Workflow update failed and rollback also failed: ${errorMessage(error)}; rollback: ${errorMessage(rollbackError)}`,
+        )
+      }
+      throw new WorkflowTemplateBundledUpdateError(
+        'WORKFLOW_BUNDLED_UPDATE_FAILED',
+        `Workflow update failed and the previous ZIP was restored: ${errorMessage(error)}`,
+      )
+    }
+    resetWorkflowTemplateRegistryForTests()
+
+    return {
+      backupFilename,
+      previousVersion: localTemplate.version,
+      installedVersion: bundled.version,
+      installedSha256,
+    }
+  }
+
   async writeTemplates(templates: unknown[]): Promise<void> {
     assertValidWritePayload(templates, [])
 
@@ -516,9 +696,28 @@ export class WorkflowTemplateRegistryService {
     try {
       const packRegistry = new PackRegistryService()
       invalidTemplates.push(...await migrateLegacyWorkflowConfigToPacks(configPath, packRegistry))
+      let reconciliation: ManagedBundledWorkflowReconciliation = {
+        updates: new Map(),
+        protectedLocalPacks: new Map(),
+      }
+      try {
+        reconciliation = await reconcileManagedBundledWorkflowPacks(packRegistry)
+      } catch (error) {
+        invalidTemplates.push({
+          source: 'pack-registry',
+          path: '$.packs.bundledUpdate',
+          code: 'WORKFLOW_BUNDLED_UPDATE_RECONCILE_FAILED',
+          message: `Bundled workflow updates could not be reconciled: ${errorMessage(error)}`,
+          severity: 'warning',
+        })
+      }
       await packRegistry.seedBundledWorkflowPacks()
+      await restoreProtectedManagedWorkflowPacks(reconciliation.protectedLocalPacks)
       const packWorkflows = await packRegistry.listWorkflows()
-      templates.push(...packWorkflows)
+      templates.push(...packWorkflows.map((template) => {
+        const bundledUpdate = reconciliation.updates.get(template.id)
+        return bundledUpdate ? { ...template, bundledUpdate } : template
+      }))
     } catch (error) {
       invalidTemplates.push({
         source: 'pack-registry',
@@ -531,6 +730,292 @@ export class WorkflowTemplateRegistryService {
 
     return { templates, invalidTemplates }
   }
+}
+
+async function reconcileManagedBundledWorkflowPacks(
+  packRegistry: PackRegistryService,
+): Promise<ManagedBundledWorkflowReconciliation> {
+  const updates = new Map<string, WorkflowTemplateBundledUpdate>()
+  const protectedLocalPacks = new Map<string, { data: Uint8Array; sha256: string }>()
+  const state = await readManagedBundledWorkflowPackState()
+  const bundledPacks = await listManagedBundledWorkflowPacks(packRegistry)
+  const bundledById = new Map(bundledPacks.map((pack) => [pack.workflowId, pack]))
+  const storedPacks = await packRegistry.listStoredWorkflowPacks()
+  const storedVersionById = new Map(storedPacks.flatMap((pack) =>
+    pack.workflows.map((workflow) => [workflow.id, workflow.version] as const),
+  ))
+  let stateChanged = false
+
+  for (const workflowId of MANAGED_BUNDLED_WORKFLOW_IDS) {
+    const bundled = bundledById.get(workflowId)
+    if (!bundled) continue
+    const localPath = managedWorkflowPackPath(workflowId)
+    const localData = await readBytesIfExists(localPath)
+
+    if (!localData) {
+      await replaceManagedWorkflowPack(localPath, bundled.data, bundled.sha256)
+      state.packs[workflowId] = managedStateEntry(bundled)
+      stateChanged = true
+      continue
+    }
+
+    const localSha256 = sha256Bytes(localData)
+    if (localSha256 === bundled.sha256) {
+      if (!managedStateMatches(state.packs[workflowId], bundled)) {
+        state.packs[workflowId] = managedStateEntry(bundled)
+        stateChanged = true
+      }
+      continue
+    }
+
+    const localVersion = storedVersionById.get(workflowId)
+      ?? (await packRegistry.loadStoredWorkflowTemplate(workflowId).catch(() => null))?.version
+
+    const tracked = state.packs[workflowId]
+    const trackedOfficial = Boolean(tracked) && (
+      localSha256 === tracked.installedSha256 ||
+      localSha256 === tracked.bundledSha256
+    )
+    const knownOfficialSha = KNOWN_PREVIOUS_OFFICIAL_WORKFLOW_PACK_SHA256.get(workflowId)?.has(localSha256) ?? false
+
+    if ((trackedOfficial || knownOfficialSha) && localVersion && compareWorkflowVersions(bundled.version, localVersion) >= 0) {
+      await replaceManagedWorkflowPack(localPath, bundled.data, bundled.sha256)
+      state.packs[workflowId] = managedStateEntry(bundled)
+      stateChanged = true
+      continue
+    }
+
+    protectedLocalPacks.set(workflowId, { data: localData, sha256: localSha256 })
+    if (!localVersion || compareWorkflowVersions(bundled.version, localVersion) < 0) continue
+    updates.set(workflowId, {
+      kind: compareWorkflowVersions(bundled.version, localVersion) > 0 ? 'version' : 'content',
+      localVersion,
+      bundledVersion: bundled.version,
+      localSha256,
+      bundledSha256: bundled.sha256,
+    })
+  }
+
+  if (stateChanged) await writeManagedBundledWorkflowPackState(state)
+  return { updates, protectedLocalPacks }
+}
+
+async function restoreProtectedManagedWorkflowPacks(
+  protectedLocalPacks: Map<string, { data: Uint8Array; sha256: string }>,
+): Promise<void> {
+  for (const [workflowId, protectedPack] of protectedLocalPacks) {
+    const localPath = managedWorkflowPackPath(workflowId)
+    const current = await readBytesIfExists(localPath)
+    if (current && sha256Bytes(current) === protectedPack.sha256) continue
+    await replaceManagedWorkflowPack(localPath, protectedPack.data, protectedPack.sha256)
+  }
+}
+
+async function listManagedBundledWorkflowPacks(
+  packRegistry: PackRegistryService,
+): Promise<ManagedBundledWorkflowPack[]> {
+  const result: ManagedBundledWorkflowPack[] = []
+  const seen = new Set<string>()
+  for (const pack of await packRegistry.listBundledPacks()) {
+    const workflow = pack.workflows.find((candidate) => MANAGED_BUNDLED_WORKFLOW_IDS.has(candidate.id))
+    if (!workflow || seen.has(workflow.id)) continue
+    if (pack.workflows.length !== 1) continue
+    const data = new Uint8Array(await fs.readFile(pack.storage.path))
+    result.push({
+      workflowId: workflow.id,
+      version: workflow.version,
+      data,
+      sha256: sha256Bytes(data),
+    })
+    seen.add(workflow.id)
+  }
+  return result
+}
+
+async function findManagedBundledWorkflowPack(
+  packRegistry: PackRegistryService,
+  workflowId: string,
+): Promise<ManagedBundledWorkflowPack | undefined> {
+  return (await listManagedBundledWorkflowPacks(packRegistry))
+    .find((pack) => pack.workflowId === workflowId)
+}
+
+function assertManagedBundledWorkflowId(workflowId: string): void {
+  if (MANAGED_BUNDLED_WORKFLOW_IDS.has(workflowId)) return
+  throw new WorkflowTemplateBundledUpdateError(
+    'WORKFLOW_BUNDLED_UPDATE_NOT_MANAGED',
+    `Managed workflow bundled updates are unavailable for: ${workflowId}`,
+    404,
+  )
+}
+
+function managedWorkflowPackPath(workflowId: string): string {
+  return path.join(getWorkflowPackStorageDir(), `${workflowId}.zip`)
+}
+
+function managedStateEntry(pack: ManagedBundledWorkflowPack): ManagedBundledWorkflowPackState['packs'][string] {
+  return {
+    installedVersion: pack.version,
+    installedSha256: pack.sha256,
+    bundledSha256: pack.sha256,
+  }
+}
+
+function cloneManagedBundledWorkflowPackState(
+  state: ManagedBundledWorkflowPackState,
+): ManagedBundledWorkflowPackState {
+  return JSON.parse(JSON.stringify(state)) as ManagedBundledWorkflowPackState
+}
+
+function managedStateMatches(
+  entry: ManagedBundledWorkflowPackState['packs'][string] | undefined,
+  pack: ManagedBundledWorkflowPack,
+): boolean {
+  return entry?.installedVersion === pack.version &&
+    entry.installedSha256 === pack.sha256 &&
+    entry.bundledSha256 === pack.sha256
+}
+
+async function readManagedBundledWorkflowPackState(): Promise<ManagedBundledWorkflowPackState> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(getManagedBundledWorkflowPacksPath(), 'utf-8')) as unknown
+    if (!isRecord(parsed) || parsed.schemaVersion !== 1 || !isRecord(parsed.packs)) {
+      return { schemaVersion: 1, packs: {} }
+    }
+    const packs: ManagedBundledWorkflowPackState['packs'] = {}
+    for (const [workflowId, raw] of Object.entries(parsed.packs)) {
+      if (!MANAGED_BUNDLED_WORKFLOW_IDS.has(workflowId) || !isRecord(raw)) continue
+      if (!isNonEmptyString(raw.installedVersion) || !isSha256(raw.installedSha256) || !isSha256(raw.bundledSha256)) continue
+      packs[workflowId] = {
+        installedVersion: raw.installedVersion,
+        installedSha256: raw.installedSha256,
+        bundledSha256: raw.bundledSha256,
+      }
+    }
+    return { schemaVersion: 1, packs }
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT' || error instanceof SyntaxError) {
+      return { schemaVersion: 1, packs: {} }
+    }
+    throw error
+  }
+}
+
+async function writeManagedBundledWorkflowPackState(state: ManagedBundledWorkflowPackState): Promise<void> {
+  const statePath = getManagedBundledWorkflowPacksPath()
+  const temporaryPath = `${statePath}.${randomUUID()}.tmp`
+  await fs.mkdir(path.dirname(statePath), { recursive: true })
+  try {
+    await fs.writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8')
+    try {
+      await fs.rename(temporaryPath, statePath)
+    } catch (error) {
+      if (errnoCode(error) !== 'EEXIST' && errnoCode(error) !== 'EPERM') throw error
+      await fs.rm(statePath, { force: true })
+      await fs.rename(temporaryPath, statePath)
+    }
+  } finally {
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
+  }
+}
+
+async function backupManagedWorkflowPack(
+  workflowId: string,
+  data: Uint8Array,
+  version: string,
+): Promise<string> {
+  const backupDir = path.join(getWorkflowPackStorageDir(), 'backups')
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
+  const filename = `${workflowId}.backup-${safeBackupSegment(version)}-${timestamp}-${randomUUID().slice(0, 8)}.zip`
+  await fs.mkdir(backupDir, { recursive: true })
+  await fs.writeFile(path.join(backupDir, filename), Buffer.from(data), { flag: 'wx' })
+  return filename
+}
+
+async function replaceManagedWorkflowPack(
+  targetPath: string,
+  data: Uint8Array,
+  expectedSha256: string,
+): Promise<void> {
+  const directory = path.dirname(targetPath)
+  const filename = path.basename(targetPath)
+  const temporaryPath = path.join(directory, `.${filename}.${randomUUID()}.tmp`)
+  const rollbackPath = path.join(directory, `.${filename}.${randomUUID()}.rollback`)
+  await fs.mkdir(directory, { recursive: true })
+  await fs.writeFile(temporaryPath, Buffer.from(data), { flag: 'wx' })
+
+  const temporarySha256 = sha256Bytes(new Uint8Array(await fs.readFile(temporaryPath)))
+  if (temporarySha256 !== expectedSha256) {
+    await fs.rm(temporaryPath, { force: true })
+    throw new Error(`Workflow ZIP staging verification failed for ${filename}.`)
+  }
+
+  let movedExisting = false
+  let installed = false
+  try {
+    try {
+      await fs.rename(targetPath, rollbackPath)
+      movedExisting = true
+    } catch (error) {
+      if (errnoCode(error) !== 'ENOENT') throw error
+    }
+
+    await fs.rename(temporaryPath, targetPath)
+    installed = true
+    const installedSha256 = sha256Bytes(new Uint8Array(await fs.readFile(targetPath)))
+    if (installedSha256 !== expectedSha256) {
+      throw new Error(`Workflow ZIP install verification failed for ${filename}.`)
+    }
+  } catch (error) {
+    if (installed) await fs.rm(targetPath, { force: true }).catch(() => undefined)
+    if (movedExisting) {
+      try {
+        await fs.rename(rollbackPath, targetPath)
+        movedExisting = false
+      } catch (rollbackError) {
+        throw new Error(`Workflow ZIP update failed and rollback also failed: ${errorMessage(error)}; rollback: ${errorMessage(rollbackError)}`)
+      }
+    }
+    throw error
+  } finally {
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
+    if (movedExisting) await fs.rm(rollbackPath, { force: true }).catch(() => undefined)
+  }
+}
+
+async function readBytesIfExists(filePath: string): Promise<Uint8Array | null> {
+  try {
+    return new Uint8Array(await fs.readFile(filePath))
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT') return null
+    throw error
+  }
+}
+
+function sha256Bytes(data: Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex')
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value)
+}
+
+function safeBackupSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+}
+
+function compareWorkflowVersions(left: string, right: string): number {
+  const leftParts = left.split(/[.-]/).map((part) => /^\d+$/.test(part) ? Number(part) : part)
+  const rightParts = right.split(/[.-]/).map((part) => /^\d+$/.test(part) ? Number(part) : part)
+  const length = Math.max(leftParts.length, rightParts.length)
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = leftParts[index] ?? 0
+    const rightPart = rightParts[index] ?? 0
+    if (leftPart === rightPart) continue
+    if (typeof leftPart === 'number' && typeof rightPart === 'number') return leftPart > rightPart ? 1 : -1
+    return String(leftPart).localeCompare(String(rightPart), undefined, { numeric: true })
+  }
+  return 0
 }
 
 async function migrateLegacyWorkflowConfigToPacks(

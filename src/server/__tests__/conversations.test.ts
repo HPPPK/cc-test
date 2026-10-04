@@ -89,6 +89,33 @@ describe('ConversationService', () => {
     expect(result).toBe(false)
   })
 
+  it('marks Expert runtime continuation messages as synthetic SDK user turns', () => {
+    const svc = new ConversationService()
+    const sessionId = crypto.randomUUID()
+    const sent: Array<Record<string, unknown>> = []
+    ;(svc as any).sessions.set(sessionId, {
+      sdkSocket: {
+        send(payload: string) {
+          sent.push(JSON.parse(payload))
+        },
+      },
+      pendingOutbound: [],
+    })
+
+    expect(svc.sendInternalMessage(sessionId, '<expert-research-auto-continue>continue</expert-research-auto-continue>')).toBe(true)
+    expect(sent).toEqual([expect.objectContaining({
+      type: 'user',
+      isSynthetic: true,
+      message: {
+        role: 'user',
+        content: [{
+          type: 'text',
+          text: '<expert-research-auto-continue>continue</expert-research-auto-continue>',
+        }],
+      },
+    })])
+  })
+
   it('should return false when responding to permission for non-existent session', () => {
     const svc = new ConversationService()
     const result = svc.respondToPermission('no-such-session', 'req-1', true)
@@ -399,6 +426,22 @@ describe('ConversationService', () => {
     expect(svc.hasSession('session-restart')).toBe(false)
   })
 
+  it('does not let stale startup cleanup remove a replacement session', () => {
+    const svc = new ConversationService()
+    const sessionId = 'session-startup-replacement'
+    const staleSession = { proc: { pid: 1 } } as any
+    const replacementSession = { proc: { pid: 2 } } as any
+
+    ;(svc as any).sessions.set(sessionId, replacementSession)
+
+    expect((svc as any).releaseFailedStartupSession(sessionId, staleSession)).toBe(false)
+    expect(svc.hasSession(sessionId)).toBe(true)
+    expect((svc as any).sessions.get(sessionId)).toBe(replacementSession)
+
+    expect((svc as any).releaseFailedStartupSession(sessionId, replacementSession)).toBe(true)
+    expect(svc.hasSession(sessionId)).toBe(false)
+  })
+
   it('should retain SDK init metadata after recent message trimming', () => {
     const svc = new ConversationService()
 
@@ -437,6 +480,265 @@ describe('ConversationService', () => {
       claude_code_version: 'test-version',
       slash_commands: ['help', 'context'],
     })
+  })
+
+
+  it('parses complete WebSocket JSON records and newline-delimited SDK JSON batches', () => {
+    const svc = new ConversationService()
+    ;(svc as any).sessions.set('session-sdk-framing', {
+      proc: { pid: 1 },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    })
+
+    const prettyPayload = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'pretty payload' }] },
+    }, null, 2)
+    const firstRecord = JSON.stringify({ type: 'result', result: 'first NDJSON payload' })
+    const secondRecord = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'second NDJSON payload' }] },
+    })
+
+    ;(svc as any).handleSdkPayload('session-sdk-framing', prettyPayload)
+    ;(svc as any).handleSdkPayload(
+      'session-sdk-framing',
+      firstRecord + '\n' + secondRecord + '\n',
+    )
+
+    expect(svc.getRecentSdkMessages('session-sdk-framing')).toEqual([
+      expect.objectContaining({ type: 'assistant' }),
+      expect.objectContaining({ type: 'result', result: 'first NDJSON payload' }),
+      expect.objectContaining({ type: 'assistant' }),
+    ])
+  })
+
+  it('buffers an NDJSON SDK record split across WebSocket callbacks until its declared newline boundary', () => {
+    const svc = new ConversationService()
+    const session = {
+      proc: { pid: 1 },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(svc as any).sessions.set('session-sdk-split-ndjson', session)
+
+    const result = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'split terminal result must reach Desktop',
+    })
+
+    ;(svc as any).handleSdkPayload('session-sdk-split-ndjson', result.slice(0, 37))
+    expect(svc.getRecentSdkMessages('session-sdk-split-ndjson')).toEqual([])
+
+    ;(svc as any).handleSdkPayload('session-sdk-split-ndjson', result.slice(37) + '\n')
+
+    expect(svc.getRecentSdkMessages('session-sdk-split-ndjson')).toEqual([
+      expect.objectContaining({
+        type: 'result',
+        result: 'split terminal result must reach Desktop',
+      }),
+    ])
+    expect(session.sdkUnparsedPayloads).toEqual([])
+  })
+
+  it('does not invent JSON boundaries from adjacent SDK values or a completion token', () => {
+    const svc = new ConversationService()
+    const session = {
+      proc: { pid: 1 },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(svc as any).sessions.set('session-sdk-no-invented-boundary', session)
+
+    const first = JSON.stringify({ type: 'assistant', message: { content: [] } })
+    const second = JSON.stringify({ type: 'result', result: 'must not be guessed from same frame' })
+    ;(svc as any).handleSdkPayload(
+      'session-sdk-no-invented-boundary',
+      first + 'complete' + second,
+    )
+
+    expect(svc.getRecentSdkMessages('session-sdk-no-invented-boundary')).toEqual([])
+    expect(session.sdkUnparsedPayloads).toEqual([])
+
+    ;(svc as any).handleSdkPayload(
+      'session-sdk-no-invented-boundary',
+      JSON.stringify({ type: 'result', result: 'later terminal result' }),
+    )
+
+    expect(svc.getRecentSdkMessages('session-sdk-no-invented-boundary')).toEqual([
+      expect.objectContaining({ type: 'result', result: 'later terminal result' }),
+    ])
+    expect(session.sdkUnparsedPayloads).toEqual([
+      expect.objectContaining({
+        payload: first + 'complete' + second,
+        reason: 'invalid_sdk_websocket_record',
+      }),
+    ])
+  })
+
+  it('preserves an opaque completion record while allowing the next terminal result through', () => {
+    const svc = new ConversationService()
+    const session = {
+      proc: { pid: 1 },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(svc as any).sessions.set('session-sdk-complete-marker', session)
+
+    ;(svc as any).handleSdkPayload('session-sdk-complete-marker', 'complete')
+    ;(svc as any).handleSdkPayload('session-sdk-complete-marker', JSON.stringify({
+      type: 'result',
+      result: 'result after completion boundary',
+    }))
+
+    expect(svc.getRecentSdkMessages('session-sdk-complete-marker')).toEqual([
+      expect.objectContaining({
+        type: 'result',
+        result: 'result after completion boundary',
+      }),
+    ])
+    expect(session.sdkUnparsedPayloads).toEqual([
+      expect.objectContaining({
+        payload: 'complete',
+        reason: 'invalid_sdk_websocket_record',
+      }),
+    ])
+  })
+
+  it('quarantines malformed SDK WebSocket records without swallowing a later terminal result', () => {
+    const svc = new ConversationService()
+    const delivered: any[] = []
+    const session = {
+      proc: { pid: 1 },
+      outputCallbacks: [(message: any) => delivered.push(message)],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkPayloadBuffer: '',
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(svc as any).sessions.set('session-sdk-malformed-then-result', session)
+
+    // This is not a valid JSON value and has no known NDJSON delimiter. The
+    // next WebSocket message is nevertheless a valid terminal record.
+    ;(svc as any).handleSdkPayload('session-sdk-malformed-then-result', '{garbage')
+    ;(svc as any).handleSdkPayload('session-sdk-malformed-then-result', JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'terminal result must reach Desktop',
+    }))
+
+    expect(svc.getRecentSdkMessages('session-sdk-malformed-then-result')).toEqual([
+      expect.objectContaining({
+        type: 'result',
+        result: 'terminal result must reach Desktop',
+      }),
+    ])
+    expect(delivered).toEqual([
+      expect.objectContaining({
+        type: 'result',
+        result: 'terminal result must reach Desktop',
+      }),
+    ])
+    expect(session.sdkPayloadBuffer).toBe('')
+    expect(session.sdkUnparsedPayloads).toEqual([
+      expect.objectContaining({
+        payload: '{garbage',
+        reason: 'invalid_sdk_websocket_record',
+      }),
+    ])
+  })
+
+  it('quarantines a malformed NDJSON record while continuing to its later result record', () => {
+    const svc = new ConversationService()
+    const session = {
+      proc: { pid: 1 },
+      outputCallbacks: [],
+      workDir: process.cwd(),
+      permissionMode: 'default',
+      sdkToken: 'token',
+      sdkSocket: null,
+      pendingOutbound: [],
+      stderrLines: [],
+      sdkMessages: [],
+      sdkPayloadBuffer: '',
+      sdkUnparsedPayloads: [],
+      initMessage: null,
+      pendingPermissionRequests: new Map(),
+    }
+    ;(svc as any).sessions.set('session-sdk-malformed-ndjson', session)
+
+    const malformedRecord = '{"type":"assistant","text":"bad\\q"}'
+    const terminalRecord = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'NDJSON terminal result must reach Desktop',
+    })
+    ;(svc as any).handleSdkPayload(
+      'session-sdk-malformed-ndjson',
+      malformedRecord + '\n' + terminalRecord + '\n',
+    )
+
+    expect(svc.getRecentSdkMessages('session-sdk-malformed-ndjson')).toEqual([
+      expect.objectContaining({
+        type: 'result',
+        result: 'NDJSON terminal result must reach Desktop',
+      }),
+    ])
+    expect(session.sdkPayloadBuffer).toBe('')
+    expect(session.sdkUnparsedPayloads).toEqual([
+      expect.objectContaining({
+        payload: malformedRecord,
+        reason: 'invalid_ndjson_record',
+      }),
+    ])
   })
 
   it('should reconstruct usage and metadata from a persisted transcript', async () => {

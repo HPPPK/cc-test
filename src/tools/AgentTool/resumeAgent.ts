@@ -28,6 +28,7 @@ import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import { getParentSessionId } from '../../utils/teammate.js'
 import { reconstructForSubagentResume } from '../../utils/toolResultStorage.js'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
+import type { ExpertResearchSourceAssignment } from '../../services/tools/expertSubagentSkillRuntime.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { FORK_AGENT, isForkSubagentEnabled } from './forkSubagent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
@@ -163,6 +164,16 @@ export async function resumeAgentBackground({
     ? toolUseContext.options.tools
     : assembleToolPool(workerPermissionContext, appState.mcp.tools)
 
+  let metadata: {
+    prompt: string
+    resolvedAgentModel: string
+    isBuiltInAgent: boolean
+    startTime: number
+    agentType: string
+    isAsync: boolean
+    researchSourceAssignment?: ExpertResearchSourceAssignment
+  }
+
   const runAgentParams: Parameters<typeof runAgent>[0] = {
     agentDefinition: selectedAgent,
     promptMessages: [
@@ -192,6 +203,9 @@ export async function resumeAgentBackground({
     worktreePath: resumedWorktreePath,
     description: meta?.description,
     contentReplacementState: resumedReplacementState,
+    onExpertResearchAssignment: assignment => {
+      metadata.researchSourceAssignment = assignment;
+    },
   }
 
   // Skip name-registry write — original entry persists from the initial spawn
@@ -206,13 +220,14 @@ export async function resumeAgentBackground({
 
   startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState)
 
-  const metadata = {
+  metadata = {
     prompt,
     resolvedAgentModel,
     isBuiltInAgent: isBuiltInAgent(selectedAgent),
     startTime,
     agentType: selectedAgent.agentType,
     isAsync: true,
+    researchSourceAssignment: undefined,
   }
 
   const asyncAgentContext = {

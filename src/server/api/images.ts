@@ -8,8 +8,6 @@ import {
 const imageGenerationService = new ImageGenerationService()
 
 const imageOptionsSchema = {
-  providerId: z.string().min(1).max(256).optional(),
-  model: z.string().min(1).max(256).optional(),
   size: z.string().regex(/^\d{3,4}x\d{3,4}$/).optional(),
   quality: z.enum(['auto', 'low', 'medium', 'high']).optional(),
   outputFormat: z.enum(['png', 'jpeg', 'webp']).optional(),

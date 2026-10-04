@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "packId": "web-information-designer",
+  "name": "原型图demo",
+  "version": "1.5.1",
+  "type": "expert-pack",
+  "description": "按 PRD 生成低/中/高保真一致的多屏 HTML 原型：默认产品8–12屏、落地页8–10个实质区块，缺配色先确认，内置具体控件/布局参考与逐屏验收规则。",
+  "entrypoints": {
+    "experts": [
+      "experts/web-information-designer/expert.json"
+    ],
+    "skills": [
+      "prototype-fidelity-workflow",
+      "prototype-visual-quality-gate",
+      "frontend-design"
+    ],
+    "tools": [
+      "tools/ask-user-question/tool.json",
+      "tools/playwright/tool.json",
+      "tools/read/tool.json",
+      "tools/write/tool.json",
+      "tools/bash/tool.json",
+      "tools/prototype-preview/tool.json"
+    ]
+  },
+  "compatibility": {
+    "host": "cc-jiangxia",
+    "minimumVersion": "0.0.0"
+  },
+  "catalog": {
+    "category": "design",
+    "tags": [
+      "prototype",
+      "landing-page",
+      "html",
+      "research",
+      "visual-qa",
+      "visual-quality-gate"
+    ]
+  },
+  "portability": {
+    "selfContained": true,
+    "notes": "Public research uses public-only Playwright. Local HTML is rendered through host PrototypePreview with awaited, hashed viewport screenshots. HTML/CSS/JS and assets must be self-contained; local QA never opens a public server or loads network resources."
+  },
+  "runtimePolicy": {
+    "mode": "prototype-visual-workflow",
+    "allowedToolNames": [
+      "AskUserQuestion",
+      "Playwright",
+      "Read",
+      "Write",
+      "Bash",
+      "PrototypePreview"
+    ],
+    "requiredSkillIds": [
+      "prototype-fidelity-workflow",
+      "prototype-visual-quality-gate",
+      "frontend-design"
+    ]
+  },
+  "hostTools": [
+    {
+      "id": "AskUserQuestion",
+      "name": "AskUserQuestion",
+      "purpose": "补齐或确认会影响原型内容、研究范围、品牌资产、演示内容和设计方向的关键信息。"
+    },
+    {
+      "id": "Playwright",
+      "name": "Playwright",
+      "purpose": "匿名、只读地研究公开 http(s) 页面并取得真实证据截图；不访问本地文件、localhost、私网、登录或受限内容。"
+    },
+    {
+      "id": "Read",
+      "name": "Read",
+      "purpose": "读取当前会话 workDir 的文本、HTML 和实际 PNG 截图，以证据为准。"
+    },
+    {
+      "id": "Write",
+      "name": "Write",
+      "purpose": "仅在当前 Expert 会话 workDir 写入原型和研究交付文件。"
+    },
+    {
+      "id": "Bash",
+      "name": "Bash",
+      "purpose": "仅归档本轮 Playwright 已返回、Read 已查看并记录来源的公开网页截图到当前 workDir/imgs/references。不得用于本地 HTML 渲染、启动服务、部署上传、安装依赖、扫描机器或修改用户项目；本地预览必须使用 PrototypePreview。"
+    },
+    {
+      "id": "PrototypePreview",
+      "name": "PrototypePreview",
+      "purpose": "受控地渲染当前会话已写出的低/中/高保真 HTML。等待 PNG 完整写入，返回真实 CSS 视口、HTML/PNG 哈希、逐屏路径与布局问题；Read 必须读取回执中的最终图片。不是生图、视觉通过证明或真机测试。"
+    }
+  ],
+  "permissions": [
+    {
+      "id": "prototype-brief-confirmation",
+      "description": "仅用于补齐产品事实、调研范围、页面/屏幕范围、未提供的配色、品牌资产授权和演示内容标识；已有答案不重复问，缺配色且未被明确委托时必须确认。"
+    },
+    {
+      "id": "public-reference-research",
+      "description": "仅可匿名、只读地打开公开 http(s) 参考网站或研究来源并获取真实截图；不得登录、绕过限制、访问 file://、localhost、私网或用户未授权页面。"
+    },
+    {
+      "id": "inspect-session-output",
+      "description": "读取当前会话 workDir 中的输入、HTML、研究材料及本地 QA 截图；截图必须实际 Read 后才能陈述观察结论。"
+    },
+    {
+      "id": "write-prototype-artifacts",
+      "description": "仅在当前 Expert 会话 workDir 写原型简报、可选研究台账、低中高保真 HTML 和 QA 证据；不写入用户项目。"
+    },
+    {
+      "id": "archive-public-reference-screenshots",
+      "description": "仅可复制本轮 Playwright 已返回、已用 Read 查看且来源已记录的公开网页截图到当前 workDir/imgs/references。"
+    },
+    {
+      "description": "仅使用 PrototypePreview 读取当前 workDir 中的原型 HTML 与本地资源，输出 imgs/qa/<runId> PNG；不接受 URL、shell 或自定义文件路径。",
+      "id": "render-session-html-only"
+    }
+  ]
+}

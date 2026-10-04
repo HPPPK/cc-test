@@ -19,7 +19,7 @@ export type ClientMessage =
       confirmationId?: string
       stateVersion?: number
       expectedStateVersion?: number
-      nextPhaseContextStrategy?: 'inherit' | 'clear'
+      nextPhaseContextStrategy?: 'inherit' | 'clear' | 'capsule'
       handoff?: Record<string, unknown>
       rationale?: string
       evidence?: Array<Record<string, unknown>>

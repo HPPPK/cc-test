@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "efficient-constrained-dev-debug-workflow-v5",
+      "phases": [
+        {
+          "id": "route-context"
+        },
+        {
+          "id": "scope-plan"
+        },
+        {
+          "id": "delivery-plan"
+        },
+        {
+          "id": "delegate-implement"
+        },
+        {
+          "id": "scenario-review"
+        },
+        {
+          "id": "local-preview"
+        },
+        {
+          "id": "finish-memory"
+        }
+      ]
+    }
+  ]
+}

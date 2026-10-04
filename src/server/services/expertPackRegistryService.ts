@@ -1,13 +1,19 @@
 import * as fs from 'node:fs/promises'
+import type { ExpertTemplateFillOutputPolicy } from './expertTemplateOutputPolicyService.js'
+import type { ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { getAppStoragePath } from '../../utils/appIdentity.js'
+import { order as compareSemver } from '../../utils/semver.js'
 import { ZipPackAdapter, assertSafeZipPath, type ZipPackArchive } from './zipPackAdapter.js'
 import { deriveExpertTemplateFillSchema } from '../../utils/expertTemplateFill.js'
 import { resolveExpertResearchBrowserPolicy, type ExpertResearchBrowserConnection, type ExpertResearchBrowserPolicy, type ExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
 import type { ExpertResearchCompletionPolicy, ExpertResearchCompletionState } from './expertResearchCompletionService.js'
 import type { ExpertResearchEvidenceReviewPolicy, ExpertResearchEvidenceState } from './expertResearchEvidenceReviewService.js'
+import type { ExpertResearchEvidenceAbsorptionPolicy, ExpertResearchEvidenceReviewerState } from './expertResearchEvidenceAbsorptionService.js'
+import type { ExpertResearchDeliveryPolicy, ExpertResearchDeliveryState } from './expertResearchDeliveryService.js'
+import type { ExpertResearchSourceLibraryDispatchReceipt } from './expertResearchSourceLibraryService.js'
 
 export type ExpertSessionStatus = 'active' | 'collecting' | 'running' | 'completed' | 'exited' | 'failed'
 
@@ -63,7 +69,7 @@ export type ExpertOutputMode = 'template-fill'
  * only; it never changes another Expert's tool policy.
  */
 export type ExpertRuntimePolicy = {
-  mode: 'strict-visual-workflow' | 'package-local-skills'
+  mode: 'strict-visual-workflow' | 'prototype-visual-workflow' | 'package-local-skills'
   allowedToolNames: string[]
   requiredSkillIds: string[]
 }
@@ -94,11 +100,50 @@ export type ExpertRuntimeBinding = {
   researchBrowserPolicy?: ExpertResearchBrowserPolicy
   researchCompletionPolicy?: ExpertResearchCompletionPolicy
   researchEvidenceReviewPolicy?: ExpertResearchEvidenceReviewPolicy
+  /** Opt-in post-review field/source absorption contract declared by this ZIP only. */
+  researchEvidenceAbsorptionPolicy?: ExpertResearchEvidenceAbsorptionPolicy
+  /** Opt-in only: Markdown research artifacts are session-scoped and path-only. */
+  researchArtifactPolicy?: ExpertResearchArtifactPolicy
+  /** Opt-in only: template CLI output is rooted at the current session workDir. */
+  templateFillOutputPolicy?: ExpertTemplateFillOutputPolicy
   outputMode?: ExpertOutputMode
   outputTemplate?: { path: string; content: string }
   activatedAt: string
 }
 
+
+export type ExpertReportCompletenessReviewState = {
+  agentId: string
+  artifactPath: string
+  completedAt: string
+}
+
+/** A successfully rendered draft awaiting the one constrained 08 review. */
+export type ExpertTemplateFillDraftState = {
+  templateId: string
+  fields: Record<string, unknown>
+  evidenceAbsorption?: unknown
+  completionReview?: {
+    initialRenderedAt: string
+    /** Canonical current-session HTML path; absent only on legacy records. */
+    reportPath?: string
+  }
+  savedAt: string
+  updatedAt: string
+}
+
+/** Additive marker that prevents post-delivery recovery from reopening a report. */
+export type ExpertTemplateFillDeliveryState = {
+  templateId: string
+  /** Canonical current-session HTML path when the new runtime supplied one. */
+  reportPath?: string
+  finalizedAt: string
+}
+
+export type ExpertResearchSourceDispatchState = {
+  receipts: ExpertResearchSourceLibraryDispatchReceipt[]
+  recoveredBatchFingerprints?: string[]
+}
 
 export type ExpertSessionMetadata = {
   mode: 'expert'
@@ -114,6 +159,16 @@ export type ExpertSessionMetadata = {
   researchCompletion?: ExpertResearchCompletionState
   /** Bounded completed researcher handoffs for a ZIP-designated evidence reviewer. */
   researchEvidence?: ExpertResearchEvidenceState
+  /** Real child-dispatch receipts and idempotency markers for bounded source execution waves. */
+  researchSourceDispatches?: ExpertResearchSourceDispatchState
+  /** Most recent bounded verdict from the ZIP-designated independent evidence reviewer. */
+  researchEvidenceReviewer?: ExpertResearchEvidenceReviewerState
+  /** Receipt for the one constrained reviewer that writes 08 after an initial HTML draft. */
+  reportCompletenessReview?: ExpertReportCompletenessReviewState
+  /** Valid only after the first structured HTML Write has rendered successfully. */
+  templateFillDraft?: ExpertTemplateFillDraftState
+  /** Additive final-delivery marker; legacy records simply omit it. */
+  templateFillDelivery?: ExpertTemplateFillDeliveryState
   /** Session-scoped browser choice; never persists a profile path or credentials. */
   researchBrowserConnection?: ExpertResearchBrowserConnection
   /** Session-scoped managed Chromium presentation; omitted for legacy or CDP sessions. */
@@ -220,6 +275,19 @@ export type ExpertDefinition = {
   skillContents?: Record<string, string>
 }
 
+export type ExpertPackBundledUpdate = {
+  kind: 'version' | 'content'
+  localVersion: string
+  bundledVersion: string
+}
+
+export type ExpertPackBundledUpdateResult = {
+  pack: ExpertPackIndexEntry
+  previousVersion: string
+  bundledVersion: string
+  backupFilename: string
+}
+
 export type ExpertPackIndexEntry = {
   packId: string
   name: string
@@ -230,6 +298,8 @@ export type ExpertPackIndexEntry = {
   experts: ExpertDefinition[]
   tools: ExpertToolManifest[]
   importedAt: string
+  /** A newer official ZIP exists, but this local package is a user-owned override. */
+  bundledUpdate?: ExpertPackBundledUpdate
 }
 
 export type ExpertPackImportPreview = {
@@ -302,6 +372,7 @@ export type ExpertPackUpdateInput = {
 
 const adapter = new ZipPackAdapter()
 const MANAGED_BUNDLED_EXPERT_PACKS_FILE = 'managed-bundled-expert-packs.json'
+const DISABLED_BUNDLED_EXPERT_PACKS_FILE = 'disabled-bundled-expert-packs.json'
 const KNOWN_LEGACY_BUNDLED_EXPERT_FINGERPRINTS = new Map<string, ReadonlySet<string>>([
   ['commercialization-research-report', new Set([
     'f3b5f95f5188ebdf43d07f141385769b21febd91f0210e717bb91e656bba0936',
@@ -518,6 +589,7 @@ export class ExpertPackRegistryService {
     const zipPath = path.join(dir, `${safeFileSegment(packId)}.zip`)
     await fs.writeFile(zipPath, Buffer.from(zipData))
     await this.unmarkManagedBundledExpertPack(packId)
+    await this.unmarkDisabledBundledExpertPack(packId)
 
     this.invalidateCache()
 
@@ -535,6 +607,10 @@ export class ExpertPackRegistryService {
   }
 
   async deleteExpertPack(packId: string): Promise<void> {
+    // Built-in packs are normally seeded back into local storage when they are
+    // missing. Record the explicit user deletion before removing the ZIP so it
+    // remains deleted across fresh Registry instances and application restarts.
+    await this.markDisabledBundledExpertPack(packId)
     const zipPath = path.join(getExpertPackStorageDir(), `${safeFileSegment(packId)}.zip`)
     await fs.rm(zipPath, { force: true })
     this.invalidateCache()
@@ -706,6 +782,24 @@ export class ExpertPackRegistryService {
   }
 
   private async writeStoredPack(packId: string, data: Uint8Array): Promise<void> {
+    await this.writeStoredPackBytes(packId, data)
+    await this.unmarkManagedBundledExpertPack(packId)
+    await this.unmarkDisabledBundledExpertPack(packId)
+    this.invalidateCache()
+  }
+
+  private async replaceStoredPackFromBundled(packId: string, data: Uint8Array): Promise<void> {
+    await this.writeStoredPackBytes(packId, data)
+    await this.unmarkDisabledBundledExpertPack(packId)
+    const managedPackIds = await this.readManagedBundledExpertPackIds()
+    if (!managedPackIds.has(packId)) {
+      managedPackIds.add(packId)
+      await this.writeManagedBundledExpertPackIds(managedPackIds)
+    }
+    this.invalidateCache()
+  }
+
+  private async writeStoredPackBytes(packId: string, data: Uint8Array): Promise<void> {
     const storageDir = getExpertPackStorageDir()
     const filename = `${safeFileSegment(packId)}.zip`
     const zipPath = path.join(storageDir, filename)
@@ -718,8 +812,15 @@ export class ExpertPackRegistryService {
     } finally {
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     }
-    await this.unmarkManagedBundledExpertPack(packId)
-    this.invalidateCache()
+  }
+
+  private async backupStoredPack(packId: string, data: Uint8Array, version: string): Promise<string> {
+    const backupDir = path.join(getExpertPackStorageDir(), 'backups')
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
+    const filename = `${safeFileSegment(packId)}.backup-${safeFileSegment(version)}-${timestamp}-${randomUUID().slice(0, 8)}.zip`
+    await fs.mkdir(backupDir, { recursive: true })
+    await fs.writeFile(path.join(backupDir, filename), Buffer.from(data), { flag: 'wx' })
+    return filename
   }
 
   private async nextAvailableId(base: string): Promise<string> {
@@ -730,13 +831,46 @@ export class ExpertPackRegistryService {
     return `${base}-${index}`
   }
 
+  async applyBundledExpertPackUpdate(packId: string): Promise<ExpertPackBundledUpdateResult> {
+    const bundledPacks = await this.loadPacksFromDirectories(bundledExpertPackDirectories(), 'bundled')
+    const bundled = bundledPacks.find((pack) => pack.packId === packId)
+    if (!bundled) throw new Error(`No bundled update is available for expert package: ${packId}`)
+
+    const localPath = path.join(getExpertPackStorageDir(), `${safeFileSegment(packId)}.zip`)
+    let localData: Uint8Array
+    try {
+      localData = new Uint8Array(await fs.readFile(localPath))
+    } catch {
+      throw new Error(`A local override was not found for expert package: ${packId}`)
+    }
+
+    const bundledData = new Uint8Array(await fs.readFile(bundled.storage.path))
+    const local = await this.readPack(localData, {
+      storage: { kind: 'zip', path: `${safeFileSegment(packId)}.zip`, source: 'stored' },
+      importedAt: (await fs.stat(localPath)).mtime.toISOString(),
+    })
+    const update = await bundledUpdateForLocalPack(local.pack, localData, bundled, bundledData)
+    if (!update) throw new Error(`No newer bundled update is available for expert package: ${packId}`)
+
+    const backupFilename = await this.backupStoredPack(packId, localData, local.pack.version)
+    await this.replaceStoredPackFromBundled(packId, bundledData)
+    return {
+      pack: clone(bundled),
+      previousVersion: local.pack.version,
+      bundledVersion: bundled.version,
+      backupFilename,
+    }
+  }
+
   private async loadAllPacks(): Promise<ExpertPackIndexEntry[]> {
     if (packsCache) return packsCache
 
-    const bundled = await this.loadPacksFromDirectories(bundledExpertPackDirectories(), 'bundled')
+    const disabledPackIds = await this.readDisabledBundledExpertPackIds()
+    const bundled = (await this.loadPacksFromDirectories(bundledExpertPackDirectories(), 'bundled'))
+      .filter((pack) => !disabledPackIds.has(safeFileSegment(pack.packId)))
     await this.seedBundledExpertPacks(bundled)
     const stored = await this.loadPacksFromDirectories([getExpertPackStorageDir()], 'stored')
-    packsCache = keepNewestExpertDefinitions([...bundled, ...stored])
+    packsCache = await mergeBundledAndStoredExpertPacks(bundled, stored)
     return packsCache
   }
 
@@ -746,9 +880,11 @@ export class ExpertPackRegistryService {
     const storageDir = getExpertPackStorageDir()
     await fs.mkdir(storageDir, { recursive: true })
     const managedPackIds = await this.readManagedBundledExpertPackIds()
+    const disabledPackIds = await this.readDisabledBundledExpertPackIds()
     let managedStateChanged = false
 
     for (const pack of bundledPacks) {
+      if (disabledPackIds.has(safeFileSegment(pack.packId))) continue
       const sourceZip = new Uint8Array(await fs.readFile(pack.storage.path))
       const targetPath = path.join(storageDir, safeFileSegment(pack.packId) + '.zip')
       let existing: Uint8Array | null = null
@@ -801,6 +937,44 @@ export class ExpertPackRegistryService {
     const packIds = await this.readManagedBundledExpertPackIds()
     if (!packIds.delete(packId)) return
     await this.writeManagedBundledExpertPackIds(packIds)
+  }
+
+  private disabledBundledExpertPacksPath(): string {
+    return path.join(getExpertPackStorageDir(), DISABLED_BUNDLED_EXPERT_PACKS_FILE)
+  }
+
+  private async readDisabledBundledExpertPackIds(): Promise<Set<string>> {
+    try {
+      const raw = JSON.parse(await fs.readFile(this.disabledBundledExpertPacksPath(), 'utf8')) as unknown
+      if (!isRecord(raw) || raw.schemaVersion !== 1 || !Array.isArray(raw.packIds)) return new Set()
+      return new Set(raw.packIds.filter(isNonEmptyString).map((packId) => safeFileSegment(packId)))
+    } catch {
+      // This file is intentionally additive. Missing or old installations mean
+      // no bundled package has been explicitly removed yet.
+      return new Set()
+    }
+  }
+
+  private async writeDisabledBundledExpertPackIds(packIds: Set<string>): Promise<void> {
+    await fs.mkdir(getExpertPackStorageDir(), { recursive: true })
+    await fs.writeFile(this.disabledBundledExpertPacksPath(), JSON.stringify({
+      schemaVersion: 1,
+      packIds: [...packIds].sort(),
+    }, null, 2) + '\n')
+  }
+
+  private async markDisabledBundledExpertPack(packId: string): Promise<void> {
+    const packIds = await this.readDisabledBundledExpertPackIds()
+    const normalizedPackId = safeFileSegment(packId)
+    if (packIds.has(normalizedPackId)) return
+    packIds.add(normalizedPackId)
+    await this.writeDisabledBundledExpertPackIds(packIds)
+  }
+
+  private async unmarkDisabledBundledExpertPack(packId: string): Promise<void> {
+    const packIds = await this.readDisabledBundledExpertPackIds()
+    if (!packIds.delete(safeFileSegment(packId))) return
+    await this.writeDisabledBundledExpertPackIds(packIds)
   }
 
   private async loadPacksFromDirectories(
@@ -983,7 +1157,7 @@ function normalizeManifest(raw: unknown): ExpertPackManifest {
 }
 
 function normalizeRuntimePolicy(value: unknown): ExpertRuntimePolicy | undefined {
-  if (!isRecord(value) || (value.mode !== 'strict-visual-workflow' && value.mode !== 'package-local-skills')) return undefined
+  if (!isRecord(value) || (value.mode !== 'strict-visual-workflow' && value.mode !== 'prototype-visual-workflow' && value.mode !== 'package-local-skills')) return undefined
   const allowedToolNames = normalizeStringArray(value.allowedToolNames)
   const requiredSkillIds = normalizeStringArray(value.requiredSkillIds)
   return {
@@ -1257,6 +1431,69 @@ async function canonicalExpertPackFingerprint(zipData: Uint8Array): Promise<stri
   }
   return hash.digest('hex')
 }
+async function mergeBundledAndStoredExpertPacks(
+  bundledPacks: ExpertPackIndexEntry[],
+  storedPacks: ExpertPackIndexEntry[],
+): Promise<ExpertPackIndexEntry[]> {
+  const bundledById = new Map(bundledPacks.map((pack) => [pack.packId, pack]))
+  const enrichedStored = await Promise.all(storedPacks.map(async (stored) => {
+    const bundled = bundledById.get(stored.packId)
+    if (!bundled) return stored
+    const localPath = path.join(getExpertPackStorageDir(), stored.storage.path)
+    const [localData, bundledData] = await Promise.all([
+      fs.readFile(localPath).then((data) => new Uint8Array(data)).catch(() => null),
+      fs.readFile(bundled.storage.path).then((data) => new Uint8Array(data)).catch(() => null),
+    ])
+    if (!localData || !bundledData) return stored
+    const bundledUpdate = await bundledUpdateForLocalPack(stored, localData, bundled, bundledData)
+    return bundledUpdate ? { ...stored, bundledUpdate } : stored
+  }))
+  return keepNewestExpertDefinitions([...bundledPacks, ...enrichedStored])
+}
+
+async function expertPackContentEquivalent(leftData: Uint8Array, rightData: Uint8Array): Promise<boolean> {
+  if (Buffer.from(leftData).equals(Buffer.from(rightData))) return true
+  try {
+    const [left, right] = await Promise.all([adapter.read(leftData), adapter.read(rightData)])
+    if (left.entries.length !== right.entries.length) return false
+    const rightPaths = new Set(right.entries.map((entry) => entry.path))
+    for (const entry of left.entries) {
+      if (!rightPaths.has(entry.path)) return false
+      const [leftBytes, rightBytes] = await Promise.all([left.readBytes(entry.path), right.readBytes(entry.path)])
+      if (Buffer.from(leftBytes).equals(Buffer.from(rightBytes))) continue
+      if (!isTextZipEntry(entry.path)) return false
+      if (normalizeZipText(leftBytes) !== normalizeZipText(rightBytes)) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isTextZipEntry(entryPath: string): boolean {
+  return /\.(?:json|md|html?|txt|ya?ml|csv|js|mjs|cjs|ts|tsx|jsx|css|xml|svg)$/i.test(entryPath)
+}
+
+function normalizeZipText(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/\r\n/g, '\n')
+}
+
+async function bundledUpdateForLocalPack(
+  local: ExpertPackIndexEntry,
+  localData: Uint8Array,
+  bundled: ExpertPackIndexEntry,
+  bundledData: Uint8Array,
+): Promise<ExpertPackBundledUpdate | undefined> {
+  if (await expertPackContentEquivalent(localData, bundledData)) return undefined
+  const versionOrder = compareSemver(bundled.version, local.version)
+  if (versionOrder < 0) return undefined
+  return {
+    kind: versionOrder > 0 ? 'version' : 'content',
+    localVersion: local.version,
+    bundledVersion: bundled.version,
+  }
+}
+
 function keepNewestExpertDefinitions(packs: ExpertPackIndexEntry[]): ExpertPackIndexEntry[] {
   const claimedExpertIds = new Set<string>()
   return [...packs]
@@ -1312,7 +1549,7 @@ function safeFileSegment(value: string): string {
   return safe || 'expert-pack'
 }
 
-function readAllEntries(zip: ZipPackArchive): Promise<Record<string, Uint8Array>> {
+function readAllEntries(zip: ZipPackArchive): Promise<Record<string, Uint8Array | string>> {
   return Promise.all(zip.entries.map(async (entry) => [entry.path, await zip.readBytes(entry.path)] as const))
     .then((pairs) => Object.fromEntries(pairs))
 }

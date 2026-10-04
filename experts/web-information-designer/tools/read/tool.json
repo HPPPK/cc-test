@@ -1,0 +1,14 @@
+{
+  "name": "Read",
+  "purpose": "读取当前会话 workDir 的文本、HTML 和实际 PNG 截图，以证据为准。",
+  "id": "read",
+  "type": "hostBuiltinRef",
+  "hostToolId": "Read",
+  "permissions": [
+    {
+      "id": "inspect-session-output",
+      "description": "读取当前会话 workDir 中的输入、HTML、研究材料及本地 QA 截图；截图必须实际 Read 后才能陈述观察结论。"
+    }
+  ],
+  "network": "none"
+}

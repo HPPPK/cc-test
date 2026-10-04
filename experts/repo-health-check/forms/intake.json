@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "type": "message",
+      "id": "welcome",
+      "markdown": "我会按你选择的范围，只读理解项目：可以只查怎么运行、需要什么环境和从哪里开始；也可以继续梳理项目结构、关键代码逻辑、风险和下一步。不克隆、不安装、不运行、不修改；没有证据的地方会明确说明。"
+    },
+    {
+      "type": "question",
+      "id": "sourceMode",
+      "question": "本轮准备基于什么来源了解项目？",
+      "required": true,
+      "options": [
+        {
+          "id": "local",
+          "label": "本地项目目录",
+          "description": "读取你授权目录中的真实文件、配置、入口和测试。"
+        },
+        {
+          "id": "public-repository",
+          "label": "公开 GitHub/Gitee 链接",
+          "description": "只看实际打开的公开页面；结论会明确标为公开网页审计，不能等同完整仓库扫描。"
+        },
+        {
+          "id": "combined",
+          "label": "本地目录 + 公开链接",
+          "description": "以本地文件事实为主，公开仓库仅作补充核对。"
+        }
+      ]
+    },
+    {
+      "type": "question",
+      "id": "assessmentScope",
+      "question": "这次想查到什么程度？",
+      "required": true,
+      "options": [
+        {
+          "id": "run-guide",
+          "label": "只查运行方式",
+          "description": "找到启动、构建、测试命令、环境要求、入口和当前无法确认的地方；不扩展成整仓质量结论。"
+        },
+        {
+          "id": "structure-and-logic",
+          "label": "结构与代码逻辑",
+          "description": "梳理项目模块、关键入口、主要调用链、数据/状态流和后续修改要避开的边界。"
+        },
+        {
+          "id": "risk-and-readiness",
+          "label": "风险与准备度",
+          "description": "检查已读到的依赖、配置、测试、发布与安全线索，并按目标说明风险是否成立。"
+        },
+        {
+          "id": "full-review",
+          "label": "完整体检与接手建议",
+          "description": "在授权范围内结合运行方式、结构逻辑、风险和行动优先级，形成接手或决策依据。"
+        }
+      ]
+    },
+    {
+      "type": "question",
+      "id": "assessmentPurpose",
+      "question": "你准备用这份结果做什么？",
+      "required": true,
+      "options": [
+        {
+          "id": "quick-orientation",
+          "label": "快速了解 / 跑起来",
+          "description": "优先回答从哪里开始、怎么运行、需要什么条件和最小验证步骤。"
+        },
+        {
+          "id": "coursework-review",
+          "label": "课程/作品评审",
+          "description": "判断交付是否清楚、演示风险和可评分性，不把生产级能力当成默认缺陷。"
+        },
+        {
+          "id": "maintenance-handoff",
+          "label": "接手维护",
+          "description": "定位入口、模块边界、代码逻辑、测试缺口和优先补齐项。"
+        },
+        {
+          "id": "release-readiness",
+          "label": "发布准备",
+          "description": "聚焦可构建性、可复现性、配置、测试与发布风险。"
+        },
+        {
+          "id": "security-exposure",
+          "label": "安全与配置核验",
+          "description": "优先检查可读配置、敏感信息线索与尚未完成的验证项。"
+        }
+      ]
+    },
+    {
+      "type": "form",
+      "id": "materials",
+      "title": "选择范围与补充材料",
+      "required": false,
+      "fields": [
+        {
+          "id": "projectRoot",
+          "kind": "folder",
+          "label": "本地项目目录",
+          "required": false,
+          "description": "本地模式或联合模式时填写；只读扫描你授权的目录。"
+        },
+        {
+          "id": "repositoryUrl",
+          "kind": "url",
+          "label": "公开 GitHub/Gitee 仓库链接",
+          "required": false,
+          "description": "公开模式或联合模式时填写；不登录、不克隆、不绕过访问控制。"
+        },
+        {
+          "id": "repositoryRef",
+          "kind": "text",
+          "label": "分支、Tag 或提交（可选）",
+          "required": false,
+          "placeholder": "例如：main、v1.3.0 或一个已公开显示的 commit SHA。"
+        },
+        {
+          "id": "focusPaths",
+          "kind": "textarea",
+          "label": "优先目录、文件、命令或问题",
+          "required": false,
+          "placeholder": "例如：package.json、src/server、desktop、README、启动报错、Actions 或 Gitee 流水线。"
+        },
+        {
+          "id": "notes",
+          "kind": "textarea",
+          "label": "已知问题、交付标准或关注点",
+          "required": false,
+          "placeholder": "例如：我只想知道怎么跑起来；需要看懂登录流程；想判断是否适合接手；不要按商业化产品要求苛责。"
+        }
+      ]
+    }
+  ]
+}

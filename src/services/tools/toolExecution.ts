@@ -42,6 +42,7 @@ import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
+import { ASK_USER_QUESTION_TOOL_NAME } from '../../tools/AskUserQuestionTool/prompt.js'
 import { handleSubmitPhaseCompletionFailure } from '../../tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
@@ -53,8 +54,16 @@ import {
 import { getAllBaseTools } from '../../tools.js'
 import { renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
 import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
+import { coordinateExpertBrowserSearchPacing } from './expertBrowserSearchPacingRuntime.js'
+import {
+  extractAgentRunArtifacts,
+  recordAgentRunEvent,
+  resolveAgentRunId,
+} from './agentRunLedgerRuntime.js'
 import { resolveCurrentPlaywrightSessionKey } from '../../tools/PlaywrightTool/PlaywrightTool.js'
 import { resolveWorkflowRuntimeState } from './workflowRuntimeStateBridge.js'
+import { uiuxImageToolViolation } from './uiuxImageWorkflowRuntime.js'
+import { developmentLeaderToolViolation } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js'
 import {
   getWorkflowQuestionCardContractViolation,
   isWorkflowPhaseToolDenied,
@@ -460,6 +469,15 @@ export async function* runToolUse(
     return
   }
 
+  if (typeof toolUse.input === 'string') {
+    const error = 'TOOL_INPUT_JSON_INVALID: 工具参数不是完整的 JSON 对象，本次工具未执行。原始输入已保留在会话工具记录中；请重新提交有效参数，不要把空参数当成保存失败或改走 Bash。已成功保存的文件与字段不受影响。'
+    yield { message: createUserMessage({
+      content: [{ type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: '<tool_use_error>' + error + '</tool_use_error>' }],
+      toolUseResult: error,
+      sourceToolAssistantUUID: assistantMessage.uuid,
+    }) }
+    return
+  }
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
@@ -748,6 +766,15 @@ async function checkPermissionsAndCallTool(
     ]
   }
 
+  const uiuxViolation = uiuxImageToolViolation(tool.name, parsedInput.data, toolUseContext.messages)
+  if (uiuxViolation) {
+    return [{ message: createUserMessage({
+      content: [{ type: 'tool_result', content: '<tool_use_error>' + uiuxViolation + '</tool_use_error>', is_error: true, tool_use_id: toolUseID }],
+      toolUseResult: uiuxViolation,
+      sourceToolAssistantUUID: assistantMessage.uuid,
+    }) }]
+  }
+
   // The workflow leader stays alive across ordinary phase changes, so its
   // in-memory app state may briefly describe the prior phase. Resolve the
   // persisted Desktop state before every actual tool call instead of trusting
@@ -776,6 +803,32 @@ async function checkPermissionsAndCallTool(
     ]
   }
   const workflowState = workflowResolution.state
+  const developmentLeaderViolation = developmentLeaderToolViolation(
+    tool.name,
+    parsedInput.data as Record<string, unknown>,
+    workflowState,
+    Boolean(toolUseContext.agentId),
+  )
+  if (developmentLeaderViolation) {
+    logForDebugging(developmentLeaderViolation)
+    const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, developmentLeaderViolation)
+    return [
+      {
+        message: createUserMessage({
+          content: [
+            {
+              type: 'tool_result',
+              content: `<tool_use_error>${workflowErrorContent}</tool_use_error>`,
+              is_error: true,
+              tool_use_id: toolUseID,
+            },
+          ],
+          toolUseResult: `Error: ${workflowErrorContent}`,
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      },
+    ]
+  }
   if (isWorkflowPhaseToolDenied(tool.name, workflowState)) {
     const violation = `WORKFLOW_TOOL_FORBIDDEN: ${tool.name} is not allowed in the current workflow phase. Complete or route the current phase before using this tool.`
     logForDebugging(violation)
@@ -828,28 +881,39 @@ async function checkPermissionsAndCallTool(
     ]
   }
 
-  // Template-fill is an Expert Runtime delivery protocol. It only activates for
-  // a deliberate JSON envelope and renders server-side before shared Write runs.
+  // Template-fill is an Expert Runtime delivery protocol. An opted-in
+  // structured Write is rendered by the session-bound server template before
+  // the generic filesystem Write executes. The model never needs Bash, a
+  // heredoc, report-fields JSON, or a temporary script for final delivery.
+  let confirmTemplateWrite: (() => Promise<void>) | undefined
   if (tool.name === FILE_WRITE_TOOL_NAME) {
     try {
-      await renderExpertTemplateFillForWrite(parsedInput.data)
+      const templateResult = await renderExpertTemplateFillForWrite(parsedInput.data as Record<string, unknown>)
+      if (templateResult.kind === 'rendered-template-fill') {
+        confirmTemplateWrite = templateResult.confirmWrite
+        const renderedWriteInput = parsedInput.data as Record<string, unknown>
+        renderedWriteInput.file_path = templateResult.filePath
+        renderedWriteInput.content = templateResult.content
+        delete renderedWriteInput.expert_output
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logForDebugging(message)
-      return [
+      const results: MessageUpdateLazy[] = [
         {
           message: createUserMessage({
             content: [{
               type: 'tool_result',
-              content: `<tool_use_error>${message}</tool_use_error>`,
+              content: '<tool_use_error>' + message + '</tool_use_error>',
               is_error: true,
               tool_use_id: toolUseID,
             }],
-            toolUseResult: `Error: ${message}`,
+            toolUseResult: 'Error: ' + message,
             sourceToolAssistantUUID: assistantMessage.uuid,
           }),
         },
       ]
+      return results
     }
   }
 
@@ -1373,6 +1437,34 @@ async function checkPermissionsAndCallTool(
   )
   startToolExecutionSpan()
 
+  // Application-wide, non-sensitive execution receipts. This intentionally
+  // records only tool/Skill/artifact facts: never prompts, tool input, output
+  // text, credentials, cookies, or file content. Delivery is fail-open.
+  const agentRunId = resolveAgentRunId({
+    chainId: toolUseContext.queryTracking?.chainId,
+    requestId,
+    toolUseId: toolUseID,
+  })
+  const agentRunSkillId = extractSkillName(tool.name, processedInput)
+  if (agentRunId) {
+    void recordAgentRunEvent({
+      runId: agentRunId,
+      eventType: 'tool_started',
+      toolUseId: toolUseID,
+      toolName: tool.name,
+      status: 'running',
+    })
+    if (agentRunSkillId) {
+      void recordAgentRunEvent({
+        runId: agentRunId,
+        eventType: 'skill_invoked',
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        skillId: agentRunSkillId,
+      })
+    }
+  }
+
   const startTime = Date.now()
 
   startSessionActivity('tool_exec')
@@ -1401,7 +1493,9 @@ async function checkPermissionsAndCallTool(
   } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
+  let searchPacing: Awaited<ReturnType<typeof coordinateExpertBrowserSearchPacing>> | undefined
   try {
+    searchPacing = await coordinateExpertBrowserSearchPacing({ toolName: tool.name, input: callInput })
     const rawResult = await tool.call(
       callInput,
       {
@@ -1418,6 +1512,8 @@ async function checkPermissionsAndCallTool(
         })
       },
     )
+    // FileWrite throws on disk failure; commit only after its real write succeeds.
+    if (confirmTemplateWrite) await confirmTemplateWrite()
     const result = await coordinateExpertBrowserVerification({
       toolName: tool.name,
       result: rawResult,
@@ -1441,6 +1537,16 @@ async function checkPermissionsAndCallTool(
       ...(toolUseContext.agentId ? { agentId: toolUseContext.agentId } : {}),
       toolUseId: toolUseID,
       ...(tool.name === 'Playwright' ? { browserSessionKey: resolveCurrentPlaywrightSessionKey(toolUseContext) } : {}),
+      ...(tool.name === 'Playwright' && searchPacing?.engine
+        ? {
+            accessDiagnostics: {
+              connectionKind: process.env.CC_JIANGXIA_EXPERT_PLAYWRIGHT_CDP_ENDPOINT ? 'cdp' as const : 'managed' as const,
+              searchEngine: searchPacing.engine,
+              observedAt: new Date().toISOString(),
+              ...(typeof searchPacing.waitedMs === 'number' ? { pacingWaitedMs: searchPacing.waitedMs } : {}),
+            },
+          }
+        : {}),
     })
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
@@ -1502,6 +1608,25 @@ async function checkPermissionsAndCallTool(
     }
 
     endToolExecutionSpan({ success: true })
+    if (agentRunId) {
+      void recordAgentRunEvent({
+        runId: agentRunId,
+        eventType: 'tool_completed',
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        durationMs,
+        status: tool.name === ASK_USER_QUESTION_TOOL_NAME ? 'waiting_user' : 'running',
+      })
+      for (const artifact of extractAgentRunArtifacts(result.data)) {
+        void recordAgentRunEvent({
+          runId: agentRunId,
+          eventType: 'artifact_recorded',
+          toolUseId: toolUseID,
+          toolName: tool.name,
+          artifact: { ...artifact, sourceTool: tool.name },
+        })
+      }
+    }
     // Pass tool result for new_context logging
     const toolResultStr =
       result.data && typeof result.data === 'object'
@@ -1816,6 +1941,17 @@ async function checkPermissionsAndCallTool(
       success: false,
       error: errorMessage(error),
     })
+    if (agentRunId) {
+      void recordAgentRunEvent({
+        runId: agentRunId,
+        eventType: 'tool_failed',
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        durationMs,
+        status: 'failed',
+        errorCode: error instanceof Error ? error.name.slice(0, 128) : 'tool_error',
+      })
+    }
     endToolSpan()
 
     // Handle MCP auth errors by updating the client status to 'needs-auth'
@@ -1958,6 +2094,8 @@ async function checkPermissionsAndCallTool(
       ...hookMessages,
     ]
   } finally {
+    await searchPacing?.release()
+
     stopSessionActivity('tool_exec')
     // Clean up decision info after logging
     if (decisionInfo) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
+import { buildExpertFallbackPlaywrightContinuation, buildExpertVerifiedPlaywrightContinuation, coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
 import { ExpertHumanVerificationService } from '../../server/services/expertHumanVerificationService.js'
 
 const captchaResult = {
@@ -25,6 +25,31 @@ const enabledEnv = {
 } as NodeJS.ProcessEnv
 
 describe('coordinateExpertBrowserVerification', () => {
+  test('retries the first failed original action before continuing extraction', () => {
+    expect(buildExpertVerifiedPlaywrightContinuation({
+      visible: true,
+      actions: [
+        { type: 'navigate', url: 'https://www.baidu.com/' },
+        { type: 'fill', selector: 'input#kw:visible', text: 'markdown reader' },
+        { type: 'press', selector: 'input#kw:visible', key: 'Enter' },
+        { type: 'extract', selector: 'body' },
+      ],
+    }, {
+      steps: [
+        { index: 0, type: 'navigate', outcome: 'success', url: 'https://www.baidu.com/' },
+        { index: 1, type: 'fill', outcome: 'failed', url: 'https://www.baidu.com/', detail: 'Timeout 35000ms exceeded.' },
+      ],
+    })).toEqual({
+      visible: true,
+      verification_resolution: 'verified',
+      actions: [
+        { type: 'fill', selector: 'input#kw:visible', text: 'markdown reader' },
+        { type: 'press', selector: 'input#kw:visible', key: 'Enter' },
+        { type: 'extract', selector: 'body' },
+      ],
+    })
+  })
+
   test('leaves ordinary Playwright results untouched outside a package-scoped Expert handoff', async () => {
     const fetchImpl = async () => { throw new Error('must not fetch') }
     await expect(coordinateExpertBrowserVerification({
@@ -44,6 +69,7 @@ describe('coordinateExpertBrowserVerification', () => {
       toolUseId: 'toolu_google',
       env: enabledEnv,
       fetchImpl: async (input, init) => {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
         requests.push(new Request(input, init))
         return Response.json({ resolution: 'verification_completed' })
       },
@@ -128,7 +154,9 @@ describe('coordinateExpertBrowserVerification', () => {
     let service: ExpertHumanVerificationService
     let owner: Promise<unknown> | undefined
     service = new ExpertHumanVerificationService((_sessionId, message) => {
-      deliveries.push({ requestId: message.requestId, ...(message.toolUseId ? { toolUseId: message.toolUseId } : {}) })
+      if (message.type === 'permission_request') {
+        deliveries.push({ requestId: message.requestId, ...(message.toolUseId ? { toolUseId: message.toolUseId } : {}) })
+      }
       return true
     })
 
@@ -215,6 +243,70 @@ describe('coordinateExpertBrowserVerification', () => {
     }))
   })
 
+  test('retries a sibling agent original action unchanged after the shared browser owner resolves verification', async () => {
+    const requests: Request[] = []
+    const resumedInputs: unknown[] = []
+    const originalInput = {
+      visible: true,
+      actions: [
+        { type: 'navigate', url: 'https://www.bing.com/search?q=old+photo+repair' },
+        { type: 'wait_for_load_state', state: 'domcontentloaded' },
+        { type: 'extract', selector: 'body' },
+      ],
+    }
+
+    const result = await coordinateExpertBrowserVerification({
+      toolName: 'Playwright',
+      result: {
+        data: {
+          url: 'https://www.bing.com/search?q=old+photo+repair',
+          title: '',
+          text: '',
+          links: [],
+          accessLimited: true,
+          verificationGateId: 'gate-shared-owner',
+          sharedHumanVerificationBlocked: true,
+          error: 'EXPERT_HUMAN_VERIFICATION_PENDING: another research worker owns the shared browser verification page',
+          steps: [],
+        },
+      },
+      input: originalInput,
+      resume: async (input) => {
+        resumedInputs.push(input)
+        return {
+          data: {
+            url: 'https://www.bing.com/search?q=old+photo+repair',
+            title: 'Bing results',
+            text: 'sibling result after owner verification',
+            accessLimited: false,
+            steps: [
+              { index: 0, type: 'navigate', outcome: 'success', url: 'https://www.bing.com/search?q=old+photo+repair' },
+              { index: 1, type: 'extract', outcome: 'success', url: 'https://www.bing.com/search?q=old+photo+repair' },
+            ],
+          },
+        }
+      },
+      env: enabledEnv,
+      fetchImpl: async (input, init) => {
+        requests.push(new Request(input, init))
+        return Response.json({ resolution: 'verification_completed' })
+      },
+    })
+
+    await expect(requests[0]!.json()).resolves.toEqual({
+      sessionId: 'expert-session',
+      verificationGateId: 'gate-shared-owner',
+      joinExisting: true,
+    })
+    expect(resumedInputs).toEqual([{
+      ...originalInput,
+      verification_resolution: 'verified',
+    }])
+    expect(result.data).toMatchObject({
+      accessLimited: false,
+      text: 'sibling result after owner verification',
+    })
+  })
   test('joins an already-visible verification instead of exposing PENDING to the model or opening another modal', async () => {
     const requests: Request[] = []
     const result = await coordinateExpertBrowserVerification({
@@ -308,11 +400,45 @@ describe('coordinateExpertBrowserVerification', () => {
     expect(result.data).toEqual(expect.objectContaining({
       text: 'fallback result body',
       accessLimited: false,
+      verificationHistory: [
+        expect.objectContaining({ stepIndex: 0, url: captchaResult.data.url }),
+      ],
       steps: expect.arrayContaining([
         expect.objectContaining({ index: 0, type: 'navigate', url: captchaResult.data.url }),
         expect.objectContaining({ index: 1, type: 'navigate', url: 'https://www.baidu.com/s?wd=mac%20markdown%20reader' }),
       ]),
     }))
+  })
+
+  test('keeps the original search query when a verification URL contains a provider challenge token', () => {
+    const fallback = buildExpertFallbackPlaywrightContinuation(
+      {
+        visible: true,
+        actions: [
+          { type: 'navigate', url: 'https://www.google.com/search?q=restore%20old%20family%20photos' },
+          { type: 'extract', selector: 'body' },
+        ],
+      },
+      {
+        url: 'https://www.google.com/sorry/index?continue=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3Drestore%2520old%2520family%2520photos&q=EgRoHPdE-provider-challenge-token',
+        title: 'Google verification',
+        error: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: Google security verification',
+      },
+      ['Google', '百度', 'Bing', '360'],
+      new Set<never>(),
+    )
+
+    expect(fallback).toEqual({
+      engine: '百度',
+      input: expect.objectContaining({
+        verification_resolution: 'switch_public_entry',
+        actions: [
+          { type: 'navigate', url: 'https://www.baidu.com/s?wd=restore%20old%20family%20photos' },
+          { type: 'wait_for_load_state', state: 'domcontentloaded' },
+          { type: 'extract', selector: 'body' },
+        ],
+      }),
+    })
   })
 
   test('derives a public-search fallback from a direct official page after the user explicitly declines verification', async () => {
@@ -478,6 +604,40 @@ describe('coordinateExpertBrowserVerification', () => {
     expect(result.data).toEqual(expect.objectContaining({ text: 'verified after second handoff', accessLimited: false }))
   })
 
+  test('records the detected verification kind in final access-limited diagnostics', async () => {
+    const result = await coordinateExpertBrowserVerification({
+      toolName: 'Playwright',
+      result: {
+        data: {
+          url: 'https://www.google.com/sorry/index?continue=https://www.google.com/search?q=mac+markdown+reader',
+          title: 'Unusual traffic',
+          text: 'Our systems have detected unusual traffic from your computer network.',
+          accessLimited: true,
+          error: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: Google security verification',
+          steps: [],
+        },
+      },
+      env: enabledEnv,
+      fetchImpl: async () => { throw new Error('Desktop handoff unavailable') },
+      accessDiagnostics: {
+        connectionKind: 'managed',
+        searchEngine: 'Google',
+        observedAt: '2026-08-13T12:30:00.000Z',
+        pacingWaitedMs: 3000,
+      },
+    })
+
+    expect(result.data).toEqual(expect.objectContaining({
+      accessLimited: true,
+      accessDiagnostics: expect.objectContaining({
+        connectionKind: 'managed',
+        searchEngine: 'Google',
+        pacingWaitedMs: 3000,
+        verificationKind: 'Google security verification',
+      }),
+    }))
+  })
+
   test('releases the preserved page automatically when the user explicitly records an evidence gap', async () => {
     const resumedInputs: unknown[] = []
     const result = await coordinateExpertBrowserVerification({
@@ -509,4 +669,18 @@ describe('coordinateExpertBrowserVerification', () => {
     expect((result.data as { error: string }).error).toContain('EXPERT_HUMAN_VERIFICATION_RECORDED_AS_GAP')
   })
 
+})
+
+test('a deferred verification releases the held page without claiming user approval or retrying it', async () => {
+  const resumed: any[] = []
+  const result = await coordinateExpertBrowserVerification({ toolName: 'Playwright', result: captchaResult, env: enabledEnv,
+    input: { visible: true, actions: [{ type: 'navigate', url: 'https://s.weibo.com/weibo?q=Quicker' }] },
+    fetchImpl: async () => Response.json({ resolution: 'verification_deferred' }),
+    resume: async input => { resumed.push(input); return { data: { ...captchaResult.data, error: 'EXPERT_HUMAN_VERIFICATION_RECORDED_AS_GAP', steps: [] } } },
+  })
+  expect(resumed).toHaveLength(1)
+  expect(resumed[0].verification_resolution).toBe('record_evidence_gap')
+  expect(result.data.error).toContain('EXPERT_HUMAN_VERIFICATION_DEFERRED')
+  expect(result.data.error).not.toContain('user declined')
+  expect(result.data.error).not.toContain('verified successfully')
 })

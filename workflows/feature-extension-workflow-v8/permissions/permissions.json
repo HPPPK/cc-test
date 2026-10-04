@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "feature-extension-workflow-v8",
+      "phases": [
+        {
+          "id": "feature-memory-plan",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "dependency installs",
+              "migrations",
+              "deletes",
+              "deploy"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation.",
+              "Record a task inventory for every user-requested item, including accepted or explicitly deferred status.",
+              "For each accepted task record scope, non-goals, acceptance criteria, dependencies, target files, write scopes, scenario cases, and risky actions.",
+              "Record any user-approved deferral or cancellation explicitly; never silently drop a requested item.",
+              "Handoff the complete task inventory and Feature Delta Capsule; ask only one unresolved material question per AskUserQuestion call."
+            ]
+          }
+        },
+        {
+          "id": "feature-implement",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "edit-within-plan",
+              "test",
+              "review",
+              "artifact",
+              "question",
+              "subagent-coder",
+              "subagent-reviewer"
+            ],
+            "forbiddenActions": [
+              "out-of-plan edits",
+              "unconfirmed installs",
+              "unconfirmed migrations",
+              "unconfirmed deletes",
+              "unconfirmed deploy"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "Write",
+                "Edit",
+                "MultiEdit",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "migrations",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass.",
+              "Record one implementation-log entry for every accepted task: task id, batch, changed files, tests, reviewer findings, fixes, and terminal status.",
+              "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+              "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+              "Every accepted task must end as completed, user-deferred, replaced, or blocked, with a trace to its Coder and Reviewer evidence."
+            ]
+          }
+        },
+        {
+          "id": "feature-quality-preview",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "test",
+              "build",
+              "lint",
+              "review",
+              "preview-start",
+              "preview-stop",
+              "artifact",
+              "question",
+              "subagent-qa",
+              "subagent-reviewer",
+              "route"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "test-file edits",
+              "direct repair",
+              "subagent-coder",
+              "deploy without confirmation"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "migrations",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "quality-report.md contains user-path evidence and one terminal status for every accepted task; code failures have been routed to feature-implement and revalidated before completion.",
+              "Record user-path evidence, residual risks, preview status, and one terminal status for every accepted task.",
+              "Route code-affecting failures to feature-implement and revalidate the affected path after repair."
+            ]
+          }
+        },
+        {
+          "id": "feature-finish-memory",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "handoff",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "auto-start follow-up workflow"
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ]
+            },
+            "questionPolicy": {
+              "requireAnswerProcessingBeforeNextQuestion": false
+            },
+            "completionRequires": [
+              "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+              "Record outcome, proof, risks, updated memory, next action choices, and the terminal status of every accepted task.",
+              "The archive is non-blocking: preserve task coverage, validation evidence, relevant project guidance updates, diagnostic/log references, and explicit residual risks without reopening routine discovery."
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

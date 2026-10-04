@@ -1,0 +1,259 @@
+{
+  "id": "repo-health-check",
+  "name": "项目体检",
+  "description": "以只读方式理解和诊断项目：可小到确认如何运行、需要什么环境和从哪里开始，也可扩展到项目结构、关键代码逻辑、依赖/测试/配置与工程风险；支持授权本地目录、公开 GitHub/Gitee 仓库或二者结合，结论均标明证据范围。",
+  "statusLabel": "可用 MVP v1.3.0",
+  "promptPaths": {
+    "system": "experts/repo-health-check/prompts/system.md"
+  },
+  "formPaths": [
+    "experts/repo-health-check/forms/intake.json"
+  ],
+  "outputProtocolPath": "experts/repo-health-check/outputs/material-protocol.json",
+  "skillIds": [
+    "repo-health-check-guide"
+  ],
+  "intakeFlow": {
+    "version": 1,
+    "steps": [
+      {
+        "type": "message",
+        "id": "welcome",
+        "markdown": "我会按你选择的范围，只读理解项目：可以只查怎么运行、需要什么环境和从哪里开始；也可以继续梳理项目结构、关键代码逻辑、风险和下一步。不克隆、不安装、不运行、不修改；没有证据的地方会明确说明。"
+      },
+      {
+        "type": "question",
+        "id": "sourceMode",
+        "question": "本轮准备基于什么来源了解项目？",
+        "required": true,
+        "options": [
+          {
+            "id": "local",
+            "label": "本地项目目录",
+            "description": "读取你授权目录中的真实文件、配置、入口和测试。"
+          },
+          {
+            "id": "public-repository",
+            "label": "公开 GitHub/Gitee 链接",
+            "description": "只看实际打开的公开页面；结论会明确标为公开网页审计，不能等同完整仓库扫描。"
+          },
+          {
+            "id": "combined",
+            "label": "本地目录 + 公开链接",
+            "description": "以本地文件事实为主，公开仓库仅作补充核对。"
+          }
+        ]
+      },
+      {
+        "type": "question",
+        "id": "assessmentScope",
+        "question": "这次想查到什么程度？",
+        "required": true,
+        "options": [
+          {
+            "id": "run-guide",
+            "label": "只查运行方式",
+            "description": "找到启动、构建、测试命令、环境要求、入口和当前无法确认的地方；不扩展成整仓质量结论。"
+          },
+          {
+            "id": "structure-and-logic",
+            "label": "结构与代码逻辑",
+            "description": "梳理项目模块、关键入口、主要调用链、数据/状态流和后续修改要避开的边界。"
+          },
+          {
+            "id": "risk-and-readiness",
+            "label": "风险与准备度",
+            "description": "检查已读到的依赖、配置、测试、发布与安全线索，并按目标说明风险是否成立。"
+          },
+          {
+            "id": "full-review",
+            "label": "完整体检与接手建议",
+            "description": "在授权范围内结合运行方式、结构逻辑、风险和行动优先级，形成接手或决策依据。"
+          }
+        ]
+      },
+      {
+        "type": "question",
+        "id": "assessmentPurpose",
+        "question": "你准备用这份结果做什么？",
+        "required": true,
+        "options": [
+          {
+            "id": "quick-orientation",
+            "label": "快速了解 / 跑起来",
+            "description": "优先回答从哪里开始、怎么运行、需要什么条件和最小验证步骤。"
+          },
+          {
+            "id": "coursework-review",
+            "label": "课程/作品评审",
+            "description": "判断交付是否清楚、演示风险和可评分性，不把生产级能力当成默认缺陷。"
+          },
+          {
+            "id": "maintenance-handoff",
+            "label": "接手维护",
+            "description": "定位入口、模块边界、代码逻辑、测试缺口和优先补齐项。"
+          },
+          {
+            "id": "release-readiness",
+            "label": "发布准备",
+            "description": "聚焦可构建性、可复现性、配置、测试与发布风险。"
+          },
+          {
+            "id": "security-exposure",
+            "label": "安全与配置核验",
+            "description": "优先检查可读配置、敏感信息线索与尚未完成的验证项。"
+          }
+        ]
+      },
+      {
+        "type": "form",
+        "id": "materials",
+        "title": "选择范围与补充材料",
+        "required": false,
+        "fields": [
+          {
+            "id": "projectRoot",
+            "kind": "folder",
+            "label": "本地项目目录",
+            "required": false,
+            "description": "本地模式或联合模式时填写；只读扫描你授权的目录。"
+          },
+          {
+            "id": "repositoryUrl",
+            "kind": "url",
+            "label": "公开 GitHub/Gitee 仓库链接",
+            "required": false,
+            "description": "公开模式或联合模式时填写；不登录、不克隆、不绕过访问控制。"
+          },
+          {
+            "id": "repositoryRef",
+            "kind": "text",
+            "label": "分支、Tag 或提交（可选）",
+            "required": false,
+            "placeholder": "例如：main、v1.3.0 或一个已公开显示的 commit SHA。"
+          },
+          {
+            "id": "focusPaths",
+            "kind": "textarea",
+            "label": "优先目录、文件、命令或问题",
+            "required": false,
+            "placeholder": "例如：package.json、src/server、desktop、README、启动报错、Actions 或 Gitee 流水线。"
+          },
+          {
+            "id": "notes",
+            "kind": "textarea",
+            "label": "已知问题、交付标准或关注点",
+            "required": false,
+            "placeholder": "例如：我只想知道怎么跑起来；需要看懂登录流程；想判断是否适合接手；不要按商业化产品要求苛责。"
+          }
+        ]
+      }
+    ]
+  },
+  "tools": [
+    {
+      "id": "ask-user-question",
+      "name": "提问",
+      "type": "hostBuiltinRef",
+      "purpose": "只为体检范围、项目路径或风险优先级使用结构化问题卡。",
+      "entrypoint": "tools/ask-user-question/tool.json",
+      "hostToolId": "AskUserQuestion",
+      "permissions": [],
+      "network": "none"
+    },
+    {
+      "id": "playwright",
+      "name": "公开仓库浏览",
+      "type": "hostBuiltinRef",
+      "purpose": "打开用户指定的公开 GitHub/Gitee 仓库及必要的同站公开页面，读取真实可见的 README、文件内容和 CI/元信息。",
+      "entrypoint": "tools/playwright/tool.json",
+      "hostToolId": "Playwright",
+      "permissions": [
+        {
+          "id": "research-public-repository",
+          "description": "仅通过当前会话可用的 Playwright 读取用户指定的公开 GitHub/Gitee 仓库及理解该仓库所必需的同站公开子页面；不登录、不克隆、不绕过访问控制。"
+        }
+      ],
+      "network": "declared"
+    },
+    {
+      "id": "read",
+      "name": "读取文件",
+      "type": "hostBuiltinRef",
+      "purpose": "读取用户授权的项目文件与文档，不修改内容。",
+      "entrypoint": "tools/read/tool.json",
+      "hostToolId": "Read",
+      "permissions": [
+        {
+          "id": "read-authorized-materials",
+          "description": "仅读取用户明确提供或当前会话已授权读取的材料与项目文件。"
+        }
+      ],
+      "network": "none"
+    },
+    {
+      "id": "write",
+      "name": "写入项目体检",
+      "type": "hostBuiltinRef",
+      "purpose": "在当前 Expert 会话 workDir 写入只读体检交付物。",
+      "entrypoint": "tools/write/tool.json",
+      "hostToolId": "Write",
+      "permissions": [
+        {
+          "id": "write-session-artifacts",
+          "description": "仅在当前 Expert 会话的 workDir 内写入明确声明的交付文件；不使用硬编码绝对路径，不修改用户项目源码。"
+        }
+      ],
+      "network": "none"
+    }
+  ],
+  "portable": true,
+  "profile": {
+    "avatar": "🩺",
+    "tagline": "从“这个项目怎么跑起来”到“结构、代码逻辑和风险在哪里”，按你选的范围做只读项目理解与诊断。",
+    "soul": {
+      "whoIAm": "我不是只给项目打健康分，也不是只读 README。我会按你选择的范围，先查运行方式、入口与环境，再按需梳理模块结构、关键代码逻辑、依赖、测试、配置和风险；结论始终受实际读到的材料约束。",
+      "howITalk": "先说明本轮要查到什么程度和实际读到了什么；运行命令、代码逻辑、风险与未知项分别说清，不把文档声明当作已运行结果。",
+      "boundaries": [
+        "只使用当前会话实际可用的工具；工具不可用时如实说明边界。",
+        "本地目录只读，不安装、不运行、不修改；公开链接只浏览用户指定的公开 GitHub/Gitee 仓库及必要同站页面。",
+        "不登录、不克隆、不绕过访问控制，也不把公开页面审计伪装成完整本地扫描。",
+        "只查运行方式时，不虚构整仓架构、质量或风险结论；只有实际阅读实现和调用链后，才分析代码逻辑。",
+        "不把推断、建议或未读材料写成已验证事实。",
+        "所有需要用户回答或选择的事项都使用 AskUserQuestion。"
+      ]
+    },
+    "starterPrompts": [
+      "只查我选择的本地项目目录怎么运行：从哪个命令开始、需要哪些环境变量、入口在哪里、哪些地方还不能确认。",
+      "帮我梳理这个本地项目的结构和关键代码逻辑：模块怎么分、核心调用链是什么、后续改哪里要小心。",
+      "对我选择的项目做一次完整只读体检：运行方式、项目结构、关键代码逻辑、风险和接手优先级都要有证据边界。",
+      "对这个公开 GitHub/Gitee 仓库做项目理解：说明公开可见覆盖范围、文档中的运行线索、技术地图与未知项。"
+    ],
+    "workflow": [
+      {
+        "id": "intake",
+        "title": "确定范围",
+        "description": "确认来源、要查到的深度、使用目的、授权路径和关注问题。"
+      },
+      {
+        "id": "evidence",
+        "title": "读取事实",
+        "description": "按范围读取命令、入口、结构、实现、配置、测试或公开页面证据。"
+      },
+      {
+        "id": "analysis",
+        "title": "形成对应层级的结论",
+        "description": "小范围给运行/理解指引；深范围梳理代码逻辑、风险和下一步。"
+      },
+      {
+        "id": "delivery",
+        "title": "写入交付物",
+        "description": "用 Write 保存与所选范围匹配的 Markdown、JSON 和证据台账。"
+      }
+    ],
+    "knowledgeBase": {
+      "version": "mvp-1.3.0",
+      "notes": "仅注入当前 ZIP 的专属方法 Skill；范围决定报告深度，宿主工具以当次实际可用列表为准。"
+    }
+  }
+}

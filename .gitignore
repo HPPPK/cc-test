@@ -112,3 +112,8 @@ desktop/coverage/
 
 # Locally provisioned desktop runtime (generated)
 desktop/.managed-node-runtime/
+
+# Temporary scratch files
+.tmp-*
+desktop/.tmp-*
+desktop-builtin-audit.json

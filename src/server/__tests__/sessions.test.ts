@@ -1368,7 +1368,7 @@ describe('SessionService', () => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
     await writeSessionFile('-tmp-project', sessionId, [
       makeSnapshotEntry(),
-      makeUserEntry('正常用户消息', crypto.randomUUID()),
+      makeUserEntry('濮濓絽鐖堕悽銊﹀煕濞戝牊浼?, crypto.randomUUID()),
       {
         type: 'user',
         message: {
@@ -1397,17 +1397,138 @@ describe('SessionService', () => {
         uuid: crypto.randomUUID(),
         timestamp: '2026-01-01T00:00:04.000Z',
       },
-      makeAssistantEntry('正常助手消息', crypto.randomUUID()),
+      makeAssistantEntry('濮濓絽鐖堕崝鈺傚濞戝牊浼?, crypto.randomUUID()),
     ])
 
     const messages = await service.getSessionMessages(sessionId)
 
     expect(messages).toHaveLength(2)
-    expect(messages[0]).toMatchObject({ type: 'user', content: '正常用户消息' })
+    expect(messages[0]).toMatchObject({ type: 'user', content: '濮濓絽鐖堕悽銊﹀煕濞戝牊浼? })
     expect(messages[1]).toMatchObject({
       type: 'assistant',
-      content: [{ type: 'text', text: '正常助手消息' }],
+      content: [{ type: 'text', text: '濮濓絽鐖堕崝鈺傚濞戝牊浼? }],
     })
+  })
+
+  it('should hide internal workflow terminal recovery prompts without hiding normal user references', async () => {
+    const sessionId = crypto.randomUUID()
+    const normalUserId = crypto.randomUUID()
+    const internalRecoveryId = crypto.randomUUID()
+    const userReferenceId = crypto.randomUUID()
+    await writeSessionFile('-tmp-project', sessionId, [
+      makeSnapshotEntry(),
+      makeUserEntry('Normal user request', normalUserId),
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'text',
+            text: '<workflow-terminal-recovery>\nContinue the active phase now.\n</workflow-terminal-recovery>',
+          }],
+        },
+        uuid: internalRecoveryId,
+        timestamp: '2026-01-01T00:00:02.000Z',
+      },
+      makeUserEntry(
+        'I saw <workflow-terminal-recovery> in an error message. Please explain it.',
+        userReferenceId,
+      ),
+      makeAssistantEntry('Normal assistant reply', crypto.randomUUID()),
+    ])
+
+    const messages = await service.getSessionMessages(sessionId)
+
+    expect(messages.map((message) => message.id)).toEqual([
+      normalUserId,
+      userReferenceId,
+      expect.any(String),
+    ])
+    expect(JSON.stringify(messages)).not.toContain('Continue the active phase now.')
+    expect(JSON.stringify(messages)).toContain('I saw <workflow-terminal-recovery> in an error message.')
+  })
+
+  it('should hide internal Expert runtime prompts and their prose while preserving tools and later user turns', async () => {
+    const sessionId = crypto.randomUUID()
+    const originalUserId = crypto.randomUUID()
+    const recoveryId = crypto.randomUUID()
+    const recoveryAssistant = makeAssistantEntry('Internal recovery explanation', recoveryId)
+    const recoveryAssistantId = String(recoveryAssistant.uuid)
+    const toolUse = makeAssistantToolUseEntry([
+      { id: 'agent-recovery', name: 'Agent', input: { description: 'continue research' } },
+    ], recoveryAssistantId)
+    const toolUseEntryId = String(toolUse.uuid)
+    const toolResultId = crypto.randomUUID()
+    const afterToolAssistant = makeAssistantEntry('Internal post-tool explanation', toolResultId)
+    const realUserId = crypto.randomUUID()
+    const realUser = makeUserEntry('Actual user follow-up', realUserId)
+    realUser.parentUuid = String(afterToolAssistant.uuid)
+    const realAssistant = makeAssistantEntry('Visible answer to the actual user', realUserId)
+    const postReviewId = crypto.randomUUID()
+    const postReviewPrompt = makeUserEntry(
+      '<expert-post-review-evidence-absorption>\ninternal ledger\n</expert-post-review-evidence-absorption>',
+      postReviewId,
+    )
+    postReviewPrompt.parentUuid = String(realAssistant.uuid)
+    const postReviewAssistant = makeAssistantEntry('Internal absorption explanation', postReviewId)
+    const normalReferenceId = crypto.randomUUID()
+    const normalReference = makeUserEntry(
+      'I saw <expert-research-source-batch-recovery> in a diagnostic. Please explain it.',
+      normalReferenceId,
+    )
+    normalReference.parentUuid = String(postReviewAssistant.uuid)
+
+    await writeSessionFile('-tmp-project', sessionId, [
+      makeSnapshotEntry(),
+      makeUserEntry('Original request', originalUserId),
+      {
+        ...makeUserEntry(
+          '<expert-research-source-batch-recovery>\ninternal recovery\n</expert-research-source-batch-recovery>',
+          recoveryId,
+        ),
+        parentUuid: originalUserId,
+      },
+      recoveryAssistant,
+      toolUse,
+      {
+        parentUuid: toolUseEntryId,
+        isSidechain: false,
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'agent-recovery', content: 'done' }],
+        },
+        uuid: toolResultId,
+        timestamp: '2026-01-01T00:03:00.000Z',
+      },
+      afterToolAssistant,
+      realUser,
+      realAssistant,
+      postReviewPrompt,
+      postReviewAssistant,
+      normalReference,
+    ])
+
+    const messages = await service.getSessionMessages(sessionId)
+    const serialized = JSON.stringify(messages)
+
+    expect(messages.map((message) => message.type)).toEqual([
+      'user',
+      'tool_use',
+      'tool_result',
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(serialized).not.toContain('internal recovery')
+    expect(serialized).not.toContain('Internal recovery explanation')
+    expect(serialized).not.toContain('Internal post-tool explanation')
+    expect(serialized).not.toContain('internal ledger')
+    expect(serialized).not.toContain('Internal absorption explanation')
+    expect(serialized).toContain('continue research')
+    expect(serialized).toContain('Actual user follow-up')
+    expect(serialized).toContain('Visible answer to the actual user')
+    expect(serialized).toContain('I saw <expert-research-source-batch-recovery> in a diagnostic.')
   })
 
   it('should keep /goal local command transcript entries for desktop history restore', async () => {
@@ -1434,7 +1555,7 @@ describe('SessionService', () => {
         timestamp: '2026-01-01T00:00:02.000Z',
         uuid: 'goal-output',
       },
-      makeAssistantEntry('正常助手消息', crypto.randomUUID()),
+      makeAssistantEntry('濮濓絽鐖堕崝鈺傚濞戝牊浼?, crypto.randomUUID()),
     ])
 
     const messages = await service.getSessionMessages(sessionId)
@@ -1471,11 +1592,11 @@ describe('SessionService', () => {
     await writeSessionFile('-tmp-project', sessionId, [
       makeSnapshotEntry(),
       {
-        ...makeUserEntry('创建一个项目', firstUserId),
+        ...makeUserEntry('閸掓稑缂撴稉鈧稉顏堛€嶉惄?, firstUserId),
         parentUuid: null,
       },
       {
-        ...makeAssistantEntry('项目已经创建', firstUserId),
+        ...makeAssistantEntry('妞ゅ湱娲板鑼病閸掓稑缂?, firstUserId),
         uuid: firstAssistantId,
       },
       {
@@ -1486,7 +1607,7 @@ describe('SessionService', () => {
         parentUuid: firstAssistantId,
       },
       {
-        ...makeAssistantEntry('旧后台任务通知，无需处理', taskNotificationId),
+        ...makeAssistantEntry('閺冄冩倵閸欓鎹㈤崝锟犫偓姘辩叀閿涘本妫ら棁鈧径鍕倞', taskNotificationId),
         uuid: taskAssistantId,
       },
       {
@@ -1512,15 +1633,15 @@ describe('SessionService', () => {
         timestamp: '2026-01-01T00:03:00.000Z',
       },
       {
-        ...makeAssistantEntry('后台任务触发的工具调用完成', taskToolResultId),
+        ...makeAssistantEntry('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?, taskToolResultId),
         uuid: taskAfterToolId,
       },
       {
-        ...makeUserEntry('继续真实问题', realFollowUpId),
+        ...makeUserEntry('缂佈呯敾閻喎鐤勯梻顕€顣?, realFollowUpId),
         parentUuid: taskAfterToolId,
       },
       {
-        ...makeAssistantEntry('真实回答', realFollowUpId),
+        ...makeAssistantEntry('閻喎鐤勯崶鐐电摕', realFollowUpId),
         uuid: realAssistantId,
       },
     ])
@@ -1535,9 +1656,9 @@ describe('SessionService', () => {
       realAssistantId,
     ])
     expect(JSON.stringify(messages)).not.toContain('<task-notification>')
-    expect(JSON.stringify(messages)).not.toContain('旧后台任务通知')
+    expect(JSON.stringify(messages)).not.toContain('閺冄冩倵閸欓鎹㈤崝锟犫偓姘辩叀')
     expect(JSON.stringify(messages)).not.toContain('server restarted')
-    expect(JSON.stringify(messages)).not.toContain('后台任务触发的工具调用完成')
+    expect(JSON.stringify(messages)).not.toContain('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?)
     expect(taskNotifications).toEqual([
       {
         taskId: 'bg-1',
@@ -2213,12 +2334,12 @@ describe('SessionService', () => {
       makeUserEntry([
         '<command-message>frontend-design</command-message>',
         '<command-name>/frontend-design</command-name>',
-        '<command-args>@website 重新设计首页</command-args>',
+        '<command-args>@website 闁插秵鏌婄拋鎹愵吀妫ｆ牠銆?/command-args>',
       ].join('\n')),
     ])
 
     const detail = await service.getSession(sessionId)
-    expect(detail!.title).toBe('/frontend-design @website 重新设计首页')
+    expect(detail!.title).toBe('/frontend-design @website 闁插秵鏌婄拋鎹愵吀妫ｆ牠銆?)
   })
 
   it('should keep a goal creation title instead of later goal status titles', async () => {
@@ -3458,7 +3579,7 @@ describe('Sessions API', () => {
             contextStrategy: 'inherit',
           },
         })
-        expect(sourceState.contextCarryover).toBeUndefined()
+        expect(sourceState.contextCarryover).toEqual(expect.objectContaining({ artifactId: 'context-carryover', pointer: expect.objectContaining({ artifactId: 'context-carryover' }) }))
         const sourceAfter = await sessionService.getSession(source.sessionId)
         expect(sourceAfter?.messages).toEqual(source.beforeDetail?.messages)
       })
@@ -3555,7 +3676,7 @@ describe('Sessions API', () => {
           sourceMessageCount: 2,
           clientRequestId,
         })
-        expect(targetState.contextCarryover).toBeUndefined()
+        expect(targetState.contextCarryover).toEqual(expect.objectContaining({ artifactId: 'context-carryover', pointer: expect.objectContaining({ artifactId: 'context-carryover' }) }))
         const sourceAfter = await sessionService.getSession(sourceSessionId)
         expect(JSON.stringify(sourceAfter?.messages)).toContain('Preserve the completed workflow decision.')
         expect(JSON.stringify(sourceAfter?.messages)).toContain('Completed workflow result that should be inherited.')
@@ -3698,7 +3819,7 @@ describe('Sessions API', () => {
       })
     })
 
-    it('POST /api/sessions/:id/workflow/transition should advance a pending workflow confirmation', async () => {
+    it('POST /api/sessions/:id/workflow/transition retry should keep the current phase without advancing', async () => {
       const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-'))
 
       const createRes = await fetch(`${baseUrl}/api/sessions`, {
@@ -3716,7 +3837,7 @@ describe('Sessions API', () => {
       expect(createRes.status).toBe(201)
 
       const created = (await createRes.json()) as { sessionId: string }
-      const retryRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+      const retryRes = await fetch(baseUrl + '/api/sessions/' + created.sessionId + '/workflow/transition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3727,44 +3848,21 @@ describe('Sessions API', () => {
       })
       expect(retryRes.status).toBe(200)
       const retryBody = (await retryRes.json()) as {
-        workflow: { status: string; activePhaseId: string; stateVersion?: number; pendingConfirmation: boolean; pendingConfirmationId?: string }
+        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean; pendingConfirmationId?: string }
       }
       expect(retryBody.workflow).toMatchObject({
-        status: 'pending-confirmation',
-        activePhaseId: 'discussion',
-        pendingConfirmation: true,
-      })
-
-      const confirmRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phaseId: 'discussion',
-          action: 'confirm',
-          stateVersion: retryBody.workflow.stateVersion,
-          confirmationId: retryBody.workflow.pendingConfirmationId,
-          transitionId: 'confirm-requirements-ready',
-        }),
-      })
-      expect(confirmRes.status).toBe(200)
-      const confirmBody = (await confirmRes.json()) as {
-        workflow: { status: string; activePhaseId: string; pendingConfirmation: boolean }
-        state: { activePhaseId: string; phases: Array<{ id: string; status: string }> }
-      }
-
-      expect(confirmBody.workflow).toMatchObject({
         status: 'running',
-        activePhaseId: 'specify',
+        activePhaseId: 'discussion',
         pendingConfirmation: false,
       })
-      expect(confirmBody.state.activePhaseId).toBe('specify')
-      expect(confirmBody.state.phases.find((phase) => phase.id === 'discussion')).toMatchObject({
-        status: 'completed',
-      })
-      expect(confirmBody.state.phases.find((phase) => phase.id === 'specify')).toMatchObject({
-        status: 'running',
-      })
+      expect(retryBody.workflow.pendingConfirmationId).toBeUndefined()
+
+      const stateRes = await fetch(baseUrl + '/api/sessions/' + created.sessionId + '/workflow')
+      expect(stateRes.status).toBe(200)
+      const stateBody = (await stateRes.json()) as { state: { activePhaseId: string } }
+      expect(stateBody.state.activePhaseId).toBe('discussion')
     })
+
 
     it('POST /api/sessions/:id/workflow/follow-up fails closed for existing CLIs across development, debug, and feature workflows', async () => {
       await writeWorkflowConfigTemplates([
@@ -3860,7 +3958,7 @@ describe('Sessions API', () => {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
-            request: '开发一个学生管理系统',
+            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?,
           },
         }),
       })
@@ -3892,7 +3990,7 @@ describe('Sessions API', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          request: '刚才学生新增保存 500',
+          request: '閸掓碍澧犵€涳妇鏁撻弬鏉款杻娣囨繂鐡?500',
           errors: 'POST /students returned 500',
         }),
       })
@@ -3929,7 +4027,7 @@ describe('Sessions API', () => {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
-            request: '开发一个学生管理系统',
+            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?,
           },
         }),
       })
@@ -3980,47 +4078,31 @@ describe('Sessions API', () => {
     })
 
     it('POST /api/sessions/:id/workflow/transition should record clear next phase context on confirmation', async () => {
-      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-clear-'))
-
-      const createRes = await fetch(`${baseUrl}/api/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workDir,
-          workflow: {
-            templateId: 'agent-development',
-            templateSource: 'user',
-            initialPhaseId: 'discussion',
-          },
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-171717171717'
+      const workDir = path.join(tmpDir, 'api-workflow-transition-clear')
+      await writeWorkflowSessionState(sessionId, makePendingWorkflowTransitionState(sessionId))
+      await writeSessionFile(sanitizePath(workDir), sessionId, [
+        makeSnapshotEntry(),
+        makeWorkflowSessionMetaEntry(sessionId, workDir, {
+          templateId: 'agent-development',
+          templateSnapshotId: 'agent-development-v1',
+          status: 'pending-confirmation',
+          workflowStatus: 'pending-confirmation',
+          activePhaseId: 'discussion',
+          stateRevision: 3,
+          reportPointer: undefined,
+          reportRef: undefined,
         }),
-      })
-      expect(createRes.status).toBe(201)
+      ])
 
-      const created = (await createRes.json()) as { sessionId: string }
-      const retryRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phaseId: 'discussion',
-          action: 'retry',
-          transitionId: 'retry-clear-context-ready',
-        }),
-      })
-      expect(retryRes.status).toBe(200)
-      const retryBody = (await retryRes.json()) as {
-        workflow: { stateVersion?: number; pendingConfirmationId?: string }
-      }
-      expect(retryBody.workflow.pendingConfirmationId).toBeTruthy()
-      expect(retryBody.workflow.stateVersion).toBeTypeOf('number')
-
-      const confirmRes = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow/transition`, {
+      const confirmRes = await fetch(baseUrl + '/api/sessions/' + sessionId + '/workflow/transition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phaseId: 'discussion',
           action: 'confirm',
-          stateVersion: retryBody.workflow.stateVersion,
-          confirmationId: retryBody.workflow.pendingConfirmationId,
+          stateVersion: 3,
+          confirmationId: 'submit-discussion-ready',
           transitionId: 'confirm-clear-context-ready',
           nextPhaseContextStrategy: 'clear',
         }),
@@ -4044,6 +4126,7 @@ describe('Sessions API', () => {
         nextPhaseContextStrategy: 'clear',
       }))
     })
+
 
     it.each([
       ['confirm', 'accepted', 'specify', false, 'accepted'],

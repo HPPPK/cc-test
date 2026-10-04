@@ -1,5 +1,6 @@
 import type { Buffer } from 'buffer'
 import { isInBundledMode } from '../../utils/bundledMode.js'
+import { loadBundledImageProcessor } from './bundledImageProcessor.js'
 
 export type SharpInstance = {
   metadata(): Promise<{ width: number; height: number; format: string }>
@@ -29,7 +30,7 @@ type SharpCreatorOptions = {
   }
 }
 
-type SharpCreator = (options: SharpCreatorOptions) => SharpInstance
+export type SharpCreator = (options: SharpCreatorOptions) => SharpInstance
 
 let imageProcessorModule: { default: SharpFunction } | null = null
 let imageCreatorModule: { default: SharpCreator } | null = null
@@ -37,6 +38,12 @@ let imageCreatorModule: { default: SharpCreator } | null = null
 export async function getImageProcessor(): Promise<SharpFunction> {
   if (imageProcessorModule) {
     return imageProcessorModule.default
+  }
+
+  const packaged = loadBundledImageProcessor(process.env.CLAUDE_APP_ROOT)
+  if (packaged) {
+    imageProcessorModule = { default: packaged }
+    return packaged
   }
 
   if (isInBundledMode()) {
@@ -74,6 +81,13 @@ export async function getImageProcessor(): Promise<SharpFunction> {
 export async function getImageCreator(): Promise<SharpCreator> {
   if (imageCreatorModule) {
     return imageCreatorModule.default
+  }
+
+  const packaged = loadBundledImageProcessor(process.env.CLAUDE_APP_ROOT)
+  if (packaged) {
+    const creator = packaged as unknown as SharpCreator
+    imageCreatorModule = { default: creator }
+    return creator
   }
 
   const imported = (await import(

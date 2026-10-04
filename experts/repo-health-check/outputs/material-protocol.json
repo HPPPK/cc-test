@@ -1,0 +1,178 @@
+{
+  "version": 4,
+  "mode": "markdown-artifact-set",
+  "outputRoot": "current-session-workdir",
+  "primaryOutput": {
+    "mode": "write-files",
+    "requiredPaths": [
+      "repo-health-check.md",
+      "repo-health-check.json",
+      "repo-health-evidence.md"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "repo-health-check.md",
+      "required": true
+    },
+    {
+      "path": "repo-health-check.json",
+      "required": true
+    },
+    {
+      "path": "repo-health-evidence.md",
+      "required": true
+    }
+  ],
+  "evidenceBoundary": {
+    "requireSourceForMaterialFacts": true,
+    "labelUnverifiedContent": true,
+    "prohibitFabrication": true,
+    "sourceModes": [
+      "local",
+      "public-repository",
+      "combined"
+    ],
+    "publicRepositoryRequires": [
+      "repositoryUrl",
+      "actualPageTitle",
+      "observedRefOrBranchWhenVisible",
+      "publicCoverage",
+      "unreadablePaths",
+      "unknowns"
+    ],
+    "forbidRepresentingPublicAuditAsCompleteLocalScan": true,
+    "combinedModeRule": "Local files are the primary source of truth. Do not claim a local/remote commit match or branch equivalence unless it was actually observed.",
+    "scopeFitRule": "A missing production capability is not a defect by default. State why it matters for the stated assessment purpose before assigning severity."
+  },
+  "userInteraction": {
+    "requiredTool": "AskUserQuestion",
+    "forbidNormalProseQuestionsAfterWelcome": true
+  },
+  "analysisContract": {
+    "requiredJsonFields": [
+      "schemaVersion",
+      "sourceMode",
+      "assessmentScope",
+      "auditPurpose",
+      "assessmentScopeDetails",
+      "repositoryUrl",
+      "repositoryRef",
+      "publicCoverage",
+      "coverageMatrix",
+      "projectType",
+      "techStack",
+      "entrypoints",
+      "commands",
+      "importantPaths",
+      "codeLogicMap",
+      "overallAssessment",
+      "findings",
+      "actionPlan",
+      "riskAreas",
+      "unreadablePaths",
+      "unknowns",
+      "limitations",
+      "conclusion"
+    ],
+    "publicRepositoryScope": [
+      "repository home page",
+      "README and visible documentation",
+      "user-specified or visible public file pages",
+      "visible Actions/CI/badges/releases metadata"
+    ],
+    "findingContract": {
+      "statuses": [
+        "confirmed",
+        "inference",
+        "evidence-gap",
+        "not-applicable"
+      ],
+      "severityValues": [
+        "blocker",
+        "high",
+        "medium",
+        "low",
+        "not-rated"
+      ],
+      "requireEvidenceStatus": true,
+      "prohibitUnverifiedSeverity": true,
+      "requireEvidenceReference": true,
+      "requireScopeFit": true,
+      "requireImpactAndAction": true,
+      "noPositiveQualityClaimWithoutEvidence": true
+    },
+    "reportQuality": {
+      "requireCoverageMatrix": true,
+      "requireActionPlan": true,
+      "requireObjectiveSpecificAssessment": true,
+      "prohibitConclusionBeyondCoverage": true,
+      "requireMarkdownJsonParity": true,
+      "requireExplicitNoGoWhenEvidenceIsInsufficient": true,
+      "requireScopeMatchedDepth": true,
+      "prohibitUnrequestedFullAudit": true,
+      "requireRunCommandExecutionStatus": true,
+      "requireDirectCodeEvidenceForLogicClaims": true
+    },
+    "prohibitedOperations": [
+      "login",
+      "clone",
+      "download private content",
+      "bypass access controls",
+      "install dependencies",
+      "run build/test/migration/deployment"
+    ],
+    "scopeContract": {
+      "requiredSelection": "assessmentScope",
+      "scopes": {
+        "run-guide": {
+          "requiredCoverage": [
+            "commands",
+            "prerequisites",
+            "entrypoints",
+            "commandEvidenceStatus",
+            "minimumVerification",
+            "unknowns"
+          ],
+          "forbiddenOverreach": [
+            "Do not make project-wide architecture, quality, security, or readiness claims unless separately supported by read evidence."
+          ]
+        },
+        "structure-and-logic": {
+          "requiredCoverage": [
+            "projectType",
+            "importantPaths",
+            "entrypoints",
+            "codeLogicMap",
+            "externalDependencies",
+            "unreadablePaths"
+          ],
+          "requiredEvidenceRule": "A code-logic conclusion requires directly read implementation and a documented call path; a directory tree alone is insufficient."
+        },
+        "risk-and-readiness": {
+          "requiredCoverage": [
+            "coverageMatrix",
+            "findings",
+            "riskAreas",
+            "scopeFit",
+            "limitations"
+          ],
+          "requiredEvidenceRule": "Every risk must be tied to the stated assessment purpose; unread or unexecuted material is evidence-gap."
+        },
+        "full-review": {
+          "requiredCoverage": [
+            "commands",
+            "projectType",
+            "importantPaths",
+            "codeLogicMap",
+            "coverageMatrix",
+            "findings",
+            "actionPlan",
+            "limitations"
+          ],
+          "requiredEvidenceRule": "A full review is still bounded by the actual authorized and observed coverage."
+        }
+      }
+    }
+  }
+}

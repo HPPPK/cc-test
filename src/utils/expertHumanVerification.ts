@@ -12,6 +12,8 @@ export type ExpertBrowserVerificationContext = {
   title?: string
   detail?: string
   engine?: string
+  /** True only after the managed local Chromium window was confirmed restored. */
+  windowPresentationConfirmed?: boolean
 }
 
 type QuestionOption = {
@@ -35,7 +37,8 @@ function choicesForQuestion(question: Record<string, unknown>): QuestionOption[]
 export function isExpertBrowserVerificationContext(value: unknown): value is ExpertBrowserVerificationContext {
   const record = inputRecord(value)
   if (!record || typeof record.url !== 'string' || !record.url.trim()) return false
-  return ['title', 'detail', 'engine'].every((key) => record[key] === undefined || typeof record[key] === 'string')
+  if (!['title', 'detail', 'engine'].every((key) => record[key] === undefined || typeof record[key] === 'string')) return false
+  return record.windowPresentationConfirmed === undefined || typeof record.windowPresentationConfirmed === 'boolean'
 }
 
 /**

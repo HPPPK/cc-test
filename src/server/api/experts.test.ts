@@ -1,5 +1,5 @@
 ﻿import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { handleExpertsApi } from './experts.js'
@@ -9,6 +9,7 @@ import { ZipPackAdapter } from '../services/zipPackAdapter.js'
 const adapter = new ZipPackAdapter()
 const tempRoots: string[] = []
 const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+const previousBundledPacksDir = process.env.CLAUDE_EXPERT_PACKS_DIR
 
 function entries() {
   return {
@@ -38,6 +39,7 @@ async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), 'expert-api-'))
   tempRoots.push(root)
   process.env.CLAUDE_CONFIG_DIR = root
+  process.env.CLAUDE_EXPERT_PACKS_DIR = path.join(root, 'bundled')
   resetExpertPackRegistryForTests()
   return root
 }
@@ -45,6 +47,7 @@ async function setup() {
 describe('experts API', () => {
   afterEach(async () => {
     process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+    process.env.CLAUDE_EXPERT_PACKS_DIR = previousBundledPacksDir
     resetExpertPackRegistryForTests()
     await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
@@ -80,6 +83,39 @@ describe('experts API', () => {
     const deleted = await handleExpertsApi(new Request('http://localhost/api/experts/packs/api-pack', { method: 'DELETE' }), new URL('http://localhost'), ['api', 'experts', 'packs', 'api-pack'])
     expect(deleted.status).toBe(204)
   })
+  it('applies a confirmed bundled Expert ZIP update through the API and keeps a backup', async () => {
+    const root = await setup()
+    const bundleDir = path.join(root, 'bundled')
+    await mkdir(bundleDir, { recursive: true })
+    const first = entries()
+    first['experts/api/system.md'] = 'Official first prompt'
+    await writeFile(path.join(bundleDir, 'api-pack.zip'), await adapter.write(first))
+    resetExpertPackRegistryForTests()
+
+    const local = entries()
+    local['experts/api/system.md'] = 'My local prompt'
+    const dataBase64 = Buffer.from(await adapter.write(local)).toString('base64')
+    await handleExpertsApi(new Request('http://localhost/api/experts/packs/import', { method: 'POST', body: JSON.stringify({ dataBase64 }) }), new URL('http://localhost'), ['api', 'experts', 'packs', 'import'])
+
+    const latest = entries()
+    latest['manifest.json'] = JSON.stringify({
+      packId: 'api-pack', name: 'API Pack', version: '1.1.0', schemaVersion: 1, type: 'expert-pack', description: 'API test pack',
+      entrypoints: { experts: ['experts/api/expert.json'], skills: ['api-skill'] },
+    })
+    latest['experts/api/system.md'] = 'Official latest prompt'
+    await writeFile(path.join(bundleDir, 'api-pack.zip'), await adapter.write(latest))
+    resetExpertPackRegistryForTests()
+
+    const listed = await handleExpertsApi(new Request('http://localhost/api/experts/packs'), new URL('http://localhost'), ['api', 'experts', 'packs'])
+    const listedBody = await listed.json()
+    const apiPack = listedBody.packs.find((pack: { packId: string }) => pack.packId === 'api-pack')
+    expect(apiPack?.bundledUpdate).toEqual(expect.objectContaining({ bundledVersion: '1.1.0' }))
+
+    const response = await handleExpertsApi(new Request('http://localhost/api/experts/packs/api-pack/bundled-update', { method: 'POST', body: '{}' }), new URL('http://localhost'), ['api', 'experts', 'packs', 'api-pack', 'bundled-update'])
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({ bundledVersion: '1.1.0', backupFilename: expect.any(String) }))
+  })
+
   it('authors a standalone Expert ZIP without creating Workflow ZIP storage', async () => {
     const root = await setup()
     const response = await handleExpertsApi(

@@ -1,0 +1,1278 @@
+{
+  "schemaVersion": 2,
+  "id": "feature-extension-workflow-v8",
+  "version": "22",
+  "name": "功能扩展流程",
+  "description": "Lightweight follow-up workflow for extending an existing project with inherited .workflow memory.",
+  "labels": [
+    "enhancement",
+    "documentation",
+    "refactor",
+    "test",
+    "ux-copy",
+    "error-handling",
+    "good-first-issue"
+  ],
+  "routingPolicy": {
+    "router": "workflow-task-router-v1",
+    "defaultEffort": "standard",
+    "followUpInheritance": [
+      "继续",
+      "刚才",
+      "上一个",
+      "这个功能",
+      "这个项目"
+    ],
+    "terminalLabelsRequireConfirmation": [
+      "duplicate",
+      "invalid",
+      "wontfix"
+    ]
+  },
+  "stopConditions": [
+    "Read .workflow/project-context.md before planning.",
+    "Production edits are blocked before feature-implement.",
+    "Do not ask the user to manually run or view the app before feature-quality-preview validation evidence exists.",
+    "Use the same Start App / Stop App preview controls as the development workflow after validation; preview may be skipped only with a documented reason."
+  ],
+  "phases": [
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "feature-memory-plan",
+      "name": "任务清单",
+      "instructions": "Start from the current user request and any resumed conversation or explicit workflow carryover. Then, when available, use project-context.md and run-report.md as supporting notes before creating one work-order.md that inventories every user-requested item before implementation. Do not silently choose only the first item. For each task record a stable id, requested outcome, accepted/deferred decision, priority, dependencies, target files and write scopes, acceptance criteria, validation cases, and risky actions. Ask a bounded scope question only when that inventory cannot be confirmed from the request.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nFor each accepted task, keep one decision-to-execution trace in work-order.md: the relevant user answer or conservative assumption, the requested outcome, target files/write scope, and a concrete acceptance check. Do not ask for a progress confirmation when this can be derived from the request and workspace.\n\nInherited context and workspace grounding:\n- Treat the current user request plus any resumed conversation or explicit workflow carryover as the primary context. Read project-context.md and run-report.md as supporting workflow notes, not as a replacement for the current request; if either is absent, stale, or conflicts with the current request, record and update the discrepancy.\n- Before asking a question, use read-only discovery: Glob for the smallest relevant file surface, Grep for relevant symbols or log entries, and Read for targeted contents. Use LS only when the host exposes it; never fall back to Bash or PowerShell merely to list or search files. Inspect user-named paths, immediate manifests or entry points, and relevant logs. Record a small project map: workspace root, user-specified target, relevant surfaces, and important unknowns.\n- Do not blindly scan an entire repository. Inspect only the smallest project surface needed to inventory and plan every requested feature task.\n\n### Focused requirement clarification\n\nBuild a complete inventory of every requested feature item before implementation. First derive all facts recoverable from the request, workspace, existing documentation, logs, code, and inherited workflow context. Then create an internal decision coverage checklist for every requested item. Evaluate, rather than blindly assume: delivery surface, user-visible behavior and edge cases, data/permission boundaries, compatibility and migration constraints, priority/dependencies, non-goals, acceptance criteria, and validation evidence.\n\nWhen that checklist contains one or more material unknowns, ask one structured AskUserQuestion before accepting the affected task inventory. Ask exactly one unresolved material decision at a time, state the evidence already known, use clear bounded choices when useful, and explain the answerImpact. Incorporate that answer into the task inventory, then explicitly reassess the existing decision coverage checklist. If another independent material decision in that checklist remains unresolved, ask it in the next AskUserQuestion call. Continue sequentially until every material decision in that existing checklist is settled; thorough clarification is encouraged, but never combine several questions in one call. Do not require the user to resolve every possible implementation detail before work can proceed.\n\nKeep the interaction focused without being shallow. Do not ask for generic progress approval, ask at arbitrary phase boundaries, or ask for facts already present in the current session. Maintain a clarification ledger in work-order.md: question id, settled answer or evidence, affected task ids, acceptance impact, and any explicit deferment. Before a later question, consult that ledger and the current conversation; ask again only when new evidence conflicts with a recorded answer or exposes a distinct material decision.\n\nFor a genuinely non-material ambiguity, choose the safest reversible default and record it. For a material ambiguity that cannot be safely deferred, keep blocksCompletion true until the single answer is incorporated. Continue implementation, review, validation, and archival without repetitive prompts unless a genuinely new blocker appears.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Mandatory pre-coding parallelization plan\n\nBefore completing this planning phase, create an internal implementationParallelizationPlan in work-order.md. This is technical execution planning, not a user-facing confirmation: do not ask the user whether to parallelize.\n\nAssess the complete remaining implementation set, not only the next task. For every candidate coding or repair batch, record: batch/task IDs and goal; prerequisite IDs and the concrete evidence that each prerequisite is already stable or completed; exact expected writeScopes at file or narrow directory level; shared resourceClaims such as schema, API contract, shared state, build configuration, generated output, test fixture, or environment ownership; independent validation; worktree/isolation requirement for write work; and the decision `parallel group <wave>` or `serial`, with a concrete reason.\n\nA completed predecessor is not a concurrent write conflict. A shared parent module or broad directory name is not enough to force serial work: identify the actual overlapping file, mutable resource, unstable contract, or dependency. Conversely, never invent parallelism merely to increase agent count. A serial-only plan is valid only when every remaining candidate has a recorded concrete conflict or dependency.\n\nUse the plan to form safe waves: all batches in one `parallel group <wave>` must have satisfied prerequisites, isolated non-overlapping writeScopes and resourceClaims, independent validation, and an available isolated worktree for write execution. Within each batch, Coder -> Reviewer -> bounded Coder fixes -> Reviewer remains strictly serial. At the coding phase, re-check this plan against the actual current tree before delegation; launch every still-safe independent wave in parallel through workflow_parallel_plan, and revise only when fresh code evidence changes the recorded dependency or conflict.\n\nThe implementationParallelizationPlan must cover the accepted task inventory and be carried into feature-implement so the Leader can dispatch the ready waves rather than defaulting to serial work.\n\n\n### One-question workflow clarification contract\nAsk only one necessary user question in each AskUserQuestion call. Continue with another one-question card only when, after incorporating the prior answer and current evidence, a distinct unresolved user-specific fact still blocks a correct decision. Do not repeat answered facts, do not bundle unrelated decisions into a packet, and do not require an artifact or phase completion between independent necessary questions. A business answer is not a workflow route: collect the answer first, then use submit_phase_completion or request_workflow_route only when their separate conditions are actually met.\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Feature Delta Capsule\n\nBefore completion, write a Feature Delta Capsule with currentBehavior, targetBehavior, mustStayUnchanged, acceptedTasks, modificationBoundaries, regressionPaths, userDecisions, evidenceSources, unresolvedRisks, and nextStageMustHandle. Every user-requested item must appear in acceptedTasks or have an explicit deferred decision. AGENTS.md, CLAUDE.md, and application logs are optional evidence, never prerequisites.",
+      "objective": "Plan every requested extension item as a confirmed task list without recreating a full product workflow.",
+      "requiredIntake": [
+        ".workflow/project-context.md, .workflow/run-report.md when available, user request, selected files."
+      ],
+      "handoffRules": [
+        "Record a task inventory for every user-requested item, including accepted or explicitly deferred status.",
+        "For each accepted task record scope, non-goals, acceptance criteria, dependencies, target files, write scopes, scenario cases, and risky actions.",
+        "Record any user-approved deferral or cancellation explicitly; never silently drop a requested item.",
+        "Handoff the complete task inventory and Feature Delta Capsule; ask only one unresolved material question per AskUserQuestion call."
+      ],
+      "executionRules": [
+        "Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.",
+        "Use mini brainstorming only when requirements are unclear.",
+        "Confirm the complete task inventory before implementation; a single accepted item does not erase the remaining requested items."
+      ],
+      "outputArtifact": {
+        "id": "work-order",
+        "name": "Work Order",
+        "kind": "markdown",
+        "description": "Confirmed task inventory, scope, dependency, isolation, and validation plan for every requested feature-extension item.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "work-order",
+          "filename": "work-order.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Feature Delta Capsule plus the complete task inventory, accepted/deferred decision, dependencies, write scopes, acceptance criteria, regression paths, and validation plan."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation.",
+          "Record a task inventory for every user-requested item, including accepted or explicitly deferred status.",
+          "For each accepted task record scope, non-goals, acceptance criteria, dependencies, target files, write scopes, scenario cases, and risky actions.",
+          "Record any user-approved deferral or cancellation explicitly; never silently drop a requested item.",
+          "Handoff the complete task inventory and Feature Delta Capsule; ask only one unresolved material question per AskUserQuestion call."
+        ]
+      },
+      "completionCriteria": {
+        "type": "manual-checklist",
+        "description": "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation."
+      },
+      "transition": {
+        "authority": "user-confirmation"
+      },
+      "skillBindings": [
+        "superpowers:writing-plans"
+      ],
+      "intent": {
+        "objective": "Plan a focused extension without recreating a full product workflow.",
+        "role": "Inherit Context + Mini Scope",
+        "intake": [
+          ".workflow/project-context.md, .workflow/run-report.md when available, user request, selected files."
+        ]
+      },
+      "contract": {
+        "instructions": "Start from the current user request and any resumed conversation or explicit workflow carryover. Then, when available, use project-context.md and run-report.md as supporting notes before creating one work-order.md that inventories every user-requested item before implementation. Do not silently choose only the first item. For each task record a stable id, requested outcome, accepted/deferred decision, priority, dependencies, target files and write scopes, acceptance criteria, validation cases, and risky actions. Ask a bounded scope question only when that inventory cannot be confirmed from the request.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nFor each accepted task, keep one decision-to-execution trace in work-order.md: the relevant user answer or conservative assumption, the requested outcome, target files/write scope, and a concrete acceptance check. Do not ask for a progress confirmation when this can be derived from the request and workspace.\n\nInherited context and workspace grounding:\n- Treat the current user request plus any resumed conversation or explicit workflow carryover as the primary context. Read project-context.md and run-report.md as supporting workflow notes, not as a replacement for the current request; if either is absent, stale, or conflicts with the current request, record and update the discrepancy.\n- Before asking a question, use read-only discovery: Glob for the smallest relevant file surface, Grep for relevant symbols or log entries, and Read for targeted contents. Use LS only when the host exposes it; never fall back to Bash or PowerShell merely to list or search files. Inspect user-named paths, immediate manifests or entry points, and relevant logs. Record a small project map: workspace root, user-specified target, relevant surfaces, and important unknowns.\n- Do not blindly scan an entire repository. Inspect only the smallest project surface needed to inventory and plan every requested feature task.\n\n### Focused requirement clarification\n\nBuild a complete inventory of every requested feature item before implementation. First derive all facts recoverable from the request, workspace, existing documentation, logs, code, and inherited workflow context. Then create an internal decision coverage checklist for every requested item. Evaluate, rather than blindly assume: delivery surface, user-visible behavior and edge cases, data/permission boundaries, compatibility and migration constraints, priority/dependencies, non-goals, acceptance criteria, and validation evidence.\n\nWhen that checklist contains one or more material unknowns, ask one structured AskUserQuestion before accepting the affected task inventory. Ask exactly one unresolved material decision at a time, state the evidence already known, use clear bounded choices when useful, and explain the answerImpact. Incorporate that answer into the task inventory, then explicitly reassess the existing decision coverage checklist. If another independent material decision in that checklist remains unresolved, ask it in the next AskUserQuestion call. Continue sequentially until every material decision in that existing checklist is settled; thorough clarification is encouraged, but never combine several questions in one call. Do not require the user to resolve every possible implementation detail before work can proceed.\n\nKeep the interaction focused without being shallow. Do not ask for generic progress approval, ask at arbitrary phase boundaries, or ask for facts already present in the current session. Maintain a clarification ledger in work-order.md: question id, settled answer or evidence, affected task ids, acceptance impact, and any explicit deferment. Before a later question, consult that ledger and the current conversation; ask again only when new evidence conflicts with a recorded answer or exposes a distinct material decision.\n\nFor a genuinely non-material ambiguity, choose the safest reversible default and record it. For a material ambiguity that cannot be safely deferred, keep blocksCompletion true until the single answer is incorporated. Continue implementation, review, validation, and archival without repetitive prompts unless a genuinely new blocker appears.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Mandatory pre-coding parallelization plan\n\nBefore completing this planning phase, create an internal implementationParallelizationPlan in work-order.md. This is technical execution planning, not a user-facing confirmation: do not ask the user whether to parallelize.\n\nAssess the complete remaining implementation set, not only the next task. For every candidate coding or repair batch, record: batch/task IDs and goal; prerequisite IDs and the concrete evidence that each prerequisite is already stable or completed; exact expected writeScopes at file or narrow directory level; shared resourceClaims such as schema, API contract, shared state, build configuration, generated output, test fixture, or environment ownership; independent validation; worktree/isolation requirement for write work; and the decision `parallel group <wave>` or `serial`, with a concrete reason.\n\nA completed predecessor is not a concurrent write conflict. A shared parent module or broad directory name is not enough to force serial work: identify the actual overlapping file, mutable resource, unstable contract, or dependency. Conversely, never invent parallelism merely to increase agent count. A serial-only plan is valid only when every remaining candidate has a recorded concrete conflict or dependency.\n\nUse the plan to form safe waves: all batches in one `parallel group <wave>` must have satisfied prerequisites, isolated non-overlapping writeScopes and resourceClaims, independent validation, and an available isolated worktree for write execution. Within each batch, Coder -> Reviewer -> bounded Coder fixes -> Reviewer remains strictly serial. At the coding phase, re-check this plan against the actual current tree before delegation; launch every still-safe independent wave in parallel through workflow_parallel_plan, and revise only when fresh code evidence changes the recorded dependency or conflict.\n\nThe implementationParallelizationPlan must cover the accepted task inventory and be carried into feature-implement so the Leader can dispatch the ready waves rather than defaulting to serial work.\n\n\n### One-question workflow clarification contract\nAsk only one necessary user question in each AskUserQuestion call. Continue with another one-question card only when, after incorporating the prior answer and current evidence, a distinct unresolved user-specific fact still blocks a correct decision. Do not repeat answered facts, do not bundle unrelated decisions into a packet, and do not require an artifact or phase completion between independent necessary questions. A business answer is not a workflow route: collect the answer first, then use submit_phase_completion or request_workflow_route only when their separate conditions are actually met.\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Feature Delta Capsule\n\nBefore completion, write a Feature Delta Capsule with currentBehavior, targetBehavior, mustStayUnchanged, acceptedTasks, modificationBoundaries, regressionPaths, userDecisions, evidenceSources, unresolvedRisks, and nextStageMustHandle. Every user-requested item must appear in acceptedTasks or have an explicit deferred decision. AGENTS.md, CLAUDE.md, and application logs are optional evidence, never prerequisites.",
+        "executionRules": [
+          "Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.",
+          "Use mini brainstorming only when requirements are unclear.",
+          "Confirm the complete task inventory before implementation; a single accepted item does not erase the remaining requested items."
+        ],
+        "transitionAuthority": "user-confirmation",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record a task inventory for every user-requested item, including accepted or explicitly deferred status.",
+          "For each accepted task record scope, non-goals, acceptance criteria, dependencies, target files, write scopes, scenario cases, and risky actions.",
+          "Record any user-approved deferral or cancellation explicitly; never silently drop a requested item.",
+          "Handoff the complete task inventory and Feature Delta Capsule; ask only one unresolved material question per AskUserQuestion call."
+        ],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "dependency installs",
+            "migrations",
+            "deletes",
+            "deploy"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation.",
+            "Record a task inventory for every user-requested item, including accepted or explicitly deferred status.",
+            "For each accepted task record scope, non-goals, acceptance criteria, dependencies, target files, write scopes, scenario cases, and risky actions.",
+            "Record any user-approved deferral or cancellation explicitly; never silently drop a requested item.",
+            "Handoff the complete task inventory and Feature Delta Capsule; ask only one unresolved material question per AskUserQuestion call."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "work-order",
+            "filename": "work-order.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Feature Delta Capsule plus the complete task inventory, accepted/deferred decision, dependencies, write scopes, acceptance criteria, regression paths, and validation plan."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "work-order",
+          "name": "Work Order",
+          "kind": "markdown",
+          "description": "Mini scope and validation plan for the feature extension.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "work-order.md contains the Feature Delta Capsule and every user-requested item with an accepted or explicitly deferred decision before implementation."
+        },
+        "handoffRules": [
+          "Record scope, non-goals, acceptance criteria, target files, scenario cases, and risky actions."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "dependency installs",
+          "migrations",
+          "deletes",
+          "deploy"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "feature-implement",
+      "name": "实现审查",
+      "appliesTo": [
+        "new-product",
+        "enhancement",
+        "bug",
+        "refactor",
+        "test",
+        "help-wanted",
+        "good-first-issue",
+        "ux-copy",
+        "error-handling"
+      ],
+      "skipWhen": {
+        "labels": [
+          "documentation"
+        ],
+        "efforts": [
+          "light"
+        ]
+      },
+      "instructions": "For every accepted task in work-order.md, first assess dependencies, overlapping target files and write scopes, shared resources, and risk. Build a workflow_parallel_plan only for logically isolated task batches; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from declared dependencies, write scopes, and resource claims. Within each task keep Coder -> Reviewer -> bounded Coder fixes serial. Do not mark this phase complete until implementation-log.md accounts for every accepted task as completed, explicitly deferred by the user, or blocked with evidence.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse the same execution loop as the development workflow without adding new stages: for each accepted task, record the decision source (user answer or conservative assumption), exact target paths, validation check, Coder result, Reviewer result, and Leader decision (pass, scoped fix, blocked, or one specific user decision). Do the planned implementation and review before asking again; a completed activity log alone is not evidence that the task worked.\n\n### Execute after clarification, not after repeated confirmation\n\nOnce the accepted task inventory and any consolidated answers are recorded, execute the planned batches. Do not stop to ask whether to continue, whether to start the next accepted item, or whether to begin review. Use the existing isolated-batch rule for parallel work and keep Coder -> Reviewer -> bounded Coder fixes serial within each task.\n\nIf implementation reveals an uncertainty, first resolve it from code, tests, logs, and existing project guidance. Escalate to the user only when it changes an accepted decision or creates a real safety, compatibility, data, irreversible-change, or external-account blocker.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Evidence-based batch-parallelism review\n\nBefore launching any Coder or Reviewer Subagent for implementation or repair, perform a strict, evidence-based review of the complete remaining batch set. Do not merely say that batches are parallel or serial.\n\nBefore delegating, the Leader must make an explicit batch-parallelism assessment in the current phase response and include the relevant decision and evidence in each affected Coder packet. For every remaining candidate batch, state: batch ID and goal; prerequisite batch IDs and the concrete evidence for each dependency; expected write files/modules; shared resources or environment claims; and the decision parallel group <id> or serial, with its concrete reason.\n\nNo parallel batches is a valid conclusion only when this review documents an actual dependency, overlapping write scope, shared mutable resource, or other concrete execution conflict for every candidate. Never choose serial-by-default merely to avoid analysis or to appear cautious.\n\nA parallel group is valid only when each member has satisfied prerequisites, has no overlapping write scopes or shared mutable resources, can be independently validated, and does not require another member's implementation result as input. Launch every qualifying independent group in parallel when host capacity permits; do not invent parallelism for appearance.\n\nRe-evaluate the batch-parallelism assessment after each accepted batch or whenever new evidence changes dependencies, file scopes, resources, or risk. Within one batch, keep Coder -> Reviewer -> bounded Coder fixes -> Reviewer strictly serial.\n\n### Core User-Flow Implementation and Review Contract (mandatory)\nFor every accepted user-visible extension, define a smallest primary flow before Coder work: user trigger or equivalent integration entry -> UI/event boundary -> relevant state/view-model/bridge -> action/service -> visible result or explicit error. A downstream API, service, queue, mock, build, or unit harness alone does not prove that flow.\n\nCoder must preserve a minimal reproducible check across the changed entry boundary whenever the task touches UI, an event handler, state, a bridge, routing, or a user-triggered action. Record expected versus observed checkpoints, bypassed layers, and the result in implementation-log.md. Do not delete the only evidence after a temporary check passes.\n\nReviewer must independently trace the primary flow, not merely code quality. Return coreFlowCheck, actualEntryBoundaryCovered, bypassedLayers, observedCheckpoints, reproducibility, and requiredFixes. A primary flow marked partial or not-run is not a Reviewer pass and must remain an explicit preview blocker or repair item.\n\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Lightweight Coder and Reviewer handoff\n\nFor each accepted task, the Coder implements only the assigned batch and the Reviewer uses workflow:lightweight-batch-review read-only. Reviewer returns reviewStatus, userScenarioChecked, evidence, requiredFixes, remainingRisks, and allowNextBatch. needs-fix returns to the same Coder batch before any next batch. Use the Feature Delta Capsule and do not inspect future-stage instructions.",
+      "objective": "Implement every accepted extension task with task-scoped code/review loops and host-managed batches.",
+      "requiredIntake": [
+        "Confirmed work-order.md and project-context.md."
+      ],
+      "handoffRules": [
+        "Record one implementation-log entry for every accepted task: task id, batch, changed files, tests, reviewer findings, fixes, and terminal status.",
+        "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+        "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+        "Every accepted task must end as completed, user-deferred, replaced, or blocked, with a trace to its Coder and Reviewer evidence."
+      ],
+      "executionRules": [
+        "Edits must stay within work-order scope.",
+        "For every accepted task, Subagent1 Coder implements and updates tests; immediately after that task, Subagent2 Reviewer reviews changed files and test coverage without production edits.",
+        "Reviewer findings return to the coder subagent for bounded fixes before feature-quality-preview; keep Coder -> Reviewer -> Coder fixes serial within each task.",
+        "Only logically isolated batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+        "Do not ask the user to manually run commands or view the app in this implementation phase.",
+        "Dangerous actions require explicit user confirmation.",
+        "Do not complete the phase while any accepted task lacks a completed, user-deferred, or blocked terminal record."
+      ],
+      "outputArtifact": {
+        "id": "implementation-log",
+        "name": "Implementation Log",
+        "kind": "markdown",
+        "description": "Implementation ledger covering every accepted task, its batch/isolation decision, changed files, tests, review, fixes, and terminal status.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "implementation-log",
+          "filename": "implementation-log.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Task-by-task implementation ledger with batch isolation, changed files, tests, review findings, bounded fixes, and completed/deferred/blocked status."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "edit-within-plan",
+          "test",
+          "review",
+          "artifact",
+          "question",
+          "subagent-coder",
+          "subagent-reviewer"
+        ],
+        "forbiddenActions": [
+          "out-of-plan edits",
+          "unconfirmed installs",
+          "unconfirmed migrations",
+          "unconfirmed deletes",
+          "unconfirmed deploy"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ],
+          "requiresExplicitUserConfirmation": [
+            "installDependencies",
+            "migrations",
+            "delete",
+            "network",
+            "deploy"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass.",
+          "Record one implementation-log entry for every accepted task: task id, batch, changed files, tests, reviewer findings, fixes, and terminal status.",
+          "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+          "Every accepted task must end as completed, user-deferred, replaced, or blocked, with a trace to its Coder and Reviewer evidence."
+        ]
+      },
+      "subagentPolicy": {
+        "allowedRoles": [
+          "coder",
+          "reviewer"
+        ],
+        "sequence": [
+          "subagent1:coder implements one accepted task",
+          "subagent2:reviewer reviews that same task before validation",
+          "subagent1:coder applies bounded fixes from reviewer findings",
+          "host may run only logically isolated task batches in parallel after dependency, write-scope, and resource analysis"
+        ],
+        "maxParallel": null,
+        "contextPolicy": "brief-only",
+        "requiredReturn": [
+          "taskId",
+          "batchId",
+          "changedFiles",
+          "testsRun",
+          "reviewStatus",
+          "userScenarioChecked",
+          "evidence",
+          "requiredFixes",
+          "remainingRisks",
+          "allowNextBatch",
+          "terminalStatus"
+        ],
+        "parallelSubagentsAllowed": true,
+        "controlledBy": "host-runtime"
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass."
+      },
+      "transition": {
+        "authority": "auto"
+      },
+      "skillBindings": [
+        "superpowers:subagent-driven-development",
+        "superpowers:requesting-code-review",
+        "superpowers:test-driven-development",
+        "workflow:lightweight-batch-review"
+      ],
+      "intent": {
+        "objective": "Implement the extension with scoped edits, tests, and immediate independent reviewer feedback.",
+        "role": "Implement + Reviewer Subagents",
+        "intake": [
+          "Confirmed work-order.md and project-context.md."
+        ]
+      },
+      "contract": {
+        "instructions": "For every accepted task in work-order.md, first assess dependencies, overlapping target files and write scopes, shared resources, and risk. Build a workflow_parallel_plan only for logically isolated task batches; do not impose a numeric concurrency cap. The host scheduler decides feasible parallelism from declared dependencies, write scopes, and resource claims. Within each task keep Coder -> Reviewer -> bounded Coder fixes serial. Do not mark this phase complete until implementation-log.md accounts for every accepted task as completed, explicitly deferred by the user, or blocked with evidence.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nUse the same execution loop as the development workflow without adding new stages: for each accepted task, record the decision source (user answer or conservative assumption), exact target paths, validation check, Coder result, Reviewer result, and Leader decision (pass, scoped fix, blocked, or one specific user decision). Do the planned implementation and review before asking again; a completed activity log alone is not evidence that the task worked.\n\n### Execute after clarification, not after repeated confirmation\n\nOnce the accepted task inventory and any consolidated answers are recorded, execute the planned batches. Do not stop to ask whether to continue, whether to start the next accepted item, or whether to begin review. Use the existing isolated-batch rule for parallel work and keep Coder -> Reviewer -> bounded Coder fixes serial within each task.\n\nIf implementation reveals an uncertainty, first resolve it from code, tests, logs, and existing project guidance. Escalate to the user only when it changes an accepted decision or creates a real safety, compatibility, data, irreversible-change, or external-account blocker.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Evidence-based batch-parallelism review\n\nBefore launching any Coder or Reviewer Subagent for implementation or repair, perform a strict, evidence-based review of the complete remaining batch set. Do not merely say that batches are parallel or serial.\n\nBefore delegating, the Leader must make an explicit batch-parallelism assessment in the current phase response and include the relevant decision and evidence in each affected Coder packet. For every remaining candidate batch, state: batch ID and goal; prerequisite batch IDs and the concrete evidence for each dependency; expected write files/modules; shared resources or environment claims; and the decision parallel group <id> or serial, with its concrete reason.\n\nNo parallel batches is a valid conclusion only when this review documents an actual dependency, overlapping write scope, shared mutable resource, or other concrete execution conflict for every candidate. Never choose serial-by-default merely to avoid analysis or to appear cautious.\n\nA parallel group is valid only when each member has satisfied prerequisites, has no overlapping write scopes or shared mutable resources, can be independently validated, and does not require another member's implementation result as input. Launch every qualifying independent group in parallel when host capacity permits; do not invent parallelism for appearance.\n\nRe-evaluate the batch-parallelism assessment after each accepted batch or whenever new evidence changes dependencies, file scopes, resources, or risk. Within one batch, keep Coder -> Reviewer -> bounded Coder fixes -> Reviewer strictly serial.\n\n### Core User-Flow Implementation and Review Contract (mandatory)\nFor every accepted user-visible extension, define a smallest primary flow before Coder work: user trigger or equivalent integration entry -> UI/event boundary -> relevant state/view-model/bridge -> action/service -> visible result or explicit error. A downstream API, service, queue, mock, build, or unit harness alone does not prove that flow.\n\nCoder must preserve a minimal reproducible check across the changed entry boundary whenever the task touches UI, an event handler, state, a bridge, routing, or a user-triggered action. Record expected versus observed checkpoints, bypassed layers, and the result in implementation-log.md. Do not delete the only evidence after a temporary check passes.\n\nReviewer must independently trace the primary flow, not merely code quality. Return coreFlowCheck, actualEntryBoundaryCovered, bypassedLayers, observedCheckpoints, reproducibility, and requiredFixes. A primary flow marked partial or not-run is not a Reviewer pass and must remain an explicit preview blocker or repair item.\n\n\n### Executable batch-parallelism contract\nBefore coding or repair, examine the complete remaining batch set using real dependency edges, write scopes, shared resources, and validation dependencies. Conclude serial execution when the evidence shows a dependency or conflict; do not choose serial merely to avoid analysis. Only truly isolated batches may run in parallel. For every qualifying parallel wave, call Agent once per assigned task with non-empty description and prompt, subagent_type=general-purpose, the matching top-level workflow_role, and the same complete workflow_parallel_plan object on every call:\n- workflow_parallel_plan.task_id is the assigned task id for that Agent call.\n- workflow_parallel_plan.tasks contains every task in the active phase, each with id, depends_on, write_scopes, resource_claims, and execution_mode.\n- Use asynchronous execution: set run_in_background=true when that field is visible. If the runtime hides it for fork mode, do not invent the field; the host executes the worker asynchronously.\nWithin one batch, Coder → Reviewer → bounded Coder repair → Reviewer is strictly serial. Parallelism is only between separate batches after their Coder/Reviewer chains have been proven isolated.\n\n### Lightweight Coder and Reviewer handoff\n\nFor each accepted task, the Coder implements only the assigned batch and the Reviewer uses workflow:lightweight-batch-review read-only. Reviewer returns reviewStatus, userScenarioChecked, evidence, requiredFixes, remainingRisks, and allowNextBatch. needs-fix returns to the same Coder batch before any next batch. Use the Feature Delta Capsule and do not inspect future-stage instructions.",
+        "executionRules": [
+          "Edits must stay within work-order scope.",
+          "For every accepted task, Subagent1 Coder implements and updates tests; immediately after that task, Subagent2 Reviewer reviews changed files and test coverage without production edits.",
+          "Reviewer findings return to the coder subagent for bounded fixes before feature-quality-preview; keep Coder -> Reviewer -> Coder fixes serial within each task.",
+          "Only logically isolated batches may run in parallel after dependency, write-scope, and shared-resource analysis. Do not set a numeric concurrency limit; declare workflow_parallel_plan tasks with dependencies, write scopes, and resource claims so the host scheduler can decide.",
+          "Do not ask the user to manually run commands or view the app in this implementation phase.",
+          "Dangerous actions require explicit user confirmation.",
+          "Do not complete the phase while any accepted task lacks a completed, user-deferred, or blocked terminal record."
+        ],
+        "transitionAuthority": "auto",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record one implementation-log entry for every accepted task: task id, batch, changed files, tests, reviewer findings, fixes, and terminal status.",
+          "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+          "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+          "Every accepted task must end as completed, user-deferred, replaced, or blocked, with a trace to its Coder and Reviewer evidence."
+        ],
+        "subagentPolicy": {
+          "allowedRoles": [
+            "coder",
+            "reviewer"
+          ],
+          "sequence": [
+            "subagent1:coder implements one accepted task",
+            "subagent2:reviewer reviews that same task before validation",
+            "subagent1:coder applies bounded fixes from reviewer findings",
+            "host may run only logically isolated task batches in parallel after dependency, write-scope, and resource analysis"
+          ],
+          "maxParallel": null,
+          "contextPolicy": "brief-only",
+          "requiredReturn": [
+            "taskId",
+            "batchId",
+            "changedFiles",
+            "testsRun",
+            "reviewStatus",
+            "userScenarioChecked",
+            "evidence",
+            "requiredFixes",
+            "remainingRisks",
+            "allowNextBatch",
+            "terminalStatus"
+          ],
+          "parallelSubagentsAllowed": true,
+          "controlledBy": "host-runtime"
+        },
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "edit-within-plan",
+            "test",
+            "review",
+            "artifact",
+            "question",
+            "subagent-coder",
+            "subagent-reviewer"
+          ],
+          "forbiddenActions": [
+            "out-of-plan edits",
+            "unconfirmed installs",
+            "unconfirmed migrations",
+            "unconfirmed deletes",
+            "unconfirmed deploy"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "edit-within-plan",
+            "test",
+            "review",
+            "artifact",
+            "question",
+            "subagent-coder",
+            "subagent-reviewer"
+          ],
+          "forbiddenActions": [
+            "out-of-plan edits",
+            "unconfirmed installs",
+            "unconfirmed migrations",
+            "unconfirmed deletes",
+            "unconfirmed deploy"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ],
+            "requiresExplicitUserConfirmation": [
+              "installDependencies",
+              "migrations",
+              "delete",
+              "network",
+              "deploy"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass.",
+            "Record one implementation-log entry for every accepted task: task id, batch, changed files, tests, reviewer findings, fixes, and terminal status.",
+            "Record dependency, write-scope, and shared-resource reasoning for every parallel batch.",
+            "Never silently omit a remaining accepted task; record an explicit user deferral or blocker instead.",
+            "Every accepted task must end as completed, user-deferred, replaced, or blocked, with a trace to its Coder and Reviewer evidence."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "implementation-log",
+            "filename": "implementation-log.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Task-by-task implementation ledger with batch isolation, changed files, tests, review findings, bounded fixes, and completed/deferred/blocked status."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "implementation-log",
+          "name": "Implementation Log",
+          "kind": "markdown",
+          "description": "Extension implementation log.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "implementation-log.md accounts for every accepted task as completed, user-deferred, replaced, or blocked, and every completed batch has Coder evidence followed by a Reviewer pass."
+        },
+        "handoffRules": [
+          "Record changed files, tests, coder summary, reviewer findings, bounded fixes, blockers, and remaining risks."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "Write",
+          "Edit",
+          "MultiEdit",
+          "Bash",
+          "PowerShell",
+          "Agent",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "edit-within-plan",
+          "test",
+          "review",
+          "artifact",
+          "question",
+          "subagent-coder",
+          "subagent-reviewer"
+        ],
+        "forbiddenActions": [
+          "out-of-plan edits",
+          "unconfirmed installs",
+          "unconfirmed migrations",
+          "unconfirmed deletes",
+          "unconfirmed deploy"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "feature-quality-preview",
+      "name": "验证预览",
+      "instructions": "Run scenario validation and review checks for every accepted task in work-order.md, including cross-task regressions where tasks interact. A missing accepted-task result blocks completion. If validation finds a code defect, call request_workflow_route with targetPhaseId feature-implement, preserve the evidence, and wait for the implementation phase to repair and re-review it. Do not code or repair in this quality phase. Use preview controls when useful or document a skip reason.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nTreat this as outcome review, not only command review: compare each accepted task against its stated acceptance check and record the observed scenario result, any remaining mismatch, and the next scoped repair or user decision. Do not ask the user to confirm progress when the scenario can be checked from the workspace or existing evidence.\n\n### Compact validation and handoff\n\nTreat validation, preview evidence, and the concise implementation handoff as one continuous closeout path. Do not ask the user to confirm routine progress or to authorize the ordinary transition from implementation to validation. Route confirmed code failures to feature-implement; ask only for a decision that validation evidence cannot answer.\n\nCapture the user-visible outcome, command/test evidence, residual risks, and necessary updates to existing guidance/logs so the final archive stage can be mechanical rather than another discussion.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Core-Flow Acceptance Evidence (mandatory)\nWrite .workflow/runs/<runId>/core-flow-evidence.json with schemaVersion 1 and one flows entry for every primary changed user flow. Each entry must include coreFlowId, entryBoundary, expectedCheckpoints, observedCheckpoints, execution { status: pass|partial|not-run, method: runtime|manual-preview|integration|static, visibleResult for pass, nextAction for partial/not-run }, and bypassedLayers when relevant.\n\nStatic reading, build success, downstream service/API tests, or mock harnesses may be evidence, but they cannot make execution.status pass by themselves. A static-only result must be partial or not-run. If any primary flow is partial/not-run, quality-report.md must not claim Runtime Preview PASS, complete acceptance, or that the feature is fully verified; carry the exact next action into preview or repair.\n\n### Accepted task terminal accounting\n\nBefore completion, mark every accepted task exactly once as 完成, 用户明确放弃, 被替代, or 仍阻塞. A code-affecting failure must use request_workflow_route to feature-implement; retry and Agent completion never advance the phase.",
+      "objective": "Validate every accepted extension task before any preview, then let the user try the combined result through controlled start/stop operations when applicable.",
+      "requiredIntake": [
+        "implementation-log.md or documentation output, work-order.md, available checks."
+      ],
+      "handoffRules": [
+        "Record user-path evidence, residual risks, preview status, and one terminal status for every accepted task.",
+        "Route code-affecting failures to feature-implement and revalidate the affected path after repair."
+      ],
+      "executionRules": [
+        "Validate every accepted task and cross-task regression through the shortest meaningful user path.",
+        "Do not edit code or launch a Coder in this phase; code failures must request_workflow_route to feature-implement.",
+        "Preview may run through workflow-owned controls when useful; record a skip reason otherwise.",
+        "Do not complete until every accepted task has evidence and one terminal status: 完成, 用户明确放弃, 被替代, or 仍阻塞."
+      ],
+      "outputArtifact": {
+        "id": "quality-report",
+        "name": "Quality Report",
+        "kind": "markdown",
+        "description": "Validation ledger for every accepted task, cross-task regressions, repairs, preview evidence, and remaining risk.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "quality-report",
+          "filename": ".workflow/runs/<runId>/quality-report.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Validation evidence for every accepted task, cross-task scenarios, repair iterations, preview/skip status, and risks."
+        },
+        {
+          "id": "run-preview",
+          "filename": ".workflow/runs/<runId>/run-preview.md",
+          "kind": "markdown",
+          "required": false,
+          "description": "Preview command, URL, logs, and user confirmation when preview is used."
+        },
+        {
+          "id": "core-flow-evidence",
+          "filename": ".workflow/runs/<runId>/core-flow-evidence.json",
+          "kind": "json",
+          "required": true,
+          "description": "Machine-checkable primary user-flow evidence: entry boundary, expected and observed checkpoints, log disposition, execution status/method, visible result, bypassed layers, and next action."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "test",
+          "build",
+          "lint",
+          "review",
+          "preview-start",
+          "preview-stop",
+          "artifact",
+          "question",
+          "subagent-qa",
+          "subagent-reviewer",
+          "route"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "test-file edits",
+          "direct repair",
+          "subagent-coder",
+          "deploy without confirmation"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ],
+          "requiresExplicitUserConfirmation": [
+            "installDependencies",
+            "migrations",
+            "delete",
+            "network",
+            "deploy"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "quality-report.md contains user-path evidence and one terminal status for every accepted task; code failures have been routed to feature-implement and revalidated before completion.",
+          "Record user-path evidence, residual risks, preview status, and one terminal status for every accepted task.",
+          "Route code-affecting failures to feature-implement and revalidate the affected path after repair."
+        ]
+      },
+      "subagentPolicy": {
+        "allowedRoles": [
+          "qa",
+          "reviewer"
+        ],
+        "sequence": [
+          "qa",
+          "reviewer"
+        ],
+        "maxParallel": null,
+        "contextPolicy": "brief-only",
+        "requiredReturn": [
+          "scenarioResults",
+          "evidence",
+          "blockers",
+          "remainingRisks",
+          "terminalTaskStatuses",
+          "readyForPreview"
+        ],
+        "parallelSubagentsAllowed": true,
+        "controlledBy": "host-runtime"
+      },
+      "completionCriteria": {
+        "type": "artifact-required",
+        "description": "quality-report.md contains user-path evidence and one terminal status for every accepted task; code failures have been routed to feature-implement and revalidated before completion."
+      },
+      "transition": {
+        "authority": "auto"
+      },
+      "skillBindings": [
+        "superpowers:requesting-code-review",
+        "superpowers:verification-before-completion"
+      ],
+      "intent": {
+        "objective": "Validate the extension before any preview, then let the user try it through controlled start/stop operations when applicable.",
+        "role": "Scenario Validation + Repair + Start / Stop Preview",
+        "intake": [
+          "implementation-log.md or documentation output, work-order.md, available checks."
+        ]
+      },
+      "contract": {
+        "instructions": "Run scenario validation and review checks for every accepted task in work-order.md, including cross-task regressions where tasks interact. A missing accepted-task result blocks completion. If validation finds a code defect, call request_workflow_route with targetPhaseId feature-implement, preserve the evidence, and wait for the implementation phase to repair and re-review it. Do not code or repair in this quality phase. Use preview controls when useful or document a skip reason.\n\nAsk the user only when a missing user-specific fact blocks the current phase after checking the request, workspace, logs, and workflow artifacts. If you ask, set blocksCompletion true and provide blockingReason and answerImpact. After an answer, carry it into current-phase work before phase completion. Ask a further question only when, after considering that answer and the workspace, a distinct user-specific fact still blocks the current phase; otherwise choose and record a conservative default.\n\nTreat this as outcome review, not only command review: compare each accepted task against its stated acceptance check and record the observed scenario result, any remaining mismatch, and the next scoped repair or user decision. Do not ask the user to confirm progress when the scenario can be checked from the workspace or existing evidence.\n\n### Compact validation and handoff\n\nTreat validation, preview evidence, and the concise implementation handoff as one continuous closeout path. Do not ask the user to confirm routine progress or to authorize the ordinary transition from implementation to validation. Route confirmed code failures to feature-implement; ask only for a decision that validation evidence cannot answer.\n\nCapture the user-visible outcome, command/test evidence, residual risks, and necessary updates to existing guidance/logs so the final archive stage can be mechanical rather than another discussion.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n\n### Core-Flow Acceptance Evidence (mandatory)\nWrite .workflow/runs/<runId>/core-flow-evidence.json with schemaVersion 1 and one flows entry for every primary changed user flow. Each entry must include coreFlowId, entryBoundary, expectedCheckpoints, observedCheckpoints, execution { status: pass|partial|not-run, method: runtime|manual-preview|integration|static, visibleResult for pass, nextAction for partial/not-run }, and bypassedLayers when relevant.\n\nStatic reading, build success, downstream service/API tests, or mock harnesses may be evidence, but they cannot make execution.status pass by themselves. A static-only result must be partial or not-run. If any primary flow is partial/not-run, quality-report.md must not claim Runtime Preview PASS, complete acceptance, or that the feature is fully verified; carry the exact next action into preview or repair.\n\n### Accepted task terminal accounting\n\nBefore completion, mark every accepted task exactly once as 完成, 用户明确放弃, 被替代, or 仍阻塞. A code-affecting failure must use request_workflow_route to feature-implement; retry and Agent completion never advance the phase.",
+        "executionRules": [
+          "Validate every accepted task and cross-task regression through the shortest meaningful user path.",
+          "Do not edit code or launch a Coder in this phase; code failures must request_workflow_route to feature-implement.",
+          "Preview may run through workflow-owned controls when useful; record a skip reason otherwise.",
+          "Do not complete until every accepted task has evidence and one terminal status: 完成, 用户明确放弃, 被替代, or 仍阻塞."
+        ],
+        "transitionAuthority": "auto",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "Bash",
+            "PowerShell",
+            "Agent",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record user-path evidence, residual risks, preview status, and one terminal status for every accepted task.",
+          "Route code-affecting failures to feature-implement and revalidate the affected path after repair."
+        ],
+        "subagentPolicy": {
+          "allowedRoles": [
+            "qa",
+            "reviewer"
+          ],
+          "sequence": [
+            "qa",
+            "reviewer"
+          ],
+          "maxParallel": null,
+          "contextPolicy": "brief-only",
+          "requiredReturn": [
+            "scenarioResults",
+            "evidence",
+            "blockers",
+            "remainingRisks",
+            "terminalTaskStatuses",
+            "readyForPreview"
+          ],
+          "parallelSubagentsAllowed": true,
+          "controlledBy": "host-runtime"
+        },
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "quality-report.md contains user-path evidence and one terminal status for every accepted task; code failures have been routed to feature-implement and revalidated before completion."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "test",
+            "build",
+            "lint",
+            "review",
+            "preview-start",
+            "preview-stop",
+            "artifact",
+            "question",
+            "subagent-qa",
+            "subagent-reviewer",
+            "route"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "test-file edits",
+            "direct repair",
+            "subagent-coder",
+            "deploy without confirmation"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "test",
+            "build",
+            "lint",
+            "review",
+            "preview-start",
+            "preview-stop",
+            "artifact",
+            "question",
+            "subagent-qa",
+            "subagent-reviewer",
+            "route"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "test-file edits",
+            "direct repair",
+            "subagent-coder",
+            "deploy without confirmation"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ],
+            "requiresExplicitUserConfirmation": [
+              "installDependencies",
+              "migrations",
+              "delete",
+              "network",
+              "deploy"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "quality-report.md contains user-path evidence and one terminal status for every accepted task; code failures have been routed to feature-implement and revalidated before completion.",
+            "Record user-path evidence, residual risks, preview status, and one terminal status for every accepted task.",
+            "Route code-affecting failures to feature-implement and revalidate the affected path after repair."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "quality-report",
+            "filename": ".workflow/runs/<runId>/quality-report.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Validation evidence for every accepted task, cross-task scenarios, repair iterations, preview/skip status, and risks."
+          },
+          {
+            "id": "run-preview",
+            "filename": ".workflow/runs/<runId>/run-preview.md",
+            "kind": "markdown",
+            "required": false,
+            "description": "Preview command, URL, logs, and user confirmation when preview is used."
+          },
+          {
+            "id": "core-flow-evidence",
+            "filename": ".workflow/runs/<runId>/core-flow-evidence.json",
+            "kind": "json",
+            "required": true,
+            "description": "Machine-checkable primary user-flow evidence: entry boundary, expected and observed checkpoints, log disposition, execution status/method, visible result, bypassed layers, and next action."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "quality-report",
+          "name": "Quality Report",
+          "kind": "markdown",
+          "description": "Validation, review, and preview result.",
+          "required": true
+        },
+        "requiredArtifacts": [
+          {
+            "id": "core-flow-evidence",
+            "name": "Core Flow Evidence",
+            "description": "JSON core-flow evidence. Static inspection cannot claim pass. Partial/not-run paths require nextAction; Debug requires an honest log disposition for every flow.",
+            "required": true
+          }
+        ],
+        "completionCriteria": {
+          "type": "artifact-required",
+          "description": "quality-report.md contains validation evidence for every accepted task plus preview or skip evidence."
+        },
+        "handoffRules": [
+          "Record scenario matrix, quality evidence, review findings, repair iterations, preview command/status, URL/logs, risks, and user decision."
+        ],
+        "coreFlowEvidence": {
+          "type": "core-flow-evidence-v1",
+          "outputArtifactId": "core-flow-evidence",
+          "qualityReportArtifactId": "quality-report",
+          "requireLogDisposition": false
+        }
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "Bash",
+          "PowerShell",
+          "Agent",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "test",
+          "build",
+          "lint",
+          "review",
+          "preview-start",
+          "preview-stop",
+          "artifact",
+          "question",
+          "subagent-qa",
+          "subagent-reviewer",
+          "route"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "test-file edits",
+          "direct repair",
+          "subagent-coder",
+          "deploy without confirmation"
+        ]
+      }
+    },
+    {
+      "skills": [],
+      "requiredArtifacts": [],
+      "id": "feature-finish-memory",
+      "name": "完成归档",
+      "instructions": "Update project-context.md, run-report.md, and handoff.md, then ask the user for the next workflow entry.\n\n### Non-blocking archive\n\nThis stage is a concise durable archive, not another requirement interview. Use the already accepted inventory and validation evidence to update handoff.md, run-report.md, and any relevant existing project guidance. Do not introduce a fresh user question unless a previously undiscovered blocker prevents an accurate final status.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n",
+      "objective": "Close the feature extension while preserving project memory.",
+      "requiredIntake": [
+        "quality-report.md, work-order.md, implementation-log.md when applicable."
+      ],
+      "handoffRules": [
+        "Record outcome, proof, risks, updated memory, next action choices, and the terminal status of every accepted task.",
+        "The archive is non-blocking: preserve task coverage, validation evidence, relevant project guidance updates, diagnostic/log references, and explicit residual risks without reopening routine discovery."
+      ],
+      "executionRules": [
+        "Do not auto-start the next workflow.",
+        "Keep all workflow markdown under .workflow/."
+      ],
+      "outputArtifact": {
+        "id": "handoff",
+        "name": "Handoff",
+        "kind": "markdown",
+        "description": "Feature extension handoff.",
+        "required": true
+      },
+      "outputArtifacts": [
+        {
+          "id": "handoff",
+          "filename": "handoff.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Outcome, proof, risks, and next action choices."
+        },
+        {
+          "id": "run-report",
+          "filename": "run-report.md",
+          "kind": "markdown",
+          "required": true,
+          "description": "Latest execution, validation, preview, review, and follow-up summary."
+        }
+      ],
+      "runtimeContract": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "handoff",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "auto-start follow-up workflow"
+        ],
+        "toolAccess": {
+          "allowed": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "forbidden": [
+            "NotebookEdit"
+          ]
+        },
+        "questionPolicy": {
+          "requireAnswerProcessingBeforeNextQuestion": false
+        },
+        "completionRequires": [
+          "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+          "Record outcome, proof, risks, updated memory, next action choices, and the terminal status of every accepted task.",
+          "The archive is non-blocking: preserve task coverage, validation evidence, relevant project guidance updates, diagnostic/log references, and explicit residual risks without reopening routine discovery."
+        ]
+      },
+      "completionCriteria": {
+        "type": "manual-checklist",
+        "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+      },
+      "transition": {
+        "authority": "user-choice"
+      },
+      "intent": {
+        "objective": "Close the feature extension while preserving project memory.",
+        "role": "Finish + Memory Update",
+        "intake": [
+          "quality-report.md, work-order.md, implementation-log.md when applicable."
+        ]
+      },
+      "contract": {
+        "instructions": "Update project-context.md, run-report.md, and handoff.md, then ask the user for the next workflow entry.\n\n### Non-blocking archive\n\nThis stage is a concise durable archive, not another requirement interview. Use the already accepted inventory and validation evidence to update handoff.md, run-report.md, and any relevant existing project guidance. Do not introduce a fresh user question unless a previously undiscovered blocker prevents an accurate final status.\n\n### Soft project continuity context\nBefore asking the user or changing code, inspect the smallest relevant portions of existing AGENTS.md, CLAUDE.md, .workflow/project-context.md, .workflow/work-order.md, and documented application logs. These are optional sources, not required project structure: if they are absent, stale, inaccessible, or unrelated, record that limitation and continue from the request and observable code.\n\nWhen an accepted task changes architecture, commands, behavior contracts, diagnostics, data handling, or maintenance guidance, update the relevant existing AGENTS.md and CLAUDE.md. Do not overwrite unrelated instructions. If no such files exist, do not block the work or fabricate them; mention a concise optional maintenance recommendation only when it would materially help future work.\n",
+        "executionRules": [
+          "Do not auto-start the next workflow.",
+          "Keep all workflow markdown under .workflow/."
+        ],
+        "transitionAuthority": "user-choice",
+        "toolPolicy": {
+          "allowedTools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "LS",
+            "workflow_artifact_write",
+            "AskUserQuestion",
+            "workflow_template_authoring",
+            "submit_phase_completion",
+            "request_workflow_route"
+          ],
+          "disallowedTools": [
+            "NotebookEdit"
+          ]
+        },
+        "handoffRules": [
+          "Record outcome, proof, risks, updated memory, next action choices, and the terminal status of every accepted task.",
+          "The archive is non-blocking: preserve task coverage, validation evidence, relevant project guidance updates, diagnostic/log references, and explicit residual risks without reopening routine discovery."
+        ],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+        },
+        "actionPolicy": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "handoff",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "auto-start follow-up workflow"
+          ]
+        },
+        "runtimeContract": {
+          "allowedActions": [
+            "read",
+            "artifact",
+            "handoff",
+            "question"
+          ],
+          "forbiddenActions": [
+            "production edits",
+            "auto-start follow-up workflow"
+          ],
+          "toolAccess": {
+            "allowed": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "forbidden": [
+              "NotebookEdit"
+            ]
+          },
+          "questionPolicy": {
+            "requireAnswerProcessingBeforeNextQuestion": false
+          },
+          "completionRequires": [
+            "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry.",
+            "Record outcome, proof, risks, updated memory, next action choices, and the terminal status of every accepted task.",
+            "The archive is non-blocking: preserve task coverage, validation evidence, relevant project guidance updates, diagnostic/log references, and explicit residual risks without reopening routine discovery."
+          ]
+        },
+        "outputArtifacts": [
+          {
+            "id": "handoff",
+            "filename": "handoff.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Outcome, proof, risks, and next action choices."
+          },
+          {
+            "id": "run-report",
+            "filename": "run-report.md",
+            "kind": "markdown",
+            "required": true,
+            "description": "Latest execution, validation, preview, review, and follow-up summary."
+          }
+        ],
+        "requiredArtifacts": []
+      },
+      "evidencePolicy": {
+        "outputArtifact": {
+          "id": "handoff",
+          "name": "Handoff",
+          "kind": "markdown",
+          "description": "Feature extension handoff.",
+          "required": true
+        },
+        "requiredArtifacts": [],
+        "completionCriteria": {
+          "type": "manual-checklist",
+          "description": "handoff.md, run-report.md, and project-context.md are updated, then the user chooses finish or the next workflow entry."
+        },
+        "handoffRules": [
+          "Record outcome, proof, risks, updated memory, and next action choices."
+        ]
+      },
+      "toolPolicy": {
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "workflow_artifact_write",
+          "AskUserQuestion",
+          "workflow_template_authoring",
+          "submit_phase_completion",
+          "request_workflow_route"
+        ],
+        "disallowedTools": [
+          "NotebookEdit"
+        ]
+      },
+      "actionPolicy": {
+        "allowedActions": [
+          "read",
+          "artifact",
+          "handoff",
+          "question"
+        ],
+        "forbiddenActions": [
+          "production edits",
+          "auto-start follow-up workflow"
+        ]
+      }
+    }
+  ],
+  "editableDefault": true
+}

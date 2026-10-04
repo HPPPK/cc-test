@@ -409,7 +409,7 @@ function ExpertDetail({
                 <legend className="px-1 text-xs font-medium text-[var(--color-text-primary)]">显示方式</legend>
                 <label className="flex cursor-pointer items-start gap-2">
                   <input type="radio" name="expert-managed-browser-presentation" checked={researchBrowserPresentation === 'assistable_background'} onChange={() => onResearchBrowserPresentationChange('assistable_background')} />
-                  <span><strong className="text-[var(--color-text-primary)]">后台检索，需协助时自动显示（推荐）</strong><br />浏览器会最小化运行；只有你选择查看，或网站需要验证时才恢复窗口。</span>
+                  <span><strong className="text-[var(--color-text-primary)]">后台检索，需要时可打开（推荐）</strong><br />浏览器初始最小化；网站需要验证时会弹出提示，只有你点击查看或“打开验证浏览器”才恢复窗口。恢复后软件不再自动最小化或收回。</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2">
                   <input type="radio" name="expert-managed-browser-presentation" checked={researchBrowserPresentation === 'always_visible'} onChange={() => onResearchBrowserPresentationChange('always_visible')} />

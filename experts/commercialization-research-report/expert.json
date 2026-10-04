@@ -1,14 +1,11 @@
 {
   "id": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
-  "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。按字段研究，使用包内浏览器信息检索方法发现候选链接、通过 Playwright 逐页取证，并以多源渠道证据包支撑 SEO/SEM/内容渠道判断；先生成紧凑字段 JSON，再由内置 CLI 填充最终 HTML。资料不足时如实标注，不把业务规则当作市场证据。",
-  "statusLabel": "分章节子代理 + 注入式检索 Skill + 即时 CAPTCHA 人工接力 + 零 Key 多入口浏览器检索 + 多源渠道证据包 + 证据复核 + 交付确认 + 固定母版 CLI 填充 v0.13.1-local",
+  "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。先形成字段—任务—具体来源路线，再由按 A/B/C 分工、可分片扩展的研究子代理以 Playwright 逐页取证、独立复核并按来源颗粒度吸收进报告；资料不足时如实标注，不把业务规则或搜索摘要当作市场证据。",
+  "statusLabel": "分章节子代理 + 具体页面取证 + 独立复核 + 细节簇字段吸收 + 渲染后完整性检查 + 结构化 Write 固定母版交付 + 条件化 SEO 取证 v0.13.55-local",
   "promptPaths": {
     "system": "experts/commercialization-research-report/prompts/system.md"
   },
-  "formPaths": [
-    "experts/commercialization-research-report/forms/intake.json"
-  ],
   "outputProtocolPath": "experts/commercialization-research-report/outputs/material-protocol.json",
   "skillIds": [
     "commercialization-research-method",
@@ -18,108 +15,10 @@
     "channel-acquisition-evidence",
     "competitor-analysis",
     "market-sizing",
-    "pricing-strategy",
-    "monetization-strategy"
+    "strategy-red-team",
+    "commercialization-field-evidence",
+    "research-source-library"
   ],
-  "intakeFlow": {
-    "version": 1,
-    "steps": [
-      {
-        "type": "form",
-        "id": "research-brief",
-        "title": "新品商业化调研信息",
-        "required": true,
-        "fields": [
-          {
-            "id": "productDirection",
-            "kind": "text",
-            "label": "产品方向名称",
-            "description": "例如：AI 旧照片修复、AI 简历优化。",
-            "required": true
-          },
-          {
-            "id": "coreCapability",
-            "kind": "textarea",
-            "label": "核心能力的一句话描述",
-            "description": "写清产品最核心的能力或卖点。",
-            "required": true
-          },
-          {
-            "id": "marketScope",
-            "kind": "select",
-            "label": "优先研究市场",
-            "required": true,
-            "options": [
-              {
-                "id": "china",
-                "label": "中国 C 端工具市场（默认）"
-              },
-              {
-                "id": "overseas",
-                "label": "海外市场"
-              },
-              {
-                "id": "both",
-                "label": "中国与海外对比"
-              }
-            ]
-          },
-          {
-            "id": "preferredPlatforms",
-            "kind": "multi-select",
-            "label": "优先评估的平台形态（可选）",
-            "options": [
-              {
-                "id": "windows",
-                "label": "Windows 客户端"
-              },
-              {
-                "id": "macos",
-                "label": "macOS 客户端"
-              },
-              {
-                "id": "mobile",
-                "label": "iOS / Android APP"
-              },
-              {
-                "id": "web",
-                "label": "Web 网页端"
-              },
-              {
-                "id": "mini-program",
-                "label": "微信小程序"
-              }
-            ]
-          },
-          {
-            "id": "firstPartyMaterials",
-            "kind": "file-list",
-            "label": "一手资料（强烈建议）",
-            "description": "可提供关键词 CSV、指数截图、应用商店截图、竞品定价截图、已有调研文档等。"
-          },
-          {
-            "id": "referenceUrls",
-            "kind": "url-list",
-            "label": "参考链接（可选）",
-            "description": "竞品官网、价格页、应用商店页、公开行业资料等。"
-          },
-          {
-            "id": "constraints",
-            "kind": "textarea",
-            "label": "补充约束（可选）",
-            "description": "例如目标价格、已有渠道资源、必须避开的产品方向或交付时间。"
-          },
-          {
-            "id": "outputFolder",
-            "kind": "folder",
-            "label": "正式 HTML 输出目录",
-            "description": "只在你确认报告结论后写入此目录。",
-            "required": false
-          }
-        ]
-      }
-    ]
-  },
   "portable": true,
   "profile": {
     "avatar": "📊",
@@ -132,7 +31,7 @@
         "包内方法 Skill 是通用方法；没有匹配证据时只给假设和验证计划，不因默认金舟预设而强行套用 C 端、国内、应用商店、SEM 或自媒体逻辑。",
         "规则文件不能授予当前会话不存在的 Read、Playwright、WebFetch 或 Write 能力；无 Read 时要求粘贴文本，无 Playwright 时要求 URL、截图、文本或文件。",
         "没有真实用户数据时不伪造情绪分析、分群或精确市场规模。",
-        "用户确认结论并提供目录后，才在 Write 可用时写 HTML 报告。"
+        "A/B/C 三条研究方向的全部已登记分片完成独立证据复核与字段吸收后，先用结构化 Write 生成 HTML 草稿，再经 08 完整性复核，以 patch 或 finalize 定稿；不询问最终目录或普通证据缺口是否可以保留。"
       ]
     },
     "starterPrompts": [
@@ -164,7 +63,7 @@
       {
         "id": "research",
         "title": "按证据条件开展调研",
-        "description": "按需分析市场、竞品、用户、价格、变现和渠道。"
+        "description": "完整分析市场、竞品、用户、价格、变现和渠道；证据不足时标明推断依据和边界，不缩为局部分析。"
       },
       {
         "id": "experiment",
@@ -177,33 +76,41 @@
         "description": "输出推荐、验证或暂不推荐及最大风险。"
       },
       {
-        "id": "delivery",
-        "title": "字段 JSON + CLI 输出固定 HTML",
-        "description": "用户确认输出路径后先汇总字段 JSON 与来源表，再由内置 CLI 填充并校验固定 HTML；不由 Write 手写或拼接 HTML。"
-      },
-      {
         "id": "evidence-review",
         "title": "独立证据复核：逐项核验主张、URL、日期与定义",
-        "description": "三个研究子代理完成后必须由独立复核子代理打回无证据、代理指标误用或来源不足的结论；复核未完成不得写 HTML。"
+        "description": "全部已登记研究分片完成后，由独立复核子代理核验事实、推断、来源与证据边界；复核后进入字段吸收，不把入口访问冒充正文证据。"
+      },
+      {
+        "id": "evidence-absorption",
+        "title": "复核后证据吸收与字段映射",
+        "description": "不再询问用户；逐项吸收全部已登记研究分片和复核结论，完成字段—来源映射后再通过结构化 Write 交给服务端渲染。"
+      },
+      {
+        "id": "delivery",
+        "title": "结构化 Write 输出固定 HTML",
+        "description": "结构化 Write 渲染固定 HTML 草稿；08 完整性复核后按实际结论 patch 或 finalize，不由 Write 手写或拼接 HTML。"
       }
     ],
     "knowledgeBase": {
       "version": "v1.0.6-local",
-      "notes": "启动时只注入 9 个核心商业化研究 Skill，避免研究代理被无关方法淹没；ZIP 仍保留其余可扩展 Skill 资源。三个子代理分别取证、主代理汇总来源图谱，独立复核完成前不输出最终 HTML。"
+      "notes": "启动时注入 10 个核心商业化研究 Skill；ZIP 仍保留其余可扩展 Skill 资源。A/B/C 是研究分工，不是子代理或 Markdown 数量上限；全部登记分片进入独立复核、字段吸收和草稿完整性复核后再定稿。"
     },
     "version": "v1.0.8-local",
-    "notes": "模型从可信来源范围动态构造候选 URL，Playwright 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，字段 JSON 经内置 CLI 校验并填充固定母版。"
+    "notes": "模型从可信来源范围动态构造候选 URL，Playwright 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，结构化字段由服务端校验并填充固定母版。",
+    "howITalk": "先根据用户已提供的信息和公开证据开展完整商业分析；固定欢迎语之后，只要确实需要用户回答、确认、补充材料或作选择，一律使用与当前产品相关的 AskUserQuestion 卡片，不把问题写成普通文本。结论会区分已核验事实、有限公开观察、（AI推断）与证据缺口。"
   },
-  "version": "0.13.1-local",
-  "status": "即时 CAPTCHA 人工接力 + ZIP 子代理检索 Skill 注入 + 可见 Playwright 调研 + 可选用户授权本机 Chrome/Edge 连接 + 四子代理复核 + 用户确认范围后固定 HTML CLI 填充 v0.13.1-local",
+  "version": "0.13.55-local",
+  "status": "0.13.55-local：统一必要问询、普通证据缺口和草稿→复核→定稿说明；不新增研究、来源、审核或写入门槛。",
   "outputTemplatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
   "outputMode": "template-fill",
   "subagentSkillIds": {
     "expert-evidence-researcher": [
-      "browser-information-retrieval"
+      "browser-information-retrieval",
+      "research-source-library",
+      "channel-acquisition-evidence"
     ],
-    "expert-evidence-reviewer": [
-      "browser-information-retrieval"
-    ]
+    "expert-evidence-reviewer": [],
+    "expert-evidence-absorber": [],
+    "expert-evidence-output-reviewer": []
   }
 }

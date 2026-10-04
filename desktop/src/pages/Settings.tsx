@@ -36,6 +36,7 @@ import { ComputerUseSettings } from './ComputerUseSettings'
 import { McpSettings } from './McpSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { EnvironmentSettings } from './EnvironmentSettings'
+import { ImageGenerationSettings } from './ImageGenerationSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
 import { MemorySettings } from './MemorySettings'
@@ -100,6 +101,7 @@ export function Settings() {
             <TabButton icon="shield" label={t('settings.tab.permissions')} active={activeTab === 'permissions'} onClick={() => setActiveTab('permissions')} />
             <TabButton icon="tune" label={t('settings.tab.general')} active={activeTab === 'general'} onClick={() => setActiveTab('general')} />
             <TabButton icon="qr_code_2" label={t('settings.tab.h5Access')} active={activeTab === 'h5Access'} onClick={() => setActiveTab('h5Access')} />
+            <TabButton icon="image" label={t('settings.tab.imageGeneration')} active={activeTab === 'imageGeneration'} onClick={() => setActiveTab('imageGeneration')} />
             <TabButton icon="account_tree" label={t('settings.tab.workflows')} active={activeTab === 'workflows'} onClick={() => setActiveTab('workflows')} />
             <TabButton icon="person_search" label={t('settings.tab.experts')} active={activeTab === 'experts'} onClick={() => setActiveTab('experts')} />
             <TabButton icon="chat" label={t('settings.tab.adapters')} active={activeTab === 'adapters'} onClick={() => setActiveTab('adapters')} />
@@ -126,6 +128,7 @@ export function Settings() {
           {activeTab === 'activity' && <ActivitySettings />}
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'h5Access' && <H5AccessSettings />}
+          {activeTab === 'imageGeneration' && <ImageGenerationSettings />}
           {activeTab === 'workflows' && <WorkflowsSettings />}
           {activeTab === 'experts' && <ExpertsSettings />}
           {activeTab === 'adapters' && <AdapterSettings />}

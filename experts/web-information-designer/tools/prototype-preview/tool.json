@@ -1,0 +1,18 @@
+{
+  "name": "PrototypePreview",
+  "purpose": "受控地渲染当前会话已写出的低/中/高保真 HTML。等待 PNG 完整写入，返回真实 CSS 视口、HTML/PNG 哈希、逐屏路径与布局问题；Read 必须读取回执中的最终图片。不是生图、视觉通过证明或真机测试。",
+  "input": {
+    "fidelity": "low | mid | high (default high)",
+    "screenId": "optional: matching data-screen-id, opens ?screen=ID&export=1"
+  },
+  "id": "prototype-preview",
+  "type": "hostBuiltinRef",
+  "hostToolId": "PrototypePreview",
+  "permissions": [
+    {
+      "description": "仅使用 PrototypePreview 读取当前 workDir 中的原型 HTML 与本地资源，输出 imgs/qa/<runId> PNG；不接受 URL、shell 或自定义文件路径。",
+      "id": "render-session-html-only"
+    }
+  ],
+  "network": "none"
+}

@@ -12,6 +12,8 @@ import {
 } from './workflowTemplateRegistryService.js'
 import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
+import { workflowTemplateSnapshotHash } from './workflowRuntimeTemplateService.js'
+import { workflowUsesContextCapsule } from './workflowContextCapsuleService.js'
 import { createWorkflowRuntimeContract } from './workflowCompletionGate.js'
 import type {
   EffortMode,
@@ -374,6 +376,7 @@ export class WorkflowSessionCreateService {
       sessionId,
       mode: 'workflow',
       templateSnapshot: runtimeTemplate,
+      templateSnapshotHash: workflowTemplateSnapshotHash(runtimeTemplate),
       template: {
         id: registryTemplate.id,
         version: registryTemplate.version,
@@ -391,6 +394,9 @@ export class WorkflowSessionCreateService {
       status: 'created',
       workflowStatus: 'created',
       runStatus: 'draft',
+      ...(workflowUsesContextCapsule({ templateIdentity: { id: registryTemplate.id } } as WorkflowSessionState)
+        ? { defaultPhaseContextStrategy: 'capsule' as const }
+        : {}),
       activePhaseId: templatePhases[0]?.id ?? null,
       workspaceRoot: workDir,
       activeWorkflowRunId: firstRunId,

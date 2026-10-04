@@ -27,20 +27,23 @@ afterEach(async () => {
   await fs.rm(tempDir, { recursive: true, force: true })
 })
 
-function makeService(fetchImpl: typeof globalThis.fetch, savedProvider: SavedProvider | null = provider) {
+function makeService(
+  fetchImpl: typeof globalThis.fetch,
+  savedProvider: SavedProvider | null = provider,
+  userSettings: Record<string, unknown> = {
+    imageGeneration: { enabled: true, providerId: provider.id, model: 'gpt-image-2' },
+  },
+) {
   return new ImageGenerationService({
     providerService: {
-      async getProvider() {
-        if (!savedProvider) throw new Error('Provider not found')
+      async getProvider(providerId) {
+        if (!savedProvider || providerId !== savedProvider.id) throw new Error('Provider not found')
         return savedProvider
-      },
-      async listProviders() {
-        return { providers: savedProvider ? [savedProvider] : [], activeId: savedProvider?.id ?? null }
       },
     },
     settingsService: {
       async getUserSettings() {
-        return {}
+        return userSettings
       },
     },
     fetch: fetchImpl,
@@ -49,8 +52,24 @@ function makeService(fetchImpl: typeof globalThis.fetch, savedProvider: SavedPro
 }
 
 describe('ImageGenerationService', () => {
-  test('returns an explicit unavailable result when no Provider is bound', async () => {
-    const service = makeService(async () => new Response('unexpected'), null)
+  test('never falls back to the active chat Provider when image generation is not explicitly configured', async () => {
+    const service = makeService(async () => new Response('unexpected'), provider, {})
+
+    const result = await service.preflight({})
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      availability: 'unavailable',
+      errorCode: 'IMAGE_GENERATION_NOT_CONFIGURED',
+    })
+  })
+
+  test('returns an explicit unavailable result when the user-selected image Provider no longer exists', async () => {
+    const service = makeService(
+      async () => new Response('unexpected'),
+      null,
+      { imageGeneration: { enabled: true, providerId: provider.id, model: 'gpt-image-2' } },
+    )
 
     const result = await service.preflight({})
 
@@ -67,7 +86,7 @@ describe('ImageGenerationService', () => {
       return Response.json({ data: [{ id: 'gpt-image-2' }] })
     })
 
-    const result = await service.preflight({ providerId: provider.id })
+    const result = await service.preflight({})
 
     expect(result).toMatchObject({
       status: 'available',
@@ -84,7 +103,7 @@ describe('ImageGenerationService', () => {
       return new Response('{"error":{"message":"prompt is required"}}', { status: 400 })
     })
 
-    const result = await service.preflight({ providerId: provider.id })
+    const result = await service.preflight({})
 
     expect(result).toMatchObject({
       status: 'available',
@@ -100,7 +119,7 @@ describe('ImageGenerationService', () => {
       return new Response('{"error":{"message":"No available channel for model gpt-image-2"}}', { status: 503 })
     })
 
-    const result = await service.preflight({ providerId: provider.id })
+    const result = await service.preflight({})
 
     expect(result).toMatchObject({
       status: 'unavailable',
@@ -152,7 +171,7 @@ describe('ImageGenerationService', () => {
   test('writes a real image from a non-stream JSON response', async () => {
     const service = makeService(async () => Response.json({ data: [{ b64_json: PIXEL_PNG_BASE64 }] }))
 
-    const result = await service.generate({ providerId: provider.id, prompt: 'A PNG', workDir: tempDir })
+    const result = await service.generate({ prompt: 'A PNG', workDir: tempDir })
 
     expect(result.status).toBe('generated')
     expect(await fs.stat(result.imagePath!)).toMatchObject({ size: Buffer.from(PIXEL_PNG_BASE64, 'base64').length })
@@ -161,7 +180,7 @@ describe('ImageGenerationService', () => {
   test('maps an unavailable relay model to a clear error without creating a placeholder', async () => {
     const service = makeService(async () => new Response('{"error":{"message":"No available channel for model gpt-image-2"}}', { status: 503 }))
 
-    const result = await service.generate({ providerId: provider.id, prompt: 'A puppy', workDir: tempDir })
+    const result = await service.generate({ prompt: 'A puppy', workDir: tempDir })
 
     expect(result).toMatchObject({
       status: 'unavailable',
@@ -174,7 +193,7 @@ describe('ImageGenerationService', () => {
   test('rejects a non-image Base64 payload and never writes it as a PNG', async () => {
     const service = makeService(async () => Response.json({ data: [{ b64_json: Buffer.from('not-an-image').toString('base64') }] }))
 
-    const result = await service.generate({ providerId: provider.id, prompt: 'A valid image', workDir: tempDir })
+    const result = await service.generate({ prompt: 'A valid image', workDir: tempDir })
 
     expect(result).toMatchObject({ status: 'failed', errorCode: 'IMAGE_RESPONSE_INVALID_IMAGE' })
     await expect(fs.access(path.join(tempDir, 'output', 'imagegen'))).rejects.toThrow()
