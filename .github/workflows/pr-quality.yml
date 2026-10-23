@@ -37,6 +37,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install root dependencies
+        run: bun install
+
       - name: Run policy tests
         run: bun run check:policy
 
