@@ -13,6 +13,13 @@ describe('PR quality workflow', () => {
     expect(workflow).toContain("if: needs.change-policy.outputs.coverage_checks == 'true'")
   })
 
+  test('installs root dependencies before policy tests on a clean runner', () => {
+    const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
+    const policyJob = workflow.split('  change-policy:')[1].split('  desktop-checks:')[0]
+    expect(policyJob).toContain('name: Install root dependencies\n        run: bun install')
+    expect(policyJob.indexOf('name: Install root dependencies')).toBeLessThan(policyJob.indexOf('name: Run policy tests'))
+  })
+
   test('builds frontend resources before the clean-checkout native compile job', () => {
     const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
     const nativeJob = workflow.split('  desktop-native-checks:')[1].split('  docs-checks:')[0]
