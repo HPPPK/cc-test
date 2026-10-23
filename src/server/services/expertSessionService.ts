@@ -16,7 +16,7 @@ import { EXPERT_TEMPLATE_FILL_FORMAT, deriveExpertTemplateFillSchema, renderExpe
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 import { sessionRuntimeTransitionService } from './sessionRuntimeTransitionService.js'
 import { withExpertResearchSourceDispatchLock } from './expertResearchSourceDispatchLock.js'
-import { resolveExpertResearchArtifactPath, type ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
+import { expertResearchPathApiFor, resolveExpertResearchArtifactPath, type ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
 import { hasAcceptedExpertResearchDelivery, resolveExpertResearchDeliveryDecision, type ExpertResearchDeliveryState } from './expertResearchDeliveryService.js'
 import { resolveExpertResearchBrowserConnection, resolveExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
 import { expertBrowserActivityService } from './expertBrowserActivityService.js'
@@ -167,11 +167,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeTemplateFillOutputPath(pathApi: typeof path, value: string): string {
-  return pathApi.resolve(value).split(pathApi.sep).join('/').toLowerCase()
+  const resolved = pathApi.resolve(value).split(pathApi.sep).join('/')
+  return pathApi === path.win32 ? resolved.toLowerCase() : resolved
 }
 
 function sameTemplateFillOutputPath(left: string, right: string): boolean {
-  const pathApi = path.win32.isAbsolute(left) || path.win32.isAbsolute(right) ? path.win32 : path
+  const pathApi = expertResearchPathApiFor(left)
   return normalizeTemplateFillOutputPath(pathApi, left) === normalizeTemplateFillOutputPath(pathApi, right)
 }
 
@@ -188,7 +189,13 @@ function resolveTemplateFillOutputPath(workDir: string | undefined, value: unkno
     throw new ApiError(409, '当前会话缺少可验证的报告输出目录。', 'EXPERT_TEMPLATE_OUTPUT_PATH_REQUIRED')
   }
   const requestedPath = value.trim()
-  const pathApi = path.win32.isAbsolute(workDir) || path.win32.isAbsolute(requestedPath) ? path.win32 : path
+  const pathApi = expertResearchPathApiFor(workDir)
+  if (
+    /^[a-zA-Z]:(?![\\/])/.test(requestedPath)
+    || (pathApi === path.posix && expertResearchPathApiFor(requestedPath) === path.win32)
+  ) {
+    throw ApiError.badRequest('模板输出路径必须使用当前会话 workDir 的路径格式。')
+  }
   const resolvedWorkDir = pathApi.resolve(workDir)
   const resolvedPath = pathApi.isAbsolute(requestedPath)
     ? pathApi.resolve(requestedPath)

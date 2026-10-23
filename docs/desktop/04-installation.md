@@ -2,7 +2,7 @@
 
 ## 下载
 
-前往 [GitHub Releases](https://github.com/NanmiCoder/cc-jiangxia/releases) 下载对应平台的安装包：
+前往 [GitHub Releases](https://github.com/HPPPK/cc-test/releases) 下载对应平台的安装包：
 
 | 平台 | 文件 |
 |------|------|
@@ -54,3 +54,13 @@ bun run dev --host 127.0.0.1 --port 2024
 **Q: Windows 提示缺少 WebView2？**
 
 从 [Microsoft 官方](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) 下载安装 WebView2 运行时。
+
+## 本仓库的更新通道
+
+本仓库构建的桌面应用从 `HPPPK/cc-test` 的 Release 获取更新清单和安装包：
+
+`https://github.com/HPPPK/cc-test/releases/latest/download/latest.json`
+
+“设置 → 关于”的项目、更新日志和问题反馈链接也指向该仓库。上游项目署名与历史发布说明保留原始记录。
+
+更新源属于已打包应用的配置。修改仓库配置不会改变先前安装包中的地址；使用旧更新源的应用需要安装包含新配置的构建，之后才会检查 `cc-test` 通道。新构建仍需使用与应用公钥匹配的签名，且版本号高于已安装版本，才能验证自动升级。

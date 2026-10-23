@@ -21,6 +21,12 @@ for (const finalMode of ['finalize', 'patch'] as const) test(finalMode + ': real
   const { getEmptyToolPermissionContext } = await import('../../../src/Tool.js')
   const { createFileStateCacheWithSizeLimit } = await import('../../../src/utils/fileStateCache.js')
   const { createAssistantMessage } = await import('../../../src/utils/messages.js')
+  // Only remote token counting/model discovery are fixtures. Real Read/Write,
+  // token-limit fallback, research gates and localhost commit transport stay active.
+  const models = await import('../../../src/utils/model/model.js')
+  const tokenEstimation = await import('../../../src/services/tokenEstimation.js')
+  spyOn(models, 'getMainLoopModel').mockReturnValue('claude-sonnet-4-6')
+  spyOn(tokenEstimation, 'countTokensWithAPI').mockResolvedValue(undefined)
   const { FileReadTool } = await import('../../../src/tools/FileReadTool/FileReadTool.js')
   const { getFileWriteToolForCurrentRuntime } = await import('../../../src/tools/FileWriteTool/FileWriteTool.js')
   const { AskUserQuestionTool } = await import('../../../src/tools/AskUserQuestionTool/AskUserQuestionTool.js')

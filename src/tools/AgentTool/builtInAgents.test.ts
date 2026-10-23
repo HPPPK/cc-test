@@ -52,16 +52,17 @@ describe('built-in agents', () => {
 
 test('includes the file-first Expert evidence research role without a subagent question tool', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-researcher')
-  expect(agent?.tools).toEqual(['Playwright', 'Read', 'Write'])
+  expect(agent?.tools).toEqual(['Playwright', 'Read', 'Write', 'Edit'])
   const prompt = agent?.getSystemPrompt() ?? ''
   expect(prompt).toContain('real Playwright actions with a non-empty actions array')
   expect(prompt).toContain('A search page is only for discovery')
   expect(prompt).toContain('page-level failure')
-  expect(prompt).toContain('full company core catalog is collectively distributed across the three researchers')
-  expect(prompt).toContain('automatic Required route: yes contract')
+  expect(prompt).toContain('three researchers cover the full company core catalog exactly once')
+  expect(prompt).toContain('For Required routes explicitly included in this task and marked Required route: yes')
   expect(prompt).toContain('human-verification handoff')
   expect(prompt).toContain('do not bypass it')
   expect(prompt).toContain('or call AskUserQuestion')
+  expect(prompt).toContain('use Edit for incremental additions without rewriting prior evidence')
   expect(prompt).toContain('full evidence ledger')
   expect(prompt).toContain('runtime derives its internal artifact type')
   expect(prompt).not.toContain('research_artifact:')
@@ -81,7 +82,8 @@ test('includes the file-first Expert evidence review role', () => {
   expect(prompt).toContain('Do not repeat any finding, evidence, URL, report text')
   expect(prompt).toContain('N keyword snapshots')
   expect(prompt).toContain('direct-competitor price gap')
-  expect(prompt).toContain('actual [engine=...]')  expect(prompt).toContain('candidate only')
+  expect(prompt).toContain('actual [engine=...]')
+  expect(prompt).toContain('candidate only')
   expect(prompt).toContain('fixed platform list or extra browsing')
 
 })
@@ -110,7 +112,8 @@ test('includes the constrained rendered-output completeness reviewer', () => {
   expect(prompt).toContain('finalize the reviewed draft unchanged')
   expect(prompt).toContain('do not browse')
   expect(prompt).toContain('final assistant response must be exactly one short line')
-  expect(prompt).toContain('Do not repeat any finding, evidence, URL, report text')  expect(prompt).toContain('REPORT_SCOPE, DATA_DECLARATION, EVIDENCE_STATUS_SUMMARY')
+  expect(prompt).toContain('Do not repeat any finding, evidence, URL, report text')
+  expect(prompt).toContain('REPORT_SCOPE, DATA_DECLARATION, EVIDENCE_STATUS_SUMMARY')
   expect(prompt).toContain('HTML source table')
   expect(prompt).toContain('do not demand fixed-platform browsing, source-count padding, or a user question')
 

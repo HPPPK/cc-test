@@ -17,6 +17,9 @@ import type {
 } from '../types/providerImportExport'
 import type { AppMode, ThemeMode, UpdateProxySettings } from '../types/settings'
 
+const shellMock = vi.hoisted(() => ({ open: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@tauri-apps/plugin-shell', () => shellMock)
+
 const MOCK_DELETE_PROVIDER = vi.fn()
 const MOCK_GET_SETTINGS = vi.fn()
 const MOCK_UPDATE_SETTINGS = vi.fn()
@@ -1537,6 +1540,18 @@ describe('Settings > About tab', () => {
       installUpdate: vi.fn().mockResolvedValue(undefined),
       dismissPrompt: vi.fn(),
     })
+  })
+
+  it('opens the cc-test repository, release history, and issue tracker', async () => {
+    shellMock.open.mockClear()
+    render(<Settings />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /HPPPK\/cc-test/ }))
+    await waitFor(() => expect(shellMock.open).toHaveBeenLastCalledWith('https://github.com/HPPPK/cc-test'))
+    fireEvent.click(screen.getByRole('button', { name: 'Release Notes' }))
+    await waitFor(() => expect(shellMock.open).toHaveBeenLastCalledWith('https://github.com/HPPPK/cc-test/releases'))
+    fireEvent.click(screen.getByRole('button', { name: /Report an Issue/ }))
+    await waitFor(() => expect(shellMock.open).toHaveBeenLastCalledWith('https://github.com/HPPPK/cc-test/issues'))
   })
 
   it('renders release notes with markdown formatting', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { handleSessionsApi } from './sessions.js'
@@ -17,7 +17,7 @@ const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
 const tempRoots: string[] = []
 
 async function makeTempRoot(prefix: string) {
-  const root = await mkdtemp(path.join(tmpdir(), prefix))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), prefix)))
   tempRoots.push(root)
   return root
 }

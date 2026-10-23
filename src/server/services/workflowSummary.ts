@@ -14,6 +14,7 @@ import type {
   WorkflowSessionState,
   WorkflowSessionSummary,
   WorkflowCompletionSummary,
+  CompletionSubmission,
 } from './workflowTypes.js'
 
 type WorkflowRecommendedSkillStatusSummary = {
@@ -67,7 +68,9 @@ export function workflowSummaryFromState(state: WorkflowSessionState): WorkflowS
     updatedAt: state.updatedAt,
     label: 'Workflow state',
   }
-  return workflowSummaryFromMetadata(stateToWorkflowMetadata(state, pointer))
+  const summary = workflowSummaryFromMetadata(stateToWorkflowMetadata(state, pointer))
+  const blocked = summary.pendingConfirmation ? undefined : activeBlockedSubmissionSummary(state)
+  return { ...summary, ...blocked }
 }
 
 export function stateToWorkflowMetadata(
@@ -438,7 +441,52 @@ function isWorkflowRecommendedSkillStatusSummary(
   )
 }
 
+function activeBlockedSubmissionSummary(state: WorkflowSessionState): Record<string, unknown> | undefined {
+  const phase = state.phases.find((candidate) => candidate.id === state.activePhaseId)
+  for (const pointer of [...(phase?.artifactPointers ?? [])].reverse()) {
+    if (!pointer || typeof pointer !== 'object' || Array.isArray(pointer)) continue
+    const artifact = pointer as Record<string, unknown>
+    const candidate = artifact.submission
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    const record = candidate as Record<string, unknown>
+    if (
+      (record.status !== 'blocked' && record.status !== 'unable')
+      || typeof record.phaseId !== 'string'
+      || record.phaseId !== phase?.id
+      || typeof record.rationale !== 'string'
+      || !record.handoff
+      || typeof record.handoff !== 'object'
+      || Array.isArray(record.handoff)
+      || !Array.isArray(record.evidence)
+      || !record.evidence.every((item) => item && typeof item === 'object' && !Array.isArray(item))
+    ) continue
+    const submission = candidate as CompletionSubmission
+    return {
+      blockedReason: submission.rationale,
+      blockedStatus: submission.status,
+      blockedEvidence: submission.evidence,
+      blockedArtifact: {
+        artifactId: typeof artifact.artifactId === 'string' ? artifact.artifactId : `${submission.phaseId}-${submission.status}`,
+        phaseId: submission.phaseId,
+        status: submission.status,
+        label: typeof artifact.title === 'string' ? artifact.title : `${submission.phaseId} ${submission.status}`,
+        handoffSummary: typeof submission.handoff.summary === 'string' ? submission.handoff.summary : submission.rationale,
+        evidenceSummary: submission.evidence
+          .map((item) => typeof item.ref === 'string' ? item.ref : typeof item.label === 'string' ? item.label : '')
+          .filter(Boolean)
+          .join('; '),
+        createdAt: typeof artifact.createdAt === 'string' ? artifact.createdAt : new Date(0).toISOString(),
+        transitionId: typeof artifact.artifactId === 'string' ? artifact.artifactId : undefined,
+        completionId: typeof artifact.artifactId === 'string' ? artifact.artifactId : undefined,
+        provenance: submission.status === 'blocked' ? 'agent-blocked' : 'agent-unable',
+      },
+    }
+  }
+  return undefined
+}
+
 function visibleModelResolution(state: WorkflowSessionState): WorkflowModelResolution | undefined {
+  if (isWorkflowModelResolution(state.activeModelResolution)) return state.activeModelResolution
   const activePhaseRun = state.activePhaseId
     ? state.phaseRuns.find((phase) => phase.phaseId === state.activePhaseId)
     : undefined
@@ -469,7 +517,7 @@ function visibleModelResolution(state: WorkflowSessionState): WorkflowModelResol
         requestedModel: phase.requestedModel ?? null,
         actualModel: phase.actualModel ?? null,
         providerId: null,
-        source: 'phase-request',
+        source: phase.actualModel ? 'phase-request' : 'none',
         fallbackApplied: Boolean(phase.fallbackReason),
         fallbackReason: phase.fallbackReason ?? null,
         resolvedAt: state.updatedAt,

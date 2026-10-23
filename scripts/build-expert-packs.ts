@@ -64,7 +64,11 @@ export async function buildBundledExpertPacks(options: BuildBundledExpertPacksOp
         : relativePath.startsWith('tools/') || relativePath.startsWith('skills/')
           ? relativePath
           : `${expertRoot}/${relativePath}`
-      zipEntries[zipPath] = new Uint8Array(await readFile(filePath))
+      const bytes = await readFile(filePath)
+      // Keep bundled text stable across Git checkout newline settings; binary assets remain byte-exact.
+      zipEntries[zipPath] = /\.(?:json|md|html|txt)$/i.test(relativePath)
+        ? Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'), 'utf8')
+        : new Uint8Array(bytes)
     }
 
     const outputPath = path.join(outputDir, `${manifest.packId}.zip`)

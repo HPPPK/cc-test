@@ -23,7 +23,7 @@ async function renderAndCommit(service: ExpertSessionService, sessionId: string,
 const tempRoots: string[] = []
 
 async function makeTempRoot(prefix: string) {
-  const root = await mkdtemp(path.join(tmpdir(), prefix))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), prefix)))
   tempRoots.push(root)
   return root
 }
@@ -298,6 +298,37 @@ describe('ExpertSessionService', () => {
     expect(upgraded?.researchArtifactPolicy?.routeCompletion).toBeUndefined()
   })
 
+
+  it('rejects Windows path syntax in a POSIX report session', async () => {
+    const configRoot = await makeTempRoot('expert-path-format-config-')
+    const projectRoot = await makeTempRoot('expert-path-format-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    await sessionService.appendSessionMetadata(sessionId, { workDir: '/tmp/Research' })
+    for (const outputPath of [String.raw`\tmp\Research\report.html`, 'C:report.html', 'C:/tmp/Research/report.html', '//server/share/report.html']) {
+      await expect(service.renderTemplateFill(sessionId, {
+        templateId: 'session-v1', fields: { REPORT_TITLE: 'Report', SOURCE_ROWS: [['[1]', 'https://example.com']] },
+      }, { outputPath })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    }
+  })
+
+  it('commits a report at the exact native session path', async () => {
+    const configRoot = await makeTempRoot('expert-native-path-config-')
+    const projectRoot = await makeTempRoot('expert-native-path-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const outputPath = path.join(projectRoot, 'report.html')
+    const rendered = await renderAndCommit(service, sessionId, {
+      templateId: 'session-v1',
+      fields: { REPORT_TITLE: 'Native path report', SOURCE_ROWS: [['[1]', 'https://example.com']] },
+    }, { outputPath })
+    expect(await readFile(outputPath, 'utf8')).toBe(rendered.content)
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDelivery?.reportPath).toBe(outputPath)
+  })
 
   it('enters and exits package-driven Expert Mode without workflow state', async () => {
     const configRoot = await makeTempRoot('expert-session-config-')

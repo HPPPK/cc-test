@@ -18,8 +18,13 @@ describe('chat blocks', () => {
     const { container } = render(<ThinkingBlock content="this is a long internal reasoning trace" isActive />)
 
     expect(screen.getByText(/Thinking/)).toBeTruthy()
-    expect(container.textContent).toContain('this is a long internal reasoning trace')
+    expect(container.textContent).not.toContain('this is a long internal reasoning trace')
     expect(container.querySelector('.thinking-cursor')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(container.textContent).toContain('this is a long internal reasoning trace')
+    expect(container.querySelector('.thinking-cursor')).not.toBeNull()
   })
 
   it('does not animate inactive historical thinking blocks', () => {

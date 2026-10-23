@@ -22,9 +22,11 @@ const envKeys = [
 const initialEnv = new Map(envKeys.map((key) => [key, process.env[key]]))
 const initialFetch = globalThis.fetch
 
+const outputRoot = path.resolve('expert-session-output')
+
 function enableTemplateFillSession(): void {
   process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE = '1'
-  process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT = 'C:/expert-session-output'
+  process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT = outputRoot
   process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'expert-session-1'
   process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456/'
 }
@@ -62,7 +64,7 @@ describe('expert template-fill Write runtime', () => {
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>report</html>' }))
     }
 
-    const inSessionPath = path.resolve('C:/expert-session-output', 'report.html')
+    const inSessionPath = path.resolve(outputRoot, 'report.html')
     await expect(renderExpertTemplateFillForWrite({
       file_path: inSessionPath,
       content: '',
@@ -77,7 +79,7 @@ describe('expert template-fill Write runtime', () => {
     expect(rendererCalls).toBe(1)
 
     await expect(renderExpertTemplateFillForWrite({
-      file_path: path.resolve('C:/another-session-output', 'report.html'),
+      file_path: path.resolve('another-session-output', 'report.html'),
       content: '',
       expert_output: { templateId: 'commercialization-report-v1', fields: {} },
     })).rejects.toThrow('parent is exactly the current session workDir')
@@ -131,7 +133,7 @@ describe('expert template-fill Write runtime', () => {
 
     await expect(renderExpertTemplateFillForWrite({ file_path, content })).resolves.toMatchObject({
       kind: 'research-artifact',
-      filePath: path.resolve('C:/expert-session-output', file_path),
+      filePath: path.resolve(outputRoot, file_path),
     })
   })
 
@@ -231,7 +233,7 @@ describe('expert template-fill Write runtime', () => {
 
     await expect(renderExpertTemplateFillForWrite({ file_path, content: dualMarketPlan })).resolves.toMatchObject({
       kind: 'research-artifact',
-      filePath: path.resolve('C:/expert-session-output', file_path),
+      filePath: path.resolve(outputRoot, file_path),
     })
   })
 
@@ -264,7 +266,7 @@ describe('expert template-fill Write runtime', () => {
       content: `# 调研任务说明\n\n产品形态：桌面工具。`, 
     })).resolves.toEqual({
       kind: 'research-artifact',
-      filePath: path.resolve('C:/expert-session-output', 'commercialization-research/01-research-brief.md'),
+      filePath: path.resolve(outputRoot, 'commercialization-research/01-research-brief.md'),
       content: `# 调研任务说明\n\n产品形态：桌面工具。`,
     })
     expect(rendererCalled).toBe(false)
@@ -279,7 +281,7 @@ describe('expert template-fill Write runtime', () => {
     // A read uses the same declared file whether the runtime supplies its
     // session-relative spelling or its canonical absolute spelling.
     expect(isSessionResearchArtifactReadAllowed(
-      'C:/expert-session-output/commercialization-research/01-research-brief.md',
+      path.join(outputRoot, 'commercialization-research/01-research-brief.md'),
       ['research-brief'],
     )).toBe(true)
 
@@ -333,7 +335,7 @@ describe('expert template-fill Write runtime', () => {
     await expect(renderExpertTemplateFillForWrite(finalWrite)).rejects.toThrow('支持分页累计读取')
     await expect(renderExpertTemplateFillForWrite(finalWrite)).rejects.toThrow('offset=1')
 
-    recordMainAgentReportFieldAbsorptionRead('C:/expert-session-output/commercialization-research/07-report-field-absorption.md')
+    recordMainAgentReportFieldAbsorptionRead(path.join(outputRoot, 'commercialization-research/07-report-field-absorption.md'))
     await expect(renderExpertTemplateFillForWrite(finalWrite)).resolves.toMatchObject({ kind: 'rendered-template-fill' })
     expect(rendererCalls).toBe(1)
   })
@@ -356,7 +358,7 @@ describe('expert template-fill Write runtime', () => {
       calls++
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>report</html>' }))
     }
-    recordMainAgentReportFieldAbsorptionRead('C:/expert-session-output/commercialization-research/07-report-field-absorption.md')
+    recordMainAgentReportFieldAbsorptionRead(path.join(outputRoot, 'commercialization-research/07-report-field-absorption.md'))
 
     const initial = await renderExpertTemplateFillForWrite({
       file_path: 'old-photo-report.html', content: '',
@@ -371,10 +373,10 @@ describe('expert template-fill Write runtime', () => {
       briefPath: 'commercialization-research/01-research-brief.md',
       absorptionPath: 'commercialization-research/07-report-field-absorption.md',
       completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
-      reportPath: path.resolve('C:/expert-session-output', 'old-photo-report.html'),
+      reportPath: path.resolve(outputRoot, 'old-photo-report.html'),
     })
     expect(isCurrentExpertTemplateOutputReviewReportPath(review?.reportPath)).toBe(true)
-    expect(isCurrentExpertTemplateOutputReviewReportPath('C:/expert-session-output/other.html')).toBe(false)
+    expect(isCurrentExpertTemplateOutputReviewReportPath(path.join(outputRoot, 'other.html'))).toBe(false)
     expect(expertTemplateFillPostWriteNotice(review?.reportPath)).toContain('expert-evidence-output-reviewer')
 
     await expect(renderExpertTemplateFillForWrite({
@@ -389,7 +391,7 @@ describe('expert template-fill Write runtime', () => {
     })).rejects.toThrow('otherwise mode="finalize"')
     expect(calls).toBe(1)
 
-    recordMainAgentReportCompletenessReviewRead('C:/expert-session-output/commercialization-research/08-report-completeness-review.md')
+    recordMainAgentReportCompletenessReviewRead(path.join(outputRoot, 'commercialization-research/08-report-completeness-review.md'))
     expect(expertTemplateFillPostWriteNotice(review?.reportPath)).toBeUndefined()
     const finalized = await renderExpertTemplateFillForWrite({
       file_path: 'old-photo-report.html', content: '',
@@ -413,7 +415,7 @@ describe('expert template-fill Write runtime', () => {
       completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
       maxCharacters: 90_000,
     })
-    recordMainAgentReportFieldAbsorptionRead('C:/expert-session-output/commercialization-research/07-report-field-absorption.md')
+    recordMainAgentReportFieldAbsorptionRead(path.join(outputRoot, 'commercialization-research/07-report-field-absorption.md'))
     globalThis.fetch = async () => new Response(JSON.stringify({
       templateId: 'commercialization-report-v1', content: '<html>first repaired draft</html>', completionReviewRequired: true,
     }))
@@ -425,13 +427,13 @@ describe('expert template-fill Write runtime', () => {
     if (initial.kind !== 'rendered-template-fill') throw new Error('expected rendered write')
     await initial.confirmWrite()
     const review = currentExpertTemplateOutputReviewContext()
-    expect(review?.reportPath).toBe(path.resolve('C:/expert-session-output', 'repaired-report.html'))
+    expect(review?.reportPath).toBe(path.resolve(outputRoot, 'repaired-report.html'))
     expect(expertTemplateFillPostWriteNotice(review?.reportPath)).toContain('expert-evidence-output-reviewer')
     await expect(renderExpertTemplateFillForWrite({
       file_path: 'repaired-report.html', content: '',
       expert_output: { templateId: 'commercialization-report-v1', mode: 'finalize', fields: {} },
     })).rejects.toThrow('EXPERT_TEMPLATE_FILL_OUTPUT_REVIEW_READ_REQUIRED')
-    recordMainAgentReportCompletenessReviewRead('C:/expert-session-output/commercialization-research/08-report-completeness-review.md')
+    recordMainAgentReportCompletenessReviewRead(path.join(outputRoot, 'commercialization-research/08-report-completeness-review.md'))
     globalThis.fetch = async () => new Response(JSON.stringify({
       templateId: 'commercialization-report-v1', content: '<html>reviewed final</html>', completionReviewRequired: false,
     }))
@@ -446,10 +448,10 @@ describe('expert template-fill Write runtime', () => {
 
   test('accepts the server-persisted same-session HTML path after in-process review state is gone', () => {
     resetMainAgentReportFieldAbsorptionReadsForTests()
-    const reportPath = 'C:/expert-session-output/persisted-report.html'
+    const reportPath = path.join(outputRoot, 'persisted-report.html')
     expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath)).toBe(false)
     expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath, reportPath)).toBe(true)
-    expect(isCurrentExpertTemplateOutputReviewReportPath('C:/expert-session-output/other.html', reportPath)).toBe(false)
+    expect(isCurrentExpertTemplateOutputReviewReportPath(path.join(outputRoot, 'other.html'), reportPath)).toBe(false)
   })
 
   test('forwards a minimal patch to the same session renderer and returns fixed-template HTML', async () => {
@@ -471,7 +473,7 @@ describe('expert template-fill Write runtime', () => {
     })).resolves.toEqual({
       kind: 'rendered-template-fill',
       confirmWrite: expect.any(Function),
-      filePath: path.resolve('C:/expert-session-output', '产品-商业化调研报告.html'),
+      filePath: path.resolve(outputRoot, '产品-商业化调研报告.html'),
       content: '<html>patched report</html>',
       templateId: 'commercialization-report-v1',
     })
@@ -479,7 +481,7 @@ describe('expert template-fill Write runtime', () => {
     expect(requests).toEqual([{
       url: 'http://127.0.0.1:3456/api/sessions/expert-session-1/expert/template-fill',
       body: {
-        outputPath: path.resolve('C:/expert-session-output', '产品-商业化调研报告.html'),
+        outputPath: path.resolve(outputRoot, '产品-商业化调研报告.html'),
         payload: {
           templateId: 'commercialization-report-v1',
           mode: 'patch',

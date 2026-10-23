@@ -205,12 +205,13 @@ describe("expert evidence research Read policy", () => {
   });
 
   test("allows only explicitly attached files and directories as evidence material", () => {
+    const evidenceRoot = join(tmpdir(), "expert-evidence-material");
     const messages = [
       {
         type: "attachment",
         attachment: {
           type: "file",
-          filename: "C:\\research\\user-brief.pdf",
+          filename: join(evidenceRoot, "user-brief.pdf"),
           content: {},
           displayPath: "user-brief.pdf",
         },
@@ -219,7 +220,7 @@ describe("expert evidence research Read policy", () => {
         type: "attachment",
         attachment: {
           type: "directory",
-          path: "C:\\research\\customer-interviews",
+          path: join(evidenceRoot, "customer-interviews"),
           content: "",
           displayPath: "customer-interviews",
         },
@@ -228,19 +229,25 @@ describe("expert evidence research Read policy", () => {
 
     expect(
       isExpertEvidenceResearchReadAllowed(
-        "C:\\research\\user-brief.pdf",
+        join(evidenceRoot, "user-brief.pdf"),
         messages,
       ),
     ).toBe(true);
     expect(
       isExpertEvidenceResearchReadAllowed(
-        "C:\\research\\customer-interviews\\session-01.md",
+        join(evidenceRoot, "customer-interviews", "session-01.md"),
         messages,
       ),
     ).toBe(true);
     expect(
-      isExpertEvidenceResearchReadAllowed("C:\\workspace\\README.md", messages),
+      isExpertEvidenceResearchReadAllowed(join(tmpdir(), "workspace", "README.md"), messages),
     ).toBe(false);
+    for (const filePath of [
+      join(evidenceRoot, "customer-interviews-other", "session-01.md"),
+      join(evidenceRoot, "customer-interviews", "..", "private.md"),
+    ]) {
+      expect(isExpertEvidenceResearchReadAllowed(filePath, messages)).toBe(false);
+    }
   });
 });
 

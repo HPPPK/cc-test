@@ -55,6 +55,29 @@ describe('buildBundledExpertPacks', () => {
     expect(zip.has('THIRD_PARTY_NOTICES.md')).toBe(true)
     expect(zip.has('third_party/sample/LICENSE')).toBe(true)
   })
+  it('produces identical ZIP bytes for LF and CRLF text while preserving binary resources', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'expert-newlines-'))
+    roots.push(root)
+    const sourceDir = path.join(root, 'experts')
+    const packDir = path.join(sourceDir, 'newline-pack')
+    await mkdir(packDir, { recursive: true })
+    await writeFile(path.join(packDir, 'manifest.json'), JSON.stringify({
+      packId: 'newline-pack', type: 'expert-pack',
+      entrypoints: { experts: ['experts/newline-pack/expert.json'] },
+    }))
+    await writeFile(path.join(packDir, 'expert.json'), '{}\n')
+    const binary = new Uint8Array([0, 13, 10, 255])
+    await writeFile(path.join(packDir, 'asset.bin'), binary)
+    const build = async () => readFile((await buildBundledExpertPacks({ sourceDir, outputDir: path.join(root, 'out') }))[0]!)
+    await writeFile(path.join(packDir, 'guide.md'), '# Guide\n正文\n')
+    const lf = await build()
+    await writeFile(path.join(packDir, 'guide.md'), '# Guide\r\n正文\r\n')
+    expect(await build()).toEqual(lf)
+    const zip = await adapter.read(lf)
+    expect(await zip.readBytes('experts/newline-pack/asset.bin')).toEqual(binary)
+    expect(await zip.readText('experts/newline-pack/guide.md')).toBe('# Guide\n正文\n')
+  })
+
   it('builds only the requested pack without creating ZIPs for sibling packs', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'filtered-expert-pack-'))
     roots.push(root)
@@ -219,9 +242,9 @@ describe('buildBundledExpertPacks', () => {
       expect(sourceLibrarySkill).toContain(purpose)
       expect(runtime.promptSnapshot).toContain(purpose)
     }
-    expect(systemPrompt).toBe(await readFile(path.join(sourcePackDir, 'prompts/system.md'), 'utf8'))
-    expect(outputProtocol).toBe(await readFile(path.join(sourcePackDir, 'outputs/material-protocol.json'), 'utf8'))
-    expect(sourceLibrarySkill).toBe(await readFile(path.join(sourcePackDir, 'skills/research-source-library/SKILL.md'), 'utf8'))
+    expect(systemPrompt).toBe(await readFile(path.join(sourcePackDir, 'prompts/system.md'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
+    expect(outputProtocol).toBe(await readFile(path.join(sourcePackDir, 'outputs/material-protocol.json'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
+    expect(sourceLibrarySkill).toBe(await readFile(path.join(sourcePackDir, 'skills/research-source-library/SKILL.md'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
     expect(parsedOutputProtocol.postReviewEvidenceAbsorption.rules).toEqual(expect.arrayContaining([
       expect.stringContaining('acquired-but-unused is not unobtained or access-limited'),
       expect.stringContaining('E reads the brief and independent review to EOF first'),
@@ -234,7 +257,7 @@ describe('buildBundledExpertPacks', () => {
       expect.stringContaining('not a fixed-platform quota or a reason to block an evidence-gap report'),
     ]))
     const fieldEvidenceSkill = await zip.readText(fieldEvidenceSkillPath)
-    expect(fieldEvidenceSkill).toBe(await readFile(path.join(sourcePackDir, fieldEvidenceSkillPath), 'utf8'))
+    expect(fieldEvidenceSkill).toBe(await readFile(path.join(sourcePackDir, fieldEvidenceSkillPath), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
     for (const guidance of ['未列入来源表不等于未取得', 'Read/Write']) {
       expect(systemPrompt).toContain(guidance)
       expect(fieldEvidenceSkill).toContain(guidance)
@@ -418,7 +441,7 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('未打开的平台只能称为候选入口、本轮未执行到或按产品判断当前不适用')
     expect(systemPrompt).toContain('net::ERR_CONNECTION_CLOSED')
     expect(systemPrompt).toContain('最终回传固定为一行文件回执')
-    expect(systemPrompt).toContain('两种情况都只允许一次终态 Write')
+    expect(systemPrompt).toContain('两种情况都只允许一次成功确认的终态 Write')
     expect(systemPrompt).toContain('直接证据暂时取不到时，每个板块仍要基于已核验事实')
     expect(systemPrompt).toContain('背景路线核验')
     expect(systemPrompt).toContain('不得重复研究内容')
@@ -507,7 +530,7 @@ describe('buildBundledExpertPacks', () => {
     const registry = new ExpertPackRegistryService()
     const expectedVersions: Record<string, string> = {
       'repo-health-check': '1.3.0',
-      'web-information-designer': '1.5.0',
+      'web-information-designer': '1.5.1',
     }
 
     for (const packId of expected) {
@@ -524,7 +547,7 @@ describe('buildBundledExpertPacks', () => {
     const prototypeExpert = JSON.parse(await prototypeZip.readText('experts/web-information-designer/expert.json')) as Record<string, unknown>
     expect(prototypeManifest.runtimePolicy).toEqual({
       mode: 'prototype-visual-workflow',
-      allowedToolNames: ['AskUserQuestion', 'Playwright', 'Read', 'Write', 'Bash'],
+      allowedToolNames: ['AskUserQuestion', 'Playwright', 'Read', 'Write', 'Bash', 'PrototypePreview'],
       requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
     })
     expect(prototypeExpert).not.toHaveProperty('runtimePolicy')
@@ -606,17 +629,17 @@ describe('buildBundledExpertPacks', () => {
     }
     expect(webInformationZip.readJson('manifest.json')).resolves.toMatchObject({
       name: '原型图demo',
-      version: '1.5.0',
+      version: '1.5.1',
       entrypoints: { skills: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'] },
       runtimePolicy: {
         mode: 'prototype-visual-workflow',
-        allowedToolNames: ['AskUserQuestion', 'Playwright', 'Read', 'Write', 'Bash'],
+        allowedToolNames: ['AskUserQuestion', 'Playwright', 'Read', 'Write', 'Bash', 'PrototypePreview'],
         requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
       },
     })
     expect(webInformationExpert).toMatchObject({
       name: '原型图demo',
-      version: '1.5.0',
+      version: '1.5.1',
       skillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
     })
     expect(webInformationExpert).not.toHaveProperty('runtimePolicy')
@@ -635,15 +658,16 @@ describe('buildBundledExpertPacks', () => {
     expect(webInformationPrompt).toContain('01-low-fidelity.html')
     expect(webInformationPrompt).toContain('02-mid-fidelity.html')
     expect(webInformationPrompt).toContain('03-high-fidelity.html')
-    expect(webInformationPrompt).toContain('CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE')
-    expect(webInformationPrompt).toContain('Playwright 仍只用于公开研究')
+    expect(webInformationPrompt).toContain('PrototypePreview')
+    expect(webInformationPrompt).toContain('等待 PNG 写完')
+    expect(webInformationPrompt).toContain('只做匿名、只读的公开网页研究')
     expect(webInformationPrompt).toContain('不能写成已经在真实 iOS、Android、macOS 或 Windows 设备上完成验证')
     expect(webInformationPrompt).toContain('演示反馈，待替换')
     expect(webInformationPrompt).toContain('视觉质量硬闸门')
     expect(webInformationPrompt).toContain('<prototype-visual-review-receipt>')
     expect(prototypeWorkflowSkill).toContain('同一个骨架派生三档保真度')
-    expect(prototypeWorkflowSkill).toContain('不要把')
-    expect(prototypeWorkflowSkill).toContain('file://')
+    expect(prototypeWorkflowSkill).toContain('禁止退回不可靠的 shell 截图命令')
+    expect(prototypeWorkflowSkill).toContain('不使用 Bash 截图或公开 Playwright 的 file URL')
     expect(prototypeWorkflowSkill).toContain('视觉质量闸门')
     expect(prototypeVisualQualitySkill).toContain('Prototype Visual Quality Gate')
     expect(prototypeVisualQualitySkill).toContain('Screenshot-led revision loop')
@@ -662,7 +686,7 @@ describe('buildBundledExpertPacks', () => {
     expect(webInformationProtocol.evidenceBoundary?.prohibitedWithoutUserProof).toEqual(expect.arrayContaining(['customer reviews', 'prices', 'company or product logos']))
     expect(webInformationProtocol.evidenceBoundary?.localQaBoundary).toContain('current Expert session workDir')
     expect(webInformationProtocol.verificationContract?.localHtmlQa).toEqual(expect.arrayContaining([
-      expect.stringContaining('CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE'),
+      expect.stringContaining('Use PrototypePreview, never Bash or public Playwright'),
       expect.stringContaining('1440x1000'),
       expect.stringContaining('not real-device or cross-platform testing'),
     ]))
@@ -679,13 +703,13 @@ it('keeps commercialization repair and reference contracts identical in source a
   const zip = await adapter.read(new Uint8Array(await readFile(output!)))
   const promptPath = 'experts/commercialization-research-report/prompts/system.md'
   const prompt = await zip.readText(promptPath)
-  expect(prompt).toBe(await readFile(path.join(sourceDir, 'commercialization-research-report/prompts/system.md'), 'utf8'))
+  expect(prompt).toBe(await readFile(path.join(sourceDir, 'commercialization-research-report/prompts/system.md'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
   expect(prompt).toContain('未声明字段设为 null')
   expect(prompt).toContain('[S1]: https://')
   expect(prompt).toContain('不会把普通聊天或工作流')
   expect(prompt).toContain('同一搜索 URL 的不同审计记录不能合并')
   const tool = await zip.readText('tools/write/tool.json')
-  expect(tool).toBe(await readFile(path.join(sourceDir, 'commercialization-research-report/tools/write/tool.json'), 'utf8'))
+  expect(tool).toBe(await readFile(path.join(sourceDir, 'commercialization-research-report/tools/write/tool.json'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
   expect(tool).toContain('未声明字段设为 null')
   const skill = await zip.readText('skills/commercialization-field-evidence/SKILL.md')
   expect(skill).toContain('[S1]: https://')

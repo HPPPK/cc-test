@@ -44,15 +44,15 @@ describe('tauri security config', () => {
     expect(config.bundle?.resources ?? []).toContain('binaries/node-runtime')
   })
 
-  it('checks the maintained fork release channel for desktop updates', () => {
+  it('uses only cc-test as the desktop update channel', () => {
     const config = JSON.parse(
       readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'),
     ) as {
       plugins?: { updater?: { endpoints?: string[] } }
     }
 
-    expect(config.plugins?.updater?.endpoints).toContain(
-      'https://github.com/HPPPK/cc-jiangxia/releases/latest/download/latest.json',
-    )
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/HPPPK/cc-test/releases/latest/download/latest.json',
+    ])
   })
 })

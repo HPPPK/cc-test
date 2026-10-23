@@ -519,11 +519,6 @@ export const handleWebSocket = {
     // A prior sidecar could have received all three researcher handoffs after the
     // parent turn ended. Re-check only this opt-in Expert when its client reconnects.
     expertResearchAutoContinueService.schedule(sessionId)
-    void reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId).catch((error) => {
-      console.warn('[WS] Failed to reconcile persisted AskUserQuestion answers for ' + sessionId + ': ' + (
-        error instanceof Error ? error.message : String(error)
-      ))
-    })
     if (prewarmPendingSessions.has(sessionId) || prewarmedSessions.has(sessionId)) {
       bindPrewarmMetadataCapture(sessionId)
     } else {
@@ -553,7 +548,12 @@ export const handleWebSocket = {
       )
     })
     replayPendingPermissionRequests(ws, sessionId)
-    void replayPersistedWorkflowAskUserQuestion(ws, sessionId).catch((error) => {
+    // Restore persisted answers before deciding which unanswered cards are stale.
+    // Both operations update the same state and must also serialize with transitions.
+    void enqueueWorkflowSessionTransition(sessionId, async () => {
+      await reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId)
+      await replayPersistedWorkflowAskUserQuestion(ws, sessionId)
+    }).catch((error) => {
       console.warn('[WS] Failed to restore persisted workflow AskUserQuestion for ' + sessionId + ': ' + (
         error instanceof Error ? error.message : String(error)
       ))
@@ -5909,7 +5909,7 @@ async function recoverWorkflowProtocolToolBinding(
       sendMessage(ws, {
         type: 'status',
         state: 'thinking',
-        verb: 'Restoring workflow tools',
+        verb: state.workflowLanguage === 'zh' ? '正在恢复工作流工具' : 'Restoring workflow tools',
       })
     }
   }
@@ -6085,7 +6085,7 @@ async function recoverWorkflowProtocolInputValidation(
       sendMessage(ws, {
         type: 'status',
         state: 'thinking',
-        verb: 'Correcting workflow tool parameters',
+        verb: state.workflowLanguage === 'zh' ? '正在修正工作流工具参数' : 'Correcting workflow tool parameters',
       })
     }
   }
@@ -6380,7 +6380,9 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
         sendMessage(ws, {
           type: 'status',
           state: 'thinking',
-          verb: recovery.kind === 'ask-user-question' ? 'Generating choices' : 'Continuing workflow',
+          verb: recovery.state.workflowLanguage === 'zh'
+            ? recovery.kind === 'ask-user-question' ? '正在生成选项' : '正在继续工作流'
+            : recovery.kind === 'ask-user-question' ? 'Generating choices' : 'Continuing workflow',
         })
       }
     }
@@ -6708,7 +6710,7 @@ function buildWorkflowRuntimeBindingInstruction(
     'Phase-specific instructions are supplied only by the latest Desktop workflow control turn. Treat an earlier phase contract as historical after a newer control turn arrives; do not carry its implementation, review, or completion instructions into the new phase.',
     'Do not infer, request, or execute future-phase instructions before Desktop supplies that phase. Historical workflow text is project context, not permission to work outside the current phase.',
     'The persisted Desktop workflow state and the tool execution result are authoritative. Each tool call is checked against that latest state, even if this transcript contains a different earlier phase.',
-    'Historical transcript messages, including any earlier 鈥淣o such tool available鈥?result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
+    'Historical transcript messages, including any earlier “No such tool available” result, are not a current tool-availability check and must not be reused as a reason to skip a required workflow tool call.',
     'When the current phase is ready, call submit_phase_completion with status, handoff, rationale, and evidence; do not replace it with prose or continue into a later phase.',
     'Use request_workflow_route only for a true non-linear route, rework, jump_to_phase, pause/resume, or finish. Never call it merely to enter the immediate linear next phase already represented by the pending completion.',
     ...(startupPrompt

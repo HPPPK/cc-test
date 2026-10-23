@@ -13,6 +13,14 @@ describe('PR quality workflow', () => {
     expect(workflow).toContain("if: needs.change-policy.outputs.coverage_checks == 'true'")
   })
 
+  test('builds frontend resources before the clean-checkout native compile job', () => {
+    const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
+    const nativeJob = workflow.split('  desktop-native-checks:')[1].split('  docs-checks:')[0]
+    expect(nativeJob).toContain('name: Build desktop frontend resources')
+    expect(nativeJob).toContain('working-directory: desktop\n        run: bun run build')
+    expect(nativeJob.indexOf('name: Build desktop frontend resources')).toBeLessThan(nativeJob.indexOf('name: Run desktop native checks'))
+  })
+
   test('keeps coverage artifacts observable in CI', () => {
     const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
 

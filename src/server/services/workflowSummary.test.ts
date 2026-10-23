@@ -349,3 +349,147 @@ describe('workflowSummaryFromState', () => {
   })
 
 })
+
+describe('workflow summary runtime provenance and blocked evidence', () => {
+  test.each(['phase-request', 'main-session-default', 'none'] as const)('preserves authoritative active model source %s over historical phase models', (source) => {
+    const resolution = {
+      requestedModel: 'phase-opus',
+      actualModel: source === 'none' ? null : 'main-session-sonnet',
+      providerId: null,
+      source,
+      fallbackApplied: source === 'main-session-default',
+      fallbackReason: source === 'main-session-default' ? 'Requested model unavailable.' : null,
+      resolvedAt: '2026-10-23T03:00:00.000Z',
+    }
+    const state = makeState({ activeModelResolution: resolution })
+    state.phases[0]!.requestedModel = 'old-phase-model'
+    state.phases[0]!.actualModel = 'old-actual-model'
+    expect(workflowSummaryFromState(state).model).toEqual(resolution)
+  })
+
+  test('reports no model source when resolution failed before an active model was recorded', () => {
+    const state = makeState({ pendingConfirmation: null, runStatus: 'blocked' })
+    state.phases[0]!.requestedModel = 'unavailable-model'
+    state.phases[0]!.actualModel = null
+    state.phases[0]!.blockedReason = 'No workflow phase model can be resolved.'
+    expect(workflowSummaryFromState(state).model).toMatchObject({
+      requestedModel: 'unavailable-model',
+      actualModel: null,
+      source: 'none',
+      fallbackApplied: false,
+    })
+  })
+
+  function blockedArtifact(status: 'blocked' | 'unable', artifactId = 'blocked-evidence') {
+    return {
+      kind: 'phase-artifact' as const,
+      sessionId: 'workflow-summary-test',
+      artifactId,
+      schemaVersion: 1,
+      createdAt: '2026-10-23T03:00:00.000Z',
+      updatedAt: '2026-10-23T03:00:00.000Z',
+      label: 'Blocked evidence',
+      phaseId: 'requirements-clarification',
+      title: 'Requirements blocker',
+      submission: {
+        phaseId: 'requirements-clarification',
+        stateVersion: 2,
+        status,
+        rationale: 'An OAuth account must be selected.',
+        handoff: { summary: 'Account selection missing.', artifacts: [], next: 'Select an account.' },
+        evidence: [{ kind: 'runtime-status', label: 'Missing account', ref: 'OAuth account selection' }],
+      },
+    }
+  }
+
+  test.each(['blocked', 'unable'] as const)('includes %s evidence and a compact artifact in the public summary', (status) => {
+    const state = makeState({ pendingConfirmation: null, runStatus: 'blocked', blockedReason: 'Older reason.' })
+    state.phases[0]!.artifactPointers = [blockedArtifact(status)]
+    const summary = workflowSummaryFromState(state)
+    expect(summary).toMatchObject({
+      blockedReason: 'An OAuth account must be selected.',
+      blockedStatus: status,
+      blockedEvidence: [{ kind: 'runtime-status', label: 'Missing account', ref: 'OAuth account selection' }],
+      blockedArtifact: {
+        artifactId: 'blocked-evidence',
+        phaseId: 'requirements-clarification',
+        status,
+        label: 'Requirements blocker',
+        handoffSummary: 'Account selection missing.',
+        evidenceSummary: 'OAuth account selection',
+        createdAt: '2026-10-23T03:00:00.000Z',
+        transitionId: 'blocked-evidence',
+        completionId: 'blocked-evidence',
+        provenance: status === 'blocked' ? 'agent-blocked' : 'agent-unable',
+      },
+    })
+    expect(summary).not.toHaveProperty('phases')
+    expect(Reflect.get(summary, 'blockedArtifact')).not.toHaveProperty('submission')
+  })
+
+  test('uses only the latest blocked artifact from the active phase', () => {
+    const state = makeState({ pendingConfirmation: null, runStatus: 'blocked' })
+    state.phases[0]!.artifactPointers = [blockedArtifact('blocked', 'old'), blockedArtifact('unable', 'latest')]
+    state.phases[1]!.artifactPointers = [blockedArtifact('blocked', 'other-phase')]
+    expect(workflowSummaryFromState(state)).toMatchObject({
+      blockedStatus: 'unable',
+      blockedArtifact: { artifactId: 'latest' },
+    })
+  })
+
+  test('ignores malformed and ready submissions instead of projecting them as blockers', () => {
+    const state = makeState({ pendingConfirmation: null })
+    const artifact = blockedArtifact('blocked')
+    state.phases[0]!.artifactPointers = [
+      { ...artifact, submission: null },
+      { ...artifact, submission: [] },
+      { ...artifact, submission: { ...artifact.submission, status: 'ready' } },
+      { ...artifact, submission: { ...artifact.submission, evidence: null } },
+    ] as unknown as WorkflowSessionState['phases'][number]['artifactPointers']
+    const summary = workflowSummaryFromState(state)
+    expect(summary).not.toHaveProperty('blockedStatus')
+    expect(summary).not.toHaveProperty('blockedEvidence')
+  })
+
+  test.each([
+    { handoff: undefined },
+    { handoff: null },
+    { handoff: [] },
+    { evidence: [null] },
+    { evidence: ['untrusted evidence'] },
+    { phaseId: undefined },
+    { phaseId: 'technical-design' },
+  ])('skips malformed persisted blocker submissions and preserves a previous valid blocker: %j', (override) => {
+    const state = makeState({ pendingConfirmation: null, runStatus: 'blocked' })
+    const valid = blockedArtifact('blocked', 'previous-valid')
+    state.phases[0]!.artifactPointers = [valid, {
+      ...blockedArtifact('unable', 'malformed-latest'),
+      submission: { ...valid.submission, ...override },
+    }] as unknown as WorkflowSessionState['phases'][number]['artifactPointers']
+    expect(() => workflowSummaryFromState(state)).not.toThrow()
+    expect(workflowSummaryFromState(state)).toMatchObject({
+      blockedStatus: 'blocked',
+      blockedArtifact: { artifactId: 'previous-valid' },
+    })
+  })
+
+  test('skips null and array persisted pointers before examining their submissions', () => {
+    const state = makeState({ pendingConfirmation: null, runStatus: 'blocked' })
+    state.phases[0]!.artifactPointers = [blockedArtifact('blocked', 'valid'), null, []] as unknown as WorkflowSessionState['phases'][number]['artifactPointers']
+    expect(() => workflowSummaryFromState(state)).not.toThrow()
+    expect(workflowSummaryFromState(state)).toMatchObject({
+      blockedArtifact: { artifactId: 'valid' },
+    })
+  })
+
+  test('suppresses old blocked evidence while a valid confirmation is pending', () => {
+    const state = makeState()
+    state.phases[0]!.artifactPointers = [blockedArtifact('blocked')]
+    const summary = workflowSummaryFromState(state)
+    expect(summary.pendingConfirmation).toBe(true)
+    expect(summary).not.toHaveProperty('blockedReason')
+    expect(summary).not.toHaveProperty('blockedStatus')
+    expect(summary).not.toHaveProperty('blockedEvidence')
+    expect(summary).not.toHaveProperty('blockedArtifact')
+  })
+})

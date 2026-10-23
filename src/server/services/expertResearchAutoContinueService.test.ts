@@ -92,6 +92,28 @@ function candidate(paths: string[] = researcherPaths, reviewerPath?: string) {
 }
 
 describe('ExpertResearchAutoContinueService', () => {
+  test.each([
+    ['/tmp/research', '/tmp/research/commercialization-research/01-research-brief.md'],
+    ['C:/research', 'C:\\research\\commercialization-research\\01-research-brief.md'],
+    ['\\\\server\\share\\research', '\\\\server\\share\\research\\commercialization-research\\01-research-brief.md'],
+  ])('reads persisted artifacts using the workDir path style for %s', async (workDir, briefPath) => {
+    const saved = candidate()
+    saved.workDir = workDir
+    const reads: string[] = []
+    const service = new ExpertResearchAutoContinueService({
+      loadCandidate: async () => saved,
+      readFile: async (filePath) => {
+        reads.push(filePath)
+        if (filePath !== briefPath) throw new Error('ENOENT')
+        return '# saved brief'
+      },
+      logError: () => {},
+    })
+    service.setHandler(async () => true)
+    expect(await service.tryContinue('path-style')).toBe(true)
+    expect(reads).toContain(briefPath)
+  })
+
   test('resumes the D review once when all declared researcher Markdown artifacts are persisted', async () => {
     let resumeCount = 0
     const service = new ExpertResearchAutoContinueService({

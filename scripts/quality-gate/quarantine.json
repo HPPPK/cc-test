@@ -3,41 +3,41 @@
     {
       "id": "server:cron-scheduler",
       "path": "src/server/__tests__/cron-scheduler.test.ts",
-      "reason": "Re-reviewed 2026-09-17: scheduler tests still show 5 s timeouts and cross-test run-log mismatches; keep out of the default server gate until deterministic scheduler controls replace wall-clock/process behavior.",
+      "reason": "Re-reviewed 2026-10-23: isolated Bun run reproduced 26 passes, 4 CLI-execution timeouts and 3 asynchronous errors. Subprocess-backed scheduler tests still need deterministic execution controls. Evidence: scripts/quality-gate/quarantine-review-2026-10-23.md.",
       "owner": "maintainers",
-      "reviewAfter": "2026-10-17",
+      "reviewAfter": "2026-11-06",
       "exitCriteria": "Replace timing-sensitive assertions with deterministic scheduler controls and prove the test passes in check:server for five consecutive local/CI runs."
     },
     {
       "id": "server:providers-real",
       "path": "src/server/__tests__/providers-real.test.ts",
-      "reason": "Re-reviewed 2026-09-17: live provider coverage still belongs in maintainer baseline or release mode, not the default non-live PR gate.",
+      "reason": "Re-reviewed 2026-10-23: 6 isolated tests passed, but the connectivity case calls api.minimaxi.com with a fake key and received an authentication error. This is live transport evidence, not successful model inference; retain outside the non-live PR gate. Evidence: scripts/quality-gate/quarantine-review-2026-10-23.md.",
       "owner": "maintainers",
-      "reviewAfter": "2026-10-17",
+      "reviewAfter": "2026-11-06",
       "exitCriteria": "Move live behavior into provider-smoke lanes and keep only non-live provider contract tests in check:server."
     },
     {
       "id": "server:tasks",
       "path": "src/server/__tests__/tasks.test.ts",
-      "reason": "Re-reviewed 2026-09-17: the suite passed once, but the existing exit criterion requires five consecutive local/CI passes before removal.",
+      "reason": "Re-reviewed 2026-10-23: 5 consecutive isolated runs each passed 10 tests. Existing exit criteria also require timing hardening and five check:server passes; isolated success alone does not establish that. Evidence: scripts/quality-gate/quarantine-review-2026-10-23.md.",
       "owner": "maintainers",
-      "reviewAfter": "2026-10-17",
+      "reviewAfter": "2026-11-06",
       "exitCriteria": "Harden task timing with fake timers or event-based waits and prove the suite passes in check:server for five consecutive local/CI runs."
     },
     {
       "id": "server:e2e:business-flow",
       "path": "src/server/__tests__/e2e/business-flow.test.ts",
-      "reason": "Re-reviewed 2026-09-17: the broad flow still has model, session, and WebSocket assumptions that fail outside a bounded deterministic fixture.",
+      "reason": "Re-reviewed 2026-10-23: isolated run reproduced 63 passes and 10 failures involving stale model-count/default-model assumptions, session fixtures, and WebSocket state. Retain until bounded contracts replace the broad assumptions. Evidence: scripts/quality-gate/quarantine-review-2026-10-23.md.",
       "owner": "maintainers",
-      "reviewAfter": "2026-10-17",
+      "reviewAfter": "2026-11-06",
       "exitCriteria": "Split into deterministic contract tests or move to an explicit smoke lane with bounded fixtures, logs, and timeout policy."
     },
     {
       "id": "server:e2e:full-flow",
       "path": "src/server/__tests__/e2e/full-flow.test.ts",
-      "reason": "Re-reviewed 2026-09-17: the broad flow still has diagnostics/model catalog drift and remains unsuitable for the default deterministic PR gate.",
+      "reason": "Re-reviewed 2026-10-23: isolated run reproduced 31 passes and 1 failure in the stale model catalog assertion. The suite still depends on a host-derived model catalog; retain until deterministic fixtures or an explicit smoke lane exist. Evidence: scripts/quality-gate/quarantine-review-2026-10-23.md.",
       "owner": "maintainers",
-      "reviewAfter": "2026-10-17",
+      "reviewAfter": "2026-11-06",
       "exitCriteria": "Split into deterministic contract tests or move to an explicit smoke lane with bounded fixtures, logs, and timeout policy."
     }
   ]
