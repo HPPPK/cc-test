@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 import * as fs from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
 import * as path from 'node:path'
 import * as vm from 'node:vm'
 import { ExpertPackRegistryService, type ExpertDefinition, type ExpertIntakeState, type ExpertToolManifest } from './expertPackRegistryService.js'
 import { assertSafeZipPath } from './zipPackAdapter.js'
+import { assertExpertPathComponent, createExpertOutputDirectory, resolveExpertPathInside, writeExpertText } from './expertFilesystemBoundary.js'
 
 export type ExpertRuntimeSkill = {
   skillId: string
@@ -283,8 +285,6 @@ async function executePackageLocalExecutableTool(context: ExpertRuntimeContext, 
 
   const startedAt = new Date().toISOString()
   const started = Date.now()
-  const outputRoot = path.resolve(input.outputDir ?? path.join(input.projectRoot, '.workflow', 'intake', 'expert-runs', input.runId ?? 'runtime', context.expert.id))
-  const projectRoot = path.resolve(input.projectRoot)
   const outputPaths: string[] = []
   const inputSummary: string[] = []
   const logs: string[] = []
@@ -294,29 +294,38 @@ async function executePackageLocalExecutableTool(context: ExpertRuntimeContext, 
     if (!/\.[cm]?js$/i.test(tool.command)) throw new Error('Only package-local JavaScript tool commands are supported by the expert sandbox.')
     const source = await registry.readPackText(context.expert.packId, tool.command)
     rejectDangerousToolSource(source)
-    await fs.mkdir(outputRoot, { recursive: true })
+    const projectRoot = await fs.realpath(input.projectRoot)
+    if (input.outputDir === undefined) {
+      assertExpertPathComponent(input.runId ?? 'runtime')
+      assertExpertPathComponent(context.expert.id)
+    }
+    const requestedOutput = input.outputDir ?? path.join(input.projectRoot, '.workflow', 'intake', 'expert-runs', input.runId ?? 'runtime', context.expert.id)
+    const outputRoot = await createExpertOutputDirectory(input.projectRoot, requestedOutput, input.outputDir !== undefined)
 
     const api = Object.freeze({
       projectRoot,
       outputRoot,
       async listDir(relativePath = '.') {
-        const dir = resolveInside(projectRoot, String(relativePath || '.'))
+        const dir = await resolveExpertPathInside(projectRoot, String(relativePath || '.'))
         const entries = await fs.readdir(dir, { withFileTypes: true })
         inputSummary.push(`list:${path.relative(projectRoot, dir).replace(/\\/g, '/') || '.'}`)
         return entries.map((entry) => ({ name: entry.name, type: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other' }))
       },
       async readText(relativePath: string) {
-        const filePath = resolveInside(projectRoot, String(relativePath))
-        const stat = await fs.stat(filePath)
-        if (!stat.isFile()) throw new Error('Only files can be read.')
-        if (stat.size > MAX_TOOL_READ_BYTES) throw new Error('Tool read is limited to small text files.')
-        inputSummary.push(`read:${path.relative(projectRoot, filePath).replace(/\\/g, '/')}`)
-        return fs.readFile(filePath, 'utf-8')
+        const filePath = await resolveExpertPathInside(projectRoot, String(relativePath))
+        const file = await fs.open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0))
+        try {
+          const stat = await file.stat()
+          if (!stat.isFile()) throw new Error('Only files can be read.')
+          if (stat.size > MAX_TOOL_READ_BYTES) throw new Error('Tool read is limited to small text files.')
+          inputSummary.push(`read:${path.relative(projectRoot, filePath).replace(/\\/g, '/')}`)
+          return await file.readFile('utf-8')
+        } finally {
+          await file.close()
+        }
       },
       async writeText(relativePath: string, content: unknown) {
-        const filePath = resolveInside(outputRoot, String(relativePath))
-        await fs.mkdir(path.dirname(filePath), { recursive: true })
-        await fs.writeFile(filePath, String(content), 'utf-8')
+        const filePath = await writeExpertText(outputRoot, String(relativePath), String(content))
         const normalized = path.relative(outputRoot, filePath).replace(/\\/g, '/')
         outputPaths.push(path.join(outputRoot, normalized))
         return { path: normalized }
@@ -341,7 +350,7 @@ async function executePackageLocalExecutableTool(context: ExpertRuntimeContext, 
       ...base,
       executed: true,
       result: 'completed-in-sandbox',
-      reason: 'Package-local executable tool ran in the expert sandbox after explicit confirmation. It could only read the authorized project directory and write the expert output directory.',
+      reason: 'Package-local executable tool ran after explicit confirmation using project-read and output-write path checks. These helper checks are not an OS process sandbox.',
       exitStatus: 'completed',
       startedAt,
       completedAt,
@@ -353,7 +362,7 @@ async function executePackageLocalExecutableTool(context: ExpertRuntimeContext, 
     } as ExpertRuntimeToolRecord
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const rejected = /outside the allowed directory|network|Only package-local|Dangerous/.test(message)
+    const rejected = /outside the allowed directory|network|Only package-local|Dangerous|ELOOP/.test(message)
     return {
       ...base,
       executed: true,
@@ -368,14 +377,6 @@ async function executePackageLocalExecutableTool(context: ExpertRuntimeContext, 
       error: message,
     }
   }
-}
-
-function resolveInside(root: string, relativePath: string): string {
-  if (!relativePath || path.isAbsolute(relativePath)) throw new Error('Tool path is outside the allowed directory.')
-  const resolvedRoot = path.resolve(root)
-  const target = path.resolve(resolvedRoot, relativePath)
-  if (!isInside(resolvedRoot, target)) throw new Error('Tool path is outside the allowed directory.')
-  return target
 }
 
 function rejectDangerousToolSource(source: string): void {

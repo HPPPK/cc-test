@@ -10,6 +10,8 @@ export type ZipPackEntry = {
 export type ZipPackReadOptions = {
   maxArchiveBytes?: number
   maxFileBytes?: number
+  maxTotalUncompressedBytes?: number
+  maxEntries?: number
 }
 
 export type ZipPackWriteOptions = {
@@ -31,6 +33,8 @@ type InternalZipEntry = ZipPackEntry & {
 
 const ZIP_MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 const ZIP_MAX_FILE_BYTES = 5 * 1024 * 1024
+const ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+const ZIP_MAX_ENTRIES = 2048
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_FILE_SIGNATURE = 0x02014b50
 const LOCAL_FILE_SIGNATURE = 0x04034b50
@@ -42,12 +46,17 @@ export class ZipPackAdapter {
   async read(input: Uint8Array, options: ZipPackReadOptions = {}): Promise<ZipPackArchive> {
     const maxArchiveBytes = options.maxArchiveBytes ?? ZIP_MAX_ARCHIVE_BYTES
     const maxFileBytes = options.maxFileBytes ?? ZIP_MAX_FILE_BYTES
-    const buffer = Buffer.from(input)
-    if (buffer.byteLength > maxArchiveBytes) {
+    const maxTotalUncompressedBytes = options.maxTotalUncompressedBytes ?? ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES
+    const maxEntries = options.maxEntries ?? ZIP_MAX_ENTRIES
+    for (const [name, value] of Object.entries({ maxArchiveBytes, maxFileBytes, maxTotalUncompressedBytes, maxEntries })) {
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error(`Invalid ZIP limit: ${name}`)
+    }
+    if (input.byteLength > maxArchiveBytes) {
       throw new Error(`ZIP archive exceeds maximum size of ${maxArchiveBytes} bytes.`)
     }
 
-    const entries = parseCentralDirectory(buffer, maxFileBytes)
+    const buffer = Buffer.from(input)
+    const entries = parseCentralDirectory(buffer, maxFileBytes, maxTotalUncompressedBytes, maxEntries)
     for (const entry of entries) {
       assertSafeZipPath(entry.path)
     }
@@ -61,7 +70,7 @@ export class ZipPackAdapter {
       async readBytes(pathName: string): Promise<Uint8Array> {
         const entry = byPath.get(pathName)
         if (!entry) throw new Error(`ZIP entry not found: ${pathName}`)
-        return readEntryBytes(entry)
+        return readEntryBytes(entry, maxFileBytes)
       },
       async readText(pathName: string): Promise<string> {
         return textDecoder.decode(await this.readBytes(pathName))
@@ -153,10 +162,16 @@ export function assertSafeZipPath(entryPath: string): void {
   }
 }
 
-function parseCentralDirectory(buffer: Buffer, maxFileBytes: number): InternalZipEntry[] {
+function parseCentralDirectory(
+  buffer: Buffer,
+  maxFileBytes: number,
+  maxTotalUncompressedBytes: number,
+  maxEntries: number,
+): InternalZipEntry[] {
   const eocdOffset = findEocd(buffer)
   if (eocdOffset < 0) throw new Error('Invalid ZIP archive: missing end of central directory.')
   const entryCount = buffer.readUInt16LE(eocdOffset + 10)
+  if (entryCount > maxEntries) throw new Error(`ZIP archive exceeds maximum entry count of ${maxEntries}.`)
   const centralSize = buffer.readUInt32LE(eocdOffset + 12)
   const centralOffset = buffer.readUInt32LE(eocdOffset + 16)
   if (centralOffset + centralSize > buffer.length) {
@@ -164,6 +179,8 @@ function parseCentralDirectory(buffer: Buffer, maxFileBytes: number): InternalZi
   }
 
   const entries: InternalZipEntry[] = []
+  const paths = new Set<string>()
+  let totalUncompressedBytes = 0
   let cursor = centralOffset
   for (let index = 0; index < entryCount; index += 1) {
     if (cursor + 46 > buffer.length || buffer.readUInt32LE(cursor) !== CENTRAL_FILE_SIGNATURE) {
@@ -183,8 +200,16 @@ function parseCentralDirectory(buffer: Buffer, maxFileBytes: number): InternalZi
       throw new Error('Invalid ZIP archive: central directory entry exceeds archive size.')
     }
     const entryPath = buffer.subarray(nameStart, nameEnd).toString('utf-8')
+    if (paths.has(entryPath)) throw new Error(`Duplicate ZIP entry path: ${entryPath}`)
+    paths.add(entryPath)
     if (uncompressedSize > maxFileBytes) {
       throw new Error(`ZIP entry exceeds maximum file size: ${entryPath}`)
+    }
+    // Each read must produce exactly its declared size, so this bounds total
+    // logical output without charging repeated manifest/file reads twice.
+    totalUncompressedBytes += uncompressedSize
+    if (totalUncompressedBytes > maxTotalUncompressedBytes) {
+      throw new Error(`ZIP archive exceeds maximum total uncompressed size of ${maxTotalUncompressedBytes} bytes.`)
     }
     if (compressionMethod !== 0 && compressionMethod !== 8) {
       throw new Error(`Unsupported ZIP compression method ${compressionMethod} for ${entryPath}`)
@@ -236,14 +261,34 @@ function publicEntry(entry: InternalZipEntry): ZipPackEntry {
   }
 }
 
-function readEntryBytes(entry: InternalZipEntry): Uint8Array {
+function readEntryBytes(entry: InternalZipEntry, maxFileBytes: number): Uint8Array {
   const compressed = entry.source.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize)
-  if (entry.compressionMethod === 0) return Buffer.from(compressed)
-  const inflated = inflateRawSync(compressed)
-  if (inflated.length !== entry.uncompressedSize) {
+  const maxOutputBytes = Math.min(maxFileBytes, entry.uncompressedSize)
+  let output: Buffer
+  if (entry.compressionMethod === 0) {
+    // Check before copying stored bytes: central directory sizes are untrusted.
+    if (compressed.length > maxOutputBytes) {
+      throw new Error(`ZIP entry exceeds maximum output size: ${entry.path}`)
+    }
+    output = Buffer.from(compressed)
+  } else {
+    try {
+      // zlib requires a positive cap even for a legitimately empty entry.
+      output = inflateRawSync(compressed, { maxOutputLength: Math.max(1, maxOutputBytes) })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') {
+        throw new Error(`ZIP entry exceeds maximum output size: ${entry.path}`)
+      }
+      throw error
+    }
+    if (output.length > maxOutputBytes) {
+      throw new Error(`ZIP entry exceeds maximum output size: ${entry.path}`)
+    }
+  }
+  if (output.length !== entry.uncompressedSize) {
     throw new Error(`ZIP entry size mismatch: ${entry.path}`)
   }
-  return inflated
+  return output
 }
 
 function crc32(data: Uint8Array): number {
