@@ -1,13 +1,18 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
 import { assembleWorkflowToolPool, getAllBaseTools, getHeadlessToolPool } from "../../tools.js"
 import { isDeferredTool } from "../ToolSearchTool/prompt.js"
 
+import * as modelConfig from '../../utils/model/model.js'
+
+beforeEach(() => {
+  spyOn(modelConfig, 'getMainLoopModel').mockReturnValue('claude-sonnet-4')
+})
+
 const TOOL_NAME = 'submit_phase_completion'
 const originalDesktopServerUrl = process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
 const originalWorkflowSessionId = process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
-const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 const originalEmbeddedSearchTools = process.env.EMBEDDED_SEARCH_TOOLS
 const originalClaudeCodeEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT
 
@@ -18,8 +23,7 @@ afterEach(() => {
   if (originalWorkflowSessionId === undefined) delete process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
   else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
 
-  if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
-  else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
+  mock.restore()
 
   if (originalEmbeddedSearchTools === undefined) delete process.env.EMBEDDED_SEARCH_TOOLS
   else process.env.EMBEDDED_SEARCH_TOOLS = originalEmbeddedSearchTools
@@ -158,7 +162,6 @@ describe('SubmitPhaseCompletionTool', () => {
   })
 
   test('is included in the initial headless tool pool when Desktop supplies a workflow binding', () => {
-    process.env.ANTHROPIC_API_KEY = 'test-key'
     process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-session'
 
     const tools = getHeadlessToolPool(getEmptyToolPermissionContext())
@@ -168,8 +171,6 @@ describe('SubmitPhaseCompletionTool', () => {
   })
 
   test('is added to the assembled tool pool for active workflow sessions', () => {
-    process.env.ANTHROPIC_API_KEY = 'test-key'
-
     const tools = assembleWorkflowToolPool(
       getEmptyToolPermissionContext(),
       [],

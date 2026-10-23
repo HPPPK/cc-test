@@ -30,7 +30,7 @@ Claude Code Jiangxia 基于 2026-03-31 从 Anthropic npm registry 泄露的 Clau
 Claude Code Jiangxia 的桌面端把会话、多项目、分支 / Worktree、右侧代码改动、代码 Diff、权限确认、提供商配置和远程入口集中到一个图形化工作台里，适合不想长期停留在终端里的日常开发工作流。
 
 <p align="center">
-  <a href="https://github.com/NanmiCoder/cc-jiangxia/releases"><img src="https://img.shields.io/badge/⬇_下载桌面端-macOS_%7C_Windows-FF7A00?style=for-the-badge" alt="下载桌面端"></a>
+  <a href="https://github.com/HPPPK/cc-test/releases"><img src="https://img.shields.io/badge/⬇_下载桌面端-macOS_%7C_Windows-FF7A00?style=for-the-badge" alt="下载桌面端"></a>
   &nbsp;
   <a href="docs/desktop/04-installation.md"><img src="https://img.shields.io/badge/📖_安装指南-Guide-gray?style=for-the-badge" alt="安装指南"></a>
 </p>
@@ -54,7 +54,7 @@ Claude Code Jiangxia 的桌面端把会话、多项目、分支 / Worktree、右
 
 ## 安装桌面端
 
-1. 前往 [Releases](https://github.com/NanmiCoder/cc-jiangxia/releases) 下载 macOS 或 Windows 桌面端安装包。
+1. 前往 [Releases](https://github.com/HPPPK/cc-test/releases) 下载 macOS 或 Windows 桌面端安装包。
 2. 首次启动后，在桌面端设置里配置模型提供商、API Key 和默认模型。
 3. 如果 macOS 提示应用无法打开，请按 [桌面端安装指南](docs/desktop/04-installation.md) 处理 Gatekeeper 权限。
 

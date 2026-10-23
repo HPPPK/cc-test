@@ -5,7 +5,7 @@
  * WebSocket 集成测试验证消息从客户端经过服务端到达 CLI 的完整流转。
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, afterEach, spyOn } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ConversationService, ConversationStartupError, conversationService } from '../services/conversationService.js'
 import { SessionService, sessionService } from '../services/sessionService.js'
+import * as hostTools from '../../tools.js'
 import { ProviderService } from '../services/providerService.js'
 
 async function rmWithRetry(targetPath: string): Promise<void> {
@@ -424,6 +425,20 @@ describe('ConversationService', () => {
 
     await (svc as any).handleProcessExit('session-restart', newProc, 0)
     expect(svc.hasSession('session-restart')).toBe(false)
+  })
+
+  it('keeps failed startup diagnostics tied to the original process after cleanup or replacement', () => {
+    const svc = new ConversationService()
+    const sessionId = 'startup-diagnostics-generation'
+    const original = { stdoutLines: ['original startup rejected'], stderrLines: [], sdkMessages: [] }
+    const replacement = { stdoutLines: ['replacement process output'], stderrLines: [], sdkMessages: [] }
+    ;(svc as any).sessions.set(sessionId, original)
+    expect((svc as any).releaseFailedStartupSession(sessionId, original)).toBe(true)
+    ;(svc as any).sessions.set(sessionId, replacement)
+    const error = (svc as any).buildStartupError(sessionId, 1, original)
+    expect(error.message).toContain('original startup rejected')
+    expect(error.message).not.toContain('replacement process output')
+    expect((svc as any).sessions.get(sessionId)).toBe(replacement)
   })
 
   it('does not let stale startup cleanup remove a replacement session', () => {
@@ -1136,8 +1151,15 @@ describe('WebSocket Chat Integration', () => {
     throw new Error(`Timed out waiting for ${label}`)
   }
   const originalCliPath = process.env.CLAUDE_CLI_PATH
+  const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+  let toolDiscovery: ReturnType<typeof spyOn>
 
   beforeAll(async () => {
+    // This lane exercises a local mock SDK process, never provider authentication.
+    toolDiscovery = spyOn(hostTools, 'getToolsForDefaultPreset').mockReturnValue([
+      'Task', 'TaskOutput', 'Bash', 'Glob', 'Grep', 'Read', 'Edit', 'Write',
+      'AskUserQuestion', 'Playwright', 'PrototypePreview', 'Skill',
+    ])
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-conv-'))
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     process.env.CLAUDE_CLI_PATH = fileURLToPath(
@@ -1170,7 +1192,9 @@ describe('WebSocket Chat Integration', () => {
     } else {
       delete process.env.CLAUDE_CLI_PATH
     }
-    delete process.env.CLAUDE_CONFIG_DIR
+    if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+    toolDiscovery.mockRestore()
   })
 
   it('should connect and receive connected event', async () => {

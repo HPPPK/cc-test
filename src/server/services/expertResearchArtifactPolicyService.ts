@@ -287,10 +287,11 @@ export function allowedExpertResearchArtifactPaths(
   }
 }
 
-function pathApiFor(workDir: string, artifactPath: string): typeof path {
-  return path.win32.isAbsolute(workDir) || path.win32.isAbsolute(artifactPath)
+/** Windows isAbsolute also accepts POSIX /roots; require a drive or UNC prefix. */
+export function expertResearchPathApiFor(workDir: string): typeof path {
+  return /^[a-zA-Z]:[\\/]|^\\|^\/\//.test(workDir)
     ? path.win32
-    : path
+    : path.posix
 }
 
 function isPathOutside(root: string, candidate: string, api: typeof path): boolean {
@@ -314,7 +315,13 @@ export function canonicalizeExpertResearchArtifactInputPath(input: {
   if (!raw || raw !== input.artifactPath || /[\r\n]/.test(raw)) {
     throw new Error(`${field} 必须是非空 Markdown 文件路径。`)
   }
-  const api = pathApiFor(input.workDir, raw)
+  const api = expertResearchPathApiFor(input.workDir)
+  if (
+    /^[a-zA-Z]:(?![\\/])/.test(raw)
+    || (api === path.posix && expertResearchPathApiFor(raw) === path.win32)
+  ) {
+    throw new Error(`${field} 必须使用当前会话工作目录的路径格式。`)
+  }
   const workDir = api.resolve(input.workDir)
   const absolutePath = api.isAbsolute(raw)
     ? api.resolve(raw)
@@ -343,7 +350,7 @@ export function resolveExpertResearchArtifactPath(input: {
     workDir: input.workDir,
     artifactPath: input.artifactPath,
   })
-  const api = pathApiFor(input.workDir, resolved.absolutePath)
+  const api = expertResearchPathApiFor(input.workDir)
   const allowedPaths = input.allowedKinds.flatMap((kind) => allowedExpertResearchArtifactPaths(input.policy, kind))
   const allowedPath = allowedPaths.find((candidate) => artifactPathKey(candidate, api) === artifactPathKey(resolved.relativePath, api))
     ?? (input.policy.researcherParts && input.allowedKinds.includes('researcher-report')

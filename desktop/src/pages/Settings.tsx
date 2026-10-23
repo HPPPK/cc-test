@@ -4016,7 +4016,7 @@ function PluginSettings() {
 
 // 鈹€鈹€鈹€ About Settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-const GITHUB_REPO = 'https://github.com/NanmiCoder/cc-haha'
+const GITHUB_REPO = 'https://github.com/HPPPK/cc-test'
 const GITHUB_ISSUES = `${GITHUB_REPO}/issues`
 const GITHUB_RELEASES = `${GITHUB_REPO}/releases`
 function isValidUpdateProxyUrl(value: string) {
@@ -4179,7 +4179,7 @@ function AboutSettings() {
         >
           <img src="/icons/github.svg" alt="GitHub" className="w-5 h-5 opacity-70" />
           <div className="flex-1 text-left">
-            <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/cc-haha</div>
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">HPPPK/cc-test</div>
             <div className="text-xs text-[var(--color-text-tertiary)]">{t('settings.about.starHint')}</div>
           </div>
         </button>

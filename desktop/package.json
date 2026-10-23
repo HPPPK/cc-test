@@ -11,11 +11,12 @@
     "build:windows-x64": "powershell -ExecutionPolicy Bypass -File ./scripts/build-windows-x64.ps1",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest",
+    "test": "bun run test:scripts && vitest",
     "test:ui": "vitest --ui",
     "lint": "tsc --noEmit",
     "dev:desktop": "tauri dev --no-watch",
-    "tauri:audited": "bun run ./scripts/tauri-audited.ts"
+    "tauri:audited": "bun run ./scripts/tauri-audited.ts",
+    "test:scripts": "bun test ./scripts/bundled-image-runtime.test.ts ./scripts/tauri-audited.test.ts ./src-tauri/tauri-config.test.ts"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

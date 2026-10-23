@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { PrototypePreviewTool, requirePrototypePreviewSession } from './PrototypePreviewTool.js'
 import { expertRuntimeSessionStore } from '../../server/services/expertRuntimeSessionStore.js'
 import { getAllBaseTools, getToolsForDefaultPreset } from '../../tools.js'
 
+import * as modelConfig from '../../utils/model/model.js'
+
+beforeEach(() => {
+  spyOn(modelConfig, 'getMainLoopModel').mockReturnValue('claude-sonnet-4')
+})
 afterEach(() => mock.restore())
 describe('PrototypePreview tool contract', () => {
   it('is registered and rejects arbitrary URL, path, commands and malformed screen IDs', () => {

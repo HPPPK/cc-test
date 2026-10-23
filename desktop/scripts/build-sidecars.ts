@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { copyBundledImageRuntime } from './bundled-image-runtime.js'
+import { getPlaywrightHostPlatform, hasManagedBrowserExecutable } from './managed-browser-runtime.js'
 
 const desktopRoot = path.resolve(import.meta.dir, '..')
 const repoRoot = path.resolve(desktopRoot, '..')
@@ -201,21 +202,6 @@ async function buildBundledPlaywrightRunner() {
   console.log(`[build-sidecars] Bundled portable Node Playwright and PrototypePreview runners -> ${runtimeDir}`)
 }
 
-function getPlaywrightHostPlatform(triple: string): string {
-  if (triple === 'x86_64-pc-windows-msvc') return 'win64'
-  if (triple === 'aarch64-apple-darwin') return 'mac14-arm64'
-  if (triple === 'x86_64-apple-darwin') return 'mac14'
-  throw new Error(`[build-sidecars] Unsupported platform for bundled Chromium: ${triple}`)
-}
-
-function hasManagedBrowserExecutable(runtimeDir: string): boolean {
-  if (!existsSync(runtimeDir)) return false
-  try {
-    return readdirSync(runtimeDir, { recursive: true }).some((entry) => /(?:^|[\\/])chrome(?:\.exe)?$/i.test(entry.replaceAll('\\', '/')))
-  } catch {
-    return false
-  }
-}
 async function buildBundledGitRuntime() {
   const resourceDir = path.join(binariesDir, 'git-runtime')
   if (targetTriple !== 'x86_64-pc-windows-msvc') {

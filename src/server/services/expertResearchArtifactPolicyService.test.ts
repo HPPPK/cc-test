@@ -26,6 +26,40 @@ const protocol = JSON.stringify({
 })
 
 describe('expert research artifact policy', () => {
+  test.each([
+    ['/tmp/Research', '/tmp/Research/commercialization-research/01-research-brief.md'],
+    ['C:/Research', 'C:\\Research\\commercialization-research\\01-research-brief.md'],
+    ['\\\\server\\share\\Research', '\\\\server\\share\\Research\\commercialization-research\\01-research-brief.md'],
+  ])('preserves the filesystem path style for %s', (workDir, absolutePath) => {
+    const policy = resolveExpertResearchArtifactPolicy(protocol)!
+    for (const artifactPath of [policy.briefPath, absolutePath]) {
+      expect(resolveExpertResearchArtifactPath({ workDir, policy, artifactPath, allowedKinds: ['research-brief'] }))
+        .toEqual({ relativePath: policy.briefPath, absolutePath })
+    }
+  })
+
+  test.each([
+    ['/tmp/Research', '\\tmp\\Research\\commercialization-research\\01-research-brief.md'],
+    ['/tmp/Research', 'C:/tmp/Research/commercialization-research/01-research-brief.md'],
+    ['/tmp/Research', '\\\\server\\share\\commercialization-research\\01-research-brief.md'],
+    ['/tmp/Research', 'C:commercialization-research/01-research-brief.md'],
+    ['C:/Research', 'C:commercialization-research/01-research-brief.md'],
+    ['C:/Research', 'D:/Research/commercialization-research/01-research-brief.md'],
+    ['C:/Research', '\\\\server\\share\\commercialization-research\\01-research-brief.md'],
+    ['/tmp/Research', '/tmp/ResearchSibling/commercialization-research/01-research-brief.md'],
+    ['/tmp/Research', '/tmp/research/commercialization-research/01-research-brief.md'],
+  ])('rejects incompatible or escaping artifact paths from %s: %s', (workDir, artifactPath) => {
+    expect(() => canonicalizeExpertResearchArtifactInputPath({ workDir, artifactPath })).toThrow()
+  })
+
+  test('keeps POSIX artifact names case sensitive', () => {
+    const policy = resolveExpertResearchArtifactPolicy(protocol)!
+    expect(() => resolveExpertResearchArtifactPath({
+      workDir: '/tmp/Research', policy,
+      artifactPath: 'commercialization-research/01-RESEARCH-BRIEF.md', allowedKinds: ['research-brief'],
+    })).toThrow('不在当前阶段允许的文件清单')
+  })
+
   test('accepts only declared session-relative Markdown artifacts', () => {
     const policy = resolveExpertResearchArtifactPolicy(protocol)!
     expect(allowedExpertResearchArtifactPaths(policy, 'researcher-report')).toEqual([

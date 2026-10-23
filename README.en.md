@@ -30,7 +30,7 @@ A Claude Code build repaired from the source leaked from Anthropic's npm registr
 The Claude Code Jiangxia desktop app brings sessions, multi-project navigation, branch / Worktree controls, right-side file changes, code diffs, permission review, provider setup, and remote access into one graphical workspace for daily development flows beyond the terminal.
 
 <p align="center">
-  <a href="https://github.com/NanmiCoder/cc-jiangxia/releases"><img src="https://img.shields.io/badge/⬇_Download_Desktop-macOS_%7C_Windows-FF7A00?style=for-the-badge" alt="Download Desktop"></a>
+  <a href="https://github.com/HPPPK/cc-test/releases"><img src="https://img.shields.io/badge/⬇_Download_Desktop-macOS_%7C_Windows-FF7A00?style=for-the-badge" alt="Download Desktop"></a>
   &nbsp;
   <a href="docs/desktop/04-installation.md"><img src="https://img.shields.io/badge/📖_Install_Guide-Guide-gray?style=for-the-badge" alt="Install Guide"></a>
 </p>
@@ -54,7 +54,7 @@ The Claude Code Jiangxia desktop app brings sessions, multi-project navigation, 
 
 ## Install the Desktop App
 
-1. Download the macOS or Windows desktop installer from [Releases](https://github.com/NanmiCoder/cc-jiangxia/releases).
+1. Download the macOS or Windows desktop installer from [Releases](https://github.com/HPPPK/cc-test/releases).
 2. On first launch, configure your model provider, API key, and default model in Settings.
 3. If macOS blocks the app on first open, follow the [desktop installation guide](docs/desktop/04-installation.md) for Gatekeeper steps.
 

@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir, mkdtemp, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { homedir } from 'node:os'
 import { ZipPackAdapter } from '../../../src/server/services/zipPackAdapter.js'
 import { buildBundledExpertPacks } from '../../build-expert-packs.js'
 import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from '../../../src/server/services/expertPackRegistryService.js'
@@ -43,7 +44,7 @@ test('all source entries equal current ZIP; official registry loads every declar
     for (const tool of context.expert.hostTools) expect(tool.id).toBeTruthy()
     await writeFile(path.join(out, 'loaded-context.json'), JSON.stringify(context, null, 2))
     const observations = []
-    for (const p of [path.join(root, 'desktop/src-tauri/binaries/packs/experts', id+'.zip'), path.join(root, 'desktop/src-tauri/target/debug/binaries/packs/experts', id+'.zip'), path.join(process.env.USERPROFILE!, '.claude/cc-jiangxia/experts/packs', id+'.zip')]) {
+    for (const p of [path.join(root, 'desktop/src-tauri/binaries/packs/experts', id+'.zip'), path.join(root, 'desktop/src-tauri/target/debug/binaries/packs/experts', id+'.zip'), path.join(homedir(), '.claude/cc-jiangxia/experts/packs', id+'.zip')]) {
       try { const b = await readFile(p); const z = await adapter.read(b); observations.push({ path: p, sha256: sha(b), manifest: await z.readJson('manifest.json') }) } catch { observations.push({ path: p, missing: true }) }
     }
     await writeFile(path.join(out, 'fingerprints.json'), JSON.stringify({ sourceVersion: context.expert.packVersion, zipSha256: sha(zipBytes), entries, loadedPromptSha256: sha(context.prompts.system!), loadedSkills: context.skills.map(s => ({ id:s.skillId, bytes:s.bytes, sha256:s.sha256 })), observedOnly: observations }, null, 2))
@@ -53,20 +54,36 @@ test('all source entries equal current ZIP; official registry loads every declar
   }
 }, 60000)
 
-test('actual old ZIP updates through registry; a user override remains user-owned', async () => {
+test('a predecessor ZIP updates through registry; a user override remains user-owned', async () => {
+  await mkdir(out, { recursive: true })
   const priorConfig = process.env.CLAUDE_CONFIG_DIR, priorBundle = process.env.CLAUDE_EXPERT_PACKS_DIR
   process.env.CLAUDE_CONFIG_DIR = await mkdtemp(path.join(out, 'upgrade-config-'))
   process.env.CLAUDE_EXPERT_PACKS_DIR = path.join(out, 'upgrade-bundle')
   await mkdir(process.env.CLAUDE_EXPERT_PACKS_DIR, { recursive: true })
   const bundle = path.join(process.env.CLAUDE_EXPERT_PACKS_DIR, id+'.zip')
-  const old = await readFile(path.join(root, 'desktop/src-tauri/binaries/packs/experts', id+'.zip'))
   const current = await readFile(path.join(root, 'src/server/packs/experts', id+'.zip'))
+  // Build a valid predecessor from maintained resources, without relying on local Tauri output.
+  const currentZip = await adapter.read(current)
+  const predecessorEntries: Record<string, Uint8Array | string> = {}
+  for (const entry of currentZip.entries) predecessorEntries[entry.path] = await currentZip.readBytes(entry.path)
+  const predecessorManifest = await currentZip.readJson<any>('manifest.json')
+  predecessorManifest.version = '0.13.54-local'
+  predecessorEntries['manifest.json'] = JSON.stringify(predecessorManifest)
+  const expertPath = predecessorManifest.entrypoints.experts[0]
+  const predecessorExpert = await currentZip.readJson<any>(expertPath)
+  predecessorExpert.version = predecessorManifest.version
+  predecessorEntries[expertPath] = JSON.stringify(predecessorExpert)
+  const promptPath = predecessorExpert.promptPaths.system
+  predecessorEntries[promptPath] = '# Generated predecessor fixture\n'
+  const old = await adapter.write(predecessorEntries)
   try {
     await writeFile(bundle, old); resetExpertPackRegistryForTests()
     const registry = new ExpertPackRegistryService()
     expect((await registry.getExpert(id))!.packVersion).toBe('0.13.54-local')
+    expect((await new ExpertRuntimeService().loadContext(id)).prompts.system).toBe('# Generated predecessor fixture\n')
     await writeFile(bundle, current); resetExpertPackRegistryForTests()
     expect((await registry.getExpert(id))!.packVersion).toBe('0.13.55-local')
+    expect((await new ExpertRuntimeService().loadContext(id)).prompts.system).toBe(await currentZip.readText(promptPath))
     await registry.updateExpertPack(id, { name: 'Consistency test custom pack' })
     await writeFile(bundle, old); resetExpertPackRegistryForTests()
     expect((await registry.listPacks()).find(p => p.packId === id)!.name).toBe('Consistency test custom pack')

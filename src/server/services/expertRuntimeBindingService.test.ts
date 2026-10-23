@@ -671,7 +671,12 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).toContain('## Package-local Skill index')
     expect(instruction).toContain('optional-')
     expect(instruction).toContain('strict aggregate context budget')
-    expect(instruction.length).toBeLessThan(55_000)
+    // The cap applies to injected Skill sections, independently of evolving host-tool guidance.
+    const skillBlock = instruction.split('Expert package-local skills:\n\n')[1]
+      .split('## Package-local Skill index')[0]
+    const injectedSections = skillBlock.split('\n\n---\n\n').map(section => section.trim()).filter(Boolean)
+    expect(injectedSections.every(section => section.startsWith('## Skill:'))).toBe(true)
+    expect(injectedSections.reduce((total, section) => total + section.length, 0)).toBeLessThanOrEqual(40_000)
   })
 
   test('isolates the prototype visual-quality gate to the 原型图demo ZIP', () => {

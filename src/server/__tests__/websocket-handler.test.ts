@@ -1,5 +1,8 @@
 import uiuxImageReviewFixture from '../../services/tools/fixtures/uiux-image-review.json'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as hostTools from '../../tools.js'
+import { SettingsService } from '../services/settingsService.js'
+import { ProviderService } from '../services/providerService.js'
 import type { ServerWebSocket } from 'bun'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -304,7 +307,13 @@ describe('strict visual choice detection', () => {
   })
 })
 
+let toolDiscovery: ReturnType<typeof spyOn>
 beforeEach(() => {
+  // Tool availability is a fixture; credential-backed isEnabled() belongs to live tests.
+  toolDiscovery = spyOn(hostTools, 'getToolsForDefaultPreset').mockReturnValue([
+    'Task', 'TaskOutput', 'Bash', 'Glob', 'Grep', 'Read', 'Edit', 'Write',
+    'AskUserQuestion', 'Playwright', 'PrototypePreview', 'Skill', 'image_generation',
+  ])
   // This suite stubs the CLI transport. Runtime revalidation may replace a
   // pre-existing fake process; it must never spawn a real CLI from user config.
   spyOn(conversationService, 'startSession').mockResolvedValue()
@@ -333,6 +342,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  toolDiscovery.mockRestore()
   setWorkflowRuntimeTemplateLoaderForTests(null)
 })
 
@@ -1918,6 +1928,7 @@ describe('WebSocket handler session isolation', () => {
       requiredSkillIds: [],
     }
     spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    ;(session as any).expertRuntimeBindingKey = getExpertProcessBindingKey(strictVisualExpert)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),
@@ -2213,6 +2224,7 @@ describe('WebSocket handler session isolation', () => {
       requiredSkillIds: [],
     }
     spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    ;(session as any).expertRuntimeBindingKey = getExpertProcessBindingKey(strictVisualExpert)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),
@@ -2381,6 +2393,7 @@ describe('WebSocket handler session isolation', () => {
       requiredSkillIds: ['visual-reference-lock'],
     }
     spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    ;(session as any).expertRuntimeBindingKey = getExpertProcessBindingKey(strictVisualExpert)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),
@@ -2394,6 +2407,7 @@ describe('WebSocket handler session isolation', () => {
         content: 'Use https://www.zcool.com.cn/ and https://www.raycast.com/pricing as the only public visual references. Do not use a third site; then redesign my payment page.',
       }))
       await waitForCondition(() => session.outputCallbacks.length === 1)
+      await waitForCondition(() => sendMessage.mock.calls.some(([id]) => id === sessionId))
 
       const callback = session.outputCallbacks[0]!
       callback({ type: 'assistant', message: { content: [{ type: 'text', text: 'I have finished the redesign.' }] } })
@@ -2707,6 +2721,7 @@ describe('WebSocket handler session isolation', () => {
       allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
       requiredSkillIds: ['taste-redesign', 'ui-craft-critique', 'ui-craft-finalize', 'playwright-visual-qc'],
     }
+    ;(session as any).expertRuntimeBindingKey = getExpertProcessBindingKey(strictVisualExpert)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),
@@ -2720,6 +2735,7 @@ describe('WebSocket handler session isolation', () => {
         content: 'Build an HTML prototype and render it to final PNG images.',
       }))
       await waitForCondition(() => session.outputCallbacks.length === 1)
+      await waitForCondition(() => sendMessage.mock.calls.some(([id]) => id === sessionId))
 
       const callback = session.outputCallbacks[0]!
       // Reproduce the observed provider edge case: the model claims final
@@ -2733,13 +2749,13 @@ describe('WebSocket handler session isolation', () => {
       await waitForCondition(() => sendMessage.mock.calls.some(([calledSessionId, content]) =>
         calledSessionId === sessionId
         && typeof content === 'string'
-        && content.includes('<strict-visual-review-recovery>')
+        && content.includes('<strict-visual-image-generation-recovery>')
       ))
       expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({ type: 'message_complete' }))
       expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
         type: 'status',
         state: 'thinking',
-        verb: 'Critiquing and finalizing rendered UI',
+        verb: 'Generating the required real image',
       }))
     } finally {
       conversationService.stopSession(sessionId)
@@ -3001,6 +3017,7 @@ describe('WebSocket handler session isolation', () => {
       allowedToolNames: ['AskUserQuestion', 'Read', 'Write', 'Bash'],
       requiredSkillIds: ['prototype-fidelity-workflow', 'prototype-visual-quality-gate', 'frontend-design'],
     }
+    ;(session as any).expertRuntimeBindingKey = getExpertProcessBindingKey(prototypeExpert)
     spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),
@@ -3498,7 +3515,7 @@ describe('WebSocket handler session isolation', () => {
 
       expect(sendMessage).toHaveBeenCalledWith(
         sessionId,
-        expect.stringContaining('不得静默停止'),
+        expect.stringContaining('Do not silently stop and do not wait for the user to type continue'),
       )
       expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
         type: 'status',
@@ -4098,7 +4115,10 @@ describe('WebSocket handler session isolation', () => {
     }
     await stateService.writeState(sessionId, state)
     spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
-    spyOn(sessionService, 'getSessionMessages').mockResolvedValue([
+    spyOn(sessionService, 'getSessionMessages').mockImplementation(async () => {
+      // Reconciliation must finish before reconnect recovery discards a legacy card.
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return [
       {
         id: 'legacy-tool-use',
         type: 'tool_use',
@@ -4125,7 +4145,8 @@ describe('WebSocket handler session isolation', () => {
           content: "User has answered your questions: \"Which option should the phase use?\"=\"Use option B.\". You can now continue with the user's answers in mind.",
         }],
       },
-    ])
+      ]
+    })
 
     handleWebSocket.open(ws)
     await waitForAsyncCondition(async () => {
@@ -4289,7 +4310,7 @@ describe('WebSocket handler session isolation', () => {
         expect.stringContaining('<workflow-protocol-input-recovery>'),
       )
       expect(sendMessage.mock.calls[0]?.[1]).toContain('non-empty description')
-      expect(sendMessage.mock.calls[0]?.[1]).toContain('non-empty prompt')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('non-empty description and prompt')
       expect(sendMessage.mock.calls[0]?.[1]).toContain('workflow_role')
       expect(stopSessionAndWait).not.toHaveBeenCalled()
       expect(startSession).not.toHaveBeenCalled()
@@ -4372,7 +4393,7 @@ describe('WebSocket handler session isolation', () => {
         sessionId,
         expect.stringContaining('<workflow-protocol-input-recovery>'),
       )
-      expect(sendMessage.mock.calls[0]?.[1]).toContain('立即重新调用 request_workflow_route')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('Immediately call request_workflow_route again')
       expect(sendMessage.mock.calls[0]?.[1]).toContain('targetPhaseId')
       expect(stopSessionAndWait).not.toHaveBeenCalled()
       expect(startSession).not.toHaveBeenCalled()
@@ -4581,7 +4602,7 @@ describe('WebSocket handler session isolation', () => {
         expect.stringContaining('<workflow-protocol-binding-recovery>'),
       )
       expect(sendMessage.mock.calls[0]?.[1]).toContain('request_workflow_route')
-      expect(sendMessage.mock.calls[0]?.[1]).toContain('所有用户可见文字使用中文')
+      expect(sendMessage.mock.calls[0]?.[1]).toContain('use the current workflow language for user-visible text')
       expect(parseSentMessages(ws)).toContainEqual(expect.objectContaining({
         type: 'status',
         state: 'thinking',
@@ -6426,6 +6447,9 @@ describe('WebSocket handler workflow runtime gating', () => {
   it('starts custom phase tool-policy workflow sessions with a stable CLI tool pool', async () => {
     const sessionId = `workflow-tool-policy-launch-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({ model: 'main-session-sonnet' })
+    spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
     const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(false)
     spyOn(conversationService, 'onOutput').mockImplementation(() => {})
@@ -6490,7 +6514,7 @@ describe('WebSocket handler workflow runtime gating', () => {
       type: 'user_message',
       content: 'Run only the selected tools.',
     }))
-    await waitForCondition(() => startSession.mock.calls.length > 0)
+    await waitForCondition(() => sendMessage.mock.calls.some(([id]) => id === sessionId))
 
     expect(startSession).toHaveBeenCalled()
     expect(startSession.mock.calls[0]?.[3]).toMatchObject({
@@ -6678,7 +6702,9 @@ describe('WebSocket handler workflow runtime gating', () => {
         allowed: true,
         updatedInput: { file_path: 'C:/Temp/qa-smoke-state.ts' },
       }))
-      await waitForCondition(() => respondToPermission.mock.calls.length >= (requestId.endsWith('-1') ? 1 : 2))
+      await waitForCondition(() => parseSentMessages(ws).some(message =>
+        message.type === 'permission_response_ack' && message.requestId === requestId,
+      ))
     }
 
     expect(respondToPermission).toHaveBeenCalledTimes(2)
@@ -6721,9 +6747,14 @@ describe('WebSocket handler workflow runtime gating', () => {
         allowed: true,
         updatedInput: { file_path: filePath },
       }))
-      await waitForCondition(() => respondToPermission.mock.calls.length >= (requestId === 'progress-denied-1' ? 1 : requestId === 'progress-safe' ? 2 : 3))
+      // Rejection awaits durable refinement before its recovery is sent. The
+      // permission stub runs earlier; wait for this request's completed handler.
+      await waitForCondition(() => parseSentMessages(ws).some(message =>
+        message.type === 'permission_response_ack' && message.requestId === requestId,
+      ))
     }
 
+    expect(respondToPermission).toHaveBeenCalledTimes(3)
     expect(sendMessage).toHaveBeenCalledTimes(2)
     expect(parseSentMessages(ws)).not.toContainEqual(expect.objectContaining({
       type: 'error',
@@ -6870,7 +6901,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(workflowTransitions[0]).toMatchObject({
       data: {
         action: 'retry',
-        result: 'accepted',
+        result: 'superseded',
         transitionId: 'retry-once',
       },
     })
@@ -7179,6 +7210,8 @@ describe('WebSocket handler workflow runtime gating', () => {
   })
 
   it('starts a missing CLI session before automatically continuing the next confirmed workflow phase', async () => {
+    spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({ model: 'main-session-sonnet' })
+    spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
     const sessionId = `workflow-auto-confirm-recover-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
@@ -7647,7 +7680,9 @@ describe('WebSocket handler workflow runtime gating', () => {
     const sessionId = `workflow-duplicate-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
-    spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({ model: 'main-session-sonnet' })
+    spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
     spyOn(conversationService, 'startSession').mockResolvedValue()
     spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
@@ -7667,10 +7702,12 @@ describe('WebSocket handler workflow runtime gating', () => {
       stateVersion: 3,
       transitionId: 'confirm-requirements-idempotent',
     }))
-    await waitForCondition(() => parseSentMessages(ws).some((message) =>
-      message.type === 'system_notification'
-      && message.subtype === 'workflow_state'
-    ))
+    // Confirmation and the resumed phase each emit state. Wait for the resume
+    // turn to finish before replaying, so that its state cannot mimic the replay.
+    await waitForCondition(() => sendMessage.mock.calls.filter(([id]) => id === sessionId).length === 1)
+    expect(parseSentMessages(ws).filter((message) =>
+      message.type === 'system_notification' && message.subtype === 'workflow_state'
+    )).toHaveLength(2)
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
@@ -7681,7 +7718,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     }))
     await waitForCondition(() => parseSentMessages(ws).filter((message) =>
       message.type === 'system_notification' && message.subtype === 'workflow_state'
-    ).length >= 2)
+    ).length >= 3)
 
     const messages = parseSentMessages(ws)
     const transitions = messages.filter((message) =>
@@ -7696,7 +7733,8 @@ describe('WebSocket handler workflow runtime gating', () => {
     expect(transitions.filter((message) =>
       (message.data as { transitionId?: string }).transitionId === 'confirm-requirements-idempotent'
     )).toHaveLength(1)
-    expect(workflowStates).toHaveLength(2)
+    expect(workflowStates).toHaveLength(3)
+    expect(sendMessage.mock.calls.filter(([id]) => id === sessionId)).toHaveLength(1)
     expect(workflowStates.at(-1)).toMatchObject({
       data: {
         activePhaseId: 'technical-design',
@@ -8023,6 +8061,8 @@ describe('WebSocket handler workflow runtime gating', () => {
   })
 
   it('retries a blocked current phase without reviving a stale next-phase confirmation', async () => {
+    spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({ model: 'main-session-sonnet' })
+    spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
     const sessionId = `workflow-retry-blocked-current-phase-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
@@ -8109,8 +8149,12 @@ describe('WebSocket handler workflow runtime gating', () => {
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
-      action: 'retry',
-      transitionId: 'retry-ready',
+      action: 'ready',
+      stateVersion: 1,
+      transitionId: 'submit-ready',
+      handoff: { summary: 'Requirements confirmed.', artifacts: [], next: 'Technical design.' },
+      rationale: 'The requirements are verified.',
+      evidence: [{ kind: 'test', ref: 'fixture://requirements', label: 'Requirements verification' }],
     }))
     await waitForCondition(() => parseSentMessages(ws).some((message) =>
       message.type === 'system_notification'
@@ -8219,6 +8263,7 @@ describe('strict UIUX real image delivery gate', () => {
       allowedToolNames: ['AskUserQuestion', 'Read', 'image_generation'],
       requiredSkillIds: ['taste-redesign', 'impeccable-visual-refinement', 'ui-craft-critique', 'ui-craft-finalize', 'source-fidelity-final-pass'],
     }
+    ;(conversationService as any).sessions.get(sessionId).expertRuntimeBindingKey = getExpertProcessBindingKey(strictVisualExpert)
     return spyOn(sessionService, 'getSession').mockResolvedValue({
       id: sessionId,
       workDir: process.cwd(),

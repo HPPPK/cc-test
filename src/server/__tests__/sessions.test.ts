@@ -1368,7 +1368,7 @@ describe('SessionService', () => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
     await writeSessionFile('-tmp-project', sessionId, [
       makeSnapshotEntry(),
-      makeUserEntry('濮濓絽鐖堕悽銊﹀煕濞戝牊浼?, crypto.randomUUID()),
+      makeUserEntry('Normal user request', crypto.randomUUID()),
       {
         type: 'user',
         message: {
@@ -1397,16 +1397,16 @@ describe('SessionService', () => {
         uuid: crypto.randomUUID(),
         timestamp: '2026-01-01T00:00:04.000Z',
       },
-      makeAssistantEntry('濮濓絽鐖堕崝鈺傚濞戝牊浼?, crypto.randomUUID()),
+      makeAssistantEntry('Normal assistant reply', crypto.randomUUID()),
     ])
 
     const messages = await service.getSessionMessages(sessionId)
 
     expect(messages).toHaveLength(2)
-    expect(messages[0]).toMatchObject({ type: 'user', content: '濮濓絽鐖堕悽銊﹀煕濞戝牊浼? })
+    expect(messages[0]).toMatchObject({ type: 'user', content: 'Normal user request' })
     expect(messages[1]).toMatchObject({
       type: 'assistant',
-      content: [{ type: 'text', text: '濮濓絽鐖堕崝鈺傚濞戝牊浼? }],
+      content: [{ type: 'text', text: 'Normal assistant reply' }],
     })
   })
 
@@ -1555,7 +1555,7 @@ describe('SessionService', () => {
         timestamp: '2026-01-01T00:00:02.000Z',
         uuid: 'goal-output',
       },
-      makeAssistantEntry('濮濓絽鐖堕崝鈺傚濞戝牊浼?, crypto.randomUUID()),
+      makeAssistantEntry('Normal assistant reply', crypto.randomUUID()),
     ])
 
     const messages = await service.getSessionMessages(sessionId)
@@ -1592,11 +1592,11 @@ describe('SessionService', () => {
     await writeSessionFile('-tmp-project', sessionId, [
       makeSnapshotEntry(),
       {
-        ...makeUserEntry('閸掓稑缂撴稉鈧稉顏堛€嶉惄?, firstUserId),
+        ...makeUserEntry('閸掓稑缂撴稉鈧稉顏堛€嶉惄?', firstUserId),
         parentUuid: null,
       },
       {
-        ...makeAssistantEntry('妞ゅ湱娲板鑼病閸掓稑缂?, firstUserId),
+        ...makeAssistantEntry('妞ゅ湱娲板鑼病閸掓稑缂?', firstUserId),
         uuid: firstAssistantId,
       },
       {
@@ -1633,11 +1633,11 @@ describe('SessionService', () => {
         timestamp: '2026-01-01T00:03:00.000Z',
       },
       {
-        ...makeAssistantEntry('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?, taskToolResultId),
+        ...makeAssistantEntry('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?', taskToolResultId),
         uuid: taskAfterToolId,
       },
       {
-        ...makeUserEntry('缂佈呯敾閻喎鐤勯梻顕€顣?, realFollowUpId),
+        ...makeUserEntry('缂佈呯敾閻喎鐤勯梻顕€顣?', realFollowUpId),
         parentUuid: taskAfterToolId,
       },
       {
@@ -1658,7 +1658,7 @@ describe('SessionService', () => {
     expect(JSON.stringify(messages)).not.toContain('<task-notification>')
     expect(JSON.stringify(messages)).not.toContain('閺冄冩倵閸欓鎹㈤崝锟犫偓姘辩叀')
     expect(JSON.stringify(messages)).not.toContain('server restarted')
-    expect(JSON.stringify(messages)).not.toContain('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?)
+    expect(JSON.stringify(messages)).not.toContain('閸氬骸褰存禒璇插鐟欙箑褰傞惃鍕紣閸忕柉鐨熼悽銊ョ暚閹?')
     expect(taskNotifications).toEqual([
       {
         taskId: 'bg-1',
@@ -2334,12 +2334,12 @@ describe('SessionService', () => {
       makeUserEntry([
         '<command-message>frontend-design</command-message>',
         '<command-name>/frontend-design</command-name>',
-        '<command-args>@website 闁插秵鏌婄拋鎹愵吀妫ｆ牠銆?/command-args>',
+        '<command-args>@website build a landing page</command-args>',
       ].join('\n')),
     ])
 
     const detail = await service.getSession(sessionId)
-    expect(detail!.title).toBe('/frontend-design @website 闁插秵鏌婄拋鎹愵吀妫ｆ牠銆?)
+    expect(detail!.title).toBe('/frontend-design @website build a landing page')
   })
 
   it('should keep a goal creation title instead of later goal status titles', async () => {
@@ -3958,7 +3958,7 @@ describe('Sessions API', () => {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
-            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?,
+            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?',
           },
         }),
       })
@@ -4027,7 +4027,7 @@ describe('Sessions API', () => {
             templateId: 'agent-development',
             templateSource: 'user',
             initialPhaseId: 'discussion',
-            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?,
+            request: '瀵偓閸欐垳绔存稉顏勵劅閻㈢喓顓搁悶鍡欓兇缂?',
           },
         }),
       })

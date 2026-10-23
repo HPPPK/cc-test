@@ -1,7 +1,7 @@
 import { registeredResearchArtifactPaths, researchArtifactRootPath } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import * as fs from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import * as path from 'node:path'
+import { expertResearchPathApiFor } from './expertResearchArtifactPolicyService.js'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 import { hasActiveExpertRuntime } from './expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
@@ -84,7 +84,7 @@ export type ExpertResearchAutoContinueHandler = (
 ) => Promise<boolean>
 
 function resolveArtifactAbsolutePath(workDir: string, artifactPath: string): string {
-  const pathApi = path.win32.isAbsolute(workDir) ? path.win32 : path
+  const pathApi = expertResearchPathApiFor(workDir)
   return pathApi.resolve(workDir, ...artifactPath.split('/'))
 }
 

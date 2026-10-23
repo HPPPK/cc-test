@@ -457,7 +457,7 @@ export class ConversationService {
         return
       }
 
-      const startupError = this.buildStartupError(sessionId, startupExitCode)
+      const startupError = this.buildStartupError(sessionId, startupExitCode, session)
       await removeSessionRuntimePromptFile(session.runtimePromptFilePath)
 
       if (this.clearStaleLock(sessionId)) {
@@ -1686,8 +1686,8 @@ export class ConversationService {
   private buildStartupError(
     sessionId: string,
     exitCode: number,
+    session: SessionProcess,
   ): ConversationStartupError {
-    const session = this.sessions.get(sessionId)
     const capturedOutput = this.buildCapturedProcessOutputDetail(session)
     const recentMessages = session?.sdkMessages ?? []
     const resultMessage = [...recentMessages]

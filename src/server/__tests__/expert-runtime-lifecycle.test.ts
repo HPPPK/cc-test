@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { __resetWebSocketHandlerStateForTests, continueCommercializationResearch, handleWebSocket } from '../ws/handler.js'
+import * as hostTools from '../../tools.js'
+import { ProviderService } from '../services/providerService.js'
+import { SettingsService } from '../services/settingsService.js'
 import { conversationService } from '../services/conversationService.js'
 import { sessionService } from '../services/sessionService.js'
 import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
@@ -26,6 +29,11 @@ async function until(predicate: () => boolean) {
   }
 }
 function harness(initial: ExpertSessionMetadata | undefined, running = false, loadedKey?: string) {
+  // Runtime handoff fixtures must not depend on credentials or model defaults on the host.
+  spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
+  spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({})
+  spyOn(SettingsService.prototype, 'getPermissionMode').mockResolvedValue('default')
+  spyOn(hostTools, 'getToolsForDefaultPreset').mockReturnValue(['Read', 'Write', 'Bash', 'Task', 'TaskOutput', 'AskUserQuestion', 'Playwright'])
   const id = crypto.randomUUID()
   let expert = initial
   let processKey = loadedKey
