@@ -6869,18 +6869,23 @@ describe('WebSocket handler workflow runtime gating', () => {
   it('accepts idempotent workflow retry transition commands for workflow sessions', async () => {
     const sessionId = `workflow-retry-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
+    // Exercise idempotency with a persisted, pinned workflow instead of an
+    // unverifiable ephemeral session whose rules may no longer be loaded.
+    await new WorkflowSessionStateService().writeState(sessionId, makeWorkflowState(sessionId))
+    spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
 
     handleWebSocket.open(ws)
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
-      phaseId: 'implementation',
+      phaseId: 'requirements-clarification',
       action: 'retry',
       transitionId: 'retry-once',
       stateVersion: 1,
     }))
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
-      phaseId: 'implementation',
+      phaseId: 'requirements-clarification',
       action: 'retry',
       transitionId: 'retry-once',
       stateVersion: 1,

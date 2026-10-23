@@ -11,6 +11,7 @@ import { sessionService } from './sessionService.js'
 import { conversationService } from './conversationService.js'
 import { ExpertPackRegistryService, ExpertPackValidationError, type ExpertIntakeState, type ExpertMaterialRef, type ExpertSessionMetadata, type ExpertTemplateFillDraftState } from './expertPackRegistryService.js'
 import { ExpertRuntimeService } from './expertRuntimeService.js'
+import { assertExpertPathComponent, createExpertOutputDirectory, makeExpertDirectories, writeExpertText } from './expertFilesystemBoundary.js'
 import { createExpertRuntimeBinding, hasActiveExpertRuntime, restoreTruncatedExpertRuntime, upgradeCommercializationResearchChannelRuntime } from './expertRuntimeBindingService.js'
 import { EXPERT_TEMPLATE_FILL_FORMAT, deriveExpertTemplateFillSchema, renderExpertTemplateFill } from '../../utils/expertTemplateFill.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
@@ -2155,10 +2156,13 @@ export class ExpertSessionService {
     const projectRoot = input.projectRoot || session.workDir || session.projectRoot || session.projectPath
     if (!projectRoot || typeof projectRoot !== 'string') throw ApiError.badRequest('\u7f3a\u5c11\u9879\u76ee\u76ee\u5f55\uff0c\u65e0\u6cd5\u5199\u5165\u4e13\u5bb6\u6750\u6599\u5305\u3002')
     const runId = createRunId()
-    const outputDir = path.resolve(projectRoot, '.workflow', 'intake', 'expert-runs', runId, expert.id)
+    assertExpertPathComponent(runId)
+    assertExpertPathComponent(expert.id)
+    const requestedOutputDir = path.resolve(projectRoot, '.workflow', 'intake', 'expert-runs', runId, expert.id)
     const workflowRoot = path.resolve(projectRoot, '.workflow')
-    if (!outputDir.startsWith(workflowRoot + path.sep)) throw ApiError.badRequest('\u4e13\u5bb6\u8f93\u51fa\u8def\u5f84\u4e0d\u5b89\u5168\u3002')
-    await fs.mkdir(path.join(outputDir, 'logs'), { recursive: true })
+    if (!requestedOutputDir.startsWith(workflowRoot + path.sep)) throw ApiError.badRequest('\u4e13\u5bb6\u8f93\u51fa\u8def\u5f84\u4e0d\u5b89\u5168\u3002')
+    const outputDir = await createExpertOutputDirectory(projectRoot, requestedOutputDir)
+    await makeExpertDirectories(outputDir, path.join(outputDir, 'logs'))
 
     const now = new Date().toISOString()
     const runningExpert: ExpertSessionMetadata = {
@@ -2199,13 +2203,13 @@ export class ExpertSessionService {
       const materialJsonPath = path.join(outputDir, 'material.json')
       const evidencePath = path.join(outputDir, 'evidence.md')
 
-      await fs.writeFile(summaryPath, finalSummary, 'utf-8')
-      await fs.writeFile(materialJsonPath, `${JSON.stringify({
+      await writeExpertText(outputDir, 'material-summary.md', finalSummary)
+      await writeExpertText(outputDir, 'material.json', `${JSON.stringify({
         ...finalMaterial,
         runId,
         outputDirectory: outputDir,
-      }, null, 2)}\n`, 'utf-8')
-      await fs.writeFile(evidencePath, finalEvidence, 'utf-8')
+      }, null, 2)}\n`)
+      await writeExpertText(outputDir, 'evidence.md', finalEvidence)
 
       const materialRef: ExpertMaterialRef = {
         runId,

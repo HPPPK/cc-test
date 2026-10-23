@@ -9,19 +9,13 @@ import type {
 
 let testLoaderOverride: ((state: WorkflowSessionState) => Promise<WorkflowTemplate | null>) | null = null
 
-/** Test-only dependency seam; production always uses the canonical stored ZIP loader. */
+/** Test-only seam for legacy runs; production fallback loads the canonical stored ZIP. */
 export function setWorkflowRuntimeTemplateLoaderForTests(
   loader: ((state: WorkflowSessionState) => Promise<WorkflowTemplate | null>) | null,
 ): void {
   testLoaderOverride = loader
 }
 
-
-const PINNED_WORKFLOW_IDS = new Set([
-  'efficient-constrained-dev-debug-workflow-v5',
-  'feature-extension-workflow-v8',
-  'debug-repair-workflow-v8',
-])
 
 export function workflowTemplateSnapshotHash(template: WorkflowTemplate): string {
   return 'sha256-' + createHash('sha256').update(JSON.stringify(template)).digest('hex')
@@ -73,7 +67,9 @@ export async function loadCurrentWorkflowTemplate(
     ?? (state.template && typeof state.template === 'object' && 'id' in state.template ? state.template.id : undefined)
   if (!workflowId) return null
 
-  if (PINNED_WORKFLOW_IDS.has(workflowId) && state.templateSnapshot) {
+  // Every run owns its original rules, including imported/custom workflows.
+  // Replacing or removing an installed ZIP must not change an existing run.
+  if (state.templateSnapshot) {
     return resolveWorkflowTemplateForRun(state, null)
   }
 
@@ -89,9 +85,7 @@ export async function loadCurrentWorkflowTemplate(
     }
   }
 
-  return PINNED_WORKFLOW_IDS.has(workflowId)
-    ? resolveWorkflowTemplateForRun(state, installed)
-    : installed
+  return resolveWorkflowTemplateForRun(state, installed)
 }
 
 export function toWorkflowTemplate(
