@@ -61,7 +61,9 @@ describe('Expert material filesystem boundary', () => {
         }
       }))
 
-      await expect(new ExpertSessionService().writeMaterialPackage('material-boundary-session', { expertId: 'material-expert' })).rejects.toThrow('multiple hard links')
+      // APFS may canonicalize a hard link to its outside sibling first. Both
+      // containment checks and the handle's link-count check must deny it.
+      await expect(new ExpertSessionService().writeMaterialPackage('material-boundary-session', { expertId: 'material-expert' })).rejects.toThrow(/multiple hard links|outside the allowed directory/)
 
       expect(await readFile(sentinel, 'utf8')).toBe('outside sentinel')
     })
