@@ -1,6 +1,7 @@
 import * as path from 'node:path'
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  assertExpertTemplateFillToolMutationAllowed,
   currentExpertTemplateOutputReviewContext,
   expertTemplateFillPostWriteNotice,
   isCurrentExpertTemplateOutputReviewReportPath,
@@ -13,6 +14,7 @@ import {
 
 const envKeys = [
   'CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE',
+  'CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY',
   'CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT',
   'CC_JIANGXIA_EXPERT_SESSION_ID',
   'CC_JIANGXIA_DESKTOP_SERVER_URL',
@@ -42,6 +44,77 @@ afterEach(() => {
 })
 
 describe('expert template-fill Write runtime', () => {
+  test('CLI-only delivery rejects report Write and HTML edits before renderer access', async () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    let rendererCalls = 0
+    globalThis.fetch = async () => { rendererCalls++; return new Response('{}') }
+    for (const input of [{}, { file_path: 'report.html', content: '<html>invented</html>' }, { file_path: 'report.html', content: '', expert_output: { templateId: 'fixed-v1', fields: {} } }]) {
+      await expect(renderExpertTemplateFillForWrite(input)).rejects.toThrow('cc-jiangxia expert-template-fill')
+    }
+    for (const tool of ['Edit', 'MultiEdit']) {
+      expect(() => assertExpertTemplateFillToolMutationAllowed(tool, { file_path: 'REPORT.HTML' })).toThrow('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
+    }
+    expect(rendererCalls).toBe(0)
+  })
+
+  test('CLI-only delivery rejects obvious shell HTML writes even with a CLI camouflage suffix', () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    const commands = [
+      'echo changed > report.html',
+      'echo changed >> "commercial report.html"',
+      'sed --in-place s/old/new/ report.html',
+      'echo changed > report.html; cc-jiangxia expert-template-fill --schema',
+      'cat <<EOF > report.html\nchanged\nEOF',
+      'cat draft.html > report.htm',
+      'printf changed | tee "report.html"',
+      "sed -i '' 's/old/new/' report.html",
+      `python3 -c "open('report.html', 'w').write('changed')"`,
+      `python3 -c "from pathlib import Path; Path('report.html').write_text('changed')"`,
+      `node -e "require('fs').writeFileSync('report.html', 'changed')"`,
+      'Set-Content -Path report.html -Value changed',
+      "'changed' | Out-File -FilePath report.html",
+      'Add-Content report.html changed',
+      `echo '<!DOCTYPE html><html><body>generated</body></html>'`,
+    ]
+    for (const command of commands) {
+      expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command })).toThrow('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
+      expect(() => assertExpertTemplateFillToolMutationAllowed('PowerShell', { command })).toThrow('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
+    }
+    delete process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+    expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command: commands[0] })).not.toThrow()
+  })
+
+  test('CLI-only delivery permits structured CLI stdin, existing data input, and research read-only shell', () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    for (const command of [
+      `cc-jiangxia expert-template-fill --data-stdin --output report.html <<'JSON'\n{"templateId":"fixed-v1","fields":{"REPORT_TITLE":"Plain fields"}}\nJSON`,
+      'cc-jiangxia expert-template-fill --data existing.json --output report.html',
+      'cc-jiangxia expert-template-fill --schema',
+      'cat research/07.md',
+      'cat report.html',
+      'rg evidence research/07.md',
+    ]) {
+      expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command })).not.toThrow()
+    }
+  })
+
+  test('CLI-only delivery preserves declared research Markdown and ordinary expert edits', async () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    process.env.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY = JSON.stringify({
+      mode: 'markdown-path-only', directory: 'research', briefPath: 'research/01.md',
+      researcherPaths: ['research/02.md', 'research/03.md', 'research/04.md'], reviewerPath: 'research/05.md', auditPath: 'research/06.md', maxCharacters: 90000,
+    })
+    const input = { file_path: 'research/02.md', content: '# Durable research\nActual observations.' }
+    await expect(renderExpertTemplateFillForWrite(input)).resolves.toMatchObject({ kind: 'research-artifact', content: input.content })
+    expect(() => assertExpertTemplateFillToolMutationAllowed('Edit', input)).not.toThrow()
+    delete process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+    expect(() => assertExpertTemplateFillToolMutationAllowed('Edit', { file_path: 'report.html' })).not.toThrow()
+  })
+
   test('returns a specific repair instruction for an accidental empty Write without calling the renderer', async () => {
     enableTemplateFillSession()
     let rendererCalled = false

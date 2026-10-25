@@ -25,4 +25,4 @@ Turn a product direction and user materials into a decision-ready commercializat
 - Evidence gap: record unavailable, inaccessible, or missing evidence and continue with bounded inference or an explicit gap instead of inventing a conclusion. The parent uses AskUserQuestion only when missing user-owned product information would materially change scope; internal review, absorption and delivery never ask for permission to finish.
 
 ## Delivery rule
-Use the supplied HTML template as the document skeleton. Populate only supported content and the template designated fields. Do not modify the template structure, CSS, chapter order, or table headers. Use the session workDir and the fixed-template structured Write contract; do not ask the user to troubleshoot internal saving or rendering errors.
+Use the supplied HTML template as the document skeleton. Populate only supported content and the template designated fields. Do not modify the template structure, CSS, chapter order, or table headers. Use the session workDir and the fixed-template fixed-template CLI contract; do not ask the user to troubleshoot internal saving or rendering errors.

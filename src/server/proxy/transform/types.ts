@@ -34,6 +34,7 @@ export type OpenAITool = {
     name: string
     description?: string
     parameters?: Record<string, unknown>
+    strict?: boolean
   }
 }
 
@@ -128,6 +129,7 @@ export type OpenAIResponsesRequest = {
     name: string
     description?: string
     parameters?: Record<string, unknown>
+    strict?: boolean
   }>
   tool_choice?: unknown
   reasoning?: { effort?: 'low' | 'medium' | 'high' }
@@ -179,6 +181,8 @@ export type AnthropicRequest = {
     name: string
     description?: string
     input_schema: Record<string, unknown>
+    strict?: boolean
+    input_examples?: Record<string, unknown>[]
     cache_control?: unknown
   }>
   tool_choice?: unknown

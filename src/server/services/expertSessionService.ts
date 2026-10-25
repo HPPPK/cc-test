@@ -79,7 +79,7 @@ type ExpertTemplateFillDraft = ExpertTemplateFillDraftState
 // Rejected fields are a repair candidate, NOT a rendered draft. Keep this
 // bounded, process-local cache separate from persisted delivery/review state.
 // No user storage format changes; a server restart requires a full resubmission.
-const templateFillCandidates = new Map<string, { sessionId: string; payload: TemplateFillSubmission; savedAt: number }>()
+const templateFillCandidates = new Map<string, { sessionId: string; payload: TemplateFillSubmission; savedAt: number; bindingHash: string; outputPath?: string }>()
 // A render is only a prepared write. Receipts are process-local, never a new
 // user-storage schema; after server restart the same structured Write can retry.
 const templateFillWrites = new Map<string, {
@@ -102,13 +102,13 @@ function prepareTemplateFillWrite(sessionId: string, candidateKey: string, outpu
 function templateFillCandidateKey(sessionId: string, binding: unknown, outputPath: string | undefined): string {
   return sessionId + ':' + fingerprint({ binding, outputPath: outputPath ?? null })
 }
-function rememberTemplateFillCandidate(key: string, sessionId: string, payload: TemplateFillSubmission): void {
+function rememberTemplateFillCandidate(key: string, sessionId: string, payload: TemplateFillSubmission, binding: unknown, outputPath?: string): void {
   const now = Date.now()
   for (const [storedKey, value] of templateFillCandidates) {
     if (now - value.savedAt > 2 * 60 * 60 * 1000) templateFillCandidates.delete(storedKey)
   }
   templateFillCandidates.delete(key)
-  templateFillCandidates.set(key, { sessionId, payload, savedAt: now })
+  templateFillCandidates.set(key, { sessionId, payload, savedAt: now, bindingHash: fingerprint(binding), ...(outputPath ? { outputPath } : {}) })
   while (templateFillCandidates.size > 16) templateFillCandidates.delete(templateFillCandidates.keys().next().value!)
 }
 
@@ -157,6 +157,7 @@ function readTemplateFillRepairFailures(expert: ExpertSessionMetadata): ExpertTe
 }
 
 type TemplateFillSubmission = {
+  format?: typeof EXPERT_TEMPLATE_FILL_FORMAT
   templateId: string
   fields: Record<string, unknown>
   mode?: 'patch' | 'finalize'
@@ -212,6 +213,10 @@ function resolveTemplateFillOutputPath(workDir: string | undefined, value: unkno
 
 function parseTemplateFillSubmission(value: unknown): TemplateFillSubmission {
   if (!isRecord(value)) throw ApiError.badRequest('模板填充数据必须是包含 templateId 和 fields 的对象。')
+  const allowedKeys = new Set(['format', 'templateId', 'fields', 'mode', 'evidenceAbsorption'])
+  const unknownKeys = Object.keys(value).filter(key => !allowedKeys.has(key))
+  if (unknownKeys.length) throw ApiError.badRequest(`模板填充包含不支持的顶层字段：${unknownKeys.join(', ')}。只允许固定母版的结构化字段。`)
+  if (value.format !== undefined && value.format !== EXPERT_TEMPLATE_FILL_FORMAT) throw ApiError.badRequest('模板填充 format 不受支持。')
   const templateId = typeof value.templateId === 'string' ? value.templateId.trim() : ''
   if (!templateId || !isRecord(value.fields)) {
     throw ApiError.badRequest('模板填充数据缺少非空 templateId 或 fields 对象。')
@@ -220,6 +225,7 @@ function parseTemplateFillSubmission(value: unknown): TemplateFillSubmission {
     throw ApiError.badRequest('模板填充 mode 只能是 patch 或 finalize。')
   }
   return {
+    ...(value.format === EXPERT_TEMPLATE_FILL_FORMAT ? { format: value.format } : {}),
     templateId,
     fields: value.fields,
     ...(value.mode === 'patch' || value.mode === 'finalize' ? { mode: value.mode } : {}),
@@ -1595,12 +1601,43 @@ export class ExpertSessionService {
       expert: nextExpert,
     })
     await expertRuntimeSessionStore.save(input.sessionId, nextExpert)
-    const repairHint = renderedTemplateFillDraft(readTemplateFillDraft(input.expert))
+    let repairHint = renderedTemplateFillDraft(readTemplateFillDraft(input.expert))
       ? ' 已成功写入的初始 HTML 与复核状态仍保留，失败字段未提交。按 08 的结论继续：确有来源支持的遗漏，或 07 已有材料能纠正的来源/语义错误，才使用 mode="patch" 提交最小字段；无需修正则 mode="finalize" 且 fields: {}。不要为绕过校验添加占位字段或提交空补丁。'
       : [...templateFillCandidates.values()].some((candidate) => candidate.sessionId === input.sessionId)
         ? ' 本次尚未生成 HTML，但本服务进程已保留已提交字段。下一次 Write 可用相同路径和 templateId、mode="patch" 只补正报错字段；删除母版未声明字段时提交该字段为 null（先把有用内容移到合法字段），合法字段不能置空。无需重写全文，也不要提前运行 08。服务重启后需重新提交完整字段。'
         : ' 本次尚未成功渲染 HTML；请提交完整 expert_output，不要提前运行 08 完整性复核。'
+    if (input.expert.runtimeBinding?.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID) {
+      repairHint = repairHint.replace('下一次 Write', '下一次 expert-template-fill CLI 调用').replace('完整 expert_output', '完整 expert-template-fill CLI 字段 JSON')
+      repairHint += ' 只能通过 expert-template-fill CLI 填充会话绑定母版；先运行 expert-template-fill --schema 查看真实字段。不要调用 Write 或生成自由 HTML。'
+    }
     throw new ApiError(input.statusCode, input.message + repairHint, input.code)
+  }
+
+  async getTemplateFillSchema(sessionId: string) {
+    const session = await sessionService.getSession(sessionId)
+    if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
+    const expert = hasActiveExpertRuntime(session.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
+    if (!hasActiveExpertRuntime(expert) || expert.runtimeBinding.outputMode !== 'template-fill' || !expert.runtimeBinding.outputTemplate) {
+      throw ApiError.badRequest('当前会话没有启用可用的专家模板填充输出。请重新进入专家 Mode 后重试。')
+    }
+    const binding = expert.runtimeBinding
+    const schema = deriveExpertTemplateFillSchema(binding.outputTemplate.content)
+    const draft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
+    const delivery = expert.templateFillDelivery
+    const stage = draft ? 'draft' as const : delivery ? 'finalized' as const : 'initial' as const
+    const candidate = !draft && !delivery ? [...templateFillCandidates.values()].reverse().find(value => value.sessionId === sessionId
+      && value.bindingHash === fingerprint(binding) && Date.now() - value.savedAt < 2 * 60 * 60 * 1000) : undefined
+    const allowedModes: ('patch' | 'finalize')[] = draft ? ['patch', 'finalize'] : candidate ? ['patch'] : []
+    const reportPath = draft?.completionReview?.reportPath ?? delivery?.reportPath
+    return {
+      ...schema,
+      delivery: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID ? 'cli-only' as const : 'structured-write' as const,
+      lifecycle: {
+        stage, allowedModes, ...(reportPath ? { reportPath } : {}),
+        ...(!draft && !delivery ? { initialSubmission: { allowed: true, omitMode: true } } : {}),
+        ...(candidate ? { repairCandidate: { ...(candidate.outputPath ? { outputPath: candidate.outputPath } : {}), fieldIds: Object.keys(candidate.payload.fields) } } : {}),
+      },
+    }
   }
 
   async renderTemplateFill(
@@ -1725,7 +1762,9 @@ export class ExpertSessionService {
       }
     } else if (submission.mode === 'patch' || submission.mode === 'finalize') {
       if (!existingDraft) {
-        throw new ApiError(409, '没有可修复的报告草稿。请先提交一次完整 expert_output，再使用 mode="patch" 只补正被指出的字段。', 'EXPERT_TEMPLATE_FILL_DRAFT_REQUIRED')
+        throw new ApiError(409, binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+          ? '没有可修复的报告草稿。请先通过 expert-template-fill CLI 提交完整字段 JSON，再使用 mode="patch" 只补正被指出的字段。'
+          : '没有可修复的报告草稿。请先提交一次完整 expert_output，再使用 mode="patch" 只补正被指出的字段。', 'EXPERT_TEMPLATE_FILL_DRAFT_REQUIRED')
       }
       if (
         existingDraft.completionReview?.reportPath
@@ -1771,7 +1810,9 @@ export class ExpertSessionService {
       // rewrite. Require the explicit merge mode instead.
       throw new ApiError(
         409,
-        '完整报告草稿仍已保留。当前提交只包含部分字段；若只修复被指出的字段，请在 expert_output 中设置 mode="patch"。如要重写完整报告，请提交覆盖已保存草稿全部字段的 fields。',
+        binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+          ? '完整报告草稿仍已保留。当前提交只包含部分字段；请通过 expert-template-fill CLI 使用 mode="patch" 修复被指出的字段。'
+          : '完整报告草稿仍已保留。当前提交只包含部分字段；若只修复被指出的字段，请在 expert_output 中设置 mode="patch"。如要重写完整报告，请提交覆盖已保存草稿全部字段的 fields。',
         'EXPERT_TEMPLATE_FILL_PATCH_REQUIRED',
       )
     } else {
@@ -1847,7 +1888,7 @@ export class ExpertSessionService {
     }
 
     if (!existingDraft && effectivePayload.templateId === deriveExpertTemplateFillSchema(binding.outputTemplate.content).templateId) {
-      rememberTemplateFillCandidate(candidateKey, sessionId, effectivePayload)
+      rememberTemplateFillCandidate(candidateKey, sessionId, effectivePayload, binding, outputPath)
     }
 
     // Keep candidate fields in-memory for semantic validation. Persist templateFillDraft
@@ -2109,19 +2150,26 @@ export class ExpertSessionService {
   async commitTemplateFillWrite(sessionId: string, input: { receipt?: unknown; outputPath?: unknown }): Promise<{ committed: true }> {
     const receipt = typeof input.receipt === 'string' ? input.receipt : ''
     const pending = templateFillWrites.get(receipt)
+    const active = await sessionService.getSession(sessionId)
+    const cliOnly = active?.expert?.runtimeBinding?.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
     if (!pending || pending.sessionId !== sessionId || Date.now() - pending.savedAt > 2 * 60 * 60 * 1000) {
-      throw new ApiError(409, '写盘确认回执已失效；保留原字段，重试同一份 Write 即可。', 'EXPERT_TEMPLATE_FILL_WRITE_RECEIPT_EXPIRED')
+      throw new ApiError(409, cliOnly ? '写盘确认回执已失效；保留原字段，通过 expert-template-fill CLI 重试同一份字段 JSON。' : '写盘确认回执已失效；保留原字段，重试同一份 Write 即可。', 'EXPERT_TEMPLATE_FILL_WRITE_RECEIPT_EXPIRED')
     }
-    const session = await sessionService.getSession(sessionId)
+    const session = active
     const expert = session?.expert
     if (!session || !expert || fingerprint(expert.runtimeBinding) !== pending.bindingHash) {
       throw new ApiError(409, '当前专家绑定已变更，不能提交旧报告写盘回执。', 'EXPERT_TEMPLATE_FILL_WRITE_BINDING_CHANGED')
     }
-    const outputPath = resolveTemplateFillOutputPath(session.workDir || session.projectRoot || session.projectPath, pending.outputPath ?? input.outputPath)
+    const workDir = session.workDir || session.projectRoot || session.projectPath
+    const suppliedPath = resolveTemplateFillOutputPath(workDir, input.outputPath)
+    if (pending.outputPath && suppliedPath && !sameTemplateFillOutputPath(pending.outputPath, suppliedPath)) {
+      throw new ApiError(409, '写盘确认路径必须与渲染回执绑定的报告路径一致。', 'EXPERT_TEMPLATE_FILL_WRITE_PATH_MISMATCH')
+    }
+    const outputPath = resolveTemplateFillOutputPath(workDir, pending.outputPath ?? suppliedPath)
     if (!outputPath) throw ApiError.badRequest('写盘确认缺少实际报告路径。')
     const written = await fs.readFile(outputPath)
     if (createHash('sha256').update(written).digest('hex') !== pending.contentHash) {
-      throw new ApiError(409, '报告尚未完整写入；草稿与复核状态保留，请重试同一份 Write。', 'EXPERT_TEMPLATE_FILL_WRITE_NOT_CONFIRMED')
+      throw new ApiError(409, cliOnly ? '报告尚未完整写入；草稿与复核状态保留，请通过 expert-template-fill CLI 重试同一份字段 JSON。' : '报告尚未完整写入；草稿与复核状态保留，请重试同一份 Write。', 'EXPERT_TEMPLATE_FILL_WRITE_NOT_CONFIRMED')
     }
     if (pending.committed) return { committed: true }
     // Merge only delivery state into the latest session, not a stale snapshot.

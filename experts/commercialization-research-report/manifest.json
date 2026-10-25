@@ -4,7 +4,7 @@
   "version": "0.13.55-local",
   "schemaVersion": 1,
   "type": "expert-pack",
-  "description": "基于可编辑业务规则、固定 HTML 母版、分章节研究子代理、具体公开页面取证、独立复核、细节簇字段吸收、渲染后完整性检查与结构化 Write 交付的新品商业化调研专家。",
+  "description": "基于可编辑业务规则、固定 HTML 母版、分章节研究子代理、具体公开页面取证、独立复核、细节簇字段吸收、渲染后完整性检查与cc-jiangxia expert-template-fill CLI 固定母版交付的新品商业化调研专家。",
   "entrypoints": {
     "experts": [
       "experts/commercialization-research-report/expert.json"
@@ -53,7 +53,7 @@
     {
       "id": "Write",
       "name": "Write",
-      "purpose": "在运行时声明的 Markdown 交接路径上写入调研 brief、子代理台账和独立复核；最终以结构化 expert_output 交给当前专家会话绑定的固定 HTML 母版。",
+      "purpose": "在运行时声明的 Markdown 交接路径上写入调研 brief、子代理台账和独立复核；只用于研究 Markdown，不生成或修改报告 HTML。报告交付只用 cc-jiangxia expert-template-fill。",
       "supported": true
     }
   ],

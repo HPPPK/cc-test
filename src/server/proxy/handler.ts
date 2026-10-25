@@ -17,6 +17,7 @@ import { openaiResponsesToAnthropic } from './transform/openaiResponsesToAnthrop
 import { openaiChatStreamToAnthropic } from './streaming/openaiChatStreamToAnthropic.js'
 import { openaiResponsesStreamToAnthropic } from './streaming/openaiResponsesStreamToAnthropic.js'
 import type { AnthropicRequest } from './transform/types.js'
+import { ToolSchemaContractError } from './transform/toolSchemaContract.js'
 
 const providerService = new ProviderService()
 const UPSTREAM_REQUEST_TIMEOUT_MS = 300_000
@@ -189,6 +190,11 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
       return await handleOpenaiResponses(body, baseUrl, config.apiKey, isStream)
     }
   } catch (err) {
+    if (err instanceof ToolSchemaContractError) {
+      return Response.json({ type: 'error', error: {
+        type: 'invalid_request_error', code: err.code, message: err.message,
+      } }, { status: 400 })
+    }
     console.error('[Proxy] Upstream request failed:', err)
     return Response.json(
       {

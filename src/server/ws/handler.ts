@@ -6505,6 +6505,7 @@ type RuntimeSettings = {
   workflowSystemPrompt?: string
   expertSystemPrompt?: string
   expertRuntimeBindingKey?: string
+  expertTemplateFillDelivery?: 'cli-only'
   /** Package-scoped template output root taken from the persisted session workDir. */
   expertTemplateFillOutputRoot?: string
   /** ZIP-declared fixed Markdown artifact allowlist for this active Expert only. */
@@ -6672,6 +6673,8 @@ async function getRuntimeSettingsWithWorkflowPolicy(
         expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
         ...(expertSessionId ? { expertSessionId } : {}),
         ...(expertTemplateFillWrite ? { expertTemplateFillWrite: true } : {}),
+        ...(expertTemplateFillWrite && expert?.runtimeBinding?.expertId === 'commercialization-research-report'
+          ? { expertTemplateFillDelivery: 'cli-only' as const } : {}),
         ...(expertTemplateFillOutputRoot ? { expertTemplateFillOutputRoot } : {}),
         ...(expertResearchArtifactPolicy ? { expertResearchArtifactPolicy } : {}),
         ...(expertResearchDeliveryPolicy ? { expertResearchDeliveryPolicy } : {}),

@@ -2,7 +2,7 @@
   "id": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
   "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。先形成字段—任务—具体来源路线，再由按 A/B/C 分工、可分片扩展的研究子代理以 Playwright 逐页取证、独立复核并按来源颗粒度吸收进报告；资料不足时如实标注，不把业务规则或搜索摘要当作市场证据。",
-  "statusLabel": "分章节子代理 + 具体页面取证 + 独立复核 + 细节簇字段吸收 + 渲染后完整性检查 + 结构化 Write 固定母版交付 + 条件化 SEO 取证 v0.13.55-local",
+  "statusLabel": "分章节子代理 + 具体页面取证 + 独立复核 + 细节簇字段吸收 + 渲染后完整性检查 + cc-jiangxia expert-template-fill 固定母版交付 + 条件化 SEO 取证 v0.13.55-local",
   "promptPaths": {
     "system": "experts/commercialization-research-report/prompts/system.md"
   },
@@ -31,7 +31,7 @@
         "包内方法 Skill 是通用方法；没有匹配证据时只给假设和验证计划，不因默认金舟预设而强行套用 C 端、国内、应用商店、SEM 或自媒体逻辑。",
         "规则文件不能授予当前会话不存在的 Read、Playwright、WebFetch 或 Write 能力；无 Read 时要求粘贴文本，无 Playwright 时要求 URL、截图、文本或文件。",
         "没有真实用户数据时不伪造情绪分析、分群或精确市场规模。",
-        "A/B/C 三条研究方向的全部已登记分片完成独立证据复核与字段吸收后，先用结构化 Write 生成 HTML 草稿，再经 08 完整性复核，以 patch 或 finalize 定稿；不询问最终目录或普通证据缺口是否可以保留。"
+        "A/B/C 三条研究方向的全部已登记分片完成独立证据复核与字段吸收后，先用固定母版 CLI 生成 HTML 草稿，再经 08 完整性复核，以 patch 或 finalize 定稿；不询问最终目录或普通证据缺口是否可以保留。"
       ]
     },
     "starterPrompts": [
@@ -83,12 +83,12 @@
       {
         "id": "evidence-absorption",
         "title": "复核后证据吸收与字段映射",
-        "description": "不再询问用户；逐项吸收全部已登记研究分片和复核结论，完成字段—来源映射后再通过结构化 Write 交给服务端渲染。"
+        "description": "不再询问用户；逐项吸收全部已登记研究分片和复核结论，完成字段—来源映射后再通过固定母版 CLI 交给服务端渲染。"
       },
       {
         "id": "delivery",
-        "title": "结构化 Write 输出固定 HTML",
-        "description": "结构化 Write 渲染固定 HTML 草稿；08 完整性复核后按实际结论 patch 或 finalize，不由 Write 手写或拼接 HTML。"
+        "title": "cc-jiangxia expert-template-fill 输出固定 HTML",
+        "description": "固定母版 CLI 渲染固定 HTML 草稿；08 完整性复核后按实际结论 patch 或 finalize，不由 Write 手写或拼接 HTML。"
       }
     ],
     "knowledgeBase": {

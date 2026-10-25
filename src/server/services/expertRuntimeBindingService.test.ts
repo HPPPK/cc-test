@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'bun:test'
 import type { ExpertRuntimeBinding, ExpertSessionMetadata } from './expertPackRegistryService.js'
 import type { ExpertRuntimeContext } from './expertRuntimeService.js'
@@ -181,8 +182,43 @@ describe('Expert Runtime tool availability', () => {
     expect(resolveCurrentExpertRuntimeToolNames('gpt-5.6', ['Read', 'WebSearch', 'Playwright'])).toEqual(['Read', 'WebSearch', 'Playwright'])
   })
 
-  test('keeps template-fill draft review and finalization consistent with the active output protocol', () => {
+  test('commercialization source package consistently guides CLI report delivery and Markdown research', () => {
+    const root = 'experts/commercialization-research-report/'
+    const prompt = readFileSync(root + 'prompts/system.md', 'utf8')
+    const protocol = readFileSync(root + 'outputs/material-protocol.json', 'utf8')
+    const expert = readFileSync(root + 'expert.json', 'utf8')
+    for (const text of [prompt, protocol, expert, readFileSync(root + 'manifest.json', 'utf8'), readFileSync(root + 'tools/write/tool.json', 'utf8')]) {
+      expect(text).toContain('cc-jiangxia expert-template-fill')
+      expect(text).not.toMatch(/structured Write|结构化.?`?Write/)
+    }
+    expect(prompt).toContain('--data-stdin')
+    expect(prompt).toContain('--commit-receipt')
+    expect(protocol).toContain('--commit-receipt')
+    expect(prompt).toContain('Write `07-report-field-absorption.md`')
+    expect(prompt).toContain('119')
+    expect(JSON.parse(protocol).primaryOutput.fieldsDocument.requiredKeys).toEqual(['templateId', 'fields'])
+  })
+
+  test('commercialization report uses only fixed-template CLI delivery while research keeps Write', () => {
     const runtimeBinding = binding()
+    runtimeBinding.outputMode = 'template-fill'
+    runtimeBinding.outputTemplate = { path: 'fixed.html', content: '<html data-template-id="fixed-v1"><body>{{REPORT_TITLE}}</body></html>' }
+    const instruction = buildExpertRuntimeTurnInstruction(activeSession(runtimeBinding), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+    expect(instruction).toContain('cc-jiangxia expert-template-fill')
+    expect(instruction).toContain('--data-stdin')
+    expect(instruction).toContain('--commit-receipt')
+    expect(instruction).toContain('CLAUDE_CLI_PATH')
+    expect(instruction).toContain('--data')
+    expect(instruction).toContain('--output')
+    expect(instruction).toContain('{ templateId, fields, mode?')
+    expect(instruction).toContain('08')
+    expect(instruction).toContain('Research Markdown')
+    expect(instruction).not.toContain('call Write with file_path')
+    expect(instruction).not.toContain('Do not replace structured Write')
+  })
+
+  test('keeps template-fill draft review and finalization consistent with the active output protocol for other experts', () => {
+    const runtimeBinding = { ...binding(), expertId: 'other-expert', packId: 'other-expert' }
     runtimeBinding.outputMode = 'template-fill'
     runtimeBinding.outputProtocol = {
       path: 'outputs/material-protocol.json',

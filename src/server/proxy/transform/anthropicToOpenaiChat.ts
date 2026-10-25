@@ -14,6 +14,7 @@ import type {
   OpenAIToolCall,
   OpenAITool,
 } from './types.js'
+import { toOpenAIFunctionDefinition } from './toolSchemaContract.js'
 
 type OpenAIChatImageContentMode = 'vision' | 'text_only'
 
@@ -75,11 +76,7 @@ export function anthropicToOpenaiChat(
       .filter((t) => t.name !== 'BatchTool')
       .map((t): OpenAITool => ({
         type: 'function',
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.input_schema,
-        },
+        function: toOpenAIFunctionDefinition(t),
       }))
   }
 
