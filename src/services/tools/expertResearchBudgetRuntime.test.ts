@@ -49,3 +49,31 @@ test('literal CLI stdin payload words do not impersonate shell research commands
   expect(isExpertPublicResearchCall('Bash', { command: cli.replace('{"fields":', '{not-json:') })).toBe(true)
 
 })
+
+test('configured CLI executable environment forms preserve literal report stdin without hiding shell commands', async () => {
+  const { isExpertPublicResearchCall } = await import('./expertResearchBudgetRuntime.js')
+  for (const executable of ['"$CLAUDE_CLI_PATH"', '"${CLAUDE_CLI_PATH}"', '$CLAUDE_CLI_PATH', '${CLAUDE_CLI_PATH}']) {
+    const cli = executable + " expert-template-fill --data-stdin --output report.html <<'JSON'\n" + JSON.stringify({ fields: { DATA_DECLARATION: 'Playwright 实际打开，curl 不是引用证据' } }) + '\nJSON'
+    expect(isExpertPublicResearchCall('Bash', { command: cli })).toBe(false)
+    expect(isExpertPublicResearchCall('Bash', { command: 'curl https://example.com; ' + cli })).toBe(true)
+    expect(isExpertPublicResearchCall('Bash', { command: cli + '\ncurl https://example.com' })).toBe(true)
+    expect(isExpertPublicResearchCall('Bash', { command: cli.replace('CLAUDE_CLI_PATH', 'ARBITRARY_PATH') })).toBe(true)
+  }
+})
+
+test('PowerShell literal JSON here-strings for configured report CLI keep real network commands visible', async () => {
+  const { isExpertPublicResearchCall } = await import('./expertResearchBudgetRuntime.js')
+  const data = JSON.stringify({ fields: { DATA_DECLARATION: 'Playwright 实际打开，curl 不是引用证据' } })
+  const cli = '& $env:CLAUDE_CLI_PATH expert-template-fill --data-stdin --output report.html'
+  for (const command of ["@'\n" + data + "\n'@ | " + cli, "$payload = @'\n" + data + "\n'@\n$payload | " + cli]) {
+    expect(isExpertPublicResearchCall('PowerShell', { command })).toBe(false)
+    expect(isExpertPublicResearchCall('PowerShell', { command: 'Invoke-WebRequest https://example.com; ' + command })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command + '\nInvoke-WebRequest https://example.com' })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace('CLAUDE_CLI_PATH', 'ARBITRARY_PATH') })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace("@'", '@"').replace("'@", '"@') })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '["Playwright"]') })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '{not-json: Playwright}') })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace("'@", '') })).toBe(true)
+
+  }
+})
