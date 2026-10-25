@@ -132,6 +132,7 @@ type SessionStartOptions = {
   uiuxImageOnlyDelivery?: boolean
   /** Final template output is rendered only by the Expert template-fill CLI. */
   expertTemplateFillWrite?: boolean
+  expertTemplateFillDelivery?: 'cli-only'
   /** Package-scoped final output root; passed only by an opted-in Expert runtime. */
   expertTemplateFillOutputRoot?: string
   /** Session-only fixed Markdown artifact allowlist declared by this Expert ZIP. */
@@ -1234,6 +1235,8 @@ export class ConversationService {
     delete cleanEnv.CC_HAHA_WORKFLOW_SESSION_ID
     delete cleanEnv.CC_JIANGXIA_EXPERT_OUTPUT_TEMPLATE_GUARD
     delete cleanEnv.CC_HAHA_EXPERT_OUTPUT_TEMPLATE_GUARD
+    delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+    delete cleanEnv.CC_HAHA_EXPERT_TEMPLATE_FILL_DELIVERY
     delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
     delete cleanEnv.CC_HAHA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
     delete cleanEnv.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY
@@ -1458,6 +1461,9 @@ export class ConversationService {
         setJiangxiaEnvAliases(childEnv, 'EXPERT_SESSION_ID', options.expertSessionId)
         if (options.expertTemplateFillWrite) {
           setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_WRITE', '1')
+          if (options.expertTemplateFillDelivery === 'cli-only') {
+            setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_DELIVERY', 'cli-only')
+          }
         }
         if (options.expertTemplateFillOutputRoot) {
           setJiangxiaEnvAliases(childEnv, 'EXPERT_TEMPLATE_FILL_OUTPUT_ROOT', options.expertTemplateFillOutputRoot)

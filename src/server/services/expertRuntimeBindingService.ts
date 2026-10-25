@@ -550,14 +550,27 @@ export function buildExpertRuntimeTurnInstruction(
       : []),
     ...(binding.outputMode === 'template-fill' && binding.outputTemplate
       ? [
-          'Fixed-template rendering uses structured Write calls; follow the active Expert output protocol for draft, review, patch, and finalization:',
-          'Template source: ' + binding.outputTemplate.path,
-          'Do not generate or copy a complete HTML document, CSS, headings, table headers, or page structure. The runtime renders the fixed template from structured fields.',
-          'When the active Expert output protocol allows rendering, call Write with file_path set to one .html or .htm filename only (for example, "final-report.html") in the current session workDir, content set to the empty string "", and expert_output={ templateId, fields }.',
-          'evidenceAbsorption is optional supplemental metadata only. Do not hand-copy every opened URL, disposition, fieldEvidence entry, or claim merely to make final HTML valid. Do not add a top-level expert_output wrapper around another JSON document.',
-          'The structured Write adapter validates every field, table row, URL, and template ID against the active Expert session, renders the HTML, and writes it to that workDir filename.',
-          'All currently enabled tools remain available for research and intermediate artifact repair, including Bash, PowerShell, Edit, MultiEdit, and NotebookEdit. For the final report delivery itself, use the structured Write call above rather than a shell, temporary payload, direct HTML mutation, or another renderer.',
-          'If the structured Write reports a deterministic field, table, URL, template, filename, path, or destination validation error, treat that exact returned error as internal correction feedback. Correct the cited file_path or expert_output yourself and retry. Never ask the user for a filename or output location for this case. Keep valid data unchanged. Do not blindly resend an unchanged payload, create a temporary payload file, or fall back to shell delivery.',
+          ...(binding.expertId === 'commercialization-research-report'
+            ? [
+                'Authoritative current delivery rule: this overrides any older prompt snapshot, skill, or output protocol that requests report Write or direct HTML mutation. Fixed-template HTML generation, modification, and finalization use only cc-jiangxia expert-template-fill. Follow the active Expert output protocol for draft, review, patch, and finalization.',
+                'Template source: ' + binding.outputTemplate.path,
+                'Use the running application executable from CLAUDE_CLI_PATH when available: in Bash, "$CLAUDE_CLI_PATH" expert-template-fill; in PowerShell, & $env:CLAUDE_CLI_PATH expert-template-fill. cc-jiangxia is the installed-command alias. A missing alias is not a reason to fall back to Write or generate HTML.',
+                'Inspect cc-jiangxia expert-template-fill --schema first. Call cc-jiangxia expert-template-fill --data <payload.json> --output <report.html>, or pass the JSON through --data-stdin with --output <report.html>. Output belongs directly in the current session workDir. Payload: { templateId, fields, mode?: "patch" | "finalize" }. Use the exact existing fixed template; never create or copy a new template, HTML, CSS, headings, or table structure.',
+                'After the CLI saves and acknowledges the initial HTML draft, invoke the constrained output reviewer and Read 08. Then use the same CLI and output path: mode="patch" for only source-supported corrections requested by 08, otherwise mode="finalize" with fields: {}. A successful patch is terminal; do not finalize again.',
+                'If the CLI reports action=retry-commit after saving, preserve its receipt and use cc-jiangxia expert-template-fill --commit-receipt <receipt> --output <same-report.html> only; do not include data or --schema, rerender, rewrite, or restart research. For retry-write or validation errors, correct or retry the original payload command instead. --schema is a separate read-only command without --output.',
+                'Research Markdown still uses Write and Edit under the declared research-artifact policy. Never use Write, Edit, or MultiEdit to generate, mutate, or finalize report HTML. Do not call internal render or commit endpoints.',
+                'For deterministic CLI field, template, filename, or destination errors, correct the cited payload or command yourself and retry. Never ask the user for a filename or output location for this case. Keep valid data unchanged; do not blindly resend an unchanged payload.',
+              ]
+            : [
+                'Fixed-template rendering uses structured Write calls; follow the active Expert output protocol for draft, review, patch, and finalization:',
+                'Template source: ' + binding.outputTemplate.path,
+                'Do not generate or copy a complete HTML document, CSS, headings, table headers, or page structure. The runtime renders the fixed template from structured fields.',
+                'When the active Expert output protocol allows rendering, call Write with file_path set to one .html or .htm filename only (for example, "final-report.html") in the current session workDir, content set to the empty string "", and expert_output={ templateId, fields }.',
+                'evidenceAbsorption is optional supplemental metadata only. Do not hand-copy every opened URL, disposition, fieldEvidence entry, or claim merely to make final HTML valid. Do not add a top-level expert_output wrapper around another JSON document.',
+                'The structured Write adapter validates every field, table row, URL, and template ID against the active Expert session, renders the HTML, and writes it to that workDir filename.',
+                'All currently enabled tools remain available for research and intermediate artifact repair, including Bash, PowerShell, Edit, MultiEdit, and NotebookEdit. For the final report delivery itself, use the structured Write call above rather than a shell, temporary payload, direct HTML mutation, or another renderer.',
+                'If the structured Write reports a deterministic field, table, URL, template, filename, path, or destination validation error, treat that exact returned error as internal correction feedback. Correct the cited file_path or expert_output yourself and retry. Never ask the user for a filename or output location for this case. Keep valid data unchanged. Do not blindly resend an unchanged payload, create a temporary payload file, or fall back to shell delivery.',
+              ]),
           'Allowed field schema (field IDs and table columns are authoritative):',
           JSON.stringify(deriveExpertTemplateFillSchema(binding.outputTemplate.content), null, 2),
           'The Expert output protocol contains the field meanings, column differences, and worked examples. Use it as teaching guidance; examples are not facts to copy into this report.',
@@ -580,7 +593,9 @@ export function buildExpertRuntimeTurnInstruction(
         ]
       : []),
     ...(binding.outputMode === 'template-fill'
-      ? ['Durable fixed-template delivery is the saved HTML acknowledged by the active output protocol. Do not replace structured Write with the desktop material-package control or claim delivery before finalization succeeds.']
+      ? [binding.expertId === 'commercialization-research-report'
+          ? 'Durable fixed-template delivery is the CLI-saved HTML acknowledged by the active output protocol. Do not claim delivery before finalization succeeds.'
+          : 'Durable fixed-template delivery is the saved HTML acknowledged by the active output protocol. Do not replace structured Write with the desktop material-package control or claim delivery before finalization succeeds.']
       : ['When a durable expert report is required, tell the user that the desktop Expert material control creates the downloadable material package. Do not fabricate a successful package write.']),
     ...(availability.toolNames.includes('AskUserQuestion')
       ? [

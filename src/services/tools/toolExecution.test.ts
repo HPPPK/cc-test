@@ -285,7 +285,7 @@ describe('runToolUse file edit recovery', () => {
       fetch: globalThis.fetch,
     }
     const configRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tool-execution-template-fill-config-'))
-    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tool-execution-template-fill-project-'))
+    const projectRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'tool-execution-template-fill-project-')))
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE = '1'
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT = projectRoot
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
@@ -337,7 +337,7 @@ describe('runToolUse file edit recovery', () => {
       expect((await sessionService.getSession(sessionId))?.expert?.templateFillDelivery).toBeUndefined()
       await fs.rmdir(reportPath)
       const messages = await writeReport()
-      expect(acknowledgements).toBe(2)
+      expect(acknowledgements, JSON.stringify(messages)).toBe(2)
       expect(JSON.stringify(messages)).not.toContain('<tool_use_error>')
       const html = await fs.readFile(path.join(projectRoot, 'commercialization-report.html'), 'utf8')
       expect(html).toContain('<h1>AI 字幕翻译</h1>')
@@ -927,4 +927,39 @@ test('malformed tool input produces an explicit paired error without executing e
   expect(serialized).toContain('TOOL_INPUT_JSON_INVALID')
   expect(serialized).toContain('invalid-json-call')
   expect(serialized).not.toContain('sensitive-unterminated')
+})
+
+describe('CLI-only research report dispatch boundary', () => {
+  for (const name of ['Write', 'Edit', 'MultiEdit']) {
+    test(`rejects ${name} HTML before schema validation or tool execution`, async () => {
+      const previousDelivery = process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+      const previousWrite = process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE
+      process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+      process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE = '1'
+      let executed = false
+      const probe = buildTool({
+        name,
+        inputSchema: z.strictObject({ file_path: z.string(), required_probe: z.string() }),
+        async description() { return 'Mutation probe' },
+        async prompt() { return 'Mutation probe' },
+        async call() { executed = true; return { data: {} } },
+        mapToolResultToToolResultBlockParam(_data, toolUseID) {
+          return { type: 'tool_result', tool_use_id: toolUseID, content: 'unexpected' }
+        },
+      })
+      try {
+        const context = createContext()
+        context.options.tools = [probe]
+        const result = await runSingleToolUse({ type: 'tool_use', id: `cli-deny-${name}`, name, input: { file_path: 'report.HTML' } }, context)
+        expect(JSON.stringify(result)).toContain('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
+        expect(JSON.stringify(result)).not.toContain('required_probe')
+        expect(executed).toBe(false)
+      } finally {
+        if (previousDelivery === undefined) delete process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+        else process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = previousDelivery
+        if (previousWrite === undefined) delete process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE
+        else process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE = previousWrite
+      }
+    })
+  }
 })

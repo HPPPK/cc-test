@@ -52,7 +52,7 @@ import {
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
 import { getAllBaseTools } from '../../tools.js'
-import { renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
+import { assertExpertTemplateFillToolMutationAllowed, renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
 import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
 import { coordinateExpertBrowserSearchPacing } from './expertBrowserSearchPacingRuntime.js'
 import {
@@ -691,6 +691,16 @@ async function checkPermissionsAndCallTool(
     progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>,
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
+  try {
+    assertExpertTemplateFillToolMutationAllowed(tool.name, input)
+  } catch (error) {
+    const content = errorMessage(error)
+    return [{ message: createUserMessage({
+      content: [{ type: 'tool_result', tool_use_id: toolUseID, is_error: true, content: '<tool_use_error>' + content + '</tool_use_error>' }],
+      toolUseResult: content,
+      sourceToolAssistantUUID: assistantMessage.uuid,
+    }) }]
+  }
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   const parsedInput = tool.inputSchema.safeParse(input)
   if (!parsedInput.success) {

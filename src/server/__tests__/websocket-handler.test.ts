@@ -6236,6 +6236,54 @@ describe('WebSocket handler workflow runtime gating', () => {
       'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebSearch', 'Agent', 'Skill',
     ]))
   })
+  it('enforces CLI report delivery for the commercialization expert ID in an imported pack', async () => {
+    const sessionId = `expert-full-tool-access-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    spyOn(conversationService, 'hasSession').mockReturnValue(false)
+    spyOn(conversationService, 'onOutput').mockImplementation(() => {})
+    spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
+    spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+    spyOn(sessionService, 'getSession').mockResolvedValue({
+      id: sessionId,
+      title: 'Expert session',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      modifiedAt: '2026-05-20T00:00:00.000Z',
+      messageCount: 1,
+      projectPath: process.cwd(),
+      projectRoot: null,
+      workDir: process.cwd(),
+      workDirExists: true,
+      messages: [],
+      expert: (() => {
+        const expert = makeExpertRuntimeMetadata('active')
+        expert.runtimeBinding!.expertId = 'commercialization-research-report'
+        expert.runtimeBinding!.packId = 'imported-business-pack'
+        expert.runtimeBinding!.outputMode = 'template-fill'
+        return expert
+      })(),
+    })
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'set_runtime_config',
+      providerId: null,
+      modelId: 'main-session-sonnet',
+    }))
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'user_message',
+      content: 'Inspect the project with the Expert.',
+    }))
+    await waitForCondition(() => startSession.mock.calls.length > 0)
+
+    const sessionSettings = startSession.mock.calls[0]?.[3]
+    expect(sessionSettings).toMatchObject({ expertFullToolAccess: true, expertTemplateFillWrite: true, expertTemplateFillDelivery: 'cli-only' })
+    expect(sessionSettings?.disallowedTools ?? []).not.toEqual(expect.arrayContaining([
+      'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebSearch', 'Agent', 'Skill',
+    ]))
+  })
 
   for (const workflow of [
     {

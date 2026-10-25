@@ -34,6 +34,52 @@ function isTemplateFillWriteSession(): boolean {
   return getJiangxiaEnvValue('EXPERT_TEMPLATE_FILL_WRITE')?.trim() === '1'
 }
 
+function isCliOnlyTemplateFillDelivery(): boolean {
+  return isTemplateFillWriteSession()
+    && getJiangxiaEnvValue('EXPERT_TEMPLATE_FILL_DELIVERY')?.trim() === 'cli-only'
+}
+
+function cliDeliveryRequired(): Error {
+  return new Error('EXPERT_TEMPLATE_FILL_CLI_REQUIRED: HTML generation, modification, and finalization must use cc-jiangxia expert-template-fill --data <payload.json> or --data-stdin, with --output <report.html> in the current session workDir. Payload: { templateId, fields, mode?: "patch" | "finalize" }. Use the existing fixed template only. First create the draft, then review 08, then patch only supported corrections or finalize with fields: {}. Never Write, Edit, or MultiEdit HTML. Research Markdown Write/Edit remains available. Correct the command yourself; do not ask the user for a filename or output location.')
+}
+
+/** Recognizes common accidental bypasses, not an arbitrary-shell security boundary. */
+function isObviousShellHtmlMutation(command: string): boolean {
+  // Check the whole command before considering any CLI invocation: a trailing
+  // --schema call must not camouflage an earlier direct file mutation.
+  if (/<(?:!doctype\s+html|html(?:\s|>))/i.test(command)) return true
+  if (/(?:^|[^<])>{1,2}\s*["']?[^\s;|&<>"']+\.html?\b/i.test(command)) return true
+  if (!/\.html?\b/i.test(command)) return false
+  if (/(?:^|[^<])>{1,2}\s*(?:"[^"\n]+\.html?"|'[^'\n]+\.html?')/i.test(command)) return true
+  if (/\btee\b[^;|&\n]*\.html?\b/i.test(command)) return true
+  if (/\bsed\b[^;|&\n]*--in-place(?:=[^\s]+)?[^;|&\n]*\.html?\b/i.test(command)) return true
+  if (/\b(?:sed|perl)\b[^;|&\n]*\s-(?:[a-z]*i|i[a-z]*)(?:\s|["'])[^;|&\n]*\.html?\b/i.test(command)) return true
+  if (/\b(?:Set-Content|Add-Content|Out-File)\b[^;|&\n]*\.html?\b/i.test(command)) return true
+  if (/\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|write_text|write_bytes|createWriteStream)\s*\(/i.test(command)) return true
+  return /\bopen\s*\([^)]*['"][wax](?:[+b]|b\+)?['"]/i.test(command)
+}
+
+/** Call before any tool-side file mutation; the CLI is the sole report delivery path. */
+export function assertExpertTemplateFillToolMutationAllowed(
+  toolName: string,
+  input: Record<string, unknown>,
+): void {
+  if (!isCliOnlyTemplateFillDelivery()) return
+  const name = toolName.toLowerCase()
+  if (['bash', 'powershell'].includes(name)) {
+    const command = typeof input.command === 'string' ? input.command : ''
+    if (isObviousShellHtmlMutation(command)) throw cliDeliveryRequired()
+    return
+  }
+  if (!['write', 'edit', 'multiedit'].includes(name)) return
+  if (name === 'write') {
+    if (isResearchMarkdownWriteAttempt(input)) return
+    throw cliDeliveryRequired()
+  }
+  const filePath = input.file_path ?? input.path
+  if (typeof filePath === 'string' && /\.html?$/i.test(filePath.trim())) throw cliDeliveryRequired()
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -617,6 +663,8 @@ export async function renderExpertTemplateFillForWrite(input: Record<string, unk
   if (!isTemplateFillWriteSession()) return { kind: 'not-template-fill' }
 
   if (isResearchMarkdownWriteAttempt(input)) return resolveResearchArtifactWrite(input)
+
+  if (isCliOnlyTemplateFillDelivery()) throw cliDeliveryRequired()
 
   if (!Object.keys(input).length || input.file_path === undefined || input.expert_output === undefined) {
     throw new Error('EXPERT_TEMPLATE_FILL_REPAIR_REQUIRED: A previous report draft, if any, is retained. Do not send an empty Write. Keep the same file_path and templateId. Before an initial draft exists, submit complete fields or repair the retained candidate. After the initial draft is saved, follow 08: mode="patch" only for a source-supported correction, otherwise mode="finalize" with fields: {}. Do not add placeholder fields or send an empty patch.')

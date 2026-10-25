@@ -12,6 +12,7 @@ import type {
   OpenAIResponsesInputItem,
   OpenAIChatContentPart,
 } from './types.js'
+import { toOpenAIFunctionDefinition } from './toolSchemaContract.js'
 
 /**
  * Convert Anthropic Messages request to OpenAI Responses API request.
@@ -53,9 +54,7 @@ export function anthropicToOpenaiResponses(body: AnthropicRequest): OpenAIRespon
       .filter((t) => t.name !== 'BatchTool')
       .map((t) => ({
         type: 'function',
-        name: t.name,
-        description: t.description,
-        parameters: t.input_schema,
+        ...toOpenAIFunctionDefinition(t),
       }))
   }
 

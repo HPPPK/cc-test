@@ -508,6 +508,30 @@ describe('ConversationService', () => {
     expect(env.CC_HAHA_EXPERT_TEMPLATE_FILL_WRITE).toBe('1')
   })
 
+  test('scopes CLI-only report delivery to its selected Expert child', async () => {
+    const service = new ConversationService() as any
+    const env = await service.buildChildEnv('/tmp', 'ws://127.0.0.1:3456/sdk/test?token=test', {
+      expertSessionId: 'report-session', expertTemplateFillWrite: true, expertTemplateFillDelivery: 'cli-only',
+    })
+    expect(env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY).toBe('cli-only')
+    expect(env.CC_HAHA_EXPERT_TEMPLATE_FILL_DELIVERY).toBe('cli-only')
+  })
+
+  test('does not leak inherited CLI-only delivery markers into ordinary sessions', async () => {
+    const keys = ['CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY', 'CC_HAHA_EXPERT_TEMPLATE_FILL_DELIVERY']
+    const previous = keys.map(key => process.env[key])
+    keys.forEach(key => { process.env[key] = 'cli-only' })
+    try {
+      const env = await (new ConversationService() as any).buildChildEnv('/tmp', 'ws://127.0.0.1:3456/sdk/test?token=test')
+      keys.forEach(key => expect(env[key]).toBeUndefined())
+    } finally {
+      keys.forEach((key, index) => {
+        if (previous[index] === undefined) delete process.env[key]
+        else process.env[key] = previous[index]
+      })
+    }
+  })
+
   test('passes an opted-in Expert template-fill output root only to the desktop SDK child environment', async () => {
     const service = new ConversationService() as any
     const env = (await service.buildChildEnv(

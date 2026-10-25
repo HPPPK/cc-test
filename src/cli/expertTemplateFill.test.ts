@@ -45,7 +45,7 @@ describe('expert-template-fill CLI', () => {
       fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
         requestedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>ok</html>' }), { status: 200 })
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     })
     expect((requestedBody?.payload as Record<string, unknown>).evidenceAbsorption).toMatchObject({ version: 'cc-jiangxia-evidence-absorption/v1' })
   })
@@ -79,12 +79,13 @@ describe('expert-template-fill CLI', () => {
             templateId: 'commercialization-research-classic-v1',
             content: '<html><body>固定母版</body></html>',
           }), { status: 200, headers: { 'content-type': 'application/json' } })
-        }) as typeof fetch,
+        }) as unknown as typeof fetch,
       },
     )
 
     expect(requestedUrl).toBe('http://127.0.0.1:61237/api/sessions/session-123/expert/template-fill')
     expect(requestedBody).toEqual({
+      outputPath: path.resolve(outputPath),
       payload: {
         format: EXPERT_TEMPLATE_FILL_FORMAT,
         templateId: 'commercialization-research-classic-v1',
@@ -116,11 +117,12 @@ describe('expert-template-fill CLI', () => {
         fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
           requestedBody = JSON.parse(String(init?.body))
           return new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>stdin</html>' }), { status: 200, headers: { 'content-type': 'application/json' } })
-        }) as typeof fetch,
+        }) as unknown as typeof fetch,
       },
     )
 
     expect(requestedBody).toEqual({
+      outputPath: path.resolve(outputPath),
       payload: {
         format: EXPERT_TEMPLATE_FILL_FORMAT,
         templateId: 'commercialization-research-classic-v1',
@@ -151,7 +153,7 @@ describe('expert-template-fill CLI', () => {
           writes.push(filePath)
           await fs.writeFile(filePath, content, 'utf8')
         }) as typeof fs.writeFile,
-        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>session-root</html>' }), { status: 200 })) as typeof fetch,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>session-root</html>', completionReviewRequired: false }), { status: 200 })) as unknown as typeof fetch,
       },
     )
 
@@ -174,7 +176,7 @@ describe('expert-template-fill CLI', () => {
       readStdin: async () => JSON.stringify({ templateId: 'commercialization-research-classic-v1', fields: { REPORT_TITLE: 'blocked' } }),
       mkdir: fs.mkdir,
       writeFile: fs.writeFile,
-      fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as typeof fetch,
+      fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as unknown as typeof fetch,
     }
 
     await expect(runExpertTemplateFillCli({ dataFromStdin: true, outputPath: path.join(root, 'absolute.html') }, dependencies)).rejects.toThrow('filename directly')
@@ -194,7 +196,7 @@ describe('expert-template-fill CLI', () => {
         readFile: fs.readFile,
         mkdir: fs.mkdir,
         writeFile: fs.writeFile,
-        fetch: (async () => new Response(JSON.stringify({ message: '专家模板字段校验未通过：缺少模板字段：REPORT_TITLE。' }), { status: 400 })) as typeof fetch,
+        fetch: (async () => new Response(JSON.stringify({ message: '专家模板字段校验未通过：缺少模板字段：REPORT_TITLE。' }), { status: 400 })) as unknown as typeof fetch,
       },
     )).rejects.toThrow('缺少模板字段：REPORT_TITLE')
   })
@@ -212,9 +214,9 @@ describe('expert-template-fill CLI', () => {
         env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-eexist' },
         readFile: fs.readFile,
         mkdir: (async () => { throw existsError }) as typeof fs.mkdir,
-        stat: (async () => ({ isDirectory: () => true })) as typeof fs.stat,
+        stat: (async () => ({ isDirectory: () => true })) as unknown as typeof fs.stat,
         writeFile: fs.writeFile,
-        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>windows</html>' }), { status: 200 })) as typeof fetch,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>windows</html>' }), { status: 200 })) as unknown as typeof fetch,
       },
     )).resolves.toMatchObject({ outputPath: path.resolve(outputPath) })
 
@@ -235,9 +237,9 @@ describe('expert-template-fill CLI', () => {
         env: { CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:61237', CC_JIANGXIA_EXPERT_SESSION_ID: 'session-eexist-file' },
         readFile: fs.readFile,
         mkdir: (async () => { throw existsError }) as typeof fs.mkdir,
-        stat: (async () => ({ isDirectory: () => false })) as typeof fs.stat,
+        stat: (async () => ({ isDirectory: () => false })) as unknown as typeof fs.stat,
         writeFile: fs.writeFile,
-        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as typeof fetch,
+        fetch: (async () => new Response(JSON.stringify({ templateId: 'commercialization-research-classic-v1', content: '<html>blocked</html>' }), { status: 200 })) as unknown as typeof fetch,
       },
     )).rejects.toThrow('EEXIST')
   })
