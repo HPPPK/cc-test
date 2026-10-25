@@ -91,6 +91,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install search dependency for command discovery
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -100,7 +103,8 @@ jobs:
         run: bun install
 
       - name: Run server checks
-        run: bun run check:server
+        # Shell fixtures own NVM_DIR; do not inherit the runner's Node setup.
+        run: env -u NVM_DIR bun run check:server
 
   adapter-checks:
     name: adapter-checks
@@ -203,6 +207,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install search dependency for command discovery
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -222,7 +229,7 @@ jobs:
       - name: Run coverage checks
         env:
           COVERAGE_BASE_REF: origin/${{ github.base_ref }}
-        run: bun run check:coverage
+        run: env -u NVM_DIR bun run check:coverage
 
       - name: Summarize coverage report
         if: always()

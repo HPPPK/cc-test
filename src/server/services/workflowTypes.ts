@@ -997,7 +997,7 @@ export type WorkflowSessionState = {
     snapshotId: string
     sourceState: WorkflowTemplateSourceStatus
   } | WorkflowTemplate
-  /** @deprecated Legacy persisted sessions only; runtime always reloads the current fixed ZIP pack. */
+  /** Rules pinned when the run starts; legacy runs may hydrate only from a verified matching ZIP. */
   templateSnapshot?: WorkflowTemplate
   templateIdentity: {
     id: string
