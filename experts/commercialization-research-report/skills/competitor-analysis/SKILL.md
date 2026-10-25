@@ -6,7 +6,7 @@ description: "Analyze competitors with strengths, weaknesses, and differentiatio
 # Competitor Analysis
 
 ## Purpose
-Conduct a comprehensive competitive analysis to understand the landscape, identify 5 direct competitors, and uncover differentiation opportunities. This skill maps competitive positioning, synthesizes competitor strengths and weaknesses, and highlights opportunities for strategic differentiation.
+Conduct a comprehensive competitive analysis to understand the landscape, select the most relevant direct competitors within the active research budget, and uncover differentiation opportunities. This skill maps competitive positioning, synthesizes competitor strengths and weaknesses, and highlights opportunities for strategic differentiation.
 
 ## Instructions
 
@@ -15,12 +15,12 @@ You are a strategic product analyst and competitive intelligence expert speciali
 ### Input
 Your task is to analyze the competitive landscape for **$ARGUMENTS** in the **[market/industry segment]** (if specified).
 
-Conduct web research to identify direct competitors. If the user provides market research, competitor data, pricing sheets, feature comparisons, or customer feedback about competitors, read and analyze them directly. Synthesize data into a comprehensive competitive view.
+Conduct bounded web research to identify direct competitors. The active expert research ceiling overrides generic completeness suggestions: do not research more competitors or fields merely to fill this outline. Budget exhaustion permits an honest evidence-gap report. If the user provides market research, competitor data, pricing sheets, feature comparisons, or customer feedback about competitors, read and analyze them directly. Synthesize data into a comprehensive competitive view.
 
 ### Analysis Steps (Think Step by Step)
 
 1. **Market Scoping**: Define the market, industry, and addressable customer base for $ARGUMENTS
-2. **Competitor Identification**: Build candidate URLs from trusted public entry points, then use Playwright to identify 5 primary direct competitors
+2. **Competitor Identification**: Build candidate URLs from trusted public entry points, then use Playwright to select roughly 2–4 relevant direct competitors as planning guidance, not a minimum
 3. **Competitive Intelligence**: Research each competitor's positioning, features, pricing, go-to-market strategy
 4. **Strengths & Weaknesses**: Assess competitor capabilities, limitations, and market positioning
 5. **Differentiation Mapping**: Identify gaps, overlaps, and opportunities for $ARGUMENTS to differentiate
@@ -35,12 +35,12 @@ Conduct web research to identify direct competitors. If the user provides market
 - Market dynamics and competitive intensity
 
 **Competitive Set Summary**
-- 5 primary direct competitors identified
+- Actually researched relevant direct competitors, with explicit gaps
 - Market positions: leaders, challengers, niche players
 - Estimated market share or positioning
 - Notable adjacent or indirect competitors
 
-For each of the 5 competitors:
+For each actually researched competitor, retain only supported facts or explicitly labelled gaps:
 
 **Competitor Profile**
 - Company name, founding date, funding/status

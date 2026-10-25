@@ -690,3 +690,25 @@ describe('sessions Expert context routes', () => {
     })
   })
 })
+
+describe('canonical research budget API', () => {
+  it('rejects unreserved public research and admits a researcher before browser calls', async () => {
+    const root = await makeTempRoot('sessions-research-budget-')
+    process.env.CLAUDE_CONFIG_DIR = root
+    const { sessionId } = await sessionService.createSession(root)
+    const activatedAt = new Date().toISOString()
+    await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert: { mode: 'expert', status: 'active', expertId: 'commercialization-research-report', runtimeBinding: { expertId: 'commercialization-research-report', activatedAt } } as never })
+    const url = new URL(`http://localhost/api/sessions/${sessionId}/expert/research-budget`)
+    const post = (body: unknown) => handleSessionsApi(new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), url, ['api', 'sessions', sessionId, 'expert', 'research-budget'])
+    expect((await post({ action: 'reserve-browser', agentId: '', requestId: 'root' })).status).toBe(409)
+    const started = await post({ action: 'reserve-researcher', agentId: 'a', artifactPath: 'commercialization-research/02-competitors.md' })
+    expect(started.status).toBe(200)
+    expect(await started.json()).toMatchObject({ allowed: true, applicable: true })
+    expect((await post({ action: 'reserve-browser', agentId: 'a', requestId: '1' })).status).toBe(200)
+    expect((await post({ action: 'unknown' })).status).toBe(400)
+    expect((await handleSessionsApi(new Request(url), url, ['api', 'sessions', sessionId, 'expert', 'research-budget'])).status).toBe(405)
+    await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert: { mode: 'expert', status: 'active', expertId: 'other', runtimeBinding: { expertId: 'other', activatedAt } } as never })
+    expect(await (await post({ action: 'reserve-browser', agentId: '', requestId: 'other' })).json()).toMatchObject({ allowed: true, applicable: false })
+
+  })
+})

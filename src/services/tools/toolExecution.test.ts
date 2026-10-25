@@ -17,6 +17,8 @@ import { createAssistantMessage } from '../../utils/messages.js'
 import { runToolUse } from './toolExecution.js'
 import * as tokenEstimation from '../tokenEstimation.js'
 import * as toolHooks from './toolHooks.js'
+import * as researchBudget from './expertResearchBudgetRuntime.js'
+import * as browserVerification from './expertBrowserVerificationRuntime.js'
 import { handleSessionsApi } from '../../server/api/sessions.js'
 import { sessionService } from '../../server/services/sessionService.js'
 import { ExpertSessionService } from '../../server/services/expertSessionService.js'
@@ -962,4 +964,34 @@ describe('CLI-only research report dispatch boundary', () => {
       }
     })
   }
+})
+
+
+test('budget denial prevents the actual public research call', async () => {
+  let calls = 0
+  const probe = buildTool({ name: 'WebFetch', maxResultSizeChars: 1000, renderToolUseMessage() { return null }, inputSchema: z.object({}).strict(), async description() { return 'probe' }, async prompt() { return 'probe' }, async call() { calls++; return { data: 'ok' } }, mapToolResultToToolResultBlockParam(data, id) { return { type: 'tool_result', tool_use_id: id, content: data } } })
+  const context = createContext()
+  context.options.tools = [probe]
+  const guard = spyOn(researchBudget, 'guardExpertResearchToolCall').mockRejectedValue(new Error('EXPERT_RESEARCH_BUDGET_EXHAUSTED: save gaps and return'))
+  try {
+    const messages = await runSingleToolUse({ type: 'tool_use', id: 'budget-denied', name: probe.name, input: {} } as ToolUseBlock, context)
+    expect(calls).toBe(0)
+    expect(JSON.stringify(messages)).toContain('EXPERT_RESEARCH_BUDGET_EXHAUSTED')
+  } finally { guard.mockRestore() }
+})
+
+
+test('verification resume reserves another browser call before a retry executes', async () => {
+  let calls = 0
+  const probe = buildTool({ name: 'WebFetch', maxResultSizeChars: 1000, renderToolUseMessage() { return null }, inputSchema: z.object({}).strict(), async description() { return 'probe' }, async prompt() { return 'probe' }, async call() { calls++; return { data: 'ok' } }, mapToolResultToToolResultBlockParam(data, id) { return { type: 'tool_result', tool_use_id: id, content: data } } })
+  const context = createContext()
+  context.options.tools = [probe]
+  const guard = spyOn(researchBudget, 'guardExpertResearchToolCall').mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('EXPERT_RESEARCH_BUDGET_EXHAUSTED: retry denied'))
+  const verification = spyOn(browserVerification, 'coordinateExpertBrowserVerification').mockImplementation(async (params) => await params.resume(params.input))
+  try {
+    const messages = await runSingleToolUse({ type: 'tool_use', id: 'verification-budget', name: probe.name, input: {} } as ToolUseBlock, context)
+    expect(calls).toBe(1)
+    expect(guard).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(messages)).toContain('retry denied')
+  } finally { guard.mockRestore(); verification.mockRestore() }
 })

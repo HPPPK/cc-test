@@ -55,6 +55,7 @@ import { getAllBaseTools } from '../../tools.js'
 import { assertExpertTemplateFillToolMutationAllowed, renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
 import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
 import { coordinateExpertBrowserSearchPacing } from './expertBrowserSearchPacingRuntime.js'
+import { guardExpertResearchToolCall } from './expertResearchBudgetRuntime.js'
 import {
   extractAgentRunArtifacts,
   recordAgentRunEvent,
@@ -1506,6 +1507,7 @@ async function checkPermissionsAndCallTool(
   let searchPacing: Awaited<ReturnType<typeof coordinateExpertBrowserSearchPacing>> | undefined
   try {
     searchPacing = await coordinateExpertBrowserSearchPacing({ toolName: tool.name, input: callInput })
+    await guardExpertResearchToolCall({ toolName: tool.name, input: callInput, agentId: toolUseContext.agentId, agentType: toolUseContext.agentType })
     const rawResult = await tool.call(
       callInput,
       {
@@ -1528,22 +1530,25 @@ async function checkPermissionsAndCallTool(
       toolName: tool.name,
       result: rawResult,
       input: callInput,
-      resume: async (continuationInput) => await tool.call(
-        continuationInput as typeof callInput,
-        {
-          ...toolUseContext,
-          toolUseId: toolUseID,
-          userModified: permissionDecision.userModified ?? false,
-        },
-        canUseTool,
-        assistantMessage,
-        progress => {
-          onToolProgress({
-            toolUseID: progress.toolUseID,
-            data: progress.data,
-          })
-        },
-      ),
+      resume: async (continuationInput) => {
+        await guardExpertResearchToolCall({ toolName: tool.name, input: continuationInput, agentId: toolUseContext.agentId, agentType: toolUseContext.agentType })
+        return await tool.call(
+          continuationInput as typeof callInput,
+          {
+            ...toolUseContext,
+            toolUseId: toolUseID,
+            userModified: permissionDecision.userModified ?? false,
+          },
+          canUseTool,
+          assistantMessage,
+          progress => {
+            onToolProgress({
+              toolUseID: progress.toolUseID,
+              data: progress.data,
+            })
+          },
+        )
+      },
       ...(toolUseContext.agentId ? { agentId: toolUseContext.agentId } : {}),
       toolUseId: toolUseID,
       ...(tool.name === 'Playwright' ? { browserSessionKey: resolveCurrentPlaywrightSessionKey(toolUseContext) } : {}),

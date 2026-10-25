@@ -1077,3 +1077,23 @@ describe('commercialization question routing consistency', () => {
     expect(instruction).toContain('Use exactly two task-relevant, role-distinct concrete URLs')
   })
 })
+
+test.each(['commercialization-research-report', 'custom-imported-pack'])('overrides stored canonical catalog-drain prompts and skills with bounded research regardless of pack ID (%s)', (packId) => {
+  const legacy = { ...binding(), packId }
+  legacy.promptSnapshot = '必须全量扫描119个来源，全部路线结束才允许D。'
+  legacy.skills[0]!.content = 'Repeat every catalog wave until all entries are terminal.'
+  const options = { enabledToolNames: ['Read', 'Write', 'Playwright', 'AskUserQuestion'] }
+  const instruction = buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: legacy } as ExpertSessionMetadata, options)!
+  expect(instruction).toContain('<commercialization-bounded-research-policy>')
+  expect(instruction).toContain('six researcher starts')
+  expect(instruction).toContain('twelve browser tool calls per researcher')
+  expect(instruction).toContain('fifteen-minute research window')
+  expect(instruction).toContain('not twelve unique pages')
+  expect(instruction).toContain('D, E, F/08 and CLI delivery remain required')
+  expect(instruction).toContain(legacy.promptSnapshot)
+  expect(instruction).toContain(legacy.skills[0]!.content)
+  expect(instruction.lastIndexOf('<commercialization-bounded-research-policy>')).toBeGreaterThan(instruction.indexOf(legacy.promptSnapshot))
+  expect(instruction.lastIndexOf('<commercialization-bounded-research-policy>')).toBeGreaterThan(instruction.indexOf(legacy.skills[0]!.content))
+  const foreign = { ...legacy, expertId: 'other-expert', packId: 'commercialization-research-report' }
+  expect(buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: foreign } as ExpertSessionMetadata, options)).not.toContain('<commercialization-bounded-research-policy>')
+})

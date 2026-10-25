@@ -120,7 +120,7 @@ describe('commercialization auto-continue visibility', () => {
     mock.restore()
   })
 
-  it('hides internal auto-continue prose while preserving Agent cards and later user-turn text', async () => {
+  it.each([false, true])('hides internal auto-continue prose while preserving Agent cards and later user-turn text (canonical=%s)', async (canonical) => {
     const sessionId = `commercialization-auto-continue-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const session = {
@@ -140,11 +140,16 @@ describe('commercialization auto-continue visibility', () => {
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
-    Object.assign(session, { expertRuntimeBindingKey: getExpertProcessBindingKey(makeExpertRuntimeMetadata('active')) })
+    const expert = makeExpertRuntimeMetadata('active')
+    if (canonical) {
+      expert.expertId = expert.packId = 'commercialization-research-report'
+      expert.runtimeBinding!.expertId = expert.runtimeBinding!.packId = 'commercialization-research-report'
+    }
+    Object.assign(session, { expertRuntimeBindingKey: getExpertProcessBindingKey(expert) })
     ;(conversationService as any).sessions.set(sessionId, session)
     const sendInternalMessage = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
     spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
-    spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert: makeExpertRuntimeMetadata('active') } as any)
+    spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert } as any)
 
     try {
       handleWebSocket.open(ws)
@@ -161,7 +166,7 @@ describe('commercialization auto-continue visibility', () => {
         }],
       })
       expect(continued).toBe(true)
-      expect(sendInternalMessage).toHaveBeenCalledWith(sessionId, expect.stringContaining('<expert-research-source-batch-recovery>'))
+      expect(sendInternalMessage).toHaveBeenCalledWith(sessionId, expect.stringContaining(canonical ? '<expert-research-bounded-recovery>' : '<expert-research-source-batch-recovery>'))
       expect(session.outputCallbacks).toHaveLength(1)
 
       const callback = session.outputCallbacks[0]!

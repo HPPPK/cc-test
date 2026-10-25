@@ -144,6 +144,8 @@ export function recordExpertResearchEvidence(
     content: unknown
     artifactPath?: unknown
     entries: unknown
+    /** Internal authorization after the server reads a real assigned handoff. */
+    allowEmptyEntries?: boolean
   },
 ): ExpertResearchEvidenceState {
   const agentId = text(input.agentId)
@@ -159,7 +161,7 @@ export function recordExpertResearchEvidence(
   const freshEntries = input.entries
     .map(normalizeAuditEntry)
     .filter((entry): entry is ExpertResearchAuditEntry => Boolean(entry))
-  if (freshEntries.length === 0) {
+  if (freshEntries.length === 0 && !(input.allowEmptyEntries === true && artifactPath && input.entries.length === 0)) {
     throw new Error('研究证据没有可验证的 Playwright 记录。')
   }
   // A narrow recovery intentionally overwrites the same Markdown artifact with a

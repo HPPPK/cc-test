@@ -1,4 +1,5 @@
 import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
+import { reserveExpertResearcherStart } from '../../services/tools/expertResearchBudgetRuntime.js'
 import { createResearcherPartPath, researchArtifactRootPath, isFileFirstExpertResearchAgentType } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
@@ -472,6 +473,16 @@ export function assignedResearchArtifactPathFromTask(
   return declared ?? task
 }
 
+/** The bound canonical server can retire the legacy source-batch contract. */
+export function resolveExpertResearchTaskKind(
+  requested: ExpertResearchTaskKind | undefined,
+  context: Awaited<ReturnType<typeof loadExpertSubagentSkillContext>>,
+): ExpertResearchTaskKind | undefined {
+  return context?.expertId === 'commercialization-research-report' && context.researchTaskKind === 'targeted-evidence'
+    ? 'targeted-evidence'
+    : requested
+}
+
 export function buildExpertSubagentPackagePrompt(input: {
   agentId?: string
   agentType: string
@@ -487,7 +498,7 @@ export function buildExpertSubagentPackagePrompt(input: {
   researcherTargetPath?: string
   prompt?: string
 } {
-  const isTargeted = input.agentType === 'expert-evidence-researcher' && input.researchTaskKind === 'targeted-evidence'
+  const isTargeted = input.agentType === 'expert-evidence-researcher' && resolveExpertResearchTaskKind(input.researchTaskKind, input.expertSkillContext) === 'targeted-evidence'
   const explicitCommercializationResearcher = input.agentType === 'expert-evidence-researcher'
     && [input.declaredResearchArtifactPath, input.taskPrompt].some((value) => (
       typeof value === 'string'
@@ -848,6 +859,7 @@ export async function* runAgent({
     loadExpertSubagentSkillContext(agentDefinition.agentType, undefined, { researchTaskKind }),
     loadExpertSubagentResearchEvidenceContext(agentDefinition.agentType),
   ])
+  researchTaskKind = resolveExpertResearchTaskKind(researchTaskKind, expertSkillContext)
   // File-first research artifacts are intentionally scoped to one child task.
   // The parent task states exactly one target path. The runner enforces that the
   // researcher cannot overwrite a sibling's ledger or use Write for final HTML.
@@ -868,6 +880,7 @@ export async function* runAgent({
   )
   const researchArtifactPaths = expertPackagePrompt.researchArtifactPaths
   const researcherTargetPath = expertPackagePrompt.researcherTargetPath
+  await reserveExpertResearcherStart({ agentId, agentType: agentDefinition.agentType, artifactPath: researcherTargetPath, expertId: expertSkillContext?.expertId })
   const expertSubagentSkills = expertPackagePrompt.prompt
   if (expertSubagentSkills) {
     initialMessages.push(createUserMessage({

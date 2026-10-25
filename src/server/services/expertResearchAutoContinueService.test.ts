@@ -366,216 +366,22 @@ describe('ExpertResearchAutoContinueService', () => {
     expect(resumeCount).toBe(0)
   })
 
-  test('recovers only the owner Markdown when a brief-selected route has no actual browser attempt', async () => {
-    let receivedPlan: unknown
-    const current = candidate(researcherPaths)
-    const artifactPolicy = current.expert.runtimeBinding?.researchArtifactPolicy
-    if (!artifactPolicy) throw new Error('expected artifact policy')
-    artifactPolicy.routeCompletion = { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true }
-    const brief = [
-      '# Brief',
-      '### Route: global-video-signal',
-      '- Owner report: commercialization-research/03-user-needs.md',
-      '- Required route: yes',
-      '- Evidence field: user-demand',
-      '- Goal: obtain overseas user evidence',
-      '- First route: open a YouTube concrete page',
-      '- Fallback route: open a Product Hunt concrete page for the same field',
-      '- Completion bar: opened source or bounded gap',
-      '- Primary target host: youtube.com',
-      '- Fallback target host: producthunt.com',
-    ].join('\n')
-    const service = new ExpertResearchAutoContinueService({
-      loadCandidate: async () => current,
-      readFile: async (filePath) => filePath.endsWith('01-research-brief.md') ? brief : '# research',
-      logError: () => {},
-    })
-    service.setHandler(async (_sessionId, plan) => {
-      receivedPlan = plan
-      return true
-    })
-
-    await service.tryContinue('session-missing-required-route')
-
-    expect(receivedPlan).toEqual({
-      kind: 'recover-incomplete-required-routes',
-      recoveries: [expect.objectContaining({
-        artifactPath: 'commercialization-research/03-user-needs.md',
-        routeId: 'global-video-signal',
-        nextStep: 'attempt-primary',
-        primaryTargetHost: 'youtube.com',
-        fallbackTargetHost: 'producthunt.com',
-      })],
-    })
-  })
-
 })
 
-
-test('recovers one completed researcher batch when no assigned core source was actually attempted', async () => {
-  const current = candidate(researcherPaths) as any
-  current.expert.runtimeBinding.skills = [{
-    skillId: 'research-source-library',
-    title: 'Source library',
-    path: 'skills/research-source-library/SKILL.md',
-    sha256: 'test',
-    content: [
-      '### 产品数据',
-      '- https://core.example.com/',
-    ].join('\n'),
-  }]
-  current.expert.researchEvidence.records = researcherPaths.map((artifactPath: string, index: number) => ({
-    agentId: 'researcher-' + index,
-    agentType: 'expert-evidence-researcher',
-    recordedAt: '2026-08-26T00:00:00.000Z',
-    artifactPath,
-    content: '# research',
-    entries: index === 0
-      ? [{ target: 'https://unrelated.example.com/', status: 'opened', kind: 'url' }]
-      : [{ target: 'https://example' + index + '.com/', status: 'opened', kind: 'url' }],
-  }))
-  let receivedPlan: unknown
-  const service = new ExpertResearchAutoContinueService({
-    loadCandidate: async () => current,
-    readFile: async () => '# non-empty research',
-    logError: () => {},
-  })
-  service.setHandler(async (_sessionId, plan) => {
-    receivedPlan = plan
-    return true
-  })
-
-  await service.tryContinue('session-undispatched-source-batch')
-
-  expect(receivedPlan).toEqual(expect.objectContaining({
-    kind: 'recover-undispatched-source-batch',
-    recoveries: [expect.objectContaining({
-      artifactPath: 'commercialization-research/02-competitors.md',
-      reason: 'source-package-not-dispatched',
-    })],
-  }))
-})
-
-
-test('recovers the exact remaining core and open routes once per unchanged wave without advancing early', async () => {
-  const current = candidate(researcherPaths) as any
-  current.expert.runtimeBinding.skills = [{
-    skillId: 'research-source-library',
-    title: 'Source library',
-    path: 'skills/research-source-library/SKILL.md',
-    sha256: 'test',
-    content: [
-      '<!-- research-source-library-tier: core -->',
-      '### 移动应用、产品数据与 ASO / 增长',
-      '- A core：https://core-a.example.com/',
-      '### 行业、用户、内容与品牌',
-      '- B core：https://core-b.example.com/',
-      '### 投融资、公司与战略研究',
-      '- C core：https://core-c.example.com/',
-      '<!-- research-source-library-tier: open -->',
-      '### 开放社区、代码与渠道',
-      '- Gitee：https://gitee.com/',
-      '- B 站：https://www.bilibili.com/',
-      '- X：https://x.com/',
-    ].join('\n'),
-  }]
-  current.expert.researchEvidence.records = [
-    {
-      agentId: 'researcher-a', agentType: 'expert-evidence-researcher', artifactPath: researcherPaths[0], recordedAt: '2026-08-27T00:00:00.000Z', content: '# A',
-      entries: [
-        { target: 'https://core-a.example.com/', finalUrl: 'https://core-a.example.com/report', status: 'opened', kind: 'url' },
-        { target: 'https://gitee.com/', status: 'pending', kind: 'url' },
-      ],
-    },
-    {
-      agentId: 'researcher-b', agentType: 'expert-evidence-researcher', artifactPath: researcherPaths[1], recordedAt: '2026-08-27T00:00:00.000Z', content: '# B',
-      entries: [{ target: 'https://core-b.example.com/', finalUrl: 'https://core-b.example.com/login', status: 'access_limited', kind: 'url' }],
-    },
-    {
-      agentId: 'researcher-c', agentType: 'expert-evidence-researcher', artifactPath: researcherPaths[2], recordedAt: '2026-08-27T00:00:00.000Z', content: '# C',
-      entries: [
-        { target: 'https://core-c.example.com/', status: 'failed', kind: 'url' },
-        { target: 'https://x.com/', status: 'pending', kind: 'url' },
-      ],
-    },
-  ]
-  const plans: any[] = []
-  const service = new ExpertResearchAutoContinueService({
-    loadCandidate: async () => current,
-    readFile: async () => '# non-empty research',
-    logError: () => {},
-  })
-  service.setHandler(async (_sessionId, plan) => {
-    plans.push(plan)
-    return true
-  })
-
-  await service.tryContinue('session-partial-source-coverage')
-  expect(plans[0]).toEqual(expect.objectContaining({
-    kind: 'recover-undispatched-source-batch',
-    recoveries: expect.arrayContaining([
-      expect.objectContaining({ artifactPath: researcherPaths[0], entries: [expect.objectContaining({ candidateUrl: 'https://gitee.com/' })] }),
-      expect.objectContaining({ artifactPath: researcherPaths[1], entries: [expect.objectContaining({ candidateUrl: 'https://www.bilibili.com/' })] }),
-      expect.objectContaining({ artifactPath: researcherPaths[2], entries: [expect.objectContaining({ candidateUrl: 'https://x.com/' })] }),
-    ]),
-  }))
-  expect(current.expert.researchSourceDispatches?.recoveredBatchFingerprints).toBeUndefined()
-  current.expert.researchSourceDispatches = {
-    receipts: [],
-    recoveredBatchFingerprints: plans[0].recoveries.map((recovery: any) => recovery.batchFingerprint),
-  }
-
-  expect(await service.tryContinue('session-partial-source-coverage')).toBe(false)
-  expect(plans).toHaveLength(1)
-})
-
-test('does not redispatch an already acknowledged source fingerprint while its audit is pending', async () => {
-  const current = candidate(researcherPaths) as any
-  const sourceLibraryContent = [
-    '<!-- research-source-library-tier: core -->',
-    '### Product research',
-    '- https://pending-dispatch.example.com/',
-  ].join('\n')
-  current.expert.runtimeBinding.skills = [{
-    skillId: 'research-source-library',
-    title: 'Source library',
-    path: 'skills/research-source-library/SKILL.md',
-    sha256: 'test',
-    content: sourceLibraryContent,
-  }]
-  current.expert.researchEvidence.records = current.expert.researchEvidence.records.map((record: any) => ({
-    ...record,
-    entries: [{ target: 'https://unrelated.example.com/', status: 'opened', kind: 'url' }],
-  }))
-  const sourcePlan = planResearchSourceLibraryExecutionBatches({
-    catalog: parseResearchSourceLibrary(sourceLibraryContent),
-    researcherPaths,
-  })
-  const pendingBatch = sourcePlan?.batches.find((batch) => batch.entries.length > 0)
-  expect(pendingBatch).toBeDefined()
-  current.expert.researchSourceDispatches = {
-    receipts: [{
-      artifactPath: pendingBatch!.artifactPath,
-      batchFingerprint: pendingBatch!.batchFingerprint,
-      coreEntryCount: pendingBatch!.entries.filter((entry) => entry.tier === 'core').length,
-      openEntryCount: pendingBatch!.entries.filter((entry) => entry.tier === 'open').length,
-      agentId: 'researcher-pending-dispatch',
-      dispatchedAt: '2026-09-07T00:00:00.000Z',
-    }],
-  }
-  const plans: any[] = []
-  const service = new ExpertResearchAutoContinueService({
-    loadCandidate: async () => current,
-    readFile: async () => '# non-empty research',
-    logError: () => {},
-  })
-  service.setHandler(async (_sessionId, plan) => {
-    plans.push(plan)
-    return true
-  })
-
-  expect(await service.tryContinue('session-pending-dispatch')).toBe(false)
-  expect(plans).toHaveLength(0)
+test.each([undefined, 0, 1])('reviews partial candidates without catalog sweeps or route repair (legacy retry %s)', async (retryCount) => {
+  const current = candidate() as any
+  current.expert.runtimeBinding.skills = [{ skillId: 'research-source-library', content: '### 产品数据\n- https://unvisited.example.com/' }]
+  current.expert.runtimeBinding.researchArtifactPolicy.routeCompletion = { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true }
+  if (retryCount !== undefined) current.expert.researchSourceDispatches = { receipts: [{ artifactPath: researcherPaths[0], batchFingerprint: 'legacy', agentId: 'ended', retryCount, completedAt: '2026-09-08T00:01:00Z' }] }
+  const before = JSON.stringify(current.expert.researchEvidence)
+  const plans: unknown[] = []
+  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => current,
+    readFile: async (file) => String(file).endsWith('01-research-brief.md') ? '# 用户需求\nB站、YouTube 具体内容取证' : '# audited research',
+    settleSourceBatches: async () => { throw new Error('must not synthesize candidate outcomes') }, logError: () => {} })
+  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
+  expect(await service.tryContinue('partial-library-' + retryCount)).toBe(true)
+  expect(plans).toEqual([{ kind: 'continue-review' }])
+  expect(JSON.stringify(current.expert.researchEvidence)).toBe(before)
 })
 
 test('continues to D when an Edit audit is attributable through its dispatch receipt', async () => {
@@ -647,90 +453,6 @@ test('does not persist a recovery fingerprint when the parent instruction is mer
 
   expect(await service.tryContinue('session-recovery-instruction-accepted')).toBe(true)
   expect(current.expert.researchSourceDispatches?.recoveredBatchFingerprints).toBeUndefined()
-})
-
-
-test('continues source recovery in ten-URL waves and never treats a dispatched wave as completed evidence', async () => {
-  const current = candidate(researcherPaths) as any
-  current.expert.runtimeBinding.skills = [{
-    skillId: 'research-source-library',
-    title: 'Source library',
-    path: 'skills/research-source-library/SKILL.md',
-    sha256: 'test',
-    content: [
-      '<!-- research-source-library-tier: core -->',
-      ...Array.from({ length: 12 }, (_, index) => [
-        '### 移动应用、产品数据与 ASO / 增长',
-        '- A ' + index + '：https://wave-a-' + index + '.example.com/',
-      ]).flat(),
-    ].join('\n'),
-  }]
-  current.expert.researchEvidence.records[0].entries = []
-  const plans: any[] = []
-  const service = new ExpertResearchAutoContinueService({
-    loadCandidate: async () => current,
-    readFile: async () => '# non-empty research',
-    logError: () => {},
-  })
-  service.setHandler(async (_sessionId, plan) => {
-    plans.push(plan)
-    return true
-  })
-
-  expect(await service.tryContinue('session-source-waves')).toBe(true)
-  const first = plans[0].recoveries.find((recovery: any) => recovery.artifactPath === researcherPaths[0])
-  expect(first.entries).toHaveLength(10)
-  current.expert.researchSourceDispatches = { receipts: [], recoveredBatchFingerprints: [first.batchFingerprint] }
-
-  expect(await service.tryContinue('session-source-waves')).toBe(false)
-  expect(plans).toHaveLength(1)
-
-  current.expert.researchEvidence.records[0].entries = first.entries.map((entry: any, index: number) => ({
-    target: entry.candidateUrl,
-    finalUrl: index === 0 ? entry.candidateUrl : undefined,
-    status: index === 0 ? 'opened' : index === 1 ? 'access_limited' : 'failed',
-    kind: 'url',
-  }))
-  expect(await service.tryContinue('session-source-waves')).toBe(true)
-  const second = plans[1].recoveries.find((recovery: any) => recovery.artifactPath === researcherPaths[0])
-  expect(second.entries).toHaveLength(2)
-  expect(second.entries.some((entry: any) => first.entries.some((previous: any) => previous.candidateUrl === entry.candidateUrl))).toBe(false)
-})
-
-function endedSourceWave(retryCount = 0): any {
-  const current = candidate(researcherPaths) as any
-  const content = '<!-- research-source-library-tier: core -->\n### Product research\n- https://unfinished.example.com/'
-  current.expert.runtimeBinding.skills = [{ skillId: 'research-source-library', content }]
-  const batch = planResearchSourceLibraryExecutionBatches({ catalog: parseResearchSourceLibrary(content), researcherPaths })!.batches.find(x => x.entries.length)!
-  current.expert.researchSourceDispatches = { receipts: [{ artifactPath: batch.artifactPath, batchFingerprint: batch.batchFingerprint, agentId: 'ended-worker', coreEntryCount: 1, openEntryCount: 0, dispatchedAt: '2026-09-08T00:00:00Z', completedAt: '2026-09-08T00:01:00Z', retryCount }], recoveredBatchFingerprints: [batch.batchFingerprint] }
-  return current
-}
-
-test('retries an ended source wave once rather than treating it as still running forever', async () => {
-  const current = endedSourceWave()
-  const plans: any[] = []
-  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => current, readFile: async () => '# research', logError: () => {} })
-  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
-  expect(await service.tryContinue('ended-wave')).toBe(true)
-  expect(plans[0].kind).toBe('recover-undispatched-source-batch')
-  expect(plans[0].recoveries[0].entries).toHaveLength(1)
-})
-
-test('after one ended retry records honest unexecuted gaps and advances without an infinite loop', async () => {
-  const current = endedSourceWave(1)
-  const plans: any[] = []
-  let settlements = 0
-  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => current, readFile: async () => '# research', logError: () => {},
-    settleSourceBatches: async (_id: string, batches: any[]) => {
-      settlements++
-      const batch = batches[0]
-      current.expert.researchEvidence.records.push({ agentId: 'ended-worker', agentType: 'expert-evidence-researcher', artifactPath: batch.artifactPath, recordedAt: '2026-09-08T00:02:00Z', content: '# research', entries: batch.candidateUrls.map((target: string) => ({ target, kind: 'url', status: 'interrupted', detail: '未执行；补查结束仍无浏览回执' })) })
-    },
-  })
-  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
-  expect(await service.tryContinue('ended-retry')).toBe(true)
-  expect(settlements).toBe(1)
-  expect(plans).toEqual([{ kind: 'continue-review' }])
 })
 
 
@@ -812,18 +534,6 @@ test('schedule drains a queued signal after a failed readiness check', async () 
   await flushQueue()
   expect(errors.length).toBe(1)
   expect(resumes).toBe(1)
-})
-
-
-test('does not let the long catalog queue starve already-planned concrete evidence', async () => {
-  const current = endedSourceWave()
-  current.expert.runtimeBinding.researchArtifactPolicy.routeCompletion = { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true }
-  const plans: any[] = []
-  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => current,
-    readFile: async (file) => String(file).endsWith('01-research-brief.md') ? '# 用户需求\nB站、YouTube 具体内容取证' : '# preserved research', logError: () => {} })
-  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
-  await service.tryContinue('depth-before-next-catalog-wave')
-  expect(plans[0]?.kind).toBe('recover-incomplete-required-routes')
 })
 
 

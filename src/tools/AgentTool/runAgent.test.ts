@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
-import { assignedResearchArtifactPath, assignedResearchArtifactPathFromTask, buildExpertSubagentPackagePrompt, formatFileFirstOutputReviewContext, researcherArtifactWriteError, researcherArtifactEditError, pageExpertResearchRead, reportWorkerReadError } from './runAgent.js'
+import { assignedResearchArtifactPath, assignedResearchArtifactPathFromTask, buildExpertSubagentPackagePrompt, resolveExpertResearchTaskKind, formatFileFirstOutputReviewContext, researcherArtifactWriteError, researcherArtifactEditError, pageExpertResearchRead, reportWorkerReadError } from './runAgent.js'
 
 const policyKey = 'CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY'
 const outputRootKey = 'CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT'
@@ -270,4 +270,34 @@ describe('report worker Read and write-back verification boundary', () => {
     expect(reportWorkerReadError({ file_path: paths.researcherPaths[0] }, reviewer)).toBeDefined()
     expect(reportWorkerReadError({ file_path: 'C:/research/another.html' }, reviewer)).toBeDefined()
   })
+})
+
+test('reserves the normalized researcher and exact assigned artifact before entering its query loop', async () => {
+  const source = await readFile(new URL('./runAgent.ts', import.meta.url), 'utf8')
+  const reservation = source.indexOf('await reserveExpertResearcherStart(')
+  expect(reservation).toBeGreaterThan(source.indexOf('const researcherTargetPath = expertPackagePrompt.researcherTargetPath'))
+  expect(reservation).toBeLessThan(source.indexOf('for await (const message of query('))
+  expect(source.slice(reservation, reservation + 220)).toContain('agentType: agentDefinition.agentType')
+  expect(source.slice(reservation, reservation + 220)).toContain('artifactPath: researcherTargetPath')
+})
+
+test('canonical server targeted context overrides omitted or legacy source-batch task kind', () => {
+  const target = 'commercialization-research/02-competitors.md'
+  const expertSkillContext = { expertId: 'commercialization-research-report', packId: 'imported-canonical', packVersion: 'test', researchTaskKind: 'targeted-evidence' as const, artifactPaths: { briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: [target], reviewerPath: 'commercialization-research/05-evidence-review.md', auditPath: 'commercialization-research/06-browser-audit.md' }, skills: [] }
+  for (const researchTaskKind of [undefined, 'source-batch'] as const) {
+    const prepared = buildExpertSubagentPackagePrompt({ agentId: 'legacy', agentType: 'expert-evidence-researcher', promptMessages: [], declaredResearchArtifactPath: target, researchTaskKind, expertSkillContext })
+    expect(prepared.researcherTargetPath).toBe(target)
+    expect(prepared.prompt).toContain('targeted')
+  }
+})
+
+test('task-kind normalization preserves other experts and precedes source receipt routing', async () => {
+  const other = { expertId: 'other', packId: 'other', packVersion: 'test', researchTaskKind: 'targeted-evidence' as const, skills: [] }
+  expect(resolveExpertResearchTaskKind('source-batch', other)).toBe('source-batch')
+  expect(resolveExpertResearchTaskKind(undefined, undefined)).toBeUndefined()
+  const source = await readFile(new URL('./runAgent.ts', import.meta.url), 'utf8')
+  const normalize = source.indexOf('researchTaskKind = resolveExpertResearchTaskKind(researchTaskKind, expertSkillContext)')
+  expect(normalize).toBeGreaterThan(source.indexOf('const [expertSkillContext, expertResearchEvidenceContext]'))
+  expect(normalize).toBeLessThan(source.indexOf('const expertPackagePrompt = buildExpertSubagentPackagePrompt'))
+  expect(normalize).toBeLessThan(source.indexOf("const sourceBatch = researchTaskKind === 'targeted-evidence'"))
 })

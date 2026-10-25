@@ -156,9 +156,9 @@ describe('buildBundledExpertPacks', () => {
     expect(runtime.promptSnapshot).not.toContain('[truncated by expert runtime]')
     expect(runtime.promptSnapshot).toContain('禁止的捷径')
     expect(runtime.promptSnapshot).toContain('渲染成功不等于文件保存成功')
-    expect(runtime.promptSnapshot).toContain('不直接省略备选')
+    expect(runtime.promptSnapshot).toContain('预算内首路线无证据时按价值选择同字段备选')
     expect(outputProtocol).toContain('The CLI must save the exact rendered file and the runtime must acknowledge its contents before 08 or final-delivery state is committed')
-    expect(outputProtocol).toContain('Ordinary primary homepages are not targeted attempts')
+    expect(outputProtocol).toContain('Unvisited candidates are not failures or evidence')
     expect(await zip.readText(browserSkillPath)).toContain('分开调用的')
     const writeTool = JSON.parse(await zip.readText('tools/write/tool.json'))
     const htmlTemplate = await zip.readText('experts/commercialization-research-report/templates/commercialization-research-report-template.html')
@@ -214,26 +214,26 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('渠道来源路线矩阵')
     expect(systemPrompt).toContain('字段颗粒度复核')
     expect(systemPrompt).toContain('平台路线、取证状态与报告措辞')
-    expect(systemPrompt).toContain('共同任务池')
-    expect(systemPrompt).toContain('唯一 02 / 03 / 04 Markdown 路径')
-    expect(systemPrompt).toContain('每个核心入口和维护的开放入口都做一次有界真实尝试')
-    expect(systemPrompt).toContain('默认分账')
+    expect(systemPrompt).toContain('149 个来源是候选库')
+    expect(systemPrompt).toContain('research_artifact_path')
+    expect(systemPrompt).toContain('不要求逐项执行')
+    expect(systemPrompt).toContain('A 负责竞品')
     expect(systemPrompt).toContain('当前不适用')
     expect(systemPrompt).toContain('不设逐站深读或数量门槛')
-    expect(systemPrompt).toContain('D、E、08 与最终 HTML 只能在全部已分配入口都有真实终态后继续')
-    expect(systemPrompt).toContain('派发回执不是完成证明')
+    expect(systemPrompt).toContain('D、E、F/08 与固定母版 CLI 交付仍必需')
+    expect(systemPrompt).toContain('不能把分派凭证当访问证据')
     expect(writeTool.purpose).toContain('01-research-brief.md')
     expect(writeTool.purpose).toContain('research_artifact.kind')
     expect(JSON.parse(outputProtocol).version).toBe(21)
     expect(JSON.parse(outputProtocol).researchArtifacts.researcherParts).toBe(true)
-    expect(systemPrompt).toContain('子代理总数与分片数不固定')
+    expect(systemPrompt).toContain('研究启动总数最多六次')
     expect(systemPrompt).toContain('全部已登记分片')
     const parsedOutputProtocol = JSON.parse(outputProtocol)
     expect(parsedOutputProtocol.researchTaskPurpose).toMatchObject({
       parameter: 'research_task_kind',
       default: 'source-batch',
       targetedEvidence: expect.stringContaining('do not claim an unrelated library batch'),
-      handoff: expect.stringContaining('downstream review gates remain unchanged'),
+      handoff: expect.stringContaining('No full-catalog or Required route exhaustion gates'),
     })
     const sourcePackDir = path.join(sourceDir, 'commercialization-research-report')
     const sourceLibrarySkill = await zip.readText(sourceLibrarySkillPath)
@@ -293,10 +293,7 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('不再把所有成功打开的入口自动灌入来源表')
     expect(systemPrompt).toContain('仅首页/目录/搜索入口不等于取得正文')
     expect(systemPrompt).not.toContain('必须为每个实际打开的具体公开页增加 `### Page disposition:')
-    expect(packagedResearchArtifacts.routeCompletion).toEqual({
-      mode: 'dynamic-route-status-v2',
-      requireAttemptedRequiredRoutes: true,
-    })
+    expect(packagedResearchArtifacts.routeCompletion).toBeUndefined()
     expect(packagedResearchArtifacts).not.toHaveProperty('requireOpenedPageDisposition')
         expect(JSON.parse(outputProtocol).templateFieldGuide.tables.map((field: { field: string }) => field.field)).toEqual(expect.arrayContaining([
       'RISKS_AND_COUNTEREVIDENCE_ROWS',
@@ -409,17 +406,17 @@ describe('buildBundledExpertPacks', () => {
     expect(openSourceNetwork).toContain('https://tieba.baidu.com/')
     expect([...openSourceNetwork.matchAll(/https?:\/\/[^\s]+/g)]).toHaveLength(30)
     expect(sourceLibrary).toMatch(/^---\r?\nname: research-source-library\r?\n/)
-    expect(sourceLibrary).toContain('全量任务池的默认分账和真实浏览状态')
-    expect(sourceLibrary).toContain('三人的执行包合起来正好覆盖 119 个核心入口')
+    expect(sourceLibrary).toContain('共 149 个候选入口')
+    expect(sourceLibrary).toContain('不全量遍历候选库')
     expect(sourceLibrary).toContain('<expert-research-source-assignment>')
-    expect(sourceLibrary).toContain('每线最多 10 个仍未终态的 URL')
-    expect(sourceLibrary).toContain('都至少做一次有界真实 Playwright 尝试')
+    expect(sourceLibrary).toContain('每名研究者最多 12 次浏览器工具调用')
+    expect(sourceLibrary).toContain('预算耗尽立即停止新研究和浏览')
     expect(sourceLibrary).toContain('用户候选来源库任务池与浏览状态')
-    expect(sourceLibrary).toContain('按 A/B/C 三线并行、每线最多 10 个 URL 逐批补齐未终态入口')
+    expect(sourceLibrary).toContain('不要求逐项访问、全部成功或深读')
     expect(sourceLibrary).toContain('已派发但没有回执绝不能冒充完成')
-    expect(sourceLibrary).toContain('最多定向补查一次')
+    expect(sourceLibrary).toContain('每线最多一次定向补证')
     expect(systemPrompt).toContain('verification_deferred')
-    expect(systemPrompt).toContain('最多定向补查一次')
+    expect(systemPrompt).toContain('每线最多一次定向补证')
     expect(systemPrompt).toContain('共享等待预算为两分钟')
     expect(sourceLibrary).toContain('官网、B站、YouTube、Reddit、GitHub、Gitee、X、小红书、知乎、百度贴吧、微博')
     expect(sourceLibrary).toContain('最终 HTML 来源表收录正文实际采用且有审计依据的页面及其具体支撑内容')
@@ -435,7 +432,7 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('browser-information-retrieval')
     expect(systemPrompt).toContain('公司 PM 核心来源库 + 开放补充网络')
     expect(systemPrompt).toContain('research-source-library')
-    expect(systemPrompt).toContain('不得用泛搜索绕过自己的默认批次')
+    expect(systemPrompt).toContain('不排下一波目录扫描')
     expect(systemPrompt).toContain('不设逐站深读或数量门槛')
     expect(systemPrompt).toContain('来源任务池不是 Required route: yes')
     expect(systemPrompt).toContain('未打开的平台只能称为候选入口、本轮未执行到或按产品判断当前不适用')
@@ -451,7 +448,7 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('公开官网 / 落地页 SEO 快速审计')
     expect(systemPrompt).toContain('Playwright 调用计数、真实 URL/查询词与浏览限制由运行时写入 `06-browser-audit.md`')
     expect(systemPrompt).not.toContain('EXPERT_RESEARCH_COMPLETION_REQUIRED')
-    expect(outputProtocol).toContain('The 119 company-core entries and maintained-open entries are split once across A/B/C')
+    expect(outputProtocol).toContain('No full-catalog or Required route exhaustion gates')
     expect(outputProtocol).toContain('not a fixed-platform quota')
     expect(outputProtocol).not.toContain('"researchCompletion"')
     expect(outputProtocol).not.toContain('requiredSearchEngines')
@@ -773,4 +770,32 @@ it('keeps commercialization pack profile and clarification skill aligned with st
   expect(instruction).not.toContain('desktop Expert material control creates the downloadable material package')
   expect(instruction).toContain('every user-facing request for an answer must use AskUserQuestion')
   expect(runtime.researchDeliveryPolicy).toBeUndefined()
+})
+
+it('ships bounded product-first candidate research in canonical source and ZIP without catalog-drain instructions', async () => {
+  const sourceDir = path.resolve(import.meta.dir, '../experts')
+  const outputDir = await mkdtemp(path.join(tmpdir(), 'bounded-research-pack-'))
+  const [output] = await buildBundledExpertPacks({ sourceDir, outputDir, packId: 'commercialization-research-report' })
+  roots.push(outputDir)
+  const zip = await adapter.read(new Uint8Array(await readFile(output!)))
+  const paths = [
+    'experts/commercialization-research-report/prompts/system.md',
+    'experts/commercialization-research-report/outputs/material-protocol.json',
+    'skills/research-source-library/SKILL.md',
+    'skills/browser-information-retrieval/SKILL.md',
+  ]
+  const competitorSkill = await zip.readText('skills/competitor-analysis/SKILL.md')
+  expect(competitorSkill).not.toContain('identify 5')
+  expect(competitorSkill).not.toContain('of the 5 competitors')
+  expect(competitorSkill).toContain('2–4 relevant direct competitors as planning guidance, not a minimum')
+  for (const entry of paths) {
+    const content = await zip.readText(entry)
+    expect(content).toContain('最多 6 次研究启动')
+    expect(content).toContain('每名研究者最多 12 次浏览器工具调用')
+    expect(content).toContain('15 分钟研究窗口')
+    expect(content).not.toContain('全部已分配入口都有真实终态后继续')
+    expect(content).not.toContain('三人的执行包合起来正好覆盖 119 个核心入口')
+    expect(content).not.toContain('D, E, 08, and final HTML wait for terminal coverage')
+    expect(content).not.toContain('Each assigned entry gets one bounded Playwright outcome')
+  }
 })

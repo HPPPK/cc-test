@@ -492,3 +492,14 @@ test('uses the bound artifact policy for dispatch without another context reques
   expect(result).toBe('expert-evidence-researcher')
   expect(calls).toBe(0)
 })
+
+test('canonical targeted workers retain candidate library with bounded instructions and no old queue obligation', () => {
+  const context = { expertId: 'commercialization-research-report', packId: 'imported-canonical', packVersion: 'test', researchTaskKind: 'targeted-evidence' as const, skills: [{ skillId: 'research-source-library', title: 'Candidates', path: 'skills/candidates.md', sha256: 'test', content: 'https://candidate.example/product' }] }
+  const prompt = formatExpertSubagentSkillContext(context, { researcherTargetPath: 'commercialization-research/02-competitors.md' })!
+  expect(prompt).toContain('https://candidate.example/product')
+  expect(prompt).toContain('12')
+  expect(prompt).not.toContain('继续留在原队列')
+  const other = formatExpertSubagentSkillContext({ ...context, expertId: 'other' }, { researcherTargetPath: 'research/02.md' })!
+  expect(other).not.toContain('https://candidate.example/product')
+  expect(other).toContain('继续留在原队列')
+})

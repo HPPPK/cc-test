@@ -5,6 +5,9 @@ source: package-local
 summary: Evidence-led method for commercializing a new product idea without turning assumptions into conclusions.
 ---
 
+
+最多 6 次研究启动：A/B/C 各首次启动一次，每线最多一次定向补证。每名研究者最多 12 次浏览器工具调用，整个会话共用自专家激活起的 15 分钟研究窗口；调用次数不等于独立页面数，同一次 script 多页仍只算一次调用。先选与产品、竞品和关键商业问题最相关的具体页面，不全量遍历候选库。预算耗尽立即停止新研究和浏览，保存已取得证据、真实限制与未取得字段，Read-back 后提交真实审计；未访问候选不能标成失败、受限或已覆盖。D、E、F/08 与固定母版 CLI 交付仍必需，且不受研究窗口截止阻止。不得为凑目录覆盖、必选路线或来源数量反复派研究者。
+
 # Commercialization Research Method
 
 ## Purpose

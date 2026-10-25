@@ -6,8 +6,8 @@ import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 import { hasActiveExpertRuntime } from './expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 import { sessionService } from './sessionService.js'
-import { evaluateExpertResearchRequiredRoutes, type ExpertResearchRequiredRouteRecovery } from './expertResearchRouteCompletionService.js'
-import { evaluateResearchSourceLibraryExecutionCoverage, matchResearchSourceLibraryAttempts, parseResearchSourceLibrary, planResearchSourceLibraryExecutionBatches, resolveResearchRecordArtifactPath } from './expertResearchSourceLibraryService.js'
+import { type ExpertResearchRequiredRouteRecovery } from './expertResearchRouteCompletionService.js'
+import { resolveResearchRecordArtifactPath } from './expertResearchSourceLibraryService.js'
 
 const COMMERCIALIZATION_RESEARCH_EXPERT_ID = 'commercialization-research-report'
 
@@ -342,100 +342,9 @@ export class ExpertResearchAutoContinueService {
         missingArtifactPaths.push(artifactPath)
       }
     }
-    const sourceRecords = (expert.researchEvidence?.records ?? [])
-      .filter((record) => sourceAgentTypes.has(record.agentType))
-    // Give planned product/user/competitor evidence a turn before draining
-    // further catalog waves. Existing active-worker guards still prevent overlaps.
-    if (!missingArtifactPaths.length && sourceRecords.length && artifactPolicy.routeCompletion?.mode === 'dynamic-route-status-v2') {
-      const routeEvaluation = evaluateExpertResearchRequiredRoutes({
-        artifactPolicy,
-        researchBriefMarkdown: brief,
-        sourceRecords: (expert.researchEvidence?.records ?? [])
-          .filter((record) => sourceAgentTypes.has(record.agentType)),
-      })
-      if (!routeEvaluation.complete) {
-        return { kind: 'recover-incomplete-required-routes', recoveries: routeEvaluation.recoveries }
-      }
-    }
-
-    const sourceLibraryContent = (binding.skills ?? []).find((skill) => skill.skillId === 'research-source-library')?.content
-    const sourceLibraryCatalog = sourceLibraryContent ? parseResearchSourceLibrary(sourceLibraryContent) : undefined
-    const sourceLibraryPlan = sourceLibraryCatalog?.entries.length
-      ? planResearchSourceLibraryExecutionBatches({
-          catalog: sourceLibraryCatalog,
-          researcherPaths: artifactPolicy.researcherPaths,
-        })
-      : undefined
-    if (sourceLibraryCatalog && sourceLibraryPlan) {
-      const attempts = matchResearchSourceLibraryAttempts({
-        catalog: sourceLibraryCatalog,
-        records: sourceRecords,
-        dispatches: sourceDispatches,
-      })
-      const coverage = evaluateResearchSourceLibraryExecutionCoverage({
-        plan: sourceLibraryPlan,
-        attempts,
-      })
-      const recovered = new Set(expert.researchSourceDispatches?.recoveredBatchFingerprints ?? [])
-      const dispatchedFingerprints = new Set(
-        (expert.researchSourceDispatches?.receipts ?? [])
-          .map((receipt) => `${receipt.artifactPath}\n${receipt.batchFingerprint}`),
-      )
-      const priorReceipt = (batch: typeof coverage.executionWave.batches[number]) =>
-        expert.researchSourceDispatches?.receipts.find((receipt) => receipt.artifactPath === batch.artifactPath && receipt.batchFingerprint === batch.batchFingerprint)
-      const exhausted = coverage.executionWave.batches.flatMap((batch) => {
-        const receipt = priorReceipt(batch)
-        return batch.entries.length && receipt?.completedAt && (receipt.retryCount ?? 0) >= 1
-          ? [{ artifactPath: batch.artifactPath, batchFingerprint: batch.batchFingerprint, agentId: receipt.agentId, candidateUrls: batch.entries.map((entry) => entry.candidateUrl) }]
-          : []
-      })
-      if (exhausted.length) return { kind: 'settle-incomplete-source-batches', batches: exhausted }
-      const dispatchableBatches = coverage.executionWave.batches.filter((batch) => {
-        const receipt = priorReceipt(batch)
-        return batch.entries.length > 0 && (receipt?.completedAt
-          ? (receipt.retryCount ?? 0) < 1
-          : !recovered.has(batch.batchFingerprint) && !dispatchedFingerprints.has(`${batch.artifactPath}\n${batch.batchFingerprint}`))
-      })
-      if (dispatchableBatches.length) {
-        return {
-          kind: 'recover-undispatched-source-batch',
-          recoveries: dispatchableBatches.map((batch) => {
-            const planned = sourceLibraryPlan.batches.find((candidate) => candidate.artifactPath === batch.artifactPath)!
-            const dispatched = (expert.researchSourceDispatches?.receipts ?? []).some((receipt) => (
-              receipt.artifactPath === batch.artifactPath
-            ))
-            return {
-              artifactPath: batch.artifactPath,
-              batchFingerprint: batch.batchFingerprint,
-              coreEntryCount: planned.entries.filter((entry) => entry.tier === 'core').length,
-              openEntryCount: planned.entries.filter((entry) => entry.tier === 'open').length,
-              remainingEntryCount: batch.entries.length,
-              entries: batch.entries.map((entry) => ({ tier: entry.tier, category: entry.category, candidateUrl: entry.candidateUrl })),
-              reason: dispatched ? 'source-package-incomplete' as const : 'source-package-not-dispatched' as const,
-            }
-          }),
-        }
-      }
-      // A recovery instruction that was accepted is still not evidence. If the
-      // same execution wave has no new terminal receipts, wait instead of
-      // silently advancing to D or repeatedly re-dispatching an unchanged batch.
-      if (!coverage.complete) {
-        this.dependencies.logError(
-          `[ExpertResearchAutoContinue] Source coverage is incomplete but the current recovery wave is already dispatched for ${sessionId}`,
-          {
-            missing: coverage.executionWave.batches
-              .filter((batch) => batch.entries.length > 0)
-              .map((batch) => ({
-                artifactPath: batch.artifactPath,
-                batchFingerprint: batch.batchFingerprint,
-                candidateUrls: batch.entries.map((entry) => entry.candidateUrl),
-              })),
-          },
-        )
-        return undefined
-      }
-    }
-
+    // The canonical source library and planned routes are diagnostic candidates.
+    // Review the actual A/B/C handoffs rather than automatically draining catalog
+    // waves, repairing every route, or manufacturing unvisited-site outcomes.
     if (missingArtifactPaths.length) {
       return { kind: 'recover-missing-researchers', missingArtifactPaths }
     }

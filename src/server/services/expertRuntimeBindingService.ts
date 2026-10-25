@@ -607,6 +607,15 @@ export function buildExpertRuntimeTurnInstruction(
           '</expert-question-routing-contract>',
         ]
       : []),
+    ...(binding.expertId === 'commercialization-research-report'
+      ? [
+          '<commercialization-bounded-research-policy>',
+          'Authoritative current research policy: this overrides any conflicting stored prompt snapshot, package skill, output protocol, source assignment or continuation. The 119 core plus 30 open URLs are 149 candidates, not a mandatory visitation checklist. Research relevant concrete product, pricing, user and channel pages first; normally select roughly 3–5 relevant pages per lane and 2–4 direct competitors for A, as useful planning guidance rather than evidence quotas.',
+          'Research ceilings: six researcher starts total, initial A/B/C plus at most one targeted follow-up per lane only for a decision-changing gap; twelve browser tool calls per researcher, not twelve unique pages; one activation-based fifteen-minute research window including brief planning. These are ceilings, never targets to consume. Do not reset the window, re-dispatch running workers, drain source batches, exhaust Required routes or expand reciprocal GitHub/Gitee checks. Legacy source-batch is a candidate hint only; prefer research_task_kind: "targeted-evidence" and the declared A/B/C research_artifact_path.',
+          'At research budget exhaustion, stop new browsing and research starts. Save each assigned Markdown, Read-back and submit actual audits, preserving actual evidence, limits and gaps. Unvisited candidates are unvisited, never failed, access-limited or verified. No accessible sources still permits an honest gap report. D, E, F/08 and CLI delivery remain required and available after research time expires. Review the saved material without restarting research; do not use search/source counts or planned-route completion to block the report.',
+          '</commercialization-bounded-research-policy>',
+        ]
+      : []),
     '</expert-runtime>',
   ].join('\n\n')
 }

@@ -21,6 +21,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { sessionService } from '../services/sessionService.js'
+import { commercializationResearchBudgetService } from '../services/commercializationResearchBudgetService.js'
+import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
 import { conversationService } from '../services/conversationService.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import {
@@ -507,6 +509,21 @@ async function handleSessionExpertRoute(
     const agentType = url.searchParams.get('agentType') ?? ''
     if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
     return Response.json((await expertSessionService.getPostReviewEvidenceAbsorptionContext(sessionId, agentType)) ?? null)
+  }
+  if (action === 'research-budget') {
+    if (req.method !== 'POST') throw new ApiError(405, 'Method ' + req.method + ' not allowed', 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    if (body.action !== 'reserve-researcher' && body.action !== 'reserve-browser') throw ApiError.badRequest('Invalid research budget action.')
+    const session = await sessionService.getSession(sessionId)
+    if (!session) throw ApiError.notFound('Session not found: ' + sessionId)
+    const expert = session.expert ?? await expertRuntimeSessionStore.get(sessionId)
+    const decision = commercializationResearchBudgetService.reserve(sessionId, expert, {
+      action: body.action,
+      agentId: typeof body.agentId === 'string' ? body.agentId : '',
+      ...(typeof body.artifactPath === 'string' ? { artifactPath: body.artifactPath } : {}),
+      ...(typeof body.requestId === 'string' ? { requestId: body.requestId } : {}),
+    })
+    return Response.json(decision, { status: decision.allowed ? 200 : 409 })
   }
   if (action === 'research-source-dispatch') {
     if (req.method !== 'POST') throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')

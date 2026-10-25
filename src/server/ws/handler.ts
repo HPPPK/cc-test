@@ -4711,7 +4711,18 @@ const EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION = [
   '</expert-research-auto-continue>',
 ].join('\n')
 
-export function buildIncompleteRequiredRouteRecoveryInstruction(plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-incomplete-required-routes' }>): string {
+function buildBoundedResearchRecoveryInstruction(): string {
+  return [
+    '<expert-research-bounded-recovery>',
+    'This is an internal Expert continuation. The 149 URLs are a candidate library; do not drain another catalog wave or exhaust planned/Required routes. Select relevant concrete product, user and channel pages first, with at most one targeted follow-up per lane only for a decision-changing gap.',
+    'The session ceilings remain six researcher starts total (initial A/B/C plus their optional follow-ups), twelve browser tool calls per researcher (not unique pages), and one activation-based fifteen-minute research window. These are ceilings, not quotas. Check remaining runtime budget before any targeted dispatch; do not restart an ended lane or repeat completed browsing.',
+    'If budget remains and a follow-up is justified, use expert-evidence-researcher with research_task_kind: "targeted-evidence", the exact owning research_artifact_path and only the narrow decision-changing question. Otherwise save, Read-back and submit actual audits for existing assigned Markdown, disclose unvisited candidates and actual evidence gaps, and continue D → E → CLI draft → F/08 → CLI patch/finalize. No new browser calls after exhaustion; save and review remain available. Do not ask the user to approve ordinary gaps or invent website outcomes.',
+    '</expert-research-bounded-recovery>',
+  ].join('\n')
+}
+
+export function buildIncompleteRequiredRouteRecoveryInstruction(plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-incomplete-required-routes' }>, bounded = false): string {
+  if (bounded) return buildBoundedResearchRecoveryInstruction()
   const byArtifact = new Map<string, typeof plan.recoveries>()
   for (const recovery of plan.recoveries) {
     if (recovery.artifactPath === 'commercialization-research/01-research-brief.md') continue
@@ -4744,7 +4755,9 @@ export function buildIncompleteRequiredRouteRecoveryInstruction(plan: Extract<Ex
 
 export function buildUndispatchedSourceBatchRecoveryInstruction(
   plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-undispatched-source-batch' }>,
+  bounded = false,
 ): string {
+  if (bounded) return buildBoundedResearchRecoveryInstruction()
   return [
     '<expert-research-source-batch-recovery>',
     'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer and do not ask the user a question.',
@@ -4785,16 +4798,21 @@ function buildEvidenceAbsorptionAutoContinueInstruction(
   ].join('\n')
 }
 
-function buildInitialTemplateRenderAutoContinueInstruction(
+export function buildInitialTemplateRenderAutoContinueInstruction(
   plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-initial-render' }>,
+  cliOnly = false,
 ): string {
   return [
     '<expert-research-initial-render-auto-continue>',
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The chapter-ready 07 material is durably saved, but no initial fixed-template HTML draft exists. Continue the real render now; do not merely describe a future report step.',
-    'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', then exactly one structured Write for one .html file directly in the current session workDir. Use Write.content as an empty string and put the complete fixed-template fields in expert_output.',
+    cliOnly
+      ? 'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', inspect cc-jiangxia expert-template-fill --schema, then invoke cc-jiangxia expert-template-fill --data-stdin --output <report.html> without mode, directly in the current session workDir. Pass JSON {templateId, fields} through stdin, with no expert_output wrapper or HTML. Use the running CLAUDE_CLI_PATH executable when available; never generate report HTML with Write, Edit, scripts or internal endpoints.'
+      : 'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', then exactly one structured Write for one .html file directly in the current session workDir. Use Write.content as an empty string and put the complete fixed-template fields in expert_output.',
     'Do not reopen browser pages, re-dispatch A/B/C/D/E/F, read raw ledgers, create Markdown, or paste research content into the parent context. Use a stable descriptive .html filename and do not ask the user to choose it.',
-    'This Write creates an initial draft only. Do not call it final delivery and do not replace it with ordinary prose. The server will advance the same draft to the constrained 08 review when the Write really succeeds.',
+    cliOnly
+      ? 'This CLI call creates an initial draft only after rendering, disk save and content acknowledgement succeed. Then continue the same draft to F/08. If action=retry-commit, use --commit-receipt <receipt> --output <same-report.html> only; for retry-write or validation errors correct/retry the original payload. Do not restart research or claim final delivery.'
+      : 'This Write creates an initial draft only. Do not call it final delivery and do not replace it with ordinary prose. The server will advance the same draft to the constrained 08 review when the Write really succeeds.',
     '</expert-research-initial-render-auto-continue>',
   ].join('\n')
 }
@@ -4813,21 +4831,32 @@ function buildOutputReviewAutoContinueInstruction(
   ].join('\n')
 }
 
-function buildFinalizeDeliveryAutoContinueInstruction(
+export function buildFinalizeDeliveryAutoContinueInstruction(
   plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-finalize-delivery' }>,
+  cliOnly = false,
 ): string {
   return [
     '<expert-research-finalize-delivery-auto-continue>',
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The same initial HTML and a current 08 completeness review are durably saved. Finish the existing delivery now; do not restart research or create another report file.',
-    'Read only ' + plan.completionReviewPath + '. Then write only the existing report path ' + plan.reportPath + ' using the structured fixed-template Write.',
-    'If 08 plainly identifies a source-supported omission in the current report, make exactly one mode="patch" Write with only the smallest supported fields. Otherwise make mode="finalize" with fields: {} so the reviewed initial draft becomes the final delivery unchanged.',
+    cliOnly
+      ? 'Read only ' + plan.completionReviewPath + '. Then invoke cc-jiangxia expert-template-fill --data-stdin --output "' + plan.reportPath + '" for this exact existing report. Use the running CLAUDE_CLI_PATH executable when available and JSON {templateId, fields, mode}, with no expert_output wrapper or HTML. Never use Write/Edit, scripts or internal endpoints for report HTML.'
+      : 'Read only ' + plan.completionReviewPath + '. Then write only the existing report path ' + plan.reportPath + ' using the structured fixed-template Write.',
+    cliOnly
+      ? 'If 08 plainly identifies a source-supported omission or correction, use mode="patch" with only the smallest supported fields. Otherwise use mode="finalize" with fields: {}. Validation, disk save and content acknowledgement must succeed; a successful patch is terminal and must not be followed by finalize. For action=retry-commit retry only --commit-receipt <receipt> --output <same-report.html>; for retry-write or validation errors correct/retry the original payload on the same path.'
+      : 'If 08 plainly identifies a source-supported omission in the current report, make exactly one mode="patch" Write with only the smallest supported fields. Otherwise make mode="finalize" with fields: {} so the reviewed initial draft becomes the final delivery unchanged.',
     'Do not browse, invoke agents, ask the user, reread raw ledgers, paste research content into the parent context, or replace the report with a fresh full rewrite.',
     '</expert-research-finalize-delivery-auto-continue>',
   ].join('\n')
 }
 
-function buildMissingResearcherRecoveryInstruction(missingArtifactPaths: string[]): string {
+export function buildMissingResearcherRecoveryInstruction(missingArtifactPaths: string[], bounded = false): string {
+  if (bounded) return [
+    buildBoundedResearchRecoveryInstruction(),
+    'Missing declared handoff lanes (use the exact owning research_artifact_path):',
+    ...missingArtifactPaths.map((artifactPath) => '- ' + artifactPath),
+    'A never-started lane may receive its initial targeted research task only while the runtime budget permits it. An ended lane may receive at most its one optional decision-changing follow-up. If no start remains, preserve a truthful missing-evidence gap and review the saved material; do not invent a researcher completion, a visit or a website failure.',
+  ].join('\n')
   return [
     '<expert-research-missing-handoff-recovery>',
     'This is an internal Expert runtime recovery instruction. Do not display it as a normal answer and do not ask the user a question.',
@@ -4852,13 +4881,14 @@ export async function continueCommercializationResearch(
     // An already prepared continuation must not start ordinary chat or another
     // Expert after an exit/switch that was queued before this send.
     if (getExpertProcessBindingKey(current) !== plannedBindingKey) return false
-    return continueCommercializationResearchInTransition(sessionId, plan)
+    return continueCommercializationResearchInTransition(sessionId, plan, current?.runtimeBinding?.expertId === 'commercialization-research-report')
   })
 }
 
 async function continueCommercializationResearchInTransition(
   sessionId: string,
   plan: ExpertResearchAutoContinuePlan,
+  cliOnly = false,
 ): Promise<boolean> {
   // A live TaskOutput wait will consume normal task notifications itself. This
   // fallback exists only for the observed "parent text ended, children finished"
@@ -4883,7 +4913,7 @@ async function continueCommercializationResearchInTransition(
     verb: plan.kind === 'recover-missing-researchers'
       ? '正在补齐缺失的调研子任务'
       : plan.kind === 'recover-undispatched-source-batch'
-        ? '正在补齐未执行的核心来源取证批次'
+        ? cliOnly ? '正在检查已有证据与关键缺口' : '正在补齐未执行的核心来源取证批次'
         : plan.kind === 'recover-incomplete-required-routes'
         ? '正在补齐已选关键路线的真实取证'
         : plan.kind === 'continue-absorption'
@@ -4901,19 +4931,19 @@ async function continueCommercializationResearchInTransition(
     await ensureCliSessionStartedInTransition(client, sessionId, 'expert_research_auto_continue')
     bindAllClientSessionOutputs(sessionId)
     const instruction = plan.kind === 'recover-missing-researchers'
-      ? buildMissingResearcherRecoveryInstruction(plan.missingArtifactPaths)
+      ? buildMissingResearcherRecoveryInstruction(plan.missingArtifactPaths, cliOnly)
       : plan.kind === 'recover-undispatched-source-batch'
-        ? buildUndispatchedSourceBatchRecoveryInstruction(plan)
+        ? buildUndispatchedSourceBatchRecoveryInstruction(plan, cliOnly)
         : plan.kind === 'recover-incomplete-required-routes'
-        ? buildIncompleteRequiredRouteRecoveryInstruction(plan)
+        ? buildIncompleteRequiredRouteRecoveryInstruction(plan, cliOnly)
         : plan.kind === 'continue-absorption'
           ? buildEvidenceAbsorptionAutoContinueInstruction(plan)
           : plan.kind === 'continue-initial-render'
-            ? buildInitialTemplateRenderAutoContinueInstruction(plan)
+            ? buildInitialTemplateRenderAutoContinueInstruction(plan, cliOnly)
             : plan.kind === 'continue-output-review'
               ? buildOutputReviewAutoContinueInstruction(plan)
               : plan.kind === 'continue-finalize-delivery'
-                ? buildFinalizeDeliveryAutoContinueInstruction(plan)
+                ? buildFinalizeDeliveryAutoContinueInstruction(plan, cliOnly)
                 : EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION
     const streamState = getStreamState(sessionId)
     // Mark the turn before enqueueing it because SDK output may begin

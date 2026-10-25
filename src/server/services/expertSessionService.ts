@@ -522,7 +522,7 @@ async function recoverReviewedTemplateFillDraft(sessionId: string, expert: Exper
       if (checked.has(key)) continue
       checked.add(key)
       try {
-        if (renderExpertTemplateFill(template, { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: prior.templateId, fields: prior.fields }).content === written) recovered = prior
+        if (renderExpertTemplateFill(template, { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: prior.templateId, fields: prior.fields }, { allowEmptySourceRows: expert.runtimeBinding?.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID }).content === written) recovered = prior
       } catch { /* A rejected historical candidate is not a recovery source. */ }
     }
   } finally {
@@ -643,6 +643,7 @@ export class ExpertSessionService {
       throw ApiError.badRequest('当前会话没有启用有效的 Expert Runtime。')
     }
 
+    const boundedResearch = expert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
     const artifactPolicy = expert.runtimeBinding.researchArtifactPolicy
     const evidencePolicy = expert.runtimeBinding.researchEvidenceReviewPolicy
     const absorptionPolicy = expert.runtimeBinding.researchEvidenceAbsorptionPolicy
@@ -652,7 +653,7 @@ export class ExpertSessionService {
     const sourceLibraryCatalog = sourceLibrarySkill
       ? parseResearchSourceLibrary(sourceLibrarySkill.content)
       : undefined
-    const sourceLibraryExecutionPlan = sourceLibraryCatalog?.entries.length && artifactPolicy
+    const sourceLibraryExecutionPlan = !boundedResearch && sourceLibraryCatalog?.entries.length && artifactPolicy
       ? planResearchSourceLibraryExecutionBatches({
           catalog: sourceLibraryCatalog,
           researcherPaths: artifactPolicy.researcherPaths,
@@ -734,7 +735,7 @@ export class ExpertSessionService {
           'EXPERT_RESEARCH_SUBAGENTS_PENDING',
         )
       }
-      if (sourceLibraryCoverage && !sourceLibraryCoverage.complete) {
+      if (!boundedResearch && sourceLibraryCoverage && !sourceLibraryCoverage.complete) {
         expertResearchAutoContinueService.schedule(sessionId)
         throw new ApiError(
           409,
@@ -773,7 +774,9 @@ export class ExpertSessionService {
     const skillIds = expert.runtimeBinding.subagentSkillIdsByAgentType?.[normalizedAgentType] ?? []
     const allowed = new Set(skillIds)
     const isResearcher = normalizedAgentType === 'expert-evidence-researcher'
-    const researchTaskKind = normalizeExpertResearchTaskKind(requestedTaskKind)
+    // Legacy callers may still request source-batch. The canonical library is
+    // a candidate catalog, never a server-owned mandatory execution queue.
+    const researchTaskKind = boundedResearch ? 'targeted-evidence' : normalizeExpertResearchTaskKind(requestedTaskKind)
     const researchSourcePlan = isResearcher && researchTaskKind === 'source-batch'
       ? sourceLibraryCoverage?.executionWave
       : undefined
@@ -781,8 +784,10 @@ export class ExpertSessionService {
       .filter((skill) => allowed.has(skill.skillId))
       // A researcher receives its one structured batch below. Do not also send
       // the whole catalog and force the model to guess its ownership.
-      .filter((skill) => !(researchSourcePlan || (isResearcher && researchTaskKind === 'targeted-evidence')) || skill.skillId !== 'research-source-library')
-      .map((skill) => ({ ...skill }))
+      .filter((skill) => boundedResearch || !(researchSourcePlan || (isResearcher && researchTaskKind === 'targeted-evidence')) || skill.skillId !== 'research-source-library')
+      .map((skill) => ({ ...skill, ...(boundedResearch && isResearcher && skill.skillId === 'research-source-library' ? {
+        content: '候选来源目录：按本线证据字段选择最相关入口，不是逐站访问清单。每名研究员最多 12 次浏览工具调用；总研究窗口 15 分钟，每线最多一次定向补查。预算耗尽后保存已有 Markdown、Read 回读并提交真实审计；未访问入口保留未访问，证据缺口交 D/E/F 如实披露，不得编造失败或扩展全库扫描。\n\n' + skill.content,
+      } : {}) }))
     return {
       expertId: expert.runtimeBinding.expertId,
       packId: expert.runtimeBinding.packId,
@@ -873,7 +878,7 @@ export class ExpertSessionService {
           sourceRecords,
         })
         routeAuditSummary = formatExpertResearchRouteEvaluation(routeEvaluation)
-        if (!routeEvaluation.complete) {
+        if (expert.runtimeBinding.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID && !routeEvaluation.complete) {
           throw new ApiError(
             409,
             '任务书中已计划的具体内容路线尚缺真实取证尝试：'
@@ -1428,6 +1433,7 @@ export class ExpertSessionService {
       content: input.content,
       ...(reportedPath ? { artifactPath: reportedPath } : {}),
     }
+    let hasDurableResearcherHandoff = false
     if (artifactPolicy && (tracksEvidence || tracksReviewer || tracksOutputReviewer)) {
       const artifactWorkDir = session.workDir || session.projectRoot || session.projectPath
       if (!artifactWorkDir) {
@@ -1464,6 +1470,7 @@ export class ExpertSessionService {
           if (!content.trim()) throw new Error('研究 Markdown 文件为空。')
           // maxCharacters is a splitting hint, never a reason to discard a saved file or its audit.
           evidenceInput = { ...input, agentType, content, artifactPath: resolved.relativePath }
+          hasDurableResearcherHandoff = tracksEvidence
         } catch {
           // A failed child may still have a real browser audit for this exact
           // source batch. Keep the declared path only for an interruption
@@ -1488,17 +1495,23 @@ export class ExpertSessionService {
     let researchEvidence: ExpertResearchEvidenceState | undefined
     let researchEvidenceReviewer: ExpertResearchEvidenceReviewerState | undefined
     let reportCompletenessReview: { agentId: string; artifactPath: string; completedAt: string } | undefined
+    // A budget-ended researcher can truthfully save a gap-only Markdown. Only
+    // a server-read assigned file authorizes a zero-entry receipt; it never
+    // implies a browser visit or authorizes an unaudited citation.
+    const allowEmptyResearchAudit = expert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+      && hasDurableResearcherHandoff && Array.isArray(input.entries) && input.entries.length === 0
     try {
       if (tracksCompletion) {
         researchCompletion = recordExpertResearchAudit(expert.researchCompletion, {
           ...evidenceInput,
           recordedAt: now,
-          allowEmptyEntries: Boolean(completionPolicy?.completedWithoutBrowserAuditAgentTypes?.includes(agentType)),
+          allowEmptyEntries: allowEmptyResearchAudit || Boolean(completionPolicy?.completedWithoutBrowserAuditAgentTypes?.includes(agentType)),
         })
       }
       if (evidencePolicy && tracksEvidence) {
         researchEvidence = recordExpertResearchEvidence(expert.researchEvidence, evidencePolicy, {
           ...evidenceInput,
+          allowEmptyEntries: allowEmptyResearchAudit,
           recordedAt: now,
         })
         // This format is no longer enabled by the commercialization Expert, but
@@ -1690,7 +1703,7 @@ export class ExpertSessionService {
     let existingDraft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
     if (existingDraft) {
       try {
-        renderExpertTemplateFill(binding.outputTemplate.content, { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: existingDraft.templateId, fields: existingDraft.fields })
+        renderExpertTemplateFill(binding.outputTemplate.content, { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: existingDraft.templateId, fields: existingDraft.fields }, { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID })
       } catch {
         const recovered = await recoverReviewedTemplateFillDraft(sessionId, expert, existingDraft).catch(() => undefined)
         if (!recovered) {
@@ -1908,7 +1921,7 @@ export class ExpertSessionService {
     const researchCompletion = binding.researchCompletionPolicy
       ? evaluateExpertResearchCompletion(binding.researchCompletionPolicy, expert.researchCompletion)
       : undefined
-    if (binding.researchArtifactPolicy?.routeCompletion?.mode === 'dynamic-route-status-v2' && researchBriefMarkdown) {
+    if (binding.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID && binding.researchArtifactPolicy?.routeCompletion?.mode === 'dynamic-route-status-v2' && researchBriefMarkdown) {
       const routeEvaluation = evaluateExpertResearchRequiredRoutes({
         artifactPolicy: binding.researchArtifactPolicy,
         researchBriefMarkdown,
@@ -1926,16 +1939,16 @@ export class ExpertSessionService {
         )
       }
     }
-    if (binding.researchCompletionPolicy?.finalOutputBehavior === 'block' && !researchCompletion?.complete) {
+    if (binding.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID && binding.researchCompletionPolicy?.finalOutputBehavior === 'block' && !researchCompletion?.complete) {
       throw new ApiError(
         409,
         `当前专家的浏览调研尚未达到 ZIP 声明的完成条件：${researchCompletion?.missing.join('；')}。请继续使用 Playwright 的具体页面取证；不要把搜索页、验证码页或失败调用写成已完成。`,
         'EXPERT_RESEARCH_COMPLETION_REQUIRED',
       )
     }
-    // Final rendering is defensive only: normally the same terminal-coverage
-    // contract has already passed before D/E. A dispatched recovery fingerprint
-    // is never evidence; only opened/access_limited/failed browser outcomes count.
+    // Other opt-in experts retain their exhaustive library contract. The
+    // canonical expert treats catalog coverage as diagnostic; a dispatch
+    // fingerprint is never browser evidence for either contract.
     const sourceLibraryContentForFinalOutput = binding.skills.find((skill) => skill.skillId === 'research-source-library')?.content
     const sourceLibraryCatalogForFinalOutput = sourceLibraryContentForFinalOutput
       ? parseResearchSourceLibrary(sourceLibraryContentForFinalOutput)
@@ -1946,7 +1959,7 @@ export class ExpertSessionService {
           researcherPaths: binding.researchArtifactPolicy.researcherPaths,
         })
       : undefined
-    if (sourceLibraryCatalogForFinalOutput && sourceLibraryPlanForFinalOutput) {
+    if (binding.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID && sourceLibraryCatalogForFinalOutput && sourceLibraryPlanForFinalOutput) {
       const sourceAttempts = matchResearchSourceLibraryAttempts({
         catalog: sourceLibraryCatalogForFinalOutput,
         records: (expert.researchEvidence?.records ?? []).filter((record) => (
@@ -1969,7 +1982,7 @@ export class ExpertSessionService {
         )
       }
     }
-    if (binding.researchCompletionPolicy?.requireSearchCoverageBeforeFinalOutput === true) {
+    if (binding.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID && binding.researchCompletionPolicy?.requireSearchCoverageBeforeFinalOutput === true) {
       const missingSearchCoverage = researchCompletion?.missing.filter((message) => message.startsWith('未记录以下搜索入口')) ?? []
       if (missingSearchCoverage.length) {
         throw new ApiError(
@@ -2063,7 +2076,11 @@ export class ExpertSessionService {
       }
     }
 
-    const sourceCoverageFailure = evaluateExpertFinalSourceCoverage(binding.researchCompletionPolicy, payload)
+    // Bounded canonical reports disclose missing coverage in D/07/08. Source
+    // references and absorption above still validate every source actually used.
+    const sourceCoverageFailure = binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+      ? undefined
+      : evaluateExpertFinalSourceCoverage(binding.researchCompletionPolicy, payload)
     if (sourceCoverageFailure) {
       return this.throwTemplateFillRepairFailure({
         sessionId,
@@ -2081,7 +2098,7 @@ export class ExpertSessionService {
       const rendered = renderExpertTemplateFill(binding.outputTemplate.content, {
         format: EXPERT_TEMPLATE_FILL_FORMAT,
         ...renderedPayload,
-      })
+      }, { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID })
       if (completionReviewRequired && !existingDraft) {
         // Source references can be repaired after the candidate draft is built
         // (for example, a stable Google URL is rebound to the exact audited URL).

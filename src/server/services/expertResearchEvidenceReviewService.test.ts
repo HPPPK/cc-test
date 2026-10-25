@@ -124,3 +124,13 @@ test('keeps every file-bound audit even after more than eight parts and pathless
   expect(state!.records.filter(record => record.artifactPath)).toHaveLength(12)
   expect(state!.records.filter(record => !record.artifactPath)).toHaveLength(8)
 })
+
+
+test('records an explicitly permitted file handoff with zero browser outcomes without inventing visits', () => {
+  const policy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 8, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true as const }
+  const input = { agentId: 'budget-ended-a', agentType: 'expert-evidence-researcher', recordedAt: '2026-10-25T00:00:00Z', artifactPath: 'commercialization-research/02-competitors.md', content: '# Evidence gap\nNo browser evidence was obtained.', entries: [] }
+  expect(() => recordExpertResearchEvidence(undefined, policy, input)).toThrow('没有可验证')
+  const state = recordExpertResearchEvidence(undefined, policy, { ...input, allowEmptyEntries: true })
+  expect(state.records).toEqual([expect.objectContaining({ agentId: 'budget-ended-a', entries: [], content: input.content })])
+  expect(() => recordExpertResearchEvidence(undefined, policy, { ...input, artifactPath: undefined, allowEmptyEntries: true })).toThrow('没有可验证')
+})
