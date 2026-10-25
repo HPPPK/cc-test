@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { join } from 'node:path'
@@ -56,7 +56,12 @@ export function getPlaywrightExecutablePathFromRuntimeDir(runtimeDir: string): s
   if (!existsSync(runtimeDir)) return null
   try {
     const entries = readdirSync(runtimeDir, { recursive: true })
-    const executable = entries.find((entry) => /(?:^|[\\/])chrome(?:\.exe)?$/i.test(entry.replaceAll('\\', '/')))
+    const executable = entries.find((entry) => {
+      const normalized = entry.replaceAll('\\', '/')
+      const browser = /(?:^|\/)chrome(?:\.exe)?$/i.test(normalized)
+        || /(?:^|\/)(Google Chrome for Testing|Google Chrome|Chromium)\.app\/Contents\/MacOS\/\1$/.test(normalized)
+      return browser && statSync(join(runtimeDir, entry)).isFile()
+    })
     return executable ? join(runtimeDir, executable) : null
   } catch { return null }
 }
