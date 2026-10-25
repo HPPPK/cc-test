@@ -160,6 +160,10 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('07→HTML 逐簇核对')
     expect(systemPrompt).toContain('不计运行时确认的人工验证等待')
     expect(systemPrompt).toContain('先暂停所有研究浏览和搜索')
+    expect(systemPrompt).toContain('预算耗尽只以运行时明确的预算拒绝回执为准')
+    expect(systemPrompt).toContain('不得用墙钟时间或自行计算的激活时长判断耗尽')
+    expect(systemPrompt).toContain('不得派出只写缺口的清理研究者')
+    expect(systemPrompt).toContain('人工验证完成后恢复同一工作者')
     expect(systemPrompt).not.toContain('共享等待预算为两分钟')
     expect(systemPrompt).not.toContain('每线约 3–5 个相关具体页')
     for (const skill of ['browser-information-retrieval', 'external-demand-evidence', 'channel-acquisition-evidence']) {
