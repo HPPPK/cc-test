@@ -1,19 +1,23 @@
 import { randomUUID } from 'node:crypto'
 
 type Dependencies = { env?: NodeJS.ProcessEnv; fetchImpl?: (url: string, init?: RequestInit) => Promise<Response> }
-const stop = 'EXPERT_RESEARCH_BUDGET_EXHAUSTED: Save existing evidence and explicit gaps to the assigned Markdown, Read back, submit the real audit and return; continue D/E/F without further research.'
+const unavailable = 'EXPERT_RESEARCH_BUDGET_UNAVAILABLE: This requested operation was not admitted because its budget reservation could not be checked. Preserve existing evidence; do not infer that other researchers have exhausted their budgets.'
 function value(env: NodeJS.ProcessEnv, suffix: string): string | undefined { return env['CC_JIANGXIA_' + suffix] ?? env['CC_HAHA_' + suffix] ?? env[suffix] }
 function configured(env: NodeJS.ProcessEnv): boolean { return value(env, 'EXPERT_TEMPLATE_FILL_WRITE') === '1' && value(env, 'EXPERT_TEMPLATE_FILL_DELIVERY') === 'cli-only' }
 async function reserve(body: Record<string, unknown>, deps: Dependencies): Promise<void> {
   const env = deps.env ?? process.env
   const server = value(env, 'DESKTOP_SERVER_URL')?.trim()
   const session = value(env, 'EXPERT_SESSION_ID')?.trim()
-  if (!server || !session) throw new Error(stop + ' Budget service identity is unavailable.')
+  if (!server || !session) throw new Error(unavailable + ' Budget service identity is unavailable.')
+  let response: Response
+  let payload: { allowed?: boolean; reason?: string }
   try {
-    const response = await (deps.fetchImpl ?? fetch)(`${server}/api/sessions/${encodeURIComponent(session)}/expert/research-budget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) })
-    const payload = await response.json() as { allowed?: boolean; reason?: string }
-    if (!response.ok || payload.allowed !== true) throw new Error(payload.reason ?? 'Research budget reservation was rejected.')
-  } catch (error) { throw new Error(stop + ' ' + (error instanceof Error ? error.message : String(error))) }
+    response = await (deps.fetchImpl ?? fetch)(`${server}/api/sessions/${encodeURIComponent(session)}/expert/research-budget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) })
+    payload = await response.json() as { allowed?: boolean; reason?: string }
+  } catch (error) { throw new Error(unavailable + ' ' + (error instanceof Error ? error.message : String(error))) }
+  // Structured denials already name their scope. Do not turn a rejected start
+  // or one worker's spent allowance into an instruction to stop every worker.
+  if (!response.ok || payload.allowed !== true) throw new Error(payload.reason ?? 'EXPERT_RESEARCH_BUDGET_REJECTED: This requested operation was not admitted; no global research exhaustion was established.')
 }
 export async function reserveExpertResearcherStart(input: Dependencies & { agentId: string; agentType: string; artifactPath?: string; expertId?: string }): Promise<void> {
   if (input.agentType !== 'expert-evidence-researcher') return

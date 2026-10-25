@@ -77,3 +77,22 @@ test('PowerShell literal JSON here-strings for configured report CLI keep real n
 
   }
 })
+
+
+test.each(['reserve-researcher', 'reserve-browser'] as const)('preserves scoped server denial verbatim for %s without adding a global stop', async (action) => {
+  const reason = 'EXPERT_RESEARCH_BUDGET_EXHAUSTED: researcher start limit reached; already-running researchers may continue within their own budgets.'
+  const fetchImpl = async () => Response.json({ allowed: false, reason }, { status: 409 })
+  const pending = action === 'reserve-researcher'
+    ? reserveExpertResearcherStart({ agentId: 'rejected-start', agentType: 'expert-evidence-researcher', expertId: 'commercialization-research-report', artifactPath: 'lane', env, fetchImpl })
+    : guardExpertResearchToolCall({ toolName: 'Playwright', agentId: 'existing-worker', env, fetchImpl })
+  const error = await pending.then(() => undefined, (error) => error as Error)
+  expect(error?.message).toBe(reason)
+  expect(error?.message).not.toContain('without further research')
+})
+
+test('unavailable admission service fails only the requested operation without claiming global exhaustion', async () => {
+  const error = await reserveExpertResearcherStart({ agentId: 'a', agentType: 'expert-evidence-researcher', expertId: 'commercialization-research-report', artifactPath: 'lane', env, fetchImpl: async () => { throw new Error('offline') } }).then(() => undefined, (error) => error as Error)
+  expect(error?.message).toContain('offline')
+  expect(error?.message).toContain('requested operation was not admitted')
+  expect(error?.message).not.toContain('without further research')
+})

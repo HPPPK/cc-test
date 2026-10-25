@@ -19,7 +19,16 @@ export class CommercializationResearchBudgetService {
     const activated = Date.parse(binding.activatedAt ?? '')
     const pausedMs = Number.isFinite(activated) ? this.humanWaitMs(sessionId, activated, now) : 0
     const deadlineMs = activated + COMMERCIALIZATION_RESEARCH_LIMITS.windowMs + (Number.isFinite(pausedMs) ? Math.max(0, Math.min(pausedMs, Math.max(0, now - activated))) : 0)
-    const denied = (reason: string): ResearchBudgetDecision => ({ allowed: false, applicable: true, reason: RESEARCH_BUDGET_STOP + ' (' + reason + ')', ...(Number.isFinite(deadlineMs) ? { deadline: new Date(deadlineMs).toISOString() } : {}) })
+    const denied = (reason: string): ResearchBudgetDecision => {
+      const message = reason === 'fifteen-minute research window ended'
+        ? RESEARCH_BUDGET_STOP
+        : reason === 'researcher start limit reached'
+          ? 'EXPERT_RESEARCH_BUDGET_EXHAUSTED: This researcher start was not admitted; already-running researchers may continue within their own remaining browser-call and time budgets. Do not retry this rejected start or spawn cleanup/replacement workers to bypass the limit. Wait for already-running researchers, including human-verification waits, to finish; collect their actual Markdown and audits, then continue D/E/F.'
+          : reason === 'twelve browser tool calls consumed'
+            ? 'EXPERT_RESEARCH_BUDGET_EXHAUSTED: Only this researcher must stop browsing, save its existing evidence and explicit gaps to its assigned Markdown, Read back, submit its real audit and return. Other researchers retain their own remaining budgets. Do not spawn a replacement to bypass this call limit.'
+            : 'EXPERT_RESEARCH_BUDGET_REJECTED: This requested reservation was not admitted. Correct its session, researcher or lane identity before retrying; this denial does not mean other researchers have exhausted their budgets. Preserve actual evidence and never invent visits.'
+      return { allowed: false, applicable: true, reason: message + ' (' + reason + ')', ...(Number.isFinite(deadlineMs) ? { deadline: new Date(deadlineMs).toISOString() } : {}) }
+    }
     if (!input.agentId.trim() || !Number.isFinite(activated)) return denied('missing researcher identity or activation timestamp')
     const key = sessionId + ':' + binding.activatedAt
     let state = this.states.get(key)
