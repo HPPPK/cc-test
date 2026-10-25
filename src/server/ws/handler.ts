@@ -1319,12 +1319,26 @@ async function handlePermissionResponse(
   if (isE2ETestModeEnabled() && e2eTestPermissionRequestIds.has(message.requestId)) {
     return
   }
-  if (expertHumanVerificationService.resolveVerification(
-    message.requestId,
-    message.allowed,
-    message.updatedInput,
-  )) {
-    sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
+  if (message.requestId.startsWith('expert-human-verification:')) {
+    // Website verification is a dedicated decision, never a generic tool
+    // approval. Match the socket's session before accepting the explicit choice.
+    const pending = expertHumanVerificationService.getPendingRequest(sessionId)
+    const matchesPending = pending?.requestId === message.requestId
+    const accepted = matchesPending && expertHumanVerificationService.resolveVerification(
+      message.requestId,
+      message.allowed,
+      message.updatedInput,
+    )
+    sendMessage(ws, {
+      type: 'permission_response_ack',
+      requestId: message.requestId,
+      status: accepted ? 'accepted' : 'rejected',
+      ...(!accepted ? {
+        message: matchesPending
+          ? 'Choose an explicit browser verification resolution; this verification remains pending.'
+          : 'This browser verification request is stale or does not belong to this session.',
+      } : {}),
+    })
     return
   }
   const artifactWriteDenial = await rejectUnsafeWorkflowArtifactWrite(

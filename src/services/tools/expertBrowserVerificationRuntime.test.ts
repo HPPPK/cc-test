@@ -69,7 +69,7 @@ describe('coordinateExpertBrowserVerification', () => {
       toolUseId: 'toolu_google',
       env: enabledEnv,
       fetchImpl: async (input, init) => {
-        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        expect(init?.signal).toBeUndefined()
         requests.push(new Request(input, init))
         return Response.json({ resolution: 'verification_completed' })
       },
@@ -671,16 +671,40 @@ describe('coordinateExpertBrowserVerification', () => {
 
 })
 
-test('a deferred verification releases the held page without claiming user approval or retrying it', async () => {
+test('a legacy deferred response rejoins the pending verification without releasing or resuming browser actions', async () => {
   const resumed: any[] = []
+  let requests = 0
   const result = await coordinateExpertBrowserVerification({ toolName: 'Playwright', result: captchaResult, env: enabledEnv,
     input: { visible: true, actions: [{ type: 'navigate', url: 'https://s.weibo.com/weibo?q=Quicker' }] },
-    fetchImpl: async () => Response.json({ resolution: 'verification_deferred' }),
-    resume: async input => { resumed.push(input); return { data: { ...captchaResult.data, error: 'EXPERT_HUMAN_VERIFICATION_RECORDED_AS_GAP', steps: [] } } },
+    fetchImpl: async (_url, init) => {
+      expect(init?.signal).toBeUndefined()
+      requests += 1
+      if (requests === 1) return Response.json({ resolution: 'verification_deferred' })
+      expect(JSON.parse(String(init?.body)).joinExisting).toBe(true)
+      expect(resumed).toHaveLength(0)
+      return Response.json({ resolution: 'verification_completed' })
+    },
+    resume: async input => { resumed.push(input); return { data: { url: 'https://example.com/results', title: 'Results', text: 'Public results', steps: [] } } },
   })
+  expect(requests).toBe(2)
   expect(resumed).toHaveLength(1)
-  expect(resumed[0].verification_resolution).toBe('record_evidence_gap')
-  expect(result.data.error).toContain('EXPERT_HUMAN_VERIFICATION_DEFERRED')
-  expect(result.data.error).not.toContain('user declined')
-  expect(result.data.error).not.toContain('verified successfully')
+  expect(resumed[0].verification_resolution).toBe('verified')
+  expect(result.data.text).toBe('Public results')
+})
+
+test('keeps successive replacement challenges gated until the actual page is healthy', async () => {
+  let decisions = 0
+  let continuations = 0
+  const result = await coordinateExpertBrowserVerification({
+    toolName: 'Playwright', result: captchaResult, env: enabledEnv,
+    input: { actions: [{ type: 'extract', selector: 'body' }] },
+    fetchImpl: async () => { decisions += 1; return Response.json({ resolution: 'verification_completed' }) },
+    resume: async () => {
+      continuations += 1
+      return continuations < 10 ? captchaResult : { data: { text: 'Verified public results', url: 'https://example.com/results', steps: [] } }
+    },
+  })
+  expect(decisions).toBe(10)
+  expect(continuations).toBe(10)
+  expect(result.data.text).toBe('Verified public results')
 })

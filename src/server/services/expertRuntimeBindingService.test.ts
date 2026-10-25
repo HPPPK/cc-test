@@ -1085,6 +1085,12 @@ test.each(['commercialization-research-report', 'custom-imported-pack'])('overri
   const options = { enabledToolNames: ['Read', 'Write', 'Playwright', 'AskUserQuestion'] }
   const instruction = buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: legacy } as ExpertSessionMetadata, options)!
   expect(instruction).toContain('<commercialization-bounded-research-policy>')
+  expect(instruction).toContain('DeepSeek Flash only')
+  expect(instruction).toContain('never auto-fallback to DeepSeek Pro')
+  expect(instruction).toContain('07-to-HTML evidence clusters')
+  expect(instruction).toContain('wait for actual user-assisted login or CAPTCHA')
+  expect(instruction).toContain('pause all research searches and browsing, including sibling workers')
+  expect(instruction).toContain('excluding runtime-confirmed human-verification wait')
   expect(instruction).toContain('six researcher starts')
   expect(instruction).toContain('twelve browser tool calls per researcher')
   expect(instruction).toContain('fifteen-minute research window')

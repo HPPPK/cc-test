@@ -176,3 +176,24 @@ test('recognizes denial titles or leading body messages separately from the URL 
     expect(detectHumanVerificationKind('https://example.com/article', title!, text!)).toBeNull()
   }
 })
+
+
+test('replacement verification surfaces remain blocked regardless of the initial challenge kind', () => {
+  for (const initialKind of ['Google security verification', 'Baidu security verification', 'Bing security verification', 'human verification', 'login verification']) {
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://example.com/login', 'Sign in', 'Email Password Sign in to continue')).toBe(true)
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://www.google.com/sorry/index', '', '')).toBe(true)
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://www.bing.com/search?q=x', 'Bing', '请解决以下难题以继续')).toBe(true)
+  }
+})
+
+test('recovery requires readable public content and rejects loading, blank, closed and denied pages', async () => {
+  const { isHumanVerificationRecoveryHealthy } = await import('./pageAccessAssessment.js')
+  const healthy = { url: 'https://example.com/results', title: 'Results', text: 'Public results have loaded.', readyState: 'complete', closed: false }
+  expect(isHumanVerificationRecoveryHealthy(healthy)).toBe(true)
+  for (const invalid of [
+    { closed: true }, { readyState: 'loading' }, { url: 'about:blank' }, { text: '' },
+    { title: '403 Forbidden' }, { title: '404 Not Found' },
+    { url: 'https://example.com/login', title: 'Sign in', text: 'Email Password' },
+    { text: '请解决以下难题以继续' },
+  ]) expect(isHumanVerificationRecoveryHealthy({ ...healthy, ...invalid })).toBe(false)
+})

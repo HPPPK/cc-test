@@ -2,6 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageEntry, WorkflowSessionSummary } from '../types/session'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 
+describe('global Expert verification notification', () => {
+  it('notifies an inactive session once without opening the browser or requiring its modal', () => {
+    notifyDesktopMock.mockClear()
+    useChatStore.setState({ sessions: { 'background-research': makeSession() } })
+    const frame = { type: 'permission_request', requestId: 'auth-gate', toolName: 'Playwright', input: {
+      kind: 'expert-playwright-verification', verification: { url: 'https://example.org/login', detail: 'login verification' },
+    } } as never
+    useChatStore.getState().handleServerMessage('background-research', frame)
+    useChatStore.getState().handleServerMessage('background-research', frame)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
+      dedupeKey: 'expert-human-verification:background-research:auth-gate',
+      body: expect.stringContaining('打开验证浏览器'),
+      target: { type: 'session', sessionId: 'background-research' },
+    }))
+    expect(notifyDesktopMock.mock.calls[0]?.[0]).not.toHaveProperty('cooldownScope')
+    expect(useChatStore.getState().sessions['background-research']?.pendingPermission?.requestId).toBe('auth-gate')
+  })
+})
+
 const {
   sendMock,
   sendWorkflowTransitionMock,

@@ -1,3 +1,5 @@
+import { expertHumanVerificationService } from './expertHumanVerificationService.js'
+
 /** Process-local admission control; never manufactures browser evidence or changes persisted shapes. */
 export const COMMERCIALIZATION_RESEARCH_LIMITS = { researchers: 6, perLane: 2, browserCalls: 12, windowMs: 15 * 60_000 } as const
 export const RESEARCH_BUDGET_STOP = 'EXPERT_RESEARCH_BUDGET_EXHAUSTED: Save the existing evidence and explicit unresearched gaps to your assigned Markdown, Read it back, submit the real audit, and return. Continue D/E/F using existing evidence; do not start more research or invent visits.'
@@ -10,11 +12,13 @@ export type ResearchBudgetDecision = { allowed: boolean; applicable: boolean; re
 const lanePath = (value: string) => value.replace(/\\/g, '/').replace(/\.parts\/[^/]+\.md$/, '.md')
 export class CommercializationResearchBudgetService {
   private states = new Map<string, State>()
+  constructor(private readonly humanWaitMs: (sessionId: string, since: number, now: number) => number = () => 0) {}
   reserve(sessionId: string, expert: BudgetExpert | undefined, input: ResearchBudgetRequest, now = Date.now()): ResearchBudgetDecision {
     const binding = expert?.runtimeBinding
     if (expert?.mode !== 'expert' || expert.status !== 'active' || binding?.expertId !== 'commercialization-research-report') return { allowed: true, applicable: false }
     const activated = Date.parse(binding.activatedAt ?? '')
-    const deadlineMs = activated + COMMERCIALIZATION_RESEARCH_LIMITS.windowMs
+    const pausedMs = Number.isFinite(activated) ? this.humanWaitMs(sessionId, activated, now) : 0
+    const deadlineMs = activated + COMMERCIALIZATION_RESEARCH_LIMITS.windowMs + (Number.isFinite(pausedMs) ? Math.max(0, Math.min(pausedMs, Math.max(0, now - activated))) : 0)
     const denied = (reason: string): ResearchBudgetDecision => ({ allowed: false, applicable: true, reason: RESEARCH_BUDGET_STOP + ' (' + reason + ')', ...(Number.isFinite(deadlineMs) ? { deadline: new Date(deadlineMs).toISOString() } : {}) })
     if (!input.agentId.trim() || !Number.isFinite(activated)) return denied('missing researcher identity or activation timestamp')
     const key = sessionId + ':' + binding.activatedAt
@@ -62,4 +66,4 @@ export class CommercializationResearchBudgetService {
     return { allowed: true, applicable: true, deadline: new Date(deadlineMs).toISOString() }
   }
 }
-export const commercializationResearchBudgetService = new CommercializationResearchBudgetService()
+export const commercializationResearchBudgetService = new CommercializationResearchBudgetService((sessionId, since, now) => expertHumanVerificationService.getVerificationWaitMs(sessionId, since, now))

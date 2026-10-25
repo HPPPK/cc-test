@@ -2181,19 +2181,22 @@ export const useChatStore = create<ChatStore>((set, get) => {
           : null
         const isExpertBrowserVerification = msg.toolName === 'Playwright'
           && input?.kind === 'expert-playwright-verification'
+        if (isExpertBrowserVerification && current && getPendingPermissions(current).some(item => item.requestId === msg.requestId)) break
         // AskUserQuestion has its own in-chat choice card. A generic desktop
         // permission toast incorrectly tells the user to allow a tool and can
         // linger after the answer was already submitted.
         if (msg.toolName !== 'AskUserQuestion') {
           notifyDesktop({
-            dedupeKey: `permission:${msg.requestId}`,
-            cooldownScope: 'permission-prompt',
+            dedupeKey: isExpertBrowserVerification
+              ? `expert-human-verification:${sessionId}:${msg.requestId}`
+              : `permission:${msg.requestId}`,
+            ...(!isExpertBrowserVerification ? { cooldownScope: 'permission-prompt' } : {}),
             requestAttention: true,
             title: isExpertBrowserVerification
               ? '需要协助完成网站验证'
               : 'Claude Code Jiangxia 需要你的确认',
             body: isExpertBrowserVerification
-              ? '请在前台浏览器完成网站的正常验证，然后回到应用选择下一步。'
+              ? '搜索已暂停。请回到会话点击“打开验证浏览器”完成验证或登录；软件每 3 秒检查一次，确认完成后继续。'
               : msg.toolName
                 ? `${msg.toolName} 请求执行，正在等待允许。`
                 : '有一个工具请求正在等待允许。',

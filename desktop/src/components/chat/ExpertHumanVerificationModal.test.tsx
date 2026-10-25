@@ -92,7 +92,7 @@ describe('ExpertHumanVerificationModal', () => {
     setPendingRequest()
   })
 
-  it('sends a desktop reminder when research is blocked for human verification', () => {
+  it('leaves notification delivery to the global store and opens no browser on mount', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -100,12 +100,8 @@ describe('ExpertHumanVerificationModal', () => {
       />,
     )
 
-    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
-      dedupeKey: 'expert-human-verification:expert-session:verification-request',
-      title: expect.stringContaining('Google'),
-      requestAttention: true,
-      target: { type: 'session', sessionId: SESSION_ID },
-    }))
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
   })
 
   it('shows only the website and the concrete action, not a long verification URL', () => {

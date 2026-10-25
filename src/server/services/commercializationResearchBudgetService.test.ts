@@ -3,6 +3,17 @@ import { CommercializationResearchBudgetService } from './commercializationResea
 const start = '2026-10-25T00:00:00.000Z'
 const expert = { mode: 'expert', status: 'active', runtimeBinding: { expertId: 'commercialization-research-report', activatedAt: start } }
 describe('commercialization research budget', () => {
+  test('excludes runtime-confirmed human wait while retaining active research deadline and call quota', () => {
+    let waited = 0
+    const service = new CommercializationResearchBudgetService(() => waited)
+    const t = Date.parse(start)
+    expect(service.reserve('wait', expert, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'lane' }, t).allowed).toBe(true)
+    waited = 600_000
+    expect(service.reserve('wait', expert, { action: 'reserve-browser', agentId: 'a', requestId: 'after-user-login' }, t + 1_000_000).allowed).toBe(true)
+    expect(service.reserve('wait', expert, { action: 'reserve-browser', agentId: 'a', requestId: 'expired' }, t + 1_500_000).allowed).toBe(false)
+    for (let i = 0; i < 11; i++) expect(service.reserve('wait', expert, { action: 'reserve-browser', agentId: 'a', requestId: 'c' + i }, t + 1_000_000).allowed).toBe(true)
+    expect(service.reserve('wait', expert, { action: 'reserve-browser', agentId: 'a', requestId: 'over-quota' }, t + 1_000_000).allowed).toBe(false)
+  })
   test('atomically reserves six starts and treats duplicate IDs idempotently', async () => {
     const service = new CommercializationResearchBudgetService()
     const results = await Promise.all(Array.from({ length: 10 }, (_, i) => Promise.resolve().then(() => service.reserve('s', expert, { action: 'reserve-researcher', agentId: String(i), artifactPath: 'lane' + (i % 3) }, Date.parse(start)))))

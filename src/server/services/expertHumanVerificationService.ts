@@ -1,4 +1,3 @@
-import { HUMAN_VERIFICATION_WAIT_MS } from '../../tools/PlaywrightTool/verificationSessionPolicy.js'
 import {
   EXPERT_HUMAN_VERIFICATION_RESOLUTIONS,
   isExpertBrowserVerificationContext,
@@ -74,13 +73,13 @@ export type ExpertHumanVerificationDelivery = (
 function resolutionFromUpdatedInput(
   allowed: boolean,
   updatedInput: Record<string, unknown> | undefined,
-): ExpertHumanVerificationResolution {
+): ExpertHumanVerificationResolution | null {
   if (!allowed) return 'record_evidence_gap'
   const resolution = updatedInput?.verificationResolution
   return typeof resolution === 'string'
     && EXPERT_HUMAN_VERIFICATION_RESOLUTIONS.includes(resolution as ExpertHumanVerificationResolution)
     ? resolution as ExpertHumanVerificationResolution
-    : 'record_evidence_gap'
+    : null
 }
 
 /**
@@ -94,29 +93,16 @@ export class ExpertHumanVerificationService {
   private joinWaitersBySession = new Map<string, PendingFollower[]>()
   private joinWaitersByGate = new Map<string, PendingFollower[]>()
   private resolvedByGate = new Map<string, ResolvedGate>()
+  // One interval per session-wide wait, irrespective of queued owners/followers.
+  // Runtime-only history is released with the session; it never grows per poll.
+  private waitBySession = new Map<string, { startedAt?: number; completed: Array<[number, number]> }>()
   constructor(
     private deliver: ExpertHumanVerificationDelivery = () => false,
-    private readonly waitTimeoutMs = HUMAN_VERIFICATION_WAIT_MS,
+    // Accepted for compatibility with older callers; no deadline resolves a verification.
+    _legacyWaitTimeoutMs?: number,
   ) {}
 
   setDelivery(deliver: ExpertHumanVerificationDelivery): void { this.deliver = deliver }
-
-  private deferVerification(requestId: string): void {
-    const pending = this.pendingByRequestId.get(requestId)
-    if (!pending) return
-    const response: ExpertHumanVerificationResponse = {
-      resolution: 'verification_deferred',
-      ...(pending.verificationGateId ? { verificationGateId: pending.verificationGateId } : {}),
-      verification: pending.verification,
-    }
-    this.rememberResolvedGate(pending, response)
-    this.remove(requestId)
-    if (pending.delivered) this.deliver(pending.sessionId, { type: 'permission_response_ack', requestId, status: 'accepted' })
-    pending.resolve(response)
-    for (const follower of pending.followers) follower.resolve(response)
-    pending.followers.length = 0
-    queueMicrotask(() => { void this.deliverNext(pending.sessionId) })
-  }
 
   async requestVerification(request: ExpertHumanVerificationRequest): Promise<ExpertHumanVerificationResponse> {
     if (!isExpertBrowserVerificationContext(request.verification)) {
@@ -129,6 +115,9 @@ export class ExpertHumanVerificationService {
       const existing = this.pendingForGateId(request.sessionId, request.verificationGateId)
       if (existing) return await this.follow(existing)
     }
+    const waiting = this.waitBySession.get(request.sessionId) ?? { completed: [] }
+    waiting.startedAt ??= Date.now()
+    this.waitBySession.set(request.sessionId, waiting)
     const requestId = 'expert-human-verification:' + crypto.randomUUID()
     return await new Promise<ExpertHumanVerificationResponse>((resolve, reject) => {
       this.pendingByRequestId.set(requestId, {
@@ -144,9 +133,6 @@ export class ExpertHumanVerificationService {
         reject,
         followers: [],
       })
-      const pending = this.pendingByRequestId.get(requestId)!
-      pending.timeout = setTimeout(() => this.deferVerification(requestId), this.waitTimeoutMs)
-      pending.timeout.unref?.()
       const queue = this.pendingRequestIdsBySession.get(request.sessionId) ?? []
       queue.push(requestId)
       this.pendingRequestIdsBySession.set(request.sessionId, queue)
@@ -189,6 +175,7 @@ export class ExpertHumanVerificationService {
     if (!pending || !pending.delivered) return false
 
     const resolution = resolutionFromUpdatedInput(allowed, updatedInput)
+    if (!resolution) return false
     const response: ExpertHumanVerificationResponse = {
       resolution,
       ...(pending.verificationGateId ? { verificationGateId: pending.verificationGateId } : {}),
@@ -249,6 +236,7 @@ export class ExpertHumanVerificationService {
       pending?.reject(error)
       for (const follower of pending?.followers ?? []) follower.reject(error)
     }
+    this.waitBySession.delete(sessionId)
     const waiters = this.joinWaitersBySession.get(sessionId) ?? []
     this.joinWaitersBySession.delete(sessionId)
     for (const waiter of waiters) { clearTimeout(waiter.timeout); waiter.reject(new Error(reason)) }
@@ -260,6 +248,15 @@ export class ExpertHumanVerificationService {
     for (const key of [...this.resolvedByGate.keys()]) {
       if (key.startsWith(sessionId + '\0')) this.resolvedByGate.delete(key)
     }
+  }
+
+  getVerificationWaitMs(sessionId: string, sinceMs: number, now = Date.now()): number {
+    const waiting = this.waitBySession.get(sessionId)
+    if (!waiting || now <= sinceMs) return 0
+    const intervals = waiting.startedAt === undefined
+      ? waiting.completed
+      : [...waiting.completed, [waiting.startedAt, now] as [number, number]]
+    return intervals.reduce((total, [start, end]) => total + Math.max(0, Math.min(now, end) - Math.max(sinceMs, start)), 0)
   }
 
   getPendingRequest(sessionId: string): { requestId: string; verification: ExpertBrowserVerificationContext } | null {
@@ -280,6 +277,7 @@ export class ExpertHumanVerificationService {
     this.joinWaitersBySession.clear()
     this.joinWaitersByGate.clear()
     this.resolvedByGate.clear()
+    this.waitBySession.clear()
   }
 
   private activePending(sessionId: string): PendingVerification | null {
@@ -312,13 +310,6 @@ export class ExpertHumanVerificationService {
   private waitForOwner(waitersByKey: Map<string, PendingFollower[]>, key: string): Promise<ExpertHumanVerificationResponse> {
     return new Promise((resolve, reject) => {
       const waiter: PendingFollower = { resolve, reject }
-      waiter.timeout = setTimeout(() => {
-        const remaining = (waitersByKey.get(key) ?? []).filter((item) => item !== waiter)
-        if (remaining.length) waitersByKey.set(key, remaining)
-        else waitersByKey.delete(key)
-        reject(new Error('Expert verification owner did not arrive within the shared wait budget.'))
-      }, this.waitTimeoutMs)
-      waiter.timeout.unref?.()
       waitersByKey.set(key, [...(waitersByKey.get(key) ?? []), waiter])
     })
   }
@@ -450,7 +441,14 @@ export class ExpertHumanVerificationService {
     if (!queue) return
     const index = queue.indexOf(requestId)
     if (index >= 0) queue.splice(index, 1)
-    if (queue.length === 0) this.pendingRequestIdsBySession.delete(pending.sessionId)
+    if (queue.length === 0) {
+      this.pendingRequestIdsBySession.delete(pending.sessionId)
+      const waiting = this.waitBySession.get(pending.sessionId)
+      if (waiting?.startedAt !== undefined) {
+        waiting.completed.push([waiting.startedAt, Date.now()])
+        waiting.startedAt = undefined
+      }
+    }
   }
 }
 

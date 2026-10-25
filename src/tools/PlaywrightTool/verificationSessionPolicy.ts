@@ -1,4 +1,4 @@
-// One shared budget, not a fresh multi-minute wait for every URL.
+// Legacy duration retained for callers; verification itself never expires.
 export const HUMAN_VERIFICATION_WAIT_MS = 120_000
 
 type VerificationSession<Page> = {
@@ -16,10 +16,11 @@ export function parkHumanVerificationPage<Page>(session: VerificationSession<Pag
 }
 
 export function expireHumanVerificationGate<Page>(session: VerificationSession<Page>, now = Date.now()): boolean {
-  const createdAt = session.humanVerificationGate?.createdAt
-  if (createdAt === undefined || now - createdAt < HUMAN_VERIFICATION_WAIT_MS) return false
-  parkHumanVerificationPage(session)
-  return true
+  // Elapsed time is never a user decision. Keep the shared gate locked until
+  // verification succeeds or the user explicitly switches, skips, or cancels.
+  void session
+  void now
+  return false
 }
 
 type SharedVerificationAction = {

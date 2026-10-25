@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createAgentScopedPlaywrightObjects } from './scriptSessionIsolation.js'
+import { createAgentScopedPlaywrightObjects, createScriptPlaywrightModule } from './scriptSessionIsolation.js'
 
 type FakePage = {
   name: string
@@ -19,6 +19,21 @@ function page(name: string): FakePage {
 }
 
 describe('Agent-scoped Playwright script objects', () => {
+  test('uses the runtime background page factory instead of a foreground context page', async () => {
+    const owned = page('owned')
+    const background = page('background')
+    let foregroundCalls = 0
+    const context = { newPage: async () => { foregroundCalls++; return page('foreground') } }
+    const scoped = createAgentScopedPlaywrightObjects({
+      page: owned as never, context: context as never, browser: {} as never,
+      ownedPages: new Set([owned as never]),
+      createPage: async () => background as never,
+    })
+    const created = await scoped.context.newPage()
+    expect((created as never as FakePage).name).toBe('background')
+    expect(foregroundCalls).toBe(0)
+    expect(scoped.pages()).toContain(created)
+  })
   test('hides sibling pages through page, context, browser, and pages()', async () => {
     const owned = page('owned')
     const sibling = page('sibling')
@@ -94,4 +109,79 @@ describe('Agent-scoped Playwright script objects', () => {
     expect(() => scoped.browser.close()).toThrow('shared Expert script')
     expect(() => scoped.browser.newContext()).toThrow('shared Expert script')
   })
+})
+
+describe('background script presentation ownership', () => {
+  test('rejects direct script foreground requests and routes browser.newPage through owned background creation', async () => {
+    const owned = page('owned')
+    let focused = false
+    let escaped = false
+    const rawPage = { ...owned, bringToFront: async () => { focused = true } }
+    const created = page('background')
+    const scoped = createAgentScopedPlaywrightObjects({
+      page: rawPage as never, context: {} as never,
+      browser: { newPage: async () => { escaped = true; return created } } as never,
+      ownedPages: new Set([rawPage as never]),
+      background: true,
+      createPage: async () => created as never,
+    })
+    expect(() => scoped.page.bringToFront()).toThrow('Open browser')
+    const result = await scoped.browser.newPage()
+    expect(result.context()).toBe(scoped.context)
+    expect(scoped.pages()).toContain(result)
+    expect(focused).toBe(false)
+    expect(escaped).toBe(false)
+  })
+
+  test('preserves normal script foreground behavior', async () => {
+    let focused = false
+    const rawPage = { ...page('normal'), bringToFront: async () => { focused = true } }
+    const scoped = createAgentScopedPlaywrightObjects({
+      page: rawPage as never, context: {} as never, browser: {} as never,
+      ownedPages: new Set([rawPage as never]),
+    })
+    await scoped.page.bringToFront()
+    expect(focused).toBe(true)
+  })
+})
+
+
+describe('background script browser lifecycle', () => {
+  test('blocks browser launches and connections while keeping harmless module helpers', () => {
+    const methods = ['launch', 'launchPersistentContext', 'launchServer', 'connect', 'connectOverCDP']
+    let launched = false
+    const browserType = Object.fromEntries(methods.map((name) => [name, () => { launched = true }]))
+    const module = { chromium: browserType, firefox: browserType, webkit: browserType, devices: { test: 'device' } }
+    const scoped = createScriptPlaywrightModule(module, true)
+    for (const name of ['chromium', 'firefox', 'webkit'] as const) {
+      for (const method of methods) expect(() => scoped[name][method]!()).toThrow('Open browser')
+    }
+    expect(scoped.devices).toBe(module.devices)
+    expect(launched).toBe(false)
+  })
+
+  test('keeps normal and CDP browser modules unchanged', () => {
+    const module = { chromium: { launch: () => 'original' } }
+    expect(createScriptPlaywrightModule(module, false)).toBe(module)
+    expect(createScriptPlaywrightModule(module, false).chromium.launch()).toBe('original')
+  })
+})
+
+test('background browser-type wrappers preserve bound informational methods and stable identity', () => {
+  const browserType = { label: 'chromium', name() { return this.label } }
+  const module = { chromium: browserType, devices: {} }
+  const scoped = createScriptPlaywrightModule(module, true)
+  expect(scoped.chromium).toBe(scoped.chromium)
+  expect(scoped.chromium.name()).toBe('chromium')
+  expect(scoped.chromium.label).toBe('chromium')
+})
+
+test('normal script browser.newPage keeps its original browser behavior', async () => {
+  const rawPage = page('normal')
+  const browser = { marker: 'raw', newPage: async () => rawPage }
+  const scoped = createAgentScopedPlaywrightObjects({
+    page: rawPage as never, context: {} as never, browser: browser as never,
+    ownedPages: new Set([rawPage as never]),
+  })
+  expect(await scoped.browser.newPage()).toBe(rawPage as never)
 })

@@ -1,5 +1,4 @@
 import { searchEngineForUrl } from '../../utils/searchEngineSurface.js'
-import { HUMAN_VERIFICATION_WAIT_MS } from '../../tools/PlaywrightTool/verificationSessionPolicy.js'
 import type { ToolResult } from '../../Tool.js'
 import { detectHumanVerificationKind } from '../../tools/PlaywrightTool/pageAccessAssessment.js'
 
@@ -28,8 +27,6 @@ type PlaywrightResultData = {
   verificationGateId?: unknown
   sharedHumanVerificationBlocked?: unknown
 }
-const MAX_HUMAN_VERIFICATION_HANDOFFS = 8
-const MAX_HUMAN_VERIFICATION_WAIT_RECONNECTS = 3
 
 type ExpertVerificationRuntimeConfig = {
   serverUrl: string
@@ -98,7 +95,7 @@ const searchEngineFor = searchEngineForUrl
 function guidanceFor(resolution: ExpertVerificationResponse['resolution'], url: string): string {
   switch (resolution) {
     case 'verification_deferred':
-      return 'EXPERT_HUMAN_VERIFICATION_DEFERRED: 验证等待已到时限；原验证页面保留，未宣称验证成功或用户放弃。记录当前限制并继续其它公开入口，不要重复等待同一验证。'
+      return 'EXPERT_HUMAN_VERIFICATION_PENDING: The preserved page is still awaiting verification. Keep research paused until verification completes or the user explicitly skips or cancels.'
     case 'verification_completed':
       return [
         'EXPERT_HUMAN_VERIFICATION_RESOLVED: The user completed the visible website verification.',
@@ -408,12 +405,10 @@ async function requestVerificationResolution(
   const title = typeof state.data.title === 'string' ? state.data.title : undefined
   const endpoint = new URL('/api/expert-human-verifications', config.serverUrl)
   let joinExisting = state.joinsExisting
-  const deadline = Date.now() + HUMAN_VERIFICATION_WAIT_MS + 5_000
 
-  for (let reconnectCount = 0; ; reconnectCount += 1) {
+  for (;;) {
     try {
       const response = await (params.fetchImpl ?? fetch)(endpoint, {
-        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -443,9 +438,17 @@ async function requestVerificationResolution(
       if (!response.ok || !payload || !['verification_completed', 'switch_public_entry', 'record_evidence_gap', 'verification_deferred'].includes(payload.resolution)) {
         throw new Error('The Desktop browser-verification handoff did not return a valid user resolution.')
       }
+      if (payload.resolution === 'verification_deferred') {
+        // An older server deadline is neither a completed challenge nor consent
+        // to skip it. Rejoin the existing gate and keep browser actions paused.
+        joinExisting = true
+        await new Promise(resolve => setTimeout(resolve, 3_000))
+        continue
+      }
       return payload
     } catch (error) {
-      if (Date.now() >= deadline || reconnectCount >= MAX_HUMAN_VERIFICATION_WAIT_RECONNECTS || !shouldReconnectHumanVerificationWait(error)) throw error
+      if (!shouldReconnectHumanVerificationWait(error)) throw error
+      await new Promise(resolve => setTimeout(resolve, 3_000))
       // The original Desktop request may have timed out at the HTTP layer while
       // its visible CAPTCHA and service-side decision are still alive. Rejoin it
       // instead of opening a second modal or abandoning the paused browser page.
@@ -484,7 +487,7 @@ export async function coordinateExpertBrowserVerification<T>(params: {
   let currentInput = params.input
   const attemptedEngines = new Set<ExpertSearchEngine>()
 
-  for (let handoffCount = 0; handoffCount < MAX_HUMAN_VERIFICATION_HANDOFFS; handoffCount += 1) {
+  for (;;) {
     const state = verificationState(currentResult.data)
     if (!state || typeof state.data.error !== 'string') return attachAccessDiagnostics(aggregateResult, params.accessDiagnostics)
 
@@ -505,13 +508,6 @@ export async function coordinateExpertBrowserVerification<T>(params: {
     let continuation: JsonRecord | undefined
     if (state.sharedHumanVerificationBlocked) {
       continuation = buildSharedBrowserRetryContinuation(currentInput)
-    } else if (resolution.resolution === 'verification_deferred') {
-      const release = buildExpertVerificationRelease(currentInput)
-      if (release) {
-        try { await params.resume(release) } catch { /* The runner's shared expiry also releases an unreachable owner. */ }
-      }
-      // Retain the original attempted URL and actions, not a new blank tab.
-      return attachAccessDiagnostics(withVerificationError(aggregateResult, guidanceFor(resolution.resolution, url)), params.accessDiagnostics)
     } else if (resolution.resolution === 'verification_completed') {
       continuation = buildExpertVerifiedPlaywrightContinuation(currentInput, currentResult.data)
     } else if (resolution.resolution === 'switch_public_entry') {
@@ -568,8 +564,4 @@ export async function coordinateExpertBrowserVerification<T>(params: {
     }
   }
 
-  return attachAccessDiagnostics(withVerificationError(
-    aggregateResult,
-    'EXPERT_HUMAN_VERIFICATION_HANDOFF_EXHAUSTED: Repeated visible verification pages exceeded the bounded runtime handoff limit. The latest page remains preserved; do not claim it was verified.',
-  ), params.accessDiagnostics)
 }

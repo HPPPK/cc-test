@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { expertsApi } from '../../api/experts'
 import { useChatStore, type PerSessionState } from '../../stores/chatStore'
 import { Button } from '../shared/Button'
 import { Modal } from '../shared/Modal'
-import { notifyDesktop } from '../../lib/desktopNotifications'
 
 type PendingPermission = PerSessionState['pendingPermission']
 type VerificationResolution = 'switch_public_entry'
@@ -89,19 +88,6 @@ export function ExpertHumanVerificationModal({
   const [browserStatus, setBrowserStatus] = useState<string | null>(null)
   const context = useMemo(() => verificationContext(request), [request])
   const site = context ? siteName(context) : ''
-  const action = context ? requiredAction(context) : ''
-
-  useEffect(() => {
-    if (!request || !context) return
-
-    void notifyDesktop({
-      dedupeKey: `expert-human-verification:${sessionId}:${request.requestId}`,
-      title: `${site} \u9700\u8981\u4eba\u5de5\u9a8c\u8bc1`,
-      body: action,
-      requestAttention: true,
-      target: { type: 'session', sessionId },
-    })
-  }, [action, context, request, sessionId, site])
 
   if (!request || !context) return null
 

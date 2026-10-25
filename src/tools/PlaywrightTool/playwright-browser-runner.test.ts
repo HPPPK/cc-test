@@ -29,7 +29,7 @@ describe('Playwright browser runner', () => {
     expect(source).toContain('page,')
     expect(source).toContain('context,')
     expect(source).toContain('browser: session.browser')
-    expect(source).toContain('playwright: { chromium, firefox, webkit, devices, selectors, request }')
+    expect(source).toContain('playwright: createScriptPlaywrightModule({ chromium, firefox, webkit, devices, selectors, request },')
   })
 
 
@@ -37,7 +37,7 @@ describe('Playwright browser runner', () => {
     const source = await readFile(path.join(import.meta.dir, 'playwright-browser-runner.ts'), 'utf8')
     expect(source).toContain('sharedContextKey?: string')
     expect(source).toContain('const sharedContexts = new Map<string, SharedBrowserContext>()')
-    expect(source).toContain('const initialPage = await context!.newPage()')
+    expect(source).toContain('const initialPage = await createInitialManagedPage(context!, isAssistableBackground, {')
     expect(source).toContain('ownedPages: new Set([initialPage])')
     expect(source).toContain('sessionKeys.add(sessionKey)')
     expect(source).toContain('enqueueSessionRun(queueKeyForSession(raw.sessionKey, raw.request.sharedContextKey)')
@@ -187,10 +187,10 @@ describe('Playwright browser runner', () => {
     expect(source).not.toContain('verificationFallbackSearchEngines')
   })
 
-  test('passively observes a preserved verification page every second and reports only after two healthy reads', async () => {
+  test('passively observes a preserved verification page every three seconds and reports only after two healthy reads', async () => {
     const source = await readFile(path.join(import.meta.dir, 'playwright-browser-runner.ts'), 'utf8')
     expect(source).toContain('function observeHumanVerificationRecovery')
-    expect(source).toContain("setInterval(() => { void observeHumanVerificationRecovery(session) }, 1_000)")
+    expect(source).toContain("setInterval(() => { void observeHumanVerificationRecovery(session) }, 3_000)")
     expect(source).toContain("action: 'auto_detected_completed'")
     expect(source).toContain('session.humanVerificationHealthyObservations < 2')
     expect(source).toContain('if (!detectedVerificationKind || !ownerId) return null')
@@ -211,15 +211,17 @@ describe('Playwright browser runner', () => {
 })
 
 
-test('expires the shared verification before sibling navigation while retaining a presentable page', async () => {
+test('retains the shared verification lock indefinitely and observes only the preserved page', async () => {
   const source = await readFile(path.join(import.meta.dir, 'playwright-browser-runner.ts'), 'utf8')
-  const run = source.slice(source.indexOf('async function runSession'))
-  expect(run.indexOf('expireHumanVerificationGate(candidate)')).toBeLessThan(run.indexOf('sharedHumanVerificationOwnerForContextKey'))
+  expect(source).not.toContain('expireHumanVerificationGate(')
   expect(source).toContain('parkHumanVerificationPage(session)')
   expect(source).toContain('session.preservedVerificationPages?.size')
-  const presentation = source.slice(source.indexOf('function presentationPage'), source.indexOf('function selectorWaitState'))
-  expect(presentation).toContain('session.preservedVerificationPages')
-  expect(presentation).not.toContain('newPage()')
+  const observation = source.slice(source.indexOf('async function readHumanVerificationPage'), source.indexOf('function isUsableManagedWindowBounds'))
+  expect(observation).toContain('gate.page')
+  expect(observation).not.toContain('activePage(')
+  expect(observation).not.toContain('extractFinalPage(')
+  expect(observation).not.toContain('newPage(')
+  expect(source).toContain('isHumanVerificationRecoveryHealthy(snapshot)')
 })
 
 
