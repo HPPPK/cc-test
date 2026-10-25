@@ -429,3 +429,23 @@ test('counts the union of queued verification waits, clipped to the active resea
     expect(service.getVerificationWaitMs('timed', 0, 500)).toBe(0)
   } finally { Date.now = originalNow }
 })
+
+test('replays the active verification with its original identity without new delivery or wait reset', async () => {
+  const deliveries: any[] = []
+  const service = new ExpertHumanVerificationService((_session, message) => { deliveries.push(message); return true })
+  const first = service.requestVerification({ sessionId: 'replay-owner', verificationGateId: 'first', toolUseId: 'tool-original', verification })
+  const second = service.requestVerification({ sessionId: 'replay-owner', verificationGateId: 'second', verification })
+  const requestId = service.getPendingRequest('replay-owner')!.requestId
+  const beforeWait = service.getVerificationWaitMs('replay-owner', 0)
+  expect(service.getReplayRequest('replay-owner')).toMatchObject({
+    type: 'permission_request', requestId, toolName: 'Playwright', toolUseId: 'tool-original',
+    input: { kind: 'expert-playwright-verification', verification, queue: { remaining: 1 } },
+  })
+  expect(service.getReplayRequest('other-session')).toBeNull()
+  expect(deliveries).toHaveLength(1)
+  expect(service.getVerificationWaitMs('replay-owner', 0)).toBeGreaterThanOrEqual(beforeWait)
+  const cancelled = Promise.allSettled([first, second])
+  service.cancelSession('replay-owner')
+  await cancelled
+  expect(service.getReplayRequest('replay-owner')).toBeNull()
+})

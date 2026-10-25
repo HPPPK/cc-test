@@ -1311,6 +1311,13 @@ function persistedWorkflowQuestionRecoveryPrompt(answered: boolean): string {
       ].join('\n')
 }
 
+function acknowledgeAcceptedPermissionResponse(ws: ServerWebSocket<WebSocketData>, requestId: string): void {
+  const acknowledgement = { type: 'permission_response_ack', requestId, status: 'accepted' } as const
+  // Every client received the request. Clear it in every view even when a
+  // controller socket, rather than the visible Desktop, supplied the answer.
+  if (!sendToSession(ws.data.sessionId, acknowledgement)) sendMessage(ws, acknowledgement)
+}
+
 async function handlePermissionResponse(
   ws: ServerWebSocket<WebSocketData>,
   message: Extract<ClientMessage, { type: 'permission_response' }>
@@ -1329,16 +1336,18 @@ async function handlePermissionResponse(
       message.allowed,
       message.updatedInput,
     )
-    sendMessage(ws, {
-      type: 'permission_response_ack',
-      requestId: message.requestId,
-      status: accepted ? 'accepted' : 'rejected',
-      ...(!accepted ? {
+    if (accepted) {
+      acknowledgeAcceptedPermissionResponse(ws, message.requestId)
+    } else {
+      sendMessage(ws, {
+        type: 'permission_response_ack',
+        requestId: message.requestId,
+        status: 'rejected',
         message: matchesPending
           ? 'Choose an explicit browser verification resolution; this verification remains pending.'
           : 'This browser verification request is stale or does not belong to this session.',
-      } : {}),
-    })
+      })
+    }
     return
   }
   const artifactWriteDenial = await rejectUnsafeWorkflowArtifactWrite(
@@ -1410,7 +1419,7 @@ async function handlePermissionResponse(
       sendMessage(ws, { type: 'status', state: 'idle' })
       return
     }
-    sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
+    acknowledgeAcceptedPermissionResponse(ws, message.requestId)
     console.log(`[WS] Restored workflow question response for ${message.requestId}: ${message.allowed}`)
     return
   }
@@ -1463,7 +1472,8 @@ async function handlePermissionResponse(
     sendMessage(ws, { type: 'status', state: 'idle' })
     return
   }
-  sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
+  if (delivered) acknowledgeAcceptedPermissionResponse(ws, message.requestId)
+  else sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'accepted' })
   console.log(`[WS] Permission response for ${message.requestId}: ${message.allowed}`)
 }
 
@@ -5756,6 +5766,8 @@ function replayPendingPermissionRequests(
       ...(request.description ? { description: request.description } : {}),
     })
   }
+  const verification = expertHumanVerificationService.getReplayRequest(sessionId)
+  if (verification) sendMessage(ws, verification)
 }
 
 function sendSessionTitleUpdated(

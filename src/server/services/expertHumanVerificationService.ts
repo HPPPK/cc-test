@@ -264,6 +264,28 @@ export class ExpertHumanVerificationService {
     return pending ? { requestId: pending.requestId, verification: pending.verification } : null
   }
 
+  /** Reconnect readback only: never creates, delivers, or resolves another wait. */
+  getReplayRequest(sessionId: string) {
+    const pending = this.activePending(sessionId)
+    return pending ? this.permissionRequestFor(pending) : null
+  }
+
+  private permissionRequestFor(pending: PendingVerification): Extract<Parameters<ExpertHumanVerificationDelivery>[1], { type: 'permission_request' }> {
+    const queue = this.pendingRequestIdsBySession.get(pending.sessionId) ?? []
+    return {
+      type: 'permission_request',
+      requestId: pending.requestId,
+      toolName: 'Playwright',
+      ...(pending.toolUseId ? { toolUseId: pending.toolUseId } : {}),
+      input: {
+        kind: 'expert-playwright-verification',
+        verification: pending.verification,
+        queue: { remaining: Math.max(0, queue.length - 1) },
+      },
+      description: 'Expert browser verification requires the user to resolve the visible page before research can continue.',
+    }
+  }
+
   /** Internal-only routing data for a passive "check now" request. The Desktop UI
    * deliberately never receives the browser session key. */
   getActiveBrowserSessionKey(sessionId: string): string | null {
@@ -404,18 +426,7 @@ export class ExpertHumanVerificationService {
       // acknowledging presentation. Never send a stale verification modal.
       if (this.pendingByRequestId.get(requestId) !== pending) return
       pending.verification = verification
-      const sent = this.deliver(sessionId, {
-        type: 'permission_request',
-        requestId,
-        toolName: 'Playwright',
-        ...(pending.toolUseId ? { toolUseId: pending.toolUseId } : {}),
-        input: {
-          kind: 'expert-playwright-verification',
-          verification,
-          queue: { remaining: Math.max(0, queue.length - 1) },
-        },
-        description: 'Expert browser verification requires the user to resolve the visible page before research can continue.',
-      })
+      const sent = this.deliver(sessionId, this.permissionRequestFor(pending))
       pending.deliveryInFlight = false
       if (sent) {
         pending.delivered = true
