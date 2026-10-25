@@ -1387,4 +1387,6 @@ function startServer(): void {
   process.once('SIGINT', () => { void closeAllSessions().finally(() => process.exit(0)) })
 }
 
-startServer()
+export { runSession, closeAllSessions, presentSession, startServer }
+
+if (import.meta.main || (typeof require === 'function' && typeof module !== 'undefined' && require.main === module)) startServer()

@@ -6,7 +6,8 @@ export const PLAYWRIGHT_NODE_RUNNER_PATH_ENV = 'CLAUDE_PLAYWRIGHT_BROWSER_RUNNER
 export const PLAYWRIGHT_NODE_BOOTSTRAP = [
   'const runnerPath = process.env.CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH',
   "if (!runnerPath) throw new Error('Missing CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH')",
-  'require(runnerPath)',
+  'const runner = require(runnerPath)',
+  "if (typeof runner.startServer === 'function') runner.startServer()",
 ].join(';')
 
 type PlaywrightAction = {
