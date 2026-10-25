@@ -20,6 +20,7 @@ import { withExpertResearchSourceDispatchLock } from './expertResearchSourceDisp
 import { expertResearchPathApiFor, resolveExpertResearchArtifactPath, type ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
 import { hasAcceptedExpertResearchDelivery, resolveExpertResearchDeliveryDecision, type ExpertResearchDeliveryState } from './expertResearchDeliveryService.js'
 import { resolveExpertResearchBrowserConnection, resolveExpertResearchBrowserPresentation } from './expertResearchBrowserPolicyService.js'
+import { expertHumanVerificationService } from './expertHumanVerificationService.js'
 import { expertBrowserActivityService } from './expertBrowserActivityService.js'
 import { expertSearchPacingService } from './expertSearchPacingService.js'
 import { expertResearchAutoContinueService, type FinishedResearchSourceBatch } from './expertResearchAutoContinueService.js'
@@ -87,6 +88,13 @@ const templateFillWrites = new Map<string, {
   contentHash: string; bindingHash: string; requestHash: string; savedAt: number; committed?: boolean
   state: Pick<ExpertSessionMetadata, 'templateFillDraft' | 'templateFillDelivery' | 'reportCompletenessReview'>
 }>()
+function assertReportFinalizationHasNoPendingVerification(sessionId: string): void {
+  if (!expertHumanVerificationService.getPendingRequest(sessionId)) return
+  throw new ApiError(409,
+    '网站人机验证或登录验证仍在等待完成，报告暂不能最终化。请在验证通知中点击“打开浏览器”，完成当前验证后再继续；也可明确选择切换公开入口、记录证据缺口或取消。现有草稿和证据均保留，等待时长不会自动视为已验证或已放弃。',
+    'EXPERT_HUMAN_VERIFICATION_PENDING')
+}
+
 function prepareTemplateFillWrite(sessionId: string, candidateKey: string, outputPath: string | undefined, binding: unknown, content: string, request: TemplateFillSubmission,
   state: Pick<ExpertSessionMetadata, 'templateFillDraft' | 'templateFillDelivery' | 'reportCompletenessReview'>): string {
   const now = Date.now()
@@ -1701,6 +1709,9 @@ export class ExpertSessionService {
     const submission = parseTemplateFillSubmission(payload)
     let effectivePayload: TemplateFillSubmission
     let existingDraft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
+    const preparesFinalDelivery = !binding.researchArtifactPolicy?.completionReviewPath
+      || Boolean(existingDraft && (submission.mode === 'patch' || submission.mode === 'finalize'))
+    if (preparesFinalDelivery) assertReportFinalizationHasNoPendingVerification(sessionId)
     if (existingDraft) {
       try {
         renderExpertTemplateFill(binding.outputTemplate.content, { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: existingDraft.templateId, fields: existingDraft.fields }, { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID })
@@ -2188,6 +2199,9 @@ export class ExpertSessionService {
     if (createHash('sha256').update(written).digest('hex') !== pending.contentHash) {
       throw new ApiError(409, cliOnly ? '报告尚未完整写入；草稿与复核状态保留，请通过 expert-template-fill CLI 重试同一份字段 JSON。' : '报告尚未完整写入；草稿与复核状态保留，请重试同一份 Write。', 'EXPERT_TEMPLATE_FILL_WRITE_NOT_CONFIRMED')
     }
+    // Verification can begin after rendering but before the write receipt is
+    // acknowledged. Draft receipts remain valid; terminal delivery cannot commit.
+    if (pending.state.templateFillDelivery) assertReportFinalizationHasNoPendingVerification(sessionId)
     if (pending.committed) return { committed: true }
     // Merge only delivery state into the latest session, not a stale snapshot.
     const updatedAt = new Date().toISOString()

@@ -7,6 +7,7 @@ import { ExpertSessionService, formatCommercializationReportDate, stampCommercia
 import { commercializationReportSourceBoundary } from './expertCommercializationReportScopeService.js'
 import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from './expertPackRegistryService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
+import { expertHumanVerificationService } from './expertHumanVerificationService.js'
 import { expertResearchAutoContinueService } from './expertResearchAutoContinueService.js'
 
 const adapter = new ZipPackAdapter()
@@ -2897,4 +2898,81 @@ it('renders and finalizes a canonical zero-browser evidence-gap report through a
   const saved = (await sessionService.getSession(sessionId))!.expert!
   expect(saved.researchEvidence!.records.every((record) => record.entries.length === 0)).toBe(true)
   expect(saved.templateFillDelivery?.reportPath).toBe(outputPath)
+})
+
+
+it('blocks final report rendering while user verification is pending and preserves the reviewed draft', async () => {
+  const { service, sessionId, reportPath, rendered } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const before = (await sessionService.getSession(sessionId))!.expert!
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://example.com/login', title: 'Sign in', detail: 'Login verification required' } })
+  try {
+    await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+    expect((await sessionService.getSession(sessionId))!.expert).toEqual(before)
+    expect(await readFile(reportPath, 'utf8')).toBe(rendered.content)
+    const requestId = expertHumanVerificationService.getPendingRequest(sessionId)!.requestId
+    expertHumanVerificationService.resolveVerification(requestId, true, { verificationResolution: 'record_evidence_gap' })
+    await waiting
+    await expect(renderAndCommit(service, sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath })).resolves.toMatchObject({ completionReviewRequired: false })
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
+})
+
+it('rejects a prepared final report commit if a verification starts after rendering', async () => {
+  const { service, sessionId, reportPath } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const final = await service.renderTemplateFill(sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath })
+  await writeFile(reportPath, final.content, 'utf8')
+  const before = (await sessionService.getSession(sessionId))!.expert!
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://www.google.com/sorry/index', title: 'Verify', detail: 'CAPTCHA required' } })
+  try {
+    await expect(service.commitTemplateFillWrite(sessionId, { receipt: final.writeReceipt })).rejects.toMatchObject({ statusCode: 409, code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+    expect((await sessionService.getSession(sessionId))!.expert).toEqual(before)
+    expect(await readFile(reportPath, 'utf8')).toBe(final.content)
+    expertHumanVerificationService.resolveVerification(expertHumanVerificationService.getPendingRequest(sessionId)!.requestId, true, { verificationResolution: 'switch_public_entry' })
+    await waiting
+    await expect(service.commitTemplateFillWrite(sessionId, { receipt: final.writeReceipt })).resolves.toEqual({ committed: true })
+    expect((await sessionService.getSession(sessionId))!.expert!.templateFillDelivery?.reportPath).toBe(reportPath)
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
+})
+
+it('allows a review-required draft during verification but blocks an initial report that would finalize immediately', async () => {
+  const { service, sessionId, reportPath, projectRoot } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const expert = (await sessionService.getSession(sessionId))!.expert!
+  const fields = expert.templateFillDraft!.fields
+  expert.templateFillDraft = undefined
+  expert.reportCompletenessReview = undefined
+  expert.templateFillDelivery = undefined
+  await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://example.com/login', title: 'Sign in', detail: 'Login required' } })
+  try {
+    const draft = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath })
+    expect(draft.completionReviewRequired).toBe(true)
+    const saved = (await sessionService.getSession(sessionId))!.expert!
+    expect(saved.templateFillDraft).toBeDefined()
+    expect(saved.templateFillDelivery).toBeUndefined()
+    expect(expertHumanVerificationService.getPendingRequest(sessionId)).not.toBeNull()
+    // Experts without a review stage finalize on their first successful write.
+    saved.templateFillDraft = undefined
+    saved.runtimeBinding!.researchArtifactPolicy = undefined
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert: saved })
+    await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath }))
+      .rejects.toMatchObject({ code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
 })
