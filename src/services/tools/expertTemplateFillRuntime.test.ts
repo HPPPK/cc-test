@@ -441,6 +441,9 @@ describe('expert template-fill Write runtime', () => {
     if (initial.kind !== 'rendered-template-fill') throw new Error('expected rendered write')
     await initial.confirmWrite()
 
+    const notice = expertTemplateFillPostWriteNotice(path.join(outputRoot, 'old-photo-report.html'))
+    expect(notice).toContain('exact declared researcher reports/parts, evidence review and browser audit')
+    expect(notice).toContain('independently verify original captured source text')
     const review = currentExpertTemplateOutputReviewContext()
     expect(review).toEqual({
       briefPath: 'commercialization-research/01-research-brief.md',

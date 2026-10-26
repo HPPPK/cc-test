@@ -1110,3 +1110,49 @@ test.each(['commercialization-research-report', 'custom-imported-pack'])('overri
   const foreign = { ...legacy, expertId: 'other-expert', packId: 'commercialization-research-report' }
   expect(buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: foreign } as ExpertSessionMetadata, options)).not.toContain('<commercialization-bounded-research-policy>')
 })
+
+
+describe('commercialization autonomous planning and source-level price review', () => {
+  test('overrides stale snapshots with consequential intake and comparable price rules', () => {
+    const legacy = { ...binding(), promptSnapshot: 'Ask every user to choose a research direction. Treat all different prices as contradictions.' }
+    const instruction = buildExpertRuntimeTurnInstruction(activeSession(legacy), { enabledToolNames: ['Read', 'Write', 'AskUserQuestion', 'Playwright'] })!
+    for (const rule of [
+      'Consequential intake only', 'autonomously plan complementary A/B/C',
+      'region, currency, tax, billing period, payment cadence, promotion eligibility and renewal',
+      'For first year X after that', 'not a contradiction', 'monthly equivalent billed yearly is not a monthly checkout',
+      'D and E independently inspect original captured source evidence', 'F independently traces',
+      'Esc, backdrop and dismiss keep human verification pending',
+    ]) expect(instruction).toContain(rule)
+    expect(instruction.indexOf('Consequential intake only')).toBeGreaterThan(instruction.indexOf(legacy.promptSnapshot))
+  })
+
+  test('source package teaches generic intake and source-based price normalization without category coaching', () => {
+    const root = 'experts/commercialization-research-report/'
+    const prompt = readFileSync(root + 'prompts/system.md', 'utf8')
+    const pricing = readFileSync(root + 'skills/pricing-strategy/SKILL.md', 'utf8')
+    const protocol = readFileSync(root + 'outputs/material-protocol.json', 'utf8')
+    expect(prompt).toContain('只澄清会实质改变产品定义、目标用户、交付边界或研究可行性的缺失信息')
+    expect(prompt).not.toContain('例如老照片修复')
+    expect(prompt).not.toContain('按 Esc、点击背景时，都视为选择改查其他入口')
+    for (const content of [prompt, pricing, protocol]) {
+      expect(content).toContain('For first year X after that')
+      expect(content).toContain('首年与续费')
+      expect(content).toContain('地区、币种、税费、计费周期、付款频率、优惠资格和续费')
+      expect(content).toContain('年付折算月价不等于按月结账')
+      expect(content).toContain('原始')
+    }
+  })
+})
+
+test('commercialization recovers exact structured fields with CLI instead of guessing from HTML', () => {
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  expect(prompt).toContain('cc-jiangxia expert-template-fill --recover-fields')
+  expect(prompt).toContain('EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE')
+  expect(prompt).toContain('EXPERT_TEMPLATE_FILL_FIELDS_CHANGED')
+  expect(runtime).toContain('Recover the full field base')
+  expect(runtime).toContain('format, templateId, fields and optional evidenceAbsorption')
+  expect(runtime).toContain('no mode and no wrapper')
+  expect(runtime).toContain('finalized revision requires a complete new draft and a new F review')
+  expect(runtime).toContain('does not verify or repair semantic claims')
+})

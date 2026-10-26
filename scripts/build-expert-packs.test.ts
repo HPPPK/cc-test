@@ -225,7 +225,7 @@ describe('buildBundledExpertPacks', () => {
     expect(systemPrompt).toContain('不要问用户“本轮偏向什么分析方向”')
     expect(systemPrompt).toContain('中文线 + 海外线')
     expect(systemPrompt).toContain('只要需要用户回答、确认、补充、提供 URL / 材料、作选择或说明自由文本，一律调用')
-    expect(systemPrompt).toContain('不得复用“办公 / 知识工作者”')
+    expect(systemPrompt).toContain('只澄清会实质改变产品定义、目标用户、交付边界或研究可行性的缺失信息')
     expect(systemPrompt).toContain('01-research-brief.md')
     expect(systemPrompt).toContain('05-evidence-review.md')
     expect(systemPrompt).toContain('07-report-field-absorption.md')

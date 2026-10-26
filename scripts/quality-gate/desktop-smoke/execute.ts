@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -27,6 +27,34 @@ export function resolveDesktopSmokeRuntimeSelection(target: BaselineTarget | und
 
 export function desktopViteCommand() {
   return bunCommand(['run', 'dev'])
+}
+
+export function verifyDesktopSmokeSessionWorkspace(
+  session: { id: string; workDir?: string | null },
+  sessionId: string,
+  projectDir: string,
+): string {
+  if (session.id !== sessionId) throw new Error('Desktop smoke session identity does not match the fixture session')
+  if (!session.workDir || realpathSync(session.workDir) !== realpathSync(projectDir)) {
+    throw new Error('Desktop smoke session workspace does not match the fixture project')
+  }
+  return session.workDir
+}
+
+export function desktopSmokeProjectReadyExpression(sessionId: string, workDir: string): string {
+  const projectName = workDir.replaceAll('\\', '/').split('/').filter(Boolean).pop() || workDir
+  // The directory picker displays the basename; the full path lives in its title.
+  // Bind that visible control to the exact API-verified workspace and active tab.
+  return `(() => {
+    try {
+      const tabs = JSON.parse(localStorage.getItem('cc-jiangxia-open-tabs') || 'null')
+      return tabs?.activeTabId === ${JSON.stringify(sessionId)}
+        && Array.from(document.querySelectorAll('button[title]')).some(button =>
+          button.title === ${JSON.stringify(workDir)}
+          && button.innerText.includes(${JSON.stringify(projectName)})
+          && button.offsetWidth > 0 && button.offsetHeight > 0)
+    } catch { return false }
+  })()`
 }
 
 function nativeAgentBrowserPath() {
@@ -406,10 +434,15 @@ export async function executeDesktopSmoke(
       logPath: browserLogPath,
       timeoutMs: 30_000,
     })
+    const sessionDetail = await fetchJson<{ id: string; workDir?: string | null }>(
+      `${baseUrl}/api/sessions/${encodeURIComponent(session.sessionId)}`,
+    )
+    const sessionWorkDir = verifyDesktopSmokeSessionWorkspace(sessionDetail, session.sessionId, projectDir)
+    writeFileSync(join(artifactDir, 'session-workspace.json'), JSON.stringify(sessionDetail, null, 2) + '\n')
     await runLoggedCommand(agentBrowserCommand(
       'wait',
       '--fn',
-      `document.body.innerText.includes(${JSON.stringify(projectDir)})`,
+      desktopSmokeProjectReadyExpression(session.sessionId, sessionWorkDir),
     ), {
       cwd: rootDir,
       env: browserEnv,

@@ -133,6 +133,8 @@ type SessionStartOptions = {
   /** Final template output is rendered only by the Expert template-fill CLI. */
   expertTemplateFillWrite?: boolean
   expertTemplateFillDelivery?: 'cli-only'
+  /** Session-scoped commercialization model contract; never changes saved providers. */
+  expertModelPolicy?: 'deepseek-flash-only'
   /** Package-scoped final output root; passed only by an opted-in Expert runtime. */
   expertTemplateFillOutputRoot?: string
   /** Session-only fixed Markdown artifact allowlist declared by this Expert ZIP. */
@@ -249,6 +251,9 @@ export class ConversationService {
     sdkUrl: string,
     options?: SessionStartOptions,
   ): Promise<void> {
+    if (options?.expertModelPolicy === 'deepseek-flash-only') {
+      options = { ...options, model: 'deepseek-flash' }
+    }
     if (this.deletedSessions.has(sessionId)) {
       throw new ConversationStartupError(
         `Session was deleted before startup completed: ${sessionId}`,
@@ -1173,8 +1178,9 @@ export class ConversationService {
   private getRuntimeArgs(options: SessionStartOptions | undefined): string[] {
     const args: string[] = []
 
-    if (options?.model) {
-      args.push('--model', options.model)
+    const model = options?.expertModelPolicy === 'deepseek-flash-only' ? 'deepseek-flash' : options?.model
+    if (model) {
+      args.push('--model', model)
     }
 
     if (options?.effort) {
@@ -1235,6 +1241,8 @@ export class ConversationService {
     delete cleanEnv.CC_HAHA_WORKFLOW_SESSION_ID
     delete cleanEnv.CC_JIANGXIA_EXPERT_OUTPUT_TEMPLATE_GUARD
     delete cleanEnv.CC_HAHA_EXPERT_OUTPUT_TEMPLATE_GUARD
+    delete cleanEnv.CC_JIANGXIA_EXPERT_MODEL_POLICY
+    delete cleanEnv.CC_HAHA_EXPERT_MODEL_POLICY
     delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
     delete cleanEnv.CC_HAHA_EXPERT_TEMPLATE_FILL_DELIVERY
     delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
@@ -1499,6 +1507,17 @@ export class ConversationService {
       setJiangxiaEnvAliases(childEnv, 'DESKTOP_SERVER_URL', desktopServerUrl)
     }
 
+    if (options?.expertModelPolicy === 'deepseek-flash-only') {
+      // Apply after inherited/provider/OAuth merges. Host ownership also blocks
+      // later settings.env from restoring provider aliases or a Pro subagent.
+      childEnv.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
+      for (const key of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
+        childEnv[key] = 'deepseek-flash'
+      }
+      setJiangxiaEnvAliases(childEnv, 'EXPERT_MODEL_POLICY', 'deepseek-flash-only')
+      // No --fallback-model is supplied by Desktop. Unsupported Flash/quota
+      // failures must remain failures instead of silently selecting Pro.
+    }
     return childEnv
   }
 

@@ -4849,8 +4849,8 @@ function buildOutputReviewAutoContinueInstruction(
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The initial HTML draft is durably saved, but this draft does not yet have a current 08 completeness-review receipt. Continue the real review now; do not merely say that you will dispatch it.',
     'Your next action must be exactly one Agent tool call with subagent_type "' + plan.reviewerAgentType + '" and run_in_background: false.',
-    'Give that Agent only this file-first task: Read exactly ' + plan.briefPath + ', ' + plan.absorptionPath + ', and ' + plan.reportPath + '; Write only ' + plan.completionReviewPath + '. Its final return must contain only that relative Markdown path plus a short status.',
-    'Do not browse, re-dispatch research workers, read raw researcher ledgers, generate another HTML file, or paste any research content into the parent context. After the Agent succeeds, the server will require the parent to Read 08 and make one patch-or-finalize decision for this same HTML path.',
+    'Give that Agent only this file-first task: Read ' + plan.briefPath + ', ' + plan.absorptionPath + ', and ' + plan.reportPath + '; independently verify original captured source text, adjacent price conditions and actual audit status in the exact declared researcher reports/parts, evidence review and browser audit supplied by its runtime; Write only ' + plan.completionReviewPath + '. Its final return must contain only that relative Markdown path plus a short status.',
+    'The parent must not read raw researcher ledgers; only the constrained reviewer reads its exact declared provenance. Do not browse, re-dispatch research workers, read undeclared files, generate another HTML file, or paste any research content into the parent context. After the Agent succeeds, the server will require the parent to Read 08 and make one patch-or-finalize decision for this same HTML path.',
     '</expert-research-output-review-auto-continue>',
   ].join('\n')
 }
@@ -6562,6 +6562,7 @@ type RuntimeSettings = {
   expertSystemPrompt?: string
   expertRuntimeBindingKey?: string
   expertTemplateFillDelivery?: 'cli-only'
+  expertModelPolicy?: 'deepseek-flash-only'
   /** Package-scoped template output root taken from the persisted session workDir. */
   expertTemplateFillOutputRoot?: string
   /** ZIP-declared fixed Markdown artifact allowlist for this active Expert only. */
@@ -6727,6 +6728,8 @@ async function getRuntimeSettingsWithWorkflowPolicy(
     ? {
         expertSystemPrompt,
         expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
+        ...(expert?.runtimeBinding?.expertId === 'commercialization-research-report'
+          ? { expertModelPolicy: 'deepseek-flash-only' as const } : {}),
         ...(expertSessionId ? { expertSessionId } : {}),
         ...(expertTemplateFillWrite ? { expertTemplateFillWrite: true } : {}),
         ...(expertTemplateFillWrite && expert?.runtimeBinding?.expertId === 'commercialization-research-report'

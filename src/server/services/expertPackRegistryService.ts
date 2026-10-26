@@ -138,6 +138,14 @@ export type ExpertTemplateFillDeliveryState = {
   /** Canonical current-session HTML path when the new runtime supplied one. */
   reportPath?: string
   finalizedAt: string
+  /** Optional additive v1 checkpoint. Legacy delivery markers remain valid without it. */
+  fieldSnapshot?: {
+    schemaVersion: 1
+    templateHash: string
+    contentHash: string
+    payloadHash: string
+    payload: { format: 'cc-jiangxia-expert-template-fill/v1'; templateId: string; fields: Record<string, unknown>; evidenceAbsorption?: unknown }
+  }
 }
 
 export type ExpertResearchSourceDispatchState = {

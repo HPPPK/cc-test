@@ -34,3 +34,14 @@ test('uses shared report handoff guidance without extending tool permissions', (
   expect(prompt).not.toContain(REPORT_ABSORPTION_WORK_GUIDANCE)
   expect(EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.tools).toEqual(['Read', 'Write'])
 })
+
+
+test('independently checks original declared provenance before accepting price claims', () => {
+  const prompt = EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.getSystemPrompt({} as never)
+  expect(prompt).toContain('declared researcher parts, evidence review and browser audit')
+  expect(prompt).toContain('original captured price text')
+  expect(prompt).toContain('first-year versus renewal')
+  expect(prompt).toContain('monthly equivalent billed yearly')
+  expect(prompt).not.toContain('Do not scan the workDir, reopen researcher ledgers')
+  expect(EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.tools).toEqual(['Read', 'Write'])
+})

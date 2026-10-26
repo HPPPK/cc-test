@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { ConversationService } from '../services/conversationService.js'
 import { ProviderService } from '../services/providerService.js'
+import { sessionService } from '../services/sessionService.js'
 import { resetTerminalShellEnvironmentCacheForTests } from '../../utils/terminalShellEnvironment.js'
 import { getPlaywrightRuntimeDir } from '../../tools/PlaywrightTool/runtime.js'
 
@@ -771,6 +772,62 @@ describe('ConversationService', () => {
     expect(args).toContain('model-b-opus')
     expect(args).toContain('--effort')
     expect(args).toContain('max')
+  })
+
+  test.each(['deepseek-pro', 'opus', 'provider-specific-alias', undefined])('pins commercialization main and delegated model selectors to Flash when incoming model is %s', async model => {
+    const providerService = new ProviderService()
+    const provider = await providerService.addProvider({ presetId: 'custom', name: 'Flash policy test', apiKey: 'test-key', baseUrl: 'https://example.invalid', apiFormat: 'openai_chat', models: { main: 'deepseek-pro', haiku: 'provider-haiku', sonnet: 'provider-sonnet', opus: 'provider-opus' } })
+    const service = new ConversationService() as any
+    const options = { providerId: provider.id, model, expertModelPolicy: 'deepseek-flash-only', expertSessionId: 'commercialization-session' }
+    const args = service.buildSessionCliArgs('flash-session', 'ws://127.0.0.1:3456/sdk/flash-session', false, options) as string[]
+    expect(args[args.indexOf('--model') + 1]).toBe('deepseek-flash')
+    expect(args).not.toContain('--fallback-model')
+    const env = await service.buildChildEnv(tmpDir, 'ws://127.0.0.1:3456/sdk/flash-session', options) as Record<string, string>
+    for (const key of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
+      expect(env[key]).toBe('deepseek-flash')
+    }
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe('1')
+    expect(env.CC_JIANGXIA_EXPERT_MODEL_POLICY).toBe('deepseek-flash-only')
+    expect(env.CC_HAHA_EXPERT_MODEL_POLICY).toBe('deepseek-flash-only')
+    expect((await providerService.listProviders()).providers.find(item => item.id === provider.id)?.models).toEqual({ main: 'deepseek-pro', haiku: 'provider-haiku', sonnet: 'provider-sonnet', opus: 'provider-opus' })
+  })
+
+  test('startSession sends the normalized Flash model and final environment to the spawned CLI', async () => {
+    const service = new ConversationService() as any
+    const launchInfo = spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    const spawn = spyOn(Bun, 'spawn').mockImplementation(() => ({
+      stdin: { write() {}, flush() {} },
+      stdout: new ReadableStream({ start(controller) { controller.close() } }),
+      stderr: new ReadableStream({ start(controller) { controller.close() } }),
+      exited: Promise.resolve(1),
+      exitCode: 1,
+    }) as any)
+    const options = { model: 'deepseek-pro', expertModelPolicy: 'deepseek-flash-only' }
+    try {
+      await expect(service.startSession('flash-launch-session', tmpDir, 'ws://127.0.0.1:3456/sdk/flash-launch-session', options)).rejects.toThrow()
+      expect(spawn).toHaveBeenCalledTimes(1)
+      const [args, spawnOptions] = spawn.mock.calls[0] as any
+      expect(args[args.indexOf('--model') + 1]).toBe('deepseek-flash')
+      expect(args).not.toContain('--fallback-model')
+      expect(spawnOptions.env.ANTHROPIC_MODEL).toBe('deepseek-flash')
+      expect(spawnOptions.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe('deepseek-flash')
+      expect(options.model).toBe('deepseek-pro')
+    } finally { launchInfo.mockRestore(); spawn.mockRestore() }
+  })
+
+  test('Flash policy pins inherited env-only routing without affecting later ordinary or unrelated Expert launches', async () => {
+    const service = new ConversationService() as any
+    const flash = await service.buildChildEnv(tmpDir, undefined, { expertModelPolicy: 'deepseek-flash-only', model: 'deepseek-pro' }) as Record<string, string>
+    expect(flash.ANTHROPIC_MODEL).toBe('deepseek-flash')
+    expect(flash.ANTHROPIC_AUTH_TOKEN).toBe('test-token')
+    for (const options of [{ model: 'deepseek-pro' }, { model: 'deepseek-pro', expertSessionId: 'another-expert', expertSystemPrompt: 'Another expert.' }]) {
+      const args = service.buildSessionCliArgs('ordinary-session', 'ws://127.0.0.1:3456/sdk/ordinary-session', false, options) as string[]
+      expect(args[args.indexOf('--model') + 1]).toBe('deepseek-pro')
+      const ordinary = await service.buildChildEnv(tmpDir, undefined, options) as Record<string, string>
+      expect(ordinary.ANTHROPIC_MODEL).toBe('test-model')
+      expect(ordinary.CC_JIANGXIA_EXPERT_MODEL_POLICY).toBeUndefined()
+    }
+    expect(process.env.ANTHROPIC_MODEL).toBe('test-model')
   })
 
   test('buildSessionCliArgs starts pending desktop worktrees through the native CLI flag', () => {

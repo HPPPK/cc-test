@@ -11,7 +11,7 @@ import { sessionService } from './sessionService.js'
 import { conversationService } from './conversationService.js'
 import { ExpertPackRegistryService, ExpertPackValidationError, type ExpertIntakeState, type ExpertMaterialRef, type ExpertSessionMetadata, type ExpertTemplateFillDraftState } from './expertPackRegistryService.js'
 import { ExpertRuntimeService } from './expertRuntimeService.js'
-import { assertExpertPathComponent, createExpertOutputDirectory, makeExpertDirectories, writeExpertText } from './expertFilesystemBoundary.js'
+import { assertExpertPathComponent, createExpertOutputDirectory, makeExpertDirectories, resolveExpertPathInside, writeExpertText } from './expertFilesystemBoundary.js'
 import { createExpertRuntimeBinding, hasActiveExpertRuntime, restoreTruncatedExpertRuntime, upgradeCommercializationResearchChannelRuntime } from './expertRuntimeBindingService.js'
 import { EXPERT_TEMPLATE_FILL_FORMAT, deriveExpertTemplateFillSchema, renderExpertTemplateFill } from '../../utils/expertTemplateFill.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
@@ -1634,6 +1634,67 @@ export class ExpertSessionService {
     throw new ApiError(input.statusCode, input.message + repairHint, input.code)
   }
 
+  /** Export saved structured fields; never infer them from generated HTML. */
+  async getTemplateFillFields(sessionId: string) {
+    const session = await sessionService.getSession(sessionId)
+    if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
+    const expert = hasActiveExpertRuntime(session.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
+    const binding = expert?.runtimeBinding
+    if (!expert || !binding?.active || binding.outputMode !== 'template-fill' || !binding.outputTemplate) {
+      throw new ApiError(409, '当前会话没有可恢复的固定模板字段。', 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE')
+    }
+    const draft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
+    const snapshot = expert.templateFillDelivery?.fieldSnapshot
+    const candidate = !draft && !expert.templateFillDelivery ? [...templateFillCandidates.values()].reverse().find(value => value.sessionId === sessionId
+      && value.bindingHash === fingerprint(binding) && Date.now() - value.savedAt < 2 * 60 * 60 * 1000) : undefined
+    const payload = draft ? { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: draft.templateId, fields: draft.fields,
+      ...(draft.evidenceAbsorption !== undefined ? { evidenceAbsorption: draft.evidenceAbsorption } : {}) }
+      : snapshot?.payload ?? (candidate ? { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: candidate.payload.templateId, fields: candidate.payload.fields,
+        ...(candidate.payload.evidenceAbsorption !== undefined ? { evidenceAbsorption: candidate.payload.evidenceAbsorption } : {}) } : undefined)
+    // Forward-compatible migration: legacy deliveries without a snapshot remain
+    // delivered, but recovery is explicitly unavailable. Never fabricate fields.
+    if (!payload && !snapshot) throw new ApiError(409, '该旧报告没有保存完整字段；请保留原报告，重新提交完整字段建立新草稿，不要逆向解析 HTML。', 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE')
+    const allowedKeys = new Set(['format', 'templateId', 'fields', 'evidenceAbsorption'])
+    if (!isRecord(payload) || payload.format !== EXPERT_TEMPLATE_FILL_FORMAT
+      || typeof payload.templateId !== 'string' || !payload.templateId.trim() || !isRecord(payload.fields)
+      || Object.keys(payload).some(key => !allowedKeys.has(key))
+      || (snapshot && snapshot.payloadHash !== fingerprint(payload))) {
+      throw new ApiError(409, '保存的完整字段或来源吸收快照已损坏，不能恢复到当前报告。', 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED')
+    }
+    const templateHash = createHash('sha256').update(binding.outputTemplate.content).digest('hex')
+    if (payload.templateId !== deriveExpertTemplateFillSchema(binding.outputTemplate.content).templateId
+      || (snapshot && (snapshot.schemaVersion !== 1 || snapshot.templateHash !== templateHash))) {
+      throw new ApiError(409, '字段快照与当前绑定母版不一致，不能恢复到当前报告。', 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED')
+    }
+    const reportPath = draft?.completionReview?.reportPath ?? expert.templateFillDelivery?.reportPath
+    if (reportPath) {
+      const workDir = session.workDir || session.projectRoot || session.projectPath
+      try {
+        const canonicalRoot = await fs.realpath(workDir!)
+        let resolved: string
+        try {
+          resolved = resolveTemplateFillOutputPath(workDir, reportPath)!
+        } catch {
+          // A selected root may be a legitimate filesystem alias. Accept either
+          // spelling of that root, while keeping descendants inside its boundary.
+          resolved = resolveTemplateFillOutputPath(canonicalRoot, reportPath)!
+        }
+        const safePath = await resolveExpertPathInside(canonicalRoot, path.basename(resolved))
+        const written = await fs.readFile(safePath, 'utf8')
+        const expected = snapshot?.contentHash ?? createHash('sha256').update(renderExpertTemplateFill(binding.outputTemplate.content, payload,
+          { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID }).content).digest('hex')
+        if (createHash('sha256').update(written).digest('hex') !== expected) throw new Error('Report changed')
+        // Bind the structured snapshot to the actual bytes too; a corrupt payload
+        // must not pass simply because its stored content hash still matches.
+        if (snapshot && renderExpertTemplateFill(binding.outputTemplate.content, payload,
+          { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID }).content !== written) throw new Error('Fields changed')
+      } catch {
+        throw new ApiError(409, '报告缺失、内容被修改或超出会话边界，字段恢复已停止；现有报告不会被覆盖。', 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED')
+      }
+    }
+    return payload
+  }
+
   async getTemplateFillSchema(sessionId: string) {
     const session = await sessionService.getSession(sessionId)
     if (!session) throw ApiError.notFound(`Session not found: ${sessionId}`)
@@ -1654,7 +1715,7 @@ export class ExpertSessionService {
       ...schema,
       delivery: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID ? 'cli-only' as const : 'structured-write' as const,
       lifecycle: {
-        stage, allowedModes, ...(reportPath ? { reportPath } : {}),
+        stage, allowedModes, recoveryCommand: 'cc-jiangxia expert-template-fill --recover-fields', ...(reportPath ? { reportPath } : {}),
         ...(!draft && !delivery ? { initialSubmission: { allowed: true, omitMode: true } } : {}),
         ...(candidate ? { repairCandidate: { ...(candidate.outputPath ? { outputPath: candidate.outputPath } : {}), fieldIds: Object.keys(candidate.payload.fields) } } : {}),
       },
@@ -2146,6 +2207,8 @@ export class ExpertSessionService {
         return { content: rendered.content, templateId: rendered.schema.templateId, completionReviewRequired: true, writeReceipt }
       }
       const finalizedAt = new Date().toISOString()
+      const finalizedPayload = { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: renderedPayload.templateId, fields: renderedPayload.fields,
+        ...(renderedPayload.evidenceAbsorption !== undefined ? { evidenceAbsorption: renderedPayload.evidenceAbsorption } : {}) }
       const finalizedExpert = {
         ...expert,
         templateFillDraft: undefined,
@@ -2158,6 +2221,13 @@ export class ExpertSessionService {
               ? { reportPath: outputPath }
               : {}),
           finalizedAt,
+          fieldSnapshot: {
+            schemaVersion: 1,
+            templateHash: createHash('sha256').update(binding.outputTemplate.content).digest('hex'),
+            contentHash: createHash('sha256').update(rendered.content).digest('hex'),
+            payloadHash: fingerprint(finalizedPayload),
+            payload: finalizedPayload,
+          },
         },
         updatedAt: finalizedAt,
       } as ExpertSessionMetadata

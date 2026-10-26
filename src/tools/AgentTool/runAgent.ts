@@ -1,3 +1,5 @@
+import { lstatSync } from 'node:fs'
+import * as path from 'node:path'
 import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
 import { reserveExpertResearcherStart } from '../../services/tools/expertResearchBudgetRuntime.js'
 import { createResearcherPartPath, researchArtifactRootPath, isFileFirstExpertResearchAgentType } from '../../services/tools/expertFileFirstResearchProtocol.js'
@@ -267,6 +269,21 @@ function isRecordableMessage(
   )
 }
 
+// The desktop sets this policy only for the selected commercial Expert. Apply
+// it at the final agent selection boundary too: teammate contexts can clear the
+// ordinary subagent-model override, and agent files can name raw provider IDs.
+export function resolveExpertAgentModel(
+  agentModel: Parameters<typeof getAgentModel>[0],
+  parentModel: Parameters<typeof getAgentModel>[1],
+  toolModel: Parameters<typeof getAgentModel>[2],
+  permissionMode: Parameters<typeof getAgentModel>[3],
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return getJiangxiaEnvValue('EXPERT_MODEL_POLICY', env) === 'deepseek-flash-only'
+    ? 'deepseek-flash'
+    : getAgentModel(agentModel, parentModel, toolModel, permissionMode)
+}
+
 type FileFirstResearchArtifactPaths = {
   briefPath: string
   researcherPaths: string[]
@@ -282,6 +299,7 @@ export function formatFileFirstOutputReviewContext(input: {
   absorptionPath: string
   reportPath: string
   targetPath: string
+  provenancePaths?: string[]
 }): string {
   return [
     '<expert-rendered-output-review>',
@@ -290,6 +308,8 @@ export function formatFileFirstOutputReviewContext(input: {
     '- ' + input.briefPath,
     '- ' + input.absorptionPath,
     '- ' + input.reportPath,
+    ...(input.provenancePaths ?? []).map(sourcePath => '- ' + sourcePath),
+    'For consequential facts and prices, independently check original captured source text in the exact declared provenance files above; compare adjacent terms and actual audit status rather than accepting D/E labels. Do not browse or read any undeclared path.',
     'Write only this Markdown review: ' + input.targetPath,
     'You may also Read that exact output Markdown for save verification; it is not an additional research source.',
     'After Write and the required Read-back verification, return exactly one short file receipt: `已写入：' + input.targetPath + '；状态：已 Read 验证。`',
@@ -357,6 +377,26 @@ function canonicalResearchArtifactPath(
   }
 }
 
+// Declared lexical paths must not grant a report reviewer access through a
+// symlink. Missing files still receive the normal Read error; other filesystem
+// failures deny access instead of silently widening the provenance boundary.
+function hasUnsafeReportProvenancePath(artifactPath: string): boolean {
+  const root = researchArtifactOutputRoot()
+  if (!root || /^[a-zA-Z]:[\\/]/.test(root) && process.platform !== 'win32') return false
+  const absolute = path.resolve(root, artifactPath)
+  const relative = path.relative(path.resolve(root), absolute)
+  if (relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative)) return true
+  let current = path.resolve(root)
+  for (const part of ['', ...relative.split(path.sep)]) {
+    if (part) current = path.join(current, part)
+    try { if (lstatSync(current).isSymbolicLink()) return true }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true
+    }
+  }
+  return false
+}
+
 /** One Read boundary for report workers; the same predicate is used by the runner and regressions. */
 export function reportWorkerReadError(input: unknown, context: {
   agentType: string
@@ -365,11 +405,12 @@ export function reportWorkerReadError(input: unknown, context: {
 }): string | undefined {
   const { agentType, artifactPaths } = context
   if (agentType === 'expert-evidence-output-reviewer') {
-    const allowed = new Set([artifactPaths.briefPath, ...(artifactPaths.absorptionPath ? [artifactPaths.absorptionPath] : []), ...(artifactPaths.completionReviewPath ? [artifactPaths.completionReviewPath] : [])])
-    const requested = canonicalResearchArtifactPath(input, ['research-brief', 'field-absorption', 'final-output-review'])
+    const allowed = new Set([artifactPaths.briefPath, ...artifactPaths.researcherPaths, artifactPaths.reviewerPath, artifactPaths.auditPath, ...(artifactPaths.absorptionPath ? [artifactPaths.absorptionPath] : []), ...(artifactPaths.completionReviewPath ? [artifactPaths.completionReviewPath] : [])])
+    const requested = canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit', 'field-absorption', 'final-output-review'])
     const rawPath = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>).file_path : undefined
+    if (requested && allowed.has(requested) && hasUnsafeReportProvenancePath(requested)) return 'This Expert output-review worker cannot Read symlinked or unsafe provenance paths.'
     if ((!requested || !allowed.has(requested)) && !isCurrentExpertTemplateOutputReviewReportPath(rawPath, context.reportPath)) {
-      return 'This Expert output-review worker may Read only the declared brief, the declared report-field absorption Markdown, the exact HTML draft rendered in this same session, and its own declared completeness Markdown for save verification. It may not scan the workDir or read researcher ledgers, browser audits, or other files.'
+      return 'This Expert output-review worker may Read only the declared brief, the declared report-field absorption Markdown, the exact HTML draft rendered in this same session, and its own declared completeness Markdown for save verification. It may also Read the exact declared researcher reports/parts, evidence review and browser audit for independent source verification. It may not scan the workDir, follow symlinks or read any other files.'
     }
   }
   if (agentType === 'expert-evidence-absorber') {
@@ -641,7 +682,7 @@ export async function* runAgent({
   const rootSetAppState =
     toolUseContext.setAppStateForTasks ?? toolUseContext.setAppState
 
-  const resolvedAgentModel = getAgentModel(
+  const resolvedAgentModel = resolveExpertAgentModel(
     agentDefinition.model,
     toolUseContext.options.mainLoopModel,
     model,
@@ -944,6 +985,7 @@ export async function* runAgent({
           absorptionPath: outputReviewContext.absorptionPath,
           reportPath: outputReviewContext.reportPath,
           targetPath: outputReviewTargetPath,
+          provenancePaths: researchArtifactPaths ? [...researchArtifactPaths.researcherPaths, researchArtifactPaths.reviewerPath, researchArtifactPaths.auditPath] : [],
         }),
       }],
       isMeta: true,

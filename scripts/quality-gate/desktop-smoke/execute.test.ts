@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection, verifyDesktopSmokeChangedFiles } from './execute'
+import { runInNewContext } from 'node:vm'
+import { join } from 'node:path'
+import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection, verifyDesktopSmokeChangedFiles, desktopSmokeProjectReadyExpression, verifyDesktopSmokeSessionWorkspace } from './execute'
 
 describe('desktop smoke runtime selection', () => {
   test('lets current-runtime use the desktop default active provider', () => {
@@ -60,5 +62,35 @@ describe('desktop smoke browser launcher', () => {
       return
     }
     expect(command).toEqual(['agent-browser', 'open', 'http://127.0.0.1'])
+  })
+})
+
+
+describe('desktop smoke project readiness', () => {
+  const workDir = '/tmp/quality-gate/example project'
+  const expression = () => desktopSmokeProjectReadyExpression('smoke-session', workDir)
+  const evaluate = (activeTabId = 'smoke-session', title = workDir, visible = true) => runInNewContext(expression(), {
+    localStorage: { getItem: () => JSON.stringify({ activeTabId }) },
+    document: {
+      body: { innerText: 'folder example project' },
+      querySelectorAll: () => [{ title, innerText: 'folder example project', offsetWidth: visible ? 100 : 0, offsetHeight: visible ? 30 : 0 }],
+    },
+  })
+
+  test('accepts a visible project basename while its absolute path is only in the directory button title', () => {
+    expect(evaluate()).toBe(true)
+  })
+
+  test('rejects a stale active session, another workspace, and a hidden directory control', () => {
+    expect(evaluate('stale-session')).toBe(false)
+    expect(evaluate('smoke-session', '/tmp/another/example project')).toBe(false)
+    expect(evaluate('smoke-session', workDir, false)).toBe(false)
+  })
+
+  test('checks the API session identity and actual workspace before trusting its visible basename', () => {
+    const projectDir = join(import.meta.dir, 'fixtures/chat-edit')
+    expect(verifyDesktopSmokeSessionWorkspace({ id: 'smoke-session', workDir: projectDir }, 'smoke-session', projectDir)).toBe(projectDir)
+    expect(() => verifyDesktopSmokeSessionWorkspace({ id: 'stale-session', workDir: projectDir }, 'smoke-session', projectDir)).toThrow('session identity')
+    expect(() => verifyDesktopSmokeSessionWorkspace({ id: 'smoke-session', workDir: import.meta.dir }, 'smoke-session', projectDir)).toThrow('workspace')
   })
 })

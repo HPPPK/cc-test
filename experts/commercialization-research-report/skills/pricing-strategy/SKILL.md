@@ -34,6 +34,9 @@ If the user provides files (competitor pricing, survey data, financial models, o
    | **Value-based** | High-impact enterprise tools | Salesforce, Palantir |
 
 3. **Analyze competitive pricing**:
+   - 核验原始价格数字及相邻条件，保留原文、URL/审计身份和日期；比较前对齐地区、币种、税费、计费周期、付款频率、优惠资格和续费。
+   - 折扣标价与 “For first year X after that” 要按原文区分首年与续费，不自动判为矛盾；年付折算月价不等于按月结账。原文不明确时保留未知，不能补造结账页、实付额或税后价。
+   - D/E 独立核对原始摘录与上下文，07 保留对应证据；F 从 07 原始摘录检查最终价格表述，缺原文则写明具体边界。只有相同套餐、条件和时点的主张互不相容才记冲突，不同口径标为不可直接比较。
    - Map competitor pricing tiers and what's included
    - Identify where your product sits (premium, mid-market, budget)
    - Find pricing gaps or opportunities
@@ -44,7 +47,7 @@ If the user provides files (competitor pricing, survey data, financial models, o
    - **Feature gating**: Which features go in which tier? (Use value metrics, not arbitrary limits)
    - **Value metric**: What unit do you charge on? (users, events, storage, API calls)
    - **Anchor pricing**: Set the most popular tier to feel like the obvious choice
-   - **Annual discount**: Typically 15-20% off monthly pricing
+   - **Annual discount**: Use only observed public terms; no assumed category discount.
 
 5. **Estimate price sensitivity**:
    - Van Westendorp Price Sensitivity Meter (if survey data available):
@@ -52,7 +55,7 @@ If the user provides files (competitor pricing, survey data, financial models, o
      - Cheap → good value
      - Expensive → starting to hesitate
      - Too expensive → won't buy
-   - Alternatively, estimate based on competitor pricing and value delivered
+   - Without user research, competitor offers support only labeled pricing hypotheses, not measured willingness to pay or elasticity.
 
 6. **Plan pricing experiments**:
    - A/B test pricing pages (different price points, tier names, feature bundles)

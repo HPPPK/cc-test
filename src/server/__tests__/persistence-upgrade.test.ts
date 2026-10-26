@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
+import { ExpertRuntimeSessionStore, getExpertRuntimeSessionStorageDir } from '../services/expertRuntimeSessionStore.js'
 import { ProviderService } from '../services/providerService.js'
 import {
   CURRENT_PROVIDER_INDEX_SCHEMA_VERSION,
@@ -356,4 +357,30 @@ describe('persistent storage upgrade migrations', () => {
     const backups = (await listFiles(ccJiangxiaDir)).filter((file) => file.startsWith('settings.json.bak-before-migration-'))
     expect(backups.length).toBe(1)
   })
+})
+
+// Additive field checkpoints require no destructive rewrite of a legacy v1
+// record. Loading and saving is the forward upgrade; absent fields stay absent.
+test('upgrades legacy expert delivery capability without inventing fields or dropping unknown metadata', async () => {
+  const config = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-fields-upgrade-'))
+  const previous = process.env.CLAUDE_CONFIG_DIR
+  process.env.CLAUDE_CONFIG_DIR = config
+  try {
+    const id = '11111111-2222-3333-4444-555555555555'
+    const expert = { mode: 'expert', status: 'active', expertId: 'legacy', futureField: { keep: true },
+      runtimeBinding: { active: true }, templateFillDelivery: { templateId: 'legacy-v1', finalizedAt: '2026-01-01T00:00:00Z', futureDelivery: true } }
+    await fs.mkdir(getExpertRuntimeSessionStorageDir(), { recursive: true })
+    const file = path.join(getExpertRuntimeSessionStorageDir(), id + '.json')
+    await fs.writeFile(file, JSON.stringify({ schemaVersion: 1, sessionId: id, expert, updatedAt: '2026-01-01T00:00:00Z' }))
+    const store = new ExpertRuntimeSessionStore()
+    const loaded = await store.get(id)
+    expect(loaded).toEqual(expert)
+    expect(loaded?.templateFillDelivery).not.toHaveProperty('fieldSnapshot')
+    await store.save(id, loaded!)
+    expect(await new ExpertRuntimeSessionStore().get(id)).toEqual(expert)
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = previous
+    await fs.rm(config, { recursive: true, force: true })
+  }
 })

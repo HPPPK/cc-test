@@ -1312,6 +1312,7 @@ describe('ExpertSessionService', () => {
     expect(recoveredInitial.content).toBe(initialRender.content)
     expect(recoveredInitial.completionReviewRequired).toBe(true)
     await service.commitTemplateFillWrite(sessionId, { receipt: recoveredInitial.writeReceipt })
+    expect(await service.getTemplateFillFields(sessionId)).toMatchObject(firstDraft)
     const afterInitial = await sessionService.getSession(sessionId)
     expect((afterInitial?.expert as { templateFillDraft?: unknown } | undefined)?.templateFillDraft).toMatchObject({
       templateId: 'session-v1',
@@ -1360,6 +1361,10 @@ describe('ExpertSessionService', () => {
       reportPath,
       finalizedAt: expect.any(String),
     })
+    expect(await new ExpertSessionService().getTemplateFillFields(sessionId)).toMatchObject(firstDraft)
+    await writeFile(reportPath, '<html>tampered</html>', 'utf8')
+    await expect(service.getTemplateFillFields(sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+    await writeFile(reportPath, finalizedRender.content, 'utf8')
     const existingFinal = await readFile(reportPath, 'utf8')
     await expect(service.renderTemplateFill(sessionId, {
       templateId: 'session-v1',
@@ -1382,6 +1387,7 @@ describe('ExpertSessionService', () => {
       ...firstDraft,
       fields: { ...firstDraft.fields, REPORT_TITLE: 'Explicit full-field revision' },
     }, { outputPath: reportPath })
+    expect((await service.getTemplateFillFields(sessionId)).fields.REPORT_TITLE).toBe('Explicit full-field revision')
     expect(revision.completionReviewRequired).toBe(true)
     expect(revision.content).toContain('Explicit full-field revision')
     expect((await sessionService.getSession(sessionId))?.expert?.templateFillDelivery).toBeUndefined()
@@ -2689,6 +2695,7 @@ describe('report delivery loop regressions', () => {
     expect((await sessionService.getSession(sessionId))!.expert!.templateFillDraft).toEqual(before)
     await writeFile(reportPath, patch.content)
     await service.commitTemplateFillWrite(sessionId, { receipt: patch.writeReceipt })
+    expect((await service.getTemplateFillFields(sessionId)).fields).toBeDefined()
     expect((await sessionService.getSession(sessionId))!.expert!.templateFillDelivery?.reportPath).toBe(reportPath)
   })
 

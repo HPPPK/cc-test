@@ -6237,6 +6237,7 @@ describe('WebSocket handler workflow runtime gating', () => {
 
     const sessionSettings = startSession.mock.calls[0]?.[3]
     expect(sessionSettings).toMatchObject({ expertFullToolAccess: true })
+    expect(sessionSettings?.expertModelPolicy).toBeUndefined()
     expect(sessionSettings?.disallowedTools ?? []).not.toEqual(expect.arrayContaining([
       'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebSearch', 'Agent', 'Skill',
     ]))
@@ -6284,7 +6285,7 @@ describe('WebSocket handler workflow runtime gating', () => {
     await waitForCondition(() => startSession.mock.calls.length > 0)
 
     const sessionSettings = startSession.mock.calls[0]?.[3]
-    expect(sessionSettings).toMatchObject({ expertFullToolAccess: true, expertTemplateFillWrite: true, expertTemplateFillDelivery: 'cli-only' })
+    expect(sessionSettings).toMatchObject({ expertFullToolAccess: true, expertTemplateFillWrite: true, expertTemplateFillDelivery: 'cli-only', expertModelPolicy: 'deepseek-flash-only' })
     expect(sessionSettings?.disallowedTools ?? []).not.toEqual(expect.arrayContaining([
       'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebSearch', 'Agent', 'Skill',
     ]))
