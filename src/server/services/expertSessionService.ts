@@ -1736,6 +1736,11 @@ export class ExpertSessionService {
       const deliveredPath = finalizedDelivery.reportPath
       const sameOutput = !outputPath || !deliveredPath || sameTemplateFillOutputPath(deliveredPath, outputPath)
       if (sameOutput && deliveredPath) {
+        if (Object.keys(submission.fields).length > 0) {
+          throw new ApiError(409,
+            '报告已最终交付，本次带字段改动的请求未应用，不能作为幂等确认返回旧报告。请保留原报告，以同一固定母版的完整 fields 提交新的初稿（不要使用 mode="patch" 或 "finalize"），再完成 08 复核与 CLI 最终确认；不要重写模板。',
+            'EXPERT_TEMPLATE_FILL_FINALIZED_FIELDS_REQUIRE_NEW_DRAFT')
+        }
         try {
           return {
             content: await fs.readFile(deliveredPath, 'utf8'),

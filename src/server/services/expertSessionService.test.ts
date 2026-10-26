@@ -1370,7 +1370,22 @@ describe('ExpertSessionService', () => {
       templateId: 'session-v1',
       mode: 'patch',
       fields: { REPORT_TITLE: 'must not reopen delivery' },
-    }, { outputPath: reportPath })).resolves.toEqual({ content: existingFinal, templateId: 'session-v1', completionReviewRequired: false })
+    }, { outputPath: reportPath })).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FINALIZED_FIELDS_REQUIRE_NEW_DRAFT' })
+    await expect(service.renderTemplateFill(sessionId, {
+      templateId: 'session-v1',
+      mode: 'finalize',
+      fields: { REPORT_TITLE: 'must not silently discard changed fields' },
+    }, { outputPath: reportPath })).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FINALIZED_FIELDS_REQUIRE_NEW_DRAFT' })
+    expect(await readFile(reportPath, 'utf8')).toBe(existingFinal)
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDraft).toBeUndefined()
+    const revision = await renderAndCommit(service, sessionId, {
+      ...firstDraft,
+      fields: { ...firstDraft.fields, REPORT_TITLE: 'Explicit full-field revision' },
+    }, { outputPath: reportPath })
+    expect(revision.completionReviewRequired).toBe(true)
+    expect(revision.content).toContain('Explicit full-field revision')
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDelivery).toBeUndefined()
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDraft?.completionReview).toBeDefined()
   })
 
   it('a repaired initial candidate still creates an 08-pending draft, never a finalized delivery', async () => {
