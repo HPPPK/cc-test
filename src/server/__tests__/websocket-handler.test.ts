@@ -8188,14 +8188,14 @@ describe('WebSocket handler workflow runtime gating', () => {
     )
   })
 
-  it('sends desktop-consumable workflow summaries after websocket phase transitions', async () => {
+  it.each([false, true])('sends desktop-consumable workflow summaries after websocket phase transitions (reconnect=%s)', async (reconnect) => {
     const sessionId = `workflow-confirm-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)
     const stateService = new WorkflowSessionStateService()
     const appendSessionMetadata = spyOn(sessionService, 'appendSessionMetadata').mockResolvedValue()
     spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue(process.cwd())
     // Confirming this transition schedules workflow_auto_continue; keep this state-summary test isolated from the real CLI.
-    spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+    const sendMessage = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
     spyOn(conversationService, 'startSession').mockResolvedValue()
     spyOn(conversationService, 'stopSessionAndWait').mockResolvedValue()
     spyOn(conversationService, 'hasSession').mockReturnValue(true)
@@ -8204,7 +8204,15 @@ describe('WebSocket handler workflow runtime gating', () => {
     spyOn(conversationService, 'clearOutputCallbacks').mockImplementation(() => {})
     await stateService.writeState(sessionId, makeWorkflowState(sessionId))
 
+    // A reconnect adds an independent initial snapshot; it is not a phase transition.
+    if (reconnect) handleWebSocket.open(makeClientSocket(sessionId))
     handleWebSocket.open(ws)
+    if (reconnect) {
+      await waitForCondition(() => parseSentMessages(ws).some(message => message.type === 'system_notification'
+        && message.subtype === 'workflow_state' && (message.data as Record<string, unknown>)?.stateVersion === 1))
+      expect(parseSentMessages(ws).some(message => message.subtype === 'workflow_state'
+        && (message.data as Record<string, unknown>)?.stateVersion === 1)).toBe(true)
+    }
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
       phaseId: 'requirements-clarification',
@@ -8218,10 +8226,12 @@ describe('WebSocket handler workflow runtime gating', () => {
     await waitForCondition(() => parseSentMessages(ws).some((message) =>
       message.type === 'system_notification'
       && message.subtype === 'workflow_state'
+      && (message.data as Record<string, unknown>)?.pendingConfirmationId === 'submit-ready'
     ))
     const pendingWorkflowState = parseSentMessages(ws).find((message) =>
       message.type === 'system_notification'
       && message.subtype === 'workflow_state'
+      && (message.data as Record<string, unknown>)?.pendingConfirmationId === 'submit-ready'
     )
     const pendingWorkflow = pendingWorkflowState?.data as {
       pendingConfirmationId?: string
@@ -8229,6 +8239,11 @@ describe('WebSocket handler workflow runtime gating', () => {
     } | undefined
     expect(pendingWorkflow?.pendingConfirmationId).toBeTruthy()
     expect(pendingWorkflow?.stateVersion).toBeTypeOf('number')
+    const pendingState = (await stateService.readState(sessionId)).state!
+    expect(pendingState.transitionHistory.filter(record => record.transitionId === 'submit-ready')).toEqual([expect.objectContaining({
+      action: 'confirmation-requested', result: 'accepted', stateVersion: pendingWorkflow?.stateVersion,
+      fromPhaseId: 'requirements-clarification', toPhaseId: 'technical-design',
+    })])
 
     handleWebSocket.message(ws, JSON.stringify({
       type: 'workflow_transition',
@@ -8238,18 +8253,25 @@ describe('WebSocket handler workflow runtime gating', () => {
       stateVersion: pendingWorkflow?.stateVersion,
       transitionId: 'confirm-ready',
     }))
-    await waitForCondition(() => parseSentMessages(ws).filter((message) =>
-      message.type === 'system_notification'
-      && message.subtype === 'workflow_state'
-    ).length >= 2)
-
+    // Confirm also starts the next phase asynchronously and sends its own summary.
+    await waitForCondition(() => sendMessage.mock.calls.some(([id]) => id === sessionId))
+    expect(sendMessage.mock.calls.filter(([id]) => id === sessionId)).toHaveLength(1)
     const workflowStates = parseSentMessages(ws).filter((message) =>
       message.type === 'system_notification'
       && message.subtype === 'workflow_state'
     )
 
-    expect(workflowStates).toHaveLength(2)
-    expect(workflowStates[0]).toMatchObject({
+    const currentState = (await stateService.readState(sessionId)).state!
+    const confirmedTransitions = currentState.transitionHistory.filter(record => record.transitionId === 'confirm-ready')
+    expect(confirmedTransitions).toEqual([expect.objectContaining({
+      action: 'confirmed', result: 'accepted',
+      fromPhaseId: 'requirements-clarification', toPhaseId: 'technical-design',
+    })])
+    const confirmedVersion = confirmedTransitions[0]!.stateVersion
+    const readySummary = workflowStates.find(message => (message.data as Record<string, unknown>)?.stateVersion === pendingWorkflow?.stateVersion)
+    const confirmedSummary = workflowStates.find(message => (message.data as Record<string, unknown>)?.stateVersion === confirmedVersion)
+    const startedSummary = workflowStates.find(message => (message.data as Record<string, unknown>)?.stateVersion === currentState.stateVersion)
+    expect(readySummary).toMatchObject({
       data: {
         mode: 'workflow',
         templateId: 'requirements-to-implementation',
@@ -8263,8 +8285,12 @@ describe('WebSocket handler workflow runtime gating', () => {
         },
       },
     })
-    expect(workflowStates[0]?.data).not.toHaveProperty('phases')
-    expect(workflowStates[1]).toMatchObject({
+    for (const message of workflowStates) {
+      expect(message.data).not.toHaveProperty('phases')
+      expect(message.data).toMatchObject({ statePointer: { kind: 'workflow-state', sessionId } })
+    }
+    expect(confirmedVersion).toBeGreaterThan(pendingWorkflow!.stateVersion!)
+    expect(confirmedSummary).toMatchObject({
       data: {
         mode: 'workflow',
         status: 'running',
@@ -8274,6 +8300,11 @@ describe('WebSocket handler workflow runtime gating', () => {
         transitionAuthority: 'user-confirmation',
       },
     })
+    expect(currentState.stateVersion).toBeGreaterThan(confirmedVersion!)
+    expect(startedSummary).toMatchObject({ data: {
+      mode: 'workflow', status: 'running', activePhaseId: 'technical-design', activePhaseIndex: 1,
+      pendingConfirmation: false, completion: { workStatus: 'in-progress' },
+    } })
     expect(appendSessionMetadata).toHaveBeenLastCalledWith(sessionId, expect.objectContaining({
       workDir: process.cwd(),
       workflow: expect.objectContaining({
