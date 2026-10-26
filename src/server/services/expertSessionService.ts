@@ -28,6 +28,7 @@ import { evaluateExpertFinalSourceCoverage, evaluateExpertResearchCompletion, re
 import { recordExpertResearchEvidence, type ExpertResearchEvidenceRecord, type ExpertResearchEvidenceState } from './expertResearchEvidenceReviewService.js'
 import { evaluateResearchSourceLibraryExecutionCoverage, matchOpenedResearchSourceLibraryEntries, matchResearchSourceLibraryAttempts, parseResearchSourceLibrary, resolveResearchRecordArtifactPath, planResearchSourceLibraryExecutionBatches, renderResearchSourceLibraryTaskPoolMarkdown, renderResearchSourceLibraryUsageMarkdown, type ExpertResearchSourceLibraryDispatchReceipt, type ExpertResearchSourceLibraryExecutionPlan } from './expertResearchSourceLibraryService.js'
 import { evaluateExpertResearchRequiredRoutes, formatExpertResearchRouteEvaluation } from './expertResearchRouteCompletionService.js'
+import { parseExpertReportReviewContract } from './expertReportReviewContract.js'
 import { ensureCommercializationReportSourceBoundary } from './expertCommercializationReportScopeService.js'
 import { buildExpertPostReviewEvidenceAbsorptionInstruction, evaluateExpertResearchEvidenceAbsorption, mergeAuditedOpenedSourcesIntoSourceRows, recordExpertResearchEvidenceReviewer, resolveExpertResearchAuditSourceReferences, validateExpertResearchArtifactAuditTruth, type ExpertResearchEvidenceReviewerState } from './expertResearchEvidenceAbsorptionService.js'
 
@@ -540,12 +541,21 @@ async function recoverReviewedTemplateFillDraft(sessionId: string, expert: Exper
   return recovered
 }
 
+function requireCommercialReportReviewContract(content: string, template: string) {
+  try {
+    return parseExpertReportReviewContract(content, deriveExpertTemplateFillSchema(template).fields.map(field => field.id))
+  } catch (error) {
+    throw new ApiError(409, error instanceof Error ? error.message : String(error), 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID')
+  }
+}
+
 async function requireReportCompletenessReviewArtifact(
   workDir: string,
   policy: ExpertResearchArtifactPolicy,
   initialRenderedAt: string,
   reviewerReceipt: { artifactPath: string; completedAt: string } | undefined,
-): Promise<{ content: string; requiresPatch: boolean }> {
+  commercialTemplate?: string,
+): Promise<{ content: string; requiresPatch: boolean; requiredFields?: string[]; calculationMismatches?: Array<{ fieldId: string; expectedCost: number; reportedCost: number }> }> {
   if (!policy.completionReviewPath) return
   const review = resolveExpertResearchArtifactPath({
     workDir,
@@ -568,6 +578,10 @@ async function requireReportCompletenessReviewArtifact(
   // Filesystem mtimes on Windows can be rounded or lag a server receipt. The
   // same-session reviewer receipt above is the authoritative completion time;
   // do not reject a real review because of timestamp granularity.
+  if (commercialTemplate) {
+    const contract = requireCommercialReportReviewContract(content, commercialTemplate)
+    return { content, requiresPatch: contract.requiredFields.length > 0, requiredFields: contract.requiredFields, calculationMismatches: contract.calculationMismatches }
+  }
   return { content, requiresPatch: reviewMarkdownRequiresPatch(content) }
 }
 
@@ -1498,6 +1512,19 @@ export class ExpertSessionService {
         }
       }
     }
+    if (tracksOutputReviewer && expert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID) {
+      try {
+        const workDir = session.workDir || session.projectRoot || session.projectPath
+        if (!workDir || !artifactPolicy?.completionReviewPath || !expert.runtimeBinding.outputTemplate) throw new Error('缺少当前母版或 08 复核路径。')
+        const review = resolveExpertResearchArtifactPath({ workDir, policy: artifactPolicy, artifactPath: artifactPolicy.completionReviewPath, allowedKinds: ['final-output-review'] })
+        const content = await fs.readFile(review.absolutePath, 'utf8')
+        requireCommercialReportReviewContract(content, expert.runtimeBinding.outputTemplate.content)
+        evidenceInput = { ...evidenceInput, artifactPath: review.relativePath, content }
+      } catch (error) {
+        if (error instanceof ApiError) throw error
+        throw new ApiError(409, `请由同一轮 F 修复原 08 文件并重试审计：${error instanceof Error ? error.message : String(error)}`, 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID')
+      }
+    }
     const now = new Date().toISOString()
     let researchCompletion: ExpertResearchCompletionState = expert.researchCompletion ?? { audits: [], updatedAt: now }
     let researchEvidence: ExpertResearchEvidenceState | undefined
@@ -1946,12 +1973,20 @@ export class ExpertSessionService {
         )
       }
       try {
-        const review = await requireReportCompletenessReviewArtifact(workDir, binding.researchArtifactPolicy, initialRenderedAt, expert.reportCompletenessReview)
+        const review = await requireReportCompletenessReviewArtifact(workDir, binding.researchArtifactPolicy, initialRenderedAt, expert.reportCompletenessReview, binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID ? binding.outputTemplate.content : undefined)
+        if (submission.mode === 'patch' && review.requiredFields?.length) {
+          const missing = review.requiredFields.filter(fieldId => !Object.hasOwn(submission.fields, fieldId)
+            || fingerprint(submission.fields[fieldId]) === fingerprint(existingDraft.fields[fieldId]))
+          if (missing.length) {
+            const arithmetic = review.calculationMismatches?.map(item => `${item.fieldId}: expectedCost=${item.expectedCost}, reportedCost=${item.reportedCost}`).join('；')
+            throw new ApiError(409, `必须一次修正所有必需字段；缺失或未实际改变的字段：${missing.join('、')}。${arithmetic ? `计算核对：${arithmetic}。` : ''}请保留完整草稿和 08，仅补正这些字段后重试同一个 patch。`, 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING')
+          }
+        }
         if (submission.mode === 'patch' && !review.requiresPatch) {
           throw new ApiError(409, '08-report-completeness-review.md 未明确需要补写；不得假补丁。请以 mode="finalize" 和 fields: {} 交付原始草稿。', 'EXPERT_REPORT_COMPLETENESS_NO_PATCH_REQUIRED')
         }
         if (submission.mode === 'finalize' && review.requiresPatch) {
-          throw new ApiError(409, '08-report-completeness-review.md 明确需要补写或纠错；必须先用一次 mode="patch" 修正已有材料支持的字段。', 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED')
+          throw new ApiError(409, `08-report-completeness-review.md 明确需要补写或纠错；必须先用一次 mode="patch" 修正已有材料支持的字段。${review.calculationMismatches?.length ? '计算核对：' + review.calculationMismatches.map(item => `${item.fieldId}: expectedCost=${item.expectedCost}, reportedCost=${item.reportedCost}`).join('；') : ''}`, 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED')
         }
       } catch (error) {
         if (error instanceof ApiError) return this.throwTemplateFillRepairFailure({

@@ -2585,7 +2585,7 @@ describe('ExpertSessionService', () => {
     expect((await service.getSubagentSkillContext(sessionId, 'expert-evidence-researcher')).researchSourcePlan!.batches.every((item) => item.entries.length === 0)).toBe(true)
   })
 
-async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
+async function makeReviewedDraft(reviewContent: string, withEvidence = false, commercial = false, skipAudit = false) {
   const configRoot = await makeTempRoot('expert-loop-regression-config-')
   const projectRoot = await makeTempRoot('expert-loop-regression-project-')
   await installExpert(configRoot)
@@ -2594,6 +2594,11 @@ async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
   await service.enterExpertMode(sessionId, 'session-expert')
   const expert = (await sessionService.getSession(sessionId))!.expert!
   const binding = expert.runtimeBinding!
+  if (commercial) {
+    binding.expertId = 'commercialization-research-report'
+    binding.outputTemplate!.content = binding.outputTemplate!.content.replace('</h1>', '</h1><p>{{REPORT_DATE}}</p>')
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+  }
   if (withEvidence) {
     binding.researchEvidenceReviewPolicy = {
       reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'],
@@ -2632,12 +2637,68 @@ async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
   const fields = { REPORT_TITLE: 'Original detailed report', SOURCE_ROWS: [['[1]', 'https://example.com/']] }
   const rendered = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath })
   await writeFile(path.join(researchDir, '08-report-completeness-review.md'), reviewContent)
-  await service.recordResearchAudit(sessionId, {
+  if (!skipAudit) await service.recordResearchAudit(sessionId, {
     agentId: 'output-reviewer', agentType: 'expert-evidence-output-reviewer', entries: [],
     artifactPath: 'commercialization-research/08-report-completeness-review.md', content: '已写入复核。',
   })
   return { service, sessionId, projectRoot, reportPath, fields, rendered }
 }
+
+function structuredReview(findings: Array<{ fieldId: string; kind: string; reason: string }>, calculations: unknown[] = []) {
+  return '结论：可原样定稿。\n```expert-report-review\n' + JSON.stringify({ version: 1, findings, calculations }) + '\n```'
+}
+
+describe('commercial report structured corrections', () => {
+  it('requires every factual and source correction, rejects fake unchanged patches, and retains the complete merged payload', async () => {
+    const findings = [
+      { fieldId: 'REPORT_TITLE', kind: 'factual-error', reason: '原始来源属于另一产品，标题归因错误。' },
+      { fieldId: 'SOURCE_ROWS', kind: 'source-error', reason: '来源名称与原始页面不一致。' },
+      { fieldId: 'REPORT_DATE', kind: 'optional', reason: '可选日期排版建议。' },
+    ]
+    const f = await makeReviewedDraft(structuredReview(findings), false, true)
+    const before = (await sessionService.getSession(f.sessionId))!.expert!
+    const incomplete = { SOURCE_ROWS: [['Corrected source', 'https://example.com/']] }
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED' })
+    for (const fields of [incomplete, { ...incomplete, REPORT_TITLE: f.fields.REPORT_TITLE }]) {
+      await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'patch', fields }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING', statusCode: 409, message: expect.stringContaining('REPORT_TITLE') })
+    }
+    expect(await readFile(f.reportPath, 'utf8')).toBe(f.rendered.content)
+    expect((await sessionService.getSession(f.sessionId))!.expert!.templateFillDraft).toEqual(before.templateFillDraft)
+    expect((await sessionService.getSession(f.sessionId))!.expert!.reportCompletenessReview).toEqual(before.reportCompletenessReview)
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { ...incomplete, REPORT_TITLE: 'Corrected product attribution' } }, { outputPath: f.reportPath })
+    const recovered = await f.service.getTemplateFillFields(f.sessionId)
+    expect(recovered.fields).toMatchObject({ REPORT_TITLE: 'Corrected product attribution', SOURCE_ROWS: incomplete.SOURCE_ROWS, REPORT_DATE: expect.any(String) })
+  })
+
+  it('forces a correction for unit-cost arithmetic even with no findings and includes the independently computed cost', async () => {
+    const calculation = { fieldId: 'REPORT_TITLE', amount: 120, amountPeriod: 'year', allowance: 10, allowancePeriod: 'month', unitsPerTask: 1, reportedCost: 12 }
+    const f = await makeReviewedDraft(structuredReview([], [calculation]), false, true)
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED', message: expect.stringContaining('expectedCost=1') })
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { SOURCE_ROWS: [['Changed label', 'https://example.com/']] } }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING', message: expect.stringContaining('expectedCost=1') })
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { REPORT_TITLE: 'Annual cost per task: 1' } }, { outputPath: f.reportPath })
+    expect((await f.service.getTemplateFillFields(f.sessionId)).fields.REPORT_TITLE).toBe('Annual cost per task: 1')
+  })
+
+  it('rejects invalid actual 08 before a receipt and permits the same reviewer to repair its contract', async () => {
+    const f = await makeReviewedDraft('# Legacy review without structured findings', false, true, true)
+    const audit = { agentId: 'output-reviewer', agentType: 'expert-evidence-output-reviewer', entries: [], artifactPath: 'commercialization-research/08-report-completeness-review.md', content: structuredReview([]) }
+    await expect(f.service.recordResearchAudit(f.sessionId, audit)).rejects.toMatchObject({ code: 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID', statusCode: 409 })
+    expect((await sessionService.getSession(f.sessionId))!.expert!.reportCompletenessReview).toBeUndefined()
+    await writeFile(path.join(f.projectRoot, audit.artifactPath), structuredReview([]))
+    await f.service.recordResearchAudit(f.sessionId, audit)
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })
+  })
+
+  it('reparses current 08 at finalization and does not require optional corrections', async () => {
+    const f = await makeReviewedDraft(structuredReview([{ fieldId: 'REPORT_TITLE', kind: 'optional', reason: '可选标题润色。' }]), false, true)
+    const reviewPath = path.join(f.projectRoot, 'commercialization-research/08-report-completeness-review.md')
+    await writeFile(reviewPath, '# Removed contract')
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID' })
+    await writeFile(reviewPath, structuredReview([{ fieldId: 'REPORT_TITLE', kind: 'optional', reason: '可选标题润色。' }]))
+    const final = await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })
+    expect(final.content).toBe(f.rendered.content)
+  })
+})
 
 describe('report delivery loop regressions', () => {
   it.each([
@@ -2912,7 +2973,7 @@ it('renders and finalizes a canonical zero-browser evidence-gap report through a
   expect(initial.content).toContain('本轮未取得可核验公开来源')
   expect(initial.content).not.toContain('href=')
   expect(initial.completionReviewRequired).toBe(true)
-  await writeFile(path.join(projectRoot, policy.completionReviewPath!), '# 完整性复核\n证据缺口已明确；无 MUST_PATCH。无需补写。')
+  await writeFile(path.join(projectRoot, policy.completionReviewPath!), '# 完整性复核\n证据缺口已明确；无 MUST_PATCH。无需补写。\n' + structuredReview([]))
   await service.recordResearchAudit(sessionId, { agentId: 'gap-output-reviewer', agentType: 'expert-evidence-output-reviewer', artifactPath: policy.completionReviewPath, entries: [] })
   const final = await renderAndCommit(service, sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath })
   expect(final.content).toBe(initial.content)

@@ -45,3 +45,23 @@ test('independently checks original declared provenance before accepting price c
   expect(prompt).not.toContain('Do not scan the workDir, reopen researcher ledgers')
   expect(EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.tools).toEqual(['Read', 'Write'])
 })
+
+test('recognized factual errors are mandatory corrections across all affected fields', () => {
+  const prompt = EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.getSystemPrompt({} as never)
+  expect(prompt).toContain('even when the overall recommendation is unchanged')
+  expect(prompt).toContain('summary and body')
+  expect(prompt).toContain('never classify a recognized factual or source error as optional')
+  expect(prompt).toContain('exactly one fenced JSON block labelled expert-report-review')
+  expect(prompt).toContain('factual-error|source-error|supported-omission|optional')
+  expect(prompt).toContain('actual schema field IDs')
+  expect(prompt).toContain('every affected fieldId')
+  expect(prompt).toContain('findings: []')
+})
+
+test('reviewer enumerates derived costs with original allowance periods rather than trusting division', () => {
+  const prompt = EXPERT_EVIDENCE_OUTPUT_REVIEW_AGENT.getSystemPrompt({} as never)
+  for (const key of ['calculations', 'amountPeriod', 'allowancePeriod', 'unitsPerTask', 'reportedCost']) expect(prompt).toContain(key)
+  expect(prompt).toContain('including AI inferences')
+  expect(prompt).toContain('annual spend against monthly allowance requires allowance * 12')
+  expect(prompt).toContain('original operand text, units and source URL')
+})

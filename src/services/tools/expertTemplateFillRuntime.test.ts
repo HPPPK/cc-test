@@ -86,6 +86,43 @@ describe('expert template-fill Write runtime', () => {
     expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command: commands[0] })).not.toThrow()
   })
 
+  test('CLI-only delivery allows literal JSON payload writes followed by the template CLI', () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    const suffix = '\n"$CLAUDE_CLI_PATH" expert-template-fill --data /tmp/patch2.json --output "报告.html" 2>&1 | tail -20'
+    const commands = [
+      // Reduced from the denied live compound command: the open target is JSON,
+      // while only the actual template CLI names the final HTML output.
+      "cd /tmp && python3 - <<'PY'\nimport json\nd=json.load(open('recovered_payload.json'))\npayload={ 'templateId': d['templateId'], 'fields': d['fields'] }\njson.dump(payload,open('patch2.json','w'),ensure_ascii=False)\nPY" + suffix,
+      `node -e "require('fs').writeFileSync('/tmp/patch2.json', JSON.stringify(payload))"` + suffix,
+      `node -e "require('fs').writeFile('/tmp/patch2.json', JSON.stringify(payload), callback)"` + suffix,
+      `node -e "require('fs').appendFileSync('/tmp/patch2.json', JSON.stringify(payload))"` + suffix,
+      `node -e "require('fs').createWriteStream('/tmp/patch2.json').end(payload)"` + suffix,
+      `python3 -c "from pathlib import Path; Path('/tmp/patch2.json').write_text(data)"` + suffix,
+      `python3 -c "from pathlib import Path; Path('/tmp/patch2.json').write_bytes(data)"` + suffix,
+    ]
+    for (const command of commands) {
+      expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command })).not.toThrow()
+    }
+  })
+
+  test('CLI-only JSON exception never hides HTML writes or dynamic targets', () => {
+    enableTemplateFillSession()
+    process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+    for (const command of [
+      `python3 -c "open('patch.json','w'); open('report.html','w').write(data)"`,
+      `node -e "writeFileSync('patch.json', data); writeFileSync('report.html', data)"; cc-jiangxia expert-template-fill --schema`,
+      `node -e "writeFileSync('patch.json', writeFileSync('report.html', data))"; cc-jiangxia expert-template-fill --schema`,
+      `python3 -c "open(target,'w').write(data)"; cc-jiangxia expert-template-fill --output report.html --data patch.json`,
+      `node -e "writeFileSync(target, data)"; cc-jiangxia expert-template-fill --output report.html --data patch.json`,
+      `node -e "writeFileSync('patch.json' + '.html', data)"`,
+      `python3 -c "Path(target).write_text(data)"; cc-jiangxia expert-template-fill --output report.html --data patch.json`,
+      `python3 -c "Path('patch.json').with_suffix('.html').write_text(data)"`,
+      `node -e "writeFileSync(\`\${target}.json\`, data)"; cc-jiangxia expert-template-fill --output report.html --data patch.json`,
+      `echo changed > report.html; node -e "writeFileSync('patch.json', data)"`,
+    ]) expect(() => assertExpertTemplateFillToolMutationAllowed('Bash', { command })).toThrow('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
+  })
+
   test('CLI-only delivery permits structured CLI stdin, existing data input, and research read-only shell', () => {
     enableTemplateFillSession()
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
@@ -444,6 +481,9 @@ describe('expert template-fill Write runtime', () => {
     const notice = expertTemplateFillPostWriteNotice(path.join(outputRoot, 'old-photo-report.html'))
     expect(notice).toContain('exact declared researcher reports/parts, evidence review and browser audit')
     expect(notice).toContain('independently verify original captured source text')
+    expect(notice).toContain('exactly one fenced JSON block')
+    expect(notice).toContain('patch every non-optional fieldId')
+    expect(notice).toContain('known factual/source/count/price-condition errors are never optional')
     const review = currentExpertTemplateOutputReviewContext()
     expect(review).toEqual({
       briefPath: 'commercialization-research/01-research-brief.md',

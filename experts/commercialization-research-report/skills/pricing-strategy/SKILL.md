@@ -36,6 +36,8 @@ If the user provides files (competitor pricing, survey data, financial models, o
 3. **Analyze competitive pricing**:
    - 核验原始价格数字及相邻条件，保留原文、URL/审计身份和日期；比较前对齐地区、币种、税费、计费周期、付款频率、优惠资格和续费。
    - 折扣标价与 “For first year X after that” 要按原文区分首年与续费，不自动判为矛盾；年付折算月价不等于按月结账。原文不明确时保留未知，不能补造结账页、实付额或税后价。
+   - 所有派生单位成本（含 AI 推断）先对齐周期、币种、税费和单位，年费对每月额度必须将额度乘以 12 后归一，再计入每任务消耗；一次性与周期用量没有明确比较期限不可直接计算。D/E/F 回读原始额度条件和来源，F 在同一 expert-report-review 块的 calculations 中逐项保留 fieldId/amount/amountPeriod/allowance/allowancePeriod/unitsPerTask/reportedCost；无可重建派生成本才空数组；不可重建者必须列对应字段 factual-error 而不造 calculation 项。缺操作数不得编造，列必修事实错误并移除不支持成本。
+   - 已识别的价格数字、单位、付款周期、优惠条件或来源归属错误都是必修；即使总体建议不变，也不能标为可选。修正摘要、正文、表格与来源中的全部出现位置；商业专家 F 在唯一 expert-report-review JSON 块中按实际 schema 字段逐项列 factual-error/source-error，不能只改来源表。
    - D/E 独立核对原始摘录与上下文，07 保留对应证据；F 从 07 原始摘录检查最终价格表述，缺原文则写明具体边界。只有相同套餐、条件和时点的主张互不相容才记冲突，不同口径标为不可直接比较。
    - Map competitor pricing tiers and what's included
    - Identify where your product sits (premium, mid-market, budget)

@@ -1156,3 +1156,51 @@ test('commercialization recovers exact structured fields with CLI instead of gue
   expect(runtime).toContain('finalized revision requires a complete new draft and a new F review')
   expect(runtime).toContain('does not verify or repair semantic claims')
 })
+
+test('commercialization requires structured correction coverage despite stale optional-error guidance', () => {
+  const stale = { ...binding(), promptSnapshot: 'F may mark a factual error optional if the recommendation is unchanged. No JSON review block is required.' }
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(stale), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const protocol = readFileSync('experts/commercialization-research-report/outputs/material-protocol.json', 'utf8')
+  for (const content of [runtime, prompt, protocol]) {
+    expect(content).toContain('expert-report-review')
+    expect(content).toContain('factual-error')
+    expect(content).toContain('source-error')
+    expect(content).toContain('supported-omission')
+  }
+  expect(runtime).toContain('exactly one fenced JSON block')
+  expect(runtime).toContain('every affected fieldId')
+  expect(runtime).toContain('even when the overall recommendation is unchanged')
+  expect(runtime).toContain('summary and body')
+  expect(runtime.lastIndexOf('exactly one fenced JSON block')).toBeGreaterThan(runtime.indexOf(stale.promptSnapshot))
+  expect(prompt).toContain('实际 schema 字段 ID')
+  expect(prompt).toContain('findings: []')
+})
+
+test('commercialization review reconciles all derived unit costs with explicit periods and operands', () => {
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const protocol = readFileSync('experts/commercialization-research-report/outputs/material-protocol.json', 'utf8')
+  for (const content of [runtime, prompt, protocol]) {
+    for (const key of ['calculations', 'amountPeriod', 'allowancePeriod', 'unitsPerTask', 'reportedCost']) expect(content).toContain(key)
+  }
+  expect(runtime).toContain('including AI inferences')
+  expect(runtime).toContain('annual spend against monthly allowance requires allowance * 12')
+  expect(runtime).toContain('one-time and recurring terms require an explicit comparison horizon')
+  const example = prompt.match(/```expert-report-review\n([^`]+)\n```/)
+  expect(example).not.toBeNull()
+  expect(JSON.parse(example![1]!)).toEqual({ version: 1, findings: [], calculations: [] })
+})
+
+test('commercial review contract errors recover the same artifacts without browser research', () => {
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  for (const content of [runtime, prompt]) {
+    expect(content).toContain('EXPERT_REPORT_REVIEW_CONTRACT_INVALID')
+    expect(content).toContain('EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING')
+    expect(content).toContain('expectedCost')
+  }
+  expect(runtime).toContain('rewrite only the same 08')
+  expect(runtime).toContain('not a browser-audit repair')
+  expect(runtime).toContain('all required changed fields')
+})
