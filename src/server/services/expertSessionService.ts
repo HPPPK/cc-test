@@ -1,3 +1,9 @@
+import { refreshRegisteredResearchEvidence } from './expertResearchEvidenceRefreshService.js'
+import { renderReportTemplateFieldGuide } from '../../services/tools/expertReportHandoffGuidance.js'
+import { buildResearchSourceSelection, renderResearchSourceSelectionMarkdown, requiredSourceCandidates } from './expertResearchSourceSelection.js'
+import { evaluateResearchQualityCheckpoint, researchEvidenceContractIssues, resolveResearchQualityCheckpointPolicy, type ResearchQualityContext } from './expertResearchQualityCheckpoint.js'
+import { commercializationResearchBudgetService } from './commercializationResearchBudgetService.js'
+import { guardExpertResearchIntake, upgradeResearchIntake, updateExpertResearchIntake } from './expertResearchIntakeService.js'
 import { isFileFirstExpertResearchAgentType, resolveFileFirstExpertAgentType, researchArtifactRootPath, registeredResearchArtifactPaths } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import { normalizeExpertResearchTaskKind, type ExpertResearchTaskKind } from '../../services/tools/expertSubagentSkillRuntime.js'
 // 专家 Mode session service.
@@ -28,7 +34,7 @@ import { evaluateExpertFinalSourceCoverage, evaluateExpertResearchCompletion, re
 import { recordExpertResearchEvidence, type ExpertResearchEvidenceRecord, type ExpertResearchEvidenceState } from './expertResearchEvidenceReviewService.js'
 import { evaluateResearchSourceLibraryExecutionCoverage, matchOpenedResearchSourceLibraryEntries, matchResearchSourceLibraryAttempts, parseResearchSourceLibrary, resolveResearchRecordArtifactPath, planResearchSourceLibraryExecutionBatches, renderResearchSourceLibraryTaskPoolMarkdown, renderResearchSourceLibraryUsageMarkdown, type ExpertResearchSourceLibraryDispatchReceipt, type ExpertResearchSourceLibraryExecutionPlan } from './expertResearchSourceLibraryService.js'
 import { evaluateExpertResearchRequiredRoutes, formatExpertResearchRouteEvaluation } from './expertResearchRouteCompletionService.js'
-import { parseExpertReportReviewContract } from './expertReportReviewContract.js'
+import { parseExpertReportReviewContract, reportCitationGaps } from './expertReportReviewContract.js'
 import { ensureCommercializationReportSourceBoundary } from './expertCommercializationReportScopeService.js'
 import { buildExpertPostReviewEvidenceAbsorptionInstruction, evaluateExpertResearchEvidenceAbsorption, mergeAuditedOpenedSourcesIntoSourceRows, recordExpertResearchEvidenceReviewer, resolveExpertResearchAuditSourceReferences, validateExpertResearchArtifactAuditTruth, type ExpertResearchEvidenceReviewerState } from './expertResearchEvidenceAbsorptionService.js'
 
@@ -81,7 +87,7 @@ type ExpertTemplateFillDraft = ExpertTemplateFillDraftState
 // Rejected fields are a repair candidate, NOT a rendered draft. Keep this
 // bounded, process-local cache separate from persisted delivery/review state.
 // No user storage format changes; a server restart requires a full resubmission.
-const templateFillCandidates = new Map<string, { sessionId: string; payload: TemplateFillSubmission; savedAt: number; bindingHash: string; outputPath?: string }>()
+const templateFillCandidates = new Map<string, { sessionId: string; payload: TemplateFillSubmission; savedAt: number; bindingHash: string; outputPath?: string; reviewedDraftHash?: string }>()
 // A render is only a prepared write. Receipts are process-local, never a new
 // user-storage schema; after server restart the same structured Write can retry.
 const templateFillWrites = new Map<string, {
@@ -111,13 +117,13 @@ function prepareTemplateFillWrite(sessionId: string, candidateKey: string, outpu
 function templateFillCandidateKey(sessionId: string, binding: unknown, outputPath: string | undefined): string {
   return sessionId + ':' + fingerprint({ binding, outputPath: outputPath ?? null })
 }
-function rememberTemplateFillCandidate(key: string, sessionId: string, payload: TemplateFillSubmission, binding: unknown, outputPath?: string): void {
+function rememberTemplateFillCandidate(key: string, sessionId: string, payload: TemplateFillSubmission, binding: unknown, outputPath?: string, reviewedDraftHash?: string): void {
   const now = Date.now()
   for (const [storedKey, value] of templateFillCandidates) {
     if (now - value.savedAt > 2 * 60 * 60 * 1000) templateFillCandidates.delete(storedKey)
   }
   templateFillCandidates.delete(key)
-  templateFillCandidates.set(key, { sessionId, payload, savedAt: now, bindingHash: fingerprint(binding), ...(outputPath ? { outputPath } : {}) })
+  templateFillCandidates.set(key, { sessionId, payload, savedAt: now, bindingHash: fingerprint(binding), ...(outputPath ? { outputPath } : {}), ...(reviewedDraftHash ? { reviewedDraftHash } : {}) })
   while (templateFillCandidates.size > 16) templateFillCandidates.delete(templateFillCandidates.keys().next().value!)
 }
 
@@ -300,6 +306,7 @@ export type ExpertPostReviewEvidenceAbsorptionContext = {
 }
 
 export type ExpertSubagentSkillContext = {
+  researchQuality?: ResearchQualityContext
   expertId: string
   packId: string
   packVersion: string
@@ -319,6 +326,7 @@ export type ExpertSubagentSkillContext = {
     absorptionPath: string
     completionReviewPath: string
     reportPath: string
+    templateFields?: Array<{ id: string; kind: string; columns?: string[] }>
   }
   researchTaskKind?: ExpertResearchTaskKind
   /** Current bounded A/B/C source-execution wave; never the whole library at once. */
@@ -341,22 +349,27 @@ function renderBrowserAuditArtifact(
   sourceLibraryContent?: string,
   sourceLibraryPlan?: ExpertResearchSourceLibraryExecutionPlan,
   sourceLibraryDispatches?: ExpertResearchSourceLibraryDispatchReceipt[],
+  sourceSelection?: ResearchQualityContext['sourceSelection'],
 ): string {
   const lines = [
     '# 浏览器研究审计台账',
+    '',
+    '> 来源编号：有真实编号的行可在 05/07 与 SOURCE_ROWS 中引用 audit:<编号>，服务端还原实际 URL；无编号的旧记录仍使用表中真实 URL。编号不是证据质量评级。',
     '',
     '> 此文件由服务端根据三名研究子代理实际记录的 Playwright 动作生成。它用于独立复核和最终字段吸收；不含浏览器 Profile、Cookie 或用户聊天内容。',
     '',
   ]
   for (const record of records) {
     lines.push('## ' + record.agentType + '（' + record.agentId + '）', '')
-    lines.push('| 状态 | 类型 | 搜索引擎 | 查询/目标 | 最终页面 | 动作 | 备注 |', '| --- | --- | --- | --- | --- | --- | --- |')
+    lines.push('| 来源编号 | 状态 | 类型 | 搜索引擎 | 查询/目标 | 最终页面 | 动作 | 备注 |', '| --- | --- | --- | --- | --- | --- | --- | --- |')
     for (const entry of record.entries) {
-      lines.push('| ' + markdownCell(entry.status) + ' | ' + markdownCell(entry.kind ?? 'url') + ' | ' + markdownCell(entry.searchEngine ?? '') + ' | ' + markdownCell(entry.query ?? entry.target) + ' | ' + markdownCell(entry.finalUrl ?? entry.target) + ' | ' + markdownCell((entry.actionTypes ?? []).join(' → ')) + ' | ' + markdownCell(entry.detail ?? '') + ' |')
+      lines.push('| ' + markdownCell(entry.auditId ? 'audit:' + entry.auditId : '') + ' | ' + markdownCell(entry.status) + ' | ' + markdownCell(entry.kind ?? 'url') + ' | ' + markdownCell(entry.searchEngine ?? '') + ' | ' + markdownCell(entry.query ?? entry.target) + ' | ' + markdownCell(entry.finalUrl ?? entry.target) + ' | ' + markdownCell((entry.actionTypes ?? []).join(' → ')) + ' | ' + markdownCell(entry.detail ?? '') + ' |')
     }
     lines.push('')
   }
-  if (sourceLibraryContent?.trim()) {
+  if (sourceSelection) {
+    lines.push(renderResearchSourceSelectionMarkdown(sourceSelection))
+  } else if (sourceLibraryContent?.trim()) {
     const sourceLibraryCatalog = parseResearchSourceLibrary(sourceLibraryContent)
     const sourceLibraryAttempts = matchResearchSourceLibraryAttempts({
       catalog: sourceLibraryCatalog,
@@ -420,10 +433,17 @@ function reconcileFileFirstExpertAgentType(input: {
   return resolveFileFirstExpertAgentType({ agentType: input.agentType, artifactPath: relativePath, artifactPaths: input.policy }) ?? input.agentType
 }
 
+function requireResearchSourceSelection(input: Parameters<typeof buildResearchSourceSelection>[0]) {
+  try { return buildResearchSourceSelection(input) }
+  catch (error) {
+    throw new ApiError(409, '先修复 01 中的选源计划，不重做研究：' + (error instanceof Error ? error.message : String(error)) + '。以上为实际校验错误，请主代理先修正对应输入并重新 Read 核验，不要重复派发未修正的计划。version=1；lanes 恰好为 competitors/user-needs/channels。picks 与 coreConsidered 可用运行时目录的 candidateId，或 candidateUrl；两者同时填写必须指向同一条目。每线保留 coreRationale、1–3 个 picks(purpose/reason) 和 coreConsidered(reason；decision 由 picks 推导)。不因语法错误改动来源选择，不删除块外用户资料和已有研究。', 'EXPERT_RESEARCH_SOURCE_SELECTION_REQUIRED')
+  }
+}
+
 async function requireResearchBriefArtifact(
   workDir: string,
   policy: ExpertResearchArtifactPolicy,
-): Promise<void> {
+): Promise<string> {
   const brief = resolveExpertResearchArtifactPath({
     workDir,
     policy,
@@ -432,6 +452,7 @@ async function requireResearchBriefArtifact(
   })
   const content = await fs.readFile(brief.absolutePath, 'utf8')
   if (!content.trim()) throw new Error('调研任务说明 Markdown 文件为空。')
+  return content
 }
 
 async function requireEvidenceReviewArtifact(
@@ -541,6 +562,12 @@ async function recoverReviewedTemplateFillDraft(sessionId: string, expert: Exper
   return recovered
 }
 
+function requireExpertWorkDir(session: { workDir?: string | null; projectRoot?: string | null; projectPath?: string | null } | null): string {
+  const workDir = session?.workDir || session?.projectRoot || session?.projectPath
+  if (!workDir) throw ApiError.badRequest('Expert session workspace is unavailable')
+  return workDir
+}
+
 function requireCommercialReportReviewContract(content: string, template: string) {
   try {
     return parseExpertReportReviewContract(content, deriveExpertTemplateFillSchema(template).fields.map(field => field.id))
@@ -556,7 +583,7 @@ async function requireReportCompletenessReviewArtifact(
   reviewerReceipt: { artifactPath: string; completedAt: string } | undefined,
   commercialTemplate?: string,
 ): Promise<{ content: string; requiresPatch: boolean; requiredFields?: string[]; calculationMismatches?: Array<{ fieldId: string; expectedCost: number; reportedCost: number }> }> {
-  if (!policy.completionReviewPath) return
+  if (!policy.completionReviewPath) throw new ApiError(409, 'Report completeness review path is not configured', 'EXPERT_REPORT_COMPLETENESS_REVIEW_REQUIRED')
   const review = resolveExpertResearchArtifactPath({
     workDir,
     policy,
@@ -626,9 +653,31 @@ export class ExpertSessionService {
       }
     }
     if (upgraded === expert) return expert
+    if (!workDir) throw ApiError.badRequest('Expert session workspace is unavailable')
     await sessionService.appendSessionMetadata(sessionId, { workDir, expert: upgraded })
     await expertRuntimeSessionStore.save(sessionId, upgraded)
     return upgraded
+  }
+
+  /** Refresh under the same lock as worker receipts; preserve audits and record identity. */
+  async refreshSavedResearchEvidence(sessionId: string): Promise<ExpertSessionMetadata | undefined> {
+    return withExpertResearchSourceDispatchLock(sessionId, async () => {
+      const session = await sessionService.getSession(sessionId)
+      const expert = hasActiveExpertRuntime(session?.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
+      const workDir = session?.workDir || session?.projectRoot || session?.projectPath
+      if (!hasActiveExpertRuntime(expert) || !workDir || !expert.researchEvidence || expert.templateFillDelivery
+        || !expert.runtimeBinding.researchArtifactPolicy || !expert.runtimeBinding.researchEvidenceReviewPolicy
+        || !resolveResearchQualityCheckpointPolicy(expert.runtimeBinding.outputProtocol?.content)) return expert
+      // A running writer still owns its handoff; don't snapshot a partial save.
+      if (Object.values(commercializationResearchBudgetService.inspect(sessionId, expert).pendingByLane).some(count => count > 0)) return expert
+      const researchEvidence = await refreshRegisteredResearchEvidence(workDir, expert.runtimeBinding.researchArtifactPolicy,
+        expert.researchEvidence, expert.runtimeBinding.researchEvidenceReviewPolicy.sourceAgentTypes)
+      if (researchEvidence === expert.researchEvidence) return expert
+      const refreshed = { ...expert, researchEvidence, updatedAt: new Date().toISOString() }
+      await sessionService.appendSessionMetadata(sessionId, { workDir, expert: refreshed })
+      await expertRuntimeSessionStore.save(sessionId, refreshed)
+      return refreshed
+    })
   }
 
   /**
@@ -665,7 +714,9 @@ export class ExpertSessionService {
       throw ApiError.badRequest('当前会话没有启用有效的 Expert Runtime。')
     }
 
+    await guardExpertResearchIntake(sessionId)
     const boundedResearch = expert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+    const qualityPolicy = resolveResearchQualityCheckpointPolicy(expert.runtimeBinding.outputProtocol?.content)
     const artifactPolicy = expert.runtimeBinding.researchArtifactPolicy
     const evidencePolicy = expert.runtimeBinding.researchEvidenceReviewPolicy
     const absorptionPolicy = expert.runtimeBinding.researchEvidenceAbsorptionPolicy
@@ -714,6 +765,10 @@ export class ExpertSessionService {
         || isOutputReviewer
       ),
     )
+    if (isPostResearchLifecycleAgent && artifactPolicy && qualityPolicy) {
+      expert = await this.refreshSavedResearchEvidence(sessionId) ?? expert
+      if (!hasActiveExpertRuntime(expert)) throw ApiError.badRequest('当前会话没有启用有效的 Expert Runtime。')
+    }
     const savedResearcherPaths = artifactPolicy && isPostResearchLifecycleAgent
       ? await savedResearcherArtifactPaths(session.workDir || session.projectRoot || session.projectPath, artifactPolicy,
         (expert.researchEvidence?.records ?? []).filter((record) => evidencePolicy?.sourceAgentTypes.includes(record.agentType))) : []
@@ -768,13 +823,14 @@ export class ExpertSessionService {
         )
       }
     }
+    let researchBriefContent: string | undefined
     if (artifactPolicy && isResearchLifecycleAgent) {
       const workDir = session.workDir || session.projectRoot || session.projectPath
       if (!workDir) {
         throw new ApiError(409, '当前会话缺少调研任务说明的输出目录。', 'EXPERT_RESEARCH_BRIEF_REQUIRED')
       }
       try {
-        await requireResearchBriefArtifact(workDir, artifactPolicy)
+        researchBriefContent = await requireResearchBriefArtifact(workDir, artifactPolicy)
         if (absorptionPolicy?.absorberAgentType === normalizedAgentType) {
           await requireEvidenceReviewArtifact(workDir, artifactPolicy)
         }
@@ -802,15 +858,71 @@ export class ExpertSessionService {
     const researchSourcePlan = isResearcher && researchTaskKind === 'source-batch'
       ? sourceLibraryCoverage?.executionWave
       : undefined
+    const templateFieldGuide = skillIds.includes('commercialization-field-evidence') && expert.runtimeBinding.outputTemplate
+      ? renderReportTemplateFieldGuide(expert.runtimeBinding.outputProtocol?.content, deriveExpertTemplateFillSchema(expert.runtimeBinding.outputTemplate.content).fields, !isResearcher) : ''
     const subagentSkills = expert.runtimeBinding.skills
       .filter((skill) => allowed.has(skill.skillId))
+      // The parent selects from the whole catalog; workers receive only their
+      // validated lane picks through researchQuality, avoiding three full copies.
+      .filter((skill) => !(qualityPolicy?.requireSourceSelection && isResearcher && skill.skillId === 'research-source-library'))
       // A researcher receives its one structured batch below. Do not also send
       // the whole catalog and force the model to guess its ownership.
       .filter((skill) => boundedResearch || !(researchSourcePlan || (isResearcher && researchTaskKind === 'targeted-evidence')) || skill.skillId !== 'research-source-library')
       .map((skill) => ({ ...skill, ...(boundedResearch && isResearcher && skill.skillId === 'research-source-library' ? {
-        content: '候选来源目录：按本线证据字段选择最相关入口，不是逐站访问清单。每名研究员最多 12 次浏览工具调用；总研究窗口 15 分钟，每线最多一次定向补查。预算耗尽后保存已有 Markdown、Read 回读并提交真实审计；未访问入口保留未访问，证据缺口交 D/E/F 如实披露，不得编造失败或扩展全库扫描。\n\n' + skill.content,
+        content: '候选来源目录：按本线证据字段选择最相关入口，不是逐站访问清单。每名研究员最多 12 次浏览工具调用；总研究窗口 ' + (qualityPolicy ? '25' : '15') + ' 分钟，每线最多一次定向补查。预算耗尽后保存已有 Markdown、Read 回读并提交真实审计；未访问入口保留未访问，证据缺口交 D/E/F 如实披露，不得编造失败或扩展全库扫描。\n\n' + skill.content,
       } : {}) }))
+      .map(skill => skill.skillId === 'commercialization-field-evidence' && templateFieldGuide
+        ? { ...skill, content: skill.content + '\n\n' + templateFieldGuide } : skill)
+    let sourceSelection: ResearchQualityContext['sourceSelection']
+    if (qualityPolicy?.requireSourceSelection && artifactPolicy && isResearchLifecycleAgent) {
+      sourceSelection = requireResearchSourceSelection({ brief: researchBriefContent ?? '', catalog: sourceLibraryCatalog ?? { entries: [] }, researcherPaths: artifactPolicy.researcherPaths,
+          records: (expert.researchEvidence?.records ?? []).filter(row => row.agentType === 'expert-evidence-researcher') })
+    }
+    let researchQuality: ResearchQualityContext | undefined
+    if (qualityPolicy && artifactPolicy && isResearchLifecycleAgent) {
+      const evaluation = isPostResearchLifecycleAgent ? evaluateResearchQualityCheckpoint({
+        policy: qualityPolicy, researcherPaths: artifactPolicy.researcherPaths,
+        records: (expert.researchEvidence?.records ?? []).filter(row => row.agentType === 'expert-evidence-researcher' && row.artifactPath)
+          .map(row => ({ path: row.artifactPath!, content: row.content, entries: row.entries })),
+      }) : undefined
+      const budget = commercializationResearchBudgetService.inspect(sessionId, expert)
+      if (evaluation && budget.timeRemainingMs > 0 && Object.values(budget.pendingByLane).some(count => count > 0)) throw new ApiError(409, '已有研究或定向补查尚未完成。等待原工作者的 TaskOutput 和实际审计；不得提前复核、重派仍在运行的工作者或用新代理代替保存。', 'EXPERT_RESEARCH_SUBAGENTS_PENDING')
+      if (evaluation?.issues.length) throw new ApiError(409,
+        'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID: 先修复已保存材料的字段：' + JSON.stringify({ issues: evaluation.issues, workers: (expert.researchEvidence?.records ?? []).filter(row => row.artifactPath && evaluation.issues.some(issue => issue.startsWith(row.artifactPath! + ':'))).map(row => ({ artifactPath: row.artifactPath, agentId: row.agentId })) })
+        + '。这是已保存材料的局部修复，不要新派研究者或重开网页。主代理可在现有文件权限内 Read 上列文件，用当前可用的 Edit/Write 修正具体字段，再回读并重新请求复核；后台会重新读取文件并沿用原浏览审计，不需要重新提交浏览回执。quote 直接复制正文中的连续原话，解释另写。没有证据支持的条目删去或降级，不补造；若缺少修复工具或权限，明确报告该限制，不要调用未提供的工具。',
+        'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID')
+      const gaps = new Map((evaluation?.gaps ?? []).map(gap => [gap.artifactPath, { ...gap }]))
+      if (isPostResearchLifecycleAgent) for (const lane of sourceSelection?.lanes ?? []) {
+        if (!sourceSelection!.unattemptedLanes.includes(lane.artifactPath)) continue
+        const question = '选源计划中的本线路线尚未真实尝试：' + requiredSourceCandidates(lane).map(pick => pick.candidateUrl).join('、') + '。按 purpose 至少选择一条相关路线；若核心入口已明确 selected，则至少尝试一条核心路线，或在 01 的 picks 移除并解释理由，已有同线回执可复用；其余为备用，不要求全部访问，不能把未执行写成网站失败。'
+        const existing = gaps.get(lane.artifactPath)
+        gaps.set(lane.artifactPath, existing ? { ...existing, question: existing.question + question } : { lane: lane.lane, artifactPath: lane.artifactPath, observed: 0, required: 1, question })
+      }
+      // Numeric evidence coverage is advisory. A selected route that was never
+      // attempted still needs an explicit attempt or a truthful plan correction.
+      const followups = [...gaps.values()].filter(gap => sourceSelection?.unattemptedLanes.includes(gap.artifactPath) && budget.timeRemainingMs > 0 && budget.remainingStarts > 0 && (budget.remainingByLane[gap.artifactPath] ?? 0) > 0)
+      if (followups.length) throw new ApiError(409,
+        'EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED: 基本证据仍不足，先补查以下有界问题再启动 D/E/F：' + JSON.stringify(followups)
+        + '。每条仅在原工作者已完成后派一次 targeted-evidence，research_artifact_path 使用所列路径，明确已有观察、唯一新增问题和停止条件；优先恢复失败路线或打开真实内容页，不重复首页，不重跑全库。预算/启动槽位用尽后保存缺口并继续有限证据报告。' + JSON.stringify(budget),
+        'EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED')
+      researchQuality = { policy: qualityPolicy, ...(evaluation ? { evaluation } : {}), ...(sourceSelection ? { sourceSelection } : {}),
+        ...(isResearcher ? { priorResearch: (expert.researchEvidence?.records ?? []).filter(row => row.agentType === 'expert-evidence-researcher' && row.artifactPath)
+          .map(row => ({ path: row.artifactPath!, content: row.content, entries: row.entries })) } : {}),
+        ...(evaluation && !evaluation.sufficientForReview ? { terminalReason: budget.timeRemainingMs <= 0 || budget.remainingStarts <= 0
+          ? '补查预算已用尽。保留已核验事实与证据缺口，继续有限证据复核，不再循环派遣。'
+          : '数量低于建议覆盖，仅供补查决策参考，不阻挡复核。按证据相关性与决策价值选择补查或保留缺口继续；不得为凑数量重复研究。' } : {}) }
+    }
+    // A schema query or a render-only receipt is not a saved initial draft.
+    // Reject before assembling skills/starting a worker; preserve the recovery
+    // code all the way back to the parent instead of a generic failed task.
+    if (isOutputReviewer && !renderedTemplateFillDraft(readTemplateFillDraft(expert))?.completionReview?.reportPath) {
+      throw new ApiError(409,
+        '初稿尚未通过 CLI 保存并确认。先用 claude expert-template-fill --schema 查询字段，再以完整 fields 调用同一 CLI 生成初稿；只有保存确认成功后才能派 expert-evidence-output-reviewer。若返回 retry-commit，只重试原回执确认。不要重做调研或把 schema 成功当成 HTML 已生成。',
+        'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED')
+    }
+    if (isOutputReviewer) await this.getTemplateFillFields(sessionId)
     return {
+      ...(researchQuality ? { researchQuality } : {}),
       expertId: expert.runtimeBinding.expertId,
       packId: expert.runtimeBinding.packId,
       packVersion: expert.runtimeBinding.packVersion,
@@ -835,6 +947,7 @@ export class ExpertSessionService {
             absorptionPath: artifactPolicy.absorptionPath,
             completionReviewPath: artifactPolicy.completionReviewPath,
             reportPath: expert.templateFillDraft.completionReview.reportPath,
+            ...(expert.runtimeBinding.outputTemplate ? { templateFields: deriveExpertTemplateFillSchema(expert.runtimeBinding.outputTemplate.content).fields } : {}),
           },
         }
         : {}),
@@ -875,8 +988,9 @@ export class ExpertSessionService {
     if (artifactPolicy) {
       const workDir = session.workDir || session.projectRoot || session.projectPath
       if (!workDir) throw ApiError.badRequest('当前会话缺少研究产物目录。')
+      let briefContent: string
       try {
-        await requireResearchBriefArtifact(workDir, artifactPolicy)
+        briefContent = await requireResearchBriefArtifact(workDir, artifactPolicy)
       } catch (error) {
         throw new ApiError(409, `尚未先生成有效的调研任务说明 Markdown：${error instanceof Error ? error.message : String(error)}`, 'EXPERT_RESEARCH_BRIEF_REQUIRED')
       }
@@ -931,6 +1045,8 @@ export class ExpertSessionService {
             sourceLibraryContent,
             sourceLibraryPlan,
             expert.researchSourceDispatches?.receipts,
+            resolveResearchQualityCheckpointPolicy(expert.runtimeBinding.outputProtocol?.content)?.requireSourceSelection
+              ? requireResearchSourceSelection({ brief: briefContent, catalog: parseResearchSourceLibrary(sourceLibraryContent), researcherPaths: artifactPolicy.researcherPaths, records: sourceRecords }) : undefined,
           ) + routeAuditSummary
         })(),
         'utf8',
@@ -1069,9 +1185,11 @@ export class ExpertSessionService {
       ...(researchBrowserPresentation ? { researchBrowserPresentation } : {}),
       materialRefs: previousRefs,
       intakeState: session.expert?.expertId === expert.id ? session.expert.intakeState : initialIntakeState(now),
+      researchIntake: session.expert?.expertId === expert.id ? session.expert.researchIntake : undefined,
       startedAt: session.expert?.startedAt ?? now,
       updatedAt: now,
     }
+    metadata.researchIntake = upgradeResearchIntake(metadata, now).researchIntake
     await expertRuntimeSessionStore.save(sessionId, metadata)
     await sessionService.appendSessionMetadata(sessionId, {
       workDir: session.workDir || session.projectRoot || session.projectPath,
@@ -1141,6 +1259,22 @@ export class ExpertSessionService {
     const session = await sessionService.getSession(sessionId)
     if (!session) throw ApiError.notFound('Session not found: ' + sessionId)
     if (!session.expert) throw ApiError.badRequest('请先进入专家 Mode。')
+    if (session.expert.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID) {
+      // Serialize the legacy form endpoint with trusted card receipts. It may
+      // retain user form data but cannot overwrite or grant research admission.
+      const expert = await updateExpertResearchIntake(sessionId, current => {
+        const now = new Date().toISOString()
+        const previous = current.intakeState ?? initialIntakeState(now)
+        const answers = { ...previous.answers, ...(input.answers ?? {}) }
+        const completed = new Set(previous.completedStepIds)
+        if (input.stepId) {
+          answers[input.stepId] = input.answer ?? input.answers?.[input.stepId] ?? answers[input.stepId]
+          completed.add(input.stepId)
+        }
+        return { ...current, intakeState: { currentStepId: input.stepId, answers, errors: {}, completedStepIds: [...completed], updatedAt: now }, updatedAt: now }
+      })
+      return { expert, intakeState: expert.intakeState! }
+    }
 
     const now = new Date().toISOString()
     const previous = session.expert.intakeState ?? initialIntakeState(now)
@@ -1251,6 +1385,7 @@ export class ExpertSessionService {
         session.workDir || session.projectRoot || session.projectPath,
         expert,
       )
+      if (!hasActiveExpertRuntime(expert)) throw ApiError.badRequest('当前会话没有启用可用的 Expert Runtime。')
       const agentId = typeof input.agentId === 'string' ? input.agentId.trim() : ''
       const agentType = typeof input.agentType === 'string' ? input.agentType.trim() : ''
       const artifactPath = exactArtifactPath(input.artifactPath)
@@ -1358,7 +1493,7 @@ export class ExpertSessionService {
       })
       if (!changed) return expert
       const updated = { ...expert, researchSourceDispatches: { ...dispatches, receipts }, updatedAt: new Date().toISOString() }
-      await sessionService.appendSessionMetadata(sessionId, { workDir: session?.workDir || session?.projectRoot || session?.projectPath, expert: updated })
+      await sessionService.appendSessionMetadata(sessionId, { workDir: requireExpertWorkDir(session), expert: updated })
       await expertRuntimeSessionStore.save(sessionId, updated)
       return updated
     })
@@ -1392,23 +1527,45 @@ export class ExpertSessionService {
     sessionId: string,
     input: { agentId: unknown; agentType: unknown; entries: unknown; artifactPath?: unknown; content?: unknown; interrupted?: unknown; completed?: unknown },
   ): Promise<{ expert: ExpertSessionMetadata; researchCompletion: ExpertResearchCompletionState; researchEvidence?: ExpertResearchEvidenceState }> {
+    let terminalExpert: ExpertSessionMetadata | undefined
     try {
       return await withExpertResearchSourceDispatchLock(sessionId, async () => {
         // A rejected audit must not erase the independent fact that its worker ended.
         if (input.completed === true || input.interrupted === true) {
           const session = await sessionService.getSession(sessionId)
           const expert = hasActiveExpertRuntime(session?.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
+          terminalExpert = expert
           const dispatches = expert?.researchSourceDispatches
           if (expert && dispatches?.receipts.some((receipt) => receipt.agentId === input.agentId && !receipt.completedAt)) {
             const now = new Date().toISOString()
             const updated = { ...expert, researchSourceDispatches: { ...dispatches, receipts: dispatches.receipts.map((receipt) => receipt.agentId === input.agentId ? { ...receipt, completedAt: receipt.completedAt ?? now } : receipt) }, updatedAt: now }
-            await sessionService.appendSessionMetadata(sessionId, { workDir: session?.workDir || session?.projectRoot || session?.projectPath, expert: updated })
+            await sessionService.appendSessionMetadata(sessionId, { workDir: requireExpertWorkDir(session), expert: updated })
             await expertRuntimeSessionStore.save(sessionId, updated)
           }
         }
         return this.recordResearchAuditUnlocked(sessionId, input)
       })
     } finally {
+      // Terminal lifecycle and evidence validity are independent. A rejected
+      // final audit must still release the actual worker for save-only recovery;
+      // partial writes keep it running until the caller submits a terminal audit.
+      if ((input.completed === true || input.interrupted === true) && typeof input.agentId === 'string') {
+        try {
+          if (!terminalExpert) {
+            const session = await sessionService.getSession(sessionId)
+            terminalExpert = hasActiveExpertRuntime(session?.expert) ? session.expert : await expertRuntimeSessionStore.get(sessionId)
+          }
+          if (hasActiveExpertRuntime(terminalExpert)
+            && terminalExpert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID
+            && (input.agentType === 'expert-evidence-researcher'
+              || commercializationResearchBudgetService.getWorkerLifecycles(sessionId, terminalExpert).some(worker => worker.agentId === input.agentId))) {
+            commercializationResearchBudgetService.finish(sessionId, terminalExpert, input.agentId)
+          }
+        } catch {
+          // Best effort only: a failed lookup must never replace the original
+          // audit error or prevent the readiness notification below.
+        }
+      }
       // Publish after releasing the shared receipt lock, including rejected
       // audits whose worker-completed marker was independently persisted.
       expertResearchAutoContinueService.schedule(sessionId)
@@ -1428,6 +1585,7 @@ export class ExpertSessionService {
       session.workDir || session.projectRoot || session.projectPath,
       expert,
     )
+      if (!hasActiveExpertRuntime(expert)) throw ApiError.badRequest('当前会话没有启用可用的 Expert Runtime。')
     const completionPolicy = expert.runtimeBinding.researchCompletionPolicy
     const evidencePolicy = expert.runtimeBinding.researchEvidenceReviewPolicy
     const absorptionPolicy = expert.runtimeBinding.researchEvidenceAbsorptionPolicy
@@ -1510,6 +1668,18 @@ export class ExpertSessionService {
               }
             : { ...artifactlessInput, agentType, content: input.content }
         }
+      }
+    }
+    // Reject malformed structure while the worker still owns its saved file.
+    // Accept the old explicit heading+JSON shape through the shared reader;
+    // quality and provenance remain separate checks, never inferred from a save.
+    if (tracksEvidence && hasDurableResearcherHandoff && !interrupted && artifactPolicy
+      && resolveResearchQualityCheckpointPolicy(expert.runtimeBinding.outputProtocol?.content)) {
+      const index = artifactPolicy.researcherPaths.indexOf(researchArtifactRootPath(evidenceInput.artifactPath ?? ''))
+      const lane = (['competitors', 'user-needs', 'channels'] as const)[index]
+      if (lane && typeof evidenceInput.content === 'string') {
+        const issues = researchEvidenceContractIssues(evidenceInput.content, lane)
+        if (issues.length) throw new ApiError(409, issues.join('；'), 'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID')
       }
     }
     if (tracksOutputReviewer && expert.runtimeBinding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID) {
@@ -1650,7 +1820,7 @@ export class ExpertSessionService {
     })
     await expertRuntimeSessionStore.save(input.sessionId, nextExpert)
     let repairHint = renderedTemplateFillDraft(readTemplateFillDraft(input.expert))
-      ? ' 已成功写入的初始 HTML 与复核状态仍保留，失败字段未提交。按 08 的结论继续：确有来源支持的遗漏，或 07 已有材料能纠正的来源/语义错误，才使用 mode="patch" 提交最小字段；无需修正则 mode="finalize" 且 fields: {}。不要为绕过校验添加占位字段或提交空补丁。'
+      ? ' 已成功写入的初始 HTML 与复核状态仍保留，失败字段未提交。局部修复候选只在本进程暂存，--recover-fields 可读取累计字段；服务重启后须从原草稿重新补正。按 08 的结论继续：确有来源支持的遗漏，或 07 已有材料能纠正的来源/语义错误，才使用 mode="patch" 提交最小字段；无需修正则 mode="finalize" 且 fields: {}。不要为绕过校验添加占位字段或提交空补丁。'
       : [...templateFillCandidates.values()].some((candidate) => candidate.sessionId === input.sessionId)
         ? ' 本次尚未生成 HTML，但本服务进程已保留已提交字段。下一次 Write 可用相同路径和 templateId、mode="patch" 只补正报错字段；删除母版未声明字段时提交该字段为 null（先把有用内容移到合法字段），合法字段不能置空。无需重写全文，也不要提前运行 08。服务重启后需重新提交完整字段。'
         : ' 本次尚未成功渲染 HTML；请提交完整 expert_output，不要提前运行 08 完整性复核。'
@@ -1672,9 +1842,10 @@ export class ExpertSessionService {
     }
     const draft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
     const snapshot = expert.templateFillDelivery?.fieldSnapshot
-    const candidate = !draft && !expert.templateFillDelivery ? [...templateFillCandidates.values()].reverse().find(value => value.sessionId === sessionId
-      && value.bindingHash === fingerprint(binding) && Date.now() - value.savedAt < 2 * 60 * 60 * 1000) : undefined
-    const payload = draft ? { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: draft.templateId, fields: draft.fields,
+    const candidate = !expert.templateFillDelivery ? [...templateFillCandidates.values()].reverse().find(value => value.sessionId === sessionId
+      && value.bindingHash === fingerprint(binding) && Date.now() - value.savedAt < 2 * 60 * 60 * 1000
+      && (draft ? value.reviewedDraftHash === fingerprint({ draft, review: expert.reportCompletenessReview }) : !value.reviewedDraftHash)) : undefined
+    const payload = draft ? { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: draft.templateId, fields: candidate?.payload.fields ?? draft.fields,
       ...(draft.evidenceAbsorption !== undefined ? { evidenceAbsorption: draft.evidenceAbsorption } : {}) }
       : snapshot?.payload ?? (candidate ? { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: candidate.payload.templateId, fields: candidate.payload.fields,
         ...(candidate.payload.evidenceAbsorption !== undefined ? { evidenceAbsorption: candidate.payload.evidenceAbsorption } : {}) } : undefined)
@@ -1708,7 +1879,7 @@ export class ExpertSessionService {
         }
         const safePath = await resolveExpertPathInside(canonicalRoot, path.basename(resolved))
         const written = await fs.readFile(safePath, 'utf8')
-        const expected = snapshot?.contentHash ?? createHash('sha256').update(renderExpertTemplateFill(binding.outputTemplate.content, payload,
+        const expected = snapshot?.contentHash ?? createHash('sha256').update(renderExpertTemplateFill(binding.outputTemplate.content, draft ? { ...payload, fields: draft.fields } : payload,
           { allowEmptySourceRows: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID }).content).digest('hex')
         if (createHash('sha256').update(written).digest('hex') !== expected) throw new Error('Report changed')
         // Bind the structured snapshot to the actual bytes too; a corrupt payload
@@ -1730,7 +1901,7 @@ export class ExpertSessionService {
       throw ApiError.badRequest('当前会话没有启用可用的专家模板填充输出。请重新进入专家 Mode 后重试。')
     }
     const binding = expert.runtimeBinding
-    const schema = deriveExpertTemplateFillSchema(binding.outputTemplate.content)
+    const schema = deriveExpertTemplateFillSchema(expert.runtimeBinding.outputTemplate.content)
     const draft = renderedTemplateFillDraft(readTemplateFillDraft(expert))
     const delivery = expert.templateFillDelivery
     const stage = draft ? 'draft' as const : delivery ? 'finalized' as const : 'initial' as const
@@ -1742,7 +1913,7 @@ export class ExpertSessionService {
       ...schema,
       delivery: binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID ? 'cli-only' as const : 'structured-write' as const,
       lifecycle: {
-        stage, allowedModes, recoveryCommand: 'cc-jiangxia expert-template-fill --recover-fields', ...(reportPath ? { reportPath } : {}),
+        stage, allowedModes, recoveryCommand: 'claude expert-template-fill --recover-fields', ...(reportPath ? { reportPath } : {}),
         ...(!draft && !delivery ? { initialSubmission: { allowed: true, omitMode: true } } : {}),
         ...(candidate ? { repairCandidate: { ...(candidate.outputPath ? { outputPath: candidate.outputPath } : {}), fieldIds: Object.keys(candidate.payload.fields) } } : {}),
       },
@@ -1818,6 +1989,8 @@ export class ExpertSessionService {
     const cachedCandidate = templateFillCandidates.get(candidateKey)
     const repairCandidate = cachedCandidate && Date.now() - cachedCandidate.savedAt < 2 * 60 * 60 * 1000
       && cachedCandidate.payload.templateId === submission.templateId ? cachedCandidate.payload : undefined
+    const reviewedDraftHash = existingDraft ? fingerprint({ draft: existingDraft, review: expert.reportCompletenessReview }) : undefined
+    const reviewedRepair = repairCandidate && cachedCandidate?.reviewedDraftHash === reviewedDraftHash ? repairCandidate : undefined
     const completionReviewRequired = Boolean(binding.researchArtifactPolicy?.completionReviewPath)
     const finalizedDelivery = expert.templateFillDelivery
     if (!existingDraft && finalizedDelivery && (submission.mode === 'patch' || submission.mode === 'finalize')) {
@@ -1904,7 +2077,7 @@ export class ExpertSessionService {
         templateId: existingDraft.templateId,
         fields: submission.mode === 'finalize'
           ? { ...existingDraft.fields }
-          : { ...existingDraft.fields, ...submission.fields },
+          : { ...existingDraft.fields, ...(reviewedRepair?.fields ?? {}), ...submission.fields },
         ...(submission.mode === 'finalize'
           ? existingDraft.evidenceAbsorption !== undefined
             ? { evidenceAbsorption: existingDraft.evidenceAbsorption }
@@ -1975,11 +2148,15 @@ export class ExpertSessionService {
       try {
         const review = await requireReportCompletenessReviewArtifact(workDir, binding.researchArtifactPolicy, initialRenderedAt, expert.reportCompletenessReview, binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID ? binding.outputTemplate.content : undefined)
         if (submission.mode === 'patch' && review.requiredFields?.length) {
-          const missing = review.requiredFields.filter(fieldId => !Object.hasOwn(submission.fields, fieldId)
-            || fingerprint(submission.fields[fieldId]) === fingerprint(existingDraft.fields[fieldId]))
+          // Retain cumulative local corrections, but never write an incomplete or
+          // unvalidated candidate over the report. No persisted format changes:
+          // restarting the service discards only this temporary repair buffer.
+          rememberTemplateFillCandidate(candidateKey, sessionId, effectivePayload, binding, outputPath, reviewedDraftHash)
+          const missing = review.requiredFields.filter(fieldId =>
+            fingerprint(effectivePayload.fields[fieldId]) === fingerprint(existingDraft.fields[fieldId]))
           if (missing.length) {
             const arithmetic = review.calculationMismatches?.map(item => `${item.fieldId}: expectedCost=${item.expectedCost}, reportedCost=${item.reportedCost}`).join('；')
-            throw new ApiError(409, `必须一次修正所有必需字段；缺失或未实际改变的字段：${missing.join('、')}。${arithmetic ? `计算核对：${arithmetic}。` : ''}请保留完整草稿和 08，仅补正这些字段后重试同一个 patch。`, 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING')
+            throw new ApiError(409, `仍待修正的必需字段：${missing.join('、')}。${arithmetic ? `计算核对：${arithmetic}。` : ''}本进程已暂存本次局部补正；报告原文件未变。仅补正剩余字段后重试同一 patch，无需重传已补正字段；--recover-fields 可恢复累计候选。服务重启后候选清空，按原草稿重新补正。`, 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING')
           }
         }
         if (submission.mode === 'patch' && !review.requiresPatch) {
@@ -1990,7 +2167,7 @@ export class ExpertSessionService {
         }
       } catch (error) {
         if (error instanceof ApiError) return this.throwTemplateFillRepairFailure({
-          sessionId, workDir, expert, payload, kind: 'template-fill', statusCode: error.statusCode, message: error.message, code: error.code,
+          sessionId, workDir, expert, payload, kind: 'template-fill', statusCode: error.statusCode, message: error.message, code: error.code ?? 'EXPERT_REPORT_COMPLETENESS_REVIEW_REQUIRED',
         })
         throw new ApiError(
           409,
@@ -2203,6 +2380,14 @@ export class ExpertSessionService {
         statusCode: 409,
         message: sourceCoverageFailure + ' 继续补充并核验具体公开页面，再把实际使用的来源逐条写入来源表；不要用“待验证”填满竞品、价格或渠道字段后直接交付。',
         code: 'EXPERT_FINAL_SOURCE_COVERAGE_REQUIRED',
+      })
+    }
+    if (binding.expertId === COMMERCIALIZATION_REPORT_EXPERT_ID) {
+      const missing = reportCitationGaps((payload as { fields: Record<string, unknown> }).fields)
+      if (missing.length) return this.throwTemplateFillRepairFailure({
+        sessionId, workDir: session.workDir || session.projectRoot || session.projectPath, expert, payload,
+        kind: 'evidence', statusCode: 409, code: 'EXPERT_REPORT_CITATION_REQUIRED',
+        message: '正文引用缺少来源行：' + missing.join('、') + '。优先补入已有真实取证来源；没有对应材料时，纠正该编号或移除悬空编号并如实限定主张。搜索摘要可引用实际搜索页并注明原文未核验；无需为此补搜或重写报告，不要删除已有有效内容。',
       })
     }
     try {

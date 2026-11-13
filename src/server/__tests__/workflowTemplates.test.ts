@@ -34,9 +34,11 @@ let baseUrl: string
 let server: ReturnType<typeof Bun.serve> | null = null
 
 const editableDefaultTemplateIds = new Set([
+  'skills-development',
   'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
 ])
 
 const zipAdapter = new ZipPackAdapter()
@@ -194,7 +196,6 @@ function validTemplate(id = 'custom-workflow'): Record<string, unknown> {
         name: 'Draft',
         instructions: 'Draft the requested artifact.',
         requiredIntake: ['Use the user request and prior workflow context.'],
-        handoffRules: ['Summarize the draft output and next action.'],
         outputArtifact: {
           id: 'draft-output',
           name: 'Draft output',

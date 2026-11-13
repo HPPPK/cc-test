@@ -46,7 +46,7 @@ async function getTaskOutput(shell: DeepImmutable<LocalShellTaskState>): Promise
     };
   }
 }
-export function ShellDetailDialog(t0) {
+export function ShellDetailDialog(t0: Props): React.ReactNode {
   const $ = _c(57);
   const {
     shell,
@@ -65,7 +65,7 @@ export function ShellDetailDialog(t0) {
   } else {
     t1 = $[1];
   }
-  const [outputPromise, setOutputPromise] = useState(t1);
+  const [outputPromise, setOutputPromise] = useState<Promise<TaskOutputResult>>(t1);
   const deferredOutputPromise = useDeferredValue(outputPromise);
   let t2;
   if ($[2] !== shell) {
@@ -301,7 +301,7 @@ type ShellOutputContentProps = {
   outputPromise: Promise<TaskOutputResult>;
   columns: number;
 };
-function ShellOutputContent(t0) {
+function ShellOutputContent(t0: ShellOutputContentProps): React.ReactNode {
   const $ = _c(19);
   const {
     outputPromise,
@@ -322,9 +322,9 @@ function ShellOutputContent(t0) {
     return t1;
   }
   let isIncomplete;
-  let rendered;
+  let rendered: string[];
   if ($[1] !== bytesTotal || $[2] !== content) {
-    const starts = [];
+    const starts: number[] = [];
     let pos = content.length;
     for (let i = 0; i < 10 && pos > 0; i++) {
       const prev = content.lastIndexOf("\n", pos - 1);

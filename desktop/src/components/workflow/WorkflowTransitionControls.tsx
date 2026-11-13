@@ -3,7 +3,6 @@ import { createWorkflowTransitionId } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
 import { formatWorkflowPhaseSummary } from './workflowPhaseDisplay'
-import { notifyDesktop } from '../../lib/desktopNotifications'
 
 export type WorkflowTransitionCommand = {
   phaseId: string
@@ -32,6 +31,7 @@ type WorkflowTransitionControlsProps = {
   transitionErrorScope?: { phaseId: string; stateVersion?: number; confirmationId?: string } | null
   transitionResetKey?: number
   transitionSyncing?: boolean
+  agentActive?: boolean
   embedded?: boolean
   sessionId?: string
   onConfirm: (command: WorkflowTransitionCommand) => void
@@ -47,15 +47,14 @@ export function WorkflowTransitionControls({
   transitionErrorScope = null,
   transitionResetKey = 0,
   transitionSyncing = false,
+  agentActive = false,
   embedded = false,
-  sessionId,
   onConfirm,
   onReject,
   onRetry,
 }: WorkflowTransitionControlsProps) {
   const t = useTranslation()
   const [localPending, setLocalPending] = useState(false)
-  const [clockNow, setClockNow] = useState(() => Date.now())
   const submissionLockRef = useRef(false)
   const lastWorkflowStateRef = useRef<string | null>(null)
   const lastResetKeyRef = useRef(transitionResetKey)
@@ -78,27 +77,15 @@ export function WorkflowTransitionControls({
       || Boolean(workflow.blockedReason)
     ),
   )
-  const automaticRecoveryExpiresAt = workflow?.autoRecovery?.expiresAt
-  // Recovery state belongs to the server's workflow snapshot. Do not surface a
-  // manual-action card while that snapshot says the automatic recovery window is
-  // still active, even if a stale phase id briefly reaches the UI first.
+  // Keep manual Retry unavailable while the active agent owns the one-shot
+  // recovery credential. Once the turn is idle, the user can still choose Retry
+  // if the model ended without consuming the credential.
   const automaticRecoveryIsActive = Boolean(
     workflow?.autoRecovery
-    && typeof automaticRecoveryExpiresAt === 'string'
-    && !Number.isNaN(Date.parse(automaticRecoveryExpiresAt))
-    && Date.parse(automaticRecoveryExpiresAt) > clockNow,
+    && agentActive,
   )
   const confirmationId = workflow?.pendingConfirmationId
   const workflowStateKey = `${phaseId ?? 'missing'}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
-  const pendingRouteId = workflow?.pendingRoute?.status === 'pending'
-    ? workflow.pendingRoute.routeId
-    : null
-  const pendingWorkflowActionId = pendingRouteId
-    ? `route:${pendingRouteId}`
-    : workflow?.pendingConfirmation && confirmationId
-      ? `confirmation:${confirmationId}`
-      : null
-
   useEffect(() => {
     const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
     const resetRequested = lastResetKeyRef.current !== transitionResetKey
@@ -109,26 +96,6 @@ export function WorkflowTransitionControls({
     lastWorkflowStateRef.current = workflowStateKey
     lastResetKeyRef.current = transitionResetKey
   }, [transitionResetKey, workflowStateKey])
-
-  useEffect(() => {
-    if (!pendingWorkflowActionId) return
-
-    void notifyDesktop({
-      dedupeKey: `workflow-user-action:${sessionId ?? 'current'}:${pendingWorkflowActionId}`,
-      title: t('workflows.transition.confirmTitle'),
-      body: t('workflows.transition.confirmDescription'),
-      requestAttention: true,
-      ...(sessionId ? { target: { type: 'session' as const, sessionId } } : {}),
-    })
-  }, [pendingWorkflowActionId, sessionId, t])
-
-  useEffect(() => {
-    if (!automaticRecoveryExpiresAt) return undefined
-    const expiresAt = Date.parse(automaticRecoveryExpiresAt)
-    if (Number.isNaN(expiresAt)) return undefined
-    const timeout = window.setTimeout(() => setClockNow(Date.now()), Math.max(0, expiresAt - Date.now()))
-    return () => window.clearTimeout(timeout)
-  }, [automaticRecoveryExpiresAt])
 
   if (!workflow || !phaseId || (!pending && !blocked) || automaticRecoveryIsActive) return null
 

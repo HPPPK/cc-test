@@ -1,3 +1,4 @@
+import { requireFixtureArray, requireFixtureRecord } from '../__tests__/fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -63,9 +64,11 @@ type ConfigSnapshot = {
 }
 
 const editableDefaultTemplateIds = new Set([
+  'skills-development',
   'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
 ])
 
 const zipAdapter = new ZipPackAdapter()
@@ -1777,7 +1780,7 @@ describe('workflow template authoring service duplicate operation', () => {
       editable: true,
       copyable: true,
     })
-    expect((await readWorkflowConfig()).templates).toContainEqual(expect.objectContaining({
+    expect(requireFixtureArray(requireFixtureRecord(await readWorkflowConfig()).templates)).toContainEqual(expect.objectContaining({
       id: 'agent-development-team-edition',
       name: 'Agent Development Team Edition',
     }))

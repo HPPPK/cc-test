@@ -1067,6 +1067,7 @@ export function ActiveSession() {
       transitionErrorScope={workflowTransitionErrorScope}
       transitionResetKey={workflowTransitionResetKey}
       transitionSyncing={workflowTransitionSyncing}
+      agentActive={isActive}
       onConfirm={handleWorkflowTransition}
       onReject={handleWorkflowTransition}
       onRetry={handleWorkflowTransition}

@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto'
+import { normalizeSDKMessageUuid } from '../entrypoints/sdk/messageIdentity.js'
+import { messageKindMetadata } from '../utils/messageKind.js'
 import type {
   SDKAssistantMessage,
   SDKCompactBoundaryMessage,
@@ -31,8 +34,9 @@ import { createUserMessage } from '../utils/messages.js'
 function convertAssistantMessage(msg: SDKAssistantMessage): AssistantMessage {
   return {
     type: 'assistant',
+    ...messageKindMetadata(msg),
     message: msg.message,
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     requestId: undefined,
     timestamp: new Date().toISOString(),
     error: msg.error,
@@ -60,10 +64,11 @@ function convertResultMessage(msg: SDKResultMessage): SystemMessage {
 
   return {
     type: 'system',
+    ...messageKindMetadata(msg),
     subtype: 'informational',
     content,
     level: isError ? 'warning' : 'info',
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     timestamp: new Date().toISOString(),
   }
 }
@@ -74,10 +79,11 @@ function convertResultMessage(msg: SDKResultMessage): SystemMessage {
 function convertInitMessage(msg: SDKSystemMessage): SystemMessage {
   return {
     type: 'system',
+    ...messageKindMetadata(msg),
     subtype: 'informational',
     content: `Remote session initialized (model: ${msg.model})`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     timestamp: new Date().toISOString(),
   }
 }
@@ -92,13 +98,14 @@ function convertStatusMessage(msg: SDKStatusMessage): SystemMessage | null {
 
   return {
     type: 'system',
+    ...messageKindMetadata(msg),
     subtype: 'informational',
     content:
       msg.status === 'compacting'
         ? 'Compacting conversation…'
         : `Status: ${msg.status}`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     timestamp: new Date().toISOString(),
   }
 }
@@ -113,10 +120,11 @@ function convertToolProgressMessage(
 ): SystemMessage {
   return {
     type: 'system',
+    ...messageKindMetadata(msg),
     subtype: 'informational',
     content: `Tool ${msg.tool_name} running for ${msg.elapsed_time_seconds}s…`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     timestamp: new Date().toISOString(),
     toolUseID: msg.tool_use_id,
   }
@@ -130,10 +138,11 @@ function convertCompactBoundaryMessage(
 ): SystemMessage {
   return {
     type: 'system',
+    ...messageKindMetadata(msg),
     subtype: 'compact_boundary',
     content: 'Conversation compacted',
     level: 'info',
-    uuid: msg.uuid,
+    uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
     timestamp: new Date().toISOString(),
     compactMetadata: fromSDKCompactMetadata(msg.compact_metadata),
   }
@@ -185,12 +194,15 @@ export function convertSDKMessage(
       if (opts?.convertToolResults && isToolResult) {
         return {
           type: 'message',
-          message: createUserMessage({
-            content,
-            toolUseResult: msg.tool_use_result,
-            uuid: msg.uuid,
-            timestamp: msg.timestamp,
-          }),
+          message: {
+            ...createUserMessage({
+              content,
+              toolUseResult: msg.tool_use_result,
+              uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
+              timestamp: msg.timestamp,
+            }),
+            ...messageKindMetadata(msg),
+          },
         }
       }
       // When converting historical events, user-typed messages need to be
@@ -200,12 +212,15 @@ export function convertSDKMessage(
         if (typeof content === 'string' || Array.isArray(content)) {
           return {
             type: 'message',
-            message: createUserMessage({
-              content,
-              toolUseResult: msg.tool_use_result,
-              uuid: msg.uuid,
-              timestamp: msg.timestamp,
-            }),
+            message: {
+              ...createUserMessage({
+                content,
+                toolUseResult: msg.tool_use_result,
+                uuid: normalizeSDKMessageUuid(msg.uuid) ?? randomUUID(),
+                timestamp: msg.timestamp,
+              }),
+              ...messageKindMetadata(msg),
+            },
           }
         }
       }

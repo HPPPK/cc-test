@@ -12,7 +12,7 @@ function completedState(): WorkflowSessionState {
     createdAt: '2026-05-20T00:01:00.000Z',
     updatedAt: '2026-05-20T00:02:00.000Z',
     label: 'Discussion completion',
-    lifecycleStatus: 'accepted',
+    lifecycleStatus: 'accepted' as const,
   }
 
   return {
@@ -145,7 +145,7 @@ describe('buildWorkflowFinalReport', () => {
     ]
     const acceptedCompletionArtifact = {
       ...state.artifactIndex[0],
-      lifecycleStatus: 'accepted',
+      lifecycleStatus: 'accepted' as const,
       submission: {
         phaseId: 'discussion',
         stateVersion: 3,
@@ -166,7 +166,7 @@ describe('buildWorkflowFinalReport', () => {
 
     expect(report.artifactRefs).toContainEqual(expect.objectContaining({
       artifactId: 'discussion-ready-1',
-      lifecycleStatus: 'accepted',
+      lifecycleStatus: 'accepted' as const,
       submission: expect.objectContaining({
         status: 'ready',
         evidence: completionEvidence,

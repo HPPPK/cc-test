@@ -510,7 +510,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     })
@@ -550,7 +550,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -589,7 +589,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -633,7 +633,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -673,7 +673,7 @@ describe('ConversationService', () => {
       stderrLines: [],
       sdkMessages: [],
       sdkPayloadBuffer: '',
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -723,7 +723,7 @@ describe('ConversationService', () => {
       stderrLines: [],
       sdkMessages: [],
       sdkPayloadBuffer: '',
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }

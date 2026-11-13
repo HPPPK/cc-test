@@ -8,6 +8,7 @@ import {
   loadExpertPostReviewEvidenceAbsorptionContext,
   loadExpertSubagentResearchEvidenceContext,
   loadExpertSubagentSkillContext,
+  preflightExpertSubagentDispatch,
   recordExpertSubagentResearchAudit,
   recordExpertSubagentResearchSourceDispatch,
   resolveExpertAssignedResearchSourceBatch,
@@ -311,6 +312,7 @@ describe('expertSubagentSkillRuntime', () => {
           absorptionPath: 'commercialization-research/07-report-field-absorption.md',
           completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
           reportPath: 'C:/expert-session-output/persisted-report.html',
+          templateFields: [{ id: 'COMPETITOR_LANDSCAPE_ROWS', kind: 'table-rows', columns: ['产品', '能力'] }],
         },
         skills: [],
       }), { status: 200 }),
@@ -321,6 +323,7 @@ describe('expertSubagentSkillRuntime', () => {
       absorptionPath: 'commercialization-research/07-report-field-absorption.md',
       completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
       reportPath: 'C:/expert-session-output/persisted-report.html',
+      templateFields: [{ id: 'COMPETITOR_LANDSCAPE_ROWS', kind: 'table-rows', columns: ['产品', '能力'] }],
     })
   })
 
@@ -502,4 +505,71 @@ test('canonical targeted workers retain candidate library with bounded instructi
   const other = formatExpertSubagentSkillContext({ ...context, expertId: 'other' }, { researcherTargetPath: 'research/02.md' })!
   expect(other).not.toContain('https://candidate.example/product')
   expect(other).toContain('继续留在原队列')
+})
+
+test('selected source plans survive API normalization and only the assigned lane enters the worker prompt', async () => {
+  const paths = ['research/02.md', 'research/03.md', 'research/04.md']
+  const lanes = ['competitors', 'user-needs', 'channels'] as const
+  const response = { expertId: 'commercialization-research-report', packId: 'commercialization-research-report', packVersion: '0.13.57-local', skills: [], artifactPaths: { briefPath: 'research/01.md', researcherPaths: paths, reviewerPath: 'research/05.md', auditPath: 'research/06.md' }, researchQuality: {
+    policy: { version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 1, requireSourceSelection: true, channelEvidenceStandard: 'public-path' },
+    sourceSelection: { version: 1, lanes: lanes.map((lane, i) => ({ lane, artifactPath: paths[i], coreConsidered: [{ candidateUrl: 'https://core.example.com/', category: '核心数据', decision: 'deferred', reason: '本线具体页面优先，行业统计不替代直接用户材料。' }], coreRationale: '按具体问题选择核心数据，用户原话从社区取证。', picks: [{ candidateUrl: 'https://lane' + i + '.example.com/', tier: 'open', category: '公开来源', purpose: '本线具体问题与字段', reason: '按任务相关性选择公开内容页面。', status: 'not_visited', attemptedUrls: [] }] })), unattemptedLanes: paths },
+  } }
+  const context = await loadExpertSubagentSkillContext('expert-evidence-researcher', { env: expertEnv, fetch: async () => Response.json(response) })
+  const prompt = formatExpertSubagentSkillContext(context, { researcherTargetPath: 'research/04.parts/worker.md' })!
+  expect(prompt).toContain('https://lane2.example.com/')
+  expect(prompt).not.toContain('https://lane0.example.com/')
+  expect(prompt).toContain('channelPath')
+  expect(prompt).toContain('不要求已经证明获客有效')
+})
+
+test('preserves an initial-draft admission failure and its recovery without retrying it', async () => {
+  let requests = 0
+  await expect(loadExpertSubagentSkillContext('expert-evidence-output-reviewer', {
+    env: expertEnv,
+    fetch: async () => {
+      requests += 1
+      return Response.json({ error: 'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED', message: '先用 claude expert-template-fill 保存初稿。' }, { status: 409 })
+    },
+  })).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED', message: '先用 claude expert-template-fill 保存初稿。' })
+  expect(requests).toBe(1)
+})
+
+test('expert dispatch preflight skips ordinary agents and checks the requested purpose without creating a worker', async () => {
+  let requests = 0
+  const deps = { env: expertEnv, fetch: async (url: string | URL | Request) => { requests++; expect(String(url)).toContain('researchTaskKind=targeted-evidence'); return packageSkillResponse() } }
+  await preflightExpertSubagentDispatch(undefined, undefined, deps)
+  await preflightExpertSubagentDispatch('general-purpose', undefined, deps)
+  await preflightExpertSubagentDispatch('expert-evidence-researcher', undefined, { ...deps, env: {} })
+  expect(requests).toBe(0)
+  await expect(preflightExpertSubagentDispatch('expert-evidence-researcher', 'targeted-evidence', deps)).resolves.toBeUndefined()
+  expect(requests).toBe(1)
+})
+
+test('expert dispatch preflight preserves a missing-context failure after bounded transport recovery', async () => {
+  let requests = 0
+  await expect(preflightExpertSubagentDispatch('expert-evidence-researcher', 'targeted-evidence', {
+    env: expertEnv, fetch: async () => { requests++; return Response.json({ error: 'UNAVAILABLE' }, { status: 503 }) },
+  })).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_DISPATCH_CONTEXT_UNAVAILABLE' })
+  expect(requests).toBe(2)
+})
+
+
+test('unknown structured server failures retain their exact diagnostic without an error-code allowlist', async () => {
+  for (const key of ['error', 'code']) {
+    const message = '原始输入错误：' + JSON.stringify({ parserMessage: 'Unexpected token', line: 8, source: '{invalid' })
+    let attempts = 0
+    await expect(loadExpertSubagentSkillContext('expert-evidence-researcher', {
+      env: { CC_JIANGXIA_EXPERT_SESSION_ID: 'diagnostic', CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://localhost:3456' },
+      fetch: async () => { attempts++; return Response.json({ [key]: 'NEW_VALIDATION_FAILURE', message }, { status: 409 }) },
+    })).rejects.toMatchObject({ code: 'NEW_VALIDATION_FAILURE', message })
+    expect(attempts).toBe(1)
+  }
+})
+
+
+test('failed dispatch keeps the concrete diagnostic and says no task exists to wait for', async () => {
+  await expect(preflightExpertSubagentDispatch('expert-evidence-reviewer', undefined, {
+    env: expertEnv,
+    fetch: async () => Response.json({ error: 'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID', message: '原文件 quote 缺失，请修复。' }, { status: 409 }),
+  })).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID', message: expect.stringContaining('未创建子代理任务') })
 })

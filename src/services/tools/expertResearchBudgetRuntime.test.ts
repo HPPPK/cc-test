@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { reserveExpertResearcherStart, guardExpertResearchToolCall } from './expertResearchBudgetRuntime.js'
+import { reserveExpertResearcherStart, guardExpertResearchToolCall, finishExpertResearcher } from './expertResearchBudgetRuntime.js'
 const env = { CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE: '1', CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY: 'cli-only', CC_JIANGXIA_EXPERT_SESSION_ID: 's', CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://localhost:3456' }
 describe('Expert research budget runtime', () => {
   test('fails closed on canonical reservation transport and denial', async () => {
@@ -95,4 +95,29 @@ test('unavailable admission service fails only the requested operation without c
   expect(error?.message).toContain('offline')
   expect(error?.message).toContain('requested operation was not admitted')
   expect(error?.message).not.toContain('without further research')
+})
+
+
+test('worker cleanup reports its own terminal lifecycle without an extra model call or refunded admission', async () => {
+  const bodies: any[] = []
+  const fetchImpl = async (_url: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return Response.json({ allowed: true }) }
+  await finishExpertResearcher({ agentId: 'a', agentType: 'expert-evidence-researcher', expertId: 'commercialization-research-report', env, fetchImpl })
+  expect(bodies).toEqual([{ action: 'finish-researcher', agentId: 'a' }])
+  await finishExpertResearcher({ agentId: 'reviewer', agentType: 'expert-evidence-reviewer', expertId: 'commercialization-research-report', env, fetchImpl })
+  expect(bodies).toHaveLength(1)
+  await expect(finishExpertResearcher({ agentId: 'a', agentType: 'expert-evidence-researcher', expertId: 'commercialization-research-report', env, fetchImpl: async () => { throw new Error('offline') } })).resolves.toBeUndefined()
+})
+
+
+test('canonical claude report stdin is data, while surrounding network commands remain guarded', async () => {
+  const { isExpertPublicResearchCall } = await import('./expertResearchBudgetRuntime.js')
+  const payload = JSON.stringify({ fields: { SOURCE_ROWS: [['audit:playwright:real-call:0']], DATA_DECLARATION: 'curl is a quoted word' } })
+  for (const executable of ['claude', '/Applications/Test.app/Contents/MacOS/claude']) {
+    const command = executable + " expert-template-fill --data-stdin <<'JSON'\n" + payload + '\nJSON'
+    expect(isExpertPublicResearchCall('Bash', { command })).toBe(false)
+    expect(isExpertPublicResearchCall('Bash', { command: command + '\ncurl https://example.com' })).toBe(true)
+    expect(isExpertPublicResearchCall('Bash', { command: command.replace('\nJSON', '\\nJSON') })).toBe(true)
+    await guardExpertResearchToolCall({ toolName: 'Bash', input: { command }, env, fetchImpl: async () => { throw new Error('local report must not reserve browser budget') } })
+  }
+  expect(isExpertPublicResearchCall('PowerShell', { command: "@'\n" + payload + "\n'@ | claude expert-template-fill --data-stdin" })).toBe(false)
 })

@@ -5,6 +5,7 @@ import { filesystemApi } from '../../api/filesystem'
 import { useTranslation } from '../../i18n'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { MobileBottomSheet } from './MobileBottomSheet'
+import { pickProjectFolder } from '../../lib/projectFolderPicker'
 
 type Props = {
   value: string
@@ -41,6 +42,11 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
   const [browsePath, setBrowsePath] = useState('')
   const [browseParent, setBrowseParent] = useState('')
   const [loading, setLoading] = useState(false)
+  const [browseError, setBrowseError] = useState(false)
+  const [nativePickerFailed, setNativePickerFailed] = useState(false)
+  const browseRequest = useRef(0)
+  const browseTarget = useRef<string | undefined>(undefined)
+  const nativeRequest = useRef(0)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; direction: 'up' | 'down' } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -107,17 +113,34 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
   }, [isOpen, mode])
 
   const loadBrowseDir = async (path?: string) => {
+    browseTarget.current = path
+    const request = ++browseRequest.current
     setLoading(true)
+    setBrowseError(false)
     try {
       const result = await filesystemApi.browse(path)
+      if (request !== browseRequest.current) return
       setBrowsePath(result.currentPath)
       setBrowseParent(result.parentPath)
       setBrowseEntries(result.entries)
-    } catch { /* API not available */ }
-    setLoading(false)
+    } catch {
+      if (request !== browseRequest.current) return
+      setBrowseError(true)
+      setBrowseEntries([])
+    } finally {
+      if (request === browseRequest.current) setLoading(false)
+    }
+  }
+
+  const openBrowser = () => {
+    ++nativeRequest.current
+    setMode('browse')
+    setIsOpen(true)
+    void loadBrowseDir(value || undefined)
   }
 
   const handleSelect = (path: string) => {
+    ++nativeRequest.current
     onChange(path)
     setIsOpen(false)
     setMode('recent')
@@ -126,24 +149,22 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
   }
 
   const handleChooseFolder = async () => {
+    setNativePickerFailed(false)
     if (isTauriRuntime()) {
-      // Desktop: native OS folder dialog
+      const request = ++nativeRequest.current
       setIsOpen(false)
       try {
-        const { open } = await import('@tauri-apps/plugin-dialog')
-        const selected = await open({
-          directory: true,
-          multiple: false,
-          title: t('dirPicker.chooseProjectFolder'),
-        })
-        if (selected) onChange(selected)
+        const selected = await pickProjectFolder(t('dirPicker.chooseProjectFolder'))
+        if (request !== nativeRequest.current) return
+        if (selected) handleSelect(selected)
       } catch (err) {
+        if (request !== nativeRequest.current) return
         console.error('[DirectoryPicker] Failed to open folder dialog:', err)
+        setNativePickerFailed(true)
+        openBrowser()
       }
     } else {
-      // Web browser: directory tree via backend API
-      setMode('browse')
-      loadBrowseDir(value || undefined)
+      openBrowser()
     }
   }
 
@@ -228,10 +249,18 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
           <span className="material-symbols-outlined text-[20px] text-[var(--color-text-tertiary)]">create_new_folder</span>
           <span className="text-sm text-[var(--color-text-secondary)]">{t('dirPicker.chooseFolder')}</span>
         </button>
+        {isTauriRuntime() && (
+          <button onClick={() => { setNativePickerFailed(false); openBrowser() }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]">
+            {t('dirPicker.browseInApp')}
+          </button>
+        )}
       </div>
     </>
   ) : (
     <>
+      {nativePickerFailed && (
+        <div role="alert" className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">{t('dirPicker.nativeUnavailable')}</div>
+      )}
       <div className="flex flex-wrap items-center gap-1 border-b border-[var(--color-border)] px-3 py-2">
         <button onClick={() => setMode('recent')} className="mr-2 text-xs text-[var(--color-text-accent)] hover:underline">
           {'← ' + t('dirPicker.recent')}
@@ -251,6 +280,11 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
       <div className={`${isMobileBrowser ? '' : 'max-h-[240px]'} overflow-y-auto`}>
         {loading ? (
           <div className="px-3 py-4 text-center text-xs text-[var(--color-text-tertiary)]">{t('common.loading')}</div>
+        ) : browseError ? (
+          <div role="alert" className="px-3 py-4 text-xs text-[var(--color-text-secondary)]">
+            {t('dirPicker.browseFailed')}
+            <button onClick={() => void loadBrowseDir(browseTarget.current)} className="ml-2 text-[var(--color-brand)] hover:underline">{t('dirPicker.retry')}</button>
+          </div>
         ) : (
           <>
             {browseParent && browseParent !== browsePath && (
@@ -285,7 +319,7 @@ export function DirectoryPicker({ value, onChange, variant = 'chip', isGitProjec
 
       <div className="flex items-center justify-between border-t border-[var(--color-border)] px-3 py-2">
         <span className="truncate font-[var(--font-mono)] text-[10px] text-[var(--color-text-tertiary)]">{browsePath}</span>
-        <button onClick={() => handleSelect(browsePath)} className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90">
+        <button disabled={loading || browseError || !browsePath} onClick={() => handleSelect(browsePath)} className="rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
           {t('dirPicker.useThisFolder')}
         </button>
       </div>

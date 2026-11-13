@@ -31,20 +31,22 @@ function validPhase(overrides: Record<string, unknown> = {}) {
       name: 'Plan Output',
       kind: 'markdown',
       description: 'A plan.',
-      required: true,
+      required: true as const,
     },
     completionCriteria: {
-      type: 'manual-checklist',
+      type: 'manual-checklist' as const,
       description: 'Plan is complete.',
     },
-    transition: { authority: 'auto' },
+    transition: { authority: 'auto' as const },
+    skills: [], requiredArtifacts: [],
     ...overrides,
   }
 }
 
 function validWorkflow(overrides: Record<string, unknown> = {}) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 2 as const,
+    source: 'user' as const,
     id: 'guided-development',
     version: '1.0.0',
     name: 'Guided Development',
@@ -259,7 +261,7 @@ describe('PackRegistryService', () => {
           id: 'test1',
           name: 'test',
           version: '1',
-          schemaVersion: 2,
+          schemaVersion: 2 as const,
           description: '',
           entrypoint: 'workflows/guided-development.workflow.json',
           phaseCount: 1,
@@ -424,6 +426,8 @@ describe('PackRegistryService', () => {
       // Skills are now pack-private - never installed to user skills directory
       expect(result.skillInstallPlan?.[0]?.status).toBe('pack-private')
       expect(await fs.readdir(path.join(importConfigDir, 'skills')).catch(() => [])).toEqual([])
+      const catalog = await new PackRegistryService().listPackSkillCatalogEntries()
+      expect(catalog.filter(entry => entry.packId === result.pack.packId)).toHaveLength(1)
     } finally {
       await fs.rm(importConfigDir, { recursive: true, force: true })
       process.env.CLAUDE_CONFIG_DIR = tempConfigDir

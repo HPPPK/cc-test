@@ -84,7 +84,7 @@ describe('Playwright browser runner', () => {
     const source = await readFile(path.join(import.meta.dir, 'playwright-browser-runner.ts'), 'utf8')
     expect(source).toContain("request.connection?.kind === 'cdp'")
     expect(source).toContain('chromium.connectOverCDP(request.connection.endpoint')
-    expect(source).toContain('chromium.launch({')
+    expect(source).toContain('loadManagedChromium(chromium)).launch({')
     expect(source).not.toContain("args: ['--disable-gpu'")
     expect(source).toContain('For a CDP-attached browser, Playwright closes only its debugging connection')
   })

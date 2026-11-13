@@ -43,11 +43,41 @@ export type ExpertRuntimeInput = {
   confirmExecutableTools?: boolean
 }
 
+export type ExpertRuntimeMaterial = {
+  schemaVersion: 2
+  runtime: 'expert-pack-runtime'
+  status: 'completed'
+  expertId: string
+  expertName: string
+  packId: string
+  packVersion: string
+  createdAt: string
+  title: string
+  summary: string
+  run: { runId: string | null; outputDir: string | null }
+  input: { projectRoot: string; notes: string | null; intakeState: ExpertIntakeState | null }
+  promptsLoaded: { system: boolean; intake: boolean }
+  formsLoaded: string[]
+  outputProtocolLoaded: string | null
+  outputTemplateLoaded: string | null
+  packageLocalSkills: Array<Omit<ExpertRuntimeSkill, 'content'>>
+  usedTools: ExpertRuntimeToolRecord[]
+  safety: {
+    workflowAutoStarted: false
+    workflowStageAdvanced: false
+    sourceModified: false
+    packageLocalSkillsOnly: true
+    packageLocalExecutableToolsExecuted: boolean
+    packageLocalExecutableToolsRequireSandbox: boolean
+    packageLocalExecutableToolsConfirmed: boolean
+  }
+}
+
 export type ExpertRuntimeAnalysis = {
   context: ExpertRuntimeContext
   summary: string
   evidence: string
-  material: Record<string, unknown>
+  material: ExpertRuntimeMaterial
 }
 
 export type ExpertRuntimeToolRecord = {
@@ -150,7 +180,7 @@ export class ExpertRuntimeService {
       ...context.skills.map((skill) => `## ${skill.title || skill.skillId}\n${skill.content}`),
       ...toolRecords.map((tool) => `## Tool ${tool.toolId}\n${tool.result ?? tool.reason ?? ''}`),
     ].filter(Boolean).join('\n\n')
-    const material = {
+    const material: ExpertRuntimeMaterial = {
       schemaVersion: 2,
       runtime: 'expert-pack-runtime',
       status: 'completed',

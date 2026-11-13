@@ -1,4 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+import { isHumanInputMessage, messageKindMetadata, type MessageKindMetadata } from './messageKind.js'
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -194,7 +195,6 @@ import {
   getUserMessageText,
   isThinkingMessage,
 } from './messages.js'
-import { isHumanTurn } from './messagePredicates.js'
 import { isEnvTruthy, getClaudeConfigHomeDir } from './envUtils.js'
 import { feature } from 'bun:bundle'
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -542,7 +542,7 @@ export type Attachment =
       signal: DiscoverySignal
       source: 'native' | 'aki' | 'both'
     }
-  | {
+  | (Partial<MessageKindMetadata> & {
       type: 'queued_command'
       prompt: string | Array<ContentBlockParam>
       source_uuid?: UUID
@@ -553,7 +553,7 @@ export type Attachment =
       origin?: MessageOrigin
       /** Carried from QueuedCommand.isMeta — distinguishes human-typed from system-injected */
       isMeta?: boolean
-    }
+    })
   | {
       type: 'output_style'
       style: string
@@ -778,7 +778,7 @@ export async function getAttachments(
   const isMainThread = !toolUseContext.agentId
 
   // Attachments which are added in response to on user input
-  const userInputAttachments = input
+  const userInputAttachments: Promise<Attachment[]>[] = input
     ? [
         maybe('at_mentioned_files', () =>
           processAtMentionedFiles(input, context),
@@ -810,7 +810,7 @@ export async function getAttachments(
         skillSearchModules &&
         !options?.skipSkillDiscovery
           ? [
-              maybe('skill_discovery', () =>
+              maybe<Attachment>('skill_discovery', () =>
                 skillSearchModules.prefetch.getTurnZeroSkillDiscovery(
                   input,
                   messages ?? [],
@@ -829,7 +829,7 @@ export async function getAttachments(
   // Thread-safe attachments available in sub-agents
   // NOTE: These must be created AFTER userInputAttachments completes to ensure
   // nestedMemoryAttachmentTriggers is populated before getNestedMemoryAttachments runs
-  const allThreadAttachments = [
+  const allThreadAttachments: Promise<Attachment[]>[] = [
     // queuedCommands is already agent-scoped by the drain gate in query.ts —
     // main thread gets agentId===undefined, subagents get their own agentId.
     // Must run for all threads or subagent notifications drain into the void
@@ -948,7 +948,7 @@ export async function getAttachments(
   ]
 
   // Attachments which are semantically only for the main conversation or don't have concurrency-safe implementations
-  const mainThreadAttachments = isMainThread
+  const mainThreadAttachments: Promise<Attachment[]>[] = isMainThread
     ? [
         maybe('ide_selection', async () =>
           getSelectedLinesFromIDE(ideSelection, toolUseContext),
@@ -1083,7 +1083,7 @@ export async function getQueuedCommandAttachments(
         imagePasteIds: getImagePasteIds(_.pastedContents),
         commandMode: _.mode,
         origin: _.origin,
-        isMeta: _.isMeta,
+        ...messageKindMetadata({ type: 'user', ..._ }),
       }
     }),
   )
@@ -1099,12 +1099,20 @@ export function getAgentPendingMessageAttachments(
     toolUseContext.getAppState,
     toolUseContext.setAppStateForTasks ?? toolUseContext.setAppState,
   )
-  return drained.map(msg => ({
-    type: 'queued_command' as const,
-    prompt: msg,
-    origin: { kind: 'coordinator' as const },
-    isMeta: true,
-  }))
+  return drained.map(msg => {
+    const metadata = typeof msg === 'string'
+      ? { messageKind: 'internal_notification' as const }
+      : messageKindMetadata(msg)
+    return {
+      type: 'queued_command' as const,
+      prompt: typeof msg === 'string' ? msg : msg.content,
+      origin: metadata.messageKind === 'user_input' ? undefined : { kind: 'coordinator' as const },
+      // Local-agent ingress already appends the visible prompt to task.messages.
+      // Preserve the hidden delivery record independently from its authorship.
+      isMeta: true,
+      ...metadata,
+    }
+  })
 }
 
 async function buildImageContentBlocks(
@@ -1135,7 +1143,7 @@ async function buildImageContentBlocks(
   return results
 }
 
-function getPlanModeAttachmentTurnCount(messages: Message[]): {
+export function getPlanModeAttachmentTurnCount(messages: Message[]): {
   turnCount: number
   foundPlanModeAttachment: boolean
 } {
@@ -1143,7 +1151,7 @@ function getPlanModeAttachmentTurnCount(messages: Message[]): {
   let foundPlanModeAttachment = false
 
   // Iterate backwards to find most recent plan_mode attachment.
-  // Count HUMAN turns (non-meta, non-tool-result user messages), not assistant
+  // Count HUMAN turns by provenance, rather than assistant or tool transport
   // messages — the tool loop in query.ts calls getAttachmentMessages on every
   // tool round, so counting assistant messages would fire the reminder every
   // 5 tool calls instead of every 5 human turns.
@@ -1151,9 +1159,7 @@ function getPlanModeAttachmentTurnCount(messages: Message[]): {
     const message = messages[i]
 
     if (
-      message?.type === 'user' &&
-      !message.isMeta &&
-      !hasToolResultContent(message.message.content)
+      message && isHumanInputMessage(message)
     ) {
       turnsSinceLastAttachment++
     } else if (
@@ -1279,7 +1285,7 @@ async function getPlanModeExitAttachment(
   return [{ type: 'plan_mode_exit', planFilePath, planExists }]
 }
 
-function getAutoModeAttachmentTurnCount(messages: Message[]): {
+export function getAutoModeAttachmentTurnCount(messages: Message[]): {
   turnCount: number
   foundAutoModeAttachment: boolean
 } {
@@ -1287,7 +1293,7 @@ function getAutoModeAttachmentTurnCount(messages: Message[]): {
   let foundAutoModeAttachment = false
 
   // Iterate backwards to find most recent auto_mode attachment.
-  // Count HUMAN turns (non-meta, non-tool-result user messages), not assistant
+  // Count HUMAN turns by provenance, rather than assistant or tool transport
   // messages — the tool loop in query.ts calls getAttachmentMessages on every
   // tool round, so a single human turn with 100 tool calls would fire ~20
   // reminders if we counted assistant messages. Auto mode's target use case is
@@ -1296,9 +1302,7 @@ function getAutoModeAttachmentTurnCount(messages: Message[]): {
     const message = messages[i]
 
     if (
-      message?.type === 'user' &&
-      !message.isMeta &&
-      !hasToolResultContent(message.message.content)
+      message && isHumanInputMessage(message)
     ) {
       turnsSinceLastAttachment++
     } else if (
@@ -2390,10 +2394,14 @@ export type MemoryPrefetch = {
   [Symbol.dispose](): void
 }
 
+export function getLatestHumanInputMessage(messages: ReadonlyArray<Message>) {
+  return messages.findLast(isHumanInputMessage)
+}
+
 /**
  * Starts the relevant memory search as an async prefetch.
- * Extracts the last real user prompt from messages (skipping isMeta system
- * injections) and kicks off a non-blocking search. Returns a Disposable
+ * Extracts the last real user prompt from messages using explicit provenance
+ * and legacy metadata fallback and kicks off a non-blocking search. Returns a Disposable
  * handle with settlement tracking. Bound with `using` in query.ts.
  */
 export function startRelevantMemoryPrefetch(
@@ -2407,7 +2415,7 @@ export function startRelevantMemoryPrefetch(
     return undefined
   }
 
-  const lastUserMessage = messages.findLast(m => m.type === 'user' && !m.isMeta)
+  const lastUserMessage = getLatestHumanInputMessage(messages)
   if (!lastUserMessage) {
     return undefined
   }
@@ -2477,16 +2485,6 @@ function isToolResultBlock(b: unknown): b is ToolResultBlock {
 }
 
 /**
- * Check whether a user message's content contains tool_result blocks.
- * This is more reliable than checking `toolUseResult === undefined` because
- * sub-agent tool result messages explicitly set `toolUseResult` to `undefined`
- * when `preserveToolUseResults` is false (the default for Explore agents).
- */
-function hasToolResultContent(content: unknown): boolean {
-  return Array.isArray(content) && content.some(isToolResultBlock)
-}
-
-/**
  * Tools that succeeded (and never errored) since the previous real turn
  * boundary.  The memory selector uses this to suppress docs about tools
  * that are working — surfacing reference material for a tool the model
@@ -2509,7 +2507,7 @@ export function collectRecentSuccessfulTools(
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (!m) continue
-    if (isHumanTurn(m) && m !== lastUserMessage) break
+    if (isHumanInputMessage(m) && m !== lastUserMessage) break
     if (m.type === 'assistant' && typeof m.message.content !== 'string') {
       for (const block of m.message.content) {
         if (block.type === 'tool_use') useIdToName.set(block.id, block.name)
@@ -2814,7 +2812,7 @@ export function extractAtMentionedFiles(content: string): string[] {
   }
 
   // Extract regular mentions
-  const regularMatchArray = content.match(regularAtMentionRegex) || []
+  const regularMatchArray: string[] = content.match(regularAtMentionRegex) ?? []
   regularMatchArray.forEach(match => {
     const filename = match.slice(match.indexOf('@') + 1)
     // Don't include if it starts with a quote (already handled as quoted)
@@ -3908,15 +3906,15 @@ function getMaxBudgetUsdAttachment(maxBudgetUsd?: number): Attachment[] {
  * Count human turns since plan mode exit (plan_mode_exit attachment).
  * Returns 0 if no plan_mode_exit attachment found.
  *
- * tool_result messages are type:'user' without isMeta, so filter by
- * toolUseResult to avoid counting them — otherwise the 10-turn reminder
- * interval fires every ~10 tool calls instead of ~10 human turns.
+ * User-role transport includes tool results and internal notifications. Shared
+ * provenance keeps those out of the interval while retaining actual human input
+ * independently from visibility flags.
  */
 export function getVerifyPlanReminderTurnCount(messages: Message[]): number {
   let turnCount = 0
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
-    if (message && isHumanTurn(message)) {
+    if (message && isHumanInputMessage(message)) {
       turnCount++
     }
     // Stop counting at plan_mode_exit attachment (marks when implementation started)

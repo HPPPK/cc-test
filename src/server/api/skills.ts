@@ -413,7 +413,7 @@ async function resolveSkillDir(
     source === 'user'
       ? [getUserSkillsDir()]
       : source === 'project'
-        ? getProjectSkillsDirs(cwd)
+        ? getProjectSkillsDirs(cwd ?? process.cwd())
         : []
 
   for (const root of skillRoots) {
@@ -475,7 +475,7 @@ async function resolveNativeProviderSkillDir(
     return { skillDir: userSkillDir, source: 'user' }
   }
 
-  const projectSkillRoots = getProjectSkillsDirs(cwd)
+  const projectSkillRoots = getProjectSkillsDirs(cwd ?? process.cwd())
   const projectSkillDir = await resolveSkillDir('project', name, cwd)
     ?? await findSkillDirByCatalogName(projectSkillRoots, 'project', name)
   if (projectSkillDir) {
@@ -623,7 +623,7 @@ async function collectPluginSkills(): Promise<SkillMeta[]> {
 async function collectAllSkills(cwd?: string): Promise<SkillMeta[]> {
   const [userSkills, projectSkills, pluginSkills] = await Promise.all([
     collectSkillsFromRoots([getUserSkillsDir()], 'user'),
-    collectSkillsFromRoots(getProjectSkillsDirs(cwd), 'project'),
+    collectSkillsFromRoots(getProjectSkillsDirs(cwd ?? process.cwd()), 'project'),
     collectPluginSkills(),
   ])
 

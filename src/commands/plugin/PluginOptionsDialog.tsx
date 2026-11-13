@@ -52,7 +52,7 @@ type Props = {
   onSave: (config: PluginOptionValues) => void;
   onCancel: () => void;
 };
-export function PluginOptionsDialog(t0) {
+export function PluginOptionsDialog(t0: Props): React.ReactNode {
   const $ = _c(70);
   const {
     title,
@@ -95,7 +95,7 @@ export function PluginOptionsDialog(t0) {
   } else {
     t3 = $[5];
   }
-  const [values, setValues] = useState(t3);
+  const [values, setValues] = useState<Record<string, string>>(t3);
   let t4;
   if ($[6] !== fields[0] || $[7] !== initialFor) {
     t4 = () => fields[0] ? initialFor(fields[0]) : "";

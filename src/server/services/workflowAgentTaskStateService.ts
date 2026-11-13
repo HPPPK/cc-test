@@ -4,12 +4,14 @@ import type { WorkflowSessionState, WorkflowTaskSnapshot } from './workflowTypes
 
 export const MANAGED_WORKFLOW_IDS = new Set([
   'efficient-constrained-dev-debug-workflow-v5',
+  'stradn-managed-development-workflow-v1',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
 ])
 
 const IMPLEMENT_PHASE_BY_WORKFLOW = new Map([
   ['efficient-constrained-dev-debug-workflow-v5', 'delegate-implement'],
+  ['stradn-managed-development-workflow-v1', 'stradn-delivery'],
   ['feature-extension-workflow-v8', 'feature-implement'],
   ['debug-repair-workflow-v8', 'debug-fix'],
 ])

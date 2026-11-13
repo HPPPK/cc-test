@@ -8,7 +8,7 @@ test('canonical draft and final continuation use only acknowledged CLI HTML deli
   const draft = buildInitialTemplateRenderAutoContinueInstruction(initial, true)
   const finish = buildFinalizeDeliveryAutoContinueInstruction(final, true)
   for (const instruction of [draft, finish]) {
-    expect(instruction).toContain('cc-jiangxia expert-template-fill --data-stdin --output')
+    expect(instruction).toContain('claude expert-template-fill --data-stdin --output')
     expect(instruction).toContain('CLAUDE_CLI_PATH')
     expect(instruction).not.toContain('structured Write')
     expect(instruction).not.toContain('patch" Write')
@@ -47,7 +47,7 @@ test('bounded missing handoff recovery names each lane without requiring a new r
   expect(instruction).not.toContain('dispatch exactly one Agent')
 })
 
-test.each(['continue-initial-render', 'continue-finalize-delivery'] as const)('imported canonical expert uses CLI continuation by expert ID alone (%s)', async (kind) => {
+test.each(['continue-initial-render', 'continue-finalize-delivery', 'recover-ended-researchers', 'initial-render-stalled'] as const)('imported canonical expert uses CLI continuation by expert ID alone (%s)', async (kind) => {
   const { spyOn } = await import('bun:test')
   const { continueCommercializationResearch, handleWebSocket } = await import('../ws/handler.js')
   const { conversationService } = await import('../services/conversationService.js')
@@ -69,28 +69,43 @@ test.each(['continue-initial-render', 'continue-finalize-delivery'] as const)('i
     startupPending: false, startupExitCode: null, stdoutLines: [], stderrLines: [], outputDrain: Promise.resolve(),
     sdkMessages: [], initMessage: null, pendingPermissionRequests: new Map(), expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
   }
+  const emitted: string[] = []
   const socket = {
     data: { sessionId, connectedAt: Date.now(), channel: 'client', sdkToken: null, serverPort: 0, serverHost: '127.0.0.1' },
-    send() { return 1 }, close() {},
+    send(value: string) { emitted.push(value); return 1 }, close() {},
   } as any
   ;(conversationService as any).sessions.set(sessionId, session)
   const send = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
   const getSession = spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert } as any)
   const title = spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
+  const { commercializationResearchBudgetService } = await import('../services/commercializationResearchBudgetService.js')
+  const saveOnly = spyOn(commercializationResearchBudgetService, 'markSaveOnlyRecovery')
   try {
     handleWebSocket.open(socket)
-    await continueCommercializationResearch(sessionId, {
+    const plan = kind === 'initial-render-stalled' ? { kind, errorCode: 'EXPERT_RESEARCH_BUDGET_REJECTED' } : kind === 'recover-ended-researchers' ? { kind, recoveries: [{ artifactPath: '02.md', endedAgentId: 'ended-A', reason: 'ended-without-saved-handoff' as const }], preservedResearcherPaths: ['03.md', '04.md'] } : {
       kind, briefPath: '01.md', absorptionPath: '07.md', completionReviewPath: '08.md', reportPath: 'report.html',
-    })
-    expect(send).toHaveBeenCalledWith(sessionId, expect.stringContaining('cc-jiangxia expert-template-fill --data-stdin --output'))
+    }
+    const continued = await continueCommercializationResearch(sessionId, plan)
+    expect(continued).toBe(true)
+    if (kind === 'initial-render-stalled') {
+      expect(send).not.toHaveBeenCalled()
+      expect(emitted.join('\n')).toContain('EXPERT_INITIAL_RENDER_STALLED')
+      expect(emitted.join('\n')).toContain('HTML 尚未生成')
+      return
+    }
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith(sessionId, expect.stringContaining(kind === 'recover-ended-researchers' ? '<expert-research-ended-worker-recovery>' : 'claude expert-template-fill --data-stdin --output'))
+    if (kind === 'recover-ended-researchers') expect(saveOnly).toHaveBeenCalledWith(sessionId, expert, 'ended-A')
+    else expect(saveOnly).not.toHaveBeenCalled()
     const instruction = send.mock.calls[0]![1] as string
     expect(instruction).not.toContain('structured Write')
     expect(instruction).not.toContain('structured fixed-template Write')
   } finally {
-    handleWebSocket.close(socket)
+    handleWebSocket.close(socket, 1000, 'test complete')
     conversationService.stopSession(sessionId)
     send.mockRestore()
     getSession.mockRestore()
     title.mockRestore()
+    saveOnly.mockRestore()
   }
 })

@@ -52,7 +52,7 @@ function turnDiffToDiffData(turn: TurnDiff): DiffData {
     loading: false
   };
 }
-export function DiffDialog(t0) {
+export function DiffDialog(t0: Props): React.ReactNode {
   const $ = _c(73);
   const {
     messages,
@@ -60,9 +60,9 @@ export function DiffDialog(t0) {
   } = t0;
   const gitDiffData = useDiffData();
   const turnDiffs = useTurnDiffs(messages);
-  const [viewMode, setViewMode] = useState("list");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [sourceIndex, setSourceIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [sourceIndex, setSourceIndex] = useState<number>(0);
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {
@@ -80,7 +80,7 @@ export function DiffDialog(t0) {
   } else {
     t2 = $[2];
   }
-  const sources = t2;
+  const sources: DiffSource[] = t2;
   const currentSource = sources[sourceIndex];
   const currentTurn = currentSource?.type === "turn" ? currentSource.turn : null;
   let t3;

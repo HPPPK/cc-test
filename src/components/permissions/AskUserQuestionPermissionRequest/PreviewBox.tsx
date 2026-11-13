@@ -36,7 +36,7 @@ const BOX_CHARS = {
  * Truncates content that exceeds maxLines with an indicator.
  * The parent component should pass maxLines based on its available height budget.
  */
-export function PreviewBox(props) {
+export function PreviewBox(props: PreviewBoxProps): React.ReactNode {
   const $ = _c(4);
   const settings = useSettings();
   if (settings.syntaxHighlightingDisabled) {
@@ -60,7 +60,7 @@ export function PreviewBox(props) {
   }
   return t0;
 }
-function PreviewBoxWithHighlight(props) {
+function PreviewBoxWithHighlight(props: PreviewBoxProps): React.ReactNode {
   const $ = _c(4);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -69,7 +69,7 @@ function PreviewBoxWithHighlight(props) {
   } else {
     t0 = $[0];
   }
-  const highlight = use(t0);
+  const highlight = use<Awaited<ReturnType<typeof getCliHighlightPromise>>>(t0);
   let t1;
   if ($[1] !== highlight || $[2] !== props) {
     t1 = <PreviewBoxBody {...props} highlight={highlight} />;
@@ -81,7 +81,7 @@ function PreviewBoxWithHighlight(props) {
   }
   return t1;
 }
-function PreviewBoxBody(t0) {
+function PreviewBoxBody(t0: PreviewBoxProps & { highlight: CliHighlight | null }): React.ReactNode {
   const $ = _c(34);
   const {
     content,

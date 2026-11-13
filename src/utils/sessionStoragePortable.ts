@@ -1,3 +1,4 @@
+import { isHumanInputMessage } from './messageKind.js'
 /**
  * Portable session storage utilities.
  *
@@ -143,18 +144,10 @@ export function extractFirstPromptFromHead(head: string): string {
 
     if (!line.includes('"type":"user"') && !line.includes('"type": "user"'))
       continue
-    if (line.includes('"tool_result"')) continue
-    if (line.includes('"isMeta":true') || line.includes('"isMeta": true'))
-      continue
-    if (
-      line.includes('"isCompactSummary":true') ||
-      line.includes('"isCompactSummary": true')
-    )
-      continue
 
     try {
       const entry = JSON.parse(line) as Record<string, unknown>
-      if (entry.type !== 'user') continue
+      if (entry.type !== 'user' || !isHumanInputMessage(entry)) continue
 
       const message = entry.message as Record<string, unknown> | undefined
       if (!message) continue
@@ -186,7 +179,7 @@ export function extractFirstPromptFromHead(head: string): string {
         const bashMatch = /<bash-input>([\s\S]*?)<\/bash-input>/.exec(result)
         if (bashMatch) return `! ${bashMatch[1]!.trim()}`
 
-        if (SKIP_FIRST_PROMPT_PATTERN.test(result)) continue
+        if (entry.messageKind !== 'user_input' && SKIP_FIRST_PROMPT_PATTERN.test(result)) continue
 
         if (result.length > 200) {
           result = result.slice(0, 200).trim() + '\u2026'

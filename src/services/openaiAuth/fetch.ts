@@ -110,7 +110,7 @@ export function buildOpenAICodexFetch(
   }
 }
 
-async function readAnthropicBody(
+export async function readAnthropicBody(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<AnthropicRequest> {
@@ -121,7 +121,7 @@ async function readAnthropicBody(
   }
 
   if (directBody instanceof Uint8Array || directBody instanceof ArrayBuffer) {
-    return JSON.parse(Buffer.from(directBody).toString('utf8')) as AnthropicRequest
+    return JSON.parse(Buffer.from(directBody instanceof ArrayBuffer ? new Uint8Array(directBody) : directBody).toString('utf8')) as AnthropicRequest
   }
 
   if (input instanceof Request) {

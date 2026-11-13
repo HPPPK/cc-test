@@ -38,7 +38,7 @@ function state(templateId = 'feature-extension-workflow-v8'): WorkflowSessionSta
         [templateId === 'debug-repair-workflow-v8' ? 'debug-fix' : 'feature-implement']: {
           phaseId: templateId === 'debug-repair-workflow-v8' ? 'debug-fix' : 'feature-implement',
           workStatus: 'in-progress',
-          eligibility: 'blocked',
+          eligibility: 'ineligible',
           blockerReasons: [],
           issues: [],
           artifactRequirements: [],

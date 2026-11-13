@@ -10,7 +10,7 @@ import { BaseTextInput } from './BaseTextInput.js';
 export type Props = VimTextInputProps & {
   highlights?: TextHighlight[];
 };
-export default function VimTextInput(props) {
+export default function VimTextInput(props: Props): React.ReactNode {
   const $ = _c(38);
   const [theme] = useTheme();
   const isTerminalFocused = useTerminalFocus();

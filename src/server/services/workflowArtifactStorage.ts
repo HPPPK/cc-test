@@ -154,14 +154,24 @@ async function writeCanonicalFile(
   content: string,
 ): Promise<void> {
   const storagePath = workflowArtifactStoragePath(workspaceRoot, kind)
-  await atomicWriteFile(storagePath.absolutePath, content)
+  // Canonical notes belong to the workspace writer. State/question updates
+  // may seed a missing note, never replace notes already read or edited by it.
+  try {
+    await fs.writeFile(storagePath.absolutePath, `${content.trimEnd()}\n`, { encoding: 'utf-8', flag: 'wx' })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  }
 }
 
 async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+  const normalized = `${content.trimEnd()}\n`
+  try { if (await fs.readFile(filePath, 'utf-8') === normalized) return } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
   const tmpFile = `${filePath}.tmp.${process.pid}.${Date.now()}.${randomBytes(6).toString('hex')}`
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   try {
-    await fs.writeFile(tmpFile, `${content.trimEnd()}\n`, 'utf-8')
+    await fs.writeFile(tmpFile, normalized, 'utf-8')
     await fs.rename(tmpFile, filePath)
   } catch (error) {
     await fs.unlink(tmpFile).catch(() => {})

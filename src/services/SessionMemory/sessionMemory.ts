@@ -29,7 +29,7 @@ import {
   registerPostSamplingHook,
 } from '../../utils/hooks/postSamplingHooks.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   hasToolCallsInLastAssistantTurn,
 } from '../../utils/messages.js'
 import {
@@ -316,7 +316,7 @@ const extractSessionMemory = sequential(async function (
   // runForkedAgent creates an isolated context to prevent mutation of parent state
   // Pass setupContext.readFileState so the forked agent can edit the memory file
   await runForkedAgent({
-    promptMessages: [createUserMessage({ content: userPrompt })],
+    promptMessages: [createRuntimeUserMessage({ content: userPrompt })],
     cacheSafeParams: createCacheSafeParams(context),
     canUseTool: createMemoryFileCanUseTool(memoryPath),
     querySource: 'session_memory',
@@ -418,7 +418,7 @@ export async function manuallyExtractSessionMemory(
 
     // Run session memory extraction using runForkedAgent
     await runForkedAgent({
-      promptMessages: [createUserMessage({ content: userPrompt })],
+      promptMessages: [createRuntimeUserMessage({ content: userPrompt })],
       cacheSafeParams: {
         systemPrompt,
         userContext,

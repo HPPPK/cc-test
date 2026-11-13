@@ -10,7 +10,7 @@ type Props = {
   totalInputTokens: number;
   onDone: (action: IdleReturnAction) => void;
 };
-export function IdleReturnDialog(t0) {
+export function IdleReturnDialog(t0: Props): React.ReactNode {
   const $ = _c(16);
   const {
     idleMinutes,
@@ -83,7 +83,7 @@ export function IdleReturnDialog(t0) {
   }
   let t9;
   if ($[10] !== onDone) {
-    t9 = <Select options={t8} onChange={value => onDone(value)} />;
+    t9 = <Select<IdleReturnAction> options={t8} onChange={value => onDone(value)} />;
     $[10] = onDone;
     $[11] = t9;
   } else {

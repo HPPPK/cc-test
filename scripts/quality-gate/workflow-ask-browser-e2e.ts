@@ -68,14 +68,17 @@ async function main() {
     await run(agentBrowserCommand('eval', 'localStorage.setItem(' + JSON.stringify('cc-jiangxia-open-tabs') + ',' + JSON.stringify(tabs) + ')'), root, logPath, browserEnv)
     await run(agentBrowserCommand('reload'), root, logPath, browserEnv)
     await run(agentBrowserCommand('wait', 'textarea'), root, logPath, browserEnv)
-    await run(agentBrowserCommand('wait', '--fn', 'document.body.innerText.includes(' + JSON.stringify(root) + ')'), root, logPath, browserEnv)
     const wsUrl = 'ws://127.0.0.1:' + serverPort + '/ws/' + encodeURIComponent(sessionId)
     const requestId = 'workflow-ask-e2e-request'
-    const payload = { type: 'e2e_test_permission_request', requestId, toolUseId: 'workflow-ask-e2e-tool', input: { questions: [{ id: 'scope', header: 'Workflow E2E', question: 'Which scope should be used?', options: [{ id: 'current', label: 'Current scope' }, { id: 'expanded', label: 'Expanded scope' }] }] } }
+    const payload = { type: 'e2e_test_permission_request', requestId, toolUseId: 'workflow-ask-e2e-tool', input: { questions: [{ id: 'scope', header: 'Workflow E2E', question: 'Which scope should be used?', blocksCompletion: true, options: [{ id: 'current', label: 'Current scope' }, { id: 'expanded', label: 'Expanded scope' }] }, { id: 'platform', question: 'Which desktop platform?', blocksCompletion: true, options: [{ id: 'mac', label: 'Mac' }, { id: 'windows', label: 'Windows' }] }, { id: 'style', question: 'Which visual style?', blocksCompletion: false, options: [{ id: 'simple', label: 'Simple' }, { id: 'rich', label: 'Rich' }] }] } }
     await run(agentBrowserCommand('eval', '(() => { const ws = window.__workflowAskE2eWs = new WebSocket(' + JSON.stringify(wsUrl) + '); ws.onopen = () => ws.send(' + JSON.stringify(JSON.stringify(payload)) + ') })()'), root, logPath, browserEnv)
     await run(agentBrowserCommand('wait', '--fn', 'document.body.innerText.includes("Which scope should be used?")'), root, logPath, browserEnv)
+    await run(agentBrowserCommand('wait', '--fn', 'document.body.innerText.includes("Which desktop platform?") && document.body.innerText.includes("Which visual style?")'), root, logPath, browserEnv)
     await run(agentBrowserCommand('screenshot', join(artifactDir, 'question.png')), root, logPath, browserEnv)
     await run(agentBrowserCommand('eval', `(() => { const el = document.querySelector('[data-testid="ask-user-option-0-current"]'); el?.scrollIntoView({ block: 'center' }); el?.click() })()` ), root, logPath, browserEnv)
+    const blocked = await run(agentBrowserCommand('eval', 'document.querySelector("[data-testid=ask-user-submit]").disabled'), root, logPath, browserEnv)
+    if (!blocked.includes('true')) throw new Error('Batch submitted before all required answers were filled')
+    await run(agentBrowserCommand('eval', `document.querySelector('[data-testid="ask-user-option-1-mac"]').click()`), root, logPath, browserEnv)
     await run(agentBrowserCommand('eval', `(() => { const el = document.querySelector('[data-testid="ask-user-submit"]'); el?.scrollIntoView({ block: 'center' }); el?.click() })()` ), root, logPath, browserEnv)
     const rejected = { type: 'e2e_test_permission_response_ack', requestId, status: 'rejected', message: 'The structured answer could not be delivered. Please choose again.' }
     await run(agentBrowserCommand('eval', '(() => { const ws = window.__workflowAskRejectedE2eWs = new WebSocket(' + JSON.stringify(wsUrl) + '); ws.onopen = () => ws.send(' + JSON.stringify(JSON.stringify(rejected)) + ') })()'), root, logPath, browserEnv)

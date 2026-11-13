@@ -57,10 +57,10 @@ describe('commercialization report source scope', () => {
 })
 
 
-test('points to the complete 119-link visit inventory without calling it factual citations', () => {
+test('points only to this run visit inventory without inventing catalog coverage', () => {
   const result = ensureCommercializationReportSourceBoundary({ expertId: 'commercialization-research-report', fields: { DATA_DECLARATION: 'Evidence' } })
   expect(result.DATA_DECLARATION).toContain('commercialization-research/06-browser-audit.md')
-  expect(result.DATA_DECLARATION).toContain('119')
+  expect(result.DATA_DECLARATION).not.toContain('119')
   expect(result.DATA_DECLARATION).toContain('不等于事实来源')
 })
 
@@ -83,4 +83,20 @@ test.each(['string', 'paragraphs'])('replaces the previous generated boundary wi
   expect(JSON.stringify(result.DATA_DECLARATION).split(commercializationReportSourceBoundary)).toHaveLength(2)
   expect(ensureCommercializationReportSourceBoundary({ expertId: 'commercialization-research-report', fields: result })).toEqual(result)
   expect(fields.DATA_DECLARATION).toEqual(shape === 'string' ? original : [original])
+})
+
+test('does not claim a complete catalog visit or duplicate a model-authored source disclosure', () => {
+  const fields = { DATA_DECLARATION: ['真实用户说明。', '**来源范围**：本轮选定路线见 commercialization-research/06-browser-audit.md；摘要未核验正文。'] }
+  const result = ensureCommercializationReportSourceBoundary({ expertId: 'commercialization-research-report', fields })
+  expect(JSON.stringify(result)).not.toContain('119')
+  expect(JSON.stringify(result)).not.toContain('完整访问清单')
+  expect((result.DATA_DECLARATION as string[]).filter(x => x.includes('来源范围'))).toHaveLength(1)
+  expect(JSON.stringify(result)).toContain('摘要未核验正文')
+})
+
+test('removes the obsolete generated boundary when a model already supplied a truthful source disclosure', () => {
+  const corrected = '**来源范围**：本轮选定路线见 commercialization-research/06-browser-audit.md；摘要未核验正文。'
+  const fields = { DATA_DECLARATION: [corrected, '**来源范围**：' + priorGeneratedBoundary] }
+  const result = ensureCommercializationReportSourceBoundary({ expertId: 'commercialization-research-report', fields })
+  expect(result.DATA_DECLARATION).toEqual([corrected])
 })

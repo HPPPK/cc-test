@@ -1,3 +1,4 @@
+import { messageKindMetadata } from '../utils/messageKind.js'
 import type {
   Base64ImageSource,
   ContentBlockParam,
@@ -21,7 +22,7 @@ import { detectImageFormatFromBase64 } from '../utils/imageResizer.js'
 export function extractInboundMessageFields(
   msg: SDKMessage,
 ):
-  | { content: string | Array<ContentBlockParam>; uuid: UUID | undefined }
+  | ({ content: string | Array<ContentBlockParam>; uuid: UUID | undefined } & ReturnType<typeof messageKindMetadata>)
   | undefined {
   if (msg.type !== 'user') return undefined
   const content = msg.message?.content
@@ -34,6 +35,7 @@ export function extractInboundMessageFields(
       : undefined
 
   return {
+    ...messageKindMetadata(msg),
     content: Array.isArray(content) ? normalizeImageBlocks(content) : content,
     uuid,
   }

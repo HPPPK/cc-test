@@ -149,8 +149,8 @@ describe('WorkflowReportStore', () => {
       recoveryStatus: 'ok',
       errorCode: null,
     })
-    expect(result.report?.futureReportField).toEqual({ preserved: true })
-    expect(result.report?.phaseSummaries[0].futurePhaseSummaryField).toBe('preserve me')
+    expect(result.report).toHaveProperty('futureReportField', { preserved: true })
+    expect(result.report?.phaseSummaries[0]).toHaveProperty('futurePhaseSummaryField', 'preserve me')
   })
 
   test('rejects unsafe artifact pointer fixtures without creating or rewriting final reports', async () => {
@@ -252,7 +252,7 @@ describe('WorkflowReportStore', () => {
       artifactId: 'final',
     })
     expect(read.recoveryStatus).toBe('ok')
-    expect(read.report?.futureReportField).toEqual({ preserved: true })
+    expect(read.report).toHaveProperty('futureReportField', { preserved: true })
     expect(read.report?.modelResolutions?.[0].fallbackApplied).toBe(true)
   })
 

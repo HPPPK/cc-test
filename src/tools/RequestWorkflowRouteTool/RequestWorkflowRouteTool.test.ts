@@ -1,3 +1,6 @@
+import { callToolFixture } from '../toolFixtures.test.js'
+import { getDefaultAppState } from '../../state/AppStateStore.js'
+import { toolPromptFixture } from '../toolFixtures.test.js'
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
@@ -13,8 +16,8 @@ afterEach(() => {
   else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
 })
 
-async function loadTool(): Promise<Tool> {
-  const mod = await import('./RequestWorkflowRouteTool.js') as { RequestWorkflowRouteTool?: Tool }
+async function loadTool(): Promise<typeof import('./RequestWorkflowRouteTool.js')['RequestWorkflowRouteTool']> {
+  const mod = await import('./RequestWorkflowRouteTool.js')
   if (!mod.RequestWorkflowRouteTool) throw new Error('RequestWorkflowRouteTool export is required')
   return mod.RequestWorkflowRouteTool
 }
@@ -27,15 +30,15 @@ function contextFor(): ToolUseContext {
       mainLoopModel: 'claude-sonnet-4',
       tools: [],
       verbose: false,
-      thinkingConfig: {},
+      thinkingConfig: { type: 'disabled' },
       mcpClients: [],
       mcpResources: {},
       isNonInteractiveSession: false,
-      agentDefinitions: { activeAgents: [], inactiveAgents: [] },
+      agentDefinitions: { activeAgents: [], allAgents: [] },
     },
     abortController: new AbortController(),
     readFileState: {} as ToolUseContext['readFileState'],
-    getAppState: () => ({ toolPermissionContext: getEmptyToolPermissionContext() }) as ReturnType<ToolUseContext['getAppState']>,
+    getAppState: () => ({ ...getDefaultAppState(),  toolPermissionContext: getEmptyToolPermissionContext()  }),
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -52,6 +55,7 @@ describe('RequestWorkflowRouteTool', () => {
     expect(tool.strict).toBe(true)
     const valid = {
       intent: 'jump_to_phase',
+      requireUserConfirmation: true,
       targetPhaseId: 'delegate-implement',
       rationale: 'Validation found an implementation defect.',
       evidence: [{ kind: 'test', ref: 'route-regression' }],
@@ -83,7 +87,7 @@ describe('RequestWorkflowRouteTool', () => {
 
   test('instructs the model not to route to the ordinary linear next phase', async () => {
     const tool = await loadTool()
-    const prompt = await tool.prompt()
+    const prompt = await tool.prompt(toolPromptFixture())
 
     expect(prompt).toContain('Do not use advance for ordinary linear progression')
     expect(prompt).toContain('immediate linear next phase')
@@ -91,7 +95,8 @@ describe('RequestWorkflowRouteTool', () => {
     expect(prompt).toContain('route_to_workflow requires targetWorkflowId')
     expect(prompt).toContain('structured unsupported error')
     expect(prompt).toContain('Every normal model-requested route waits for explicit user confirmation')
-    expect(prompt).toContain('10-second silent recovery window')
+    expect(prompt).toContain('one-time recovery credential')
+    expect(prompt).toContain('does not expire while the model is reasoning')
     expect(prompt).toContain('server may apply that first constrained repair without a user click')
   })
 
@@ -139,8 +144,9 @@ describe('RequestWorkflowRouteTool', () => {
 
     try {
       const tool = await loadTool()
-      const result = await tool.call({
+      const result = await callToolFixture(tool, {
         intent: 'jump_to_phase',
+      requireUserConfirmation: true,
         targetPhaseId: 'scenario-review',
         rationale: 'Re-validate the repair.',
         evidence: [{ kind: 'repair', ref: 'AC10' }],

@@ -9,16 +9,16 @@ import { getRainbowColor } from '../utils/thinking.js';
 // buzz instead of a single UTC-midnight spike, gentler on soul-gen load.
 // Teaser window: April 1-7, 2026 only. Command stays live forever after.
 export function isBuddyTeaserWindow(): boolean {
-  if ("external" === 'ant') return true;
+  if (false) return true;
   const d = new Date();
   return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7;
 }
 export function isBuddyLive(): boolean {
-  if ("external" === 'ant') return true;
+  if (false) return true;
   const d = new Date();
   return d.getFullYear() > 2026 || d.getFullYear() === 2026 && d.getMonth() >= 3;
 }
-function RainbowText(t0) {
+function RainbowText(t0: { text: string }): React.ReactNode {
   const $ = _c(2);
   const {
     text
@@ -39,7 +39,7 @@ function RainbowText(t0) {
 function _temp(ch, i) {
   return <Text key={i} color={getRainbowColor(i)}>{ch}</Text>;
 }
-export function useBuddyNotification() {
+export function useBuddyNotification(): void {
   const $ = _c(4);
   const {
     addNotification,

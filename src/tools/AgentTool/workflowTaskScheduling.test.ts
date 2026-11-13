@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import {
   getWorkflowTaskExecutionMode,
   normalizeWorkflowTaskSchedulePlan,
@@ -80,7 +80,7 @@ describe('workflow task scheduling bridge', () => {
     const implementation = runWithinWorkflowTaskSchedule(
       workflow,
       plan('implementation'),
-      () => new Promise(resolve => {
+      () => new Promise<NonNullable<Awaited<ReturnType<typeof runWithinWorkflowTaskSchedule>>>>(resolve => {
         releaseImplementation = () => resolve({ status: 'succeeded' })
       }),
     )
@@ -109,7 +109,7 @@ describe('workflow task scheduling bridge', () => {
     const implementation = runWithinWorkflowTaskSchedule(
       workflow,
       plan('implementation'),
-      () => new Promise(resolve => {
+      () => new Promise<NonNullable<Awaited<ReturnType<typeof runWithinWorkflowTaskSchedule>>>>(resolve => {
         releaseImplementation = () => resolve({ status: 'failed', reason: 'unit test failed' })
       }),
     )
@@ -145,7 +145,7 @@ describe('workflow task scheduling bridge', () => {
     const previewA = runWithinWorkflowTaskSchedule(
       workflow,
       { taskId: 'preview-a', tasks: resourceTasks },
-      () => new Promise(resolve => {
+      () => new Promise<NonNullable<Awaited<ReturnType<typeof runWithinWorkflowTaskSchedule>>>>(resolve => {
         releasePreview = () => resolve({ status: 'succeeded' })
       }),
     )
@@ -194,6 +194,52 @@ describe('workflow task scheduling bridge', () => {
     )).rejects.toThrow('does not match the existing workflow task plan')
   })
 
+  test('accepts a revised plan after the workflow re-enters the same phase', async () => {
+    const firstExecution = {
+      ...workflow,
+      phases: [{
+        id: 'delegate-implement',
+        index: 3,
+        status: 'running',
+        startedAt: '2026-11-13T07:10:00.000Z',
+        artifactPointers: [],
+      }],
+    }
+    await runWithinWorkflowTaskSchedule(
+      firstExecution,
+      plan('implementation'),
+      async () => ({ status: 'succeeded' as const }),
+    )
+
+    const revisedTasks = [
+      {
+        id: 'implementation',
+        dependsOn: [],
+        writeScopes: ['Sources/VideoWorkbench/**'],
+        resourceClaims: ['swiftpm-probe'],
+      },
+      {
+        id: 'verification',
+        dependsOn: ['implementation'],
+        writeScopes: [],
+        resourceClaims: [],
+      },
+    ]
+    const secondExecution = {
+      ...firstExecution,
+      phases: [{
+        ...firstExecution.phases[0],
+        startedAt: '2026-11-13T07:24:30.000Z',
+      }],
+    }
+
+    await expect(runWithinWorkflowTaskSchedule(
+      secondExecution,
+      { taskId: 'implementation', tasks: revisedTasks },
+      async () => ({ status: 'succeeded' as const }),
+    )).resolves.toEqual({ status: 'succeeded' })
+  })
+
   test('treats a changed execution mode as a different task plan', async () => {
     let release: (() => void) | undefined
     const originalPlan: WorkflowTaskSchedulePlan = {
@@ -210,7 +256,7 @@ describe('workflow task scheduling bridge', () => {
     const running = runWithinWorkflowTaskSchedule(
       workflow,
       originalPlan,
-      () => new Promise(resolve => {
+      () => new Promise<NonNullable<Awaited<ReturnType<typeof runWithinWorkflowTaskSchedule>>>>(resolve => {
         release = () => resolve({ status: 'succeeded' })
       }),
     )
@@ -241,7 +287,7 @@ describe('workflow task scheduling bridge', () => {
     const implementation = runWithinWorkflowTaskSchedule(
       workflow,
       plan('implementation'),
-      () => new Promise((_, reject) => {
+      () => new Promise<NonNullable<Awaited<ReturnType<typeof runWithinWorkflowTaskSchedule>>>>((_, reject) => {
         rejectSetup = reject
       }),
     )

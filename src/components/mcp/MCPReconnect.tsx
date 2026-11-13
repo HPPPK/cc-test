@@ -12,7 +12,7 @@ type Props = {
     display?: CommandResultDisplay;
   }) => void;
 };
-export function MCPReconnect(t0) {
+export function MCPReconnect(t0: Props): React.ReactNode {
   const $ = _c(25);
   const {
     serverName,
@@ -22,7 +22,7 @@ export function MCPReconnect(t0) {
   const store = useAppStateStore();
   const reconnectMcpServer = useMcpReconnect();
   const [isReconnecting, setIsReconnecting] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   let t1;
   let t2;
   if ($[0] !== onComplete || $[1] !== reconnectMcpServer || $[2] !== serverName || $[3] !== store) {

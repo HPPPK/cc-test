@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Link, Text } from '../ink.js';
 import { type AwsAuthStatus, AwsAuthStatusManager } from '../utils/awsAuthStatusManager.js';
 const URL_RE = /https?:\/\/\S+/;
-export function AwsAuthStatusBox() {
+export function AwsAuthStatusBox(): React.ReactNode {
   const $ = _c(11);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -12,7 +12,7 @@ export function AwsAuthStatusBox() {
   } else {
     t0 = $[0];
   }
-  const [status, setStatus] = useState(t0);
+  const [status, setStatus] = useState<AwsAuthStatus>(t0);
   let t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {

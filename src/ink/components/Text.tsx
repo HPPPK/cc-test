@@ -111,7 +111,7 @@ const memoizedStylesForWrap: Record<NonNullable<Styles['textWrap']>, Styles> = {
 /**
  * This component can display text, and change its style to make it colorful, bold, underline, italic or strikethrough.
  */
-export default function Text(t0) {
+export default function Text(t0: Props): React.ReactNode {
   const $ = _c(29);
   const {
     color,
@@ -237,7 +237,7 @@ export default function Text(t0) {
   } else {
     t14 = $[24];
   }
-  const textStyles = t14;
+  const textStyles: TextStyles = t14;
   const t15 = memoizedStylesForWrap[wrap];
   let t16;
   if ($[25] !== children || $[26] !== t15 || $[27] !== textStyles) {

@@ -498,7 +498,7 @@ describe('ExpertPackRegistryService', () => {
 
   it('rejects an incomplete ZIP before import when a declared Skill file is missing', async () => {
     const service = await makeService()
-    const entries = validPackEntries()
+    const entries: Record<string, string> = validPackEntries()
     delete entries['skills/custom-guide/SKILL.md']
 
     await expect(service.previewExpertPackZip(await adapter.write(entries))).rejects.toThrow(
@@ -510,7 +510,7 @@ describe('ExpertPackRegistryService', () => {
     const service = await makeService()
     const bundleDir = await mkdtemp(path.join(tmpdir(), 'incomplete-bundled-expert-pack-'))
     tempRoots.push(bundleDir)
-    const entries = validPackEntries()
+    const entries: Record<string, string> = validPackEntries()
     delete entries['skills/custom-guide/SKILL.md']
     await writeFile(path.join(bundleDir, 'incomplete.zip'), await adapter.write(entries))
     process.env.CLAUDE_EXPERT_PACKS_DIR = bundleDir
@@ -526,7 +526,7 @@ describe('ExpertPackRegistryService', () => {
   })
   it('loads an optional declared output template from a self-contained ZIP', async () => {
     const service = await makeService()
-    const entries = validPackEntries()
+    const entries: Record<string, string> = validPackEntries()
     entries['experts/custom/expert.json'] = JSON.stringify({
       id: 'custom-expert',
       name: 'Custom expert',
@@ -547,7 +547,7 @@ describe('ExpertPackRegistryService', () => {
 
   it('loads a template-fill expert only when its self-contained template exposes a valid schema', async () => {
     const service = await makeService()
-    const entries = validPackEntries()
+    const entries: Record<string, string> = validPackEntries()
     entries['experts/custom/expert.json'] = JSON.stringify({
       id: 'custom-expert',
       name: 'Custom expert',
@@ -569,7 +569,7 @@ describe('ExpertPackRegistryService', () => {
 
   it('rejects template-fill packs whose template has no fillable fields', async () => {
     const service = await makeService()
-    const entries = validPackEntries()
+    const entries: Record<string, string> = validPackEntries()
     entries['experts/custom/expert.json'] = JSON.stringify({
       id: 'custom-expert',
       name: 'Custom expert',

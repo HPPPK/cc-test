@@ -1,3 +1,6 @@
+import { callToolFixture } from '../toolFixtures.test.js'
+import { getDefaultAppState } from '../../state/AppStateStore.js'
+import { customToolSchemaFixture } from '../toolFixtures.test.js'
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { findToolByName, getEmptyToolPermissionContext } from '../../Tool.js'
@@ -32,10 +35,8 @@ afterEach(() => {
   else process.env.CLAUDE_CODE_ENTRYPOINT = originalClaudeCodeEntrypoint
 })
 
-async function loadTool(): Promise<Tool> {
-  const mod = await import('./SubmitPhaseCompletionTool.js') as {
-    SubmitPhaseCompletionTool?: Tool
-  }
+async function loadTool(): Promise<typeof import('./SubmitPhaseCompletionTool.js')['SubmitPhaseCompletionTool']> {
+  const mod = await import('./SubmitPhaseCompletionTool.js')
 
   expect(mod.SubmitPhaseCompletionTool).toBeDefined()
   if (!mod.SubmitPhaseCompletionTool) {
@@ -52,15 +53,15 @@ function contextFor(mode: 'workflow' | 'dialogue'): ToolUseContext {
       mainLoopModel: 'claude-sonnet-4',
       tools: [],
       verbose: false,
-      thinkingConfig: {},
+      thinkingConfig: { type: 'disabled' },
       mcpClients: [],
       mcpResources: {},
       isNonInteractiveSession: false,
-      agentDefinitions: { activeAgents: [], inactiveAgents: [] },
+      agentDefinitions: { activeAgents: [], allAgents: [] },
     },
     abortController: new AbortController(),
     readFileState: {} as ToolUseContext['readFileState'],
-    getAppState: () => ({
+    getAppState: () => (({ ...getDefaultAppState(),
       workflow: mode === 'workflow'
         ? {
             mode: 'workflow',
@@ -71,7 +72,7 @@ function contextFor(mode: 'workflow' | 'dialogue'): ToolUseContext {
           }
         : undefined,
       toolPermissionContext: getEmptyToolPermissionContext(),
-    } as unknown as ReturnType<ToolUseContext['getAppState']>),
+     })),
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -85,7 +86,7 @@ function validInput(overrides: Record<string, unknown> = {}) {
   return {
     phaseId: 'requirements',
     stateVersion: 3,
-    status: 'ready',
+    status: 'ready' as const,
     handoff: {
       summary: 'Requirements are ready for user confirmation.',
       artifacts: [],
@@ -343,11 +344,11 @@ describe('SubmitPhaseCompletionTool', () => {
     const SubmitPhaseCompletionTool = await loadTool()
     const { toolToAPISchema } = await import('../../utils/api.js')
 
-    const schema = await toolToAPISchema(SubmitPhaseCompletionTool, {
+    const schema = customToolSchemaFixture(await toolToAPISchema(SubmitPhaseCompletionTool, {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
       tools: [],
       agents: [],
-    })
+    }))
 
     expect(schema.input_schema).toMatchObject({ type: 'object' })
     expect(schema.input_schema.required).toEqual(expect.arrayContaining([
@@ -487,7 +488,7 @@ describe('SubmitPhaseCompletionTool', () => {
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
-      const result = await SubmitPhaseCompletionTool.call(validInput(), contextFor('workflow'))
+      const result = await callToolFixture(SubmitPhaseCompletionTool, validInput(), contextFor('workflow'))
 
       expect(requests).toHaveLength(2)
       expect(requests[0]?.method).toBe('GET')
@@ -511,7 +512,7 @@ describe('SubmitPhaseCompletionTool', () => {
 
 
 
-  test('instructs the model to request the constrained repair route during a silent recovery window', async () => {
+  test('instructs the model to consume the one-time constrained repair credential', async () => {
     const server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -530,9 +531,9 @@ describe('SubmitPhaseCompletionTool', () => {
             autoRecovery: {
               phaseId: 'requirements',
               startedAt: '2026-05-20T00:00:00.000Z',
-              expiresAt: '2026-05-20T00:00:10.000Z',
               attempt: 1,
               source: 'phase-completion-blocked',
+              credentialId: 'recovery:requirements:1',
             },
           },
           state: { mode: 'workflow', activePhaseId: 'requirements', stateVersion: 9 },
@@ -544,13 +545,14 @@ describe('SubmitPhaseCompletionTool', () => {
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
-      const result = await SubmitPhaseCompletionTool.call(validInput({
+      const result = await callToolFixture(SubmitPhaseCompletionTool, validInput({
         status: 'blocked',
         rationale: 'A repairable defect requires a focused correction.',
       }), contextFor('workflow'))
 
-      expect(result.data.message).toContain('10-second silent recovery window')
+      expect(result.data.message).toContain('one-time recovery credential')
       expect(result.data.message).toContain('Immediately call request_workflow_route')
+      expect(result.data.message).toContain('remains valid until that route call consumes it')
       expect(result.data.message).toContain('Do not wait for the user')
     } finally {
       server.stop(true)
@@ -593,7 +595,7 @@ describe('SubmitPhaseCompletionTool', () => {
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
-      await SubmitPhaseCompletionTool.call(validInput({
+      await callToolFixture(SubmitPhaseCompletionTool, validInput({
         phaseId: undefined,
         stateVersion: undefined,
       }), contextFor('workflow'))
@@ -632,7 +634,7 @@ describe('SubmitPhaseCompletionTool', () => {
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
-      await expect(SubmitPhaseCompletionTool.call(validInput(), contextFor('workflow')))
+      await expect(callToolFixture(SubmitPhaseCompletionTool, validInput(), contextFor('workflow')))
         .rejects
         .toThrow('active workflow phase')
 

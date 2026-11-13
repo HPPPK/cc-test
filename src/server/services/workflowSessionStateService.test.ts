@@ -329,7 +329,7 @@ describe('WorkflowSessionStateService', () => {
     expect(state.sourceTemplateStatus).toBe(sourceTemplateStatus)
     expect(state.activePhaseId).toBe(activePhaseId)
     expect((state.templateSnapshot as Record<string, unknown>).phases).toEqual(expect.any(Array))
-    expect(artifacts.map((artifact) => artifact.artifactId)).toEqual(artifactIds)
+    expect(artifacts.map((artifact) => artifact.artifactId)).toEqual([...artifactIds])
     expect(artifacts).toEqual(
       expect.arrayContaining(artifactIds.map((artifactId) => expect.objectContaining({
         kind: 'phase-artifact',
@@ -362,12 +362,12 @@ describe('WorkflowSessionStateService', () => {
       ...current,
       artifactIndex: {
         ...(current.artifactIndex as Record<string, unknown>),
-        'phase-specify-ready-2': {
+        'phase-specify-ready-2': Object.assign({ kind: "phase-artifact" as const }, {
           schemaVersion: 1,
           sessionId: 'fixture-session',
           phaseId: 'specify',
           artifactId: 'phase-specify-ready-2',
-          lifecycleStatus: 'superseded',
+          lifecycleStatus: 'superseded' as const,
           createdAt: '2026-05-21T00:02:00.000Z',
           updatedAt: '2026-05-21T00:02:00.000Z',
           title: 'Specify phase completion retry',
@@ -382,7 +382,7 @@ describe('WorkflowSessionStateService', () => {
           futureArtifactField: {
             preserved: true,
           },
-        },
+        }),
       },
     }))
     const persisted = await readJson(statePath('fixture-session'))

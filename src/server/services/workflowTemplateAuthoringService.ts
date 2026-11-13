@@ -596,10 +596,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function mergeRecordUnknownFields(
+function mergeRecordUnknownFields<T>(
   existing: unknown,
-  next: unknown,
-): unknown {
+  next: T,
+): T {
   return isRecord(existing) && isRecord(next)
     ? { ...existing, ...next }
     : next

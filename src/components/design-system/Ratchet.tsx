@@ -7,7 +7,7 @@ type Props = {
   children: React.ReactNode;
   lock?: 'always' | 'offscreen';
 };
-export function Ratchet(t0) {
+export function Ratchet(t0: Props): React.ReactNode {
   const $ = _c(10);
   const {
     children,
@@ -21,7 +21,7 @@ export function Ratchet(t0) {
   const {
     rows
   } = useTerminalSize();
-  const innerRef = useRef(null);
+  const innerRef = useRef<DOMElement | null>(null);
   const maxHeight = useRef(0);
   const [minHeight, setMinHeight] = useState(0);
   let t3;

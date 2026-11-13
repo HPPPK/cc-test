@@ -256,7 +256,7 @@ export function isCurrentExpertTemplateOutputReviewReportPath(
   const current = currentExpertTemplateOutputReviewContext()
   if (current && sameResolvedPath(filePath, current.reportPath)) return true
   return typeof persistedReportPath === 'string'
-    && persistedReportPath.trim()
+    && persistedReportPath.trim().length > 0
     && sameResolvedPath(filePath, persistedReportPath)
 }
 
@@ -617,7 +617,7 @@ function resolveResearchArtifactWrite(input: Record<string, unknown>): Extract<E
   // This internal classification is inferred by the runtime, never supplied by the model.
   const kind = inferResearchArtifactKind(policy, outputRoot, input.file_path)
   if (!kind) {
-    throw new Error('EXPERT_TEMPLATE_FILL_REJECTED: Research Markdown file_path must exactly match a Markdown artifact declared for this Expert session.')
+    throw new Error('EXPERT_TEMPLATE_FILL_REJECTED: Research Markdown file_path must exactly match a Markdown artifact declared for this Expert session. Keep the existing content and retry the correct file_path; do not restart research or rename the artifact. Declared paths: ' + JSON.stringify([policy.briefPath, ...policy.researcherPaths, policy.reviewerPath, policy.auditPath, policy.absorptionPath, policy.completionReviewPath].filter(Boolean)))
   }
   const resolved = resolveExpertResearchArtifactPath({
     workDir: outputRoot,

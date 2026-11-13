@@ -17,7 +17,7 @@ type Props = {
   onSelectTool: (tool: Tool, index: number) => void;
   onBack: () => void;
 };
-export function MCPToolListView(t0) {
+export function MCPToolListView(t0: Props): React.ReactNode {
   const $ = _c(21);
   const {
     server,
@@ -61,7 +61,7 @@ export function MCPToolListView(t0) {
         const isReadOnly = tool.isReadOnly?.({}) ?? false;
         const isDestructive = tool.isDestructive?.({}) ?? false;
         const isOpenWorld = tool.isOpenWorld?.({}) ?? false;
-        const annotations = [];
+        const annotations: string[] = [];
         if (isReadOnly) {
           annotations.push("read-only");
         }
@@ -104,7 +104,7 @@ export function MCPToolListView(t0) {
   const t6 = `${t4} ${t5}`;
   let t7;
   if ($[11] !== onBack || $[12] !== onSelectTool || $[13] !== serverTools || $[14] !== toolOptions) {
-    t7 = serverTools.length === 0 ? <Text dimColor={true}>No tools available</Text> : <Select options={toolOptions} onChange={value => {
+    t7 = serverTools.length === 0 ? <Text dimColor={true}>No tools available</Text> : <Select<string> options={toolOptions} onChange={value => {
       const index_0 = parseInt(value);
       const tool_0 = serverTools[index_0];
       if (tool_0) {

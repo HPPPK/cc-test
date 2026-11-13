@@ -19,7 +19,7 @@ type Props = {
   depCheck: SandboxDependencyCheck;
 };
 type SandboxMode = 'auto-allow' | 'regular' | 'disabled';
-export function SandboxSettings(t0) {
+export function SandboxSettings(t0: Props): React.ReactNode {
   const $ = _c(34);
   const {
     onComplete,
@@ -219,7 +219,12 @@ export function SandboxSettings(t0) {
   }
   return t17;
 }
-function SandboxModeTab(t0) {
+function SandboxModeTab(t0: {
+  showSocketWarning: boolean
+  options: Array<{ label: string; value: string }>
+  onSelect: (value: string) => void
+  onComplete: Props['onComplete']
+}): React.ReactNode {
   const $ = _c(16);
   const {
     showSocketWarning,

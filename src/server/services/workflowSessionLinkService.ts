@@ -1,3 +1,4 @@
+import { isHumanInputMessage, messageKindMetadata, resolveMessageKind } from '../../utils/messageKind.js'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -232,12 +233,23 @@ function visibleMessageText(message: MessageEntry): string {
     .trim()
 }
 
+function carryoverRoleLabel(message: MessageEntry): string {
+  if (isHumanInputMessage(message)) return 'User'
+  switch (resolveMessageKind(message)) {
+    case 'context_summary': return 'Context summary'
+    case 'internal_notification': return 'Internal notification'
+    case 'assistant_response': return 'Assistant'
+    case 'tool_exchange': return 'Tool exchange'
+    default: return 'System'
+  }
+}
+
 function formatInheritContent(messages: MessageEntry[]): string {
   return messages
     .map((message) => {
       const text = visibleMessageText(message)
       if (!text) return null
-      const label = message.type === 'assistant' ? 'Assistant' : 'User'
+      const label = carryoverRoleLabel(message)
       return `${label}: ${text}`
     })
     .filter((line): line is string => !!line)
@@ -264,7 +276,7 @@ function generateLocalSummaryCarryover(
     .map((message) => {
       const text = visibleMessageText(message)
       if (!text) return null
-      const label = message.type === 'assistant' ? 'Assistant' : message.type === 'system' ? 'System' : 'User'
+      const label = carryoverRoleLabel(message)
       return {
         id: message.id,
         text: `${label}: ${truncateForCarryover(text, 1_600)}`,
@@ -324,6 +336,7 @@ function toSummaryMessages(messages: MessageEntry[]): WorkflowSummaryCarryoverOp
       type: message.type === 'system' ? 'system' : message.type,
       uuid: message.id,
       timestamp: message.timestamp,
+      ...messageKindMetadata(message),
       message: {
         role: message.type === 'assistant' ? 'assistant' : message.type === 'system' ? 'system' : 'user',
         content: message.type === 'assistant' && typeof message.content === 'string'

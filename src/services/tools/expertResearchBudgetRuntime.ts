@@ -34,7 +34,7 @@ function withoutLiteralReportStdin(command: string): string {
   for (let index = 0; index < lines.length; index++) {
     const header = lines[index]
     result.push(header)
-    const cli = /(?:^|[;&|])\s*(?:(?:bun|node)\s+(?:run\s+)?)?(?:["']?[^\s;&|]*[\/])?(?:cc-jiangxia|claude-jiangxia)["']?\s+expert-template-fill\b/.test(header)
+    const cli = /(?:^|[;&|])\s*(?:(?:bun|node)\s+(?:run\s+)?)?(?:["']?[^\s;&|]*[\/])?(?:cc-jiangxia|claude-jiangxia|claude)["']?\s+expert-template-fill\b/.test(header)
       || /(?:^|[;&|])\s*(?:"\$(?:CLAUDE_CLI_PATH|\{CLAUDE_CLI_PATH\})"|\$(?:CLAUDE_CLI_PATH|\{CLAUDE_CLI_PATH\}))\s+expert-template-fill\b/.test(header)
     const marker = cli && /--data-stdin\b/.test(header) ? header.match(/<<(-?)\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2/) : null
     if (!marker) continue
@@ -54,7 +54,7 @@ function withoutLiteralReportStdin(command: string): string {
 function withoutLiteralPowerShellReportStdin(command: string): string {
   const lines = command.split('\n')
   const result: string[] = []
-  const reportPipe = /^\s*\|\s*(?:&\s+)?(?:"?\$env:CLAUDE_CLI_PATH"?|(?:cc-jiangxia|claude-jiangxia))\s+expert-template-fill\b[^\n]*--data-stdin\b/i
+  const reportPipe = /^\s*\|\s*(?:&\s+)?(?:"?\$env:CLAUDE_CLI_PATH"?|(?:cc-jiangxia|claude-jiangxia|claude))\s+expert-template-fill\b[^\n]*--data-stdin\b/i
   for (let index = 0; index < lines.length; index++) {
     const header = lines[index]
     result.push(header)
@@ -95,4 +95,11 @@ export async function guardExpertResearchToolCall(input: Dependencies & { toolNa
   // No root reservation: the canonical API denies root public research and
   // reviewer network work, while the parent's report-generation Bash still works.
   await reserve({ action: 'reserve-browser', agentId: input.agentId ?? '', requestId: randomUUID() }, input)
+}
+
+
+/** Lifecycle bookkeeping only: it never refunds a used researcher slot. */
+export async function finishExpertResearcher(input: Dependencies & { agentId: string; agentType: string; expertId?: string }): Promise<void> {
+  if (input.agentType !== 'expert-evidence-researcher' || input.expertId !== 'commercialization-research-report') return
+  try { await reserve({ action: 'finish-researcher', agentId: input.agentId }, input) } catch { /* Keep admission conservative if the host is unavailable. */ }
 }

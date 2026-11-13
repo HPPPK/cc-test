@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import {

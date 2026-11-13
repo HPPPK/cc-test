@@ -1,3 +1,6 @@
+import { getDefaultAppState } from '../../state/AppStateStore.js'
+import type { Message } from '../../types/message.js'
+import { withFetchPreconnect, requireFixtureValue } from '../../server/__tests__/fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import * as fs from 'node:fs/promises'
@@ -15,10 +18,13 @@ import { SubmitPhaseCompletionTool } from '../../tools/SubmitPhaseCompletionTool
 import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import { createAssistantMessage } from '../../utils/messages.js'
 import { runToolUse } from './toolExecution.js'
+import { asAgentId } from '../../types/ids.js'
 import * as tokenEstimation from '../tokenEstimation.js'
 import * as toolHooks from './toolHooks.js'
+import * as intakeRuntime from './expertResearchIntakeRuntime.js'
 import * as researchBudget from './expertResearchBudgetRuntime.js'
 import * as browserVerification from './expertBrowserVerificationRuntime.js'
+import * as searchPacingRuntime from './expertBrowserSearchPacingRuntime.js'
 import { handleSessionsApi } from '../../server/api/sessions.js'
 import { sessionService } from '../../server/services/sessionService.js'
 import { ExpertSessionService } from '../../server/services/expertSessionService.js'
@@ -28,7 +34,7 @@ import { ZipPackAdapter } from '../../server/services/zipPackAdapter.js'
 
 const templateFillAdapter = new ZipPackAdapter()
 
-const AgentRunReceiptProbeTool = buildTool({
+const AgentRunReceiptProbeTool = buildTool({maxResultSizeChars: 1000, renderToolUseMessage() { return null },
   name: 'AgentRunReceiptProbe',
   inputSchema: z.object({}).strict(),
   async description() { return 'Fast receipt probe' },
@@ -78,7 +84,7 @@ describe('runToolUse file edit recovery', () => {
     try {
       const context = createContext()
       context.options.tools = [...context.options.tools, PlaywrightTool]
-      const output = await runSingleToolUse({ type: 'tool_use', id: 'uiux-first-reference', name: 'Playwright', input: { actions: [{ type: 'navigate', url: 'https://example.com' }], include_screenshot: true } }, context)
+      const output = await runSingleToolUse({caller: { type: 'direct' }, type: 'tool_use', id: 'uiux-first-reference', name: 'Playwright', input: { actions: [{ type: 'navigate', url: 'https://example.com' }], include_screenshot: true } }, context)
       expect(JSON.stringify(output)).toContain('UIUX_INSPIRATION_REQUIRED')
       expect(called).not.toHaveBeenCalled()
     } finally {
@@ -96,7 +102,7 @@ describe('runToolUse file edit recovery', () => {
     try {
       const context = createContext()
       context.options.tools = [...context.options.tools, ImageGenerationTool]
-      const output = await runSingleToolUse({ type: 'tool_use', id: 'uiux-first-generate', name: 'image_generation', input: { operation: 'generate', prompt: 'test image' } }, context)
+      const output = await runSingleToolUse({caller: { type: 'direct' }, type: 'tool_use', id: 'uiux-first-generate', name: 'image_generation', input: { operation: 'generate', prompt: 'test image' } }, context)
       expect(JSON.stringify(output)).toContain('UIUX_INSPIRATION_REQUIRED')
       expect(called).not.toHaveBeenCalled()
     } finally {
@@ -196,11 +202,11 @@ describe('runToolUse file edit recovery', () => {
       await fs.writeFile(filePath, JSON.stringify({ payload: 'x'.repeat(160_000) }))
       const context = createContext()
       context.options.tools = [FileReadTool]
-      const toolUse = {
+      const toolUse = { caller: { type: 'direct' },
         type: 'tool_use',
         name: FileReadTool.name,
         input: { file_path: filePath },
-      } as ToolUseBlock
+       } satisfies Omit<ToolUseBlock, 'id'>
 
       const first = await runSingleToolUse({ ...toolUse, id: 'toolu_oversized_read_first' }, context)
       expect(JSON.stringify(first)).toContain('exceeds maximum allowed tokens')
@@ -228,7 +234,7 @@ describe('runToolUse file edit recovery', () => {
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT = tmpDir
     process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'template-fill-session'
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
-    globalThis.fetch = (async (url, init) => {
+    globalThis.fetch = withFetchPreconnect(async (url, init) => {
       expect(String(url)).toContain('/api/sessions/template-fill-session/expert/template-fill')
       expect(init?.method).toBe('POST')
       expect(JSON.parse(String(init?.body))).toEqual({
@@ -242,7 +248,7 @@ describe('runToolUse file edit recovery', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
-    }) as typeof fetch
+    })
 
     try {
       const context = createContext()
@@ -298,7 +304,7 @@ describe('runToolUse file edit recovery', () => {
       await new ExpertSessionService().enterExpertMode(sessionId, 'tool-execution-template-fill-expert')
       process.env.CC_JIANGXIA_EXPERT_SESSION_ID = sessionId
       let acknowledgements = 0
-      globalThis.fetch = (async (url, init) => {
+      globalThis.fetch = withFetchPreconnect(async (url, init) => {
         const requestUrl = new URL(String(url))
         const response = await handleSessionsApi(
           new Request(requestUrl, init),
@@ -310,7 +316,7 @@ describe('runToolUse file edit recovery', () => {
           if (acknowledgements === 1) throw new Error('response lost after server committed')
         }
         return response
-      }) as typeof fetch
+      })
 
       const context = createContext()
       context.options.tools = [FileReadTool, getFileWriteToolForCurrentRuntime(), FileEditTool]
@@ -374,10 +380,10 @@ describe('runToolUse file edit recovery', () => {
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT = tmpDir
     process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'terminal-template-fill-session'
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
-    globalThis.fetch = (async () => new Response(JSON.stringify({
+    globalThis.fetch = withFetchPreconnect(async () => new Response(JSON.stringify({
       error: 'EXPERT_RESEARCH_EVIDENCE_ABSORPTION_REQUIRED',
       message: 'The cited source row needs a matching reviewed evidence record.',
-    }), { status: 409, headers: { 'content-type': 'application/json' } })) as typeof fetch
+    }), { status: 409, headers: { 'content-type': 'application/json' } }))
 
     try {
       const context = createContext()
@@ -414,7 +420,7 @@ describe('runToolUse file edit recovery', () => {
   test('returns a retryable contract error instead of sending an invalid scope-plan question card', async () => {
     const context = createContext()
     context.options.tools = [AskUserQuestionTool]
-    context.getAppState = () => ({
+    context.getAppState = () => ({ ...getDefaultAppState(),
       toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
       workflow: {
         mode: 'workflow',
@@ -454,7 +460,7 @@ describe('runToolUse file edit recovery', () => {
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-    }) as ReturnType<ToolUseContext['getAppState']>
+     })
 
     const messages = await runSingleToolUse({
       type: 'tool_use',
@@ -502,7 +508,7 @@ describe('runToolUse file edit recovery', () => {
   test('returns a structured workflow violation instead of executing a write tool before implementation', async () => {
     const filePath = path.join(tmpDir, 'workflow-denied.txt')
     const context = createContext()
-    context.getAppState = () => ({
+    context.getAppState = () => ({ ...getDefaultAppState(),
       toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
       workflow: {
         mode: 'workflow',
@@ -531,7 +537,7 @@ describe('runToolUse file edit recovery', () => {
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-    }) as ReturnType<ToolUseContext['getAppState']>
+     })
 
     const messages = await runSingleToolUse({
       type: 'tool_use',
@@ -553,7 +559,7 @@ describe('runToolUse file edit recovery', () => {
     const filePath = path.join(tmpDir, 'src', 'leader.ts')
     const context = createContext()
     context.options.tools = [FileWriteTool]
-    context.getAppState = () => ({
+    context.getAppState = () => ({ ...getDefaultAppState(),
       toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
       workflow: {
         mode: 'workflow',
@@ -590,7 +596,7 @@ describe('runToolUse file edit recovery', () => {
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-    }) as ReturnType<ToolUseContext['getAppState']>
+     })
 
     try {
       const messages = await runSingleToolUse({
@@ -608,6 +614,97 @@ describe('runToolUse file edit recovery', () => {
       if (originalWorkflowSessionId === undefined) delete process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID
       else process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = originalWorkflowSessionId
     }
+  })
+
+  test('enforces live default-workflow worker scope, pause, and stale-phase contracts before a real Write', async () => {
+    const context = createContext()
+    context.agentId = asAgentId('workflow-worker')
+    context.options.tools = [FileWriteTool]
+    const appState = context.getAppState()
+    let workflow = {
+      mode: 'workflow', sessionId: 'worker-contract', activePhaseId: 'delegate-implement',
+      workflowStatus: 'running', runStatus: 'active', workspaceRoot: tmpDir,
+      templateIdentity: { id: 'efficient-constrained-dev-debug-workflow-v5' },
+    }
+    context.getAppState = () => ({ ...getDefaultAppState(),  ...appState, workflow  })
+    context.workflowWorkerContract = {
+      sessionId: 'worker-contract', phaseId: 'delegate-implement', role: 'coder',
+      workspaceRoot: tmpDir, writeScopes: ['src/**'],
+    }
+    const allowed = path.join(tmpDir, 'src', 'allowed.ts')
+    const forbidden = path.join(tmpDir, 'outside.ts')
+    const write = (file_path: string) => runSingleToolUse({
+      type: 'tool_use', id: crypto.randomUUID(), name: 'Write', input: { file_path, content: 'proof' },
+    } as ToolUseBlock, context)
+    const contract = context.workflowWorkerContract
+    delete context.workflowWorkerContract
+    expect(JSON.stringify(await write(forbidden))).toContain('WORKFLOW_WORKER_CONTRACT_REQUIRED')
+    context.workflowWorkerContract = contract
+    expect(JSON.stringify(await write(forbidden))).toContain('WORKFLOW_WRITE_SCOPE')
+    expect(await fs.stat(forbidden).catch(() => null)).toBeNull()
+    await write(allowed)
+    expect(await fs.readFile(allowed, 'utf8')).toBe('proof')
+    workflow = { ...workflow, runStatus: 'paused' }
+    const pausedTarget = path.join(tmpDir, 'src', 'paused.ts')
+    expect(JSON.stringify(await write(pausedTarget))).toContain('WORKFLOW_EXECUTION_SUSPENDED')
+    expect(await fs.stat(pausedTarget).catch(() => null)).toBeNull()
+    workflow = { ...workflow, runStatus: 'active', activePhaseId: 'scenario-review' }
+    expect(JSON.stringify(await write(pausedTarget))).toContain('WORKFLOW_WORKER_STALE')
+    context.workflowWorkerContract = { ...context.workflowWorkerContract, phaseId: 'scenario-review', role: 'qa' }
+    expect(JSON.stringify(await write(pausedTarget))).toContain('WORKFLOW_WORKER_READ_ONLY')
+    expect(await fs.stat(pausedTarget).catch(() => null)).toBeNull()
+    workflow = { ...workflow, activePhaseId: 'delegate-implement' }
+    context.workflowWorkerContract = { ...context.workflowWorkerContract, phaseId: 'delegate-implement', role: 'coder' }
+    const delayed = { type: 'tool_use', id: 'approval-race', name: 'Write', input: { file_path: pausedTarget, content: 'must not write' } } as ToolUseBlock
+    const executeWithPermission = async (permission: CanUseToolFn) => {
+      const messages: Message[] = []
+      for await (const result of runToolUse(delayed, createAssistantMessage({ content: 'write after approval' }), permission, context)) messages.push(result.message)
+      return JSON.stringify(messages)
+    }
+    expect(await executeWithPermission((async () => {
+      workflow = { ...workflow, runStatus: 'paused' }
+      return { behavior: 'allow' }
+    }) as CanUseToolFn)).toContain('WORKFLOW_EXECUTION_SUSPENDED')
+    workflow = { ...workflow, runStatus: 'active' }
+    expect(await executeWithPermission((async () => {
+      workflow = { ...workflow, activePhaseId: 'scenario-review' }
+      return { behavior: 'allow' }
+    }) as CanUseToolFn)).toContain('WORKFLOW_EXECUTION_STALE')
+    workflow = { ...workflow, activePhaseId: 'delegate-implement' }
+    expect(await executeWithPermission((async () => ({
+      behavior: 'allow', updatedInput: { file_path: forbidden, content: 'redirected outside Batch' },
+    })) as CanUseToolFn)).toContain('WORKFLOW_WRITE_SCOPE')
+    expect(await fs.stat(pausedTarget).catch(() => null)).toBeNull()
+    expect(await fs.stat(forbidden).catch(() => null)).toBeNull()
+  })
+
+  test('returns discarded-field errors to the model and permits a corrected call without aborting', async () => {
+    let calls = 0
+    const tool = buildTool({maxResultSizeChars: 1000, renderToolUseMessage() { return null },
+      name: 'WorkflowFieldRecoveryProbe', inputSchema: z.object({ pattern: z.string() }),
+      async description() { return 'Regression probe' },
+      async prompt() { return 'Regression probe' },
+      async call() { calls += 1; return { data: 'matched' } },
+      mapToolResultToToolResultBlockParam(data, toolUseID) {
+        return { type: 'tool_result', tool_use_id: toolUseID, content: data }
+      },
+    })
+    const context = createContext()
+    context.options.tools = [tool]
+    const app = context.getAppState()
+    context.getAppState = () => ({ ...getDefaultAppState(),  ...app, workflow: {
+      mode: 'workflow', sessionId: 'input-recovery', activePhaseId: 'delegate-implement',
+      workflowStatus: 'running', templateIdentity: { id: 'efficient-constrained-dev-debug-workflow-v5' },
+    }  })
+    const call = { caller: { type: 'direct' },  type: 'tool_use', id: 'bad-field', name: tool.name, input: { pattern: 'test', invented_field: true }  } satisfies ToolUseBlock
+    const rejected = JSON.stringify(await runSingleToolUse(call, context))
+    expect(rejected).toContain('WORKFLOW_TOOL_FIELDS_INVALID')
+    expect(rejected).toContain('invented_field')
+    expect(calls).toBe(0)
+    const corrected = JSON.stringify(await runSingleToolUse({ ...call, id: 'corrected-field', input: { pattern: 'test' } }, context))
+    expect(corrected).not.toContain('<tool_use_error>')
+    expect(calls).toBe(1)
+    expect(context.abortController.signal.aborted).toBe(false)
   })
 
   test('uses the latest Desktop workflow phase instead of stale CLI state before a tool executes', async () => {
@@ -660,20 +757,20 @@ describe('runToolUse file edit recovery', () => {
       phases: [{ id: 'requirements-clarification', status: 'running', artifactPointers: [] }],
     }
     context.options.tools = [FileWriteTool]
-    context.getAppState = () => ({
+    context.getAppState = () => ({ ...getDefaultAppState(),
       toolPermissionContext: { ...getEmptyToolPermissionContext(), mode: 'acceptEdits' },
       workflow: localWorkflow,
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-    }) as ReturnType<ToolUseContext['getAppState']>
+     })
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:4567/'
     process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow-current-phase'
     const calls: string[] = []
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    globalThis.fetch = withFetchPreconnect(async (input: string | URL | Request) => {
       calls.push(String(input))
       return new Response(JSON.stringify({ state: currentDesktopWorkflow }), { status: 200 })
-    }) as typeof fetch
+    })
 
     try {
       const messages = await runSingleToolUse({
@@ -764,11 +861,11 @@ describe('runToolUse file edit recovery', () => {
     context.options.tools = [FileReadTool, FileWriteTool, FileEditTool, SubmitPhaseCompletionTool]
     context.getAppState = () => appState
     context.setAppState = (updater) => { appState = updater(appState) }
-    const toolUse = {
+    const toolUse = { caller: { type: 'direct' },
       type: 'tool_use',
       name: 'submit_phase_completion',
       input: { status: 'ready' },
-    } as ToolUseBlock
+     } satisfies Omit<ToolUseBlock, 'id'>
 
     const first = await runSingleToolUse({ ...toolUse, id: 'toolu_submit_first' }, context)
     expect(JSON.stringify(first)).toContain('WORKFLOW_SUBMIT_RETRY_ALLOWED')
@@ -830,10 +927,10 @@ describe('runToolUse file edit recovery', () => {
       process.env.CC_JIANGXIA_AGENT_RUN_LEDGER_ENABLED = '1'
       process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
       process.env.CC_JIANGXIA_SESSION_ID = 'ledger-session'
-      globalThis.fetch = (async (_url, init) => {
+      globalThis.fetch = withFetchPreconnect(async (_url, init) => {
         receipts.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return new Response('{}', { status: 200 })
-      }) as typeof fetch
+      })
       const context = createContext()
       context.options.tools = [AgentRunReceiptProbeTool]
       context.queryTracking = { chainId: 'ledger-run', depth: 0 }
@@ -844,6 +941,20 @@ describe('runToolUse file edit recovery', () => {
       expect(receipts.map((receipt) => receipt.eventType)).toEqual(['tool_started', 'tool_completed', 'artifact_recorded'])
       expect(receipts.every((receipt) => receipt.sessionId === 'ledger-session' && receipt.runId === 'ledger-run')).toBe(true)
       expect(receipts.every((receipt) => !('content' in receipt) && !('prompt' in receipt))).toBe(true)
+
+      receipts.length = 0
+      const fail = spyOn(AgentRunReceiptProbeTool, 'call').mockImplementation(async () => {
+        throw new Error('correctable fixture tool error')
+      })
+      try {
+        await runSingleToolUse({
+          type: 'tool_use', id: 'toolu_ledger_failed_probe', name: AgentRunReceiptProbeTool.name, input: {},
+        } as ToolUseBlock, context)
+      } finally {
+        fail.mockRestore()
+      }
+      expect(receipts.map((receipt) => receipt.eventType)).toEqual(['tool_started', 'tool_failed'])
+      expect(receipts.at(-1)).toMatchObject({ status: 'running' })
     } finally {
       globalThis.fetch = previousFetch
       if (previousEnabled === undefined) delete process.env.CC_JIANGXIA_AGENT_RUN_LEDGER_ENABLED
@@ -860,7 +971,7 @@ async function runSingleToolUse(
   toolUse: ToolUseBlock,
   context: ToolUseContext = createContext(),
 ) {
-  const messages = []
+  const messages: Message[] = []
   const assistantMessage = createAssistantMessage({ content: 'run tool' })
   for await (const update of runToolUse(
     toolUse,
@@ -892,17 +1003,12 @@ function createContext(): ToolUseContext {
       isNonInteractiveSession: true,
       agentDefinitions: {
         activeAgents: [],
-        errors: [],
-        warnings: [],
-        metadata: {
-          directories: [],
-          loadedFromSettings: [],
-        },
+        allAgents: [],
       },
     },
     abortController: new AbortController(),
     readFileState: createFileStateCacheWithSizeLimit(10),
-    getAppState: () => ({
+    getAppState: () => ({ ...getDefaultAppState(),
       toolPermissionContext: {
         ...getEmptyToolPermissionContext(),
         mode: 'acceptEdits',
@@ -910,7 +1016,7 @@ function createContext(): ToolUseContext {
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-    }) as ReturnType<ToolUseContext['getAppState']>,
+     }),
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -939,7 +1045,7 @@ describe('CLI-only research report dispatch boundary', () => {
       process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
       process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE = '1'
       let executed = false
-      const probe = buildTool({
+      const probe = buildTool({maxResultSizeChars: 1000, renderToolUseMessage() { return null },
         name,
         inputSchema: z.strictObject({ file_path: z.string(), required_probe: z.string() }),
         async description() { return 'Mutation probe' },
@@ -952,7 +1058,7 @@ describe('CLI-only research report dispatch boundary', () => {
       try {
         const context = createContext()
         context.options.tools = [probe]
-        const result = await runSingleToolUse({ type: 'tool_use', id: `cli-deny-${name}`, name, input: { file_path: 'report.HTML' } }, context)
+        const result = await runSingleToolUse({caller: { type: 'direct' }, type: 'tool_use', id: `cli-deny-${name}`, name, input: { file_path: 'report.HTML' } }, context)
         expect(JSON.stringify(result)).toContain('EXPERT_TEMPLATE_FILL_CLI_REQUIRED')
         expect(JSON.stringify(result)).not.toContain('required_probe')
         expect(executed).toBe(false)
@@ -987,11 +1093,60 @@ test('verification resume reserves another browser call before a retry executes'
   const context = createContext()
   context.options.tools = [probe]
   const guard = spyOn(researchBudget, 'guardExpertResearchToolCall').mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('EXPERT_RESEARCH_BUDGET_EXHAUSTED: retry denied'))
-  const verification = spyOn(browserVerification, 'coordinateExpertBrowserVerification').mockImplementation(async (params) => await params.resume(params.input))
+  const verification = spyOn(browserVerification, 'coordinateExpertBrowserVerification').mockImplementation(async (params) => await requireFixtureValue(params.resume)(params.input))
   try {
     const messages = await runSingleToolUse({ type: 'tool_use', id: 'verification-budget', name: probe.name, input: {} } as ToolUseBlock, context)
     expect(calls).toBe(1)
     expect(guard).toHaveBeenCalledTimes(2)
     expect(JSON.stringify(messages)).toContain('retry denied')
   } finally { guard.mockRestore(); verification.mockRestore() }
+})
+
+
+test('unresolved Expert intake prevents the tool body and verification continuation from executing', async () => {
+  let calls = 0
+  const probe = buildTool({ name: 'WebFetch', maxResultSizeChars: 1000, renderToolUseMessage() { return null }, inputSchema: z.object({}).strict(), async description() { return 'probe' }, async prompt() { return 'probe' }, async call() { calls++; return { data: 'ok' } }, mapToolResultToToolResultBlockParam(data, id) { return { type: 'tool_result', tool_use_id: id, content: data } } })
+  const context = createContext()
+  context.options.tools = [probe]
+  const guard = spyOn(intakeRuntime, 'guardExpertIntakeToolCall').mockRejectedValueOnce(new Error('EXPERT_INTAKE_REQUIRED: unresolved scope'))
+  try {
+    const denied = await runSingleToolUse({ type: 'tool_use', id: 'intake-denied', name: probe.name, input: {} } as ToolUseBlock, context)
+    expect(calls).toBe(0)
+    expect(JSON.stringify(denied)).toContain('EXPERT_INTAKE_REQUIRED')
+    guard.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('EXPERT_INTAKE_REQUIRED: scope changed'))
+    const verification = spyOn(browserVerification, 'coordinateExpertBrowserVerification').mockImplementation(async params => await requireFixtureValue(params.resume)(params.input))
+    try {
+      const resumed = await runSingleToolUse({ type: 'tool_use', id: 'intake-continuation', name: probe.name, input: {} } as ToolUseBlock, context)
+      expect(calls).toBe(1)
+      expect(JSON.stringify(resumed)).toContain('scope changed')
+    } finally { verification.mockRestore() }
+  } finally { guard.mockRestore() }
+})
+
+test.each([{ input: null }, { input: [] }, { input: 42 }, { input: 'invalid' }])('verification rejects malformed continuation $input before another tool execution', async ({ input }) => {
+  let calls = 0
+  const probe = buildTool({ name: 'WebFetch', maxResultSizeChars: 1000, renderToolUseMessage() { return null }, inputSchema: z.object({}).strict(), async description() { return 'probe' }, async prompt() { return 'probe' }, async call() { calls++; return { data: 'ok' } }, mapToolResultToToolResultBlockParam(data, id) { return { type: 'tool_result', tool_use_id: id, content: data } } })
+  const context = createContext()
+  context.options.tools = [probe]
+  const verification = spyOn(browserVerification, 'coordinateExpertBrowserVerification').mockImplementation(async params => await requireFixtureValue(params.resume)(input))
+  try {
+    const messages = await runSingleToolUse({ caller: { type: 'direct' }, type: 'tool_use', id: 'invalid-verification-continuation', name: probe.name, input: {} }, context)
+    expect(calls).toBe(1)
+    expect(JSON.stringify(messages)).toContain('TOOL_CONTINUATION_INPUT_INVALID')
+  } finally { verification.mockRestore() }
+})
+
+
+test('passes the active tool cancellation signal into the suspended search lease', async () => {
+  const context = createContext()
+  const tool = buildTool({ name: 'SearchCancellationProbe', inputSchema: z.object({}), maxResultSizeChars: 1000,
+    renderToolUseMessage() { return null }, async description() { return 'Probe' }, async prompt() { return 'Probe' },
+    async call() { return { data: 'done' } }, mapToolResultToToolResultBlockParam(data, id) { return { type: 'tool_result', tool_use_id: id, content: data } },
+  })
+  context.options.tools = [tool]
+  const lease = spyOn(searchPacingRuntime, 'coordinateExpertBrowserSearchPacing').mockResolvedValue({ async release() {} })
+  try {
+    await runSingleToolUse({ type: 'tool_use', id: 'wait-signal', name: tool.name, input: {} } as ToolUseBlock, context)
+    expect(lease).toHaveBeenCalledWith(expect.objectContaining({ signal: context.abortController.signal }))
+  } finally { lease.mockRestore() }
 })

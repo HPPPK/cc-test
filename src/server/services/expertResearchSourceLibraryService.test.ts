@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from "bun:test"
 import { readFile as readFileForSourceLibraryTest } from "node:fs/promises"
 import {
@@ -627,11 +628,11 @@ test('counts bounded platform search attempts without treating generic discovery
 test('attributes part audits to the assigned lane without counting repeated visits twice', () => {
   const catalog = parseResearchSourceLibrary(SOURCE_LIBRARY)
   const plan = planResearchSourceLibraryExecutionBatches({ catalog, researcherPaths: ['commercialization-research/02-competitors.md', 'commercialization-research/03-user-needs.md', 'commercialization-research/04-channels.md'] })
-  const lane = plan.batches.find(batch => batch.entries.some(entry => entry.candidateHost === 'talkingdata.com'))!.artifactPath
+  const lane = requireFixtureValue(plan).batches.find(batch => batch.entries.some(entry => entry.candidateHost === 'talkingdata.com'))!.artifactPath
   const records = [0, 1].map(i => ({ agentId: 'part-' + i, agentType: 'expert-evidence-researcher', recordedAt: '2026-09-10T00:00:00Z', artifactPath: lane.replace('.md', '.parts/worker-' + i + '.md'), content: '# evidence', entries: [{ target: 'https://www.talkingdata.com/', finalUrl: 'https://www.talkingdata.com/', kind: 'url' as const, status: 'opened' as const }] }))
   const attempts = matchResearchSourceLibraryAttempts({ catalog, records })
   expect(attempts).toHaveLength(2) // retain both real visits
-  const progress = evaluateResearchSourceLibraryExecutionProgress({ plan, attempts })
+  const progress = evaluateResearchSourceLibraryExecutionProgress({ plan: requireFixtureValue(plan), attempts })
   expect(progress.reduce((count, batch) => count + batch.coreAttemptedCount, 0)).toBe(1)
   expect(attempts[0].artifactPath).toBe(lane)
   expect(attempts[0].status).toBe('opened')

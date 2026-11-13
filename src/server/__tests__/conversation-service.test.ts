@@ -792,6 +792,21 @@ describe('ConversationService', () => {
     expect((await providerService.listProviders()).providers.find(item => item.id === provider.id)?.models).toEqual({ main: 'deepseek-pro', haiku: 'provider-haiku', sonnet: 'provider-sonnet', opus: 'provider-opus' })
   })
 
+  test('pins the selected OpenAI expert model without changing saved providers or ordinary sessions', async () => {
+    const service = new ConversationService() as any
+    const options = { model: 'gpt-6-luna', expertModelPolicy: 'session-model-only' }
+    const args = service.buildSessionCliArgs('luna-session', 'ws://127.0.0.1:3456/sdk/luna-session', false, options) as string[]
+    expect(args[args.indexOf('--model') + 1]).toBe('gpt-6-luna')
+    expect(args).not.toContain('--fallback-model')
+    const env = await service.buildChildEnv(tmpDir, undefined, options) as Record<string, string>
+    for (const key of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) expect(env[key]).toBe('gpt-6-luna')
+    expect(env.CC_JIANGXIA_EXPERT_MODEL_ID).toBe('gpt-6-luna')
+    expect(env.CC_JIANGXIA_EXPERT_MODEL_POLICY).toBe('session-model-only')
+    const ordinary = await service.buildChildEnv(tmpDir, undefined, { model: 'ordinary-model' }) as Record<string, string>
+    expect(ordinary.CC_JIANGXIA_EXPERT_MODEL_ID).toBeUndefined()
+    await expect(service.buildChildEnv(tmpDir, undefined, { expertModelPolicy: 'session-model-only' })).rejects.toThrow('model')
+  })
+
   test('startSession sends the normalized Flash model and final environment to the spawned CLI', async () => {
     const service = new ConversationService() as any
     const launchInfo = spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)

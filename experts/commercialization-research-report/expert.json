@@ -1,8 +1,8 @@
 {
   "id": "commercialization-research-report",
   "name": "新品商业化调研报告专家",
-  "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。先形成字段—任务—具体来源路线，再由按 A/B/C 分工、可分片扩展的研究子代理以 Playwright 逐页取证、独立复核并按来源颗粒度吸收进报告；资料不足时如实标注，不把业务规则或搜索摘要当作市场证据。",
-  "statusLabel": "分章节子代理 + 具体页面取证 + 独立复核 + 细节簇字段吸收 + 渲染后完整性检查 + cc-jiangxia expert-template-fill 固定母版交付 + 条件化 SEO 取证 v0.13.55-local",
+  "description": "基于可编辑 AGENTS.md 业务规则与固定 HTML 母版的新品商业化调研专家。先形成字段—任务—具体来源路线，再由按 A/B/C 分工、可分片扩展的研究子代理以 Playwright 逐页取证、独立复核并按来源颗粒度吸收进报告；资料不足时如实标注，不把业务规则或未核验摘要当作已证实市场结论。",
+  "statusLabel": "分章节子代理 + 三路独立浏览器会话 + 具体页面取证 + 独立复核 + 细节簇字段吸收 + 渲染后完整性检查 + claude expert-template-fill 固定母版交付 + 条件化 SEO 取证 v0.13.58-local",
   "promptPaths": {
     "system": "experts/commercialization-research-report/prompts/system.md"
   },
@@ -87,7 +87,7 @@
       },
       {
         "id": "delivery",
-        "title": "cc-jiangxia expert-template-fill 输出固定 HTML",
+        "title": "claude expert-template-fill 输出固定 HTML",
         "description": "固定母版 CLI 渲染固定 HTML 草稿；08 完整性复核后按实际结论 patch 或 finalize，不由 Write 手写或拼接 HTML。"
       }
     ],
@@ -99,7 +99,7 @@
     "notes": "模型从可信来源范围动态构造候选 URL，Playwright 实际打开并扩展到具体内容页；所有最终 HTML 使用的网页信息必须可回溯到已打开 URL，结构化字段由服务端校验并填充固定母版。",
     "howITalk": "先根据用户已提供的信息和公开证据开展完整商业分析；固定欢迎语之后，只要确实需要用户回答、确认、补充材料或作选择，一律使用与当前产品相关的 AskUserQuestion 卡片，不把问题写成普通文本。结论会区分已核验事实、有限公开观察、（AI推断）与证据缺口。"
   },
-  "version": "0.13.55-local",
+  "version": "0.13.58-local",
   "status": "0.13.55-local：统一必要问询、普通证据缺口和草稿→复核→定稿说明；不新增研究、来源、审核或写入门槛。",
   "outputTemplatePath": "experts/commercialization-research-report/templates/commercialization-research-report-template.html",
   "outputMode": "template-fill",
@@ -107,10 +107,17 @@
     "expert-evidence-researcher": [
       "browser-information-retrieval",
       "research-source-library",
-      "channel-acquisition-evidence"
+      "channel-acquisition-evidence",
+      "commercialization-field-evidence"
     ],
-    "expert-evidence-reviewer": [],
-    "expert-evidence-absorber": [],
-    "expert-evidence-output-reviewer": []
+    "expert-evidence-reviewer": [
+      "commercialization-field-evidence"
+    ],
+    "expert-evidence-absorber": [
+      "commercialization-field-evidence"
+    ],
+    "expert-evidence-output-reviewer": [
+      "commercialization-field-evidence"
+    ]
   }
 }

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { developmentArtifactWriteAllowed } from './developmentToolExecutionPolicy.js'
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import * as path from 'node:path'
 import type {
@@ -65,6 +66,7 @@ export function isDevelopmentImplementationPhase(
 export type DevelopmentBatchPlanParseResult = {
   plan: DevelopmentBatchPlanTask[] | null
   issues: string[]
+  workspaceMode?: 'existing-project' | 'blank-create'
 }
 
 export type DevelopmentDeliveryPlanPreparation = DevelopmentBatchPlanParseResult & {
@@ -239,9 +241,16 @@ export function parseDevelopmentBatchPlanDocument(content: string): DevelopmentB
       if (!Array.isArray(container.tasks)) continue
       const taskResults = container.tasks.map(taskFromRecord)
       const issues = taskResults.flatMap((result) => result.issues)
+      const rawWorkspaceMode = container.workspace_mode ?? container.workspaceMode
+      const workspaceMode = rawWorkspaceMode === 'existing-project' || rawWorkspaceMode === 'blank-create'
+        ? rawWorkspaceMode
+        : undefined
+      if (rawWorkspaceMode !== undefined && !workspaceMode) {
+        issues.push('workspace_mode must be "existing-project" or "blank-create".')
+      }
       const plan = taskResults.map((result) => result.task).filter((task): task is DevelopmentBatchPlanTask => Boolean(task))
       if (!issues.length) issues.push(...validateDevelopmentBatchPlanTasks(plan))
-      if (!issues.length) return { plan, issues: [] }
+      if (!issues.length) return { plan, issues: [], ...(workspaceMode ? { workspaceMode } : {}) }
       structuredIssues = issues
     } catch {}
   }
@@ -272,6 +281,35 @@ function activeRun(state: WorkflowSessionState) {
   return (state.activeWorkflowRunId
     ? runs.find((run) => run.id === state.activeWorkflowRunId)
     : runs.find((run) => run.status === 'active')) ?? null
+}
+
+type DevelopmentWorkspaceInspection = {
+  status: 'blank' | 'populated' | 'unavailable'
+  evidence: string[]
+}
+
+function inspectDevelopmentWorkspace(state: WorkflowSessionState): DevelopmentWorkspaceInspection {
+  const workspaceRoot = activeRun(state)?.workspaceRoot ?? state.workspaceRoot
+  if (!workspaceRoot) return { status: 'unavailable', evidence: [] }
+  try {
+    const evidence = readdirSync(workspaceRoot, { withFileTypes: true })
+      .map((entry) => entry.name)
+      .filter((name) => !['.workflow', '.DS_Store', 'Thumbs.db'].includes(name))
+      .sort()
+    return { status: evidence.length ? 'populated' : 'blank', evidence: evidence.slice(0, 8) }
+  } catch {
+    return { status: 'unavailable', evidence: [] }
+  }
+}
+
+function formatDevelopmentWorkspaceInspection(inspection: DevelopmentWorkspaceInspection): string {
+  if (inspection.status === 'blank') {
+    return 'Workspace preflight: blank. No project files exist outside workflow metadata. Use top-level "workspace_mode": "blank-create" and make the first implementation Batch create the project skeleton; do not describe guessed paths as existing files.'
+  }
+  if (inspection.status === 'populated') {
+    return `Workspace preflight: existing project evidence found (${inspection.evidence.join(', ')}). Inspect the available files before planning and use top-level "workspace_mode": "existing-project".`
+  }
+  return 'Workspace preflight: unavailable. Do not guess project paths. Ask for the correct workspace or record the access problem; Stage 3 cannot complete until the workspace can be inspected.'
 }
 
 function isSafeRunId(runId: string | null | undefined): runId is string {
@@ -348,13 +386,16 @@ export function developmentBatchHandoffPrompt(state: WorkflowSessionState): stri
   const relativePath = `.workflow/runs/${runId}/delivery-plan.md`
 
   if (state.activePhaseId === DEVELOPMENT_PLAN_PHASE_ID) {
+    const workspaceInspection = inspectDevelopmentWorkspace(state)
     return [
       'Default development Stage 3 -> Stage 4 handoff contract',
+      formatDevelopmentWorkspaceInspection(workspaceInspection),
       `Write the final delivery plan to exactly: ${relativePath}`,
       'Before submitting Stage 3 completion, include exactly one machine-readable JSON code block in that file. Use stable individual Batch IDs (B1, B2, B3); never use a range such as B1-B3 as one Batch ID.',
       'Use this shape, with the same field names later passed to Agent.workflow_parallel_plan.tasks:',
       '```json',
       '{',
+      '  "workspace_mode": "existing-project",',
       '  "tasks": [',
       '    {',
       '      "id": "B1",',
@@ -374,6 +415,7 @@ export function developmentBatchHandoffPrompt(state: WorkflowSessionState): stri
     return [
       'Default development Stage 4 intake contract',
       `Treat ${relativePath} as the immutable, already-validated Stage 3 Batch plan.`,
+      'workflow_parallel_plan.task_id is the original Batch ID from tasks, for example B1; workflow_role selects coder or reviewer. Never pass internal ledger IDs such as development-batch:B1:coder or scheduler IDs such as B1::coder as task_id.',
       'Every Coder/Reviewer Agent call must reuse its complete tasks array without changing IDs, dependencies, write scopes, resource claims, or execution modes.',
       'Do not edit delivery-plan.md from Stage 4 to work around a scheduling error. A plan defect must be corrected in Stage 3; Stage 4 only consumes the accepted plan.',
     ].join('\n')
@@ -390,13 +432,17 @@ export async function prepareDevelopmentDeliveryPlanHandoff(
     return { state, plan: null, issues: [], canonicalPath: null, sourcePath: null }
   }
 
-  let resolved = readDevelopmentDeliveryPlanSync(state)
   const canonicalPath = canonicalDevelopmentDeliveryPlanPath(state)
-  if (!resolved && canonicalPath) {
+  let resolved: { content: string, sourcePath: string | null } | null = null
+  if (canonicalPath) {
     try {
       resolved = { content: await readFile(canonicalPath, 'utf8'), sourcePath: canonicalPath }
     } catch {}
   }
+  // The active-run file is what the model just wrote and read back. Persisted
+  // artifacts are compatibility fallbacks; preferring one here can restore an
+  // older plan over a user-confirmed Stage 3 revision during completion.
+  if (!resolved) resolved = readDevelopmentDeliveryPlanSync(state)
   if (!resolved) {
     return {
       state,
@@ -410,6 +456,26 @@ export async function prepareDevelopmentDeliveryPlanHandoff(
   const parsed = parseDevelopmentBatchPlanDocument(resolved.content)
   if (!parsed.plan || parsed.issues.length) {
     return { state, plan: null, issues: parsed.issues, canonicalPath, sourcePath: resolved.sourcePath }
+  }
+  const workspaceInspection = inspectDevelopmentWorkspace(state)
+  const hasWriteBatch = parsed.plan.some((task) => task.executionMode === 'write')
+  if (workspaceInspection.status === 'unavailable' && hasWriteBatch) {
+    return {
+      state,
+      plan: null,
+      issues: ['The workspace could not be inspected. Do not guess project paths; verify the workspace or ask the user for the correct folder before completing Stage 3.'],
+      canonicalPath,
+      sourcePath: resolved.sourcePath,
+    }
+  }
+  if (workspaceInspection.status === 'blank' && hasWriteBatch && parsed.workspaceMode !== 'blank-create') {
+    return {
+      state,
+      plan: null,
+      issues: ['The workspace contains no project files. Add top-level "workspace_mode": "blank-create" and make the first implementation Batch create the project skeleton instead of treating guessed paths as existing files.'],
+      canonicalPath,
+      sourcePath: resolved.sourcePath,
+    }
   }
   if (!canonicalPath) {
     return {
@@ -653,7 +719,7 @@ export function developmentLeaderToolViolation(
   if (!isDevelopmentImplementationPhase(state) || isSubagent || !LEADER_MUTATING_TOOLS.has(toolName)) return null
   if (LEADER_FILE_TOOLS.has(toolName)) {
     const workspaceRoot = state?.workspaceRoot ?? activeRun(state!)?.workspaceRoot
-    if (workspaceRoot && isWorkflowInternalPath(workspaceRoot, input.file_path)) return null
+    if (workspaceRoot && developmentArtifactWriteAllowed(workspaceRoot, input.file_path)) return null
   }
   return `WORKFLOW_DEVELOPMENT_LEADER_IMPLEMENTATION_FORBIDDEN: ${toolName} cannot be used by the Leader for production work in default development Stage 4. Launch the current Batch Coder Agent, then its Reviewer Agent. Leader writes are limited to .workflow artifacts.`
 }

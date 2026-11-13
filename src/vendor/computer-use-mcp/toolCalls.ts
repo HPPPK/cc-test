@@ -1138,7 +1138,7 @@ async function buildWindowLocations(
 > {
   if (granted.length === 0) return [];
 
-  const displays = await adapter.executor.listDisplays();
+  const displays = (await adapter.executor.listDisplays()).filter(hasDisplayId);
   if (displays.length <= 1) return [];
 
   const grantedBundleIds = granted.map((g) => g.bundleId);
@@ -1146,7 +1146,7 @@ async function buildWindowLocations(
   const displayById = new Map(displays.map((d) => [d.displayId, d]));
   const idsByBundle = new Map(windowLocs.map((w) => [w.bundleId, w.displayIds]));
 
-  const out = [];
+  const out: Awaited<ReturnType<typeof buildWindowLocations>> = [];
   for (const g of granted) {
     const displayIds = idsByBundle.get(g.bundleId);
     if (!displayIds || displayIds.length === 0) continue;
@@ -1270,7 +1270,7 @@ async function buildAccessRequest(
   for (const r of needDialog) {
     if (!r.resolved) continue;
     try {
-      r.resolved.iconDataUrl = await adapter.executor.getAppIcon(
+      r.resolved.iconDataUrl = await adapter.executor.getAppIcon?.(
         r.resolved.path,
       );
     } catch {
@@ -2042,6 +2042,10 @@ async function buildHiddenNote(
   );
 }
 
+function hasDisplayId(display: DisplayGeometry): display is DisplayGeometry & { displayId: number } {
+  return display.displayId !== undefined && display.displayId !== 0;
+}
+
 /**
  * Assign a human-readable label to each display. Falls back to `display N`
  * when NSScreen.localizedName is undefined; disambiguates identical labels
@@ -2056,7 +2060,7 @@ function uniqueDisplayLabels(
   // NSScreen.screens iteration order — same label always maps to same
   // physical display across buildMonitorNote → switch_display round-trip,
   // even if display configuration reorders between the two calls.
-  const sorted = [...displays].sort((a, b) => a.displayId - b.displayId);
+  const sorted = displays.filter(hasDisplayId).sort((a, b) => a.displayId - b.displayId);
   const counts = new Map<string, number>();
   const out = new Map<number, string>();
   for (const d of sorted) {
@@ -2079,15 +2083,16 @@ function uniqueDisplayLabels(
  */
 async function buildMonitorNote(
   adapter: ComputerUseHostAdapter,
-  shotDisplayId: number,
+  shotDisplayId: number | undefined,
   lastDisplayId: number | undefined,
   canSwitchDisplay: boolean,
 ): Promise<string | undefined> {
+  if (shotDisplayId === undefined || shotDisplayId === 0) return undefined;
   // listDisplays failure (e.g. Swift returns zero screens during monitor
   // hot-unplug) must not tank the screenshot — this note is optional context.
   let displays;
   try {
-    displays = await adapter.executor.listDisplays();
+    displays = (await adapter.executor.listDisplays()).filter(hasDisplayId);
   } catch (e) {
     adapter.logger.warn(`[computer-use] listDisplays failed: ${String(e)}`);
     return undefined;
@@ -2180,7 +2185,7 @@ async function handleScreenshot(
     // (host window moved, or allowed app on a different display). Write
     // the pick back to session so teach overlay positioning and subsequent
     // non-resolver calls track the same display. Fire-and-forget.
-    if (result.displayId !== overrides.selectedDisplayId) {
+    if (result.displayId !== undefined && result.displayId !== overrides.selectedDisplayId) {
       adapter.logger.debug(
         `[computer-use] resolver: preferred=${overrides.selectedDisplayId} resolved=${result.displayId}`,
       );
@@ -2946,7 +2951,7 @@ async function handleSwitchDisplay(
   // so whatever name the model saw in a screenshot note resolves here.
   let displays;
   try {
-    displays = await adapter.executor.listDisplays();
+    displays = (await adapter.executor.listDisplays()).filter(hasDisplayId);
   } catch (e) {
     return errorResult(
       `Failed to enumerate displays: ${String(e)}`,
@@ -3642,8 +3647,8 @@ export async function handleToolCall(
       );
     }
     tccState = {
-      accessibility: osPerms.accessibility,
-      screenRecording: osPerms.screenRecording,
+      accessibility: osPerms.accessibility === true,
+      screenRecording: osPerms.screenRecording === true,
     };
   }
 

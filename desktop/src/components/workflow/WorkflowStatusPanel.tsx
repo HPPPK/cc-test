@@ -153,7 +153,8 @@ export type WorkflowStatusPanelSummary = {
   autoRecovery?: {
     phaseId: string
     startedAt: string
-    expiresAt: string
+    credentialId?: string
+    expiresAt?: string
     attempt: number
     source: 'phase-completion-blocked' | 'phase-completion-unable'
   }

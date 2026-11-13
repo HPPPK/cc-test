@@ -78,7 +78,7 @@ const AGENT_VERB = {
   needs_input: 'waiting',
   plan_ready: 'done'
 } as const;
-function UltraplanSessionDetail(t0) {
+function UltraplanSessionDetail(t0: Omit<Props, 'toolUseContext'>): React.ReactNode {
   const $ = _c(70);
   const {
     session,
@@ -92,7 +92,7 @@ function UltraplanSessionDetail(t0) {
   const elapsedTime = useElapsedTime(session.startTime, running, 1000, 0, session.endTime);
   let spawns = 0;
   let calls = 0;
-  let lastBlock = null;
+  let lastBlock: Extract<Extract<(typeof session.log)[number], {type: 'assistant'}>['message']['content'][number], {type: 'tool_use'}> | null = null;
   for (const msg of session.log) {
     if (msg.type !== "assistant") {
       continue;
@@ -421,7 +421,11 @@ const STAGE_LABELS: Record<(typeof STAGES)[number], string> = {
 // "Setup" label shows before the orchestrator writes its first progress
 // snapshot (container boot + repo clone), so the 0-found display doesn't
 // look like a hung finder.
-function StagePipeline(t0) {
+function StagePipeline(t0: {
+  stage: 'finding' | 'verifying' | 'synthesizing' | undefined
+  completed: boolean
+  hasProgress: boolean
+}): React.ReactNode {
   const $ = _c(15);
   const {
     stage,
@@ -505,7 +509,7 @@ function reviewCountsLine(session: DeepImmutable<RemoteAgentTaskState>): string 
   return formatReviewStageCounts(p.stage, p.bugsFound, verified, refuted);
 }
 type MenuAction = 'open' | 'stop' | 'back' | 'dismiss';
-function ReviewSessionDetail(t0) {
+function ReviewSessionDetail(t0: Omit<Props, 'toolUseContext'>): React.ReactNode {
   const $ = _c(56);
   const {
     session,
@@ -617,7 +621,7 @@ function ReviewSessionDetail(t0) {
   } else {
     t3 = $[14];
   }
-  const options = t3;
+  const options: { label: string; value: MenuAction }[] = t3;
   let t4;
   if ($[15] !== goBackOrClose || $[16] !== handleClose || $[17] !== onDone || $[18] !== sessionUrl) {
     t4 = action => {

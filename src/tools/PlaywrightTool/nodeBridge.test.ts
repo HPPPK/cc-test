@@ -1,5 +1,4 @@
 import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import { PLAYWRIGHT_NODE_BOOTSTRAP, PLAYWRIGHT_NODE_RUNNER_PATH_ENV, PLAYWRIGHT_BROWSER_RUNNER_FILE, createPlaywrightBridgeAbortSessionRequest, createPlaywrightBridgeRequest, createPlaywrightNodeBridgeInvocation, normalizePlaywrightNodeRunnerPath } from './nodeBridge.js'
@@ -63,6 +62,7 @@ describe('Playwright Node bridge', () => {
       verificationResolution: 'switch_public_entry',
     })
 
+    if (!("request" in verificationRequest)) throw new Error("Expected browser request")
     expect(verificationRequest.request).toMatchObject({
       preserveHumanVerificationPage: true,
       verificationOwnerId: 'subagent-a',
@@ -81,6 +81,7 @@ describe('Playwright Node bridge', () => {
       },
     })
 
+    if (!("request" in bridgeRequest)) throw new Error("Expected browser request")
     expect(bridgeRequest.request).toMatchObject({
       presentation: 'assistable_background',
       activityControl: {
@@ -107,7 +108,7 @@ test('Node eval bridge starts exported runners while preserving legacy self-star
     await writeFile(legacy, "process.stdout.write('legacy-started\\n')")
     await writeFile(exported, "exports.startServer = () => process.stdout.write('exported-started\\n')")
     for (const [runnerPath, expected] of [[legacy, 'legacy-started\n'], [exported, 'exported-started\n']]) {
-      const result = spawnSync('node', ['--eval', PLAYWRIGHT_NODE_BOOTSTRAP], { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, encoding: 'utf8' })
+      const result = await captureProcess('node', ['--eval', PLAYWRIGHT_NODE_BOOTSTRAP], { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, encoding: 'utf8' })
       expect(result.status).toBe(0)
       expect(result.stdout).toBe(expected)
     }
@@ -117,16 +118,30 @@ test('Node eval bridge starts exported runners while preserving legacy self-star
 test('compiled production runner imports without side effects and serves direct and eval Node entrypoints', async () => {
   const dir = await mkdtemp(path.join(process.cwd(), '.runner-compiled-'))
   try {
-    const result = await Bun.build({ entrypoints: [path.join(import.meta.dir, 'playwright-browser-runner.ts')], outdir: dir, naming: 'runner.cjs', target: 'node', format: 'cjs', external: ['playwright'] })
+    const result = await Bun.build({ entrypoints: [path.join(import.meta.dir, 'playwright-browser-runner.ts')], outdir: dir, naming: 'runner.cjs', target: 'node', format: 'cjs', external: ['playwright', 'patchright'] })
     expect(result.success).toBe(true)
     const runnerPath = path.join(dir, 'runner.cjs')
-    const imported = spawnSync('node', ['--eval', 'require(process.env.CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH);process.stdout.write(String(process.stdin.listenerCount("data")))'], { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, encoding: 'utf8' })
+    const imported = await captureProcess('node', ['--eval', 'require(process.env.CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH);process.stdout.write(String(process.stdin.listenerCount("data")))'], { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, encoding: 'utf8' })
     expect(imported.status).toBe(0)
     expect(imported.stdout).toBe('0')
     for (const [executable, command] of [['node', [runnerPath]], ['node', ['--eval', PLAYWRIGHT_NODE_BOOTSTRAP]], [process.execPath, [path.join(import.meta.dir, 'playwright-browser-runner.ts')]]] as Array<[string, string[]]>) {
-      const child = spawnSync(executable, command, { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, input: JSON.stringify({ id: 'close-unused-session', type: 'close-session', sessionKey: 'unused' }) + '\n', encoding: 'utf8', timeout: 10_000 })
+      const child = await captureProcess(executable, command, { env: { ...process.env, [PLAYWRIGHT_NODE_RUNNER_PATH_ENV]: runnerPath }, input: JSON.stringify({ id: 'close-unused-session', type: 'close-session', sessionKey: 'unused' }) + '\n', encoding: 'utf8', timeout: 10_000 })
       expect(child.status).toBe(0)
       expect(JSON.parse(child.stdout.trim())).toEqual({ id: 'close-unused-session', ok: true })
     }
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
+
+// File-backed capture also works in macOS runners where child pipe output is lost.
+async function captureProcess(executable: string, args: string[], options: { env?: NodeJS.ProcessEnv; input?: string; encoding?: string; timeout?: number }) {
+  const dir = await mkdtemp(path.join(process.cwd(), '.runner-capture-'))
+  try {
+    const stdoutPath = path.join(dir, 'stdout')
+    const stderrPath = path.join(dir, 'stderr')
+    const stdinPath = path.join(dir, 'stdin')
+    await writeFile(stdinPath, options.input ?? '')
+    const child = Bun.spawn([executable, ...args], { env: options.env, stdin: Bun.file(stdinPath), stdout: Bun.file(stdoutPath), stderr: Bun.file(stderrPath), timeout: options.timeout ?? 10_000 })
+    const status = await child.exited
+    return { status, stdout: await readFile(stdoutPath, 'utf8'), stderr: await readFile(stderrPath, 'utf8') }
+  } finally { await rm(dir, { recursive: true, force: true }) }
+}

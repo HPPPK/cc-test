@@ -54,6 +54,16 @@ afterEach(() => {
 })
 
 describe('PlaywrightTool validation and execution mode', () => {
+  test('retains runner widget diagnostics through execution normalization and tool ledger', async () => {
+    const browserDiagnostics = { observation: 'unknown' as const, observedAt: '2026-11-11T00:00:00Z', inspectedFrames: 0, inspectionIncomplete: true, events: [], droppedEvents: 0 }
+    spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue({ ...pageResult, accessLimited: true, browserDiagnostics })
+    const result = await PlaywrightTool.call(input(), context())
+    expect(result.data.browserDiagnostics).toEqual(browserDiagnostics)
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(result.data, 'toolu-diagnostic-transport')
+    const encoded = String(mapped.content).match(/<playwright-action-ledger encoding="base64">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/)?.[1]
+    expect(JSON.parse(Buffer.from(encoded!, 'base64').toString('utf8')).browserDiagnostics).toEqual(browserDiagnostics)
+  })
+
   test('ordinary chat validates and reaches the managed runner without UIUX settings', async () => {
     const runner = spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue(pageResult)
     const request = input()

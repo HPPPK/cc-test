@@ -1,7 +1,9 @@
+import { isOwnBrowserResultReadable, ownBrowserResultRecoveryPath, constrainWorkerWriteTool, workerOutputInstruction, registerAgentBrowserResult, clearAgentBrowserResults } from './expertWorkerRecovery.js'
+import { getToolResultsDir } from '../../utils/toolResultStorage.js'
 import { lstatSync } from 'node:fs'
 import * as path from 'node:path'
 import { getJiangxiaEnvValue } from '../../utils/appIdentity.js'
-import { reserveExpertResearcherStart } from '../../services/tools/expertResearchBudgetRuntime.js'
+import { reserveExpertResearcherStart, finishExpertResearcher } from '../../services/tools/expertResearchBudgetRuntime.js'
 import { createResearcherPartPath, researchArtifactRootPath, isFileFirstExpertResearchAgentType } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
@@ -16,6 +18,7 @@ import {
 } from '../../constants/prompts.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
+import { developmentWorkerContractPrompt } from '../../server/services/developmentToolExecutionPolicy.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { query } from '../../query.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -60,7 +63,7 @@ import {
 import { registerFrontmatterHooks } from '../../utils/hooks/registerFrontmatterHooks.js'
 import { clearSessionHooks } from '../../utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from '../../utils/hooks.js'
-import { createUserMessage } from '../../utils/messages.js'
+import { createRuntimeUserMessage } from '../../utils/messages.js'
 import {
   currentExpertTemplateOutputReviewContext,
   isCurrentExpertTemplateOutputReviewReportPath,
@@ -279,6 +282,11 @@ export function resolveExpertAgentModel(
   permissionMode: Parameters<typeof getAgentModel>[3],
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  if (getJiangxiaEnvValue('EXPERT_MODEL_POLICY', env) === 'session-model-only') {
+    const model = getJiangxiaEnvValue('EXPERT_MODEL_ID', env)?.trim()
+    if (!model) throw new Error('Expert session model is missing; refusing to select a fallback model.')
+    return model
+  }
   return getJiangxiaEnvValue('EXPERT_MODEL_POLICY', env) === 'deepseek-flash-only'
     ? 'deepseek-flash'
     : getAgentModel(agentModel, parentModel, toolModel, permissionMode)
@@ -300,6 +308,7 @@ export function formatFileFirstOutputReviewContext(input: {
   reportPath: string
   targetPath: string
   provenancePaths?: string[]
+  templateFields?: Array<{ id: string; kind: string; columns?: string[] }>
 }): string {
   return [
     '<expert-rendered-output-review>',
@@ -310,6 +319,10 @@ export function formatFileFirstOutputReviewContext(input: {
     '- ' + input.reportPath,
     ...(input.provenancePaths ?? []).map(sourcePath => '- ' + sourcePath),
     'For consequential facts and prices, independently check original captured source text in the exact declared provenance files above; compare adjacent terms and actual audit status rather than accepting D/E labels. Do not browse or read any undeclared path.',
+    ...(input.templateFields?.length ? [
+      'Use only these runtime-derived template field IDs for findings[].fieldId and calculations[].fieldId; never section numbers, headings, display labels, or guessed names. Preserve the finding and evidence while correcting its identifier.',
+      '<template-field-schema>' + JSON.stringify(input.templateFields) + '</template-field-schema>',
+    ] : []),
     'Write only this Markdown review: ' + input.targetPath,
     'You may also Read that exact output Markdown for save verification; it is not an additional research source.',
     'After Write and the required Read-back verification, return exactly one short file receipt: `已写入：' + input.targetPath + '；状态：已 Read 验证。`',
@@ -586,6 +599,7 @@ export async function* runAgent({
   researchTaskKind,
   taskPrompt,
   toolUseContext,
+  workflowWorkerContract,
   canUseTool,
   isAsync,
   canShowPermissionPrompts,
@@ -616,6 +630,7 @@ export async function* runAgent({
   /** Receives the resolved source batch before the child model starts. */
   onExpertResearchAssignment?: (assignment: ExpertResearchSourceAssignment | undefined) => void
   toolUseContext: ToolUseContext
+  workflowWorkerContract?: ToolUseContext['workflowWorkerContract']
   canUseTool: CanUseToolFn
   isAsync: boolean
   /** Whether this agent can show permission prompts. Defaults to !isAsync.
@@ -716,6 +731,10 @@ export async function* runAgent({
     ? filterIncompleteToolCalls(forkContextMessages)
     : []
   const initialMessages: Message[] = [...contextMessages, ...promptMessages]
+  workflowWorkerContract ??= toolUseContext.workflowWorkerContract
+  if (workflowWorkerContract) {
+    initialMessages.push(createRuntimeUserMessage({ content: developmentWorkerContractPrompt(workflowWorkerContract), isMeta: true }))
+  }
 
   const agentReadFileState =
     forkContextMessages !== undefined
@@ -924,7 +943,7 @@ export async function* runAgent({
   await reserveExpertResearcherStart({ agentId, agentType: agentDefinition.agentType, artifactPath: researcherTargetPath, expertId: expertSkillContext?.expertId })
   const expertSubagentSkills = expertPackagePrompt.prompt
   if (expertSubagentSkills) {
-    initialMessages.push(createUserMessage({
+    initialMessages.push(createRuntimeUserMessage({
       content: [{ type: 'text', text: expertSubagentSkills }],
       isMeta: true,
     }))
@@ -958,7 +977,7 @@ export async function* runAgent({
   }
   const expertResearchEvidence = formatExpertSubagentResearchEvidenceContext(expertResearchEvidenceContext)
   if (expertResearchEvidence) {
-    initialMessages.push(createUserMessage({
+    initialMessages.push(createRuntimeUserMessage({
       content: [{ type: 'text', text: expertResearchEvidence }],
       isMeta: true,
     }))
@@ -977,7 +996,7 @@ export async function* runAgent({
     if (!outputReviewTargetPath || !outputReviewContext) {
       throw new Error('EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED: The output reviewer may run only after the same Expert session has successfully rendered its initial HTML draft.')
     }
-    initialMessages.push(createUserMessage({
+    initialMessages.push(createRuntimeUserMessage({
       content: [{
         type: 'text',
         text: formatFileFirstOutputReviewContext({
@@ -985,6 +1004,7 @@ export async function* runAgent({
           absorptionPath: outputReviewContext.absorptionPath,
           reportPath: outputReviewContext.reportPath,
           targetPath: outputReviewTargetPath,
+          templateFields: expertSkillContext?.outputReview?.templateFields,
           provenancePaths: researchArtifactPaths ? [...researchArtifactPaths.researcherPaths, researchArtifactPaths.reviewerPath, researchArtifactPaths.auditPath] : [],
         }),
       }],
@@ -992,14 +1012,27 @@ export async function* runAgent({
     }))
   }
 
+  const ownedBrowserToolUseIds = new Set<string>()
+  const workerOutputPath = absorptionTargetPath ?? outputReviewTargetPath
+    ?? (agentDefinition.agentType === 'expert-evidence-reviewer' ? reviewerArtifactPaths?.reviewerPath : undefined)
+  if (workerOutputPath) initialMessages.push(createRuntimeUserMessage({ content: workerOutputInstruction(workerOutputPath), isMeta: true }))
+
   const canUseAgentTool: CanUseToolFn = async (tool, input, context, assistantMessage, toolUseID, forceDecision) => {
     if (agentDefinition.agentType === 'expert-evidence-researcher' && researchArtifactPaths) {
+      if (toolMatchesName(tool, 'Playwright')) {
+        ownedBrowserToolUseIds.add(toolUseID)
+        registerAgentBrowserResult(agentId, getToolResultsDir(), toolUseID)
+      }
       if (toolMatchesName(tool, 'Read')) {
         const requestedPath = canonicalResearchArtifactPath(input, ['research-brief', 'researcher-report', 'evidence-review', 'browser-audit'])
-        if (!requestedPath || (requestedPath !== researchArtifactPaths.briefPath && requestedPath !== researcherTargetPath)) {
+        if ((!requestedPath || (requestedPath !== researchArtifactPaths.briefPath && requestedPath !== researcherTargetPath))
+          && !isOwnBrowserResultReadable(input, { directory: getToolResultsDir(), ownedToolUseIds: ownedBrowserToolUseIds })) {
+          const recoveryPath = ownBrowserResultRecoveryPath(input, { directory: getToolResultsDir(), ownedToolUseIds: ownedBrowserToolUseIds })
           return {
-            behavior: 'deny' as const,
-            message: 'This Expert evidence researcher may Read only the session brief and its own assigned Markdown report. It may not inspect sibling reports, the review, the browser audit, or other workDir files.',
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
+            message: recoveryPath
+              ? 'Your call was not executed. Copy the exact owned output file_path: ' + JSON.stringify(recoveryPath)
+              : 'Read denied: use the exact brief, assigned Markdown or owned browser output path from the successful receipt. Do not guess a path or ID; sibling files remain inaccessible.',
           }
         }
       }
@@ -1011,7 +1044,7 @@ export async function* runAgent({
         const writeError = researcherArtifactWriteError(input, researcherTargetPath)
         if (writeError) {
           return {
-            behavior: 'deny' as const,
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
             message: writeError,
           }
         }
@@ -1021,12 +1054,12 @@ export async function* runAgent({
     if (agentDefinition.agentType === 'expert-evidence-output-reviewer' && researchArtifactPaths) {
       if (toolMatchesName(tool, 'Read')) {
         const error = reportWorkerReadError(input, { agentType: agentDefinition.agentType, artifactPaths: researchArtifactPaths, reportPath: outputReviewContext?.reportPath })
-        if (error) return { behavior: 'deny' as const, message: error }
+        if (error) return { behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' }, message: error }
       }
       if (toolMatchesName(tool, 'Write')) {
         if (!outputReviewTargetPath || !isExactResearchArtifactWrite(input, outputReviewTargetPath, 'final-output-review')) {
           return {
-            behavior: 'deny' as const,
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
             message: 'This Expert output-review worker must Write only the declared report-completeness Markdown with non-empty content. Do not write HTML or any other workspace file.',
           }
         }
@@ -1036,12 +1069,12 @@ export async function* runAgent({
     if (agentDefinition.agentType === 'expert-evidence-absorber' && researchArtifactPaths) {
       if (toolMatchesName(tool, 'Read')) {
         const error = reportWorkerReadError(input, { agentType: agentDefinition.agentType, artifactPaths: researchArtifactPaths })
-        if (error) return { behavior: 'deny' as const, message: error }
+        if (error) return { behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' }, message: error }
       }
       if (toolMatchesName(tool, 'Write')) {
         if (!absorptionTargetPath || !isExactResearchArtifactWrite(input, absorptionTargetPath, 'field-absorption')) {
           return {
-            behavior: 'deny' as const,
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
             message: 'This Expert evidence absorption worker must Write only the declared report-field absorption Markdown with non-empty content. Do not write a report HTML file or any other workspace path.',
           }
         }
@@ -1051,7 +1084,7 @@ export async function* runAgent({
     if (expertResearchEvidenceContext?.reviewerEvidenceOnly) {
       if (toolMatchesName(tool, 'Playwright')) {
         return {
-          behavior: 'deny' as const,
+          behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
           message: 'This Expert evidence reviewer must not call Playwright. Review only the declared upstream research artifacts.',
         }
       }
@@ -1065,7 +1098,7 @@ export async function* runAgent({
         ])
         if (!requestedPath || !declaredArtifactPaths?.has(requestedPath)) {
           return {
-            behavior: 'deny' as const,
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
             message: 'This Expert evidence reviewer may Read only the exact Markdown artifacts declared for this review. Do not scan the workDir or read tool-result files.',
           }
         }
@@ -1073,7 +1106,7 @@ export async function* runAgent({
       if (toolMatchesName(tool, 'Write')) {
         if (!reviewerArtifactPaths || !isExactResearchArtifactWrite(input, reviewerArtifactPaths.reviewerPath, 'evidence-review')) {
           return {
-            behavior: 'deny' as const,
+            behavior: 'deny' as const, decisionReason: { type: 'asyncAgent' as const, reason: 'Expert worker artifact and tool restrictions' },
             message: 'This Expert evidence reviewer must Write only the declared evidence-review Markdown with non-empty content. Do not write any other file.',
           }
         }
@@ -1171,7 +1204,7 @@ export async function* runAgent({
       )
 
       initialMessages.push(
-        createUserMessage({
+        createRuntimeUserMessage({
           content: [{ type: 'text', text: metadata }, ...content],
           isMeta: true,
         }),
@@ -1194,8 +1227,8 @@ export async function* runAgent({
   // the spread + uniqBy overhead when there are no agent-specific MCP tools.
   const allTools =
     agentMcpTools.length > 0
-      ? uniqBy([...resolvedTools, ...agentMcpTools], 'name')
-      : resolvedTools
+      ? uniqBy([...resolvedTools, ...agentMcpTools], 'name').map(tool => constrainWorkerWriteTool(tool, workerOutputPath, researchArtifactOutputRoot()))
+      : resolvedTools.map(tool => constrainWorkerWriteTool(tool, workerOutputPath, researchArtifactOutputRoot()))
 
   // Build agent-specific options
   const agentOptions: ToolUseContext['options'] = {
@@ -1239,6 +1272,10 @@ export async function* runAgent({
     readFileState: agentReadFileState,
     abortController: agentAbortController,
     getAppState: agentGetAppState,
+    queryTracking: workflowWorkerContract ? {
+      chainId: agentId,
+      depth: (toolUseContext.queryTracking?.depth ?? -1) + 1,
+    } : undefined,
     // Sync agents share these callbacks with parent
     shareSetAppState: !isAsync,
     shareSetResponseLength: true, // Both sync and async contribute to response metrics
@@ -1246,6 +1283,7 @@ export async function* runAgent({
       agentDefinition.criticalSystemReminder_EXPERIMENTAL,
     contentReplacementState,
   })
+  agentToolUseContext.workflowWorkerContract = workflowWorkerContract ? { ...workflowWorkerContract, agentId } : undefined
 
   // Preserve tool use results for subagents with viewable transcripts (in-process teammates)
   if (preserveToolUseResults) {
@@ -1277,6 +1315,7 @@ export async function* runAgent({
 
   // Track the last recorded message UUID for parent chain continuity
   let lastRecordedUuid: UUID | null = initialMessages.at(-1)?.uuid ?? null
+  let queryCompleted = false
 
   try {
     for await (const message of query({
@@ -1347,7 +1386,14 @@ export async function* runAgent({
     if (isBuiltInAgent(agentDefinition) && agentDefinition.callback) {
       agentDefinition.callback()
     }
+    queryCompleted = true
   } finally {
+    clearAgentBrowserResults(agentId)
+    // Successful researchers remain pending until their evidence audit is saved by
+    // the caller. Only failed/aborted workers settle here; slots are never refunded.
+    if (!queryCompleted) {
+      await finishExpertResearcher({ agentId, agentType: agentDefinition.agentType, expertId: expertSkillContext?.expertId })
+    }
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
     await mcpCleanup()
     // Clean up agent's session hooks

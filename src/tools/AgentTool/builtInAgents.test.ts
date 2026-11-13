@@ -1,3 +1,4 @@
+import { createToolContextFixture } from '../toolFixtures.test.js'
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   setIsInteractive,
@@ -52,14 +53,16 @@ describe('built-in agents', () => {
 
 test('includes the file-first Expert evidence research role without a subagent question tool', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-researcher')
-  expect(agent?.tools).toEqual(['Playwright', 'Read', 'Write', 'Edit'])
-  const prompt = agent?.getSystemPrompt() ?? ''
+  expect(agent?.tools).toEqual(['Playwright', 'WebSearch', 'Read', 'Write', 'Edit'])
+  const prompt = agent?.getSystemPrompt({ toolUseContext: createToolContextFixture() }) ?? ''
   expect(prompt).toContain('real Playwright actions with a non-empty actions array')
   expect(prompt).toContain('A search page is only for discovery')
   expect(prompt).toContain('page-level failure')
   expect(prompt).toContain('three researchers cover the full company core catalog exactly once')
   expect(prompt).toContain('For Required routes explicitly included in this task and marked Required route: yes')
   expect(prompt).toContain('human-verification handoff')
+  expect(prompt).not.toContain('two-minute wait budget')
+  expect(prompt).toContain('Only an explicit user skip or cancel')
   expect(prompt).toContain('do not bypass it')
   expect(prompt).toContain('or call AskUserQuestion')
   expect(prompt).toContain('use Edit for incremental additions without rewriting prior evidence')
@@ -75,7 +78,7 @@ test('includes the file-first Expert evidence research role without a subagent q
 test('includes the file-first Expert evidence review role', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-reviewer')
   expect(agent?.tools).toEqual(['Read', 'Write'])
-  const prompt = agent?.getSystemPrompt() ?? ''
+  const prompt = agent?.getSystemPrompt({ toolUseContext: createToolContextFixture() }) ?? ''
   expect(prompt).toContain('runtime derives its internal artifact type')
   expect(prompt).not.toContain('research_artifact:')
   expect(prompt).toContain('final assistant response must be exactly one short line')
@@ -91,7 +94,7 @@ test('includes the file-first Expert evidence review role', () => {
 test('includes the file-first report-field absorption role without browsing or user-question tools', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-absorber')
   expect(agent?.tools).toEqual(['Read', 'Write'])
-  const prompt = agent?.getSystemPrompt() ?? ''
+  const prompt = agent?.getSystemPrompt({ toolUseContext: createToolContextFixture() }) ?? ''
   expect(prompt).toContain('report-evidence absorption worker')
   expect(prompt).toContain('Organize the Markdown by the report chapters or field families')
   expect(prompt).toContain('Preserve every reviewer item marked include, merge, or partially_verified')
@@ -106,7 +109,7 @@ test('includes the file-first report-field absorption role without browsing or u
 test('includes the constrained rendered-output completeness reviewer', () => {
   const agent = getBuiltInAgents().find((candidate) => candidate.agentType === 'expert-evidence-output-reviewer')
   expect(agent?.tools).toEqual(['Read', 'Write'])
-  const prompt = agent?.getSystemPrompt() ?? ''
+  const prompt = agent?.getSystemPrompt({ toolUseContext: createToolContextFixture() }) ?? ''
   expect(prompt).toContain('final report completeness reviewer')
   expect(prompt).toContain('MUST_PATCH')
   expect(prompt).toContain('finalize the reviewed draft unchanged')

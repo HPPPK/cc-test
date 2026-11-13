@@ -1,3 +1,4 @@
+import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as os from 'os'
@@ -63,14 +64,14 @@ describe('MCP API', () => {
       resolvedCommand: '/usr/bin/mock-command',
     })
 
-    connectSpy = spyOn(mcpClient, 'connectToServer').mockImplementation(async (name, config) => ({
+    connectSpy = spyOn(mcpClient, 'connectToServer').mockImplementation(Object.assign(async (name: string, config: ScopedMcpServerConfig): Promise<Awaited<ReturnType<typeof mcpClient.connectToServer>>> => ({
       name,
       type: 'connected',
       client: {} as never,
       capabilities: {},
       config,
       cleanup: mock(async () => {}),
-    }))
+    }), { cache: mcpClient.connectToServer.cache }))
   })
 
   afterEach(async () => {
@@ -290,7 +291,7 @@ describe('MCP API', () => {
 
   it('reconnects plugin-scoped MCP servers exposed via the merged server list', async () => {
     const pluginServerName = 'plugin:telegram:telegram'
-    const pluginServerConfig = {
+    const pluginServerConfig: ScopedMcpServerConfig = {
       scope: 'dynamic',
       type: 'stdio',
       command: 'bun',
@@ -299,7 +300,7 @@ describe('MCP API', () => {
         CLAUDE_PLUGIN_ROOT: '/tmp/telegram-plugin',
       },
       pluginSource: 'telegram@claude-plugins-official',
-    } as const
+    }
 
     getClaudeCodeMcpConfigsSpy = spyOn(mcpConfig, 'getClaudeCodeMcpConfigs').mockResolvedValue({
       servers: {
@@ -309,7 +310,7 @@ describe('MCP API', () => {
     })
 
     reconnectSpy = spyOn(mcpClient, 'reconnectMcpServerImpl').mockResolvedValue({
-      name: pluginServerName,
+      tools: [], commands: [],
       client: {
         name: pluginServerName,
         type: 'connected',
@@ -335,14 +336,14 @@ describe('MCP API', () => {
 
   it('returns a failed server state when reconnect preflight fails on the host machine', async () => {
     const pluginServerName = 'plugin:telegram:telegram'
-    const pluginServerConfig = {
+    const pluginServerConfig: ScopedMcpServerConfig = {
       scope: 'dynamic',
       type: 'stdio',
       command: 'npx',
       args: ['telegram-mcp'],
       env: {},
       pluginSource: 'telegram@claude-plugins-official',
-    } as const
+    }
 
     getClaudeCodeMcpConfigsSpy = spyOn(mcpConfig, 'getClaudeCodeMcpConfigs').mockResolvedValue({
       servers: {
@@ -357,7 +358,7 @@ describe('MCP API', () => {
     })
 
     reconnectSpy = spyOn(mcpClient, 'reconnectMcpServerImpl').mockResolvedValue({
-      name: pluginServerName,
+      tools: [], commands: [],
       client: {
         name: pluginServerName,
         type: 'connected',

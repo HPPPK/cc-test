@@ -1,4 +1,3 @@
-import { readFileSync } from 'fs';
 import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
@@ -47,14 +46,8 @@ const _rawPrompt = require('../utils/ultraplan/prompt.txt');
 /* eslint-enable @typescript-eslint/no-require-imports */
 const DEFAULT_INSTRUCTIONS: string = (typeof _rawPrompt === 'string' ? _rawPrompt : _rawPrompt.default).trimEnd();
 
-// Dev-only prompt override resolved eagerly at module load.
-// Gated to ant builds (USER_TYPE is a build-time define,
-// so the override path is DCE'd from external builds).
-// Shell-set env only, so top-level process.env read is fine
-// — settings.env never injects this.
-/* eslint-disable custom-rules/no-process-env-top-level, custom-rules/no-sync-fs -- ant-only dev override; eager top-level read is the point (crash at startup, not silently inside the slash-command try/catch) */
-const ULTRAPLAN_INSTRUCTIONS: string = "external" === 'ant' && process.env.ULTRAPLAN_PROMPT_FILE ? readFileSync(process.env.ULTRAPLAN_PROMPT_FILE, 'utf8').trimEnd() : DEFAULT_INSTRUCTIONS;
-/* eslint-enable custom-rules/no-process-env-top-level, custom-rules/no-sync-fs */
+// This external build uses the bundled prompt; internal file overrides are unavailable.
+const ULTRAPLAN_INSTRUCTIONS: string = DEFAULT_INSTRUCTIONS;
 
 /**
  * Assemble the initial CCR user message. seedPlan and blurb stay outside the
@@ -463,7 +456,7 @@ export default {
   name: 'ultraplan',
   description: `~10–30 min · Claude Code on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
   argumentHint: '<prompt>',
-  isEnabled: () => "external" === 'ant',
+  isEnabled: () => false,
   load: () => Promise.resolve({
     call
   })

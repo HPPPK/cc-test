@@ -7,11 +7,22 @@ import { STATUS_TAG, SUMMARY_TAG, TASK_NOTIFICATION_TAG } from '../../constants/
 import { QueuedMessageProvider } from '../../context/QueuedMessageContext.js';
 import { useCommandQueue } from '../../hooks/useCommandQueue.js';
 import type { QueuedCommand } from '../../types/textInputTypes.js';
+import { messageKindMetadata } from '../../utils/messageKind.js';
 import { isQueuedCommandVisible } from '../../utils/messageQueueManager.js';
 import { createUserMessage, EMPTY_LOOKUPS, normalizeMessages } from '../../utils/messages.js';
 import { jsonParse } from '../../utils/slowOperations.js';
 import { Message } from '../Message.js';
 const EMPTY_SET = new Set<string>();
+
+export function createQueuedCommandPreview(command: QueuedCommand) {
+  const content = command.mode === 'bash' && typeof command.value === 'string'
+    ? `<bash-input>${command.value}</bash-input>`
+    : command.value;
+  return createUserMessage({
+    content,
+    ...messageKindMetadata({ type: 'user', ...command })
+  });
+}
 
 /**
  * Check if a command value is an idle notification that should be hidden.
@@ -64,7 +75,8 @@ function processQueuedCommands(queuedCommands: QueuedCommand[]): QueuedCommand[]
   // Create synthetic overflow message
   const overflowCommand: QueuedCommand = {
     value: createOverflowNotificationMessage(overflowCount),
-    mode: 'task-notification'
+    mode: 'task-notification',
+    messageKind: 'internal_notification'
   };
   return [...otherCommands, ...visibleNotifications, overflowCommand];
 }
@@ -90,17 +102,7 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
     const visibleCommands = queuedCommands.filter(isQueuedCommandVisible);
     if (visibleCommands.length === 0) return null;
     const processedCommands = processQueuedCommands(visibleCommands);
-    return normalizeMessages(processedCommands.map(cmd => {
-      let content = cmd.value;
-      if (cmd.mode === 'bash' && typeof content === 'string') {
-        content = `<bash-input>${content}</bash-input>`;
-      }
-      // [Image #N] placeholders are inline in the text value (inserted at
-      // paste time), so the queue preview shows them without stub blocks.
-      return createUserMessage({
-        content
-      });
-    }));
+    return normalizeMessages(processedCommands.map(createQueuedCommandPreview));
   }, [queuedCommands]);
 
   // Don't show leader's queued commands when viewing any agent's transcript

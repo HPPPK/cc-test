@@ -28,7 +28,7 @@ type Props = {
     display?: CommandResultDisplay;
   }) => void;
 };
-export function AgentsMenu(t0) {
+export function AgentsMenu(t0: Props): React.ReactNode {
   const $ = _c(157);
   const {
     tools,
@@ -44,7 +44,7 @@ export function AgentsMenu(t0) {
   } else {
     t1 = $[0];
   }
-  const [modeState, setModeState] = useState(t1);
+  const [modeState, setModeState] = useState<ModeState>(t1);
   const agentDefinitions = useAppState(_temp);
   const mcpTools = useAppState(_temp2);
   const toolPermissionContext = useAppState(_temp3);
@@ -60,7 +60,7 @@ export function AgentsMenu(t0) {
   } else {
     t2 = $[1];
   }
-  const [changes, setChanges] = useState(t2);
+  const [changes, setChanges] = useState<string[]>(t2);
   const mergedTools = useMergedTools(tools, mcpTools, toolPermissionContext);
   useExitOnCtrlCDWithKeybindings();
   let t3;
@@ -143,7 +143,10 @@ export function AgentsMenu(t0) {
   } else {
     t10 = $[24];
   }
-  const agentsBySource = t10;
+  const agentsBySource: Record<
+    SettingSource | 'all' | 'built-in' | 'plugin',
+    AgentDefinition[]
+  > = t10;
   let t11;
   if ($[25] === Symbol.for("react.memo_cache_sentinel")) {
     t11 = message => {

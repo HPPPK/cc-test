@@ -288,9 +288,9 @@ function ripGrepRaw(
         // 0 = matches found, 1 = no matches (both are success)
         callback(null, stdout, stderr)
       } else {
-        const error: ExecFileException = new Error(
+        const error: ExecFileException = Object.assign(new Error(
           `ripgrep exited with code ${code}`,
-        )
+        ), { cmd: args.join(' ') })
         error.code = code ?? undefined
         error.signal = signal ?? undefined
         callback(error, stdout, stderr)
@@ -302,7 +302,7 @@ function ripGrepRaw(
       settled = true
       clearTimeout(timeoutId)
       clearTimeout(killTimeoutId)
-      const error: ExecFileException = err
+      const error: ExecFileException = Object.assign(err, { cmd: args.join(' ') })
       callback(error, stdout, stderr)
     })
 

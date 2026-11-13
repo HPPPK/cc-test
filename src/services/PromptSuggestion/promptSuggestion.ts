@@ -13,7 +13,7 @@ import {
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import { logError } from '../../utils/log.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   getLastAssistantMessage,
 } from '../../utils/messages.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
@@ -317,7 +317,7 @@ export async function generateSuggestion(
   //   - skipCacheWrite (controls cache_control markers, not the cache key)
   //   - canUseTool (client-side permission check)
   const result = await runForkedAgent({
-    promptMessages: [createUserMessage({ content: prompt })],
+    promptMessages: [createRuntimeUserMessage({ content: prompt })],
     cacheSafeParams, // Don't override tools/thinking settings - busts cache
     canUseTool,
     querySource: 'prompt_suggestion',

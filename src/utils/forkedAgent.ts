@@ -29,7 +29,7 @@ import { logForDebugging } from './debug.js'
 import { cloneFileStateCache } from './fileStateCache.js'
 import type { REPLHookContext } from './hooks/postSamplingHooks.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   extractTextContent,
   getLastAssistantMessage,
 } from './messages.js'
@@ -221,7 +221,7 @@ export async function prepareForkedCommandContext(
   }
 
   // Prepare prompt messages
-  const promptMessages = [createUserMessage({ content: skillContent })]
+  const promptMessages = [createRuntimeUserMessage({ content: skillContent })]
 
   return {
     skillContent,
@@ -264,6 +264,8 @@ export type SubagentContextOverrides = {
   agentId?: AgentId
   /** Override the agentType (for subagents with a specific type) */
   agentType?: string
+  /** Override query tracking when a durable runtime owns the worker id. */
+  queryTracking?: ToolUseContext['queryTracking']
   /** Override the messages array */
   messages?: Message[]
   /** Override the readFileState (e.g., fresh cache instead of clone) */
@@ -449,7 +451,7 @@ export function createSubagentContext(
     agentType: overrides?.agentType,
 
     // Create new query tracking chain for subagent with incremented depth
-    queryTracking: {
+    queryTracking: overrides?.queryTracking ?? {
       chainId: randomUUID(),
       depth: (parentContext.queryTracking?.depth ?? -1) + 1,
     },
@@ -472,7 +474,7 @@ export function createSubagentContext(
  * @example
  * ```typescript
  * const result = await runForkedAgent({
- *   promptMessages: [createUserMessage({ content: userPrompt })],
+ *   promptMessages: [createRuntimeUserMessage({ content: userPrompt })],
  *   cacheSafeParams: {
  *     systemPrompt,
  *     userContext,

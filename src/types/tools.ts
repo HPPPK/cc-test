@@ -1,34 +1,52 @@
-// @generated stub from scan-missing-imports
-// 该文件自动生成，对应 ant-internal 的 feature() gated 模块。
-// 所有外部 build 的代码路径在 DCE 后都不会真的执行这里的代码，这只是
-// bun build resolver 的占位符。
-const __target = function noop() {}
-const __handler: ProxyHandler<any> = {
-  get(_t, prop) {
-    if (prop === '__esModule') return true
-    if (prop === 'default') return new Proxy(__target, __handler)
-    if (prop === Symbol.toPrimitive) return () => undefined
-    if (prop === Symbol.iterator) return function* () {}
-    if (prop === Symbol.asyncIterator) return async function* () {}
-    if (prop === 'then') return undefined
-    return new Proxy(__target, __handler)
-  },
-  apply() {
-    return new Proxy(__target, __handler)
-  },
-  construct() {
-    return new Proxy(__target, __handler)
-  },
+/** Tool progress contracts follow the concrete tool producers, never provider payloads. */
+import type { TaskType } from '../Task.js'
+import type { AgentId } from './ids.js'
+import type { AssistantMessage, NormalizedUserMessage } from './message.js'
+
+type ShellOutput = {
+  output: string
+  fullOutput: string
+  elapsedTimeSeconds: number
+  totalLines: number
+  totalBytes?: number
+  taskId?: string
+  timeoutMs?: number
 }
-const stub: any = new Proxy(__target, __handler)
-export default stub
-export const __stubMissing = true
-// 兼容常见的命名导出 —— 没列在这里的也会通过 default Proxy 兜底
-export const createCachedMCState = stub
-export const isCachedMicrocompactEnabled = stub
-export const isModelSupportedForCacheEditing = stub
-export const getCachedMCConfig = stub
-export const markToolsSentToAPI = stub
-export const resetCachedMCState = stub
-export const checkProtectedNamespace = stub
-export const getCoordinatorUserContext = stub
+export type BashProgress = ShellOutput & { type: 'bash_progress' }
+export type PowerShellProgress = ShellOutput & { type: 'powershell_progress'; totalBytes: number }
+export type ShellProgress = BashProgress | PowerShellProgress
+export type AgentToolProgress = {
+  type: 'agent_progress'
+  message: AssistantMessage | NormalizedUserMessage
+  prompt: string
+  agentId: AgentId
+}
+export type SkillToolProgress = {
+  type: 'skill_progress'
+  message: AssistantMessage | NormalizedUserMessage
+  prompt: string
+  agentId: AgentId
+}
+export type MCPProgress = {
+  type: 'mcp_progress'
+  serverName: string
+  toolName: string
+} & (
+  | { status: 'started'; progress?: never; total?: never; progressMessage?: never; elapsedTimeMs?: never }
+  | { status: 'completed' | 'failed'; elapsedTimeMs: number; progress?: never; total?: never; progressMessage?: never }
+  | { status: 'progress'; progress: number; total?: number; progressMessage?: string }
+)
+export type WebSearchProgress =
+  | { type: 'query_update'; query: string }
+  | { type: 'search_results_received'; resultCount: number; query: string }
+export type TaskOutputProgress = { type: 'waiting_for_task'; taskDescription: string; taskType: TaskType }
+/** Historical read contract retained for persisted REPL progress consumed by collapsed tool UI. */
+export type REPLToolProgress = {
+  type: 'repl_tool_call'
+  phase: 'start'
+  toolName: string
+  toolInput: unknown
+}
+/** No workflow progress producer/schema is shipped; do not invent an upstream payload. */
+export type SdkWorkflowProgress = never
+export type ToolProgressData = REPLToolProgress | ShellProgress | AgentToolProgress | SkillToolProgress | MCPProgress | WebSearchProgress | TaskOutputProgress

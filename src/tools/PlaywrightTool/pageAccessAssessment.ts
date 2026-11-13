@@ -35,6 +35,10 @@ export function detectHumanVerificationKind(
   title: string,
   text: string,
 ): string | null {
+  // Match the challenge surface, not an article merely quoting its wording.
+  if (/^\s*(?:Reddit\s*[-|:]\s*)?Prove your humanity\s*$/i.test(title)
+    || (/^\s*Prove your humanity(?:\s|$)/i.test(text) && /complete the challenge/i.test(text))
+    || (/^\s*Just a moment[.!…]*\s*$/i.test(title) && /[?&]__cf_chl_|\/cdn-cgi\/challenge-platform|challenge|checking your browser|performing security verification|security service to protect against malicious bots/i.test(url + ' ' + text))) return 'human verification'
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
   const explicitChallenge = HUMAN_VERIFICATION_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.kind
   if (explicitChallenge) return explicitChallenge
@@ -58,7 +62,7 @@ export function isHumanVerificationSurfaceStillPresent(
   // initial provider, while ignoring topic words such as "captcha" or "robots".
   void expectedKind
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
-  return hasLoginVerificationSurface(url, title, text)
+  return Boolean(detectHumanVerificationKind(url, title, text))
     || /\/sorry(?:\/|\?|$)|google\.[^/\s]+\/sorry|wappass\.baidu\.com|(?:^|[/?#])captcha(?:[/?#]|$)|tuxing_v2/i.test(url)
     || /进行人机身份验证|请完成(?:下方|安全)验证|百度安全验证|拖动(?:左侧)?滑块|请解决以下难题以继续|solve the following puzzle to continue|verify you are human|i.?m not a robot/i.test(haystack)
 }

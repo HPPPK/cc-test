@@ -24,7 +24,7 @@ type Props = {
   emptyColor?: keyof Theme;
 };
 const BLOCKS = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-export function ProgressBar(t0) {
+export function ProgressBar(t0: Props): React.ReactNode {
   const $ = _c(13);
   const {
     ratio: inputRatio,

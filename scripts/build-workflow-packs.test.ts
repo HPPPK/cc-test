@@ -50,6 +50,27 @@ async function fixture() {
 }
 
 describe('workflow pack deterministic builder', () => {
+  it('includes the independent skills-development pack in the default distribution', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'workflow-default-packs-'))
+    roots.push(root)
+    const result = await buildWorkflowPacks({
+      outputDir: path.join(root, 'packs'),
+      lockFile: path.join(root, 'lock.json'),
+    })
+    expect(result.packs.map(pack => pack.packId)).toContain('skills-development')
+  })
+
+  it('includes the stradn managed development workflow in the default distribution', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'workflow-default-stradn-pack-'))
+    roots.push(root)
+    const result = await buildWorkflowPacks({
+      outputDir: path.join(root, 'packs'),
+      lockFile: path.join(root, 'lock.json'),
+    })
+
+    expect(result.packs.map(pack => pack.packId)).toContain('stradn-managed-development-workflow-v1')
+  })
+
   it('normalizes sources, writes checksums and produces byte-identical ZIPs', async () => {
     const fx = await fixture()
     const first = await buildWorkflowPacks({ ...fx, sourceRevision: 'fixture' })

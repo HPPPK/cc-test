@@ -1,3 +1,4 @@
+import type { DisplayQuestion } from './normalizeQuestion.js'
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React, { useCallback, useState } from 'react';
@@ -18,8 +19,8 @@ import { PreviewQuestionView } from './PreviewQuestionView.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
 type Props = {
-  question: Question;
-  questions: Question[];
+  question: DisplayQuestion;
+  questions: DisplayQuestion[];
   currentQuestionIndex: number;
   answers: Record<string, string>;
   questionStates: Record<string, QuestionState>;
@@ -40,7 +41,7 @@ type Props = {
   onImagePaste?: (base64Image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, sourcePath?: string) => void;
   onRemoveImage?: (id: number) => void;
 };
-export function QuestionView(t0) {
+export function QuestionView(t0: Props): React.ReactNode {
   const $ = _c(114);
   const {
     question,

@@ -1,3 +1,4 @@
+import { isHumanInputMessage } from '../../utils/messageKind.js'
 import type { UUID } from 'crypto'
 import { chmod, copyFile, mkdir, readFile, stat, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -122,7 +123,7 @@ async function resolveRewindTarget(
   selector: RewindTargetSelector,
 ): Promise<RewindTarget> {
   const activeMessages = await sessionService.getSessionMessages(sessionId)
-  const userMessages = activeMessages.filter((message) => message.type === 'user')
+  const userMessages = activeMessages.filter((message) => isHumanInputMessage(message))
 
   if (userMessages.length === 0) {
     throw ApiError.badRequest('This session has no user messages to rewind.')
@@ -136,7 +137,7 @@ async function resolveRewindTarget(
       (message) => message.id === selector.targetUserMessageId,
     )
     if (activeMessage) {
-      if (activeMessage.type !== 'user') {
+      if (!isHumanInputMessage(activeMessage)) {
         throw ApiError.badRequest('The selected rewind target is not a user message.')
       }
       targetUserMessage = activeMessage
@@ -391,7 +392,7 @@ function getTurnMessageRange(
   const start = activeMessages.findIndex((message) => message.id === targetUserMessageId)
   if (start < 0) return null
   const nextUserIndex = activeMessages.findIndex(
-    (message, index) => index > start && message.type === 'user',
+    (message, index) => index > start && isHumanInputMessage(message),
   )
   return { start, end: nextUserIndex >= 0 ? nextUserIndex : activeMessages.length }
 }
@@ -405,8 +406,7 @@ function hasCompletedTurn(
   return activeMessages.slice(range.start + 1, range.end).some((message) =>
     message.type === 'assistant' ||
     message.type === 'tool_use' ||
-    message.type === 'tool_result' ||
-    message.type === 'error',
+    message.type === 'tool_result',
   )
 }
 
@@ -917,7 +917,7 @@ export async function listSessionTurnCheckpoints(
   sessionId: string,
 ): Promise<SessionTurnCheckpointPreview[]> {
   const activeMessages = await sessionService.getSessionMessages(sessionId)
-  const userMessages = activeMessages.filter((message) => message.type === 'user')
+  const userMessages = activeMessages.filter((message) => isHumanInputMessage(message))
   if (userMessages.length === 0) {
     return []
   }
@@ -1020,7 +1020,7 @@ export async function getSessionTurnCheckpointDiff(
   if (!targetSnapshot) {
     return transcriptResult ?? missingResult
   }
-  const userMessages = activeMessages.filter((message) => message.type === 'user')
+  const userMessages = activeMessages.filter((message) => isHumanInputMessage(message))
   const nextUserMessageId = getNextUserMessageId(userMessages, target.userMessageIndex)
   const nextSnapshot = nextUserMessageId
     ? findTargetSnapshot(snapshots, nextUserMessageId)

@@ -7,14 +7,14 @@ import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import { ModelSelector } from '../../ModelSelector.js';
 import type { AgentWizardData } from '../types.js';
-export function ModelStep() {
+export function ModelStep(): ReactNode {
   const $ = _c(8);
   const {
     goNext,
     goBack,
     updateWizardData,
     wizardData
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
   let t0;
   if ($[0] !== goNext || $[1] !== updateWizardData) {
     t0 = model => {

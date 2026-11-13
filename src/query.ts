@@ -23,6 +23,7 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
+import { assertExpertRuntimeReadiness } from './services/tools/expertRuntimeReadiness.js'
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
@@ -44,7 +45,7 @@ import {
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   createUserInterruptionMessage,
   normalizeMessagesForAPI,
   createSystemMessage,
@@ -133,7 +134,7 @@ function* yieldMissingToolResultBlocks(
 
     // Emit an interruption message for each tool use
     for (const toolUse of toolUseBlocks) {
-      yield createUserMessage({
+      yield createRuntimeUserMessage({
         content: [
           {
             type: 'tool_result',
@@ -227,6 +228,7 @@ export async function* query(
   | ToolUseSummaryMessage,
   Terminal
 > {
+  await assertExpertRuntimeReadiness({ tools: params.toolUseContext.options.tools, agentId: params.toolUseContext.agentId })
   const consumedCommandUuids: string[] = []
   const terminal = yield* queryLoop(params, consumedCommandUuids)
   // Only reached if queryLoop returned normally. Skipped on throw (error
@@ -1171,15 +1173,19 @@ async function* queryLoop(
         // so hooks have nothing meaningful to evaluate. Running stop hooks
         // on prompt-too-long creates a death spiral: error → hook blocking
         // → retry → error → … (the hook injects more tokens each cycle).
-        yield lastMessage
-        void executeStopFailureHooks(lastMessage, toolUseContext)
+        if (lastMessage) {
+          yield lastMessage
+          void executeStopFailureHooks(lastMessage, toolUseContext)
+        }
         return { reason: isWithheldMedia ? 'image_error' : 'prompt_too_long' }
       } else if (feature('CONTEXT_COLLAPSE') && isWithheld413) {
         // reactiveCompact compiled out but contextCollapse withheld and
         // couldn't recover (staged queue empty/stale). Surface. Same
         // early-return rationale — don't fall through to stop hooks.
-        yield lastMessage
-        void executeStopFailureHooks(lastMessage, toolUseContext)
+        if (lastMessage) {
+          yield lastMessage
+          void executeStopFailureHooks(lastMessage, toolUseContext)
+        }
         return { reason: 'prompt_too_long' }
       }
 
@@ -1222,7 +1228,7 @@ async function* queryLoop(
         }
 
         if (maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
-          const recoveryMessage = createUserMessage({
+          const recoveryMessage = createRuntimeUserMessage({
             content:
               `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
               `Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`,
@@ -1323,7 +1329,7 @@ async function* queryLoop(
             messages: [
               ...messagesForQuery,
               ...assistantMessages,
-              createUserMessage({
+              createRuntimeUserMessage({
                 content: decision.nudgeMessage,
                 isMeta: true,
               }),

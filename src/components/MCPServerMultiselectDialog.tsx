@@ -14,7 +14,7 @@ type Props = {
   serverNames: string[];
   onDone(): void;
 };
-export function MCPServerMultiselectDialog(t0) {
+export function MCPServerMultiselectDialog(t0: Props): React.ReactNode {
   const $ = _c(21);
   const {
     serverNames,

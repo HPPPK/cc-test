@@ -1,3 +1,4 @@
+import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
 import { ApiError } from '../middleware/errorHandler.js'
 import { hasActiveExpertRuntime } from '../services/expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
@@ -36,10 +37,25 @@ export async function handleExpertBrowserSearchPacingApi(req: Request, _url: URL
   await assertAuthorized(sessionId)
 
   if (payload?.action === 'acquire') {
+    const assertNoHumanWait = () => {
+      if (expertHumanVerificationService.getPendingRequest(sessionId)) {
+        throw new ApiError(409, 'HUMAN_VERIFICATION_PENDING: Search remains paused until the user handles the original verification page. Do not retry or change search providers to bypass the wait.', 'HUMAN_VERIFICATION_PENDING')
+      }
+    }
+    assertNoHumanWait()
     const engine = searchEngine(payload.engine)
     if (!engine) throw ApiError.badRequest('Invalid search engine.')
     const minIntervalMs = typeof payload.minIntervalMs === 'number' ? payload.minIntervalMs : 3_000
-    return Response.json(await expertSearchPacingService.acquire({ sessionId, engine, minIntervalMs }))
+    const lease = await expertSearchPacingService.acquire({ sessionId, engine, minIntervalMs, signal: req.signal })
+    try {
+      await assertAuthorized(sessionId)
+      assertNoHumanWait()
+      req.signal.throwIfAborted()
+      return Response.json(lease)
+    } catch (error) {
+      expertSearchPacingService.release(sessionId, lease.leaseId)
+      throw error
+    }
   }
   if (payload?.action === 'release') {
     const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId.trim() : ''

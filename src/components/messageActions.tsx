@@ -1,3 +1,4 @@
+import { isHumanInputMessage, resolveMessageKind } from '../utils/messageKind.js';
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import type { RefObject } from 'react';
@@ -19,6 +20,8 @@ export function isNavigableMessage(msg: NavigableMessage): boolean {
   switch (msg.type) {
     case 'assistant':
       {
+        const kind = resolveMessageKind(msg);
+        if (kind === 'context_summary' || kind === 'internal_notification' || kind === 'system_event') return false;
         const b = msg.message.content[0];
         // Text responses (minus AssistantTextMessage's return-null cases — tier-1
         // misses unmeasured virtual items), or tool calls with extractable input.
@@ -26,7 +29,8 @@ export function isNavigableMessage(msg: NavigableMessage): boolean {
       }
     case 'user':
       {
-        if (msg.isMeta || msg.isCompactSummary) return false;
+        if (!isHumanInputMessage(msg)) return false;
+        if (msg.messageKind === 'user_input') return true;
         const b = msg.message.content[0];
         if (b?.type !== 'text') return false;
         // Interrupt etc. — synthetic, not user-authored.
@@ -209,7 +213,7 @@ export const MessageActionsSelectedContext = React.createContext(false);
 export const InVirtualListContext = React.createContext(false);
 
 // bg must go on the Box that HAS marginTop (margin stays outside paint) — that's inside each consumer.
-export function useSelectedMessageBg() {
+export function useSelectedMessageBg(): 'messageActionsBackground' | undefined {
   return React.useContext(MessageActionsSelectedContext) ? "messageActionsBackground" : undefined;
 }
 
@@ -271,7 +275,10 @@ export function useMessageActions(cursor: MessageActionsState | null, setCursor:
 }
 
 // Must mount inside <KeybindingSetup>.
-export function MessageActionsKeybindings(t0) {
+export function MessageActionsKeybindings(t0: {
+  handlers: Record<string, () => void>
+  isActive: boolean
+}): null {
   const $ = _c(2);
   const {
     handlers,
@@ -293,7 +300,9 @@ export function MessageActionsKeybindings(t0) {
 }
 
 // borderTop-only Box matches PromptInput's ─── line for stable footer height.
-export function MessageActionsBar(t0) {
+export function MessageActionsBar(t0: {
+  cursor: MessageActionsState
+}): React.ReactNode {
   const $ = _c(28);
   const {
     cursor
@@ -425,7 +434,7 @@ export function copyTextOf(msg: NavigableMessage): string {
     case 'collapsed_read_search':
       return msg.messages.flatMap(m => m.type === 'user' ? [toolResultText(m)] : m.type === 'grouped_tool_use' ? m.results.map(toolResultText) : []).filter(Boolean).join('\n\n');
     case 'system':
-      if ('content' in msg) return msg.content;
+      if (typeof msg.content === 'string') return msg.content;
       if ('error' in msg) return String(msg.error);
       return msg.subtype;
     case 'attachment':

@@ -2,7 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { InterruptedByUser } from './InterruptedByUser.js';
 import { MessageResponse } from './MessageResponse.js';
-export function FallbackToolUseRejectedMessage() {
+export function FallbackToolUseRejectedMessage(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

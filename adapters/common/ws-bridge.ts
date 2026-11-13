@@ -75,7 +75,7 @@ export class WsBridge {
     content: string,
     attachments?: AttachmentRef[],
   ): boolean {
-    const payload: Record<string, unknown> = { type: 'user_message', content }
+    const payload: Record<string, unknown> = { type: 'user_message', content, messageKind: 'user_input' }
     if (attachments && attachments.length > 0) {
       payload.attachments = attachments
     }

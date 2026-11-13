@@ -1,3 +1,4 @@
+import { requireFixtureValue } from './fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -63,7 +64,7 @@ async function startRemoteServer(options: { authRequired?: boolean } = {}): Prom
   }
 
   server = startServer(0, '0.0.0.0')
-  const port = server.port
+  const port = requireFixtureValue(server.port)
   ProviderService.setServerPort(port)
   baseUrl = `http://127.0.0.1:${port}`
   wsBaseUrl = `ws://127.0.0.1:${port}`

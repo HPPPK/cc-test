@@ -27,7 +27,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js';
 import { AbortError, errorMessage, toError } from '../../utils/errors.js';
 import type { CacheSafeParams } from '../../utils/forkedAgent.js';
 import { lazySchema } from '../../utils/lazySchema.js';
-import { createUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from '../../utils/messages.js';
+import { createRuntimeUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from '../../utils/messages.js';
 import { getAgentModel } from '../../utils/model/agent.js';
 import { permissionModeSchema } from '../../utils/permissions/PermissionMode.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
@@ -50,7 +50,7 @@ import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, appendExpertPostReviewEvidenceAbsorptionContext, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, formatPlaywrightAudit, getLastToolUseName, isFileFirstExpertResearchArtifactAgent, normalizeFinalizedExpertResearchArtifactContent, recordFinalizedExpertAgentResearchAudit, recordInterruptedExpertAgentResearchAudit, requiresPlaywrightAudit, runAsyncAgentLifecycle, shouldSurfaceExpertEvidenceAgentFailure } from './agentToolUtils.js';
-import { resolveExpertSubagentTypeForDispatch, type ExpertResearchSourceAssignment } from '../../services/tools/expertSubagentSkillRuntime.js';
+import { preflightExpertSubagentDispatch, resolveExpertSubagentTypeForDispatch, type ExpertResearchSourceAssignment } from '../../services/tools/expertSubagentSkillRuntime.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
@@ -61,6 +61,7 @@ import { runAgent } from './runAgent.js';
 import { getWorkflowTaskExecutionMode, hasActiveWorkflowTaskSchedule, normalizeWorkflowTaskSchedulePlan, runWithinWorkflowTaskSchedule, validateWorkflowTaskSchedule } from './workflowTaskScheduling.js';
 import { runWithinWorkflowParallelism } from './workflowParallelism.js';
 import type { WorkflowSessionState } from '../../server/services/workflowTypes.js';
+import { createDevelopmentWorkerContract, developmentToolCallViolation, developmentWorkerToolAllowed, isDevelopmentManagedWorkflowId } from '../../server/services/developmentToolExecutionPolicy.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -125,7 +126,7 @@ const fullInputSchema = lazySchema(() => {
     mode: permissionModeSchema().optional().describe('Permission mode for spawned teammate (e.g., "plan" to require plan approval).')
   });
   return baseInputSchema().merge(multiAgentInputSchema).extend({
-    isolation: ("external" === 'ant' ? z.enum(['worktree', 'remote']) : z.enum(['worktree'])).optional().describe("external" === 'ant' ? 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo. "remote" launches the agent in a remote CCR environment (always runs in background).' : 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo.'),
+    isolation: (false ? z.enum(['worktree', 'remote']) : z.enum(['worktree'])).optional().describe(false ? 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo. "remote" launches the agent in a remote CCR environment (always runs in background).' : 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo.'),
     cwd: z.string().optional().describe('Absolute path to run the agent in. Overrides the working directory for all filesystem and shell operations within this agent. Mutually exclusive with isolation: "worktree".')
   });
 });
@@ -271,6 +272,10 @@ import type { AgentToolProgress, ShellProgress } from '../../types/tools.js';
 // AgentTool forwards both its own progress events and shell progress
 // events from the sub-agent so the SDK receives tool_progress updates during bash/powershell runs.
 export type Progress = AgentToolProgress | ShellProgress;
+function remotePreconditionReasons(result: Awaited<ReturnType<typeof checkRemoteAgentEligibility>>): string {
+  return result.eligible ? '' : result.errors.map(formatPreconditionError).join('\n')
+}
+
 export const AgentTool = buildTool({
   async prompt({
     agents,
@@ -339,6 +344,8 @@ export const AgentTool = buildTool({
       artifactPath: research_artifact_path,
       workflowRole: workflow_role,
     });
+
+    await preflightExpertSubagentDispatch(normalizedSubagentType, research_task_kind);
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState();
@@ -542,10 +549,10 @@ export const AgentTool = buildTool({
 
     // Remote isolation: delegate to CCR. Gated ant-only 鈥?the guard enables
     // dead code elimination of the entire block for external builds.
-    if ("external" === 'ant' && effectiveIsolation === 'remote') {
+    if (false && effectiveIsolation === 'remote') {
       const eligibility = await checkRemoteAgentEligibility();
       if (!eligibility.eligible) {
-        const reasons = eligibility.errors.map(formatPreconditionError).join('\n');
+        const reasons = remotePreconditionReasons(eligibility);
         throw new Error(`Cannot launch remote agent:\n${reasons}`);
       }
       let bundleFailHint: string | undefined;
@@ -556,10 +563,10 @@ export const AgentTool = buildTool({
         onBundleFail: msg => {
           bundleFailHint = msg;
         }
+      }).then(session => {
+        if (!session) throw new Error(bundleFailHint ?? 'Failed to create remote session')
+        return session
       });
-      if (!session) {
-        throw new Error(bundleFailHint ?? 'Failed to create remote session');
-      }
       const {
         taskId,
         sessionId
@@ -632,9 +639,6 @@ export const AgentTool = buildTool({
         // Log agent memory loaded event for subagents
         if (selectedAgent.memory) {
           logEvent('tengu_agent_memory_loaded', {
-            ...("external" === 'ant' && {
-              agent_type: selectedAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-            }),
             scope: selectedAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             source: 'subagent' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
           });
@@ -645,7 +649,7 @@ export const AgentTool = buildTool({
       } catch (error) {
         logForDebugging(`Failed to get system prompt for agent ${selectedAgent.agentType}: ${errorMessage(error)}`);
       }
-      promptMessages = [createUserMessage({
+      promptMessages = [createRuntimeUserMessage({
         content: prompt
       })];
     }
@@ -685,6 +689,13 @@ export const AgentTool = buildTool({
       );
     }
     const activeWorkflow = workflowResolution.state;
+    const dispatchViolation = developmentToolCallViolation('Agent', {
+      description, prompt, workflow_role, run_in_background, workflow_parallel_plan,
+      ...(cwd !== undefined ? { cwd } : {}),
+      ...(name !== undefined ? { name } : {}),
+      ...(team_name !== undefined ? { team_name } : {}),
+    }, activeWorkflow, toolUseContext.workflowWorkerContract, undefined, Boolean(toolUseContext.agentId));
+    if (dispatchViolation) throw new Error(dispatchViolation);
     const developmentBatchGuardActive = isDevelopmentImplementationPhase(activeWorkflow);
     const developmentBatchRole: DevelopmentBatchAgentRole | undefined = developmentBatchGuardActive
       && (workflow_role === 'coder' || workflow_role === 'reviewer')
@@ -733,7 +744,8 @@ export const AgentTool = buildTool({
       appState.mcp.tools,
       activeWorkflow,
       activeWorkflow ? workflow_role : undefined,
-    );
+    ).filter(tool => !isDevelopmentManagedWorkflowId(activeWorkflow?.templateIdentity?.id)
+      || !workflow_role || developmentWorkerToolAllowed(tool.name, workflow_role));
 
     // Create a stable agent ID early so an explicitly requested worktree can use it as a slug
     const earlyAgentId = createAgentId();
@@ -758,12 +770,12 @@ export const AgentTool = buildTool({
       // and re-read potentially stale files. Appended after the fork directive
       // so it appears as the most recent guidance the child sees.
       if (isForkPath) {
-        promptMessages.push(createUserMessage({
+        promptMessages.push(createRuntimeUserMessage({
           content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
         }));
       }
       if (workflowTaskPlan) {
-        promptMessages.push(createUserMessage({
+        promptMessages.push(createRuntimeUserMessage({
           content: `You are executing a workflow task in an explicitly requested isolated worktree: ${worktreeInfo.worktreePath}. Do not merge or rebase this worktree into the source branch. Finish the assigned changes, run relevant validation, and report the worktree handoff for the coordinator to review and integrate.`
         }));
       }
@@ -778,6 +790,9 @@ export const AgentTool = buildTool({
         metadata.researchSourceAssignment = assignment;
       },
       toolUseContext,
+      get workflowWorkerContract() {
+        return createDevelopmentWorkerContract(activeWorkflow, workflow_role, worktreeInfo?.worktreePath ?? getCwd(), workflowTaskPlan?.taskId, workflowTask?.writeScopes);
+      },
       canUseTool,
       isAsync: shouldRunAsync,
       querySource: toolUseContext.options.querySource ?? getQuerySourceForAgent(selectedAgent.agentType, isBuiltInAgent(selectedAgent)),
@@ -1676,7 +1691,7 @@ export const AgentTool = buildTool({
     // Only route through auto mode classifier when in auto mode
     // In all other modes, auto-approve sub-agent generation
     // Note: "external" === 'ant' guard enables dead code elimination for external builds
-    if ("external" === 'ant' && appState.toolPermissionContext.mode === 'auto') {
+    if (false && appState.toolPermissionContext.mode === 'auto') {
       return {
         behavior: 'passthrough',
         message: 'Agent tool requires permission to spawn sub-agents.'
@@ -1744,7 +1759,7 @@ The agent is now running and will receive instructions via mailbox.`
       // File-first Expert workers hand over only their fixed Markdown receipt.
       // The parent must Read the declared file; no free-form research prose,
       // classifier warning, or post-review instruction may leak through this result.
-      if (isFileFirstExpertResearchArtifactAgent(data.agentType)) {
+      if (typeof data.agentType === 'string' && isFileFirstExpertResearchArtifactAgent(data.agentType)) {
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',

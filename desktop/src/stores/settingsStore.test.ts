@@ -373,7 +373,7 @@ describe('settingsStore desktop notification persistence', () => {
     window.localStorage.clear()
   })
 
-  it('defaults desktop notifications to explicit opt-in', async () => {
+  it('defaults desktop notifications to enabled', async () => {
     vi.doMock('../api/settings', () => ({
       settingsApi: {
         getUser: vi.fn(),
@@ -411,13 +411,17 @@ describe('settingsStore desktop notification persistence', () => {
 
     const { useSettingsStore } = await import('./settingsStore')
 
-    expect(useSettingsStore.getState().desktopNotificationsEnabled).toBe(false)
+    expect(useSettingsStore.getState().desktopNotificationsEnabled).toBe(true)
   })
 
-  it('keeps desktop notifications disabled when user settings do not opt in', async () => {
+  it.each([
+    [{}, true],
+    [{ desktopNotificationsEnabled: false }, false],
+    [{ desktopNotificationsEnabled: true }, true],
+  ])('loads legacy or explicit notification preference %j as %s without rewriting settings', async (fixture, enabled) => {
     vi.doMock('../api/settings', () => ({
       settingsApi: {
-        getUser: vi.fn().mockResolvedValue({}),
+        getUser: vi.fn().mockResolvedValue({ ...fixture, customUserField: { preserved: true } }),
         updateUser: vi.fn(),
         getPermissionMode: vi.fn().mockResolvedValue({ mode: 'default' }),
         setPermissionMode: vi.fn(),
@@ -454,7 +458,9 @@ describe('settingsStore desktop notification persistence', () => {
 
     await useSettingsStore.getState().fetchAll()
 
-    expect(useSettingsStore.getState().desktopNotificationsEnabled).toBe(false)
+    expect(useSettingsStore.getState().desktopNotificationsEnabled).toBe(enabled)
+    const { settingsApi } = await import('../api/settings')
+    expect(settingsApi.updateUser).not.toHaveBeenCalled()
   })
 
   it('persists the latest desktop notification toggle when saves overlap', async () => {

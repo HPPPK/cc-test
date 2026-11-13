@@ -1,3 +1,4 @@
+import { requireFixtureValue } from './fixtureAssertions.js'
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { ServerWebSocket } from 'bun'
 import { __resetWebSocketHandlerStateForTests, handleWebSocket, sendToSession, type WebSocketData } from '../ws/handler.js'
@@ -139,7 +140,7 @@ test('replays an existing human verification to a newly connected Desktop withou
   const reconnectedDesktop = socket('verification-response-owner')
   handleWebSocket.open(reconnectedDesktop.ws)
   await settleHandlers()
-  expect(reconnectedDesktop.sent.filter(message => message.type === 'permission_request' && message.requestId === requestId)).toEqual([original])
+  expect(reconnectedDesktop.sent.filter(message => message.type === 'permission_request' && message.requestId === requestId)).toEqual([requireFixtureValue(original)])
   expect(controller.sent.filter(message => message.type === 'permission_request' && message.requestId === requestId)).toHaveLength(1)
   expect(expertHumanVerificationService.getPendingRequest('verification-response-owner')?.requestId).toBe(requestId)
   handleWebSocket.message(reconnectedDesktop.ws, JSON.stringify({ type: 'permission_response', requestId, allowed: true, updatedInput: { verificationResolution: 'switch_public_entry' } }))

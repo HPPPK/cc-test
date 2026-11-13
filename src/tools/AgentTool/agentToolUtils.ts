@@ -360,7 +360,7 @@ export function lastWrittenMarkdownArtifactPath(messages: MessageType[]): string
   for (const message of messages) {
     if (message?.type !== 'user') continue
     for (const block of message.message.content) {
-      if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.is_error !== true) {
+      if (typeof block !== 'string' && block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.is_error !== true) {
         successfulMutationIds.add(block.tool_use_id)
       }
     }
@@ -436,7 +436,7 @@ export function normalizeFinalizedExpertResearchArtifactContent(
     type: 'text',
     text: artifactName
       ? `文件交接：${artifactName}；状态：子代理已结束，请直接 Read 已分配 Markdown 核验。`
-      : '文件交接：未捕获 Markdown 路径；状态：子代理已结束，请按任务中已分配的 Markdown Read 核验。',
+      : '文件交接：未确认 Markdown 写入；状态：子代理已结束，结果与写入状态需另行核验。',
   }]
 }
 
@@ -527,6 +527,7 @@ type PlaywrightScriptPage = {
 }
 
 type PlaywrightLedgerStep = {
+  title?: string
   index?: number
   type?: string
   outcome?: 'success' | 'failed'
@@ -645,19 +646,74 @@ function verificationUrlForAuditTarget(ledger: PlaywrightLedger, actionIndex: nu
   return undefined
 }
 
-/**
- * The runner may observe an engine's short verification interstitial while the
- * same browser action is still in flight. When the final page is a normal SERP
- * for that same engine and the runner's final assessment is healthy, that is an
- * internal transition diagnostic rather than a user-blocking access limit.
- */
-function transientVerificationRecoveredToSearchResults(ledger: PlaywrightLedger): boolean {
-  if (ledger.accessLimited || !ledger.url || !(ledger.verificationHistory?.length)) return false
-  return ledger.verificationHistory.some((entry) => {
-    if (typeof entry.url !== 'string') return false
-    const engine = searchEngineForAuditUrl(entry.url)
-    return Boolean(engine && hasObservedSearchResults(engine, ledger.url))
+/** Resolve each action group's actual final content, independently of historical challenges. */
+function matchesObservedAuditTarget(target: PlaywrightAuditTarget, finalUrl: string): boolean {
+  if (target.kind === 'search' && target.searchEngine) {
+    return searchEngineForAuditUrl(finalUrl) === target.searchEngine
+      && Boolean(target.query) && searchQueryFromUrl(finalUrl) === target.query
+  }
+  try {
+    const expected = new URL(target.target), actual = new URL(finalUrl)
+    return expected.hostname.replace(/^www\./, '') === actual.hostname.replace(/^www\./, '')
+      && expected.pathname.replace(/\/$/, '') === actual.pathname.replace(/\/$/, '')
+      && expected.searchParams.toString() === actual.searchParams.toString()
+  } catch { return false }
+}
+
+function verificationRecoveredForTarget(ledger: PlaywrightLedger, target: PlaywrightAuditTarget, nextActionIndex: number | undefined): boolean {
+  const isLast = nextActionIndex === undefined
+  if (ledger.sharedHumanVerificationBlocked || !ledger.verificationHistory?.length
+    || (isLast && (ledger.accessLimited || ledger.error || ledger.textExtracted === false))) return false
+  const observed = ledger.steps?.findLast(step => step.outcome === 'success' && step.type === 'extract'
+    && typeof step.index === 'number' && (target.actionIndex === undefined || step.index >= target.actionIndex)
+    && (nextActionIndex === undefined || step.index < nextActionIndex))
+  const finalUrl = isLast ? ledger.url : ledger.steps?.findLast(step => typeof step.index === 'number'
+    && (target.actionIndex === undefined || step.index >= target.actionIndex)
+    && step.index < nextActionIndex! && Boolean(step.url))?.url
+  return Boolean(observed?.url && finalUrl && !isHumanVerificationUrl(finalUrl)
+    && matchesObservedAuditTarget(target, finalUrl) && matchesObservedAuditTarget(target, observed.url))
+}
+
+/** Inserted recovery actions shift subsequent input indices; match their observed navigation. */
+function alignDeclaredAuditTargets(ledger: PlaywrightLedger, targets: PlaywrightAuditTarget[]): PlaywrightAuditTarget[] {
+  if (!ledger.verificationHistory?.length) return targets
+  return targets.map(target => {
+    const original = ledger.steps?.find(step => step.index === target.actionIndex)
+    if (original?.type === 'navigate' && original.url
+      && (isHumanVerificationUrl(original.url) || matchesObservedAuditTarget(target, original.url))) return target
+    const observed = ledger.steps?.find(step => step.type === 'navigate' && step.url
+      && typeof step.index === 'number' && step.index >= (target.actionIndex ?? 0)
+      && matchesObservedAuditTarget(target, step.url))
+    return observed ? { ...target, actionIndex: observed.index } : target
   })
+}
+
+/** Runtime continuations can navigate to a source absent from the model's original input. */
+function resumedNavigationAuditTargets(ledger: PlaywrightLedger, declared: PlaywrightAuditTarget[]): PlaywrightAuditTarget[] {
+  if (!ledger.verificationHistory?.length) return []
+  const seen = new Set<number>()
+  return (ledger.steps ?? []).flatMap(step => {
+    if (step.type !== 'navigate' || step.outcome !== 'success' || typeof step.index !== 'number'
+      || !step.url || isHumanVerificationUrl(step.url) || seen.has(step.index)
+      || declared.some(target => target.actionIndex === step.index)) return []
+    seen.add(step.index)
+    return playwrightAuditTargets({ actions: [{ type: 'navigate', url: step.url }] }).map(target => ({ ...target, actionIndex: step.index }))
+  })
+}
+
+/** Transport success alone does not make a rendered denial or missing page usable evidence. */
+function renderedAuditFailure(steps: PlaywrightLedgerStep[]): { status: 'failed' | 'access_limited'; detail: string } | undefined {
+  const title = steps.findLast(step => step.title)?.title ?? ''
+  const body = steps.findLast(step => step.type === 'extract' && step.outcome === 'success')?.detail ?? ''
+  const url = steps.findLast(step => step.url)?.url ?? ''
+  if (/^Just a moment[.!…]*$/i.test(title.trim()) && /__cf_chl|challenge/i.test(url)) {
+    return { status: 'access_limited', detail: 'Rendered verification challenge; no usable public content was obtained.' }
+  }
+  if (/^(?:404(?:\s*[-:|–—]?\s*(?:page\s+)?not\s+found)?|page not found|not found)(?:\s*[-|–—]\s*.+)?$/i.test(title.trim())
+    || (/\/whoops(?:[/?#]|$)/.test(url) && /页面不存在或已被删除/.test(body))) {
+    return { status: 'failed', detail: 'Rendered page-not-found response; navigation succeeded but no requested content was obtained.' }
+  }
+  return undefined
 }
 
 /**
@@ -702,14 +758,16 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
   for (const message of messages) {
     if (message.type !== 'user') continue
     for (const block of message.message.content) {
-      if (block.type === 'tool_result') resultsByUseId.set(block.tool_use_id, { content: block.content, isError: Boolean(block.is_error) })
+      if (typeof block !== 'string' && block.type === 'tool_result') resultsByUseId.set(block.tool_use_id, { content: block.content, isError: Boolean(block.is_error) })
     }
   }
   const audit: PlaywrightAuditEntry[] = []
+  const seenToolUseIds = new Set<string>()
   for (const message of messages) {
     if (message.type !== 'assistant') continue
     for (const block of message.message.content) {
-      if (block.type !== 'tool_use' || block.name !== 'Playwright') continue
+      if (block.type !== 'tool_use' || block.name !== 'Playwright' || seenToolUseIds.has(block.id)) continue
+      seenToolUseIds.add(block.id)
       const result = resultsByUseId.get(block.id)
       const declaredTargets = playwrightAuditTargets(block.input)
       if (!result) {
@@ -731,7 +789,9 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
         })))
         continue
       }
-      const targets = [...declaredTargets, ...scriptPageAuditTargets(ledger)]
+      const alignedDeclaredTargets = alignDeclaredAuditTargets(ledger, declaredTargets)
+      const targets = [...alignedDeclaredTargets, ...resumedNavigationAuditTargets(ledger, alignedDeclaredTargets), ...scriptPageAuditTargets(ledger)]
+        .sort((a, b) => (a.actionIndex ?? 0) - (b.actionIndex ?? 0))
       if (targets.length === 0 && ledger.url && ledger.steps?.length) {
         // An extract/click/typed search in a later call still belongs to the page
         // actually observed by the runner, not a generic action sequence.
@@ -754,10 +814,11 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
         const failure = (ledger.steps ?? []).find((step) => step.outcome === 'failed'
           && typeof step.index === 'number' && (actionIndex === undefined || step.index >= actionIndex)
           && (nextActionIndex === undefined || step.index < nextActionIndex))
-        const actionDidNotRun = !scriptPage && actionIndex !== undefined && hasIndexedSteps && !actionStep
+        const actionDidNotRun = !scriptPage && actionIndex !== undefined && hasIndexedSteps
+          && (!actionStep || (alignedDeclaredTargets.includes(rawTarget) && !['navigate', 'new_tab'].includes(actionStep.type ?? '')))
         const verificationStepIndex = firstHumanVerificationStepIndex(ledger)
         const hasVerificationHistory = (ledger.verificationHistory?.length ?? 0) > 0
-        const transientVerificationRecovered = transientVerificationRecoveredToSearchResults(ledger)
+        const transientVerificationRecovered = verificationRecoveredForTarget(ledger, rawTarget, nextActionIndex)
         const verificationObserved = Boolean(ledger.accessLimited) || (hasVerificationHistory && !transientVerificationRecovered)
         const accessLimitedForTarget = scriptPage
           ? scriptPage.status === 'access_limited'
@@ -770,9 +831,14 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
           ? scriptPage.status === 'failed'
           : (!verificationObserved || accessLimitedForTarget)
             && (Boolean(failure) || !hasIndexedSteps || nextActionIndex === undefined)
+        const renderedFailure = renderedAuditFailure((ledger.steps ?? []).filter(step => typeof step.index === 'number'
+          && (actionIndex === undefined || step.index >= actionIndex)
+          && (nextActionIndex === undefined || step.index < nextActionIndex)))
         const status: PlaywrightAuditStatus = scriptPage?.status
           ?? (actionDidNotRun
             ? 'pending'
+            : renderedFailure
+              ? renderedFailure.status
             : accessLimitedForTarget
               ? 'access_limited'
               : errorAppliesToTarget && (ledger.error || result.isError || failure)
@@ -806,7 +872,7 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
               ? 'pending' as const
               : status === 'failed'
                 ? 'failed' as const
-                : hasObservedSearchResults(target.searchEngine!, finalUrl)
+                : hasObservedSearchResults(target.searchEngine!, finalUrl) && actionTypes.includes('extract')
                   ? 'results_observed' as const
                   : 'entry_opened' as const
           : undefined
@@ -824,6 +890,8 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
             : {}),
           ...(actionDidNotRun
             ? { detail: 'This navigation did not run because the Playwright action sequence stopped earlier.' }
+            : renderedFailure
+              ? { detail: renderedFailure.detail }
             : scriptPage?.detail
               ? { detail: truncatePlaywrightAuditDetail(scriptPage.detail) }
               : errorAppliesToTarget && ledger.error
@@ -831,7 +899,7 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
                 : failure?.detail
                   ? { detail: truncatePlaywrightAuditDetail(failure.detail) }
                   : transientVerificationRecovered
-                    ? { detail: 'A transient verification interstitial automatically recovered to the final normal search-results page.' }
+                    ? { detail: 'Earlier human verification was observed; the final page content was obtained after recovery. The original verification history remains in the tool result.' }
                     : {}),
         })
       }
@@ -881,6 +949,8 @@ export function finalizeAgentTool(
     agentType: string
     isAsync: boolean
     researchSourceAssignment?: ExpertResearchSourceAssignment
+    /** Real transcript provenance retained across same-worker resumes; never used for current output/counts. */
+    priorAuditMessages?: MessageType[]
   },
 ): AgentToolResult {
   const {
@@ -920,7 +990,7 @@ export function finalizeAgentTool(
     agentMessages,
     'Playwright',
   )
-  const playwrightAudit = buildPlaywrightAudit(agentMessages)
+  const playwrightAudit = buildPlaywrightAudit([...(metadata.priorAuditMessages ?? []), ...agentMessages])
   const artifactPath = lastWrittenMarkdownArtifactPath(agentMessages)
   const parentVisibleContent = normalizeFinalizedExpertResearchArtifactContent(
     agentType,
@@ -981,6 +1051,7 @@ export async function recordInterruptedExpertAgentResearchAudit(
     agentType?: string
     prompt?: string
     messages: MessageType[]
+    priorAuditMessages?: MessageType[]
     artifactPath?: string
     sourceAssignment?: ExpertResearchSourceAssignment
     reason: string
@@ -991,7 +1062,7 @@ export async function recordInterruptedExpertAgentResearchAudit(
 
   const transcriptText = input.messages
     .filter((message) => message.type === 'assistant' || message.type === 'user')
-    .map((message) => extractTextContent(message.message.content, '\n'))
+    .map((message) => typeof message.message.content === 'string' ? message.message.content : extractTextContent(message.message.content, '\n'))
     .concat(input.prompt ?? '')
     .join('\n')
   const assignment = [...transcriptText.matchAll(/<expert-research-source-assignment>([\s\S]*?)<\/expert-research-source-assignment>/g)].at(-1)?.[1] ?? ''
@@ -1007,7 +1078,7 @@ export async function recordInterruptedExpertAgentResearchAudit(
 
   const reason = input.reason.trim().slice(0, 240)
   const interruptedDetail = '研究子代理在当前来源小批次完成前中断；这不代表该入口已访问、受限或失败' + (reason ? '。原因：' + reason : '。')
-  const audit = buildPlaywrightAudit(input.messages).map((entry) => {
+  const audit = buildPlaywrightAudit([...(input.priorAuditMessages ?? []), ...input.messages]).map((entry) => {
     if (entry.status !== 'pending') return entry
     return {
       ...entry,
@@ -1383,6 +1454,7 @@ export async function runAsyncAgentLifecycle({
         agentType: metadata.agentType,
         prompt: metadata.prompt,
         messages: agentMessages,
+        priorAuditMessages: metadata.priorAuditMessages,
         sourceAssignment: metadata.researchSourceAssignment,
         reason: error instanceof AbortError ? 'Agent was cancelled before normal completion.' : errorMessage(error),
       })

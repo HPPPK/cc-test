@@ -31,7 +31,8 @@ async function writeSkill(root: string, name: string, options: { referenceId?: s
 function workflowWithPhase(phase: Record<string, unknown>) {
   return {
     id: 'pack-skill-flow',
-    schemaVersion: 2,
+    source: 'user' as const,
+    schemaVersion: 2 as const,
     version: '1.0.0',
     name: 'Pack Skill Flow',
     description: 'Workflow used by pack-skill service tests.',
@@ -39,6 +40,11 @@ function workflowWithPhase(phase: Record<string, unknown>) {
       id: 'implement',
       name: 'Implement',
       instructions: 'Implement with the referenced skills.',
+      requiredIntake: [], handoffRules: [],
+      outputArtifact: { id: 'implementation', name: 'Implementation', kind: 'markdown', description: 'Implementation output', required: true as const },
+      completionCriteria: { type: 'agent-reported' as const, description: 'Implementation complete' },
+      transition: { authority: 'user-confirmation' as const },
+      requiredArtifacts: [],
       skills: [],
       skillBindings: [],
       ...phase,

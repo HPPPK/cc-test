@@ -6,6 +6,7 @@
  */
 
 import { handleApiRequest } from './router.js'
+import { errorResponse } from './middleware/errorHandler.js'
 import { handleWebSocket, type WebSocketData } from './ws/handler.js'
 import { resolveCors, type CorsResolution } from './middleware/cors.js'
 import { requireAuth, requireH5Token } from './middleware/auth.js'
@@ -303,10 +304,7 @@ export function startServer(port = PORT, host = HOST) {
               details: { path: url.pathname, method: req.method, error },
             })
             console.error('[Server] API error:', error)
-            return withCors(Response.json(
-              { error: 'Internal server error' },
-              { status: 500 },
-            ), cors)
+            return withCors(errorResponse(error), cors)
           }
         }
 

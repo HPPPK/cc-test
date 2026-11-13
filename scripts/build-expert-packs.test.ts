@@ -155,8 +155,8 @@ describe('buildBundledExpertPacks', () => {
     expect(JSON.parse(runtime.outputProtocol!.content)).toEqual(JSON.parse(outputProtocol))
     expect(systemPrompt).toContain('决策细节保真与定向补证')
     expect(systemPrompt).toContain('不得把两条帖子加若干视频当成完整需求验证')
-    expect(systemPrompt).toContain('只用 DeepSeek Flash')
-    expect(systemPrompt).toContain('不得自动切换 DeepSeek Pro')
+    expect(systemPrompt).toContain('会话选定的模型')
+    expect(systemPrompt).toContain('不得自动切换其他模型')
     expect(systemPrompt).toContain('07→HTML 逐簇核对')
     expect(systemPrompt).toContain('不计运行时确认的人工验证等待')
     expect(systemPrompt).toContain('先暂停所有研究浏览和搜索')
@@ -184,7 +184,7 @@ describe('buildBundledExpertPacks', () => {
     expect(await zip.readText(browserSkillPath)).toContain('分开调用的')
     const writeTool = JSON.parse(await zip.readText('tools/write/tool.json'))
     const htmlTemplate = await zip.readText('experts/commercialization-research-report/templates/commercialization-research-report-template.html')
-    expect(manifest.version).toBe('0.13.55-local')
+    expect(manifest.version).toBe('0.13.58-local')
     expect(systemPrompt).toContain('累计读取完整文件')
     expect(systemPrompt).toContain('来源引用保真')
     expect(systemPrompt).toContain('E 可读自己声明的 07，F 可读自己声明的 08')
@@ -216,10 +216,10 @@ describe('buildBundledExpertPacks', () => {
     expect(expert.skillIds.slice(0, 4)).toEqual(manifest.entrypoints.skills.slice(0, 4))
     expect(expert.skillIds.every((skillId: string) => manifest.entrypoints.skills.includes(skillId))).toBe(true)
     expect(expert.subagentSkillIds).toMatchObject({
-      'expert-evidence-researcher': ['browser-information-retrieval', 'research-source-library', 'channel-acquisition-evidence'],
-      'expert-evidence-reviewer': [],
-      'expert-evidence-absorber': [],
-      'expert-evidence-output-reviewer': [],
+      'expert-evidence-researcher': expect.arrayContaining(['browser-information-retrieval', 'research-source-library', 'channel-acquisition-evidence', 'commercialization-field-evidence']),
+      'expert-evidence-reviewer': ['commercialization-field-evidence'],
+      'expert-evidence-absorber': ['commercialization-field-evidence'],
+      'expert-evidence-output-reviewer': ['commercialization-field-evidence'],
     })
     expect(systemPrompt).toContain('AskUserQuestion')
     expect(systemPrompt).toContain('完整、深入的新品商业分析')
@@ -249,12 +249,12 @@ describe('buildBundledExpertPacks', () => {
     expect(writeTool.purpose).toContain('research_artifact.kind')
     expect(JSON.parse(outputProtocol).version).toBe(21)
     expect(JSON.parse(outputProtocol).researchArtifacts.researcherParts).toBe(true)
-    expect(systemPrompt).toContain('研究启动总数最多六次')
+    expect(systemPrompt).toContain('最多 6 次研究启动')
     expect(systemPrompt).toContain('全部已登记分片')
     const parsedOutputProtocol = JSON.parse(outputProtocol)
     expect(parsedOutputProtocol.researchTaskPurpose).toMatchObject({
       parameter: 'research_task_kind',
-      default: 'source-batch',
+      default: 'targeted-evidence',
       targetedEvidence: expect.stringContaining('do not claim an unrelated library batch'),
       handoff: expect.stringContaining('No full-catalog or Required route exhaustion gates'),
     })
@@ -325,7 +325,8 @@ describe('buildBundledExpertPacks', () => {
     expect(JSON.parse(outputProtocol).templateFieldGuide.fields.map((field: { field: string }) => field.field)).toContain('NEXT_STEP_PLAN_CONTENT')
     expect(JSON.parse(outputProtocol).researchBrowser).toMatchObject({
       searchEnginePacing: { enabled: true, minIntervalMs: 3000 },
-      sharePlaywrightSessionAcrossAgents: true,
+      sharePlaywrightSessionAcrossAgents: false,
+      closePlaywrightWhenAgentDone: true,
       desktopHumanVerificationHandoff: true,
     })
     expect(parsedOutputProtocol.researchCompletion).toBeUndefined()
@@ -391,6 +392,8 @@ describe('buildBundledExpertPacks', () => {
     const browserSkill = await zip.readText(browserSkillPath)
     expect(browserSkill).not.toContain('不深读、不循环')
     expect(browserSkill).toContain('本轮关键路线的真实取证')
+    expect(browserSkill).toContain('摘要引用真实搜索结果页')
+    expect(systemPrompt).toContain('统一资料采用标准')
     expect(browserSkill).toContain('type: "navigate"')
     expect(browserSkill).toContain('type: "fill"')
     expect(browserSkill).toContain('type: "press"')
@@ -446,7 +449,7 @@ describe('buildBundledExpertPacks', () => {
     expect(sourceLibrary).toContain('其它已访问入口完整保留在 06')
     expect(sourceLibrary).not.toContain('服务端会把本轮成功打开且可引用的具体页面追加到最终 HTML 来源表')
     expect(sourceLibrary).toContain('当前不适用')
-    expect(sourceLibrary).toContain('version: 1.4.0')
+    expect(sourceLibrary).toContain('version: 1.5.0')
     expect(sourceLibrary).not.toContain('easyAccessToken=')
     expect(await zip.readText(skillPath)).toContain('Playwright')
     expect(systemPrompt).toContain('所有面向 Desktop 用户展示的**普通回复、阶段进度、错误说明')
@@ -479,10 +482,10 @@ describe('buildBundledExpertPacks', () => {
     expect(outputProtocol).toContain('不得生成 SEO 总分、站点级百分比')
         expect(systemPrompt).toContain('external-demand-evidence')
     expect(systemPrompt).toContain('channel-acquisition-evidence')
-    expect(systemPrompt).toContain('cc-jiangxia expert-template-fill --data-stdin --output <报告.html>')
+    expect(systemPrompt).toContain('claude expert-template-fill --data-stdin --output <报告.html>')
     expect(manifest.entrypoints.tools).toEqual(['tools/write/tool.json'])
     expect(zip.has('experts/commercialization-research-report/tools/bash/tool.json')).toBe(false)
-    expect(outputProtocol).toContain('Only cc-jiangxia expert-template-fill invokes the session-bound renderer and performs file save plus acknowledgement')
+    expect(outputProtocol).toContain('Only claude expert-template-fill invokes the session-bound renderer and performs file save plus acknowledgement')
     expect(outputProtocol).toContain('The first saved and acknowledged render is a draft; after Read 08')
     expect(outputProtocol).toContain('--data-stdin --output <report.html>')
     expect(outputProtocol).not.toContain('Use one Bash invocation')
@@ -732,7 +735,7 @@ it('keeps commercialization repair and reference contracts identical in source a
   const tool = await zip.readText('tools/write/tool.json')
   expect(tool).toBe(await readFile(path.join(sourceDir, 'commercialization-research-report/tools/write/tool.json'), 'utf8').then(text => text.replaceAll('\r\n', '\n')))
   expect(tool).toContain('只能用 Write(file_path, content) 写入运行时声明的 Markdown 交接文件')
-  expect(tool).toContain('HTML 生成、修改和定稿只能用 cc-jiangxia expert-template-fill')
+  expect(tool).toContain('HTML 生成、修改和定稿只能用 claude expert-template-fill')
   expect(tool).toContain('首次候选的字段修复规则由既有协议约束')
   expect(prompt).toContain('已声明字段不能置空，已渲染并复核的草稿不采用此删除规则')
   const skill = await zip.readText('skills/commercialization-field-evidence/SKILL.md')
@@ -815,11 +818,32 @@ it('ships bounded product-first candidate research in canonical source and ZIP w
     const content = await zip.readText(entry)
     expect(content).toContain('最多 6 次研究启动')
     expect(content).toContain('每名研究者最多 12 次浏览器工具调用')
-    expect(content).toContain('15 分钟有效研究窗口')
+    expect(content).toContain('25 分钟有效研究窗口')
     expect(content).toContain('不计运行时确认的人工验证等待')
     expect(content).not.toContain('全部已分配入口都有真实终态后继续')
     expect(content).not.toContain('三人的执行包合起来正好覆盖 119 个核心入口')
     expect(content).not.toContain('D, E, 08, and final HTML wait for terminal coverage')
     expect(content).not.toContain('Each assigned entry gets one bounded Playwright outcome')
   }
+})
+
+
+it('commercialization ZIP declares audited evidence admission and direct public search recovery', async () => {
+  const source = await readFile(new URL('../experts/commercialization-research-report/outputs/material-protocol.json', import.meta.url), 'utf8')
+  expect(JSON.parse(source).researchQualityCheckpoint).toMatchObject({ version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 1, requireSourceSelection: true, channelEvidenceStandard: 'public-path' })
+  const skill = await readFile(new URL('../experts/commercialization-research-report/skills/browser-information-retrieval/SKILL.md', import.meta.url), 'utf8')
+  expect(skill).toContain('公开查询 URL')
+  expect(skill).toContain('SCRIPT_NO_RETURN_VALUE')
+  expect(skill).not.toContain('关闭该专用提示、按 Esc 或点击背景时，都视为明确选择')
+})
+
+ it('commercialization ZIP connects its source-selection plan with objective channel analysis', async () => {
+  const library = await readFile(new URL('../experts/commercialization-research-report/skills/research-source-library/SKILL.md', import.meta.url), 'utf8')
+  const channels = await readFile(new URL('../experts/commercialization-research-report/skills/channel-acquisition-evidence/SKILL.md', import.meta.url), 'utf8')
+  expect(library).toContain('expert-source-selection')
+  expect(library).toContain('coreRationale')
+  expect(library).toContain('1–3')
+  expect(channels).toContain('不要求已经证明获客有效')
+  expect(channels).toContain('channelPath')
+  expect(channels).toContain('basis')
 })

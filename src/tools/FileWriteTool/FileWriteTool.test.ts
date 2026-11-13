@@ -1,3 +1,4 @@
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import { z } from 'zod/v4'
 import * as path from 'node:path'
 import { afterEach, describe, expect, test } from 'bun:test'
@@ -58,9 +59,9 @@ describe('FileWriteTool stays generic', () => {
       completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
       maxCharacters: 90_000,
     })
-    globalThis.fetch = async () => new Response(JSON.stringify({
+    globalThis.fetch = withFetchPreconnect(async () => new Response(JSON.stringify({
       templateId: 'commercialization-report-v1', content: '<html>draft</html>',
-    }))
+    })))
     recordMainAgentReportFieldAbsorptionRead('C:/expert-session-output/commercialization-research/07-report-field-absorption.md')
     const rendered = await renderExpertTemplateFillForWrite({
       file_path: 'draft.html', content: '',

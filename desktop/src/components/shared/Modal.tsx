@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { ContentOverlay } from './ContentOverlay'
 
 type ModalProps = {
   open: boolean
@@ -22,8 +22,8 @@ export function Modal({ open, onClose, title, children, width = 560, footer }: M
 
   if (!open) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return (
+    <ContentOverlay>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-[var(--color-overlay-scrim)] transition-opacity duration-200"
@@ -32,8 +32,8 @@ export function Modal({ open, onClose, title, children, width = 560, footer }: M
 
       {/* Modal content */}
       <div
-        className="glass-panel relative rounded-[var(--radius-xl)] max-h-[85vh] flex flex-col"
-        style={{ width, maxWidth: 'calc(100vw - 48px)' }}
+        className="glass-panel relative min-h-0 rounded-[var(--radius-xl)] max-h-full flex flex-col"
+        style={{ width, maxWidth: '100%' }}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -62,7 +62,6 @@ export function Modal({ open, onClose, title, children, width = 560, footer }: M
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </ContentOverlay>
   )
 }

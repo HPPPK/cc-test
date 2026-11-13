@@ -40,6 +40,7 @@ export type { SpinnerMode } from './Spinner/index.js';
 const DEFAULT_CHARACTERS = getDefaultCharacters();
 const SPINNER_FRAMES = [...DEFAULT_CHARACTERS, ...[...DEFAULT_CHARACTERS].reverse()];
 type Props = {
+  apiMetricsRef?: React.RefObject<readonly { ttftMs: number; firstTokenTime: number; lastTokenTime: number; responseLengthBaseline: number; endResponseLength: number }[]>;
   mode: SpinnerMode;
   loadingStartTimeRef: React.RefObject<number>;
   totalPausedMsRef: React.RefObject<number>;
@@ -219,9 +220,7 @@ function SpinnerWithVerbInner({
   // doesn't trigger re-renders; we pick up updates on the parent's ~25x/turn
   // re-render cadence, same as the old ApiMetricsLine did.
   let ttftText: string | null = null;
-  if ("external" === 'ant' && apiMetricsRef?.current && apiMetricsRef.current.length > 0) {
-    ttftText = computeTtftText(apiMetricsRef.current);
-  }
+
 
   // When leader is idle but teammates are running (and we're viewing the leader),
   // show a static dim idle display instead of the animated spinner — otherwise
@@ -313,7 +312,7 @@ type BriefSpinnerProps = {
   mode: SpinnerMode;
   overrideMessage?: string | null;
 };
-function BriefSpinner(t0) {
+function BriefSpinner(t0: BriefSpinnerProps): React.ReactNode {
   const $ = _c(31);
   const {
     mode,
@@ -448,7 +447,7 @@ function _temp5(s) {
 function _temp4() {
   return sample(getSpinnerVerbs()) ?? "Working";
 }
-export function BriefIdleStatus() {
+export function BriefIdleStatus(): React.ReactNode {
   const $ = _c(9);
   const connStatus = useAppState(_temp7);
   const runningCount = useAppState(_temp8);
@@ -504,7 +503,7 @@ function _temp8(s_0) {
 function _temp7(s) {
   return s.remoteConnectionStatus;
 }
-export function Spinner() {
+export function Spinner(): React.ReactNode {
   const $ = _c(8);
   const settings = useSettings();
   const reducedMotion = settings.prefersReducedMotion ?? false;

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import DOMPurify from 'dompurify'
-import { createPortal } from 'react-dom'
+import { ContentOverlay } from '../shared/ContentOverlay'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -213,10 +213,10 @@ export function PermissionModeSelector({ workDir: workDirProp, compact = false, 
       )}
 
       {/* Bypass confirmation dialog */}
-      {confirmDialog && createPortal(
-        <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/40 ${isMobile ? 'px-4' : 'pl-[var(--sidebar-width)] pr-4'}`} onClick={() => setConfirmDialog(false)}>
+      {confirmDialog && (
+        <ContentOverlay className="bg-black/40" style={{ zIndex: 100 }} onClick={() => setConfirmDialog(false)}>
           <div
-            className={`${isMobile ? 'w-full max-w-md' : 'w-[420px]'} rounded-2xl bg-[var(--color-surface-container-lowest)] border border-[var(--color-border)] shadow-[var(--shadow-dropdown)] overflow-hidden`}
+            className="w-full max-w-[420px] max-h-full overflow-y-auto rounded-2xl bg-[var(--color-surface-container-lowest)] border border-[var(--color-border)] shadow-[var(--shadow-dropdown)]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -277,8 +277,7 @@ export function PermissionModeSelector({ workDir: workDirProp, compact = false, 
               </button>
             </div>
           </div>
-        </div>,
-        document.body,
+        </ContentOverlay>
       )}
     </div>
   )

@@ -21,7 +21,7 @@ const PROCESSING_BRIGHT = {
 };
 const PULSE_PERIOD_S = 2; // 2 second period for all pulsing animations
 
-export function VoiceIndicator(props) {
+export function VoiceIndicator(props: Props): React.ReactNode {
   const $ = _c(2);
   if (!feature("VOICE_MODE")) {
     return null;
@@ -36,7 +36,7 @@ export function VoiceIndicator(props) {
   }
   return t0;
 }
-function VoiceIndicatorImpl(t0) {
+function VoiceIndicatorImpl(t0: Props): React.ReactNode {
   const $ = _c(2);
   const {
     voiceState
@@ -75,7 +75,7 @@ function VoiceIndicatorImpl(t0) {
 // is too brief for a 1s-period shimmer to register, and a 50ms animation
 // timer here runs concurrently with auto-repeat spaces arriving every
 // 30-80ms, compounding re-renders during an already-busy window.
-export function VoiceWarmupHint() {
+export function VoiceWarmupHint(): React.ReactNode {
   const $ = _c(1);
   if (!feature("VOICE_MODE")) {
     return null;
@@ -89,7 +89,7 @@ export function VoiceWarmupHint() {
   }
   return t0;
 }
-function ProcessingShimmer() {
+function ProcessingShimmer(): React.ReactNode {
   const $ = _c(8);
   const settings = useSettings();
   const reducedMotion = settings.prefersReducedMotion ?? false;

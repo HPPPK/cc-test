@@ -46,7 +46,7 @@ function decisionReasonDisplayString(decisionReason: PermissionDecisionReason & 
       return '';
   }
 }
-function PermissionDecisionInfoItem(t0) {
+function PermissionDecisionInfoItem(t0: PermissionDecisionInfoItemProps): React.ReactNode {
   const $ = _c(10);
   const {
     title,
@@ -105,7 +105,9 @@ function PermissionDecisionInfoItem(t0) {
   }
   return t4;
 }
-function SuggestedRules(t0) {
+function SuggestedRules(t0: {
+  suggestions: PermissionUpdate[] | undefined
+}): React.ReactNode {
   const $ = _c(18);
   const {
     suggestions
@@ -207,7 +209,10 @@ function extractMode(updates: PermissionUpdate[] | undefined): PermissionMode | 
   const update = updates.findLast(u => u.type === 'setMode');
   return update?.type === 'setMode' ? update.mode : undefined;
 }
-function SuggestionDisplay(t0) {
+function SuggestionDisplay(t0: {
+  suggestions: PermissionUpdate[] | undefined
+  width: number
+}): React.ReactNode {
   const $ = _c(22);
   const {
     suggestions,
@@ -339,7 +344,7 @@ function _temp3(dir, index_0) {
 function _temp2(rule, index) {
   return <Text key={index}>{figures.bullet} {permissionRuleValueToString(rule)}</Text>;
 }
-export function PermissionDecisionDebugInfo(t0) {
+export function PermissionDecisionDebugInfo(t0: Props): React.ReactNode {
   const $ = _c(25);
   const {
     permissionResult,
@@ -398,10 +403,10 @@ export function PermissionDecisionDebugInfo(t0) {
     t3 = $[8];
   }
   let t4;
-  if ($[9] !== permissionResult.behavior || $[10] !== permissionResult.message) {
-    t4 = permissionResult.behavior !== "allow" && <Box flexDirection="row"><Box justifyContent="flex-end" minWidth={10}><Text dimColor={true}>Message </Text></Box><Text>{permissionResult.message}</Text></Box>;
+  if ($[9] !== permissionResult.behavior || $[10] !== ("message" in permissionResult ? permissionResult.message : undefined)) {
+    t4 = permissionResult.behavior !== "allow" && <Box flexDirection="row"><Box justifyContent="flex-end" minWidth={10}><Text dimColor={true}>Message </Text></Box><Text>{("message" in permissionResult ? permissionResult.message : undefined)}</Text></Box>;
     $[9] = permissionResult.behavior;
-    $[10] = permissionResult.message;
+    $[10] = ("message" in permissionResult ? permissionResult.message : undefined);
     $[11] = t4;
   } else {
     t4 = $[11];

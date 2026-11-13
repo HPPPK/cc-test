@@ -48,7 +48,7 @@ import teleport from './commands/teleport/index.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const agentsPlatform =
   process.env.USER_TYPE === 'ant'
-    ? require('./commands/agents-platform/index.js').default
+    ? require('./commands/agents-platform/index.js').getAgentsPlatformCommand()
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import securityReview from './commands/security-review.js'

@@ -194,7 +194,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
       'Do not use advance for ordinary linear progression. After a normal completion, submit_phase_completion alone creates the current phase confirmation and enters the immediate linear next phase after the user confirms.',
       'In particular, after a repair returns to Stage 4, submit the Stage 4 completion and do not request a route merely to re-enter its normal Stage 5 validation phase.',
       'Do not describe a route only in plain text or hide it inside a completion handoff.',
-      'The server validates phase, stateVersion, route policy, and target existence. Every normal model-requested route waits for explicit user confirmation. The only exception is an active 10-second silent recovery window returned by submit_phase_completion: immediately request rework_current_phase or jump_to_phase with requireUserConfirmation true, and the server may apply that first constrained repair without a user click.',
+      'The server validates phase, stateVersion, route policy, and target existence. Every normal model-requested route waits for explicit user confirmation. The only exception is a one-time recovery credential returned by submit_phase_completion: it does not expire while the model is reasoning, so immediately request rework_current_phase or jump_to_phase with requireUserConfirmation true, and the server may apply that first constrained repair without a user click.',
     ].join('\n')
   },
   get inputSchema(): InputSchema { return inputSchema() },
@@ -218,7 +218,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
       }
     }
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)) return unavailable()
+    if (!state || !getWorkflowScopedToolNames(state).includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)) return unavailable()
     if (input.phaseId && input.phaseId !== state.activePhaseId) return unavailable('Route phase must match the active workflow phase.')
     if (typeof input.stateVersion === 'number' && input.stateVersion !== state.stateVersion) return unavailable('Workflow state version is stale.')
     return { result: true }
@@ -227,7 +227,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
     const desktop = desktopContext()
     if (desktop) return routeThroughDesktopApi(input, context, desktop)
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)) {
+    if (!state || !getWorkflowScopedToolNames(state).includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)) {
       throw new Error('Workflow routing is available only in workflow sessions.')
     }
     const result = await new WorkflowRuntimeService().requestWorkflowRoute({
@@ -243,7 +243,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
         approvedTargetPhaseId: result.approvedTargetPhaseId,
         routeReason: result.routeReason,
         requiresConfirmation: result.requiresConfirmation,
-        message: messageForRoute(result),
+        message: messageForRoute({ ...result, workflow: result.state }),
       },
     }
   },

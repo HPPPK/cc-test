@@ -35,7 +35,7 @@ import { logError } from '../../utils/log.js'
 import type { SetAppState } from '../../utils/messageQueueManager.js'
 import {
   createSystemMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   INTERRUPT_MESSAGE,
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
 } from '../../utils/messages.js'
@@ -283,7 +283,7 @@ function createSpeculationFeedbackMessage(
   const toolUses = countToolsInMessages(messages)
   const tokens = boundary?.type === 'complete' ? boundary.outputTokens : null
 
-  const parts = []
+  const parts: string[] = []
   if (toolUses > 0) {
     parts.push(`Speculated ${toolUses} tool ${toolUses === 1 ? 'use' : 'uses'}`)
   } else {
@@ -361,7 +361,7 @@ async function generatePipelinedSuggestion(
       ...context,
       messages: [
         ...context.messages,
-        createUserMessage({ content: suggestionText }),
+        createRuntimeUserMessage({ content: suggestionText }),
         ...speculatedMessages,
       ],
     }
@@ -455,7 +455,7 @@ export async function startSpeculation(
 
   try {
     const result = await runForkedAgent({
-      promptMessages: [createUserMessage({ content: suggestionText })],
+      promptMessages: [createRuntimeUserMessage({ content: suggestionText })],
       cacheSafeParams: cacheSafeParams ?? createCacheSafeParams(context),
       skipTranscript: true,
       canUseTool: async (tool, input) => {
@@ -872,7 +872,7 @@ export async function handleSpeculationAccept(
     let cleanMessages = prepareMessagesForInjection(speculationMessages)
 
     // Inject user message first for instant visual feedback before any async work
-    const userMessage = createUserMessage({ content: input })
+    const userMessage = createRuntimeUserMessage({ content: input, messageKind: 'user_input' })
     setMessages(prev => [...prev, userMessage])
 
     const result = await acceptSpeculation(
@@ -948,7 +948,7 @@ export async function handleSpeculationAccept(
         ...speculationState.contextRef.current,
         messages: [
           ...speculationState.contextRef.current.messages,
-          createUserMessage({ content: input }),
+          createRuntimeUserMessage({ content: input, messageKind: 'user_input' }),
           ...cleanMessages,
         ],
       }

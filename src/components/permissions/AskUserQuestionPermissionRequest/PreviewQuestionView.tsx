@@ -1,3 +1,4 @@
+import type { DisplayQuestion } from './normalizeQuestion.js'
 import figures from 'figures';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
@@ -16,8 +17,8 @@ import { PreviewBox } from './PreviewBox.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 import type { QuestionState } from './use-multiple-choice-state.js';
 type Props = {
-  question: Question;
-  questions: Question[];
+  question: DisplayQuestion;
+  questions: DisplayQuestion[];
   currentQuestionIndex: number;
   answers: Record<string, string>;
   questionStates: Record<string, QuestionState>;

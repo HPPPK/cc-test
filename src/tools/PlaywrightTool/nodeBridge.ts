@@ -1,3 +1,4 @@
+import type { BrowserDiagnostics } from './browserDiagnostics.js'
 import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -59,6 +60,7 @@ type PlaywrightRunnerResult = {
   links: Array<{ text: string; url: string }>
   steps: Array<{ index: number; type: PlaywrightAction['type']; outcome: 'success' | 'failed'; url: string; title?: string; detail?: string; screenshotPath?: string; scriptPages?: Array<{ requestedUrl: string; finalUrl?: string; title?: string; status: 'opened' | 'access_limited' | 'failed'; detail?: string }> }>
   accessLimited: boolean
+  browserDiagnostics?: BrowserDiagnostics
   verificationWindowPresentationConfirmed?: boolean
   verificationGateId?: string
   sharedHumanVerificationBlocked?: boolean
@@ -101,7 +103,7 @@ type PendingRequest = {
 }
 
 type PersistentBridge = {
-  proc: ReturnType<typeof Bun.spawn>
+  proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
   pending: Map<string, PendingRequest>
   nextRequestId: number
   stderr: string

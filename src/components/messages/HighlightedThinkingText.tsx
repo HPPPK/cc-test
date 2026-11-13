@@ -12,7 +12,7 @@ type Props = {
   useBriefLayout?: boolean;
   timestamp?: string;
 };
-export function HighlightedThinkingText(t0) {
+export function HighlightedThinkingText(t0: Props): React.ReactNode {
   const $ = _c(31);
   const {
     text,
@@ -79,7 +79,7 @@ export function HighlightedThinkingText(t0) {
     }
     return t8;
   }
-  let parts;
+  let parts: React.ReactNode[] = [];
   let t1;
   if ($[15] !== pointerColor || $[16] !== text) {
     t1 = Symbol.for("react.early_return_sentinel");

@@ -107,6 +107,26 @@ describe('resolveExpertResearchBrowserPolicy', () => {
     expect(normalizeLocalCdpEndpoint('http://127.0.0.1:9333')).toBe('http://127.0.0.1:9333')
   })
 
+  test('accepts a brand-neutral local browser debugger while preserving legacy browser metadata', () => {
+    const policy = { sharePlaywrightSessionAcrossAgents: false, allowUserAuthorizedCdp: true }
+    expect(resolveExpertResearchBrowserConnection(policy, {
+      kind: 'cdp',
+      endpoint: 'http://127.0.0.1:9222',
+      userAuthorized: true,
+    }, '2026-11-10T00:00:00.000Z')).toEqual({
+      kind: 'cdp',
+      endpoint: 'http://127.0.0.1:9222',
+      userAuthorizedAt: '2026-11-10T00:00:00.000Z',
+    })
+
+    expect(resolveExpertResearchBrowserConnection(policy, {
+      kind: 'cdp',
+      browser: 'edge',
+      endpoint: 'http://127.0.0.1:9222',
+      userAuthorized: true,
+    }, '2026-11-10T00:00:00.000Z')).toMatchObject({ browser: 'edge' })
+  })
+
   test('rejects unapproved, remote, credentialed, and incomplete CDP connections', () => {
     const policy = { sharePlaywrightSessionAcrossAgents: true, allowUserAuthorizedCdp: true }
     expect(() => resolveExpertResearchBrowserConnection(undefined, { kind: 'cdp', browser: 'edge', endpoint: 'http://127.0.0.1:9222', userAuthorized: true }, '2026-08-04T00:00:00.000Z')).toThrow('没有声明')

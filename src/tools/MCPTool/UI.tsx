@@ -156,7 +156,10 @@ export function renderToolResultMessage(output: string | MCPToolResult, _progres
  * 2. If JSON is a small flat-ish object, render as aligned key: value.
  * 3. Otherwise fall through to OutputLine (pretty-print + truncate).
  */
-function MCPTextOutput(t0) {
+function MCPTextOutput(t0: {
+  content: string
+  verbose: boolean
+}): React.ReactNode {
   const $ = _c(18);
   const {
     content,

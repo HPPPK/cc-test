@@ -26,7 +26,7 @@ import {
 import { logError } from './log.js'
 import {
   createAssistantMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   filterOrphanedThinkingOnlyMessages,
   filterUnresolvedToolUses,
   filterWhitespaceOnlyAssistantMessages,
@@ -209,7 +209,7 @@ export function deserializeMessagesWithInterruptDetection(
     let turnInterruptionState: TurnInterruptionState
     if (internalState.kind === 'interrupted_turn') {
       const [continuationMessage] = normalizeMessages([
-        createUserMessage({
+        createRuntimeUserMessage({
           content: 'Continue from where you left off.',
           isMeta: true,
         }),

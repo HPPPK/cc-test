@@ -35,7 +35,7 @@ const ideDiffSupport: IDEDiffSupport<FileWriteToolInput> = {
     return input;
   }
 };
-export function FileWritePermissionRequest(props) {
+export function FileWritePermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const $ = _c(30);
   const parseInput = _temp;
   let t0;

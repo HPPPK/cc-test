@@ -6,7 +6,7 @@ import { getSettingsWithAllErrors } from '../../utils/settings/allErrors.js';
 import type { ValidationError } from '../../utils/settings/validation.js';
 import { useSettingsChange } from '../useSettingsChange.js';
 const SETTINGS_ERRORS_NOTIFICATION_KEY = 'settings-errors';
-export function useSettingsErrors() {
+export function useSettingsErrors(): ValidationError[] {
   const $ = _c(6);
   const {
     addNotification,

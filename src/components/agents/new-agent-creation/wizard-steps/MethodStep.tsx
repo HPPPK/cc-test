@@ -8,14 +8,14 @@ import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHin
 import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import type { AgentWizardData } from '../types.js';
-export function MethodStep() {
+export function MethodStep(): ReactNode {
   const $ = _c(11);
   const {
     goNext,
     goBack,
     updateWizardData,
     goToStep
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = [{

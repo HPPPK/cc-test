@@ -101,7 +101,7 @@ type Props = {
   store?: StatsStore;
   children: React.ReactNode;
 };
-export function StatsProvider(t0) {
+export function StatsProvider(t0: Props): React.ReactNode {
   const $ = _c(7);
   const {
     store: externalStore,
@@ -154,14 +154,14 @@ export function StatsProvider(t0) {
   }
   return t4;
 }
-export function useStats() {
+export function useStats(): StatsStore {
   const store = useContext(StatsContext);
   if (!store) {
     throw new Error("useStats must be used within a StatsProvider");
   }
   return store;
 }
-export function useCounter(name) {
+export function useCounter(name: string): (value?: number) => void {
   const $ = _c(3);
   const store = useStats();
   let t0;
@@ -175,7 +175,7 @@ export function useCounter(name) {
   }
   return t0;
 }
-export function useGauge(name) {
+export function useGauge(name: string): (value: number) => void {
   const $ = _c(3);
   const store = useStats();
   let t0;
@@ -189,7 +189,7 @@ export function useGauge(name) {
   }
   return t0;
 }
-export function useTimer(name) {
+export function useTimer(name: string): (value: number) => void {
   const $ = _c(3);
   const store = useStats();
   let t0;
@@ -203,7 +203,7 @@ export function useTimer(name) {
   }
   return t0;
 }
-export function useSet(name) {
+export function useSet(name: string): (value: string) => void {
   const $ = _c(3);
   const store = useStats();
   let t0;

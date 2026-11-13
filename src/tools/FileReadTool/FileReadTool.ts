@@ -1,3 +1,4 @@
+import { isAgentBrowserResultReadable } from "../AgentTool/expertWorkerRecovery.js";
 import type { Base64ImageSource } from "@anthropic-ai/sdk/resources/index.mjs";
 import { readdir, readFile as readFileAsync } from "fs/promises";
 import * as path from "path";
@@ -58,7 +59,7 @@ import {
 import { lazySchema } from "../../utils/lazySchema.js";
 import { logError } from "../../utils/log.js";
 import { isAutoMemFile } from "../../utils/memoryFileDetection.js";
-import { createUserMessage } from "../../utils/messages.js";
+import { createRuntimeUserMessage } from "../../utils/messages.js";
 import { getCanonicalName, getMainLoopModel } from "../../utils/model/model.js";
 import {
   mapNotebookCellsToToolResult,
@@ -609,7 +610,8 @@ export const FileReadTool = buildTool({
   async checkPermissions(input, context): Promise<PermissionDecision> {
     if (
       context.agentType === EXPERT_EVIDENCE_RESEARCH_AGENT_TYPE &&
-      !isExpertEvidenceResearchSessionReadAllowed(input.file_path, context.messages)
+      !isExpertEvidenceResearchSessionReadAllowed(input.file_path, context.messages) &&
+      !isAgentBrowserResultReadable(input, context.agentId)
     ) {
       return {
         behavior: "deny",
@@ -1134,7 +1136,7 @@ async function callInner(
   messageId: string | undefined,
 ): Promise<{
   data: Output;
-  newMessages?: ReturnType<typeof createUserMessage>[];
+  newMessages?: ReturnType<typeof createRuntimeUserMessage>[];
 }> {
   // --- Notebook ---
   if (ext === "ipynb") {
@@ -1202,7 +1204,7 @@ async function callInner(
       data,
       ...(metadataText && {
         newMessages: [
-          createUserMessage({ content: metadataText, isMeta: true }),
+          createRuntimeUserMessage({ content: metadataText, isMeta: true }),
         ],
       }),
     };
@@ -1257,7 +1259,7 @@ async function callInner(
         data: extractResult.data,
         ...(imageBlocks.length > 0 && {
           newMessages: [
-            createUserMessage({ content: imageBlocks, isMeta: true }),
+            createRuntimeUserMessage({ content: imageBlocks, isMeta: true }),
           ],
         }),
       };
@@ -1317,7 +1319,7 @@ async function callInner(
     return {
       data: pdfData,
       newMessages: [
-        createUserMessage({
+        createRuntimeUserMessage({
           content: [
             {
               type: "document",

@@ -39,7 +39,7 @@ const CHECKING_TEXT = 'Attempting to auto-approve\u2026';
 // all children) for the ~1-3 seconds the classifier typically takes. Inner also
 // has a Compiler bailout (see below), so nothing was auto-memoized — the full
 // JSX tree was reconstructed 20-60 times per classifier check.
-function ClassifierCheckingSubtitle() {
+function ClassifierCheckingSubtitle(): React.ReactNode {
   const $ = _c(6);
   const [ref, glimmerIndex] = useShimmerAnimation("requesting", CHECKING_TEXT, false);
   let t0;
@@ -68,7 +68,7 @@ function ClassifierCheckingSubtitle() {
   }
   return t2;
 }
-export function BashPermissionRequest(props) {
+export function BashPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const $ = _c(21);
   const {
     toolUseConfirm,

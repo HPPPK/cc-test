@@ -1,4 +1,6 @@
-﻿import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
+import type { WorkflowSessionCreateOptions } from './workflowTypes.js'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -75,7 +77,7 @@ describe('workflow session creation routing', () => {
       registryService: registry,
       stateService: new WorkflowSessionStateService(),
     })
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'debug-repair-workflow-v8',
       templateSource: 'builtin' as const,
       request: '鐧诲綍椤电偣鍑绘病鍙嶅簲锛屾帶鍒跺彴鏈?500',
@@ -108,7 +110,7 @@ describe('workflow session creation routing', () => {
 
   test('documentation light route skips implementation-heavy phases', async () => {
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'efficient-constrained-dev-debug-workflow-v5',
       templateSource: 'builtin' as const,
       request: '甯垜鍐?README',
@@ -125,7 +127,7 @@ describe('workflow session creation routing', () => {
     const phaseIds = state.state?.phases.map((phase) => phase.id) ?? []
 
     expect(summary.labels).toContain('documentation')
-    expect(['light', 'standard']).toContain(summary.effort)
+    expect(['light', 'standard']).toContain(requireFixtureValue(summary.effort))
     expect(phaseIds).toContain('scope-plan')
     expect(phaseIds).toContain('scenario-review')
     expect(phaseIds).not.toContain('delegate-implement')
@@ -134,10 +136,10 @@ describe('workflow session creation routing', () => {
 
   test('keeps implementation for a new-product route with documentation as a secondary label', async () => {
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'efficient-constrained-dev-debug-workflow-v5',
       templateSource: 'builtin' as const,
-      labels: ['new-product', 'documentation'] as const,
+      labels: ['new-product', 'documentation'],
       request: 'Build the confirmed Windows desktop product and keep its user documentation current.',
     }
     const template = await createService.resolveTemplate(workflow)
@@ -160,7 +162,7 @@ describe('workflow session creation routing', () => {
 
   test('preserves selected brainstorming mode in workflow metadata and state', async () => {
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'efficient-constrained-dev-debug-workflow-v5',
       templateSource: 'builtin' as const,
       request: '鎴戞湁瀹屾暣闇€姹傛枃妗ｏ紝涓ユ牸鎸夋枃妗ｅ垱寤?MVP',
@@ -183,7 +185,7 @@ describe('workflow session creation routing', () => {
   test('efficient v5 development route creates a workflow run and project context artifact', async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-workflow-students-'))
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'efficient-constrained-dev-debug-workflow-v5',
       templateSource: 'builtin' as const,
       request: '做一个学生管理系统',
@@ -250,7 +252,9 @@ describe('workflow session creation routing', () => {
           skills: [],
           skillBindings: ['missing-provider:missing-skill'],
           requiredArtifacts: [],
-          completionCriteria: ['pack phase completed'],
+          completionCriteria: { type: 'agent-reported' as const, description: 'pack phase completed' },
+          requiredIntake: [], handoffRules: [],
+          outputArtifact: { id: 'draft', name: 'Draft', kind: 'markdown', description: 'Draft fixture', required: true as const },
           transition: { authority: 'auto' as const },
         },
       ],
@@ -280,7 +284,7 @@ describe('workflow session creation routing', () => {
 
   test('rejects unsafe home directory workflow workspace before writing state', async () => {
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'efficient-constrained-dev-debug-workflow-v5',
       templateSource: 'builtin' as const,
       request: '鍒涘缓涓€涓?SaaS 璁拌处 MVP',
@@ -303,7 +307,7 @@ describe('workflow session creation routing', () => {
   test('debug workflow route keeps investigation before fix and validation', async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-workflow-debug-'))
     const createService = new WorkflowSessionCreateService()
-    const workflow = {
+    const workflow: WorkflowSessionCreateOptions = {
       templateId: 'debug-repair-workflow-v8',
       templateSource: 'builtin' as const,
       request: '鐧诲綍椤电偣鍑绘病鍙嶅簲锛屾帶鍒跺彴鏈?500',

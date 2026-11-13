@@ -136,21 +136,18 @@ async function isAppleTerminalBellDisabled(): Promise<boolean> {
     // Lazy-load plist (~280KB with xmlbuilder+@xmldom) — only hit on
     // Apple_Terminal with auto-channel, which is a small fraction of users.
     const plist = await import('plist')
-    const parsed: Record<string, unknown> = plist.parse(defaultsOutput.stdout)
-    const windowSettings = parsed?.['Window Settings'] as
-      | Record<string, unknown>
-      | undefined
-    const profileSettings = windowSettings?.[currentProfile] as
-      | Record<string, unknown>
-      | undefined
-
-    if (!profileSettings) {
-      return false
-    }
-
-    return profileSettings.Bell === false
+    return isTerminalProfileBellDisabled(plist.parse(defaultsOutput.stdout), currentProfile)
   } catch (error) {
     logError(error)
     return false
   }
+}
+
+/** Read only an explicit Terminal profile bell setting from parsed preferences. */
+export function isTerminalProfileBellDisabled(parsed: unknown, profile: string): boolean {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) || !('Window Settings' in parsed)) return false
+  const windows = parsed['Window Settings']
+  if (typeof windows !== 'object' || windows === null || Array.isArray(windows) || !(profile in windows)) return false
+  const settings: unknown = Reflect.get(windows, profile)
+  return typeof settings === 'object' && settings !== null && !Array.isArray(settings) && 'Bell' in settings && settings.Bell === false
 }

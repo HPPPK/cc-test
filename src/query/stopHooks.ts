@@ -39,7 +39,7 @@ import {
   createCommandInputMessage,
   createSystemMessage,
   createUserInterruptionMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
 } from '../utils/messages.js'
 import type { SystemPrompt } from '../utils/systemPromptType.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
@@ -189,7 +189,7 @@ export async function* handleStopHooks(
   }
 
   try {
-    const blockingErrors = []
+    const blockingErrors: ReturnType<typeof createRuntimeUserMessage>[] = []
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
 
@@ -283,7 +283,7 @@ export async function* handleStopHooks(
         }
       }
       if (result.blockingError) {
-        const userMessage = createUserMessage({
+        const userMessage = createRuntimeUserMessage({
           content: getStopHookMessage(result.blockingError),
           isMeta: true, // Hide from UI (shown in summary message instead)
         })
@@ -409,7 +409,7 @@ export async function* handleStopHooks(
             yield result.message
           }
           if (result.blockingError) {
-            const userMessage = createUserMessage({
+            const userMessage = createRuntimeUserMessage({
               content: getTaskCompletedHookMessage(result.blockingError),
               isMeta: true,
             })
@@ -451,7 +451,7 @@ export async function* handleStopHooks(
           yield result.message
         }
         if (result.blockingError) {
-          const userMessage = createUserMessage({
+          const userMessage = createRuntimeUserMessage({
             content: getTeammateIdleHookMessage(result.blockingError),
             isMeta: true,
           })

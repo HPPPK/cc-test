@@ -1,3 +1,4 @@
+import { withExpertSearchPacing } from '../../services/tools/expertBrowserSearchPacingRuntime.js'
 import type {
   BetaContentBlock,
   BetaWebSearchTool20250305,
@@ -14,7 +15,7 @@ import {
 } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
-import { createUserMessage } from '../../utils/messages.js'
+import { createRuntimeUserMessage } from '../../utils/messages.js'
 import { getMainLoopModel, getSmallFastModel } from '../../utils/model/model.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
@@ -259,7 +260,7 @@ export const WebSearchTool = buildTool({
       }
     }
 
-    if (resolved.provider === 'tavily' || resolved.provider === 'brave') {
+    if (resolved.provider === 'tavily' || resolved.provider === 'tavily-keyless' || resolved.provider === 'brave') {
       onProgress?.({
         toolUseID: `${resolved.provider}-web-search`,
         data: {
@@ -268,7 +269,7 @@ export const WebSearchTool = buildTool({
         },
       })
       const apiKey = getApiKeyForProvider(resolved.provider, resolved.settings)
-      if (!apiKey) {
+      if (apiKey === null) {
         const durationSeconds = (performance.now() - startTime) / 1000
         return {
           data: makeWebSearchUnavailableOutput(
@@ -278,11 +279,9 @@ export const WebSearchTool = buildTool({
           ),
         }
       }
-      const data = await searchWithExternalProvider(
-        resolved.provider,
-        input,
-        apiKey,
-        context.abortController.signal,
+      const data = await withExpertSearchPacing(
+        { toolName: WEB_SEARCH_TOOL_NAME, input, searchProvider: resolved.provider, signal: context.abortController.signal },
+        () => searchWithExternalProvider(resolved.provider as 'tavily' | 'tavily-keyless' | 'brave', input, apiKey, context.abortController.signal),
       )
       onProgress?.({
         toolUseID: `${resolved.provider}-web-search`,
@@ -335,11 +334,9 @@ export const WebSearchTool = buildTool({
       }
 
       logError(error instanceof Error ? error : new Error(String(error)))
-      const data = await searchWithExternalProvider(
-        fallbackProvider,
-        input,
-        apiKey,
-        context.abortController.signal,
+      const data = await withExpertSearchPacing(
+        { toolName: WEB_SEARCH_TOOL_NAME, input, searchProvider: fallbackProvider, signal: context.abortController.signal },
+        () => searchWithExternalProvider(fallbackProvider, input, apiKey, context.abortController.signal),
       )
       return { data }
     }
@@ -387,7 +384,7 @@ async function callAnthropicNativeWebSearch(
   startTime: number,
 ) {
   const { query } = input
-  const userMessage = createUserMessage({
+  const userMessage = createRuntimeUserMessage({
     content: 'Perform a web search for the query: ' + query,
   })
   const toolSchema = makeToolSchema(input)

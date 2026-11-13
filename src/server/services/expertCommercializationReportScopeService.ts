@@ -1,5 +1,6 @@
 const COMMERCIALIZATION_REPORT_EXPERT_ID = 'commercialization-research-report'
-const SOURCE_BOUNDARY = '本轮实际采用的网页证据以“信息来源与说明”表列出的 URL 为准；未列入来源表不等于未取得：可能是已取得但未采用，也可能是候选、未取得、受限或后续建议，须分别依据研究材料与浏览审计说明，不能仅凭来源表缺项判定网站受限或未取证。公司 119 个入口及开放平台的完整访问清单见 commercialization-research/06-browser-audit.md（包含已打开、受限、失败、未完成）；访问记录不等于事实来源。'
+const SOURCE_BOUNDARY = '本轮实际采用的资料以“信息来源与说明”表为准。真实取得且与问题相关的搜索摘要、页面正文、产品宣传和用户反馈均可使用，分别说明来源与确定程度；摘要不冒充全文，AI 推断不冒充观察。未列入来源表不等于未取得，可能是已取得但未采用。commercialization-research/06-browser-audit.md 记录本轮尝试及状态，不代表全部候选入口均已访问；访问记录不等于事实来源。'
+const PREVIOUS_SOURCE_BOUNDARY = '本轮实际采用的网页证据以“信息来源与说明”表列出的 URL 为准；未列入来源表不等于未取得：可能是已取得但未采用，也可能是候选、未取得、受限或后续建议，须分别依据研究材料与浏览审计说明，不能仅凭来源表缺项判定网站受限或未取证。公司 119 个入口及开放平台的完整访问清单见 commercialization-research/06-browser-audit.md（包含已打开、受限、失败、未完成）；访问记录不等于事实来源。'
 
 // Exact previous generated text only; never rewrite arbitrary user-authored claims.
 const LEGACY_SOURCE_BOUNDARY = "本轮实际采用的网页证据以“信息来源与说明”表列出的 URL 为准；未列入该表的平台或链接，仅可表示候选检索入口、访问受限或无结果记录、或者后续渠道建议，不代表已完成内容取证。公司 119 个入口及开放平台的完整访问清单见 commercialization-research/06-browser-audit.md（包含已打开、受限、失败、未完成）；访问记录不等于事实来源。"
@@ -12,8 +13,8 @@ function isNonEmptyParagraphArray(value: unknown): value is string[] {
 
 function hasSourceBoundary(value: unknown): boolean {
   return typeof value === 'string'
-    ? value.includes(SOURCE_BOUNDARY)
-    : Array.isArray(value) && value.some((paragraph) => typeof paragraph === 'string' && paragraph.includes(SOURCE_BOUNDARY))
+    ? (value.includes(SOURCE_BOUNDARY) || (value.includes('来源范围') && value.includes('06-browser-audit.md')))
+    : Array.isArray(value) && value.some((paragraph) => typeof paragraph === 'string' && (paragraph.includes(SOURCE_BOUNDARY) || (paragraph.includes('来源范围') && paragraph.includes('06-browser-audit.md'))))
 }
 
 /**
@@ -30,14 +31,16 @@ export function ensureCommercializationReportSourceBoundary(input: {
 }): Record<string, unknown> {
   if (input.expertId !== COMMERCIALIZATION_REPORT_EXPERT_ID) return input.fields
 
-  const declaration = input.fields.DATA_DECLARATION
-  if (typeof declaration === 'string' && declaration.includes(LEGACY_SOURCE_BOUNDARY)) {
-    return { ...input.fields, DATA_DECLARATION: declaration.replaceAll(LEGACY_SOURCE_BOUNDARY, SOURCE_BOUNDARY) }
+  const original = input.fields.DATA_DECLARATION
+  const upgrade = (text: string) => text.replaceAll(LEGACY_SOURCE_BOUNDARY, SOURCE_BOUNDARY).replaceAll(PREVIOUS_SOURCE_BOUNDARY, SOURCE_BOUNDARY)
+  let declaration = typeof original === 'string' ? upgrade(original)
+    : isNonEmptyParagraphArray(original) ? original.map(upgrade) : original
+  if (isNonEmptyParagraphArray(declaration) && declaration.some(paragraph => paragraph.includes('来源范围') && paragraph.includes('06-browser-audit.md') && !paragraph.includes(SOURCE_BOUNDARY))) {
+    declaration = declaration.filter(paragraph => paragraph !== '**来源范围**：' + SOURCE_BOUNDARY)
   }
-  if (isNonEmptyParagraphArray(declaration) && declaration.some((paragraph) => paragraph.includes(LEGACY_SOURCE_BOUNDARY))) {
-    return { ...input.fields, DATA_DECLARATION: declaration.map((paragraph) => paragraph.replaceAll(LEGACY_SOURCE_BOUNDARY, SOURCE_BOUNDARY)) }
+  if (hasSourceBoundary(declaration)) {
+    return declaration === original ? input.fields : { ...input.fields, DATA_DECLARATION: declaration }
   }
-  if (hasSourceBoundary(declaration)) return input.fields
 
   if (typeof declaration === 'string' && declaration.trim()) {
     return {

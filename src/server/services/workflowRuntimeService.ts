@@ -1,6 +1,8 @@
+import { usesDevelopmentQuestionBatches } from './workflowDevelopmentQuestionPolicy.js'
 import { createHash } from 'node:crypto'
 import type {
   CompletionSubmission,
+  JsonObject,
   WorkflowArtifactPointer,
   WorkflowCompletionSubmissionStatus,
   WorkflowClientMessage,
@@ -23,6 +25,7 @@ import type {
   WorkflowTransitionRecord,
   WorkflowTransitionRequest,
   WorkflowTemplate,
+  WorkflowTaskSnapshot,
 } from './workflowTypes.js'
 import { ApiError } from '../middleware/errorHandler.js'
 import {
@@ -58,6 +61,7 @@ import {
 } from './workflowBrainstormingFallback.js'
 import {
   developmentBatchAgentBlockerReasons,
+  isDevelopmentBatchTaskSnapshot,
   developmentBatchHandoffPrompt,
   isDevelopmentImplementationPhase,
   isDevelopmentPlanPhase,
@@ -84,7 +88,7 @@ function pinnedActivePhaseModel(state: WorkflowSessionState, phase: WorkflowPhas
   }
 }
 
-type WorkflowNotification = {
+export type WorkflowNotification = {
   type: 'system_notification'
   subtype: 'workflow_state' | 'workflow_transition' | 'workflow_blocked' | 'workflow_report_ready'
   message?: string
@@ -158,8 +162,6 @@ type RequestWorkflowRouteResult = RuntimeResult & {
   routeReason: string
   requiresConfirmation: boolean
 }
-
-const AUTO_RECOVERY_WINDOW_MS = 10_000
 
 const IMMEDIATE_HUMAN_INTERVENTION_PATTERN = /(?:permission|authorization|authentication|login|credential|api key|token|model unavailable|provider unavailable|data safety|sensitive data|data loss|权限|认证|登录|凭据|密钥|模型不可用|服务商不可用|数据安全|敏感数据|数据丢失)/i
 
@@ -354,6 +356,33 @@ function nextPhaseId(state: WorkflowSessionState, phaseId: string): string | nul
   return state.phases[index + 1]?.id ?? null
 }
 
+function resetWorkflowTaskForRework(
+  task: WorkflowTaskSnapshot,
+  requestedAt: string,
+) {
+  const {
+    agentId: _agentId,
+    agentRunId: _agentRunId,
+    toolUseId: _toolUseId,
+    reason: _reason,
+    startedAt: _startedAt,
+    startedStateVersion: _startedStateVersion,
+    lastHeartbeatAt: _lastHeartbeatAt,
+    completedAt: _completedAt,
+    completedStateVersion: _completedStateVersion,
+    reviewStatus: _reviewStatus,
+    requiredFixes: _requiredFixes,
+    readyForNextBatch: _readyForNextBatch,
+    outputArtifactRefs: _outputArtifactRefs,
+    ...retained
+  } = task
+  return {
+    ...retained,
+    status: task.dependsOn?.length ? 'waiting_dependency' as const : 'pending' as const,
+    updatedAt: requestedAt,
+  }
+}
+
 function invalidateManagedWorkflowFromPhase(
   state: WorkflowSessionState,
   targetPhaseId: string,
@@ -395,7 +424,14 @@ function invalidateManagedWorkflowFromPhase(
         updatedAt: requestedAt,
       })),
       checks: existing.checks.map(check => ({ ...check, status: "stale", updatedAt: requestedAt })),
-      taskSnapshots: existing.taskSnapshots.map(task => ({ ...task, status: "stale", updatedAt: requestedAt })),
+      taskSnapshots: phase.id === targetPhaseId
+        ? existing.taskSnapshots.map(task => resetWorkflowTaskForRework(task, requestedAt))
+        : existing.taskSnapshots
+          // A confirmed route to an earlier stage abandons the old implementation
+          // plan. Its ledger remains historical, but cannot bind a new plan.
+          .filter(task => !(state.templateIdentity?.id === "efficient-constrained-dev-debug-workflow-v5"
+            && isDevelopmentBatchTaskSnapshot(task)))
+          .map(task => ({ ...task, status: "stale", updatedAt: requestedAt })),
       evaluatedAt: requestedAt,
     }
   }
@@ -688,7 +724,7 @@ function autoRecoveryAttemptKey(
   return `${phaseId}:${executionStartedAt}:${blockerFingerprint(submission)}`
 }
 
-function startAutoRecoveryWindow(
+function startAutoRecoveryCredential(
   state: WorkflowSessionState,
   phaseId: string,
   submission: CompletionSubmission,
@@ -714,7 +750,7 @@ function startAutoRecoveryWindow(
   state.autoRecovery = {
     phaseId,
     startedAt: requestedAt,
-    expiresAt: new Date(Date.parse(requestedAt) + AUTO_RECOVERY_WINDOW_MS).toISOString(),
+    credentialId: `workflow-recovery:${phaseId}:${requestedAt}:${attempts + 1}`,
     attempt: attempts + 1,
     source: submission.status === 'blocked'
       ? 'phase-completion-blocked'
@@ -723,18 +759,16 @@ function startAutoRecoveryWindow(
   return true
 }
 
-function hasActiveAutoRecovery(
+function hasAutoRecoveryCredential(
   state: WorkflowSessionState,
   phaseId: string,
   intent: WorkflowRouteIntent,
-  requestedAt: string,
 ): boolean {
   const recovery = state.autoRecovery
   if (
     !recovery
     || recovery.phaseId !== phaseId
     || (intent !== 'rework_current_phase' && intent !== 'jump_to_phase')
-    || Date.parse(recovery.expiresAt) < Date.parse(requestedAt)
   ) return false
 
   return true
@@ -873,11 +907,13 @@ function workflowLanguagePolicy(userMessage: string, explicitLanguage?: 'zh' | '
   return '工作流语言策略：当前用户主要使用中文。所有用户可见回复、AskUserQuestion 的 prompt、choice label、阶段摘要和交接说明必须使用中文。仅代码标识符、JSON key、tool name、文件路径、原始命令输出和原始错误信息可保留原文。若草稿不是中文，请在发送前改写为中文。'
 }
 
-function formatWorkflowQuestionPolicy(): string {
+function formatWorkflowQuestionPolicy(state: WorkflowSessionState): string {
   return [
     'Workflow-generated question policy',
     'Every workflow-generated question must use AskUserQuestion or the existing structured question UI.',
-    'Ask one question at a time.',
+    usesDevelopmentQuestionBatches(state)
+      ? 'Use the single Development question policy in the workflow runtime contract above.'
+      : 'Ask one question at a time.',
     'Provide at least 3 options.',
     'Put the recommended option first and include "(Recommended)" in the label.',
     'Use plain-language descriptions.',
@@ -901,7 +937,7 @@ function formatOutstandingWorkflowQuestion(state: WorkflowSessionState): string 
   const openIssue = issues.find((candidate) => (
     candidate.source === 'ask-user-question'
     && candidate.status === 'open'
-    && candidate.blocksCompletion
+    && (candidate.blocksCompletion || usesDevelopmentQuestionBatches(state))
   ))
   if (openIssue) {
     return [
@@ -915,7 +951,7 @@ function formatOutstandingWorkflowQuestion(state: WorkflowSessionState): string 
   const answeredIssue = issues.find((candidate) => (
     candidate.source === 'ask-user-question'
     && candidate.status === 'answered-pending-processing'
-    && candidate.blocksCompletion
+    && (candidate.blocksCompletion || usesDevelopmentQuestionBatches(state))
   ))
   if (!answeredIssue) return ''
   let answer = 'Recorded answer is available in persisted workflow state.'
@@ -1519,7 +1555,7 @@ export class WorkflowRuntimeService {
     const checkpointRestorePrompt = formatCheckpointRestorePrompt(input.state)
     const phasePrompt = formatPhasePrompt(definition)
     const recommendedSkills = formatRecommendedSkillsPromptBlock(activePhaseSkillSnapshot(input.state))
-    const questionPolicy = formatWorkflowQuestionPolicy()
+    const questionPolicy = formatWorkflowQuestionPolicy(input.state)
     const outstandingQuestion = formatOutstandingWorkflowQuestion(input.state)
     const languagePolicy = workflowLanguagePolicy(input.userMessage, input.state.workflowLanguage)
     const skillCatalog = await this.loadSkillCatalog()
@@ -1555,7 +1591,6 @@ export class WorkflowRuntimeService {
     const lines = [
       'Workflow mode',
       `Active phase: ${phase.id}`,
-      definition?.instructions ? `Phase instructions: ${definition.instructions}` : '',
       strictRuntimePrompt,
       developmentBatchHandoff,
       checkpointRestorePrompt,
@@ -1722,6 +1757,19 @@ export class WorkflowRuntimeService {
       && current.blockedReason,
     )
     if (!isControlRoute && !hasPendingCompletion && !isBlockedRecovery) {
+      const latestPhaseTransition = [...state.transitionHistory]
+        .reverse()
+        .find((transition) => transition.fromPhaseId === current.id)
+      if (
+        latestPhaseTransition?.action === 'retry'
+        && latestPhaseTransition.authority === 'user-confirmation'
+        && (latestPhaseTransition.result === 'accepted' || latestPhaseTransition.result === 'superseded')
+      ) {
+        throw workflowError(
+          'WORKFLOW_ROUTE_COMPLETION_SUPERSEDED',
+          'The blocked completion was superseded by a current-phase retry. Submit the current phase as blocked or unable again, then request the repair route without retrying the phase in between.',
+        )
+      }
       throw workflowError(
         'WORKFLOW_ROUTE_COMPLETION_REQUIRED',
         'Submit the current phase completion before requesting a workflow route.',
@@ -1761,7 +1809,7 @@ export class WorkflowRuntimeService {
       }
     }
 
-    if (isBlockedRecovery && hasActiveAutoRecovery(state, current.id, input.request.intent, input.requestedAt)) {
+    if (isBlockedRecovery && hasAutoRecoveryCredential(state, current.id, input.request.intent)) {
       return this.applyAutomaticRecoveryRoute(state, input, current, targetPhaseId)
     }
 
@@ -1997,7 +2045,7 @@ export class WorkflowRuntimeService {
       state.status = 'running'
       state.runStatus = 'blocked'
       state.pendingConfirmation = null
-      if (!startAutoRecoveryWindow(state, phase.id, input.submission, input.requestedAt)) {
+      if (!startAutoRecoveryCredential(state, phase.id, input.submission, input.requestedAt)) {
         clearAutoRecovery(state, phase.id)
       }
       updateActiveWorkflowRun(state, input.requestedAt, {
@@ -2286,6 +2334,7 @@ export class WorkflowRuntimeService {
       state.pendingRoute = null
       applyNextPhaseContextStrategy(state, targetPhaseId, input.request.nextPhaseContextStrategy)
     }
+    clearAutoRecovery(state)
     const nextState = touchState(state, input.requestedAt)
     const transition = transitionRecord({
       request: input.request,

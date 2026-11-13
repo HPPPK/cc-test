@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import {
   WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES,
@@ -268,7 +269,7 @@ describe('workflow domain types', () => {
 
     expect(submission.status).toBe('ready')
     expect(submission.stateVersion).toBe(12)
-    expect(pending.submission.status).toBe('ready')
+    expect(requireFixtureValue(pending.submission).status).toBe('ready')
     expect(pending.status).toBe('pending')
   })
 
@@ -328,11 +329,12 @@ describe('workflow domain types', () => {
     }
 
     const pendingArtifact = {
+      kind: 'phase-artifact' as const,
       schemaVersion: 1,
       sessionId: 'session-1',
       phaseId: 'requirements-clarification',
       artifactId: 'requirements-output-v1',
-      lifecycleStatus: 'pending',
+      lifecycleStatus: 'pending' as const,
       createdAt: '2026-05-20T00:02:00.000Z',
       updatedAt: '2026-05-20T00:02:00.000Z',
       title: 'Requirements phase completion',
@@ -455,7 +457,7 @@ describe('workflow domain types', () => {
       templateIdentity: {
         id: template.id,
         source: template.source,
-        version: template.version,
+        version: String(template.version),
         registryKey: template.registryKey,
         contentHash: template.contentHash,
       },
@@ -523,7 +525,7 @@ describe('workflow domain types', () => {
       artifactRefs: [artifactPointer],
       template: {
         id: template.id,
-        version: template.version,
+        version: String(template.version),
         source: template.source,
         snapshotId: 'snapshot-1',
       },

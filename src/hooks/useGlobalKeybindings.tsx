@@ -1,3 +1,4 @@
+import type * as React from 'react'
 /**
  * Component that registers global keybinding handlers.
  *

@@ -15,6 +15,7 @@ import {
   DEVELOPMENT_PLAN_PHASE_ID,
   DEVELOPMENT_WORKFLOW_TEMPLATE_ID,
 } from './workflowDevelopmentBatchAgentPolicy.js'
+import { DEVELOPMENT_QUESTION_POLICY } from './workflowDevelopmentQuestionPolicy.js'
 
 const NOW = '2026-05-20T00:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-service-test'
@@ -549,6 +550,7 @@ describe('WorkflowRuntimeService', () => {
     })
 
     expect(prompt.content).toContain('CURRENT instructions loaded from the canonical workflow ZIP.')
+    expect(prompt.content.match(/CURRENT instructions loaded from the canonical workflow ZIP\./g)).toHaveLength(1)
     expect(prompt.content).not.toContain('STALE instructions from the old session snapshot.')
   })
 
@@ -630,6 +632,50 @@ describe('WorkflowRuntimeService', () => {
     expect(prompt.content).toContain('claude-sonnet-4')
     expect(prompt.content).toContain('Requested model unavailable')
     expect(prompt.content).toContain('Please continue.')
+  })
+
+  test('keeps one development question policy and states the Stage 4 Agent fields once', async () => {
+    const service = await makeService()
+    const phase = {
+      ...makeTemplate().phases[0]!,
+      id: DEVELOPMENT_IMPLEMENT_PHASE_ID,
+      label: 'Implementation review',
+      instructions: `Run the accepted implementation batches.\n\n${DEVELOPMENT_QUESTION_POLICY}`,
+      requestedModel: null,
+      transitionAuthority: 'user-confirmation' as const,
+    }
+    const template = makeTemplate({
+      id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID,
+      source: 'pack',
+      phases: [phase],
+    })
+    const state = makeState({
+      workflowStatus: 'running',
+      runStatus: 'active',
+      activePhaseId: DEVELOPMENT_IMPLEMENT_PHASE_ID,
+      templateSnapshot: template,
+      template: {
+        id: template.id,
+        version: String(template.version),
+        source: template.source,
+        snapshotId: 'development-snapshot',
+        sourceState: 'current',
+      },
+      templateIdentity: {
+        id: template.id,
+        source: template.source,
+        version: template.version,
+        registryKey: `pack:${template.id}`,
+      },
+      phases: [{ id: DEVELOPMENT_IMPLEMENT_PHASE_ID, index: 0, status: 'running', artifactPointers: [] }],
+      runtimeContract: readyRuntimeContract([{ id: DEVELOPMENT_IMPLEMENT_PHASE_ID, index: 0, status: 'running', artifactPointers: [] }]),
+    })
+
+    const prompt = await service.assemblePrompt({ state, userMessage: 'Continue implementation.' })
+
+    expect(prompt.content.match(/Development question policy \(takes precedence/g)).toHaveLength(1)
+    expect(prompt.content.match(/run_in_background=true/g)).toHaveLength(1)
+    expect(prompt.content).toContain('complete workflow_parallel_plan')
   })
 
   test('pause, resume, and stop preserve artifacts and transition history', async () => {
@@ -1567,7 +1613,6 @@ describe('WorkflowRuntimeService', () => {
     expect(retried.state.phases[0]).toMatchObject({ status: 'running' })
 
     const pending = await service.applyTransition({
-      state: retried.state,
       state: blocked.state,
       requestedAt: '2026-05-20T00:03:00.000Z',
       request: { phaseId: 'requirements', action: 'retry', transitionId: 'retry-with-artifact' },
@@ -1700,6 +1745,7 @@ describe('WorkflowRuntimeService', () => {
     state.runtimeContract = readyRuntimeContract(state.phases)
     state.runtimeContract.phaseStates["delegate-implement"]!.taskSnapshots = [{
       taskId: "B1::coder",
+      sessionId: state.sessionId,
       phaseId: "delegate-implement",
       status: "succeeded",
       stateVersion: state.stateVersion,
@@ -1760,7 +1806,8 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.runtimeContract?.phaseStates["delegate-implement"]).toMatchObject({
       workStatus: "in-progress",
       eligibility: "ineligible",
-      taskSnapshots: [expect.objectContaining({ taskId: "B1::coder", status: "stale" })],
+      taskSnapshots: [expect.objectContaining({ taskId: "B1::coder",
+      sessionId: state.sessionId, status: "pending" })],
       checks: [expect.objectContaining({ id: "implementation-check", status: "stale" })],
     })
     expect(confirmed.state.runtimeContract?.phaseStates.validate).toMatchObject({
@@ -1803,11 +1850,17 @@ describe('WorkflowRuntimeService', () => {
     state.templateIdentity = { ...state.templateIdentity, id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID, source: 'pack', version: '23' }
     state.runtimeContract = readyRuntimeContract(state.phases)
     state.runtimeContract.phaseStates['delegate-implement']!.taskSnapshots = [{
-      taskId: 'B1::coder',
-      phaseId: 'delegate-implement',
-      status: 'succeeded',
-      stateVersion: state.stateVersion,
-      updatedAt: NOW,
+      taskId: 'B1::coder', sessionId: state.sessionId, phaseId: 'delegate-implement',
+      status: 'succeeded', stateVersion: state.stateVersion, updatedAt: NOW,
+      attempt: 1, agentId: 'coder-1', agentRunId: 'coder-1', completedAt: NOW,
+    }, {
+      taskId: 'B1::reviewer', sessionId: state.sessionId, phaseId: 'delegate-implement',
+      status: 'succeeded', stateVersion: state.stateVersion, updatedAt: NOW,
+      attempt: 1, dependsOn: ['B1::coder'], agentId: 'reviewer-1', agentRunId: 'reviewer-1', completedAt: NOW,
+    }, {
+      taskId: 'B2::coder', sessionId: state.sessionId, phaseId: 'delegate-implement',
+      status: 'succeeded', stateVersion: state.stateVersion, updatedAt: NOW,
+      attempt: 1, dependsOn: ['B1::reviewer'], agentId: 'coder-2', agentRunId: 'coder-2', completedAt: NOW,
     }]
     state.runtimeContract.phaseStates['delegate-implement']!.checks = [{
       id: 'implementation-check',
@@ -1849,9 +1902,15 @@ describe('WorkflowRuntimeService', () => {
     expect(confirmed.state.runtimeContract?.phaseStates['delegate-implement']).toMatchObject({
       workStatus: 'in-progress',
       eligibility: 'ineligible',
-      taskSnapshots: [expect.objectContaining({ taskId: 'B1::coder', status: 'stale' })],
+      taskSnapshots: [
+        expect.objectContaining({ taskId: 'B1::coder', sessionId: state.sessionId, status: 'pending' }),
+        expect.objectContaining({ taskId: 'B1::reviewer', status: 'waiting_dependency' }),
+        expect.objectContaining({ taskId: 'B2::coder', status: 'waiting_dependency' }),
+      ],
       checks: [expect.objectContaining({ id: 'implementation-check', status: 'stale' })],
     })
+    expect(confirmed.state.runtimeContract?.phaseStates['delegate-implement']?.taskSnapshots
+      .every(task => !task.agentRunId && !task.agentId && !task.completedAt)).toBe(true)
   })
   test('does not create a duplicate pending route when repaired Stage 4 already advances to Stage 5', async () => {
     const service = await makeService()
@@ -2272,7 +2331,7 @@ describe('WorkflowRuntimeService', () => {
         { id: 'requirements', index: 0, status: 'completed', artifactPointers: [] },
         {
           id: 'implementation', index: 1, status: 'completed', completedAt: '2026-05-19T00:00:00.000Z',
-          completion: { passed: true }, blockedReason: 'Old implementation state must not leak into repair.',
+          completion: { phaseId: 'implementation', passed: true, checkedAt: '2026-05-19T00:00:00Z', criteriaType: 'agent-reported', artifactPointers: [] }, blockedReason: 'Old implementation state must not leak into repair.',
           artifactPointers: [pointer('stale-implementation-artifact')],
         },
         {
@@ -2729,7 +2788,7 @@ describe('WorkflowRuntimeService', () => {
     expect(blocked.state.autoRecovery).toBeUndefined()
   })
 
-  test('requires normal confirmation when the automatic recovery window has expired', async () => {
+  test('keeps the one-time automatic recovery credential valid until the repair route consumes it', async () => {
     const service = await makeService()
     const state = makeState({
       workflowStatus: 'running',
@@ -2749,20 +2808,69 @@ describe('WorkflowRuntimeService', () => {
 
     const requested = await service.requestWorkflowRoute({
       state: blocked.state,
-      requestedAt: '2026-05-20T00:00:11.000Z',
-      transitionId: 'expired-auto-recovery-route',
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      transitionId: 'delayed-auto-recovery-route',
       request: {
         phaseId: 'requirements',
         stateVersion: blocked.state.stateVersion,
         intent: 'rework_current_phase',
-        rationale: 'Repair the active phase after the automatic window expired.',
+        rationale: 'Repair the active phase after the model completed its reasoning.',
         evidence: [],
         requireUserConfirmation: true,
       },
     })
 
-    expect(requested.requiresConfirmation).toBe(true)
-    expect(requested.state.pendingRoute).toMatchObject({ origin: 'blocked-recovery' })
+    expect(requested.requiresConfirmation).toBe(false)
+    expect(requested.state.pendingRoute).toBeNull()
+    expect(requested.state.autoRecovery).toBeUndefined()
+    expect(requested.state.transitionHistory.at(-1)).toMatchObject({
+      action: 'route-recovery-auto-applied',
+      authority: 'recovery',
+    })
+  })
+
+  test('explains when a current-phase retry superseded the blocked completion needed for routing', async () => {
+    const service = await makeService()
+    const initial = makeState({
+      workflowStatus: 'running',
+      status: 'running',
+      runStatus: 'active',
+      phases: [
+        { id: 'requirements', index: 0, status: 'running', artifactPointers: [] },
+        { id: 'implementation', index: 1, status: 'created', artifactPointers: [] },
+      ],
+    })
+    const blocked = await service.submitPhaseCompletion({
+      state: initial,
+      requestedAt: NOW,
+      transitionId: 'blocked-before-retry-race',
+      submission: completionSubmission({ status: 'blocked', rationale: 'A repairable defect needs a focused rework.' }),
+    })
+    const retried = await service.applyTransition({
+      state: blocked.state,
+      requestedAt: '2026-05-20T00:00:30.000Z',
+      request: {
+        phaseId: 'requirements',
+        action: 'retry',
+        transitionId: 'retry-that-superseded-blocked-completion',
+        stateVersion: blocked.state.stateVersion,
+      },
+    })
+
+    await expect(service.requestWorkflowRoute({
+      state: retried.state,
+      requestedAt: '2026-05-20T00:00:31.000Z',
+      transitionId: 'route-after-superseding-retry',
+      request: {
+        phaseId: 'requirements',
+        stateVersion: retried.state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'implementation',
+        rationale: 'Return to implementation after the recorded repair decision.',
+        evidence: [],
+        requireUserConfirmation: true,
+      },
+    })).rejects.toThrow('The blocked completion was superseded by a current-phase retry')
   })
 
   test('rejects linear advance before applying blocked-recovery intent rules', async () => {
@@ -3130,6 +3238,7 @@ describe('WorkflowRuntimeService', () => {
         const prompt = await service.assemblePrompt({ state, userMessage: '继续制定计划' })
         expect(prompt.content).toContain(`.workflow/runs/${runId}/delivery-plan.md`)
         expect(prompt.content).toContain('Stage 3 -> Stage 4 handoff contract')
+        expect(prompt.content).toContain('Workspace preflight: blank')
 
         await expect(service.submitPhaseCompletion({
           state,
@@ -3147,6 +3256,7 @@ describe('WorkflowRuntimeService', () => {
           '# Delivery plan',
           '```json',
           JSON.stringify({
+            workspace_mode: 'blank-create',
             tasks: [
               { id: 'B1', depends_on: [], write_scopes: ['src/app.ts'], resource_claims: [], execution_mode: 'write' },
               { id: 'B2', depends_on: ['B1'], write_scopes: ['src/app.test.ts'], resource_claims: [], execution_mode: 'write' },
@@ -3238,7 +3348,7 @@ describe('WorkflowRuntimeService', () => {
       expect(result.artifact).toMatchObject({
         sessionId: SESSION_ID,
         phaseId: 'requirements',
-        lifecycleStatus: 'pending',
+        lifecycleStatus: 'pending' as const,
         submission: completionSubmission(),
       })
       expect(result.state.transitionHistory).toContainEqual(expect.objectContaining({
@@ -3413,7 +3523,8 @@ describe('WorkflowRuntimeService', () => {
       expect(phaseArtifact?.submission?.status).toBe(status)
       expect(phaseArtifact?.submission?.rationale).toBe(rationale)
       expect(phaseArtifact?.submission?.evidence).toEqual(submission.evidence)
-      const indexedArtifact = result.state.artifactIndex.find((artifact) =>
+      const indexedArtifacts = Array.isArray(result.state.artifactIndex) ? result.state.artifactIndex : Object.values(result.state.artifactIndex)
+      const indexedArtifact = indexedArtifacts.find((artifact) =>
         artifact.lifecycleStatus === status
       )
       expect(indexedArtifact).toBeDefined()
@@ -3981,7 +4092,7 @@ describe('WorkflowRuntimeService', () => {
       })
       const finalArtifact = {
         ...pointer('implementation-ready-1'),
-        lifecycleStatus: 'pending',
+        lifecycleStatus: 'pending' as const,
         phaseId: 'implementation',
         title: 'Implementation phase completion',
       }
@@ -4134,3 +4245,118 @@ describe('WorkflowRuntimeService', () => {
     }
   }, 20_000)
 })
+
+  test('confirmed replanning abandons old development task plan but preserves the original snapshot', async () => {
+    const service = await makeService()
+    const phases = [
+      ['discover', 'Stage 1'],
+      ['shape', 'Stage 2'],
+      ['delivery-plan', 'Stage 3'],
+      ['delegate-implement', 'Stage 4: 分批实现与审查'],
+      ['build', 'Stage 5'],
+      ['validate', 'Stage 6'],
+      ['release', 'Stage 7'],
+    ] as const
+    const template = makeTemplate({
+      phases: phases.map(([id, label]) => ({
+        ...makeTemplate().phases[0],
+        id,
+        label,
+        transitionAuthority: 'user-confirmation',
+      })),
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      template: {
+        id: template.id,
+        version: String(template.version),
+        source: template.source,
+        snapshotId: 'snapshot-1',
+        sourceState: 'current',
+      },
+      activePhaseId: 'validate',
+      workflowStatus: 'pending-confirmation',
+      status: 'pending-confirmation',
+      runStatus: 'waiting_for_user',
+      phases: phases.map(([id], index) => ({
+        id,
+        index,
+        status: id === 'validate' ? 'pending-confirmation' : index < 5 ? 'completed' : 'created',
+        artifactPointers: [],
+      })),
+      pendingConfirmation: {
+        confirmationId: 'validate-completion',
+        phaseId: 'validate',
+        fromPhaseId: 'validate',
+        toPhaseId: 'release',
+        completionCheckId: 'validate-completion',
+        artifactRefs: [],
+        createdAt: NOW,
+        status: 'pending',
+      },
+    })
+
+    state.templateIdentity = { ...state.templateIdentity, id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID, source: "pack", version: "22" }
+    state.runtimeContract = readyRuntimeContract(state.phases)
+    state.runtimeContract.phaseStates["delegate-implement"]!.taskSnapshots = [{
+      taskId: "development-batch:B1:coder",
+      batchId: "B1", workflowRole: "coder", developmentPlanSignature: "old-xcode-plan",
+      sessionId: state.sessionId,
+      phaseId: "delegate-implement",
+      status: "succeeded",
+      stateVersion: state.stateVersion,
+      updatedAt: NOW,
+    }]
+    state.runtimeContract.phaseStates["delegate-implement"]!.checks = [{
+      id: "implementation-check",
+      description: "Implementation passed",
+      required: true,
+      status: "passed",
+      evidenceArtifactIds: ["old-evidence"],
+      updatedAt: NOW,
+    }]
+    state.runtimeContract.phaseStates.validate!.checks = [{
+      id: "scenario-check",
+      description: "Scenario passed",
+      required: true,
+      status: "passed",
+      evidenceArtifactIds: ["old-validation"],
+      updatedAt: NOW,
+    }]
+
+    const routed = await service.requestWorkflowRoute({
+      state,
+      requestedAt: '2026-05-20T00:04:00.000Z',
+      transitionId: 'route-back-to-stage-4',
+      request: {
+        phaseId: 'validate',
+        stateVersion: state.stateVersion,
+        intent: 'jump_to_phase',
+        targetPhaseId: 'delivery-plan',
+        rationale: 'Validation found a defect that must be fixed in implementation.',
+        evidence: [{ kind: 'validation-failure', test: 'route regression' }],
+        requireUserConfirmation: true,
+      },
+    })
+    expect(routed.state.pendingRoute).toMatchObject({
+      intent: 'jump_to_phase',
+      targetPhaseId: 'delivery-plan',
+      approvedTargetPhaseId: 'delivery-plan',
+    })
+
+    const confirmed = await service.applyTransition({
+      state: routed.state,
+      requestedAt: '2026-05-20T00:05:00.000Z',
+      request: {
+        phaseId: 'validate',
+        action: 'confirm',
+        transitionId: 'confirm-route-back-to-stage-4',
+        confirmationId: routed.state.pendingRoute!.routeId,
+        expectedStateVersion: routed.state.stateVersion,
+      },
+    })
+
+    expect(confirmed.state.activePhaseId).toBe('delivery-plan')
+    expect(confirmed.state.runtimeContract?.phaseStates['delegate-implement']?.taskSnapshots).toEqual([])
+    expect(state.runtimeContract?.phaseStates['delegate-implement']?.taskSnapshots[0]?.developmentPlanSignature).toBe('old-xcode-plan')
+  })

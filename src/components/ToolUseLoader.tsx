@@ -8,7 +8,7 @@ type Props = {
   isUnresolved: boolean;
   shouldAnimate: boolean;
 };
-export function ToolUseLoader(t0) {
+export function ToolUseLoader(t0: Props): React.ReactNode {
   const $ = _c(7);
   const {
     isError,

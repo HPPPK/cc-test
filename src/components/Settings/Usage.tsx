@@ -22,7 +22,7 @@ type LimitBarProps = {
   showTimeInReset?: boolean;
   extraSubtext?: string;
 };
-function LimitBar(t0) {
+function LimitBar(t0: LimitBarProps): React.ReactNode {
   const $ = _c(34);
   const {
     title,
@@ -40,7 +40,7 @@ function LimitBar(t0) {
     return null;
   }
   const usedText = `${Math.floor(utilization)}% used`;
-  let subtext;
+  let subtext: string | undefined;
   if (resets_at) {
     let t2;
     if ($[0] !== resets_at || $[1] !== showTimeInReset) {
@@ -268,7 +268,7 @@ type ExtraUsageSectionProps = {
   maxWidth: number;
 };
 const EXTRA_USAGE_SECTION_TITLE = 'Extra usage';
-function ExtraUsageSection(t0) {
+function ExtraUsageSection(t0: ExtraUsageSectionProps): React.ReactNode {
   const $ = _c(20);
   const {
     extraUsage,

@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import type { WorkflowPhaseIssue, WorkflowSessionState } from './workflowTypes.js'
 import * as workflowToolPolicy from './workflowToolPolicy.js'
@@ -260,6 +261,7 @@ function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): Workflow
           id: activePhaseId,
           label: 'Custom phase',
           instructions: 'Run custom authoring policy.',
+          skillDeclarations: [],
           requestedModel: null,
           actionPolicy: {
             allowedActions: [
@@ -430,8 +432,8 @@ describe('workflowToolPolicy', () => {
 
   test('applies legacy command and subagent restrictions when no structured tool access exists', () => {
     const state = workflowStateWithActionPolicy('legacy-research')
-    state.templateSnapshot.phases[0] = {
-      ...state.templateSnapshot.phases[0],
+    requireFixtureValue(state.templateSnapshot).phases[0] = {
+      ...requireFixtureValue(state.templateSnapshot).phases[0],
       actionPolicy: {
         allowedActions: ['inspect evidence'],
         forbiddenActions: [
@@ -805,9 +807,12 @@ describe('workflowToolPolicy', () => {
     const state = {
       ...stateFor('requirements-clarification'),
       runtimeContract: {
+        schemaVersion: 1, audit: [],
         migrationStatus: 'current',
         phaseStates: {
           'requirements-clarification': {
+            phaseId: 'requirements-clarification', workStatus: 'in-progress',
+            issues: [], artifactRequirements: [], checks: [], taskSnapshots: [], evaluatedAt: '2026-05-20T00:00:00Z',
             eligibility: 'ineligible',
             blockerReasons: ['A required phase issue is still open.'],
           },
@@ -904,7 +909,7 @@ describe('workflowToolPolicy', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const state = workflowStateWithRecommendedPhaseSkills()
-    const phase = state.templateSnapshot.phases[0]
+    const phase = requireFixtureValue(state.templateSnapshot).phases[0]
     phase.skills = [
       {
         name: 'requirements-review',
@@ -1090,7 +1095,7 @@ describe('Workflow question card contract', () => {
         [phaseId]: {
           phaseId,
           workStatus: 'not-started',
-          eligibility: 'not-ready',
+          eligibility: 'ineligible',
           blockerReasons: [],
           issues,
           artifactRequirements: [],
@@ -1164,7 +1169,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('uses the necessary-question contract before generic single-card policy for %s', (templateId, phaseId) => {
@@ -1176,7 +1180,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('keeps non-blocking cards free of workflow-only fields when the phase has no necessary-question policy for %s', (templateId, phaseId) => {
@@ -1274,7 +1277,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('allows only one AskUserQuestion card at a time for %s', (templateId, phaseId) => {
@@ -1295,5 +1297,21 @@ describe('Workflow question card contract', () => {
       { questions: [{ prompt: 'Ordinary workflow question?' }] },
       stateFor('implementation'),
     )).toBeNull()
+  })
+})
+
+ describe('development independent question batches', () => {
+  const state = { ...stateFor('scope-plan'), templateIdentity: { id: 'efficient-constrained-dev-debug-workflow-v5', source: 'user', version: '25' } } as WorkflowSessionState
+  test('accepts a mixed blocking and optional batch on an old template snapshot', () => {
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: [
+      { id: 'platform', prompt: 'Platform?', blocksCompletion: true, blockingReason: 'Unknown target', answerImpact: 'Selects runtime' },
+      { id: 'style', prompt: 'Style?', blocksCompletion: false },
+    ] }, state)).toBeNull()
+  })
+  test('checks blocking explanations on every question and limits a batch', () => {
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: [
+      { id: 'a', prompt: 'First?' }, { id: 'b', prompt: 'Second?', blocksCompletion: true },
+    ] }, state)).toContain('blockingReason')
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: Array.from({ length: 9 }, (_, i) => ({ id: String(i), prompt: `Question ${i}` })) }, state)).toContain('1–8')
   })
 })

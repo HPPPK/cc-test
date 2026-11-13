@@ -9,12 +9,12 @@ import { useStartupNotification } from './notifs/useStartupNotification.js';
  * Hook that handles official marketplace auto-installation and shows
  * notifications for success/failure in the bottom right of the REPL.
  */
-export function useOfficialMarketplaceNotification() {
+export function useOfficialMarketplaceNotification(): void {
   useStartupNotification(_temp);
 }
 async function _temp() {
   const result = await checkAndInstallOfficialMarketplace();
-  const notifs = [];
+  const notifs: Notification[] = [];
   if (result.configSaveFailed) {
     logForDebugging("Showing marketplace config save failure notification");
     notifs.push({

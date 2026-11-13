@@ -1,3 +1,4 @@
+import type { NativeClipboardImage, NativeClipboardModule } from 'image-processor-napi'
 import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { execa } from 'execa'
@@ -90,6 +91,44 @@ export type ImageWithDimensions = {
   dimensions?: ImageDimensions
 }
 
+function isNativeClipboardImage(value: unknown): value is NativeClipboardImage {
+  return typeof value === 'object' && value !== null
+    && 'png' in value && Buffer.isBuffer(value.png)
+    && 'width' in value && typeof value.width === 'number' && Number.isFinite(value.width) && value.width > 0
+    && 'height' in value && typeof value.height === 'number' && Number.isFinite(value.height) && value.height > 0
+    && 'originalWidth' in value && typeof value.originalWidth === 'number' && Number.isFinite(value.originalWidth) && value.originalWidth > 0
+    && 'originalHeight' in value && typeof value.originalHeight === 'number' && Number.isFinite(value.originalHeight) && value.originalHeight > 0
+}
+
+/** Validate the optional bridge and its returned data before using native clipboard APIs. */
+export function getNativeClipboardModule(value: unknown): NativeClipboardModule | null {
+  if (typeof value !== 'object' || value === null || !('getNativeModule' in value) || typeof value.getNativeModule !== 'function') return null
+  const native: unknown = value.getNativeModule()
+  if (native === null || native === undefined) return null
+  if (typeof native !== 'object') throw new Error('Invalid native clipboard module')
+  const result: NativeClipboardModule = {}
+  if ('hasClipboardImage' in native && native.hasClipboardImage !== undefined) {
+    const hasImage = native.hasClipboardImage
+    if (typeof hasImage !== 'function') throw new Error('Invalid native clipboard availability export')
+    result.hasClipboardImage = () => {
+      const available: unknown = hasImage()
+      if (typeof available !== 'boolean') throw new Error('Invalid native clipboard availability result')
+      return available
+    }
+  }
+  if ('readClipboardImage' in native && native.readClipboardImage !== undefined) {
+    const readImage = native.readClipboardImage
+    if (typeof readImage !== 'function') throw new Error('Invalid native clipboard reader export')
+    result.readClipboardImage = (maxWidth, maxHeight) => {
+      const image: unknown = readImage(maxWidth, maxHeight)
+      if (image === null) return null
+      if (!isNativeClipboardImage(image)) throw new Error('Invalid native clipboard image result')
+      return image
+    }
+  }
+  return result
+}
+
 /**
  * Check if clipboard contains an image without retrieving it.
  */
@@ -105,8 +144,8 @@ export async function hasImageInClipboard(): Promise<boolean> {
     // when the module/export is missing. Catch a throw too: it would surface
     // as an unhandled rejection in useClipboardImageHint's setTimeout.
     try {
-      const { getNativeModule } = await import('image-processor-napi')
-      const hasImage = getNativeModule()?.hasClipboardImage
+      const nativeModule = await import('image-processor-napi')
+      const hasImage = getNativeClipboardModule(nativeModule)?.hasClipboardImage
       if (hasImage) {
         return hasImage()
       }
@@ -134,8 +173,8 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_collage_kaleidoscope', true)
   ) {
     try {
-      const { getNativeModule } = await import('image-processor-napi')
-      const readClipboard = getNativeModule()?.readClipboardImage
+      const nativeModule = await import('image-processor-napi')
+      const readClipboard = getNativeClipboardModule(nativeModule)?.readClipboardImage
       if (!readClipboard) {
         throw new Error('native clipboard reader unavailable')
       }

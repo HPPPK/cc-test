@@ -160,10 +160,13 @@ describe('formatFileFirstOutputReviewContext', () => {
       absorptionPath: 'commercialization-research/07-report-field-absorption.md',
       reportPath: 'final-report.html',
       targetPath: 'commercialization-research/08-report-completeness-review.md',
+      templateFields: [{ id: 'COMPETITOR_LANDSCAPE_ROWS', kind: 'table-rows', columns: ['产品', '能力'] }],
       provenancePaths: ['commercialization-research/02-competitors.parts/one.md', 'commercialization-research/05-evidence-review.md', 'commercialization-research/06-browser-audit.md'],
     })
 
     expect(prompt).toContain('08-report-completeness-review.md')
+    expect(prompt).toContain('COMPETITOR_LANDSCAPE_ROWS')
+    expect(prompt).toContain('never section numbers')
     expect(prompt).toContain('return exactly one short file receipt')
     expect(prompt).toContain('Do not repeat findings, evidence, URLs, review prose, limitations, error history, or next steps')
     expect(prompt).toContain('receipt is not a completion gate')
@@ -332,6 +335,13 @@ describe('host-scoped Flash-only subagent model selection', () => {
     for (const toolModel of ['opus', 'sonnet', 'haiku', 'deepseek-pro', undefined] as const) {
       expect(resolveExpertAgentModel(agentModel, 'deepseek-pro', toolModel as Parameters<typeof resolveExpertAgentModel>[2], 'bypassPermissions', env)).toBe('deepseek-flash')
     }
+  })
+  test('pins every delegated selector to the explicitly selected session model', () => {
+    const env = { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'session-model-only', CC_JIANGXIA_EXPERT_MODEL_ID: 'gpt-6-luna' }
+    for (const candidate of ['deepseek-pro', 'opus', 'inherit', undefined]) {
+      expect(resolveExpertAgentModel(candidate, 'other-model', undefined, 'default', env)).toBe('gpt-6-luna')
+    }
+    expect(() => resolveExpertAgentModel('inherit', 'other-model', undefined, 'default', { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'session-model-only' })).toThrow('model')
   })
   test('supports the scoped legacy env alias but preserves ordinary model selection', () => {
     expect(resolveExpertAgentModel('deepseek-pro', 'other-model', undefined, 'default', { CC_HAHA_EXPERT_MODEL_POLICY: 'deepseek-flash-only' })).toBe('deepseek-flash')

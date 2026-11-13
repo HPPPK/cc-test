@@ -1,3 +1,6 @@
+import { commercializationResearchBudgetService } from '../services/commercializationResearchBudgetService.js'
+import { getRequiredWorkflowQuestionAnswerViolation, usesDevelopmentQuestionBatches } from '../services/workflowDevelopmentQuestionPolicy.js'
+import { resolveMessageKind, messageKindMetadata, attachMessageKind } from '../../utils/messageKind.js'
 import { collectUiuxImageEvidence } from '../../services/tools/uiuxImageWorkflowRuntime.js'
 import { validateUiuxImageReview, UIUX_REVIEW_INSTRUCTION, UIUX_REFERENCE_INSTRUCTION } from '../../services/tools/uiuxImageContract.js'
 /**
@@ -25,8 +28,9 @@ import { computerUseApprovalService } from '../services/computerUseApprovalServi
 import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
 import { expertBrowserActivityService } from '../services/expertBrowserActivityService.js'
 import { expertSearchPacingService } from '../services/expertSearchPacingService.js'
-import { expertResearchAutoContinueService, type ExpertResearchAutoContinuePlan } from '../services/expertResearchAutoContinueService.js'
+import { expertResearchAutoContinueService, buildResearchReviewContinuationInstruction, buildResearchEndedRecoveryInstruction, type ExpertResearchAutoContinuePlan } from '../services/expertResearchAutoContinueService.js'
 import { ExpertSessionService } from '../services/expertSessionService.js'
+import { recordExpertIntakeQuestion, recordExpertIntakeAnswer, getPendingExpertIntakeQuestion } from '../services/expertResearchIntakeService.js'
 import { sessionService } from '../services/sessionService.js'
 import type { ExpertResearchArtifactPolicy } from '../services/expertResearchArtifactPolicyService.js'
 import { ApiError } from '../middleware/errorHandler.js'
@@ -34,7 +38,7 @@ import { SettingsService } from '../services/settingsService.js'
 import { ProviderService } from '../services/providerService.js'
 import { diagnosticsService } from '../services/diagnosticsService.js'
 import { deriveTitle, generateTitle, saveAiTitle } from '../services/titleService.js'
-import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
+import { WorkflowRuntimeService, type WorkflowNotification } from '../services/workflowRuntimeService.js'
 import { WorkflowSessionStateService } from '../services/workflowSessionStateService.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
 import { WorkflowRefinementLedgerService } from '../services/workflowRefinementLedgerService.js'
@@ -551,6 +555,10 @@ export const handleWebSocket = {
     // Restore persisted answers before deciding which unanswered cards are stale.
     // Both operations update the same state and must also serialize with transitions.
     void enqueueWorkflowSessionTransition(sessionId, async () => {
+      const intakeQuestion = await getPendingExpertIntakeQuestion(sessionId)
+      if (intakeQuestion && !conversationService.getPendingPermissionRequests(sessionId).some(r => r.requestId === intakeQuestion.requestId)) {
+        sendReplayedPermissionRequest(ws, { type: 'permission_request', requestId: intakeQuestion.requestId, toolName: 'AskUserQuestion', toolUseId: intakeQuestion.toolUseId, input: intakeQuestion.card })
+      }
       await reconcilePersistedWorkflowAskUserQuestionAnswers(sessionId)
       await replayPersistedWorkflowAskUserQuestion(ws, sessionId)
     }).catch((error) => {
@@ -685,7 +693,7 @@ async function handleUserMessage(
   streamState.strictVisualIntroductionTurn = false
   clearPrewarmState(sessionId)
   const prototypeVisualRuntimeActive = await isPrototypeVisualRuntimeActive(sessionId)
-  if (prototypeVisualRuntimeActive && userRequestsPrototypeArtifactDelivery(message.content, message.attachments)) {
+  if (prototypeVisualRuntimeActive && userRequestsPrototypeArtifactDelivery(message.content, message.attachments ?? [])) {
     // A concrete topic (for example “AI 老照片修复”) starts a deliverable
     // request. It remains true across card answers so the final confirmation
     // cannot end as a prose-only plan.
@@ -1197,7 +1205,7 @@ async function appendWorkflowArtifactWriteRefinement(
   if (templateId !== SKILLS_DEVELOPMENT_TEMPLATE_ID) return
   const phaseId = state.activePhaseId ?? undefined
   const phaseFingerprint = workflowArtifactWriteLedgerFingerprint(state.activePhaseId, candidatePath)
-  const existing = await workflowRefinementLedgerService.list(templateId).catch(() => [])
+  const existing = await workflowRefinementLedgerService.list(templateId).catch((): Awaited<ReturnType<typeof workflowRefinementLedgerService.list>> => [])
   if (existing.some((record) => (
     record.status === 'observed'
     && record.kind === 'tool-contract'
@@ -1377,7 +1385,32 @@ async function handlePermissionResponse(
   }
   const pendingAskUserQuestion = conversationService.getPendingPermissionRequests(sessionId)
     .find((request) => request.requestId === message.requestId && request.toolName === 'AskUserQuestion')
+  const intakeQuestion = await getPendingExpertIntakeQuestion(sessionId)
+  if (intakeQuestion?.requestId === message.requestId) {
+    await enqueueWorkflowSessionTransition(sessionId, async () => {
+      const answeredInput = await recordExpertIntakeAnswer(sessionId, message.requestId, message.allowed, message.updatedInput)
+      const delivered = conversationService.respondToPermission(sessionId, message.requestId, message.allowed, message.rule, answeredInput ?? message.updatedInput)
+      if (!delivered && message.allowed) {
+        await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
+        conversationService.sendInternalMessage(sessionId, 'The user answered the persisted Expert intake card. Use the server-owned intake state via assess_expert_research_scope inspect; do not ask answered decisions again. Continue only if the host admits the research scope.')
+      }
+    })
+    acknowledgeAcceptedPermissionResponse(ws, message.requestId)
+    return
+  }
   const askUserQuestionAnswer = message.allowed && isAskUserQuestionAnswer(message.updatedInput)
+  if (askUserQuestionAnswer) {
+    const read = await workflowSessionStateService.readState(sessionId)
+    const rawAnswers = (message.updatedInput as Record<string, unknown>).answers
+    const violation = read.state && getRequiredWorkflowQuestionAnswerViolation(
+      read.state, message.requestId,
+      rawAnswers && typeof rawAnswers === 'object' && !Array.isArray(rawAnswers) ? rawAnswers as Record<string, unknown> : {},
+    )
+    if (violation) {
+      sendMessage(ws, { type: 'permission_response_ack', requestId: message.requestId, status: 'rejected', message: violation })
+      return
+    }
+  }
   const restoredPersistedQuestion = !pendingAskUserQuestion
     && !conversationService.hasSession(sessionId)
     && await hasPersistedOpenWorkflowQuestionRequest(sessionId, message.requestId)
@@ -1570,6 +1603,21 @@ async function recordWorkflowAskUserQuestion(
   request: Extract<ServerMessage, { type: 'permission_request' }>,
 ): Promise<Extract<ServerMessage, { type: 'permission_request' }> | null> {
   if (request.toolName !== 'AskUserQuestion') return request
+
+  try {
+    const intakeInput = await recordExpertIntakeQuestion(sessionId, request.requestId, request.toolUseId, request.input)
+    if (intakeInput?.answers) {
+      conversationService.respondToPermission(sessionId, request.requestId, true, undefined, intakeInput)
+      return null
+    }
+    if (intakeInput) request = { ...request, input: intakeInput }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    conversationService.respondToPermission(sessionId, request.requestId, false, undefined, undefined, message)
+    broadcastServerMessageToSession(sessionId, { type: 'error', code: 'EXPERT_INTAKE_REQUIRED', message })
+    return null
+  }
 
   const researchDeliveryCardDenial = await getExpertResearchDeliveryCardDenial(sessionId, request.input)
   if (researchDeliveryCardDenial) {
@@ -2037,7 +2085,7 @@ type WorkflowBoundaryTransitionMessage = Extract<ClientMessage, { type: 'workflo
 
 type WorkflowBoundaryTransitionResult = {
   state: WorkflowSessionState
-  notifications: Array<Record<string, unknown>>
+  notifications: WorkflowNotification[]
 }
 
 async function applyWorkflowBoundaryTransition(
@@ -2504,6 +2552,7 @@ function handleStopGeneration(ws: ServerWebSocket<WebSocketData>) {
   console.log(`[WS] Stop generation requested for session: ${sessionId}`)
 
   sessionStopRequested.add(sessionId)
+  getStreamState(sessionId).expertRuntimeReadinessBlocked = true
   runningBackgroundTasks.delete(sessionId)
 
   if (conversationService.hasSession(sessionId)) {
@@ -2590,6 +2639,7 @@ type PrototypeWriteAttempt = { fidelities: PrototypeFidelity[]; receipt?: string
  * Each session tracks its own dedup flag, active block types, and tool blocks.
  */
 type SessionStreamState = {
+  expertRuntimeReadinessBlocked?: boolean
   hasReceivedStreamEvents: boolean
   activeBlockTypes: Map<number, 'text' | 'tool_use' | 'thinking'>
   activeToolBlocks: Map<number, { toolName: string; toolUseId: string; inputJson: string; parentToolUseId?: string }>
@@ -2603,7 +2653,6 @@ type SessionStreamState = {
   terminalFallbackTimer?: ReturnType<typeof setTimeout>
   failedAskUserQuestionToolUseIds: Set<string>
   strictVisualIntroductionTurn: boolean
-  hasStrictVisualGeneratedImage: boolean
   wroteStrictVisualHtml: boolean
   strictVisualHtmlWriteCount: number
   completedStrictVisualQa: boolean
@@ -2893,6 +2942,8 @@ function extractAssistantText(cliMsg: any): string {
 }
 
 type WorkflowInteractionTurn = {
+  strictVisualFinalReviewRequired: boolean
+  hasStrictVisualGeneratedImage: boolean
   assistantText: string
   usedAskUserQuestion: boolean
   expertTemplateFillValidationFailure: boolean
@@ -4349,12 +4400,13 @@ function persistedWorkflowQuestionInput(issue: WorkflowPhaseIssue): Record<strin
 async function hasPersistedOpenWorkflowQuestionRequest(sessionId: string, requestId: string): Promise<boolean> {
   const stateRead = await workflowSessionStateService.readState(sessionId)
   if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return false
+  const developmentQuestionBatch = usesDevelopmentQuestionBatches(stateRead.state)
   const phaseId = stateRead.state.activePhaseId
   const issues = phaseId ? stateRead.state.runtimeContract?.phaseStates[phaseId]?.issues ?? [] : []
   return issues.some((issue) => (
     issue.source === 'ask-user-question'
     && issue.status === 'open'
-    && issue.blocksCompletion
+    && (issue.blocksCompletion || developmentQuestionBatch)
     && issue.questionRequestId === requestId
     && persistedWorkflowQuestionInput(issue) !== null
   ))
@@ -4367,6 +4419,7 @@ async function replayPersistedWorkflowAskUserQuestion(
   const stateRead = await workflowSessionStateService.readState(sessionId)
   if (!stateRead.exists || !stateRead.state || !isWorkflowSessionState(stateRead.state)) return
 
+  const developmentQuestionBatch = usesDevelopmentQuestionBatches(stateRead.state)
   const phaseId = stateRead.state.activePhaseId
   const phaseState = phaseId ? stateRead.state.runtimeContract?.phaseStates[phaseId] : null
   if (!phaseState) return
@@ -4377,7 +4430,7 @@ async function replayPersistedWorkflowAskUserQuestion(
   const openIssues = phaseState.issues.filter((issue) => (
     issue.source === 'ask-user-question'
     && issue.status === 'open'
-    && issue.blocksCompletion
+    && (issue.blocksCompletion || developmentQuestionBatch)
     && typeof issue.questionRequestId === 'string'
   ))
   const activeInMemoryRequestId = openIssues.find((issue) => (
@@ -4448,7 +4501,7 @@ function hasPersistedOpenWorkflowQuestion(state: WorkflowSessionState): boolean 
   return Boolean(phaseId && state.runtimeContract?.phaseStates[phaseId]?.issues.some((issue) => (
     issue.source === 'ask-user-question'
     && issue.status === 'open'
-    && issue.blocksCompletion
+    && (issue.blocksCompletion || usesDevelopmentQuestionBatches(state))
   )))
 }
 
@@ -4720,21 +4773,6 @@ async function resolveSessionWorkDir(sessionId: string, fallback = os.homedir())
   return workDir
 }
 
-const EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION = [
-  '<expert-research-auto-continue>',
-  'The three declared file-first researcher handoffs are already complete and have been durably recorded.',
-  'Do not ask the user another question. Do not re-dispatch researchers and do not redo completed browsing.',
-  'Read only these files from the current session work directory:',
-  '- commercialization-research/01-research-brief.md',
-  '- commercialization-research/02-competitors.md',
-  '- commercialization-research/03-user-needs.md',
-  '- commercialization-research/04-channels.md',
-  '- commercialization-research/06-browser-audit.md if it already exists.',
-  'Continue the existing report pipeline now: delegate the independent evidence review, then complete browser audit, field absorption, and the fixed-template HTML report.',
-  'Keep the three research reports as file paths; never paste their full contents into the parent context.',
-  '</expert-research-auto-continue>',
-].join('\n')
-
 function buildBoundedResearchRecoveryInstruction(): string {
   return [
     '<expert-research-bounded-recovery>',
@@ -4831,8 +4869,9 @@ export function buildInitialTemplateRenderAutoContinueInstruction(
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The chapter-ready 07 material is durably saved, but no initial fixed-template HTML draft exists. Continue the real render now; do not merely describe a future report step.',
     cliOnly
-      ? 'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', inspect cc-jiangxia expert-template-fill --schema, then invoke cc-jiangxia expert-template-fill --data-stdin --output <report.html> without mode, directly in the current session workDir. Pass JSON {templateId, fields} through stdin, with no expert_output wrapper or HTML. Use the running CLAUDE_CLI_PATH executable when available; never generate report HTML with Write, Edit, scripts or internal endpoints.'
+      ? 'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', inspect claude expert-template-fill --schema, then invoke claude expert-template-fill --data-stdin --output <report.html> without mode, directly in the current session workDir. Pass JSON {templateId, fields} through stdin, with no expert_output wrapper or HTML. Use the running CLAUDE_CLI_PATH executable when available; never generate report HTML with Write, Edit, scripts or internal endpoints.'
       : 'Your next actions must be Read ' + plan.briefPath + ', Read ' + plan.absorptionPath + ', then exactly one structured Write for one .html file directly in the current session workDir. Use Write.content as an empty string and put the complete fixed-template fields in expert_output.',
+    'When using a shell heredoc, put its closing marker on a separate real line; never encode that line break as literal backslash-n. A tool error is not successful rendering: correct its reported cause, not unrelated report prose.',
     'Do not reopen browser pages, re-dispatch A/B/C/D/E/F, read raw ledgers, create Markdown, or paste research content into the parent context. Use a stable descriptive .html filename and do not ask the user to choose it.',
     cliOnly
       ? 'This CLI call creates an initial draft only after rendering, disk save and content acknowledgement succeed. Then continue the same draft to F/08. If action=retry-commit, use --commit-receipt <receipt> --output <same-report.html> only; for retry-write or validation errors correct/retry the original payload. Do not restart research or claim final delivery.'
@@ -4864,7 +4903,7 @@ export function buildFinalizeDeliveryAutoContinueInstruction(
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The same initial HTML and a current 08 completeness review are durably saved. Finish the existing delivery now; do not restart research or create another report file.',
     cliOnly
-      ? 'Read only ' + plan.completionReviewPath + '. Then invoke cc-jiangxia expert-template-fill --data-stdin --output "' + plan.reportPath + '" for this exact existing report. Use the running CLAUDE_CLI_PATH executable when available and JSON {templateId, fields, mode}, with no expert_output wrapper or HTML. Never use Write/Edit, scripts or internal endpoints for report HTML.'
+      ? 'Read only ' + plan.completionReviewPath + '. Then invoke claude expert-template-fill --data-stdin --output "' + plan.reportPath + '" for this exact existing report. Use the running CLAUDE_CLI_PATH executable when available and JSON {templateId, fields, mode}, with no expert_output wrapper or HTML. Never use Write/Edit, scripts or internal endpoints for report HTML.'
       : 'Read only ' + plan.completionReviewPath + '. Then write only the existing report path ' + plan.reportPath + ' using the structured fixed-template Write.',
     cliOnly
       ? 'If 08 plainly identifies a source-supported omission or correction, use mode="patch" with only the smallest supported fields. Otherwise use mode="finalize" with fields: {}. Validation, disk save and content acknowledgement must succeed; a successful patch is terminal and must not be followed by finalize. For action=retry-commit retry only --commit-receipt <receipt> --output <same-report.html>; for retry-write or validation errors correct/retry the original payload on the same path.'
@@ -4917,10 +4956,28 @@ async function continueCommercializationResearchInTransition(
   // A live TaskOutput wait will consume normal task notifications itself. This
   // fallback exists only for the observed "parent text ended, children finished"
   // gap, so never inject a duplicate turn while a parent turn is still active.
-  if (getSessionChatState(sessionId) !== 'idle') return false
+  if (getSessionChatState(sessionId) !== 'idle' || getStreamState(sessionId).expertRuntimeReadinessBlocked || expertHumanVerificationService.getPendingRequest(sessionId)) return false
 
   const client = activeSessions.get(sessionId)?.values().next().value as ServerWebSocket<WebSocketData> | undefined
   if (!client) return false
+
+  if (plan.kind === 'research-continuation-stalled') {
+    broadcastServerMessageToSession(sessionId, {
+      type: 'error', code: 'EXPERT_RESEARCH_CONTINUATION_STALLED',
+      message: '研究材料和任务状态没有变化，自动续跑已连续三次未取得进展，现已停止重试。已有文件和浏览记录均保留；需要修复当前阻塞，不能把重试当成研究完成。',
+    })
+    broadcastServerMessageToSession(sessionId, { type: 'status', state: 'idle' })
+    return true
+  }
+
+  if (plan.kind === 'initial-render-stalled') {
+    broadcastServerMessageToSession(sessionId, {
+      type: 'error', code: 'EXPERT_INITIAL_RENDER_STALLED',
+      message: '首次生成报告连续出现同一工具错误（' + plan.errorCode + '），已有材料没有变化，已停止自动重试。研究材料保留，HTML 尚未生成。修正当前错误后可在本会话继续，不需要重新调研。',
+    })
+    broadcastServerMessageToSession(sessionId, { type: 'status', state: 'idle' })
+    return true
+  }
 
   if (plan.kind === 'report-delivery-stalled') {
     broadcastServerMessageToSession(sessionId, {
@@ -4934,7 +4991,11 @@ async function continueCommercializationResearchInTransition(
   broadcastServerMessageToSession(sessionId, {
     type: 'status',
     state: 'thinking',
-    verb: plan.kind === 'recover-missing-researchers'
+    verb: plan.kind === 'recover-quality-checkpoint'
+      ? '正在修复证据交接或补齐关键缺口'
+      : plan.kind === 'recover-ended-researchers'
+      ? '正在恢复已结束但未保存的研究材料'
+      : plan.kind === 'recover-missing-researchers'
       ? '正在补齐缺失的调研子任务'
       : plan.kind === 'recover-undispatched-source-batch'
         ? cliOnly ? '正在检查已有证据与关键缺口' : '正在补齐未执行的核心来源取证批次'
@@ -4954,7 +5015,14 @@ async function continueCommercializationResearchInTransition(
   try {
     await ensureCliSessionStartedInTransition(client, sessionId, 'expert_research_auto_continue')
     bindAllClientSessionOutputs(sessionId)
-    const instruction = plan.kind === 'recover-missing-researchers'
+    const instruction = plan.kind === 'recover-quality-checkpoint'
+      ? ['<expert-research-quality-recovery>',
+        'The authoritative review admission has not passed. Follow this current repair decision instead of dispatching D/E/F or repeating a rejected review. Repair saved evidence locally before any new browsing when the error identifies a format/field problem. Respect the remaining research budget and wait for original workers.',
+        plan.instruction,
+        '</expert-research-quality-recovery>'].join('\n')
+      : plan.kind === 'recover-ended-researchers'
+      ? buildResearchEndedRecoveryInstruction(plan)
+      : plan.kind === 'recover-missing-researchers'
       ? buildMissingResearcherRecoveryInstruction(plan.missingArtifactPaths, cliOnly)
       : plan.kind === 'recover-undispatched-source-batch'
         ? buildUndispatchedSourceBatchRecoveryInstruction(plan, cliOnly)
@@ -4968,12 +5036,24 @@ async function continueCommercializationResearchInTransition(
               ? buildOutputReviewAutoContinueInstruction(plan)
               : plan.kind === 'continue-finalize-delivery'
                 ? buildFinalizeDeliveryAutoContinueInstruction(plan, cliOnly)
-                : EXPERT_RESEARCH_AUTO_CONTINUE_INSTRUCTION
+                : plan.kind === 'continue-review' ? buildResearchReviewContinuationInstruction(plan) : ''
     const streamState = getStreamState(sessionId)
     // Mark the turn before enqueueing it because SDK output may begin
     // synchronously. Tool/status events remain visible; only free-form prose is
     // hidden until this same generation reaches its real terminal result.
     streamState.suppressExpertAutoContinueAssistantText = true
+    if (streamState.expertRuntimeReadinessBlocked || expertHumanVerificationService.getPendingRequest(sessionId)) {
+      streamState.suppressExpertAutoContinueAssistantText = false
+      return false
+    }
+    if (plan.kind === 'recover-ended-researchers') {
+      const expert = (await sessionService.getSession(sessionId))?.expert ?? await expertRuntimeSessionStore.get(sessionId)
+      if (streamState.expertRuntimeReadinessBlocked || expertHumanVerificationService.getPendingRequest(sessionId)) {
+        streamState.suppressExpertAutoContinueAssistantText = false
+        return false
+      }
+      for (const recovery of plan.recoveries) commercializationResearchBudgetService.markSaveOnlyRecovery(sessionId, expert, recovery.endedAgentId)
+    }
     const sent = conversationService.sendInternalMessage(sessionId, instruction)
     if (sent) return true
     streamState.suppressExpertAutoContinueAssistantText = false
@@ -4990,6 +5070,22 @@ async function continueCommercializationResearchInTransition(
 
 expertHumanVerificationService.setDelivery(sendToSession)
 expertResearchAutoContinueService.setHandler(continueCommercializationResearch)
+expertResearchAutoContinueService.setSettledHandler(async (sessionId) => {
+  const turn = getStreamState(sessionId).terminalTurnSequence
+  const expert = (await sessionService.getSession(sessionId))?.expert ?? await expertRuntimeSessionStore.get(sessionId)
+  // A model result only ends an internal turn. Announce the Expert's end after
+  // continuation checks finish and all background work has stopped.
+  if (expert?.mode !== 'expert' || expert.status !== 'active'
+    || getSessionChatState(sessionId) !== 'idle'
+    || getStreamState(sessionId).terminalTurnSequence !== turn
+    || expertResearchAutoContinueService.hasPendingWork(sessionId)
+    || (runningBackgroundTasks.get(sessionId)?.size ?? 0) > 0
+    || expertHumanVerificationService.getPendingRequest(sessionId)
+    || conversationService.getPendingPermissionRequests(sessionId).length > 0) return
+  broadcastServerMessageToSession(sessionId, {
+    type: 'system_notification', subtype: 'expert_execution_settled',
+  })
+})
 async function ensureCliSessionStarted(
   ws: ServerWebSocket<WebSocketData>,
   sessionId: string,
@@ -5004,6 +5100,7 @@ async function ensureCliSessionStartedInTransition(
   sessionId: string,
   reason: 'user_message' | 'prewarm_session' | 'workflow_auto_continue' | 'expert_research_auto_continue',
 ): Promise<void> {
+  if (reason === 'user_message') getStreamState(sessionId).expertRuntimeReadinessBlocked = false
   // Resolve inside the queue, not when the request first arrived. An Expert may
   // have been activated or exited while a previous startup was still pending.
   const runtimeSettings = await getRuntimeSettings(sessionId)
@@ -5037,6 +5134,16 @@ async function ensureCliSessionStartedInTransition(
 }
 
 export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
+  const kind = resolveMessageKind(cliMsg)
+  if (kind === 'internal_notification' && ['user', 'assistant', 'stream_event'].includes(cliMsg.type)) return []
+  return translateCliMessageInternal(cliMsg, sessionId).map(message => ({
+    ...message,
+    ...messageKindMetadata(cliMsg),
+    messageKind: ['tool_result', 'tool_use_complete'].includes(message.type) ? 'tool_exchange' : cliMsg.type === 'stream_event' && !cliMsg.messageKind ? resolveMessageKind(message) : kind,
+  }))
+}
+
+function translateCliMessageInternal(cliMsg: any, sessionId: string): ServerMessage[] {
   const streamState = getStreamState(sessionId)
   switch (cliMsg.type) {
     case 'assistant': {
@@ -5490,6 +5597,9 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
 // ============================================================================
 
 function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessage): void {
+  if (message.type === 'error' && /EXPERT_RUNTIME_(?:BROWSER|CLI)_UNAVAILABLE/.test(message.message)) {
+    getStreamState(sessionId).expertRuntimeReadinessBlocked = true
+  }
   if (message.type === 'system_notification'
     && (message.subtype === 'task_started' || message.subtype === 'task_notification')) {
     const data = message.data as { task_id?: unknown; status?: unknown } | undefined
@@ -5529,7 +5639,7 @@ function syncSessionChatStateFromMessage(sessionId: string, message: ServerMessa
 
 function sendMessage(ws: ServerWebSocket<WebSocketData>, message: ServerMessage): ClientSendOutcome {
   syncSessionChatStateFromMessage(ws.data.sessionId, message)
-  return sendToClient(ws, JSON.stringify(message), message.type)
+  return sendToClient(ws, JSON.stringify(attachMessageKind(message)), message.type)
 }
 
 function sendError(ws: ServerWebSocket<WebSocketData>, message: string, code: string) {
@@ -6562,7 +6672,7 @@ type RuntimeSettings = {
   expertSystemPrompt?: string
   expertRuntimeBindingKey?: string
   expertTemplateFillDelivery?: 'cli-only'
-  expertModelPolicy?: 'deepseek-flash-only'
+  expertModelPolicy?: 'deepseek-flash-only' | 'session-model-only'
   /** Package-scoped template output root taken from the persisted session workDir. */
   expertTemplateFillOutputRoot?: string
   /** ZIP-declared fixed Markdown artifact allowlist for this active Expert only. */
@@ -6639,8 +6749,10 @@ async function getRuntimeSettingsWithWorkflowPolicy(
     const upgradedExpert = await upgradeUiuxImageOnlyRuntime(await restoreTruncatedExpertRuntime(upgradeCommercializationResearchChannelRuntime(expert)))
     if (upgradedExpert !== expert) {
       const persistedSession = await sessionService.getSession(sessionId).catch(() => null)
+      const workDir = persistedSession?.workDir || persistedSession?.projectRoot || persistedSession?.projectPath
+      if (!workDir) throw ApiError.badRequest('Expert session workspace is unavailable')
       await sessionService.appendSessionMetadata(sessionId, {
-        workDir: persistedSession?.workDir || persistedSession?.projectRoot || persistedSession?.projectPath,
+        workDir,
         expert: upgradedExpert,
       })
       await expertRuntimeSessionStore.save(sessionId, upgradedExpert)
@@ -6664,8 +6776,8 @@ async function getRuntimeSettingsWithWorkflowPolicy(
     ? expert.runtimeBinding.researchArtifactPolicy
     : undefined
   const expertTemplateFillOutputRoot = resolveExpertTemplateFillOutputRoot(
-    expertTemplateFillWrite === true ? expert?.runtimeBinding.templateFillOutputPolicy : undefined,
-    (await sessionService.getSession(sessionId).catch(() => null))?.workDir,
+    expertTemplateFillWrite === true ? expert?.runtimeBinding?.templateFillOutputPolicy : undefined,
+    (await sessionService.getSession(sessionId).catch(() => null))?.workDir ?? undefined,
   )
   const expertBrowserHumanVerificationHandoff = !workflowIsActive && hasActiveExpertRuntime(expert) &&
     expert.runtimeBinding.researchBrowserPolicy?.desktopHumanVerificationHandoff === true
@@ -6729,7 +6841,7 @@ async function getRuntimeSettingsWithWorkflowPolicy(
         expertSystemPrompt,
         expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
         ...(expert?.runtimeBinding?.expertId === 'commercialization-research-report'
-          ? { expertModelPolicy: 'deepseek-flash-only' as const } : {}),
+          ? { expertModelPolicy: 'session-model-only' as const } : {}),
         ...(expertSessionId ? { expertSessionId } : {}),
         ...(expertTemplateFillWrite ? { expertTemplateFillWrite: true } : {}),
         ...(expertTemplateFillWrite && expert?.runtimeBinding?.expertId === 'commercialization-research-report'
@@ -6816,10 +6928,13 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
   if (resolvedActiveId) {
     // Provider is active 鈥?only consult provider-managed cc-jiangxia settings.
     // Global ~/.claude/settings.json model values must not bleed into provider mode.
+    // Match the UI's configured default when no model override exists, including
+    // after reconnect. Expert startup needs this model explicitly for pinning.
+    const providerDefault = providers.find((provider) => provider.id === resolvedActiveId)?.models?.main
     const baseModel =
       typeof modelSettings.model === 'string' && modelSettings.model.trim()
-        ? modelSettings.model
-        : ''
+        ? modelSettings.model.trim()
+        : typeof providerDefault === 'string' ? providerDefault.trim() : ''
     if (baseModel) {
       model = baseModel
       if (modelContext) model += `:${modelContext}`
@@ -7191,7 +7306,7 @@ export function sendToSession(sessionId: string, message: ServerMessage): boolea
   const clients = activeSessions.get(sessionId)
   if (!clients || clients.size === 0) return false
 
-  const payload = JSON.stringify(message)
+  const payload = JSON.stringify(attachMessageKind(message))
   let delivered = false
   for (const ws of [...clients]) {
     if (sendToClient(ws, payload, message.type) !== 'dropped') {

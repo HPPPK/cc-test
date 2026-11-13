@@ -23,6 +23,7 @@ type PlaywrightResultData = {
   error?: unknown
   accessLimited?: unknown
   accessDiagnostics?: unknown
+  browserDiagnostics?: unknown
   verificationWindowPresentationConfirmed?: unknown
   verificationGateId?: unknown
   sharedHumanVerificationBlocked?: unknown
@@ -327,6 +328,7 @@ function verificationHistoryFrom(data: JsonRecord): VerificationHistoryEntry[] {
     stepIndex,
     ...(typeof data.url === 'string' ? { url: data.url } : {}),
     ...(error ? { detail: error } : {}),
+    ...(asRecord(data.browserDiagnostics) ? { browserDiagnostics: data.browserDiagnostics } : {}),
   }]
 }
 function mergeVerifiedPlaywrightContinuation<T>(
@@ -425,7 +427,9 @@ async function requestVerificationResolution(
                 verification: {
                   url,
                   ...(title ? { title } : {}),
-                  detail: state.data.error,
+                  detail: record(state.data.browserDiagnostics)?.observation === 'unactionable'
+                    ? state.data.error + ' VERIFICATION_CONTROLS_NOT_OBSERVED'
+                    : state.data.error,
                   ...(typeof state.data.verificationWindowPresentationConfirmed === 'boolean'
                     ? { windowPresentationConfirmed: state.data.verificationWindowPresentationConfirmed }
                     : {}),

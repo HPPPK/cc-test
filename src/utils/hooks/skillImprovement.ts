@@ -15,7 +15,7 @@ import { getCwd } from '../cwd.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   extractTag,
   extractTextContent,
 } from '../messages.js'
@@ -99,7 +99,7 @@ function createSkillImprovementHook() {
       lastAnalyzedIndex = context.messages.length
 
       return [
-        createUserMessage({
+        createRuntimeUserMessage({
           content: `You are analyzing a conversation where a user is executing a skill (a repeatable process).
 Your job: identify if the user's recent messages contain preferences, requests, or corrections that should be permanently added to the skill definition for future runs.
 
@@ -211,7 +211,7 @@ export async function applySkillImprovement(
 
   const response = await queryModelWithoutStreaming({
     messages: [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: `You are editing a skill definition file. Apply the following improvements to the skill.
 
 <current_skill_file>

@@ -17,13 +17,13 @@ type Props = {
   showSuccessMessage: boolean;
   verbose: boolean;
 };
-export function PackageManagerAutoUpdater(t0) {
+export function PackageManagerAutoUpdater(t0: Props): React.ReactNode {
   const $ = _c(10);
   const {
     verbose
   } = t0;
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [packageManager, setPackageManager] = useState("unknown");
+  const [packageManager, setPackageManager] = useState<PackageManager>("unknown");
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = async () => {

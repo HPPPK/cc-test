@@ -1,3 +1,4 @@
+import { isHumanInputMessage } from '../utils/messageKind.js'
 import { type ChildProcess, spawn } from 'child_process'
 import { createWriteStream, type WriteStream } from 'fs'
 import { tmpdir } from 'os'
@@ -207,9 +208,9 @@ function extractActivities(
 function extractUserMessageText(
   msg: Record<string, unknown>,
 ): string | undefined {
-  // Skip tool-result user messages (wrapped subagent results) and synthetic
-  // caveat messages — neither is human-authored.
-  if (msg.parent_tool_use_id != null || msg.isSynthetic || msg.isReplay)
+  // Replay describes delivery, not authorship. Only provenance and tool
+  // ancestry determine whether this can supply a human session title.
+  if (msg.parent_tool_use_id != null || !isHumanInputMessage(msg))
     return undefined
 
   const message = msg.message as Record<string, unknown> | undefined

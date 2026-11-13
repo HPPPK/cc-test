@@ -55,7 +55,7 @@ export function getUnsafePublicBrowserUrlReason(rawUrl: string): string | null {
 export function getPlaywrightExecutablePathFromRuntimeDir(runtimeDir: string): string | null {
   if (!existsSync(runtimeDir)) return null
   try {
-    const entries = readdirSync(runtimeDir, { recursive: true })
+    const entries = readdirSync(runtimeDir, { recursive: true, encoding: 'utf8' })
     const executable = entries.find((entry) => {
       const normalized = entry.replaceAll('\\', '/')
       const browser = /(?:^|\/)chrome(?:\.exe)?$/i.test(normalized)

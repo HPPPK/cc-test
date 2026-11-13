@@ -1363,6 +1363,60 @@ describe('ChatInput file mentions', () => {
     }))
   })
 
+  it('uses fixed managed background research through the chat entrypoint', async () => {
+    mocks.listExperts.mockResolvedValueOnce({
+      experts: [{
+        id: 'commercialization-research-report',
+        name: '新品商业化调研报告专家',
+        description: 'Research commercialization evidence.',
+        statusLabel: 'Ready',
+        packId: 'commercialization-research-report',
+        packName: 'Commercialization pack',
+        packVersion: '0.13.58-local',
+        entrypoint: 'experts/commercialization-research-report/expert.json',
+        promptPaths: { system: 'experts/commercialization-research-report/prompts/system.md' },
+        formPaths: [],
+        skillIds: [],
+        hostTools: [],
+        permissions: [],
+        portable: true,
+        researchBrowserPolicy: {
+          sharePlaywrightSessionAcrossAgents: false,
+          allowUserAuthorizedCdp: true,
+          managedPresentationDefault: 'assistable_background',
+          allowManagedPresentationChoice: true,
+        },
+      }],
+    })
+    mocks.enterSessionExpertMode.mockResolvedValueOnce({
+      expert: {
+        mode: 'expert',
+        expertId: 'commercialization-research-report',
+        expertName: '新品商业化调研报告专家',
+        packId: 'commercialization-research-report',
+        packVersion: '0.13.58-local',
+        status: 'active',
+        materialRefs: [],
+        startedAt: '2026-11-10T00:00:00.000Z',
+        updatedAt: '2026-11-10T00:00:00.000Z',
+      },
+    })
+    render(<ChatInput compact />)
+
+    fireEvent.click(screen.getByLabelText('Open composer tools'))
+    fireEvent.click(screen.getByRole('button', { name: /专家/ }))
+    const expertDialog = await screen.findByTestId('expert-selection-dialog')
+    fireEvent.click(within(expertDialog).getByRole('button', { name: /新品商业化调研报告专家/ }))
+    expect(within(expertDialog).queryByRole('radio')).not.toBeInTheDocument()
+    expect(within(expertDialog).queryByRole('checkbox')).not.toBeInTheDocument()
+    fireEvent.click(within(expertDialog).getByRole('button', { name: '进入专家 Mode' }))
+
+    await waitFor(() => expect(mocks.enterSessionExpertMode).toHaveBeenCalledWith(sessionId, 'commercialization-research-report', {
+      researchBrowserConnection: { kind: 'managed' },
+      researchBrowserPresentation: 'assistable_background',
+    }))
+  })
+
   it('enters the selected package-driven expert instead of a hardcoded runner', async () => {
     mocks.enterSessionExpertMode.mockResolvedValueOnce({
       expert: {

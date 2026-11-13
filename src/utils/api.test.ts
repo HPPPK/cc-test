@@ -1,3 +1,4 @@
+import { customToolSchemaFixture } from '../tools/toolFixtures.test.js'
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
 import type { Tool } from '../Tool.js'
@@ -28,11 +29,11 @@ describe('toolToAPISchema', () => {
         prompt: async () => 'Launch a new agent',
       } as unknown as Tool
 
-      const schema = await toolToAPISchema(tool, {
+      const schema = customToolSchemaFixture(await toolToAPISchema(tool, {
         getToolPermissionContext: async () => getEmptyToolPermissionContext(),
         tools: [],
         agents: [],
-      })
+      }))
 
       expect(schema.input_schema.properties).toHaveProperty('description')
       expect(schema.input_schema.properties).toHaveProperty('prompt')

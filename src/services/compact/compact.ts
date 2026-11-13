@@ -59,7 +59,7 @@ import { logError } from '../../utils/log.js'
 import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
   createCompactBoundaryMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   getAssistantMessageText,
   getLastAssistantMessage,
   getMessagesAfterCompactBoundary,
@@ -283,7 +283,7 @@ export function truncateHeadForPTLRetry(
   // already handles any orphaned tool_results this creates.
   if (sliced[0]?.type === 'assistant') {
     return [
-      createUserMessage({ content: PTL_RETRY_MARKER, isMeta: true }),
+      createRuntimeUserMessage({ content: PTL_RETRY_MARKER, isMeta: true }),
       ...sliced,
     ]
   }
@@ -438,7 +438,7 @@ export async function compactConversation(
     )
 
     const compactPrompt = getCompactPrompt(customInstructions)
-    const summaryRequest = createUserMessage({
+    const summaryRequest = createRuntimeUserMessage({
       content: compactPrompt,
     })
 
@@ -612,7 +612,7 @@ export async function compactConversation(
 
     const transcriptPath = getTranscriptPath()
     const summaryMessages: UserMessage[] = [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: getCompactUserSummaryMessage(
           summary,
           suppressFollowUpQuestions,
@@ -838,7 +838,7 @@ export async function partialCompactConversation(
     context.onCompactProgress?.({ type: 'compact_start' })
 
     const compactPrompt = getPartialCompactPrompt(customInstructions, direction)
-    const summaryRequest = createUserMessage({
+    const summaryRequest = createRuntimeUserMessage({
       content: compactPrompt,
     })
 
@@ -1029,7 +1029,7 @@ export async function partialCompactConversation(
 
     const transcriptPath = getTranscriptPath()
     const summaryMessages: UserMessage[] = [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: getCompactUserSummaryMessage(summary, false, transcriptPath),
         isCompactSummary: true,
         ...(messagesToKeep.length > 0

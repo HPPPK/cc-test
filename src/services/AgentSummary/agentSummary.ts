@@ -20,7 +20,7 @@ import {
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
 import { logError } from '../../utils/log.js'
-import { createUserMessage } from '../../utils/messages.js'
+import { createRuntimeUserMessage } from '../../utils/messages.js'
 import { getAgentTranscript } from '../../utils/sessionStorage.js'
 
 const SUMMARY_INTERVAL_MS = 30_000
@@ -108,7 +108,7 @@ export function startAgentSummarization(
       // onCacheSafeParams time). No explicit override needed.
       const result = await runForkedAgent({
         promptMessages: [
-          createUserMessage({ content: buildSummaryPrompt(previousSummary) }),
+          createRuntimeUserMessage({ content: buildSummaryPrompt(previousSummary) }),
         ],
         cacheSafeParams: forkParams,
         canUseTool,

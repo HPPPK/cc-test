@@ -25,7 +25,7 @@ export type OutputStylePickerProps = {
   onCancel: () => void;
   isStandaloneCommand?: boolean;
 };
-export function OutputStylePicker(t0) {
+export function OutputStylePicker(t0: OutputStylePickerProps): React.ReactNode {
   const $ = _c(16);
   const {
     initialStyle,
@@ -40,7 +40,7 @@ export function OutputStylePicker(t0) {
   } else {
     t1 = $[0];
   }
-  const [styleOptions, setStyleOptions] = useState(t1);
+  const [styleOptions, setStyleOptions] = useState<OptionWithDescription[]>(t1);
   const [isLoading, setIsLoading] = useState(true);
   let t2;
   let t3;

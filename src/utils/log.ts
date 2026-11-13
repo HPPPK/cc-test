@@ -230,7 +230,7 @@ export async function getErrorLogByIndex(
  * @private
  */
 async function loadLogList(path: string): Promise<LogOption[]> {
-  let files: Awaited<ReturnType<typeof readdir>>
+  let files: import('node:fs').Dirent[]
   try {
     files = await readdir(path, { withFileTypes: true })
   } catch {

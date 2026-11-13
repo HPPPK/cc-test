@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BookMarked, ChevronDown, ChevronRight, Settings } from 'lucide-react'
 import { ToolCallBlock } from './ToolCallBlock'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
+import { sessionsApi } from '../../api/sessions'
 import { Modal } from '../shared/Modal'
 import { useTranslation } from '../../i18n'
 import type { TranslationKey } from '../../i18n'
@@ -28,6 +29,7 @@ type MemoryToolActivity = {
 }
 
 type Props = {
+  sessionId?: string | null
   toolCalls: ToolCall[]
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
@@ -109,6 +111,7 @@ function hasUnresolvedToolCalls(
 }
 
 export function ToolCallGroup({
+  sessionId,
   toolCalls,
   resultMap,
   childToolCallsByParent,
@@ -130,6 +133,7 @@ export function ToolCallGroup({
             isStreaming={isStreaming}
           />
           <ToolCallGroupContent
+            sessionId={sessionId}
             toolCalls={regularToolCalls}
             resultMap={resultMap}
             childToolCallsByParent={childToolCallsByParent}
@@ -152,6 +156,7 @@ export function ToolCallGroup({
 
   return (
     <ToolCallGroupContent
+      sessionId={sessionId}
       toolCalls={toolCalls}
       resultMap={resultMap}
       childToolCallsByParent={childToolCallsByParent}
@@ -162,6 +167,7 @@ export function ToolCallGroup({
 }
 
 function ToolCallGroupContent({
+  sessionId,
   toolCalls,
   resultMap,
   childToolCallsByParent,
@@ -173,6 +179,7 @@ function ToolCallGroupContent({
   if (allAgents) {
     return (
       <AgentToolGroup
+        sessionId={sessionId}
         toolCalls={toolCalls}
         resultMap={resultMap}
         childToolCallsByParent={childToolCallsByParent}
@@ -326,6 +333,7 @@ function MemoryToolActivityGroup({
 }
 
 function AgentToolGroup({
+  sessionId,
   toolCalls,
   resultMap,
   childToolCallsByParent,
@@ -399,6 +407,7 @@ function AgentToolGroup({
                   <div className="absolute left-[8px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-[var(--color-border)]/65 bg-[var(--color-surface-container-lowest)] shadow-[0_0_0_2px_var(--color-surface)]" />
                 </div>
                 <AgentCallCard
+                  sessionId={sessionId}
                   toolCall={toolCall}
                   resultMap={resultMap}
                   childToolCallsByParent={childToolCallsByParent}
@@ -474,12 +483,14 @@ function ToolCallGroupMulti({ toolCalls, resultMap, childToolCallsByParent, isSt
 }
 
 function AgentCallCard({
+  sessionId,
   toolCall,
   resultMap,
   childToolCallsByParent,
   agentTaskNotification,
   isStreaming = false,
 }: {
+  sessionId?: string | null
   toolCall: ToolCall
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
@@ -511,7 +522,7 @@ function AgentCallCard({
   const taskResult = agentTaskNotification?.result?.trim() || ''
   const errorText =
     status === 'failed'
-      ? taskSummary || (result?.isError ? getAgentErrorSummary(result.content) : '')
+      ? (result?.isError ? getAgentErrorSummary(result.content) : '') || getAgentErrorSummary(taskResult) || taskSummary
       : result?.isError
         ? getAgentErrorSummary(result.content)
         : ''
@@ -627,11 +638,34 @@ function AgentCallCard({
         width={900}
       >
         <div className="max-h-[70vh] overflow-y-auto">
-          <MarkdownRenderer content={previewText || errorText} />
+          <AgentResultPreview sessionId={sessionId} toolUseId={toolCall.toolUseId} text={previewText || errorText} />
         </div>
       </Modal>
     </div>
   )
+}
+
+function AgentResultPreview({ sessionId, toolUseId, text }: { sessionId?: string | null; toolUseId: string; text: string }) {
+  const t = useTranslation()
+  const isReceipt = /文件交接[：:]/.test(text)
+  const [attempt, setAttempt] = useState(0)
+  const [state, setState] = useState<{ status: 'loading' | 'available' | 'missing' | 'error'; content?: string; source?: 'artifact' | 'transcript' }>({ status: 'loading' })
+  useEffect(() => {
+    if (!isReceipt || !sessionId) return
+    let active = true
+    setState({ status: 'loading' })
+    sessionsApi.getAgentResult(sessionId, toolUseId).then((result) => {
+      if (active) setState({ status: result.status, content: result.content, source: result.source })
+    }).catch(() => {
+      if (active) setState({ status: 'error' })
+    })
+    return () => { active = false }
+  }, [sessionId, toolUseId, isReceipt, attempt])
+  if (!isReceipt) return <MarkdownRenderer content={text} />
+  if (!sessionId || state.status === 'missing') return <p>{t('agentStatus.resultMissing')}</p>
+  if (state.status === 'loading') return <p role="status">{t('agentStatus.resultLoading')}</p>
+  if (state.status === 'error') return <div role="alert"><p>{t('agentStatus.resultError')}</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>{t('agentStatus.resultRetry')}</button></div>
+  return <>{state.source === 'transcript' && <p className="mb-3 text-[12px] text-[var(--color-text-secondary)]">{t('agentStatus.resultTranscript')}</p>}<MarkdownRenderer content={state.content || ''} /></>
 }
 
 function ToolCallTree({
@@ -900,7 +934,7 @@ function getAgentErrorSummary(content: unknown): string {
   if (text.includes(`Agent type 'Explore' not found`)) {
     return 'Explore agent unavailable in this session'
   }
-  return text.length > 120 ? `${text.slice(0, 120)}...` : text
+  return text.length > 1_200 ? `${text.slice(0, 1_200)}...` : text
 }
 
 function getAgentOutputSummary(content: string): string {

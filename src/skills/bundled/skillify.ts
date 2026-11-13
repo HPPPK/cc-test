@@ -1,20 +1,20 @@
 import { getSessionMemoryContent } from '../../services/SessionMemory/sessionMemoryUtils.js'
 import type { Message } from '../../types/message.js'
-import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
+import { isHumanInputMessage } from '../../utils/messageKind.js'
+import { getAssistantMessageText, getContentText, getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
-function extractUserMessages(messages: Message[]): string[] {
+export function extractUserMessages(messages: Message[]): string[] {
   return messages
-    .filter((m): m is Extract<typeof m, { type: 'user' }> => m.type === 'user')
-    .map(m => {
-      const content = m.message.content
-      if (typeof content === 'string') return content
-      return content
-        .filter(
-          (b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text',
-        )
-        .map(b => b.text)
-        .join('\n')
+    .filter(isHumanInputMessage)
+    .map(message => {
+      switch (message.type) {
+        case 'user': return getContentText(message.message.content) ?? ''
+        case 'assistant': return getAssistantMessageText(message) ?? ''
+        case 'system': return message.content ?? ''
+        case 'attachment': return message.attachment.type === 'queued_command' ? getContentText(message.attachment.prompt) ?? '' : ''
+        case 'progress': return ''
+      }
     })
     .filter(text => text.trim().length > 0)
 }

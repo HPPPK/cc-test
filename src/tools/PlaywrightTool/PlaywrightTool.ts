@@ -1,3 +1,4 @@
+import type { BrowserDiagnostics } from './browserDiagnostics.js'
 import { basename, join } from 'node:path'
 import { isUiuxImageOnlySession, uiuxImageBrowserOverrides } from '../../services/tools/uiuxImageWorkflowRuntime.js'
 import { z } from 'zod/v4'
@@ -67,6 +68,7 @@ type AccessDiagnostics = {
 }
 
 type VerificationHistoryEntry = {
+  browserDiagnostics?: BrowserDiagnostics
   stepIndex?: number
   url?: string
   detail?: string
@@ -84,6 +86,7 @@ type Output = {
   /** Preserved by the Expert verification runtime after an explicit fallback. */
   verificationHistory?: VerificationHistoryEntry[]
   accessDiagnostics?: AccessDiagnostics
+  browserDiagnostics?: BrowserDiagnostics
   /** Internal handoff state: whether the managed verification window was restored. */
   verificationWindowPresentationConfirmed?: boolean
   /** Stable runtime gate used to rejoin exactly one shared verification decision. */
@@ -122,7 +125,7 @@ const inputSchema = z.strictObject({
   verification_resolution: z.enum(['verified', 'switch_public_entry', 'record_evidence_gap']).optional().describe('Only when this Expert session is paused on a visible human verification page: verified resumes the same page after the user completes it; switch_public_entry permits a different public source; record_evidence_gap releases the page without further research.'),
 }).superRefine((value, ctx) => {
   if (value.actions.length === 0 && value.verification_resolution !== 'record_evidence_gap') {
-    ctx.addIssue({ code: 'custom', path: ['actions'], message: 'actions must contain at least one browser action unless verification_resolution is record_evidence_gap.' })
+    ctx.addIssue({ code: 'custom', path: ['actions'], message: 'actions must contain at least one browser action unless verification_resolution is record_evidence_gap. While verification is pending, wait for the Desktop user handoff; never send an empty retry. After the runtime has released the wait, inspect the same page with {"actions":[{"type":"wait","ms":0},{"type":"extract","selector":"body"}]}, or navigate to the explicitly selected new public URL.' })
   }
 })
 
@@ -143,6 +146,18 @@ const outputSchema = z.object({
     screenshotPath: z.string().optional(),
   })),
   accessLimited: z.boolean(),
+  browserDiagnostics: z.object({
+    observation: z.enum(['actionable', 'loading', 'unactionable', 'unknown']),
+    observedAt: z.string(),
+    readyState: z.string().optional(),
+    widgetCount: z.number().int().nonnegative().optional(),
+    visibleControlCount: z.number().int().nonnegative().optional(),
+    inspectedFrames: z.number().int().nonnegative(),
+    inspectionIncomplete: z.boolean(),
+    mainDocumentStatus: z.number().int().optional(),
+    events: z.array(z.object({ kind: z.enum(['requestfailed', 'pageerror']), resource: z.enum(['verification', 'other']).optional(), code: z.string().optional() })).max(12),
+    droppedEvents: z.number().int().nonnegative(),
+  }).optional(),
   verificationWindowPresentationConfirmed: z.boolean().optional(),
   verificationGateId: z.string().optional(),
   sharedHumanVerificationBlocked: z.boolean().optional(),
@@ -350,6 +365,7 @@ function renderedOutput(raw: Awaited<ReturnType<typeof runPlaywrightWithNodeBrid
     ...(typeof raw.verificationWindowPresentationConfirmed === 'boolean' ? { verificationWindowPresentationConfirmed: raw.verificationWindowPresentationConfirmed } : {}),
     ...(typeof raw.verificationGateId === 'string' ? { verificationGateId: raw.verificationGateId } : {}),
     ...(raw.sharedHumanVerificationBlocked ? { sharedHumanVerificationBlocked: true } : {}),
+    ...(raw.browserDiagnostics ? { browserDiagnostics: raw.browserDiagnostics } : {}),
     ...(raw.accessDiagnostics ? { accessDiagnostics: raw.accessDiagnostics } : {}),
     ...(raw.screenshotPath ? { screenshotPath: raw.screenshotPath } : {}),
     ...(raw.error ? { error: raw.error } : {}),
@@ -395,16 +411,28 @@ export const PlaywrightTool = buildTool({
     // Keep this compact trace before potentially huge extracted page text. The tool-result
     // persistence layer may replace a large payload with a short preview; placing the
     // ledger first keeps the auditable URL/action record available to Expert researchers.
-    const actionLedger = '<playwright-action-ledger encoding="base64">' + Buffer.from(JSON.stringify({ url: output.url, screenshotPath: output.screenshotPath, textExtracted: Boolean(output.text?.trim()) && !output.accessLimited, accessLimited: output.accessLimited, verificationWindowPresentationConfirmed: output.verificationWindowPresentationConfirmed, verificationGateId: output.verificationGateId, sharedHumanVerificationBlocked: output.sharedHumanVerificationBlocked, verificationHistory: output.verificationHistory, accessDiagnostics: output.accessDiagnostics, error: output.error, steps: output.steps }), 'utf8').toString('base64') + '</playwright-action-ledger>'
+    // Only the final result owns the current wait. Historical errors remain in
+    // the audit trail but cannot re-open a completed/explicitly skipped gate.
+    const pendingVerification = output.sharedHumanVerificationBlocked === true
+      || /EXPERT_HUMAN_VERIFICATION_(?:REQUIRED|PENDING):/.test(output.error ?? '')
+    const currentHumanVerification = {
+      state: pendingVerification ? 'pending' : output.error ? 'unknown' : output.verificationHistory?.length && !output.accessLimited ? 'released' : 'none',
+      requiresUserAction: pendingVerification,
+    }
+    const actionLedger = '<playwright-action-ledger encoding="base64">' + Buffer.from(JSON.stringify({ currentHumanVerification, url: output.url, screenshotPath: output.screenshotPath, textExtracted: Boolean(output.text?.trim()) && !output.accessLimited, accessLimited: output.accessLimited, verificationWindowPresentationConfirmed: output.verificationWindowPresentationConfirmed, verificationGateId: output.verificationGateId, sharedHumanVerificationBlocked: output.sharedHumanVerificationBlocked, verificationHistory: output.verificationHistory, accessDiagnostics: output.accessDiagnostics, browserDiagnostics: output.browserDiagnostics, error: output.error, steps: output.steps }), 'utf8').toString('base64') + '</playwright-action-ledger>'
     // Keep actual candidate pages visible even when large SERP text is reduced to a preview.
     const candidateLinks = output.links.slice(0, 24)
     const sections = [
       'Playwright result',
+      'Current human verification: ' + currentHumanVerification.state + '; requiresUserAction=' + currentHumanVerification.requiresUserAction + '. This describes this call only; historical verification entries do not request another user action. Do not send actions:[] as a status check. Preserve extracted evidence before ending the research task.',
       actionLedger,
       candidateLinks.length > 0 ? 'Candidate links from this opened page:\n' + candidateLinks.map((link, index) => (index + 1) + '. ' + link.text + ': ' + link.url).join('\n') : undefined,
+      output.verificationHistory?.length && !output.error && !output.accessLimited && !output.sharedHumanVerificationBlocked
+        ? 'Current call has resumed and returned the final page below. Earlier verificationHistory is historical, not a current instruction to stop; this does not mean the skipped site was verified. Future calls still honor any new verification gate.' : undefined,
       'Final URL: ' + output.url,
       output.title ? 'Title: ' + output.title : undefined,
       'Duration: ' + output.durationMs + 'ms',
+      output.browserDiagnostics ? 'Verification observation: ' + (output.browserDiagnostics.observation === 'unactionable' ? 'no visible verification controls observed in this snapshot' : output.browserDiagnostics.observation) + '. This passive snapshot does not establish verification completion.' : undefined,
       output.accessLimited ? 'Page state: access limited or verification page detected. This is not evidence.' : undefined,
       output.error ? 'Error: ' + output.error : undefined,
       output.screenshotPath ? 'Local screenshot path: ' + output.screenshotPath : undefined,
@@ -468,7 +496,7 @@ export const PlaywrightTool = buildTool({
         browserKey: sessionKey,
       })
       const raw = await runPlaywrightWithNodeBridge(sessionKey, {
-        ...(cdp.connection ? { connection: cdp.connection } : { executablePath }),
+        ...(cdp.connection ? { connection: cdp.connection } : { executablePath: executablePath ?? undefined }),
         ...(sharedContextKey ? { sharedContextKey } : {}),
         actions: request.actions,
         // A package-scoped assistable background browser is headed but minimised.

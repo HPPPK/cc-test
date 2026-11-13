@@ -33,7 +33,7 @@ type Props = {
   verbose: boolean;
   isTranscriptMode?: boolean;
 };
-export function SystemTextMessage(t0) {
+export function SystemTextMessage(t0: Props): React.ReactNode {
   const $ = _c(51);
   const {
     message,
@@ -248,7 +248,12 @@ export function SystemTextMessage(t0) {
   }
   return t4;
 }
-function StopHookSummaryMessage(t0) {
+function StopHookSummaryMessage(t0: {
+  message: SystemStopHookSummaryMessage
+  addMargin: boolean
+  verbose: boolean
+  isTranscriptMode?: boolean
+}): React.ReactNode {
   const $ = _c(47);
   const {
     message,
@@ -278,7 +283,7 @@ function StopHookSummaryMessage(t0) {
   }
   const totalDurationMs = t1;
   if (hookErrors.length === 0 && !preventedContinuation && !message.hookLabel) {
-    if (true || totalDurationMs < HOOK_TIMING_DISPLAY_THRESHOLD_MS) {
+    if (true) {
       return null;
     }
   }
@@ -426,7 +431,13 @@ function _temp2(info, idx) {
 function _temp(sum, h) {
   return sum + (h.durationMs ?? 0);
 }
-function SystemTextMessageInner(t0) {
+function SystemTextMessageInner(t0: {
+  content: string
+  addMargin: boolean
+  dot: boolean
+  color?: TextProps['color']
+  dimColor?: boolean
+}): React.ReactNode {
   const $ = _c(18);
   const {
     content,
@@ -491,7 +502,10 @@ function SystemTextMessageInner(t0) {
   }
   return t7;
 }
-function TurnDurationMessage(t0) {
+function TurnDurationMessage(t0: {
+  message: SystemTurnDurationMessage
+  addMargin: boolean
+}): React.ReactNode {
   const $ = _c(17);
   const {
     message,
@@ -530,10 +544,10 @@ function TurnDurationMessage(t0) {
     t3 = $[4];
   }
   const duration = t3;
-  const hasBudget = message.budgetLimit !== undefined;
+  const hasBudget = message.budgetLimit !== undefined && message.budgetTokens !== undefined;
   let t4;
   bb0: {
-    if (!hasBudget) {
+    if (message.budgetLimit === undefined || message.budgetTokens === undefined) {
       t4 = "";
       break bb0;
     }
@@ -549,7 +563,7 @@ function TurnDurationMessage(t0) {
       t5 = $[7];
     }
     const usage = t5;
-    const nudges = message.budgetNudges > 0 ? ` \u00B7 ${message.budgetNudges} ${message.budgetNudges === 1 ? "nudge" : "nudges"}` : "";
+    const nudges = (message.budgetNudges ?? 0) > 0 ? ` \u00B7 ${message.budgetNudges} ${message.budgetNudges === 1 ? "nudge" : "nudges"}` : "";
     t4 = `${showTurnDuration ? " \xB7 " : ""}${usage}${nudges}`;
   }
   const budgetSuffix = t4;
@@ -591,7 +605,10 @@ function TurnDurationMessage(t0) {
 function _temp4() {
   return sample(TURN_COMPLETION_VERBS) ?? "Worked";
 }
-function MemorySavedMessage(t0) {
+function MemorySavedMessage(t0: {
+  message: SystemMemorySavedMessage
+  addMargin: boolean
+}): React.ReactNode {
   const $ = _c(16);
   const {
     message,
@@ -603,7 +620,7 @@ function MemorySavedMessage(t0) {
   } = message;
   let t1;
   if ($[0] !== message) {
-    t1 = feature("TEAMMEM") ? teamMemSaved.teamMemSavedPart(message) : null;
+    t1 = feature("TEAMMEM") ? teamMemSaved?.teamMemSavedPart(message) : null;
     $[0] = message;
     $[1] = t1;
   } else {
@@ -666,7 +683,7 @@ function MemorySavedMessage(t0) {
 function _temp5(p) {
   return <MemoryFileRow key={p} path={p} />;
 }
-function MemoryFileRow(t0) {
+function MemoryFileRow(t0: { path: string }): React.ReactNode {
   const $ = _c(16);
   const {
     path
@@ -730,7 +747,10 @@ function MemoryFileRow(t0) {
   }
   return t8;
 }
-function ThinkingMessage(t0) {
+function ThinkingMessage(t0: {
+  message: SystemThinkingMessage
+  addMargin: boolean
+}): React.ReactNode {
   const $ = _c(7);
   const {
     message,
@@ -765,7 +785,10 @@ function ThinkingMessage(t0) {
   }
   return t4;
 }
-function BridgeStatusMessage(t0) {
+function BridgeStatusMessage(t0: {
+  message: SystemBridgeStatusMessage
+  addMargin: boolean
+}): React.ReactNode {
   const $ = _c(13);
   const {
     message,

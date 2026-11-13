@@ -1,7 +1,7 @@
 {
   "packId": "efficient-constrained-dev-debug-workflow-v5",
   "name": "引导式产品开发流程",
-  "version": "24",
+  "version": "26",
   "schemaVersion": 2,
   "type": "workflow-pack",
   "description": "从需求梳理到产品交付，循序渐进构建完整方案",

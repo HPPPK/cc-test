@@ -78,7 +78,7 @@ describe('WorkflowStartDialog template loading recovery', () => {
 
     const dialog = screen.getByTestId('workflow-start-dialog')
     const routing = screen.getByTestId('workflow-routing-controls')
-    expect(dialog).toHaveClass('bg-[var(--color-surface)]', 'w-[1150px]', 'h-[680px]')
+    expect(dialog).toHaveClass('bg-[var(--color-surface)]', 'w-full', 'max-w-[1150px]', 'max-h-full')
     expect(screen.getByRole('button', { name: /Requirements to Implementation/ })).toHaveClass('border-[var(--color-brand)]', 'bg-[var(--color-surface-selected)]')
     expect(routing).toHaveTextContent('Task type')
     expect(screen.getByRole('button', { name: 'Development' })).toHaveClass('border-[var(--color-brand)]', 'bg-[var(--color-surface-selected)]')

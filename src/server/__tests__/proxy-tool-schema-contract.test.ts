@@ -45,7 +45,10 @@ for (const [protocol, convert] of Object.entries(converters)) {
     })
 
     test('does not opt existing unspecified schemas into strict mode', () => {
-      expect(convert(request({ type: 'object', properties: { query: { type: 'string' } } }))).not.toHaveProperty('strict')
+      const schema = { type: 'object', properties: { query: { type: 'string' }, workflow_role: { type: 'string', enum: ['coder', 'reviewer'] } }, required: ['query'] }
+      const result = convert(request(schema))
+      if (protocol === 'responses') expect(result).toMatchObject({ strict: false, parameters: schema })
+      else expect(result).not.toHaveProperty('strict')
     })
 
     test.each([

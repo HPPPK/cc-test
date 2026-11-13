@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Link, Text } from '../ink.js';
-export function MCPServerDialogCopy() {
+export function MCPServerDialogCopy(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

@@ -1,3 +1,4 @@
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import { inputSchema, normalizeSubagentType, resolveAgentWorkflowState, resolveWorkflowSubagentType, resolveWorkflowTaskIsolation } from './AgentTool.js'
 import { validateWorkflowTaskSchedule } from './workflowTaskScheduling.js'
@@ -117,10 +118,10 @@ describe('Agent workflow state bridge', () => {
     const calls: string[] = []
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:4567/'
     process.env.CC_JIANGXIA_WORKFLOW_SESSION_ID = 'workflow session/1'
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    globalThis.fetch = withFetchPreconnect(async (input: string | URL | Request) => {
       calls.push(String(input))
       return new Response(JSON.stringify({ state }), { status: 200 })
-    }) as typeof fetch
+    })
 
     try {
       const staleCliWorkflow = {
@@ -129,7 +130,8 @@ describe('Agent workflow state bridge', () => {
         phases: [{ id: 'route-context', status: 'running', artifactPointers: [] }],
       }
       const resolved = await resolveAgentWorkflowState(staleCliWorkflow)
-      expect(resolved).toEqual(state)
+      if (!resolved) throw new Error("Expected resolved workflow")
+      expect(resolved).toMatchObject(state)
       await expect(validateWorkflowTaskSchedule(resolved, {
         taskId: 'parallel-implementation',
         tasks: [{

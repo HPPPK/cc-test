@@ -58,7 +58,7 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set([BashTool.name, "external" === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
+      toolNames: new Set([BashTool.name, false ? TungstenTool.name : undefined].filter(n => n !== undefined))
     },
     MCP: {
       name: 'MCP tools',
@@ -94,7 +94,7 @@ function getMcpServerBuckets(tools: Tools): Array<{
     tools
   })).sort((a, b) => a.serverName.localeCompare(b.serverName));
 }
-export function ToolSelector(t0) {
+export function ToolSelector(t0: Props): React.ReactNode {
   const $ = _c(69);
   const {
     tools,
@@ -125,7 +125,7 @@ export function ToolSelector(t0) {
     t2 = $[4];
   }
   const expandedInitialTools = t2;
-  const [selectedTools, setSelectedTools] = useState(expandedInitialTools);
+  const [selectedTools, setSelectedTools] = useState<string[]>(expandedInitialTools);
   const [focusIndex, setFocusIndex] = useState(0);
   const [showIndividualTools, setShowIndividualTools] = useState(false);
   let t3;
@@ -251,7 +251,7 @@ export function ToolSelector(t0) {
   let t9;
   if ($[22] !== selectedSet) {
     t9 = bucketTools => {
-      const selected = count(bucketTools, t_5 => selectedSet.has(t_5.name));
+      const selected = count<Tool>(bucketTools, t_5 => selectedSet.has(t_5.name));
       const needsSelection = selected < bucketTools.length;
       return () => {
         const toolNames_1 = bucketTools.map(_temp4);
@@ -264,7 +264,14 @@ export function ToolSelector(t0) {
     t9 = $[23];
   }
   const createBucketToggleAction = t9;
-  let navigableItems;
+  let navigableItems: Array<{
+    id: string
+    label: string
+    action: () => void
+    isContinue?: boolean
+    isToggle?: boolean
+    isHeader?: boolean
+  }>;
   if ($[24] !== createBucketToggleAction || $[25] !== customAgentTools || $[26] !== focusIndex || $[27] !== handleConfirm || $[28] !== isAllSelected || $[29] !== selectedSet || $[30] !== showIndividualTools || $[31] !== toolsByBucket.edit || $[32] !== toolsByBucket.execution || $[33] !== toolsByBucket.mcp || $[34] !== toolsByBucket.other || $[35] !== toolsByBucket.readOnly) {
     navigableItems = [];
     navigableItems.push({
@@ -321,7 +328,7 @@ export function ToolSelector(t0) {
       if (bucketTools_0.length === 0) {
         return;
       }
-      const selected_0 = count(bucketTools_0, t_8 => selectedSet.has(t_8.name));
+      const selected_0 = count<Tool>(bucketTools_0, t_8 => selectedSet.has(t_8.name));
       const isFullySelected = selected_0 === bucketTools_0.length;
       navigableItems.push({
         id,

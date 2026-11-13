@@ -56,7 +56,7 @@ export function MCPStdioServerMenu({
 
   // Count MCP prompts for this server (skills are shown in /skills, not here)
   const serverCommandsCount = filterMcpPromptsByServer(mcp.commands, server.name).length;
-  const menuOptions = [];
+  const menuOptions: { label: string; value: string }[] = [];
 
   // Only show "View tools" if server is not disabled and has tools
   if (server.client.type !== 'disabled' && serverToolsCount > 0) {

@@ -99,7 +99,7 @@ describe('expertResearchEvidenceAbsorptionService', () => {
             { auditId: 'failed', target: 'https://failed.example.com/', kind: 'url', status: 'failed' },
             { auditId: 'pending', target: 'https://pending.example.com/', kind: 'url', status: 'pending' },
             { auditId: 'redirected', target: 'https://producthunt.com/products/typora', finalUrl: 'https://accounts.google.com/signin', kind: 'url', status: 'opened' },
-            { auditId: 'serp', target: 'https://www.google.com/search?q=typora', finalUrl: 'https://www.google.com/search?q=typora', kind: 'search', searchEngine: 'Google', searchResultStatus: 'results_observed', status: 'opened' },
+            { auditId: 'serp', target: 'https://www.google.com/search?q=typora', finalUrl: 'https://www.google.com/search?q=typora', kind: 'search', searchEngine: 'Google' as const, searchResultStatus: 'results_observed', status: 'opened' },
           ],
         }],
       },
@@ -132,6 +132,18 @@ describe('expertResearchEvidenceAbsorptionService', () => {
     expect(resolved).toMatchObject({ requireSourceFieldMapping: true })
     expect(resolved).not.toHaveProperty('requireAllOpenedSourcesDisposition')
   })
+  test('a mistyped source returns trusted audit choices instead of inviting URL guessing', () => {
+    const result = evaluateExpertResearchEvidenceAbsorption({
+      policy: policy(), researchEvidence, templateFields,
+      reviewerState: undefined,
+      evidenceAbsorption: undefined,
+      fields: { SOURCE_ROWS: [['[1]', 'Official', 'Product', '2026-08-18', 'https://typora.io/not-the-observed-page']] },
+    })
+    expect(result).toContain('audit:product')
+    expect(result).toContain('https://typora.io/')
+    expect(result).toContain('不要删除已有')
+  })
+
   test('repairs audit references to the canonical browser-ledger URL', () => {
     const result = resolveExpertResearchAuditSourceReferences({
       policy: policy(),
@@ -447,7 +459,7 @@ describe('expertResearchEvidenceAbsorptionService', () => {
           target: 'https://www.google.com/search?q=typora+pricing',
           finalUrl: 'https://www.google.com/search?q=typora+pricing',
           kind: 'search' as const,
-          searchEngine: 'Google',
+          searchEngine: 'Google' as const,
           searchResultStatus: 'access_limited' as const,
           status: 'access_limited' as const,
         }],
@@ -645,6 +657,7 @@ describe('expertResearchEvidenceAbsorptionService', () => {
     })
     const inference = '依据官网展示的编辑能力，推测可减少部分写作切换；若实际任务未减少切换则不成立。'
     expect(check(label + inference)).toBeNull()
+    expect(check(label + inference + ' 建议测试价 ¥19.9 只是实验假设，不是竞品报价或已验证支付；若成本或真实购买选择不支持就撤销。')).toBeNull()
     expect(check(inference)).toContain('Inference detail cluster product-inference')
   })
 
@@ -957,7 +970,7 @@ describe('expertResearchEvidenceAbsorptionService', () => {
 test('an engine limitation or a channel suggestion does not require an unrelated SERP source', () => {
   const p = { ...policy(), searchEvidenceFieldIds: ['COMPETITOR_NOTES'], requireReviewerDispositionAbsorption: undefined }
   const reviewerState = recordExpertResearchEvidenceReviewer(undefined, p, { agentId: 'reviewer', agentType: p.reviewerAgentType, recordedAt: '2026-09-09T00:00:00Z', content: 'Reviewed', entries: [] })
-  for (const notes of ['Google 本轮未取证，不能判断排名。百度贴吧只是社区入口。', '建议未来测试 Google SEO；尚未验证，不是本轮观察。', 'Google 的缺失不得由其它引擎结果替代。', '不得评估；不得用百度 / Bing / 360 结果冒充 Google 结果。', 'Google 查询结果本轮没有获取，不能据此判断热度。']) {
+  for (const notes of ['Google 本轮未取证，不能判断排名。百度贴吧只是社区入口。', '建议未来测试 Google SEO；尚未验证，不是本轮观察。', 'Google 的缺失不得由其它引擎结果替代。', '不得评估；不得用百度 / Bing / 360 结果冒充 Google 结果。', 'Google 查询结果本轮没有获取，不能据此判断热度。', 'Google 按用户要求未执行，无Google快照，不作Google排名或广告判断。', '本轮跳过 Google，搜索结果仅作为待补材料。']) {
     expect(evaluateExpertResearchEvidenceAbsorption({ policy: p, researchEvidence, reviewerState,
       fields: { COMPETITOR_NOTES: notes, SOURCE_ROWS: [['[1]', '官网', '产品', '2026-08-18', 'https://typora.io/']] }, templateFields, evidenceAbsorption: undefined })).toBeNull()
   }
@@ -967,7 +980,7 @@ test('an engine limitation or a channel suggestion does not require an unrelated
 test('source restoration matches actual full URLs, never URL prefixes or plain search queries', () => {
   const result = mergeAuditedOpenedSourcesIntoSourceRows({ policy: policy(), templateFields,
     fields: { COMPETITOR_NOTES: ['Quicker 定价见 https://example.com/pricing'], SOURCE_ROWS: [] },
-    researchEvidence: { records: [{ agentId: 'a', agentType: 'expert-evidence-researcher', artifactPath: '02.md', recordedAt: '2026-09-09T00:00:00Z', content: '', entries: [
+    researchEvidence: { updatedAt: '2026-09-09T00:00:00Z', records: [{ agentId: 'a', agentType: 'expert-evidence-researcher', artifactPath: '02.md', recordedAt: '2026-09-09T00:00:00Z', content: '', entries: [
       { kind: 'url', target: 'https://example.com/', status: 'opened' },
       { kind: 'url', target: 'https://example.com/pricing', status: 'opened' },
       { kind: 'search', target: 'Quicker', query: 'Quicker', finalUrl: 'https://www.google.com/search?q=Quicker', status: 'opened', searchResultStatus: 'results_observed' },
@@ -1303,4 +1316,35 @@ test('renders every used concrete page into final HTML while preserving partial 
   expect(content).toContain('公开标价不等于付费意愿')
   expect(content).not.toContain('not-selected.example')
   expect(content).not.toContain('audit:page-')
+})
+
+test('cites the captured public destination of an actual search-result redirect', () => {
+  const destination = 'https://learn.microsoft.com/zh-cn/windows/powertoys/mouse-utilities?ref=xiong-chao.cn'
+  const target = 'https://www.baidu.com/link?url=opaque-search-result'
+  const state = { ...researchEvidence, records: [{ ...researchEvidence.records[0]!, entries: [{ auditId: 'ms-doc', target, finalUrl: destination, kind: 'url' as const, status: 'opened' as const }] }] }
+  for (const source of ['audit:ms-doc', destination, target]) {
+    const result = resolveExpertResearchAuditSourceReferences({ policy: policy(), templateFields, researchEvidence: state, fields: { SOURCE_ROWS: [['[S14]', '官方文档', '实际取得的中键锁定说明', '访问日期', source]] } })
+    expect(result.errors).toEqual([])
+    expect(JSON.stringify(result.fields.SOURCE_ROWS)).toContain(destination)
+  }
+})
+
+test('accepts known search redirect hosts while isolating spoofed hosts and private destinations', () => {
+  for (const target of ['https://www.bing.com/ck/a?u=result', 'https://www.google.com/url?q=result', 'https://www.google.com.hk/url?q=result']) {
+    const destination = 'https://learn.microsoft.com/windows/powertoys/'
+    const state = { ...researchEvidence, records: [{ ...researchEvidence.records[0]!, entries: [{ auditId: 'redirect', target, finalUrl: destination, kind: 'url' as const, status: 'opened' as const }] }] }
+    const result = resolveExpertResearchAuditSourceReferences({ policy: policy(), templateFields, researchEvidence: state, fields: { SOURCE_ROWS: [['[S1]', '文档', '真实正文', '访问日期', 'audit:redirect']] } })
+    expect(result.errors).toEqual([])
+    expect(JSON.stringify(result.fields.SOURCE_ROWS)).toContain(destination)
+  }
+  for (const [target, destination] of [
+    ['https://google.evil.example/url?q=result', 'https://learn.microsoft.com/windows/powertoys/'],
+    ['https://baidu.com.evil.example/link?url=result', 'https://learn.microsoft.com/windows/powertoys/'],
+    ['https://www.baidu.com/link?url=result', 'http://127.0.0.1/private'],
+    ['https://www.baidu.com/link?url=result', 'http://192.168.1.1/private'],
+  ]) {
+    const state = { ...researchEvidence, records: [{ ...researchEvidence.records[0]!, entries: [{ auditId: 'redirect', target: target!, finalUrl: destination!, kind: 'url' as const, status: 'opened' as const }] }] }
+    const result = resolveExpertResearchAuditSourceReferences({ policy: policy(), templateFields, researchEvidence: state, fields: { SOURCE_ROWS: [['[S1]', '文档', '真实正文', '访问日期', 'audit:redirect']] } })
+    expect(result.errors.length).toBeGreaterThan(0)
+  }
 })

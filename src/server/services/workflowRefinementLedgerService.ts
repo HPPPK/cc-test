@@ -57,9 +57,9 @@ type WorkflowRefinementLedger = {
   [key: string]: unknown
 }
 
-export type AppendWorkflowRefinementInput = Omit<
+export type AppendWorkflowRefinementInput = Pick<
   WorkflowRefinementRecord,
-  'schemaVersion' | 'id' | 'createdAt' | 'updatedAt'
+  'templateId' | 'basePackSha256' | 'phaseId' | 'kind' | 'status' | 'scope' | 'evidence' | 'expectedOutcome' | 'proposedChange' | 'sourceSessionId' | 'rollbackOf'
 > & {
   id?: string
   createdAt?: string

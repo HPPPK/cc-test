@@ -108,12 +108,12 @@ function routeCompletionSettings(value: unknown): ResearchRouteCompletionSetting
         if (!isRecord(value.requiredSourceLanesByReport)) {
           throw new Error('researchArtifacts.routeCompletion.requiredSourceLanesByReport 必须是对象。')
         }
-        const entries = Object.entries(value.requiredSourceLanesByReport).map(([reportPath, lanes]) => {
+        const entries = Object.entries(value.requiredSourceLanesByReport).map<[string, string[]]>(([reportPath, lanes]) => {
           const normalizedReportPath = normalizeRelativeMarkdownPath(reportPath, 'researchArtifacts.routeCompletion.requiredSourceLanesByReport')
           if (!Array.isArray(lanes) || lanes.length === 0) {
             throw new Error('researchArtifacts.routeCompletion.requiredSourceLanesByReport 每个报告必须声明非空 source lane 数组。')
           }
-          return [normalizedReportPath, [...new Set(lanes.map((lane) => routeLaneId(lane, 'researchArtifacts.routeCompletion.requiredSourceLanesByReport')))] ] as const
+          return [normalizedReportPath, [...new Set(lanes.map((lane) => routeLaneId(lane, 'researchArtifacts.routeCompletion.requiredSourceLanesByReport')))] ]
         })
         return Object.fromEntries(entries)
       })()

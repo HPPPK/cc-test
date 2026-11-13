@@ -34,6 +34,11 @@ if (process.env.NODE_ENV === 'development') {
   try {
     // eslint-disable-next-line custom-rules/no-top-level-dynamic-import -- dev-only; NODE_ENV check is DCE'd in production
     void import('./devtools.js')
+      .then(module => module.connectInkDevtools())
+      .catch(error => {
+        // Explicit development-only warning; no connection is fabricated.
+        console.warn(error instanceof Error ? error.message : String(error))
+      })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     if (error.code === 'ERR_MODULE_NOT_FOUND') {
@@ -224,19 +229,39 @@ export function resetProfileCounters(): void {
 const reconciler = createReconciler<
   ElementNames,
   Props,
-  DOMElement,
-  DOMElement,
+  DOMElement, // Container
+  DOMElement, // Instance
   TextNode,
-  DOMElement,
-  unknown,
-  unknown,
-  DOMElement,
+  never, // ActivityInstance (unsupported)
+  never, // SuspenseInstance (no hydration)
+  never, // HydratableInstance
+  never, // FormInstance
+  DOMElement, // PublicInstance
   HostContext,
-  null, // UpdatePayload - not used in React 19
+  never, // ChildSet (mutation renderer)
   NodeJS.Timeout,
   -1,
-  null
+  null, // TransitionStatus
+  void, // SuspendedState (no suspension state)
+  never, // RendererInspectionConfig
+  never, // FormStateMarkerInstance
+  never, // HoistableRoot
+  never // Resource
 >({
+  rendererVersion: '19.2.4',
+  rendererPackageName: 'cc-jiangxia-ink',
+  extraDevToolsConfig: null,
+  bindToConsole(methodName: string, args: unknown[]): () => void {
+    return () => {
+      const method: unknown = Reflect.get(console, methodName)
+      if (typeof method === 'function') Reflect.apply(method, console, args)
+    }
+  },
+  // Terminal host nodes never wait for asynchronous resources.
+  maySuspendCommitOnUpdate: () => false,
+  maySuspendCommitInSyncRender: () => false,
+  suspendOnActiveViewTransition: () => {},
+  getSuspendedCommitReason: () => null,
   getRootHostContext: () => ({ isInsideText: false }),
   prepareForCommit: () => {
     if (COMMIT_LOG) _prepareAt = performance.now()

@@ -82,6 +82,24 @@ function setPendingRequest(requestInput: unknown = input, toolName = 'Playwright
 }
 
 describe('ExpertHumanVerificationModal', () => {
+  it('describes a no-control snapshot honestly while retaining manual inspection, passive checks and explicit fallback', async () => {
+    setPendingRequest({ ...input, verification: { ...input.verification, detail: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: Google security verification. VERIFICATION_CONTROLS_NOT_OBSERVED' } })
+    render(<ExpertHumanVerificationModal sessionId={SESSION_ID} request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission} />)
+    expect(screen.getByRole('dialog', { name: 'Google 访问需要处理' })).not.toBeNull()
+    expect(screen.getByText('当前快照未观察到可见的验证控件')).not.toBeNull()
+    expect(screen.getByText(/页面可能仍在加载，或当前访问受到限制/)).not.toBeNull()
+    expect(screen.queryByText('请完成：Google 安全验证')).toBeNull()
+    expect(screen.getByText(/软件每 3 秒检查一次/)).not.toBeNull()
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '打开验证浏览器' }))
+    await waitFor(() => expect(requestBrowserVisibilityMock).toHaveBeenCalledWith(SESSION_ID))
+    await waitFor(() => expect(screen.getByRole('button', { name: '改查其他入口' }).hasAttribute('disabled')).toBe(false))
+    expect(sendMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '改查其他入口' }))
+    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, expect.objectContaining({ updatedInput: { verificationResolution: 'switch_public_entry' } }))
+  })
+
   beforeEach(() => {
     notifyDesktopMock.mockReset()
     sendMock.mockReset()

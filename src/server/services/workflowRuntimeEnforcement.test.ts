@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import type {
   WorkflowSessionState,
@@ -18,6 +19,7 @@ import {
   resolveWorkflowSkillBindings,
 } from './workflowSkillRegistry.js'
 import { routeWorkflowTask } from './workflowTaskRouter.js'
+import { DEVELOPMENT_QUESTION_POLICY } from './workflowDevelopmentQuestionPolicy.js'
 
 const NOW = '2026-07-01T09:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-enforcement-test'
@@ -138,7 +140,7 @@ function makeDebugRepairTemplate(): WorkflowTemplate {
 function makeState(
   route: WorkflowTaskRouterResult = makeRoute('开发一个学生管理系统'),
   overrides: Partial<WorkflowSessionState> = {},
-): WorkflowSessionState {
+): WorkflowSessionState & { templateSnapshot: WorkflowTemplate } {
   const template = makeTemplate()
   return {
     schemaVersion: 2,
@@ -224,9 +226,9 @@ function makeState(
 
 describe('workflow runtime enforcement v5', () => {
   test('selects follow-up defaults from templates supplied by the ZIP pack registry', () => {
-    const development = { ...makeTemplate(), id: 'development-flow', labels: ['new-product'] }
-    const extension = { ...makeTemplate(), id: 'extension-flow', labels: ['enhancement'] }
-    const repair = { ...makeTemplate(), id: 'repair-flow', labels: ['bug'] }
+    const development: WorkflowTemplate = { ...makeTemplate(), id: 'development-flow', labels: ['new-product'] }
+    const extension: WorkflowTemplate = { ...makeTemplate(), id: 'extension-flow', labels: ['enhancement'] }
+    const repair: WorkflowTemplate = { ...makeTemplate(), id: 'repair-flow', labels: ['bug'] }
 
     expect(selectFollowUpWorkflowTemplate([development, extension, repair], 'development').id).toBe('development-flow')
     expect(selectFollowUpWorkflowTemplate([development, extension, repair], 'feature-extension').id).toBe('extension-flow')
@@ -391,9 +393,9 @@ describe('workflow runtime enforcement v5', () => {
     expect(followUpRun.artifacts.filter((artifact) => artifact.id === 'follow-up-context')).toHaveLength(1)
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: next.templateSnapshot,
+      template: requireFixtureValue(next.templateSnapshot),
       run: followUpRun,
-      phase: next.templateSnapshot.phases[0]!,
+      phase: requireFixtureValue(next.templateSnapshot).phases[0]!,
       sessionState: next,
       inheritedArtifacts: followUpRun.artifacts.filter((artifact) => artifact.inheritedFromRunId),
       userMessage: '继续',
@@ -503,13 +505,13 @@ describe('workflow runtime enforcement v5', () => {
     })
     state.activePhaseId = 'plan-batches'
     state.workflowRuns![0]!.currentPhaseId = 'plan-batches'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'plan-batches')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'plan-batches')!
     const skillAvailability = resolveWorkflowSkillBindings(phase.skillBindings, {
       installedSkillIds: new Set<string>(),
     })
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -564,10 +566,10 @@ describe('workflow runtime enforcement v5', () => {
     })
     state.activePhaseId = 'route-context'
     state.workflowRuns![0]!.currentPhaseId = 'route-context'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'route-context')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'route-context')!
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -576,19 +578,19 @@ describe('workflow runtime enforcement v5', () => {
     })
 
     expect(prompt).toContain('Stable phase execution contract')
-    expect(prompt).toContain('Objective: Classify the request and create project context.')
+    expect(prompt).toContain('Phase instructions: Classify the request and create project context.')
     expect(prompt).toContain('Scope boundaries:')
     expect(prompt).toContain('Required intake:')
     expect(prompt).toContain('Thinking style:')
     expect(prompt).toContain('AskQuestion policy:')
-    expect(prompt).toContain('Ask one primary question at a time')
+    expect(prompt).toContain('Batch independent questions')
     expect(prompt).toContain('why the information is needed and what the answer will affect')
     expect(prompt).toContain('at least 3 mutually exclusive, actionable options')
     expect(prompt).toContain('recommended option first')
     expect(prompt).toContain('(Recommended)')
     expect(prompt).toContain('plain language for non-technical users')
-    expect(prompt).toContain('recommend the default and ask for confirmation')
-    expect(prompt).toContain('conservative default and record the assumption')
+    expect(prompt).toContain('proposed defaults')
+    expect(prompt).toContain('reversible defaults')
     expect(prompt).toContain('Output contract:')
     expect(prompt).toContain('current phase name, phase goal, in-scope work, out-of-scope work')
     expect(prompt).toContain('Completion gate:')
@@ -608,10 +610,10 @@ describe('workflow runtime enforcement v5', () => {
     state.brainstormingMode = 'on'
     state.activePhaseId = 'design-spec'
     state.workflowRuns![0]!.currentPhaseId = 'design-spec'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'design-spec')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'design-spec')!
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -629,12 +631,12 @@ describe('workflow runtime enforcement v5', () => {
     })
 
     expect(prompt).toContain('Brainstorming: on')
-    expect(prompt).toContain('complete runtime-managed brainstorming contract')
+    expect(prompt).toContain('development question policy')
     expect(prompt).toContain('Brainstorming contract injection')
     expect(prompt).toContain('# COMPLETE BRAINSTORMING CONTRACT')
-    expect(prompt).toContain('Do not reduce discovery to blocker-only questions')
-    expect(prompt).toContain('Do not replace unresolved material requirements with conservative defaults')
-    expect(prompt).toContain('do not stop because of a workflow-local preference to ask fewer questions')
+    expect(prompt).toContain('Never classify every preference as blocking')
+    expect(prompt).toContain('consequential preferences')
+    expect(prompt).toContain('Stop exploration as soon as')
     expect(prompt).toContain('Do not replace it with a workflow-local fixed direction count or questionnaire')
     expect(prompt).not.toContain('If missing information blocks the current phase, ask one structured question; if it does not block, choose a conservative default')
     expect(prompt).not.toContain('If missing information is not blocking, proceed with a conservative default')
@@ -649,7 +651,7 @@ describe('workflow runtime enforcement v5', () => {
     })
     const run = state.workflowRuns![0]!
     const phase = {
-      ...state.templateSnapshot.phases.find((item) => item.id === 'execute')!,
+      ...requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'execute')!,
       id: 'delegate-implement',
       subagentPolicy: {
         role: 'coder',
@@ -715,7 +717,7 @@ describe('workflow runtime enforcement v5', () => {
     state.workflowRuns![0]!.currentPhaseId = 'delegate-implement'
     const run = state.workflowRuns![0]!
     const phase = {
-      ...state.templateSnapshot.phases.find((item) => item.id === 'execute')!,
+      ...requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'execute')!,
       id: 'delegate-implement',
       subagentPolicy: {
         allowedRoles: ['coder', 'reviewer'],
@@ -724,7 +726,7 @@ describe('workflow runtime enforcement v5', () => {
     }
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run,
       phase,
       sessionState: state,
@@ -810,4 +812,46 @@ describe('workflow runtime enforcement v5', () => {
       }),
     ])
   })
+})
+
+test('development policy overrides old single-question brainstorming and defines convergence', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a video editor', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  state.activePhaseId = template.phases[0]!.id
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase: template.phases[0]!, sessionState: state, userMessage: 'Build a video editor',
+    brainstormingContract: { content: 'Ask one question at a time forever.', identity: 'old', source: 'workflow-pack', sourcePath: 'old-skill' } })
+  expect(prompt).toContain('Group independent questions in one AskUserQuestion batch')
+  expect(prompt).not.toContain('structured question UI. Ask one question at a time.')
+  expect(prompt).toContain('Stop exploration as soon as')
+  expect(prompt).toContain('Never classify every preference as blocking')
+  expect(prompt.lastIndexOf('Development question policy')).toBeGreaterThan(prompt.indexOf('Ask one question at a time forever.'))
+})
+
+test('development runtime prompt keeps long phase instructions and the question policy exactly once', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a video editor', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = `Stage-specific grounding rules.\n\n${DEVELOPMENT_QUESTION_POLICY}`
+  state.activePhaseId = phase.id
+  state.workflowRuns![0]!.currentPhaseId = phase.id
+
+  const prompt = buildWorkflowRuntimePrompt({
+    template,
+    run: state.workflowRuns![0]!,
+    phase,
+    sessionState: state,
+    userMessage: 'Build a video editor',
+    brainstormingContract: {
+      content: `Inherited brainstorming guidance.\n\n## Development workflow exploration and convergence\n\n${DEVELOPMENT_QUESTION_POLICY}`,
+      identity: 'legacy-development-skill',
+      source: 'workflow-pack',
+      sourcePath: 'skills/superpowers-brainstorming/SKILL.md',
+    },
+  })
+
+  expect(prompt.match(/Stage-specific grounding rules\./g)).toHaveLength(1)
+  expect(prompt.match(/Inherited brainstorming guidance\./g)).toHaveLength(1)
+  expect(prompt.match(/Development question policy \(takes precedence/g)).toHaveLength(1)
 })

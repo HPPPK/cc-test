@@ -21,13 +21,13 @@ type RateLimitOptionsMenuProps = {
   } | undefined) => void;
   context: ToolUseContext & LocalJSXCommandContext;
 };
-function RateLimitOptionsMenu(t0) {
+function RateLimitOptionsMenu(t0: RateLimitOptionsMenuProps): React.ReactNode {
   const $ = _c(25);
   const {
     onDone,
     context
   } = t0;
-  const [subCommandJSX, setSubCommandJSX] = useState(null);
+  const [subCommandJSX, setSubCommandJSX] = useState<React.ReactNode>(null);
   const claudeAiLimits = useClaudeAiLimits();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

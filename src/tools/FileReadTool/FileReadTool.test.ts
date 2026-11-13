@@ -1,3 +1,5 @@
+import { createToolContextFixture } from '../toolFixtures.test.js'
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { join } from "path";
@@ -66,16 +68,15 @@ const {
 } = await import("./FileReadTool.js");
 
 function createFileReadContext(maxTokens: number) {
-  return {
+  return createToolContextFixture({
     abortController: new AbortController(),
     dynamicSkillDirTriggers: new Set<string>(),
     nestedMemoryAttachmentTriggers: new Set<string>(),
-    readFileState: new Map(),
     fileReadingLimits: {
       maxSizeBytes: 256 * 1024,
       maxTokens,
     },
-  } as Parameters<typeof FileReadTool.call>[1];
+  });
 }
 
 function makePngLikeBuffer(size: number): Buffer {
@@ -348,7 +349,7 @@ describe('Expert real Read to report Write handoff', () => {
     process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'handoff-session'
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
     process.env.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY = JSON.stringify({ mode: 'markdown-path-only', directory: 'commercialization-research', briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: ['commercialization-research/02-competitors.md'], reviewerPath: 'commercialization-research/05-evidence-review.md', auditPath: 'commercialization-research/06-browser-audit.md', absorptionPath: 'commercialization-research/07-report-field-absorption.md', completionReviewPath: 'commercialization-research/08-report-completeness-review.md', maxCharacters: 90_000 })
-    globalThis.fetch = (async () => new Response(JSON.stringify({ templateId: 'report-v1', content: '<html>reviewed report</html>' }))) as unknown as typeof fetch
+    globalThis.fetch = withFetchPreconnect(async () => new Response(JSON.stringify({ templateId: 'report-v1', content: '<html>reviewed report</html>' })))
     handoffRuntime.resetMainAgentReportFieldAbsorptionReadsForTests()
   })
   afterEach(async () => {

@@ -1,3 +1,4 @@
+import type { MessageKind } from '../../utils/messageKind.js'
 import { promises as fsp } from 'fs'
 import { getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'
@@ -11,7 +12,7 @@ import { runWithAgentContext } from '../../utils/agentContext.js'
 import { runWithCwdOverride } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   filterOrphanedThinkingOnlyMessages,
   filterUnresolvedToolUses,
   filterWhitespaceOnlyAssistantMessages,
@@ -46,12 +47,14 @@ export async function resumeAgentBackground({
   toolUseContext,
   canUseTool,
   invokingRequestId,
+  messageKind,
 }: {
   agentId: string
   prompt: string
   toolUseContext: ToolUseContext
   canUseTool: CanUseToolFn
   invokingRequestId?: string
+  messageKind?: MessageKind
 }): Promise<ResumeAgentResult> {
   const startTime = Date.now()
   const appState = toolUseContext.getAppState()
@@ -172,13 +175,14 @@ export async function resumeAgentBackground({
     agentType: string
     isAsync: boolean
     researchSourceAssignment?: ExpertResearchSourceAssignment
+    priorAuditMessages?: typeof resumedMessages
   }
 
   const runAgentParams: Parameters<typeof runAgent>[0] = {
     agentDefinition: selectedAgent,
     promptMessages: [
       ...resumedMessages,
-      createUserMessage({ content: prompt }),
+      createRuntimeUserMessage({ content: prompt, messageKind }),
     ],
     toolUseContext,
     canUseTool,
@@ -228,6 +232,7 @@ export async function resumeAgentBackground({
     agentType: selectedAgent.agentType,
     isAsync: true,
     researchSourceAssignment: undefined,
+    priorAuditMessages: resumedMessages,
   }
 
   const asyncAgentContext = {

@@ -9,7 +9,7 @@ import { isVoiceModeEnabled } from '../../voice/voiceModeEnabled.js';
 import { AnimatedAsterisk } from './AnimatedAsterisk.js';
 import { shouldShowOpus1mMergeNotice } from './Opus1mMergeNotice.js';
 const MAX_SHOW_COUNT = 3;
-export function VoiceModeNotice() {
+export function VoiceModeNotice(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -20,7 +20,7 @@ export function VoiceModeNotice() {
   }
   return t0;
 }
-function VoiceModeNoticeInner() {
+function VoiceModeNoticeInner(): React.ReactNode {
   const $ = _c(4);
   const [show] = useState(_temp);
   let t0;

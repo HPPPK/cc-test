@@ -1,3 +1,4 @@
+import { messageKindMetadata, resolveMessageKind, isHumanInputMessage, type MessageKind } from '../../utils/messageKind.js'
 /**
  * Session Service — 会话文件的读写操作封装
  *
@@ -81,6 +82,12 @@ export type TrimSessionResult = {
 }
 
 export type MessageEntry = {
+  messageKind?: MessageKind
+  isHumanInput?: boolean
+  isMeta?: boolean
+  isCompactSummary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isSynthetic?: boolean
   id: string
   type: 'user' | 'assistant' | 'system' | 'tool_use' | 'tool_result'
   content: unknown
@@ -179,6 +186,10 @@ type RawEntry = {
   isSidechain?: boolean
   isMeta?: boolean
   isSynthetic?: boolean
+  messageKind?: MessageKind
+  isCompactSummary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  origin?: unknown
   cwd?: string
   message?: {
     role?: string
@@ -494,7 +505,7 @@ export class SessionService {
 
   private countTranscriptMessages(entries: RawEntry[]): number {
     return entries.filter((entry) =>
-      !entry.isMeta &&
+      resolveMessageKind(entry) !== 'internal_notification' &&
       !!entry.message?.role &&
       (entry.type === 'user' || entry.type === 'assistant' || entry.type === 'system')
     ).length
@@ -552,6 +563,8 @@ export class SessionService {
       parentUuid: entry.parentUuid ?? undefined,
       parentToolUseId,
       isSidechain: entry.isSidechain,
+      ...messageKindMetadata(entry),
+      isHumanInput: isHumanInputMessage(entry),
     }
   }
 
@@ -695,6 +708,7 @@ export class SessionService {
   }
 
   private shouldHideTranscriptEntry(entry: RawEntry): boolean {
+    if (entry.messageKind === 'user_input' || resolveMessageKind(entry) === 'context_summary') return false
     const role = entry.message?.role
     const content = entry.message?.content
 
@@ -738,6 +752,7 @@ export class SessionService {
       const parent = entriesByUuid.get(parentUuid)
       if (!parent) break
       if (parent.message?.role === 'user') {
+        if (parent.messageKind === 'user_input') break
         if (this.isInternalExpertRuntimePrompt(parent.message.content)) {
           result = true
           break
@@ -1080,7 +1095,7 @@ export class SessionService {
 
     // 4. Look for first non-meta user message as title
     for (const e of entries) {
-      if (e.type === 'user' && !e.isMeta && e.message?.role === 'user') {
+      if (e.type === 'user' && isHumanInputMessage(e) && e.message?.role === 'user') {
         const content = e.message.content
         let text: string | undefined
         if (typeof content === 'string') {
@@ -1134,7 +1149,7 @@ export class SessionService {
 
       // Ensure it's a directory
       try {
-        const stat = await fs.stat(dirPath)
+        const stat = await fs.lstat(dirPath)
         if (!stat.isDirectory()) continue
       } catch {
         continue
@@ -1149,7 +1164,13 @@ export class SessionService {
 
       for (const file of files) {
         if (!file.endsWith('.jsonl')) continue
-        const sessionId = file.replace('.jsonl', '')
+        const sessionId = file.slice(0, -'.jsonl'.length)
+        if (!this.isValidSessionId(sessionId)) continue
+        try {
+          if (!(await fs.lstat(path.join(dirPath, file))).isFile()) continue
+        } catch {
+          continue
+        }
         results.push({
           filePath: path.join(dirPath, file),
           projectDir: dir,
@@ -1203,7 +1224,9 @@ export class SessionService {
     for (const dir of projectDirs) {
       const filePath = path.join(projectsDir, dir, `${sessionId}.jsonl`)
       try {
-        const stat = await fs.stat(filePath)
+        if (!(await fs.lstat(path.join(projectsDir, dir))).isDirectory()) continue
+        const stat = await fs.lstat(filePath)
+        if (!stat.isFile()) continue
         matches.push({ filePath, projectDir: dir, mtimeMs: stat.mtimeMs })
       } catch {
         continue
@@ -1222,8 +1245,10 @@ export class SessionService {
   }
 
   private isValidSessionId(id: string): boolean {
-    // UUID v4 format
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    // New sessions use UUIDs, but existing transcripts can have legacy IDs.
+    // Keep listing, reads and deletes compatible without accepting path syntax.
+    return /^[a-z0-9][a-z0-9_-]{0,159}$/i.test(id)
+      && !['constructor', 'prototype', '__proto__'].includes(id.toLowerCase())
   }
 
   private formatCost(cost: number): string {
@@ -1619,6 +1644,63 @@ export class SessionService {
     )
   }
 
+  /** User-only result preview. The caller selects a session-bound Agent call, never a file path. */
+  async getAgentResult(sessionId: string, toolUseId: string): Promise<{ status: 'available' | 'missing'; content: string; source?: 'artifact' | 'transcript'; artifactPath?: string }> {
+    const missing = { status: 'missing' as const, content: '' }
+    const found = await this.findSessionFile(sessionId)
+    if (!found) throw ApiError.notFound(`Session not found: ${sessionId}`)
+    const parentEntries = await this.readJsonlFile(found.filePath)
+    const agentId = this.extractAgentResultLinks(this.entriesToMessages(parentEntries)).get(toolUseId)
+    if (!agentId || !/^[A-Za-z0-9_-]+$/.test(agentId)) return missing
+    const transcriptPath = this.subagentTranscriptPath(found.projectDir, sessionId, agentId)
+    // Resolve symlinks before reading; both transcript and artifacts stay in their authorized roots.
+    const within = (root: string, target: string) => {
+      const relative = path.relative(root, target)
+      return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+    }
+    let entries: RawEntry[]
+    try {
+      const [realProject, realTranscript] = await Promise.all([
+        fs.realpath(path.dirname(found.filePath)), fs.realpath(transcriptPath),
+      ])
+      const realRoot = path.join(realProject, sessionId, 'subagents')
+      if (!within(realRoot, realTranscript)) return missing
+      entries = await this.readJsonlFile(realTranscript)
+    } catch { return missing }
+    const successful = new Set<string>()
+    for (const entry of entries) {
+      if (entry.type !== 'user' || !Array.isArray(entry.message?.content)) continue
+      for (const block of entry.message.content as ContentBlock[]) {
+        if (block.type === 'tool_result' && block.is_error !== true && typeof block.tool_use_id === 'string') successful.add(block.tool_use_id)
+      }
+    }
+    const workDir = this.resolveWorkDirFromEntries(parentEntries, found.projectDir)
+    if (workDir) {
+      for (const entry of [...entries].reverse()) {
+        if (entry.type !== 'assistant' || !Array.isArray(entry.message?.content)) continue
+        for (const block of [...entry.message.content as ContentBlock[]].reverse()) {
+          if (block.type !== 'tool_use' || !['Write', 'Edit'].includes(String(block.name)) || !successful.has(String(block.id))) continue
+          const input = block.input as Record<string, unknown> | undefined
+          if (typeof input?.file_path !== 'string' || !input.file_path.endsWith('.md')) continue
+          try {
+            const [realWorkspace, realArtifact] = await Promise.all([fs.realpath(workDir), fs.realpath(path.resolve(workDir, input.file_path))])
+            if (!within(realWorkspace, realArtifact)) continue
+            const stat = await fs.stat(realArtifact)
+            if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue
+            const content = await fs.readFile(realArtifact, 'utf8')
+            if (content.trim()) return { status: 'available', content, source: 'artifact', artifactPath: realArtifact }
+          } catch { /* Missing or inaccessible files fall through to the actual terminal response. */ }
+        }
+      }
+    }
+    const lastAssistant = entries.findLast((entry) => entry.type === 'assistant' && !entry.isMeta)
+    const blocks = lastAssistant?.message?.content
+    // Never present intermediate reasoning from a stream that ended on a tool request as its result.
+    if (!Array.isArray(blocks) || blocks.some((block) => block.type === 'tool_use')) return missing
+    const content = this.extractTextFromContent(blocks).trim()
+    return content && !/文件交接[：:]/.test(content) ? { status: 'available', content, source: 'transcript' } : missing
+  }
+
   /**
    * Create a new session file for the given working directory.
    */
@@ -1686,23 +1768,23 @@ export class SessionService {
   }
 
   /**
-   * Delete a session's JSONL file.
+   * Delete every transcript for this logical session, including older copies.
    */
   async deleteSession(sessionId: string): Promise<void> {
-    const found = await this.findSessionFile(sessionId)
-    if (!found) {
+    const found = await this.findSessionFiles(sessionId)
+    if (found.length === 0) {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
     }
 
     await fs.rm(this.getWorkflowSessionDir(sessionId), { recursive: true, force: true })
-    await fs.unlink(found.filePath)
+    for (const { filePath } of found) await fs.unlink(filePath)
   }
 
   async deleteSessions(sessionIds: string[]): Promise<DeleteSessionsResult> {
     const successes: string[] = []
     const failures: DeleteSessionFailure[] = []
 
-    const results = await Promise.all(sessionIds.map(async (sessionId) => {
+    const results = await Promise.all([...new Set(sessionIds)].map(async (sessionId) => {
       try {
         await this.deleteSession(sessionId)
         return { type: 'success' as const, sessionId }
@@ -2173,10 +2255,10 @@ export class SessionService {
       if (!entry.message?.role) continue
 
       // Skip meta entries (CLI internal bookkeeping)
-      if (entry.isMeta) continue
+      if (entry.isMeta && !['context_summary', 'user_input'].includes(resolveMessageKind(entry))) continue
 
       const isTaskNotification =
-        entry.message.role === 'user' &&
+        entry.messageKind !== 'user_input' && entry.message.role === 'user' &&
         this.isTaskNotificationContent(entry.message.content)
       if (isTaskNotification) {
         suppressTaskNotificationResponse = true

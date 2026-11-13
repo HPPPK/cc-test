@@ -13,7 +13,7 @@ describe('search engine surface, not corporate host substring', () => {
     expect(searchEngineForUrl('https://www.google.com/sorry/index')).toBe('Google')
     expect(isSearchResultsUrl('https://www.google.com/sorry/index')).toBe(false)
     expect(isSearchResultsUrl('https://www.google.com/')).toBe(false)
-    for (const [url, engine] of [['https://www.google.com/search?q=x', 'Google'], ['https://www.baidu.com/s?wd=x', '百度'], ['https://cn.bing.com/search?q=x', 'Bing'], ['https://www.so.com/s?q=x', '360']]) {
+    for (const [url, engine] of [['https://www.google.com/search?q=x', 'Google'], ['https://www.baidu.com/s?wd=x', '百度'], ['https://cn.bing.com/search?q=x', 'Bing'], ['https://www.so.com/s?q=x', '360']] as const) {
       expect(searchEngineForUrl(url)).toBe(engine)
       expect(isSearchResultsUrl(url)).toBe(true)
     }

@@ -1,3 +1,4 @@
+import { normalizeQuestionForDisplay } from './normalizeQuestion.js'
 import { c as _c } from "react/compiler-runtime";
 import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import React, { Suspense, use, useCallback, useMemo, useRef, useState } from 'react';
@@ -27,7 +28,7 @@ const MIN_CONTENT_HEIGHT = 12;
 const MIN_CONTENT_WIDTH = 40;
 // Lines used by chrome around the content area (nav bar, title, footer, help text, etc.)
 const CONTENT_CHROME_OVERHEAD = 15;
-export function AskUserQuestionPermissionRequest(props) {
+export function AskUserQuestionPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const $ = _c(4);
   const settings = useSettings();
   if (settings.syntaxHighlightingDisabled) {
@@ -51,7 +52,7 @@ export function AskUserQuestionPermissionRequest(props) {
   }
   return t0;
 }
-function AskUserQuestionWithHighlight(props) {
+function AskUserQuestionWithHighlight(props: PermissionRequestProps): React.ReactNode {
   const $ = _c(4);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -60,7 +61,7 @@ function AskUserQuestionWithHighlight(props) {
   } else {
     t0 = $[0];
   }
-  const highlight = use(t0);
+  const highlight = use<Awaited<ReturnType<typeof getCliHighlightPromise>>>(t0);
   let t1;
   if ($[1] !== highlight || $[2] !== props) {
     t1 = <AskUserQuestionPermissionRequestBody {...props} highlight={highlight} />;
@@ -72,7 +73,9 @@ function AskUserQuestionWithHighlight(props) {
   }
   return t1;
 }
-function AskUserQuestionPermissionRequestBody(t0) {
+function AskUserQuestionPermissionRequestBody(t0: PermissionRequestProps & {
+  highlight: CliHighlight | null
+}): React.ReactNode {
   const $ = _c(115);
   const {
     toolUseConfirm,
@@ -91,7 +94,7 @@ function AskUserQuestionPermissionRequestBody(t0) {
   const result = t1;
   let t2;
   if ($[2] !== result.data || $[3] !== result.success) {
-    t2 = result.success ? result.data.questions || [] : [];
+    t2 = result.success ? result.data.questions.map(normalizeQuestionForDisplay) : [];
     $[2] = result.data;
     $[3] = result.success;
     $[4] = t2;
@@ -168,14 +171,14 @@ function AskUserQuestionPermissionRequestBody(t0) {
   } else {
     t6 = $[15];
   }
-  const [pastedContentsByQuestion, setPastedContentsByQuestion] = useState(t6);
+  const [pastedContentsByQuestion, setPastedContentsByQuestion] = useState<Record<string, Record<number, PastedContent>>>(t6);
   const nextPasteIdRef = useRef(0);
   let t7;
   if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
     t7 = function onImagePaste(questionText, base64Image, mediaType, filename, dimensions, _sourcePath) {
       nextPasteIdRef.current = nextPasteIdRef.current + 1;
       const pasteId = nextPasteIdRef.current;
-      const newContent = {
+      const newContent: PastedContent = {
         id: pasteId,
         type: "image",
         content: base64Image,

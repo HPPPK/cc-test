@@ -1,5 +1,5 @@
 import type { Anthropic } from '@anthropic-ai/sdk'
-import type { BetaMessageParam as MessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaContentBlock, BetaContentBlockParam, BetaMessageParam as MessageParam, BetaToolResultContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 // @aws-sdk/client-bedrock-runtime is imported dynamically in countTokensWithBedrock()
 // to defer ~279KB of AWS SDK code until a Bedrock call is actually made
 import type { CountTokensCommandInput } from '@aws-sdk/client-bedrock-runtime'
@@ -368,11 +368,14 @@ export function roughTokenCountEstimationForMessage(message: {
   return 0
 }
 
+type TokenCountBlock = Anthropic.ContentBlock | Anthropic.ContentBlockParam
+  | BetaContentBlock | BetaContentBlockParam | BetaToolResultContentBlockParam
+  | Exclude<Anthropic.ToolResultBlockParam['content'], string | undefined>[number]
+
 function roughTokenCountEstimationForContent(
   content:
     | string
-    | Array<Anthropic.ContentBlock>
-    | Array<Anthropic.ContentBlockParam>
+    | Array<TokenCountBlock>
     | undefined,
 ): number {
   if (!content) {
@@ -389,7 +392,7 @@ function roughTokenCountEstimationForContent(
 }
 
 function roughTokenCountEstimationForBlock(
-  block: string | Anthropic.ContentBlock | Anthropic.ContentBlockParam,
+  block: string | TokenCountBlock,
 ): number {
   if (typeof block === 'string') {
     return roughTokenCountEstimation(block)

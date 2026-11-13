@@ -1,5 +1,7 @@
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { chromium } from 'playwright'
+import { chromium as patchedChromium } from 'patchright'
 import { EventEmitter } from 'node:events'
 import * as runner from './playwright-browser-runner.js'
 
@@ -31,6 +33,7 @@ const browser: any = {
   close: async () => { connected = false; for (const page of pages) page.closed = true },
   newBrowserCDPSession: async () => ({ send: async (method: string) => {
     cdpCalls.push(method)
+    if (method === 'SystemInfo.getProcessInfo') return { processInfo: [] }
     if (method === 'Target.getBrowserContexts') return { browserContextIds: ['context-1'] }
     if (method === 'Target.createTarget') {
       if (pageCreationFails) throw new Error('page creation failed')
@@ -48,6 +51,8 @@ class FakePage extends EventEmitter {
   readyState = 'complete'
   readFails = false
   navigations: string[] = []
+  fills = 0
+  waits: number[] = []
   url() { return this.currentUrl }
   async title() { return this.pageTitle }
   isClosed() { return this.closed }
@@ -55,13 +60,14 @@ class FakePage extends EventEmitter {
   async close() { this.closed = true }
   async bringToFront() { cdpCalls.push('bringToFront') }
   mainFrame() { return this }
+  frames() { return [this] }
   async goto(url: string) {
     this.emit('request', { isNavigationRequest: () => true, frame: () => this, url: () => url })
     this.navigations.push(url); this.currentUrl = url
     this.emit('framenavigated', this)
   }
   async waitForLoadState() {}
-  async waitForTimeout() {}
+  async waitForTimeout(ms: number) { this.waits.push(ms) }
   async evaluate(callback: () => unknown) {
     if (this.readFails) throw new Error('navigation in progress')
     // Execute the actual page callback against the transport fixture's document.
@@ -69,7 +75,7 @@ class FakePage extends EventEmitter {
     const location = Object.getOwnPropertyDescriptor(globalThis, 'location')
     const document = Object.getOwnPropertyDescriptor(globalThis, 'document')
     Object.defineProperty(globalThis, 'location', { configurable: true, value: { href: this.currentUrl } })
-    Object.defineProperty(globalThis, 'document', { configurable: true, value: { title: this.pageTitle, body: { innerText: this.text }, readyState: this.readyState } })
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: { title: this.pageTitle, body: { innerText: this.text }, readyState: this.readyState, querySelectorAll: () => [] } })
     try { return callback() } finally {
       if (location) Object.defineProperty(globalThis, 'location', location)
       else Reflect.deleteProperty(globalThis, 'location')
@@ -77,7 +83,7 @@ class FakePage extends EventEmitter {
       else Reflect.deleteProperty(globalThis, 'document')
     }
   }
-  locator() { return { innerText: async () => this.text, evaluateAll: async () => [], first: () => this.locator() } }
+  locator() { return { isVisible: async () => false, fill: async () => { this.fills++; throw new Error('hidden input') }, innerText: async () => this.text, evaluateAll: async () => [], first: () => this.locator() } }
 }
 const request = (overrides: Record<string, unknown> = {}): any => ({
   actions: [{ type: 'extract' }], visible: false, slowMoMs: 0, pageTimeoutMs: 100, networkIdleTimeoutMs: 10, maxLinks: 20,
@@ -88,15 +94,16 @@ function setup() {
   pages = []; posts = []; callbacks.clear(); cdpCalls.length = 0; pageCreationFails = false; connected = true; autoAccepted = true
   bounds = { left: 100, top: 100, width: 1200, height: 800, windowState: 'normal' }
   spyOn(chromium, 'launch').mockResolvedValue(browser)
+  spyOn(patchedChromium, 'launch').mockResolvedValue(browser)
   spyOn(globalThis, 'setInterval').mockImplementation(((callback: () => void, delay: number) => {
     callbacks.set(delay, callback)
     return { unref() {} }
   }) as any)
   spyOn(globalThis, 'clearInterval').mockImplementation(() => {})
-  spyOn(globalThis, 'fetch').mockImplementation(async (_url: any, init?: RequestInit) => {
+  spyOn(globalThis, 'fetch').mockImplementation(withFetchPreconnect(async (_url, init) => {
     if (init?.body) { posts.push(JSON.parse(String(init.body))); return new Response('{}', { status: autoAccepted ? 200 : 409 }) }
     return Response.json({ showGeneration: 0, verificationCheckGeneration: 0 })
-  })
+  }))
 }
 async function flush() { for (let i = 0; i < 10; i += 1) await Promise.resolve() }
 async function tick() { callbacks.get(3_000)?.(); await flush() }
@@ -115,6 +122,46 @@ async function gate() {
 afterEach(async () => { if (runner.closeAllSessions) await runner.closeAllSessions(); mock.restore() })
 
 describe('executable browser runner verification', () => {
+  test('launches managed sessions with Patchright and keeps the ordinary driver unused', async () => {
+    setup()
+    await runner.runSession('driver-test', request())
+    expect(patchedChromium.launch).toHaveBeenCalledTimes(1)
+    expect(chromium.launch).not.toHaveBeenCalled()
+  })
+
+  test('does not silently restart with the original driver after a managed launch failure', async () => {
+    setup()
+    spyOn(patchedChromium, 'launch').mockRejectedValue(new Error('candidate launch failed'))
+    await expect(runner.runSession('launch-failure', request())).rejects.toThrow('candidate launch failed')
+    expect(chromium.launch).not.toHaveBeenCalled()
+  })
+
+  test('keeps explicit user-browser CDP connections on the original driver', async () => {
+    setup()
+    spyOn(chromium, 'connectOverCDP').mockResolvedValue(browser)
+    await runner.runSession('cdp-test', request({ connection: { kind: 'cdp', endpoint: 'http://127.0.0.1:9222' } }))
+    expect(chromium.connectOverCDP).toHaveBeenCalledTimes(1)
+    expect(patchedChromium.launch).not.toHaveBeenCalled()
+  })
+
+  test('captures failed widget requests before navigation and reports a no-control sorry observation without resuming', async () => {
+    setup()
+    await runner.runSession('owner', request())
+    const page = pages[0]!
+    page.goto = async (url: string) => {
+      page.emit('requestfailed', { url: () => 'https://www.google.com/recaptcha/api.js?token=private', resourceType: () => 'script', failure: () => ({ errorText: 'net::ERR_BLOCKED_BY_CLIENT' }) })
+      page.navigations.push(url); page.currentUrl = url
+      page.pageTitle = 'Unusual traffic'; page.text = 'Verify you are human'
+    }
+    const result: any = await runner.runSession('owner', request({ actions: [{ type: 'navigate', url: 'https://www.google.com/sorry/index?token=private' }, { type: 'navigate', url: 'https://example.com' }] }))
+    expect(result.error).toContain('EXPERT_HUMAN_VERIFICATION_REQUIRED')
+    expect(result.browserDiagnostics.observation).toBe('unactionable')
+    expect(result.browserDiagnostics.events[0]).toEqual({ kind: 'requestfailed', resource: 'verification', code: 'ERR_BLOCKED_BY_CLIENT' })
+    expect(JSON.stringify(result.browserDiagnostics)).not.toContain('private')
+    expect(page.navigations).toHaveLength(1)
+    expect(cdpCalls).not.toContain('bringToFront')
+  })
+
   test('imports without starting stdin transport', () => {
     expect(runner.runSession).toBeFunction()
     expect(runner.closeAllSessions).toBeFunction()
@@ -199,8 +246,9 @@ describe('executable browser runner verification', () => {
     const result = await runner.runSession('background-owner', request({ presentation: 'assistable_background', actions: [{ type: 'new_tab', url: 'https://example.com/results' }] }))
     expect(pages).toHaveLength(2)
     expect(result.url).toBe('https://example.com/results')
-    // This fixture has no native Windows browser PID; it must fail closed there.
-    expect(await runner.presentSession('background-owner', 'foreground')).toBe(process.platform !== 'win32')
+    // This fixture has no native browser PID. Both macOS and Windows must
+    // fail closed; this unit fixture must never activate a real user process.
+    expect(await runner.presentSession('background-owner', 'foreground')).toBe(process.platform !== 'win32' && process.platform !== 'darwin')
     expect(cdpCalls).toContain('bringToFront')
   })
 })
@@ -226,4 +274,87 @@ test('script-created and replacement tabs use the managed background path and pr
   expect(recovered.error).toBeUndefined()
   expect(pages).toHaveLength(5)
   expect(cdpCalls.filter(call => call === 'Target.createTarget')).toHaveLength(5)
+})
+
+
+test('a hidden search input returns an actionable query URL without a 35-second fill or fixed delay', async () => {
+  setup()
+  await runner.runSession('hidden-search', request({ visible: true, actions: [{ type: 'navigate', url: 'https://www.baidu.com/' }] }))
+  const result = await runner.runSession('hidden-search', request({ visible: true, actions: [{ type: 'fill', selector: '#kw', text: 'old photo repair' }] }))
+  expect(result.error).toContain('SEARCH_FORM_UNAVAILABLE')
+  expect(result.error).toContain('https://www.baidu.com/s?wd=old+photo+repair')
+  expect(result.error).toContain('No search was executed')
+  expect(pages[0]!.fills).toBe(0)
+  expect(pages[0]!.waits).not.toContain(8000)
+})
+
+test('a script without a returned value teaches explicit return without claiming empty data', async () => {
+  setup()
+  const result = await runner.runSession('no-return', request({ actions: [{ type: 'script', script: 'await Promise.resolve(42)' }] }))
+  expect(result.error).toBeUndefined()
+  expect(result.steps[0]?.detail).toContain('SCRIPT_NO_RETURN_VALUE')
+  expect(result.steps[0]?.detail).toContain('return')
+})
+
+test('two identical failed actions stop automatic repetition within the same worker only', async () => {
+  setup()
+  const input = request({ actions: [{ type: 'fill', selector: '#ordinary-form', text: 'test' }] })
+  await runner.runSession('repeated-failure', input)
+  await runner.runSession('repeated-failure', input)
+  const stopped = await runner.runSession('repeated-failure', input)
+  expect(stopped.error).toContain('BROWSER_REPEATED_FAILURE')
+  expect(stopped.error).toContain('No action was executed')
+  expect(pages[0]!.fills).toBe(2)
+  const sibling = await runner.runSession('other-worker', input)
+  expect(sibling.error).not.toContain('BROWSER_REPEATED_FAILURE')
+})
+
+
+test('switching public entry preserves the unresolved challenge tab unchanged', async () => {
+  setup()
+  const page = await gate()
+  const result = await runner.runSession('owner', request({
+    verificationResolution: 'switch_public_entry',
+    actions: [{ type: 'navigate', url: 'https://www.baidu.com/s?wd=family%20photos' }],
+  }))
+  expect(result.url).toBe('https://www.baidu.com/s?wd=family%20photos')
+  expect(page.url()).toBe('https://www.google.com/sorry/index')
+  expect(page.navigations).toHaveLength(0)
+  expect(page.closed).toBe(false)
+  expect(pages).toHaveLength(2)
+})
+
+test('opening a closed verification page never foregrounds a different owned tab', async () => {
+  setup()
+  const options = { visible: true }
+  await runner.runSession('owner', request(options))
+  await runner.runSession('owner', request({ ...options, actions: [{ type: 'new_tab', url: 'https://example.com/ordinary' }] }))
+  const verificationPage = pages[1]!
+  verificationPage.currentUrl = 'https://www.google.com/sorry/index'
+  verificationPage.text = 'Verify you are human'
+  await runner.runSession('owner', request(options))
+  verificationPage.closed = true
+  cdpCalls.length = 0
+  expect(await runner.presentSession('owner', 'foreground')).toBe(false)
+  expect(cdpCalls).not.toContain('bringToFront')
+  expect(pages).toHaveLength(2)
+})
+
+
+test('skipping one preserved challenge releases that gate for unrelated pages and still detects a new challenge', async () => {
+  setup()
+  await gate()
+  const switched = await runner.runSession('owner', request({ verificationResolution: 'switch_public_entry', actions: [
+    { type: 'navigate', url: 'https://other.example.com/discussion' }, { type: 'extract', selector: 'body' },
+  ] }))
+  expect(switched.error).toBeUndefined()
+  const next = await runner.runSession('owner', request({ actions: [
+    { type: 'navigate', url: 'https://third.example.com/pricing' }, { type: 'extract', selector: 'body' },
+  ] }))
+  expect(next.error).toBeUndefined()
+  const active = pages.at(-1)!
+  active.pageTitle = 'Just a moment...'
+  active.text = 'Performing security verification. This website uses a security service to protect against malicious bots.'
+  const newGate = await runner.runSession('owner', request())
+  expect(newGate.error).toContain('EXPERT_HUMAN_VERIFICATION_REQUIRED')
 })

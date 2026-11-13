@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseExpertReportReviewContract } from './expertReportReviewContract.js'
+import { parseExpertReportReviewContract, reportCitationGaps } from './expertReportReviewContract.js'
 
 const block = (value: unknown) => 'Review prose says no patch.\n```expert-report-review\n' + JSON.stringify(value && typeof value === 'object' && !Array.isArray(value) ? { calculations: [], ...value } : value) + '\n```'
 const finding = { fieldId: 'TITLE', kind: 'factual-error', reason: 'The captured source attributes this feature to another product.' }
@@ -9,6 +9,13 @@ describe('structured final report review contract', () => {
     expect(parseExpertReportReviewContract(block({ version: 1, findings: [finding, { ...finding, fieldId: 'SOURCES', kind: 'source-error' }, { ...finding, kind: 'supported-omission' }, { ...finding, fieldId: 'OPTIONAL', kind: 'optional' }] }), ['TITLE', 'SOURCES', 'OPTIONAL']).requiredFields).toEqual(['TITLE', 'SOURCES'])
     expect(parseExpertReportReviewContract(block({ version: 1, findings: [] }), ['TITLE']).requiredFields).toEqual([])
     expect(parseExpertReportReviewContract(block({ version: 1, findings: [{ ...finding, kind: 'optional' }] }), ['TITLE']).requiredFields).toEqual([])
+  })
+
+  test('names the exact invalid finding path and actual field IDs for correction', () => {
+    expect(() => parseExpertReportReviewContract(block({ version: 1, findings: [{ ...finding, fieldId: '5.1' }] }), ['TITLE', 'COMPETITOR_LANDSCAPE_ROWS']))
+      .toThrow('findings[0].fieldId')
+    expect(() => parseExpertReportReviewContract(block({ version: 1, findings: [{ ...finding, fieldId: '5.1' }] }), ['TITLE', 'COMPETITOR_LANDSCAPE_ROWS']))
+      .toThrow('COMPETITOR_LANDSCAPE_ROWS')
   })
 
   test.each([
@@ -45,4 +52,25 @@ describe('report unit-cost arithmetic', () => {
   test('requires the calculations array even for a prose-only review', () => {
     expect(() => parseExpertReportReviewContract('```expert-report-review\n{"version":1,"findings":[]}\n```', ['COST'])).toThrow()
   })
+})
+
+
+test('checks actual final citation links without imposing source counts or full-text requirements', () => {
+  const fields = { NOTES: ['搜索摘要显示功能请求，正文未核验 [S14]。', '（AI推断）可先测试一项任务。'], SOURCE_ROWS: [['[S9]', '真实搜索摘要', '相关线索', '今天', 'https://example.com/search?q=task']] }
+  expect(reportCitationGaps(fields)).toEqual(['[S14]'])
+  expect(reportCitationGaps({ ...fields, SOURCE_ROWS: [...fields.SOURCE_ROWS, ['[S14]', '搜索摘要', '原文未核验', '今天', 'https://example.com/search?q=request']] })).toEqual([])
+  expect(reportCitationGaps({ NOTES: '没有观察证据，仅建议测试。', SOURCE_ROWS: [] })).toEqual([])
+  expect(reportCitationGaps({ NOTES: '用户记录[1]与摘录[S2]', SOURCE_ROWS: [{ value: ['[1]', '用户提供'] }, ['[S2]', '页面摘要']] })).toEqual([])
+})
+
+test('keeps ordinary source-label and inline-link formats valid', () => {
+  expect(reportCitationGaps({ NOTES: '摘要[S14]、用户资料[1]、行内来源[S2](https://example.com/post)。', SOURCE_ROWS: [['S14', '搜索页'], [1, '用户提供']] })).toEqual([])
+})
+
+test('accepts several citation labels bound to one genuine source row', () => {
+  expect(reportCitationGaps({ REPORT_TITLE: '两个观察 [S1] [S2]', SOURCE_ROWS: [['[S1]、[S2]', '同一真实页面', 'https://example.com/']] })).toEqual([])
+})
+
+test('accepts ordinary Markdown source definitions without forcing a source-table label format', () => {
+  expect(reportCitationGaps({ REPORT_TITLE: '已取得的相关摘要 [S3]', REPORT_NOTE: '[S3]: https://example.com/search?q=task', SOURCE_ROWS: [] })).toEqual([])
 })

@@ -267,7 +267,7 @@ export function computeUnseenDivider(messages: readonly Message[], dividerIndex:
  * (alt buffer + mouse tracking + height constraint) lives at REPL's root
  * so nothing can accidentally render outside it.
  */
-export function FullscreenLayout(t0) {
+export function FullscreenLayout(t0: Props): React.ReactNode {
   const $ = _c(47);
   const {
     scrollable,
@@ -290,7 +290,7 @@ export function FullscreenLayout(t0) {
     rows: terminalRows,
     columns
   } = useTerminalSize();
-  const [stickyPrompt, setStickyPrompt] = useState(null);
+  const [stickyPrompt, setStickyPrompt] = useState<StickyPrompt | null>(null);
   let t4;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = {
@@ -488,7 +488,10 @@ function _temp2(url) {
   }
 }
 function _temp() {}
-function NewMessagesPill(t0) {
+function NewMessagesPill(t0: {
+  count: number
+  onClick?: () => void
+}): React.ReactNode {
   const $ = _c(10);
   const {
     count,
@@ -548,7 +551,10 @@ function NewMessagesPill(t0) {
 // even with scrollTop unchanged (the DECSTBM region top shifts with the
 // ScrollBox, and the diff engine sees "everything moved"). Fixed height
 // keeps the ScrollBox anchored; only the header TEXT changes, not its box.
-function StickyPromptHeader(t0) {
+function StickyPromptHeader(t0: {
+  text: string
+  onClick: () => void
+}): React.ReactNode {
   const $ = _c(8);
   const {
     text,
@@ -596,7 +602,7 @@ function StickyPromptHeader(t0) {
 // even when the overlay extends above the viewport. We omit minHeight and
 // flex-end here: they would create empty padding rows that shift visible
 // items down into the prompt area when the list has fewer items than max.
-function SuggestionsOverlay() {
+function SuggestionsOverlay(): React.ReactNode {
   const $ = _c(4);
   const data = usePromptOverlay();
   if (!data || data.suggestions.length === 0) {
@@ -618,7 +624,7 @@ function SuggestionsOverlay() {
 // Dialog portaled from PromptInput (AutoModeOptInDialog) — same clip-escape
 // pattern as SuggestionsOverlay. Renders later in tree order so it paints
 // over suggestions if both are ever up (they shouldn't be).
-function DialogOverlay() {
+function DialogOverlay(): React.ReactNode {
   const $ = _c(2);
   const node = usePromptOverlayDialog();
   if (!node) {

@@ -102,6 +102,7 @@ const MANAGED_BUNDLED_WORKFLOW_IDS = new Set([
   'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
 ])
 const KNOWN_PREVIOUS_OFFICIAL_WORKFLOW_PACK_SHA256 = new Map<string, ReadonlySet<string>>([
   ['efficient-constrained-dev-debug-workflow-v5', new Set([
@@ -665,7 +666,7 @@ export class WorkflowTemplateRegistryService {
 
     const packRegistry = new PackRegistryService()
     await migrateLegacyWorkflowConfigToPacks(getWorkflowConfigPath(), packRegistry).catch(() => [])
-    const existingTemplates = await packRegistry.listWorkflows().catch(() => [])
+    const existingTemplates = await packRegistry.listWorkflows().catch((): WorkflowTemplateRegistryTemplate[] => [])
     const existingById = new Map(existingTemplates
       .filter((template) => template.source === 'user' || template.editable !== false)
       .map((template) => [template.id, template]))

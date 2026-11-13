@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ContentOverlay } from '../shared/ContentOverlay'
 import { useExpertStore } from '../../stores/expertStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useCLITaskStore } from '../../stores/cliTaskStore'
 import { resolveExpertCategoryId, type ExpertDefinition, type ExpertPackSummary, type ExpertResearchBrowserConnectionInput, type ExpertResearchBrowserPresentation, type ExpertToolManifest } from '../../api/experts'
 import type { ExpertSessionSummary } from '../../types/session'
+
+// Keep the alternative UI implementation dormant; the public entry uses managed background only.
+const EXPERT_BROWSER_CHOICES_VISIBLE = false
 
 const EXPERT_SWITCH_CONFIRMATION_STATUSES: ExpertSessionSummary['status'][] = ['active', 'collecting', 'running']
 
@@ -66,7 +70,6 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
   const [pendingSwitchExpert, setPendingSwitchExpert] = useState<ExpertDefinition | null>(null)
   const [researchBrowserMode, setResearchBrowserMode] = useState<'managed' | 'cdp'>('managed')
   const [researchBrowserPresentation, setResearchBrowserPresentation] = useState<ExpertResearchBrowserPresentation>('assistable_background')
-  const [researchBrowserKind, setResearchBrowserKind] = useState<'chrome' | 'edge'>('chrome')
   const [researchBrowserEndpoint, setResearchBrowserEndpoint] = useState('http://127.0.0.1:9222')
   const [researchBrowserAuthorized, setResearchBrowserAuthorized] = useState(false)
   const loadedRef = useRef(false)
@@ -112,7 +115,6 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
     setDetailKey(expertSelectionKey(expert))
     setResearchBrowserMode('managed')
     setResearchBrowserPresentation('assistable_background')
-    setResearchBrowserKind('chrome')
     setResearchBrowserEndpoint('http://127.0.0.1:9222')
     setResearchBrowserAuthorized(false)
     setLocalError(null)
@@ -121,20 +123,22 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
   }
 
   const selectedBrowserOptions = (expert: ExpertDefinition): { researchBrowserConnection?: ExpertResearchBrowserConnectionInput; researchBrowserPresentation?: ExpertResearchBrowserPresentation } => {
-    if (expert.researchBrowserPolicy?.allowUserAuthorizedCdp === true && researchBrowserMode === 'cdp') {
+    if (EXPERT_BROWSER_CHOICES_VISIBLE && expert.researchBrowserPolicy?.allowUserAuthorizedCdp === true && researchBrowserMode === 'cdp') {
       if (!researchBrowserAuthorized) throw new Error('请先确认你授权本次专家会话读取和操作该调试浏览器。')
       return {
         researchBrowserConnection: {
           kind: 'cdp',
-          browser: researchBrowserKind,
           endpoint: researchBrowserEndpoint,
           userAuthorized: true,
         },
       }
     }
-    return expert.researchBrowserPolicy?.allowManagedPresentationChoice === true
-      ? { researchBrowserPresentation }
-      : {}
+    return {
+      ...(expert.researchBrowserPolicy ? { researchBrowserConnection: { kind: 'managed' as const } } : {}),
+      ...(expert.researchBrowserPolicy?.allowManagedPresentationChoice === true
+        ? { researchBrowserPresentation: EXPERT_BROWSER_CHOICES_VISIBLE ? researchBrowserPresentation : 'assistable_background' as const }
+        : {}),
+    }
   }
 
   const enterSelectedExpert = async (expert: ExpertDefinition) => {
@@ -205,8 +209,8 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-label="专家广场" data-testid="expert-selection-dialog">
-      <div className="flex h-[680px] w-[1150px] flex-none flex-col overflow-hidden rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
+    <ContentOverlay className="bg-black/35" role="dialog" aria-modal="true" aria-label="专家广场" data-testid="expert-selection-dialog">
+      <div className="flex h-[680px] max-h-full w-full max-w-[1150px] min-w-0 flex-col overflow-hidden rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--color-border)] px-6 py-4">
           <div className="min-w-0">
             {detailOpen ? (
@@ -234,12 +238,10 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
             error={localError}
             researchBrowserMode={researchBrowserMode}
             researchBrowserPresentation={researchBrowserPresentation}
-            researchBrowserKind={researchBrowserKind}
             researchBrowserEndpoint={researchBrowserEndpoint}
             researchBrowserAuthorized={researchBrowserAuthorized}
             onResearchBrowserModeChange={setResearchBrowserMode}
             onResearchBrowserPresentationChange={setResearchBrowserPresentation}
-            onResearchBrowserKindChange={setResearchBrowserKind}
             onResearchBrowserEndpointChange={setResearchBrowserEndpoint}
             onResearchBrowserAuthorizedChange={setResearchBrowserAuthorized}
             onAdd={() => { void handleEnter() }}
@@ -281,7 +283,7 @@ export function ExpertSelectionDialog({ open, onClose, projectRoot, sessionId, o
           onCancel={() => setPendingSwitchExpert(null)}
         />
       ) : null}
-    </div>
+    </ContentOverlay>
   )
 }
 
@@ -318,12 +320,10 @@ function ExpertDetail({
   error,
   researchBrowserMode,
   researchBrowserPresentation,
-  researchBrowserKind,
   researchBrowserEndpoint,
   researchBrowserAuthorized,
   onResearchBrowserModeChange,
   onResearchBrowserPresentationChange,
-  onResearchBrowserKindChange,
   onResearchBrowserEndpointChange,
   onResearchBrowserAuthorizedChange,
   onAdd,
@@ -337,12 +337,10 @@ function ExpertDetail({
   error: string | null
   researchBrowserMode: 'managed' | 'cdp'
   researchBrowserPresentation: ExpertResearchBrowserPresentation
-  researchBrowserKind: 'chrome' | 'edge'
   researchBrowserEndpoint: string
   researchBrowserAuthorized: boolean
   onResearchBrowserModeChange: (value: 'managed' | 'cdp') => void
   onResearchBrowserPresentationChange: (value: ExpertResearchBrowserPresentation) => void
-  onResearchBrowserKindChange: (value: 'chrome' | 'edge') => void
   onResearchBrowserEndpointChange: (value: string) => void
   onResearchBrowserAuthorizedChange: (value: boolean) => void
   onAdd: () => void
@@ -352,7 +350,7 @@ function ExpertDetail({
   const skillLabels = safeArray(expert.skillIds)
   const toolLabels = getToolLabels([expert], pack?.tools)
   const permissionLabels = getPermissionLabels([expert], pack?.tools)
-  const cdpSelectionIncomplete = researchBrowserMode === 'cdp' && (!researchBrowserAuthorized || !researchBrowserEndpoint.trim())
+  const cdpSelectionIncomplete = EXPERT_BROWSER_CHOICES_VISIBLE && researchBrowserMode === 'cdp' && (!researchBrowserAuthorized || !researchBrowserEndpoint.trim())
 
   return (
     <div data-testid="expert-detail" className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -397,12 +395,12 @@ function ExpertDetail({
           </div>
         </div>
 
-        {expert.researchBrowserPolicy?.allowUserAuthorizedCdp === true ? (
+        {EXPERT_BROWSER_CHOICES_VISIBLE && expert.researchBrowserPolicy?.allowUserAuthorizedCdp === true ? (
           <section className="mt-5 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-3" data-testid="expert-browser-connection-options">
             <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">网页调研浏览器</h4>
             <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs leading-5 text-[var(--color-text-secondary)]">
               <input type="radio" name="expert-browser-connection" checked={researchBrowserMode === 'managed'} onChange={() => onResearchBrowserModeChange('managed')} />
-              <span><strong className="text-[var(--color-text-primary)]">软件自带 Chromium（默认，隔离 Profile）</strong><br />无需额外设置；不会带入你日常 Chrome 的登录状态、Cookie、扩展或“浏览器扩展型 VPN/代理”，因此 Google / 百度的表现可能与日常浏览器不同。</span>
+              <span><strong className="text-[var(--color-text-primary)]">软件自带 Chromium（默认，隔离 Profile）</strong><br />无需额外设置；不会带入你日常默认浏览器的登录状态、Cookie、扩展或“浏览器扩展型 VPN/代理”，因此 Google / 百度的表现可能与日常浏览器不同。</span>
             </label>
             {researchBrowserMode === 'managed' && expert.researchBrowserPolicy?.allowManagedPresentationChoice === true ? (
               <fieldset className="ml-5 mt-2 space-y-2 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-2.5 text-xs leading-5 text-[var(--color-text-secondary)]">
@@ -419,18 +417,11 @@ function ExpertDetail({
             ) : null}
             <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs leading-5 text-[var(--color-text-secondary)]">
               <input type="radio" name="expert-browser-connection" checked={researchBrowserMode === 'cdp'} onChange={() => onResearchBrowserModeChange('cdp')} />
-              <span><strong className="text-[var(--color-text-primary)]">连接我主动开启的 Chrome / Edge</strong><br />仅连接本机调试端口；不会读取默认浏览器 Profile 或自行启动你的日常浏览器。</span>
+              <span><strong className="text-[var(--color-text-primary)]">连接我主动开启的系统默认浏览器（需支持 CDP）</strong><br />App 不限定浏览器品牌，只连接你明确提供的本机 CDP 调试端口；普通窗口不会被偷偷接管。</span>
             </label>
             {researchBrowserMode === 'cdp' ? (
               <div className="mt-3 space-y-3 border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-text-secondary)]">
-                <p>请先在一个专门的浏览器窗口启动调试端口，并在其中手动登录/验证。若你日常 Chrome 依靠 VPN/代理扩展访问 Google，请在这个专用调试 Profile 中自行启用同一 VPN/代理；软件不会读取或复制你日常浏览器的扩展、Cookie 或登录状态。不要把日常或敏感标签页放进该调试窗口。</p>
-                <p className="rounded-[8px] bg-[var(--color-surface-container-low)] px-2 py-1.5 font-mono text-[10px] leading-4">Chrome：chrome.exe --remote-debugging-port=9222 --user-data-dir=&quot;%LOCALAPPDATA%\cc-jiangxia\browser-debug\chrome&quot;<br />Edge：msedge.exe --remote-debugging-port=9222 --user-data-dir=&quot;%LOCALAPPDATA%\cc-jiangxia\browser-debug\edge&quot;</p>
-                <label className="block">浏览器
-                  <select aria-label="授权浏览器" className="mt-1 block w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs" value={researchBrowserKind} onChange={(event) => onResearchBrowserKindChange(event.target.value as 'chrome' | 'edge')}>
-                    <option value="chrome">Chrome</option>
-                    <option value="edge">Edge</option>
-                  </select>
-                </label>
+                <p>请让系统默认浏览器以一个专门的调试窗口开放本机 CDP 端口，并在其中手动登录/验证。App 不会指定 Chrome，也不会复制你普通窗口的 Cookie。Chromium、Edge、Brave、Arc 等兼容 CDP 的浏览器可连接；Safari 和 Firefox 的普通窗口不提供 Playwright 所需的 CDP 接口，不能假装已经接入。不要把日常或敏感标签页放进该调试窗口。</p>
                 <label className="block">本机调试地址
                   <input aria-label="本机浏览器调试地址" className="mt-1 block w-full rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs" value={researchBrowserEndpoint} onChange={(event) => onResearchBrowserEndpointChange(event.target.value)} placeholder="http://127.0.0.1:9222" />
                 </label>
@@ -443,7 +434,9 @@ function ExpertDetail({
           </section>
         ) : null}
 
-        {expert.researchBrowserPolicy?.allowManagedPresentationChoice === true ? <p className="mt-4 text-xs leading-5 text-[var(--color-text-tertiary)]">调研开始后，软件会先提示正在检索；只有你选择全程显示，或网站需要你完成验证时，才会显示浏览器窗口。</p> : null}
+        {!EXPERT_BROWSER_CHOICES_VISIBLE && expert.researchBrowserPolicy ? <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">网页调研使用软件自带 Chromium，在后台运行。需要登录或验证时会通知你，只有你点击打开浏览器才会显示窗口。</p> : null}
+
+        {EXPERT_BROWSER_CHOICES_VISIBLE && expert.researchBrowserPolicy?.allowManagedPresentationChoice === true ? <p className="mt-4 text-xs leading-5 text-[var(--color-text-tertiary)]">调研开始后，软件会先提示正在检索；只有你选择全程显示，或网站需要你完成验证时，才会显示浏览器窗口。</p> : null}
 
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button type="button" onClick={onAdd} disabled={entering || cdpSelectionIncomplete} aria-label="进入专家 Mode" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--color-brand)] px-3 text-sm font-semibold text-[var(--color-on-primary)] transition-colors hover:bg-[var(--color-brand-hover)] disabled:cursor-not-allowed disabled:opacity-60">

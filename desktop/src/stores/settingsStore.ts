@@ -132,7 +132,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   locale: getStoredLocale(),
   theme: useUIStore.getState().theme,
   skipWebFetchPreflight: true,
-  desktopNotificationsEnabled: false,
+  desktopNotificationsEnabled: true,
   desktopTerminal: DEFAULT_DESKTOP_TERMINAL_SETTINGS,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
   imageGeneration: DEFAULT_IMAGE_GENERATION_SETTINGS,
@@ -182,7 +182,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         thinkingEnabled: userSettings.alwaysThinkingEnabled !== false,
         theme,
         skipWebFetchPreflight: userSettings.skipWebFetchPreflight !== false,
-        desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
+        // Upgrade settings that predate this preference without rewriting user-owned JSON.
+        desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled !== false,
         desktopTerminal: normalizeDesktopTerminalSettings(userSettings.desktopTerminal),
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
         imageGeneration: normalizeImageGenerationSettings(userSettings.imageGeneration),

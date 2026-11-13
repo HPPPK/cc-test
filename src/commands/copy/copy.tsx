@@ -117,7 +117,7 @@ type PickerProps = {
   }) => void;
 };
 type PickerSelection = number | 'full' | 'always';
-function CopyPicker(t0) {
+function CopyPicker(t0: PickerProps): React.ReactNode {
   const $ = _c(33);
   const {
     fullText,
@@ -125,7 +125,7 @@ function CopyPicker(t0) {
     messageAge,
     onDone
   } = t0;
-  const focusedRef = useRef("full");
+  const focusedRef = useRef<PickerSelection>("full");
   const t1 = `${fullText.length} chars, ${countCharInString(fullText, "\n") + 1} lines`;
   let t2;
   if ($[0] !== t1) {
@@ -159,7 +159,7 @@ function CopyPicker(t0) {
   } else {
     t3 = $[4];
   }
-  const options = t3;
+  const options: OptionWithDescription<PickerSelection>[] = t3;
   let t4;
   if ($[6] !== codeBlocks || $[7] !== fullText) {
     t4 = function getSelectionContent(selected) {

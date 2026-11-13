@@ -59,7 +59,7 @@ type AttachmentRef = {
 }
 
 type SessionProcess = {
-  proc: ReturnType<typeof Bun.spawn>
+  proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
   outputCallbacks: Array<(msg: any) => void>
   workDir: string
   permissionMode: string
@@ -92,7 +92,9 @@ type SessionProcess = {
   >
 }
 
-type SessionStartOptions = {
+export type SessionStartOptions = {
+  /** Package-scoped search pacing, supplied by the active Expert runtime. */
+  expertBrowserSearchPacing?: { minIntervalMs: number }
   permissionMode?: string
   model?: string
   effort?: string
@@ -134,7 +136,7 @@ type SessionStartOptions = {
   expertTemplateFillWrite?: boolean
   expertTemplateFillDelivery?: 'cli-only'
   /** Session-scoped commercialization model contract; never changes saved providers. */
-  expertModelPolicy?: 'deepseek-flash-only'
+  expertModelPolicy?: 'deepseek-flash-only' | 'session-model-only'
   /** Package-scoped final output root; passed only by an opted-in Expert runtime. */
   expertTemplateFillOutputRoot?: string
   /** Session-only fixed Markdown artifact allowlist declared by this Expert ZIP. */
@@ -378,7 +380,7 @@ export class ConversationService {
       throw error
     }
 
-    let proc: ReturnType<typeof Bun.spawn>
+    let proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
     try {
       proc = Bun.spawn(args, {
         cwd: launchWorkDir,
@@ -548,6 +550,7 @@ export class ConversationService {
   ): boolean {
     return this.sendSdkMessage(sessionId, {
       type: 'user',
+      messageKind: 'user_input',
       message: {
         role: 'user',
         content: this.buildUserContent(content, sessionId, attachments),
@@ -563,6 +566,7 @@ export class ConversationService {
   ): boolean {
     return this.sendSdkMessage(sessionId, {
       type: 'user',
+      messageKind: 'internal_notification',
       message: {
         role: 'user',
         content: this.buildUserContent(content, sessionId),
@@ -1216,7 +1220,7 @@ export class ConversationService {
     // If the user never configured a Desktop provider and only launched the
     // app/server with ANTHROPIC_* env vars, keep those env vars so Windows
     // dev-mode and env-only setups can still authenticate successfully.
-    const PROVIDER_ENV_KEYS = [
+    const PROVIDER_ENV_KEYS: readonly string[] = [
       'ANTHROPIC_API_KEY',
       'ANTHROPIC_BASE_URL',
       'ANTHROPIC_AUTH_TOKEN',
@@ -1243,6 +1247,8 @@ export class ConversationService {
     delete cleanEnv.CC_HAHA_EXPERT_OUTPUT_TEMPLATE_GUARD
     delete cleanEnv.CC_JIANGXIA_EXPERT_MODEL_POLICY
     delete cleanEnv.CC_HAHA_EXPERT_MODEL_POLICY
+    delete cleanEnv.CC_JIANGXIA_EXPERT_MODEL_ID
+    delete cleanEnv.CC_HAHA_EXPERT_MODEL_ID
     delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
     delete cleanEnv.CC_HAHA_EXPERT_TEMPLATE_FILL_DELIVERY
     delete cleanEnv.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT
@@ -1314,7 +1320,7 @@ export class ConversationService {
     // Keep all alternate CLI provider transports explicitly off. These keys
     // must be present (rather than merely absent) so settings loaded later by
     // the child CLI cannot re-enable an unrelated cloud-provider transport.
-    const managedProviderRouteGuards = explicitProviderEnv
+    const managedProviderRouteGuards: Record<string, string> = explicitProviderEnv
       ? {
           CLAUDE_CODE_USE_BEDROCK: '0',
           CLAUDE_CODE_USE_VERTEX: '0',
@@ -1507,14 +1513,16 @@ export class ConversationService {
       setJiangxiaEnvAliases(childEnv, 'DESKTOP_SERVER_URL', desktopServerUrl)
     }
 
-    if (options?.expertModelPolicy === 'deepseek-flash-only') {
-      // Apply after inherited/provider/OAuth merges. Host ownership also blocks
-      // later settings.env from restoring provider aliases or a Pro subagent.
+    if (options?.expertModelPolicy === 'deepseek-flash-only' || options?.expertModelPolicy === 'session-model-only') {
+      // Apply after provider/settings merges, and keep every worker on the host-selected model.
+      const expertModel = options.expertModelPolicy === 'deepseek-flash-only' ? 'deepseek-flash' : options.model?.trim()
+      if (!expertModel) throw new Error('Expert session model is required; no automatic fallback is allowed.')
       childEnv.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
       for (const key of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
-        childEnv[key] = 'deepseek-flash'
+        childEnv[key] = expertModel
       }
-      setJiangxiaEnvAliases(childEnv, 'EXPERT_MODEL_POLICY', 'deepseek-flash-only')
+      setJiangxiaEnvAliases(childEnv, 'EXPERT_MODEL_POLICY', options.expertModelPolicy)
+      setJiangxiaEnvAliases(childEnv, 'EXPERT_MODEL_ID', expertModel)
       // No --fallback-model is supplied by Desktop. Unsupported Flash/quota
       // failures must remain failures instead of silently selecting Pro.
     }

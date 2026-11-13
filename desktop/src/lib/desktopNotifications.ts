@@ -25,7 +25,7 @@ type NativeNotificationPayload = {
 }
 
 type NativeNotificationSender = (options: NativeNotificationPayload) => Promise<boolean> | boolean
-export type DesktopNotificationPermission = NotificationPermission | 'unsupported'
+export type DesktopNotificationPermission = NotificationPermission | 'unsupported' | 'error'
 type PluginPermissionState = DesktopNotificationPermission | 'prompt' | 'prompt-with-rationale'
 
 const TARGET_EXTRA_KEY = 'ccJiangxiaTarget'
@@ -74,7 +74,7 @@ function normalizePermission(value: unknown): DesktopNotificationPermission {
   if (value === 'prompt' || value === 'prompt-with-rationale') return 'default'
   return ['default', 'denied', 'granted', 'unsupported'].includes(value as string)
     ? value as DesktopNotificationPermission
-    : 'unsupported'
+    : 'error'
 }
 
 async function invokeWindowsNotificationPermissionState(): Promise<DesktopNotificationPermission | null> {
@@ -88,7 +88,7 @@ async function invokeWindowsNotificationPermissionState(): Promise<DesktopNotifi
     if (typeof console !== 'undefined') {
       console.warn('[desktopNotifications] failed to read Windows notification permission:', err)
     }
-    return 'unsupported'
+    return 'error'
   }
 }
 
@@ -103,7 +103,7 @@ async function invokeWindowsNotificationPermissionRequest(): Promise<DesktopNoti
     if (typeof console !== 'undefined') {
       console.warn('[desktopNotifications] failed to request Windows notification permission:', err)
     }
-    return 'unsupported'
+    return 'error'
   }
 }
 
@@ -113,12 +113,12 @@ async function invokeMacNotificationPermissionState(): Promise<DesktopNotificati
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     const permission = await invoke<DesktopNotificationPermission>('macos_notification_permission_state')
-    return ['default', 'denied', 'granted', 'unsupported'].includes(permission) ? permission : 'unsupported'
+    return ['default', 'denied', 'granted', 'unsupported'].includes(permission) ? permission : 'error'
   } catch (err) {
     if (typeof console !== 'undefined') {
       console.warn('[desktopNotifications] failed to read macOS notification permission:', err)
     }
-    return 'unsupported'
+    return 'error'
   }
 }
 
@@ -128,12 +128,12 @@ async function invokeMacNotificationPermissionRequest(): Promise<DesktopNotifica
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     const permission = await invoke<DesktopNotificationPermission>('macos_request_notification_permission')
-    return ['default', 'denied', 'granted', 'unsupported'].includes(permission) ? permission : 'unsupported'
+    return ['default', 'denied', 'granted', 'unsupported'].includes(permission) ? permission : 'error'
   } catch (err) {
     if (typeof console !== 'undefined') {
       console.warn('[desktopNotifications] failed to request macOS notification permission:', err)
     }
-    return 'unsupported'
+    return 'error'
   }
 }
 
@@ -282,8 +282,7 @@ export async function openDesktopNotificationSettings(): Promise<boolean> {
     return true
   } catch {
     try {
-      window.open(url, '_blank', 'noopener,noreferrer')
-      return true
+      return window.open(url, '_blank', 'noopener,noreferrer') !== null
     } catch {
       return false
     }
@@ -389,7 +388,9 @@ export async function notifyDesktop(options: DesktopNotificationOptions): Promis
     return false
   }
 
-  const cooldownScope = options.cooldownScope
+  const cooldownScope = options.cooldownScope && options.target?.type === 'session'
+    ? `${options.cooldownScope}:session:${options.target.sessionId}`
+    : options.cooldownScope
   if (cooldownScope) {
     const now = Date.now()
     const lastNotificationAt = lastNotificationAtByScope.get(cooldownScope) ?? 0

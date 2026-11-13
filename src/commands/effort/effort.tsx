@@ -116,7 +116,9 @@ export function executeEffort(args: string): EffortCommandResult {
   }
   return setEffortValue(normalized);
 }
-function ShowCurrentEffort(t0) {
+function ShowCurrentEffort(t0: {
+  onDone: (result: string) => void
+}): React.ReactNode {
   const {
     onDone
   } = t0;
@@ -131,7 +133,10 @@ function ShowCurrentEffort(t0) {
 function _temp(s) {
   return s.effortValue;
 }
-function ApplyEffortAndClose(t0) {
+function ApplyEffortAndClose(t0: {
+  result: EffortCommandResult
+  onDone: (result: string) => void
+}): React.ReactNode {
   const $ = _c(6);
   const {
     result,

@@ -261,8 +261,9 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   #createResultPromise(): Promise<ExecResult> {
-    this.#boundAbortHandler = this.#abortHandler.bind(this)
-    this.#abortSignal.addEventListener('abort', this.#boundAbortHandler, {
+    const abortHandler = this.#abortHandler.bind(this)
+    this.#boundAbortHandler = abortHandler
+    this.#abortSignal.addEventListener('abort', abortHandler, {
       once: true,
     })
 

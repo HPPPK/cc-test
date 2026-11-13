@@ -39,7 +39,12 @@ function wrap(text: string, width: number): string[] {
   if (cur) lines.push(cur);
   return lines;
 }
-function SpeechBubble(t0) {
+function SpeechBubble(t0: {
+  text: string
+  color: keyof Theme
+  fading: boolean
+  tail: 'down' | 'right'
+}): React.ReactNode {
   const $ = _c(31);
   const {
     text,
@@ -290,7 +295,7 @@ export function CompanionSprite(): React.ReactNode {
 // bottomFloat slot (outside the overflowY:hidden clip) so it can extend into
 // the ScrollBox region. CompanionSprite owns the clear-after-10s timer; this
 // just reads companionReaction and renders the fade.
-export function CompanionFloatingBubble() {
+export function CompanionFloatingBubble(): React.ReactNode {
   const $ = _c(8);
   const reaction = useAppState(_temp);
   let t0;

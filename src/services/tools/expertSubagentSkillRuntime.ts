@@ -1,3 +1,4 @@
+import { normalizeResearchQualityContext, researchQualityInstruction, type ResearchQualityContext } from '../../server/services/expertResearchQualityCheckpoint.js'
 import type { ExpertResearchAuditEntry } from '../../server/services/expertResearchCompletionService.js'
 import { isFileFirstExpertResearchAgentType, resolveFileFirstExpertAgentType, researchArtifactRootPath } from './expertFileFirstResearchProtocol.js'
 
@@ -70,6 +71,7 @@ export type ExpertSubagentResearchSourcePlan = {
 }
 
 export type ExpertSubagentSkillContext = {
+  researchQuality?: ResearchQualityContext
   expertId: string
   packId: string
   packVersion: string
@@ -88,6 +90,7 @@ export type ExpertSubagentSkillContext = {
     absorptionPath: string
     completionReviewPath: string
     reportPath: string
+    templateFields?: Array<{ id: string; kind: string; columns?: string[] }>
   }
   /** Per-call purpose, not persisted session state. */
   researchTaskKind?: ExpertResearchTaskKind
@@ -153,7 +156,12 @@ function normalizeOutputReview(value: unknown): ExpertSubagentSkillContext['outp
   const completionReviewPath = safeArtifactPath(value.completionReviewPath)
   const reportPath = nonEmptyString(value.reportPath)
   if (!briefPath || !absorptionPath || !completionReviewPath || !reportPath || !/\.html?$/i.test(reportPath)) return undefined
-  return { briefPath, absorptionPath, completionReviewPath, reportPath }
+  const templateFields = Array.isArray(value.templateFields) && value.templateFields.length <= 512
+    && value.templateFields.every(field => isRecord(field) && typeof field.id === 'string' && field.id.trim() && field.id.length <= 256 && typeof field.kind === 'string'
+      && (field.columns === undefined || (Array.isArray(field.columns) && field.columns.every(column => typeof column === 'string'))))
+    ? value.templateFields.map(field => ({ id: field.id as string, kind: field.kind as string, ...(Array.isArray(field.columns) ? { columns: field.columns as string[] } : {}) }))
+    : undefined
+  return { briefPath, absorptionPath, completionReviewPath, reportPath, ...(templateFields ? { templateFields } : {}) }
 }
 
 function isResearchSourceOwner(value: string): value is ExpertSubagentResearchSourceEntry["owner"] {
@@ -206,6 +214,7 @@ function normalizeContext(value: unknown): ExpertSubagentSkillContext | undefine
   if (!expertId || !packId || !packVersion || !Array.isArray(value.skills)) return undefined
   const artifactPaths = normalizeArtifactPaths(value.artifactPaths)
   const outputReview = normalizeOutputReview(value.outputReview)
+  const researchQuality = normalizeResearchQualityContext(value.researchQuality)
   const researchSourcePlan = normalizeResearchSourcePlan(value.researchSourcePlan, artifactPaths)
 
   let total = 0
@@ -228,6 +237,7 @@ function normalizeContext(value: unknown): ExpertSubagentSkillContext | undefine
     packVersion,
     ...(artifactPaths ? { artifactPaths } : {}),
     ...(outputReview ? { outputReview } : {}),
+    ...(researchQuality ? { researchQuality } : {}),
     ...(researchSourcePlan ? { researchSourcePlan } : {}),
     ...(value.researchTaskKind !== undefined ? { researchTaskKind: normalizeExpertResearchTaskKind(value.researchTaskKind) } : {}),
     skills,
@@ -247,9 +257,11 @@ function normalizePostReviewEvidenceAbsorptionContext(value: unknown): ExpertPos
 
 function responseGateError(value: unknown): ExpertSubagentContextGateError | undefined {
   if (!isRecord(value)) return undefined
-  const code = nonEmptyString(value.error)
+  const code = nonEmptyString(value.error) ?? nonEmptyString(value.code)
   const message = nonEmptyString(value.message)
-  if (!code?.startsWith('EXPERT_RESEARCH_')) return undefined
+  // Preserve new structured validation failures too; an allowlist hides the actual
+  // cause from the parent and turns input repair into connection retries.
+  if (!code || (!message && !code.startsWith('EXPERT_'))) return undefined
   return new ExpertSubagentContextGateError(code, message ?? code)
 }
 
@@ -516,6 +528,28 @@ function researchSourceOwnerLabel(owner: ExpertSubagentResearchSourceEntry["owne
   return "C：商业化与渠道"
 }
 
+/** Fail before Agent creates a background task; runAgent still reloads context
+ * at execution time so a queued worker cannot use stale phase authority.
+ */
+export async function preflightExpertSubagentDispatch(
+  agentType: string | undefined,
+  researchTaskKind?: ExpertResearchTaskKind,
+  dependencies: Dependencies = { env: process.env, fetch: globalThis.fetch },
+): Promise<void> {
+  if (!agentType || !isFileFirstExpertResearchAgentType(agentType)
+    || !nonEmptyString(dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID)) return
+  let context: ExpertSubagentSkillContext | undefined
+  try {
+    context = await loadExpertSubagentSkillContext(agentType, dependencies, { researchTaskKind })
+  } catch (error) {
+    if (error instanceof ExpertSubagentContextGateError) throw new ExpertSubagentContextGateError(error.code,
+      error.message + '\n本次未创建子代理任务；修复以上问题后重试派遣，不要调用 TaskOutput 等待或编造任务编号。')
+    throw error
+  }
+  if (!context) throw new ExpertSubagentContextGateError('EXPERT_RESEARCH_DISPATCH_CONTEXT_UNAVAILABLE',
+    '派遣前无法核对专家阶段与任务范围，尚未启动子代理。保留原任务和研究材料，恢复 App 会话连接后重试同一任务；不要重复派遣或猜测权限。')
+}
+
 /** Resolves the one structured source package that the current child runner will inject. */
 export function resolveExpertAssignedResearchSourceBatch(
   context: ExpertSubagentSkillContext | undefined,
@@ -565,8 +599,9 @@ export function formatExpertSubagentSkillContext(
   if (!context) return undefined
   const sections: string[] = []
   const boundedResearch = context.expertId === 'commercialization-research-report'
+  if (context.researchQuality) sections.push(researchQualityInstruction(context.researchQuality, context.artifactPaths?.researcherPaths ?? [], input.researcherTargetPath))
   if (boundedResearch && input.researcherTargetPath) {
-    sections.push('<expert-bounded-research-policy>\nAuthoritative override of conflicting package/source-library instructions: the 149 URLs are optional candidates, never a visitation queue. Use relevant product, user, pricing and channel evidence. At most 6 researcher starts total, 2 per lane, 12 browser TOOL CALLS per researcher, and one activation-based 15-minute research window. These are ceilings, not quotas. Stop new browsing on exhaustion, save existing evidence and explicit gaps to your assigned Markdown, Read back, submit the real audit and return for D/E/F. Never label unvisited candidates as failed, limited or visited; do not drain a queue or expand reciprocal routes.\n</expert-bounded-research-policy>')
+    sections.push('<expert-bounded-research-policy>\nAuthoritative override of conflicting package/source-library instructions: the 149 URLs are optional candidates, never a visitation queue. Use relevant product, user, pricing and channel evidence. At most 6 researcher starts total, 2 per lane, 12 browser TOOL CALLS per researcher, and one activation-based ' + (context.researchQuality ? '25' : '15') + '-minute research window. These are ceilings, not quotas. Stop new browsing on exhaustion, save existing evidence and explicit gaps to your assigned Markdown, Read back, submit the real audit and return for D/E/F. Never label unvisited candidates as failed, limited or visited; do not drain a queue or expand reciprocal routes.\n</expert-bounded-research-policy>')
   }
   if (context.skills.length > 0) {
     const skills = context.skills

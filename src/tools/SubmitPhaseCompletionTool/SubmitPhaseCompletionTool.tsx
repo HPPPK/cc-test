@@ -95,12 +95,12 @@ function errorToValidationResult(error: unknown) {
   }
 }
 
-function hasAutomaticRecoveryWindow(workflow: Record<string, unknown>, submissionStatus?: Input['status']): boolean {
+function hasAutomaticRecoveryCredential(workflow: Record<string, unknown>, submissionStatus?: Input['status']): boolean {
   if (submissionStatus !== 'blocked' && submissionStatus !== 'unable') return false
   const recovery = workflow.autoRecovery
   return isRecord(recovery)
     && typeof recovery.phaseId === 'string'
-    && typeof recovery.expiresAt === 'string'
+    && (typeof recovery.credentialId === 'string' || typeof recovery.expiresAt === 'string')
 }
 
 function messageForStatus(
@@ -108,10 +108,11 @@ function messageForStatus(
   workflow: Record<string, unknown> = {},
   submissionStatus?: Input['status'],
 ): string {
-  if (hasAutomaticRecoveryWindow(workflow, submissionStatus)) {
+  if (hasAutomaticRecoveryCredential(workflow, submissionStatus)) {
     return [
-      'The current phase was recorded as repairable and the server opened a 10-second silent recovery window.',
+      'The current phase was recorded as repairable and the server issued a one-time recovery credential.',
       'Immediately call request_workflow_route in this same turn with rework_current_phase or jump_to_phase to the actual repair phase.',
+      'The credential remains valid until that route call consumes it, even while the model is reasoning.',
       'Keep requireUserConfirmation true; the server applies only this constrained first recovery without a user click.',
       'Do not wait for the user, do not call the UI retry action, and do not advance normally.',
     ].join(' ')
@@ -324,7 +325,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
     }
 
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
+    if (!state || !getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
       return unavailable()
     }
     if (
@@ -343,7 +344,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
     }
 
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
+    if (!state || !getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
       throw new Error('Workflow completion is available only in workflow sessions.')
     }
     const submission = completionInputWithState(input, state)

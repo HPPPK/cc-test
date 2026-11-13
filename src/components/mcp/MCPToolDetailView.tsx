@@ -11,14 +11,14 @@ type Props = {
   server: ServerInfo;
   onBack: () => void;
 };
-export function MCPToolDetailView(t0) {
+export function MCPToolDetailView(t0: Props): React.ReactNode {
   const $ = _c(44);
   const {
     tool,
     server,
     onBack
   } = t0;
-  const [toolDescription, setToolDescription] = React.useState("");
+  const [toolDescription, setToolDescription] = React.useState<string>("");
   let t1;
   let toolName;
   if ($[0] !== server.name || $[1] !== tool) {

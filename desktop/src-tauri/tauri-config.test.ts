@@ -24,6 +24,19 @@ describe('tauri security config', () => {
     expect(csp).toContain('http://localhost:*')
   })
 
+  it('allows only the notification pane in addition to ordinary external links', () => {
+    const config = JSON.parse(readFileSync(join(currentDir, 'tauri.conf.json'), 'utf8'))
+    const pattern = config.plugins?.shell?.open
+    expect(typeof pattern).toBe('string')
+    const allowed = new RegExp(pattern)
+    expect(allowed.test('x-apple.systempreferences:com.apple.preference.notifications')).toBe(true)
+    expect(allowed.test('https://example.com/help')).toBe(true)
+    expect(allowed.test('mailto:help@example.com')).toBe(true)
+    expect(allowed.test('x-apple.systempreferences:com.apple.preference.security')).toBe(false)
+    expect(allowed.test('x-apple.systempreferences:com.apple.preference.notifications?extra=1')).toBe(false)
+    expect(allowed.test('--args')).toBe(false)
+  })
+
   it('enables OS proxy discovery for updater downloads', () => {
     const cargoToml = readFileSync(join(currentDir, 'Cargo.toml'), 'utf8')
 

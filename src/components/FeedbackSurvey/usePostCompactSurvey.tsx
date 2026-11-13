@@ -29,7 +29,17 @@ function hasMessageAfterBoundary(messages: Message[], boundaryUuid: string): boo
   }
   return false;
 }
-export function usePostCompactSurvey(messages, isLoading, t0, t1) {
+export function usePostCompactSurvey(messages: Message[], isLoading: boolean, t0, t1: { enabled?: boolean }): {
+  state:
+    | 'closed'
+    | 'open'
+    | 'thanks'
+    | 'transcript_prompt'
+    | 'submitting'
+    | 'submitted'
+  lastResponse: FeedbackSurveyResponse | null
+  handleSelect: (selected: FeedbackSurveyResponse) => void
+} {
   const $ = _c(23);
   const hasActivePrompt = t0 === undefined ? false : t0;
   let t2;
@@ -44,7 +54,7 @@ export function usePostCompactSurvey(messages, isLoading, t0, t1) {
     enabled: t3
   } = t2;
   const enabled = t3 === undefined ? true : t3;
-  const [gateEnabled, setGateEnabled] = useState(null);
+  const [gateEnabled, setGateEnabled] = useState<boolean | null>(null);
   let t4;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = new Set();
@@ -52,8 +62,8 @@ export function usePostCompactSurvey(messages, isLoading, t0, t1) {
   } else {
     t4 = $[2];
   }
-  const seenCompactBoundaries = useRef(t4);
-  const pendingCompactBoundaryUuid = useRef(null);
+  const seenCompactBoundaries = useRef<Set<string>>(t4);
+  const pendingCompactBoundaryUuid = useRef<string | null>(null);
   const onOpen = _temp;
   const onSelect = _temp2;
   let t5;
@@ -99,7 +109,7 @@ export function usePostCompactSurvey(messages, isLoading, t0, t1) {
   } else {
     t8 = $[8];
   }
-  const currentCompactBoundaries = t8;
+  const currentCompactBoundaries: Set<string> = t8;
   let t10;
   let t9;
   if ($[9] !== currentCompactBoundaries || $[10] !== enabled || $[11] !== gateEnabled || $[12] !== hasActivePrompt || $[13] !== isLoading || $[14] !== messages || $[15] !== open || $[16] !== state) {

@@ -16,7 +16,7 @@ import {
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   createMemorySavedMessage,
 } from '../../utils/messages.js'
 import type { Message } from '../../types/message.js'
@@ -222,7 +222,7 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
       const prompt = buildConsolidationPrompt(memoryRoot, transcriptDir, extra)
 
       const result = await runForkedAgent({
-        promptMessages: [createUserMessage({ content: prompt })],
+        promptMessages: [createRuntimeUserMessage({ content: prompt })],
         cacheSafeParams: createCacheSafeParams(context),
         canUseTool: createAutoMemCanUseTool(memoryRoot),
         querySource: 'auto_dream',

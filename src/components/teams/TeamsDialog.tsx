@@ -240,7 +240,7 @@ type TeamDetailViewProps = {
   selectedIndex: number;
   onCancel: () => void;
 };
-function TeamDetailView(t0) {
+function TeamDetailView(t0: TeamDetailViewProps): React.ReactNode {
   const $ = _c(13);
   const {
     teamName,
@@ -295,7 +295,7 @@ type TeammateListItemProps = {
   teammate: TeammateStatus;
   isSelected: boolean;
 };
-function TeammateListItem(t0) {
+function TeammateListItem(t0: TeammateListItemProps): React.ReactNode {
   const $ = _c(21);
   const {
     teammate,
@@ -374,7 +374,7 @@ type TeammateDetailViewProps = {
   teamName: string;
   onCancel: () => void;
 };
-function TeammateDetailView(t0) {
+function TeammateDetailView(t0: TeammateDetailViewProps): React.ReactNode {
   const $ = _c(39);
   const {
     teammate,
@@ -391,7 +391,7 @@ function TeammateDetailView(t0) {
   } else {
     t1 = $[0];
   }
-  const [teammateTasks, setTeammateTasks] = useState(t1);
+  const [teammateTasks, setTeammateTasks] = useState<Task[]>(t1);
   let t2;
   let t3;
   if ($[1] !== teamName || $[2] !== teammate.agentId || $[3] !== teammate.name) {
@@ -431,7 +431,7 @@ function TeammateDetailView(t0) {
   }
   useInput(t4);
   const workingPath = teammate.worktreePath || teammate.cwd;
-  let subtitleParts;
+  let subtitleParts: string[];
   if ($[7] !== teammate.model || $[8] !== teammate.worktreePath || $[9] !== workingPath) {
     subtitleParts = [];
     if (teammate.model) {

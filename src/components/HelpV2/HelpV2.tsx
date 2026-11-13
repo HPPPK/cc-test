@@ -17,7 +17,7 @@ type Props = {
   }) => void;
   commands: Command[];
 };
-export function HelpV2(t0) {
+export function HelpV2(t0: Props): React.ReactNode {
   const $ = _c(44);
   const {
     onClose,
@@ -52,7 +52,7 @@ export function HelpV2(t0) {
   useKeybinding("help:dismiss", close, t2);
   const exitState = useExitOnCtrlCDWithKeybindings(close);
   const dismissShortcut = useShortcutDisplay("help:dismiss", "Help", "esc");
-  let antOnlyCommands;
+  let antOnlyCommands: Command[];
   let builtinCommands;
   let t3;
   if ($[3] !== commands) {

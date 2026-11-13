@@ -257,7 +257,6 @@ export default class Ink {
       }
     };
 
-    // @ts-expect-error @types/react-reconciler@0.32.3 declares 11 args with transitionCallbacks,
     // but react-reconciler 0.33.0 source only accepts 10 args (no transitionCallbacks)
     this.container = reconciler.createContainer(this.rootNode, ConcurrentRoot, null, false, null, 'id', noop,
     // onUncaughtError
@@ -265,16 +264,11 @@ export default class Ink {
     // onCaughtError
     noop,
     // onRecoverableError
-    noop // onDefaultTransitionIndicator
+    noop, // onDefaultTransitionIndicator
+    null // optional transitionCallbacks (ignored by 0.33 runtime)
     );
-    if ("production" === 'development') {
-      reconciler.injectIntoDevTools({
-        bundleType: 0,
-        // Reporting React DOM's version, not Ink's
-        // See https://github.com/facebook/react/issues/16666#issuecomment-532639905
-        version: '16.13.1',
-        rendererPackageName: 'ink'
-      });
+    if (false) {
+      reconciler.injectIntoDevTools();
     }
   }
   private handleResume = () => {
@@ -794,7 +788,6 @@ export default class Ink {
   }
   pause(): void {
     // Flush pending React updates and render before pausing.
-    // @ts-expect-error flushSyncFromReconciler exists in react-reconciler 0.31 but not in @types/react-reconciler
     reconciler.flushSyncFromReconciler();
     this.onRender();
     this.isPaused = true;
@@ -1452,9 +1445,7 @@ export default class Ink {
         </TerminalWriteProvider>
       </App>;
 
-    // @ts-expect-error updateContainerSync exists in react-reconciler but not in @types/react-reconciler
     reconciler.updateContainerSync(tree, this.container, null, noop);
-    // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types/react-reconciler
     reconciler.flushSyncWork();
   }
   unmount(error?: Error | number | null): void {
@@ -1519,9 +1510,7 @@ export default class Ink {
       this.drainTimer = null;
     }
 
-    // @ts-expect-error updateContainerSync exists in react-reconciler but not in @types/react-reconciler
     reconciler.updateContainerSync(null, this.container, null, noop);
-    // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types/react-reconciler
     reconciler.flushSyncWork();
     instances.delete(this.options.stdout);
 

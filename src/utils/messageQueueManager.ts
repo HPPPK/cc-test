@@ -14,6 +14,7 @@ import type {
   QueuePriority,
 } from '../types/textInputTypes.js'
 import type { PastedContent } from './config.js'
+import { messageKindMetadata } from './messageKind.js'
 import { extractTextContent } from './messages.js'
 import { objectGroupBy } from './objectGroupBy.js'
 import { recordQueueOperation } from './sessionStorage.js'
@@ -140,7 +141,13 @@ export function enqueue(command: QueuedCommand): void {
  * is never starved by system messages.
  */
 export function enqueuePendingNotification(command: QueuedCommand): void {
-  commandQueue.push({ ...command, priority: command.priority ?? 'later' })
+  // This producer knows these are generated notifications. Preserve an explicit
+  // caller kind (for example a human teammate message) and independent flags.
+  commandQueue.push({
+    ...command,
+    ...messageKindMetadata({ ...command, messageKind: command.messageKind ?? 'internal_notification' }),
+    priority: command.priority ?? 'later',
+  })
   notifySubscribers()
   logOperation(
     'enqueue',

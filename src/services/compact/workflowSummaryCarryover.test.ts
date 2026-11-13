@@ -128,6 +128,8 @@ describe('generateWorkflowSummaryCarryover', () => {
         'Do not create a checklist of irrelevant or unused recommended skills.',
       ].join('\n'),
       summaryRunner: async input => {
+        expect(typeof input.summaryRequest.message.content).toBe('string')
+        if (typeof input.summaryRequest.message.content !== 'string') throw new Error('Expected summary text')
         requestedPrompt = input.summaryRequest.message.content
         return createAssistantMessage({
           content: '<summary>Recommended skills: requirements-review used; missing-audit relevant-unavailable.</summary>',
@@ -162,6 +164,8 @@ describe('generateWorkflowSummaryCarryover', () => {
         'Distinguish pending-confirmation from completed state; do not flatten either state to running.',
       ].join('\n'),
       summaryRunner: async input => {
+        expect(typeof input.summaryRequest.message.content).toBe('string')
+        if (typeof input.summaryRequest.message.content !== 'string') throw new Error('Expected summary text')
         requestedPrompt = input.summaryRequest.message.content
         return createAssistantMessage({
           content: '<summary>Workflow state: pending-confirmation phase specify confirmationId submit-ready-1; completion status ready evidence spec.md; after confirm completed with accepted completion evidence.</summary>',
@@ -193,14 +197,11 @@ function createContext(): ToolUseContext {
       isNonInteractiveSession: true,
       agentDefinitions: {
         activeAgents: [],
-        errors: [],
-        warnings: [],
-        metadata: {
-          directories: [],
-          loadedFromSettings: [],
-        },
+        allAgents: [],
       },
     },
+    messages: [],
+    setResponseLength: () => {},
     abortController: new AbortController(),
     readFileState: createFileStateCacheWithSizeLimit(10),
     getAppState: () => ({

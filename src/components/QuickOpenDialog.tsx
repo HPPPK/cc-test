@@ -25,7 +25,7 @@ const PREVIEW_LINES = 20;
  * Quick Open dialog (ctrl+shift+p / cmd+shift+p).
  * Fuzzy file finder with a syntax-highlighted preview of the focused file.
  */
-export function QuickOpenDialog(t0) {
+export function QuickOpenDialog(t0: Props): React.ReactNode {
   const $ = _c(35);
   const {
     onDone,
@@ -44,10 +44,13 @@ export function QuickOpenDialog(t0) {
   } else {
     t1 = $[0];
   }
-  const [results, setResults] = useState(t1);
+  const [results, setResults] = useState<string[]>(t1);
   const [query, setQuery] = useState("");
-  const [focusedPath, setFocusedPath] = useState(undefined);
-  const [preview, setPreview] = useState(null);
+  const [focusedPath, setFocusedPath] = useState<string | undefined>(undefined);
+  const [preview, setPreview] = useState<{
+    path: string
+    content: string
+  } | null>(null);
   const queryGenRef = useRef(0);
   let t2;
   let t3;

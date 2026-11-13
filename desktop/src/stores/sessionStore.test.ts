@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { createMock, listMock } = vi.hoisted(() => ({
+const { createMock, listMock, deleteMock, batchDeleteMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   listMock: vi.fn(),
+  deleteMock: vi.fn(),
+  batchDeleteMock: vi.fn(),
 }))
 
 vi.mock('../api/sessions', () => ({
   sessionsApi: {
     create: createMock,
     list: listMock,
-    delete: vi.fn(),
+    delete: deleteMock,
+    batchDelete: batchDeleteMock,
     rename: vi.fn(),
   },
 }))
@@ -52,10 +55,20 @@ function createDeferred<T>() {
   return { promise, resolve }
 }
 
+function historySession(id: string) {
+  return {
+    id, title: 'Untitled Session', createdAt: '2026-01-01T00:00:00Z',
+    modifiedAt: '2026-01-01T00:00:00Z', messageCount: 0, projectPath: '-fixture',
+    workDir: '/fixture', workDirExists: true,
+  }
+}
+
 describe('sessionStore', () => {
   beforeEach(() => {
     createMock.mockReset()
     listMock.mockReset()
+    deleteMock.mockReset()
+    batchDeleteMock.mockReset()
     useSessionStore.setState({
       ...initialState,
       sessions: [],
@@ -69,6 +82,79 @@ describe('sessionStore', () => {
   afterEach(() => {
     useSessionStore.setState(initialState)
     useTabStore.setState({ tabs: [], activeTabId: null })
+  })
+
+  it('loads every history page so select-all is not limited to the newest 100 sessions', async () => {
+    const sessions = Array.from({ length: 235 }, (_, i) => ({
+      id: `session-${i}`, title: 'Untitled Session', createdAt: '2026-01-01T00:00:00Z',
+      modifiedAt: '2026-01-01T00:00:00Z', messageCount: 0, projectPath: '-fixture',
+      workDir: '/fixture', workDirExists: true,
+    }))
+    listMock.mockImplementation(async ({ offset = 0, limit = 100 }) => ({
+      sessions: sessions.slice(offset, offset + limit), total: sessions.length,
+    }))
+    await useSessionStore.getState().fetchSessions('/fixture')
+    expect(useSessionStore.getState().sessions).toHaveLength(235)
+    expect(listMock.mock.calls.map(([options]) => options)).toEqual([
+      { project: '/fixture', limit: 100, offset: 0 },
+      { project: '/fixture', limit: 100, offset: 100 },
+      { project: '/fixture', limit: 100, offset: 200 },
+    ])
+  })
+
+  it('does not resurrect deleted sessions from a refresh that started before batch deletion', async () => {
+    const stale = createDeferred<{ sessions: Array<{ id: string }>; total: number }>()
+    listMock.mockReturnValue(stale.promise)
+    const refresh = useSessionStore.getState().fetchSessions()
+    batchDeleteMock.mockResolvedValue({ ok: true, successes: ['deleted'], failures: [] })
+    await useSessionStore.getState().deleteSessions(['deleted'])
+    stale.resolve({ sessions: [{ id: 'deleted' }], total: 1 })
+    await refresh
+    expect(useSessionStore.getState().sessions).toEqual([])
+    expect(useSessionStore.getState().isLoading).toBe(false)
+  })
+
+  it('keeps the complete history deleted when a new session triggers a refresh', async () => {
+    let saved = Array.from({ length: 235 }, (_, i) => historySession(`history-${i}`))
+    listMock.mockImplementation(async ({ offset = 0, limit = 100 }) => ({
+      sessions: saved.slice(offset, offset + limit), total: saved.length,
+    }))
+    batchDeleteMock.mockImplementation(async (ids: string[]) => {
+      saved = saved.filter((session) => !ids.includes(session.id))
+      return { ok: true, successes: ids, failures: [] }
+    })
+    await useSessionStore.getState().fetchSessions()
+    const ids = useSessionStore.getState().sessions.map((session) => session.id)
+    useSessionStore.getState().selectSessions(ids)
+    await useSessionStore.getState().deleteSessions([...useSessionStore.getState().selectedSessionIds])
+    expect(saved).toHaveLength(0)
+    createMock.mockImplementation(async () => {
+      saved.push(historySession('new-session'))
+      return { sessionId: 'new-session' }
+    })
+    await useSessionStore.getState().createSession('/fixture')
+    await useSessionStore.getState().fetchSessions()
+    expect(useSessionStore.getState().sessions.map((session) => session.id)).toEqual(['new-session'])
+  })
+
+  it('ignores a stale single-delete refresh and an older failed refresh', async () => {
+    const stale = createDeferred<{ sessions: ReturnType<typeof historySession>[]; total: number }>()
+    listMock.mockReturnValueOnce(stale.promise)
+    const refresh = useSessionStore.getState().fetchSessions()
+    deleteMock.mockResolvedValue(undefined)
+    await useSessionStore.getState().deleteSession('deleted')
+    stale.resolve({ sessions: [historySession('deleted')], total: 1 })
+    await refresh
+    expect(useSessionStore.getState().sessions).toEqual([])
+    let reject!: (error: Error) => void
+    listMock.mockReturnValueOnce(new Promise((_, rejectPromise) => { reject = rejectPromise }))
+    const old = useSessionStore.getState().fetchSessions()
+    listMock.mockResolvedValueOnce({ sessions: [historySession('current')], total: 1 })
+    await useSessionStore.getState().fetchSessions()
+    reject(new Error('stale failure'))
+    await old
+    expect(useSessionStore.getState().sessions.map((session) => session.id)).toEqual(['current'])
+    expect(useSessionStore.getState().error).toBeNull()
   })
 
   it('returns a new session id before the background refresh completes', async () => {

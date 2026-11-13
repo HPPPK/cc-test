@@ -388,7 +388,7 @@ export class TeamService {
 
       // Check inbox-discovered members (they're assumed running)
       const inboxNames = await this.discoverInboxMembers(name)
-      const activeInboxMembers = []
+      const activeInboxMembers: string[] = []
       for (const inboxName of inboxNames) {
         if (
           !this.isConfigMemberName(config, inboxName) &&
@@ -406,7 +406,7 @@ export class TeamService {
       // Check subagent-discovered members
       if (config.leadSessionId) {
         const subagentNames = await this.discoverSubagentMembers(config.leadSessionId)
-        const activeSubagentMembers = []
+        const activeSubagentMembers: string[] = []
         for (const subagentName of subagentNames) {
           if (
             !this.isConfigMemberName(config, subagentName) &&

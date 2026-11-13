@@ -1,3 +1,4 @@
+import { getUnsafePublicBrowserUrlReason } from '../../tools/PlaywrightTool/runtime.js'
 import { REPORT_ABSORPTION_WORK_GUIDANCE, REPORT_EVIDENCE_HANDOFF_GUIDANCE } from '../../services/tools/expertReportHandoffGuidance.js'
 import { registeredResearchArtifactPaths, researchArtifactRootPath } from '../../services/tools/expertFileFirstResearchProtocol.js'
 import { searchEngineForUrl, isSearchResultsUrl } from '../../utils/searchEngineSurface.js'
@@ -33,7 +34,7 @@ export type ExpertResearchEvidenceAbsorptionPolicy = {
   requireFieldCoverage?: true
   /** The business fields that must have a fieldCoverage entry when enabled. */
   fieldCoverageFieldIds?: string[]
-  /** Allows clearly labeled, non-numeric strategic inference grounded in audited sources. */
+  /** Allows clearly labeled, evidence-grounded proposals; numeric test assumptions are not observed facts. */
   allowReasonedInference?: true
   /** Commercial-report opt-in: render one visible four-part evidence status summary. */
   requireEvidenceStatusSummary?: true
@@ -451,6 +452,15 @@ function hasIncoherentOpenedDirectFinalUrl(entry: ExpertResearchAuditEntry): boo
   if (entry.status !== 'opened' || entry.kind === 'search') return false
   const target = normalizeHttpUrl(entry.target)
   const finalUrl = normalizeHttpUrl(entry.finalUrl)
+  if (target && finalUrl && target !== finalUrl) {
+    const source = new URL(target)
+    // A known search-result redirect is a navigation entry, not the publisher.
+    // The same isolated browser audit captures the actual public destination.
+    const redirect = /^(?:www\.)?baidu\.com$/.test(source.hostname) && source.pathname === '/link'
+      || /^(?:www\.)?bing\.com$/.test(source.hostname) && source.pathname === '/ck/a'
+      || /^(?:www\.)?google\.(?:com|cat|[a-z]{2}|(?:com|co)\.[a-z]{2})$/.test(source.hostname) && ['/url', '/goto'].includes(source.pathname)
+    if (redirect && !getUnsafePublicBrowserUrlReason(finalUrl)) return false
+  }
   return Boolean(target && finalUrl && target !== finalUrl && !sameWebsite(target, finalUrl))
 }
 
@@ -475,18 +485,19 @@ type FinalSourceRow = {
 
 function finalSourceRows(fields: Record<string, unknown>, field: ExpertTemplateFillField | undefined): FinalSourceRow[] {
   if (!field || field.kind !== 'table-rows' || field.urlColumnIndex === undefined) return []
+  const urlColumnIndex = field.urlColumnIndex
   const rows = fields[field.id]
   if (!Array.isArray(rows)) return []
   return rows.flatMap((rawRow) => {
     const normalized = normalizeExpertTemplateFillTableRow(rawRow, field.columns)
     const cells = normalized?.cells
     if (!cells) return []
-    const url = normalizeHttpUrl(cells[field.urlColumnIndex])
+    const url = normalizeHttpUrl(cells[urlColumnIndex])
     if (!url) return []
     return [{
       url,
       ...(normalized.auditId ? { auditId: normalized.auditId } : {}),
-      text: cells.map((cell, index) => index === field.urlColumnIndex ? '' : text(cell)).join(' '),
+      text: cells.map((cell, index) => index === urlColumnIndex ? '' : text(cell)).join(' '),
     }]
   })
 }
@@ -1581,7 +1592,14 @@ export function evaluateExpertResearchEvidenceAbsorption(input: {
   // must come from a researcher record in this session; model annotations do
   // not make a new URL real.
   for (const url of sourceUrls) {
-    if (!auditedUrls.has(url)) errors.push(policy.sourceFieldId + ' 中的来源未在本轮研究审计中找到：' + url)
+    if (!auditedUrls.has(url)) {
+      const known = citableAuditedUrlById(researchEvidence, policy)
+      const host = new URL(url).hostname
+      const choices = [...known].filter(([, target]) => new URL(target).hostname === host).slice(0, 6)
+      errors.push(policy.sourceFieldId + ' 中的来源未在本轮研究审计中找到：' + url
+        + (choices.length ? '。同站真实已取证候选（需按内容选择，不自动视为同一页面）：' + choices.map(([id, target]) => `audit:${id} = ${target}`).join('；') : '。请 Read 06 查看真实来源编号。')
+        + '。只纠正来源行的 URL 或改用对应 audit:编号，不要删除已有有效内容、猜写网址或重写整份报告。')
+    }
   }
 
   const searchAudits = collectSearchAudits(researchEvidence, policy)
@@ -1591,7 +1609,7 @@ export function evaluateExpertResearchEvidenceAbsorption(input: {
   for (const engine of mentionedSearchEngines(fields, policy)) {
     const claims = searchText.split(/\n|[。；;!?！？]|[,，]?\s*(?:但是|但|然而|不过)\s*|[,，]\s*(?=(?:Google|百度(?!贴吧)|Bing|360))/).filter((sentence) => {
       const mentions = engine === '百度' ? /百度(?!贴吧|网盘|百科|地图)/.test(sentence) : sentence.includes(engine)
-      return mentions && !/建议|未来|待验证|尚未|未取证|未取得|未获取|未观察|没有(?:取得|获取|观察)|未能(?:取得|获取|观察)|缺失|缺口|不得|禁止|不应|不能判断|不(?:能|支持)|无法|受限|仅.*入口|suggest|not (?:obtained|observed)|limited/i.test(sentence)
+      return mentions && !/建议|未来|待验证|尚未|未执行|跳过|未取证|未取得|未获取|未观察|没有(?:取得|获取|观察)|未能(?:取得|获取|观察)|缺失|缺口|不得|禁止|不应|不能判断|不(?:能|支持)|无法|受限|仅.*入口|suggest|not (?:obtained|observed)|limited/i.test(sentence)
         && /结果|排名|可见性|搜索到|检索到|SERP|rank|results|visibility|observed/i.test(sentence)
     })
     if (!claims.length) continue
@@ -1673,8 +1691,8 @@ export function buildExpertPostReviewEvidenceAbsorptionInstruction(input: {
       '',
       REPORT_EVIDENCE_HANDOFF_GUIDANCE,
       'Read the reviewer decision first, then absorb important usable evidence clusters into the relevant report chapter, comparison, risk, validation gate, or source appendix. Do not compress detailed valid evidence into a generic conclusion.',
-      'The server validates final sources against the same browser audit. SOURCE_ROWS must include audited URLs actually used in the report, and the server restores only report-used audited URLs accidentally omitted from the source table. The full visit inventory remains in 06; do not manufacture generic background citations. access_limited, failed, pending, verification pages, and incoherent redirects remain internal only. Do not invent a URL or infer numeric facts.',
-      'A clearly labeled （AI推断） is allowed only for non-numeric reasoning grounded in the Markdown evidence, with its basis and falsification condition stated. Keep real evidence, limited observations, inferences, and evidence gaps visibly distinct.',
+      'The server validates final sources against the same browser audit. SOURCE_ROWS must include audited URLs actually used in the report, and the server restores only report-used audited URLs accidentally omitted from the source table. The full visit inventory remains in 06; do not manufacture generic background citations. access_limited, failed, pending, verification pages, and incoherent redirects remain internal only. Do not invent a URL or an observed numeric fact.',
+      'A clearly labeled （AI推断） may include a proposed test price or experiment threshold grounded in the Markdown evidence, with its basis, assumptions and falsification condition stated. Such proposal numbers are not observed prices or outcomes; never invent market size, search volume, conversion or willingness to pay. Keep facts, observations, proposals and gaps distinct.',
       ...fieldGranularityContract,
       ...(input.policy.requireEvidenceStatusSummary ? [
         'Fill ' + input.policy.evidenceStatusSummaryFieldId + ' with clearly separated evidence categories (equivalent wording and optional parentheses are accepted): 已核验事实、有限公开观察、AI推断、证据缺口 / 待验证。Do not label all researched material as pending.',
@@ -1693,7 +1711,7 @@ export function buildExpertPostReviewEvidenceAbsorptionInstruction(input: {
         'The server compiles the internal field-coverage ledger from your final report fields and audited SOURCE_ROWS. Do not hand-write evidenceAbsorption.fieldCoverage, records, or fieldEvidence.',
         'The goal is complete ledger-to-field absorption, not word-count padding or a generic short summary. Put the actual supported details into the relevant report fields.',
     ...(input.policy.requireAuditedDetailClusters ? ['The parent must Read 07-report-field-absorption.md and preserve every CC_REPORT_DETAIL_CLUSTERS reportText verbatim in its declared field. The server rejects a compressed first draft even if it has the right headings.'] : []),
-        'A clearly labeled （AI推断） is allowed only when grounded in the listed audited URLs. Do not invent numeric facts through inference; state an evidence gap when the number was not obtained.',
+        'A clearly labeled （AI推断） is allowed only when grounded in the listed audited URLs. Do not invent observed numeric facts through inference; a proposed test price or experiment threshold is a labeled assumption, not an obtained fact. State a gap for unavailable measured numbers.',
       ]
     : [
         'The server already persists every browser audit and automatically derives a disposition for every audited URL. Do not hand-write evidenceAbsorption records or fieldEvidence merely to make final HTML valid.',

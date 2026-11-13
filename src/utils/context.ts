@@ -1,3 +1,4 @@
+import { resolveAntModel } from './model/antModels.js'
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getOpenAIContextWindowForModel } from '../services/openaiAuth/models.js'

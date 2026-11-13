@@ -36,3 +36,13 @@ describe('managed browser native window recovery', () => {
     expect(parseManagedBrowserNativeWindowRestoreResult('not json')).toBe(false)
   })
 })
+
+test('macOS restoration targets the exact PID without System Events or another browser', async () => {
+  const { buildMacManagedBrowserRestoreInvocation } = await import('./managedBrowserNativeWindow.js')
+  const request = buildMacManagedBrowserRestoreInvocation(12345)
+  expect(request.executable).toBe('/usr/bin/osascript')
+  expect(request.script).toContain('runningApplicationWithProcessIdentifier(12345)')
+  expect(request.script).toContain('frontmostApplication.processIdentifier')
+  expect(request.script).not.toContain('System Events')
+  expect(() => buildMacManagedBrowserRestoreInvocation(-1)).toThrow()
+})

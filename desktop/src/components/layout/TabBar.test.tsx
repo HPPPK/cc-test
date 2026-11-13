@@ -819,6 +819,7 @@ describe('TabBar', () => {
 
     expect(screen.getByText('Sessions Running')).toBeInTheDocument()
     expect(screen.getByText('2 sessions still running')).toBeInTheDocument()
+    expect(screen.getByText('2 sessions still running').closest('[data-content-overlay]')?.parentElement).toBe(document.body)
     expect(useTabStore.getState().tabs.map((tab) => tab.sessionId)).toEqual(['tab-running', 'tab-thinking', 'tab-idle'])
     expect(disconnectSession).not.toHaveBeenCalled()
     expect(stopGeneration).not.toHaveBeenCalled()

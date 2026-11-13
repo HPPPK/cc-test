@@ -1,3 +1,4 @@
+import { toWorkflowTemplate } from '../services/workflowRuntimeTemplateService.js'
 /**
  * Session REST API Routes
  *
@@ -21,6 +22,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { sessionService } from '../services/sessionService.js'
+import { guardExpertResearchIntake, inspectExpertResearchIntake, submitExpertResearchAssessment } from '../services/expertResearchIntakeService.js'
 import { commercializationResearchBudgetService } from '../services/commercializationResearchBudgetService.js'
 import { expertRuntimeSessionStore } from '../services/expertRuntimeSessionStore.js'
 import { conversationService } from '../services/conversationService.js'
@@ -43,8 +45,8 @@ import { WorkflowSessionCreateService } from '../services/workflowSessionCreateS
 import { WorkflowSessionLinkService } from '../services/workflowSessionLinkService.js'
 import { validateWorkflowWorkspaceRoot } from '../services/workflowWorkspacePolicy.js'
 import { WorkflowReportStore } from '../services/workflowReportStore.js'
-import { WorkflowRuntimeService } from '../services/workflowRuntimeService.js'
-import { recordDevelopmentBatchAgentProgress } from '../services/workflowDevelopmentBatchAgentProgress.js'
+import { WorkflowRuntimeService, type WorkflowNotification } from '../services/workflowRuntimeService.js'
+import { recordDevelopmentBatchAgentProgressWithLedger } from '../services/workflowDevelopmentBatchAgentProgress.js'
 import type { DevelopmentBatchAgentProgressInput } from '../services/workflowDevelopmentBatchAgentPolicy.js'
 import { reconcileWorkflowAgentTasks, recordWorkflowAgentTaskProgressWithLedger } from '../services/workflowAgentTaskStateService.js'
 import type { WorkflowAgentTaskProgressInput } from '../services/workflowAgentTaskStateService.js'
@@ -68,6 +70,7 @@ import {
   type WorkflowSessionCreateOptions,
   type WorkflowSessionMetadata,
   type WorkflowSessionState,
+  type WorkflowArtifactPointer,
   type WorkflowSessionSummary,
   type WorkflowTemplate,
   type WorkflowTemplateSource,
@@ -175,6 +178,12 @@ export async function handleSessionsApi(
     // -----------------------------------------------------------------------
     // Sub-resource routes: /api/sessions/:id/messages
     // -----------------------------------------------------------------------
+    if (subResource === 'agent-results') {
+      if (req.method !== 'GET') return Response.json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+      if (!segments[4] || segments.length !== 5) throw ApiError.badRequest('Agent tool call ID required')
+      return Response.json(await sessionService.getAgentResult(sessionId, decodeURIComponent(segments[4])))
+    }
+
     if (subResource === 'messages') {
       if (req.method !== 'GET') {
         return Response.json(
@@ -514,13 +523,36 @@ async function handleSessionExpertRoute(
     if (!agentType.trim()) throw ApiError.badRequest('缺少子代理类型。')
     return Response.json((await expertSessionService.getPostReviewEvidenceAbsorptionContext(sessionId, agentType)) ?? null)
   }
+  if (action === 'scope-assessment') {
+    if (req.method !== 'POST') throw new ApiError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    if (body.action === 'inspect') return Response.json(await inspectExpertResearchIntake(sessionId))
+    if (body.action !== 'assess') throw ApiError.badRequest('Invalid scope assessment action.')
+    try {
+      const expert = await submitExpertResearchAssessment(sessionId, body.assessment)
+      return Response.json({ state: expert.researchIntake, nextAction: expert.researchIntake?.status === 'needs-user' ? 'ask_unresolved_scope' : 'continue_research', requiresAssessment: false })
+    } catch (error) { throw new ApiError(409, error instanceof Error ? error.message : String(error), 'EXPERT_INTAKE_REQUIRED') }
+  }
+  if (action === 'intake-admission') {
+    if (req.method !== 'POST') throw new ApiError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
+    const body = await readOptionalObjectBody(req)
+    try { await guardExpertResearchIntake(sessionId, typeof body.toolName === 'string' ? body.toolName : undefined, body.input) }
+    catch (error) { throw new ApiError(409, error instanceof Error ? error.message : String(error), 'EXPERT_INTAKE_REQUIRED') }
+    return Response.json({ allowed: true })
+  }
   if (action === 'research-budget') {
     if (req.method !== 'POST') throw new ApiError(405, 'Method ' + req.method + ' not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readOptionalObjectBody(req)
-    if (body.action !== 'reserve-researcher' && body.action !== 'reserve-browser') throw ApiError.badRequest('Invalid research budget action.')
+    if (body.action !== 'reserve-researcher' && body.action !== 'reserve-browser' && body.action !== 'finish-researcher') throw ApiError.badRequest('Invalid research budget action.')
     const session = await sessionService.getSession(sessionId)
     if (!session) throw ApiError.notFound('Session not found: ' + sessionId)
     const expert = session.expert ?? await expertRuntimeSessionStore.get(sessionId)
+    if (body.action === 'finish-researcher') {
+      const allowed = expert?.mode === 'expert' && expert.status === 'active' && expert.runtimeBinding?.expertId === 'commercialization-research-report' && commercializationResearchBudgetService.finish(sessionId, expert, typeof body.agentId === 'string' ? body.agentId : '')
+      return Response.json({ allowed: Boolean(allowed) }, { status: allowed ? 200 : 409 })
+    }
+    try { await guardExpertResearchIntake(sessionId) }
+    catch (error) { return Response.json({ allowed: false, applicable: true, reason: error instanceof Error ? error.message : String(error) }, { status: 409 }) }
     const decision = commercializationResearchBudgetService.reserve(sessionId, expert, {
       action: body.action,
       agentId: typeof body.agentId === 'string' ? body.agentId : '',
@@ -619,9 +651,6 @@ async function handleSessionExpertRoute(
                 projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : undefined,
                 title: typeof body.title === 'string' ? body.title : undefined,
                 notes: typeof body.notes === 'string' ? body.notes : undefined,
-              },
-              (progress) => {
-                enqueue(controller, { type: 'progress', phase: progress.phase, content: progress.content })
               },
             )
 
@@ -850,7 +879,7 @@ async function downloadExpertMaterialPackage(
   const zipBuffer = await createZipBuffer(zipParts)
   const filename = `expert-material-${runId.slice(0, 8)}.zip`
 
-  return new Response(zipBuffer, {
+  return new Response(Uint8Array.from(zipBuffer), {
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -1092,6 +1121,7 @@ async function exitWorkflow(_req: Request, sessionId: string): Promise<Response>
     })
     const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, { expectedStateVersion: stateRead.state.stateVersion })
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const workDir = detail.workDir || process.cwd()
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
@@ -1152,6 +1182,7 @@ async function controlWorkflowPreview(
 
     const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, { expectedStateVersion: stateRead.state.stateVersion })
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const workDir = detail.workDir || process.cwd()
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
@@ -1277,6 +1308,7 @@ async function startFollowUpWorkflowRun(req: Request, sessionId: string): Promis
     })
     const { pointer } = await workflowSessionStateService.writeState(sessionId, state, { expectedStateVersion: stateRead.state.stateVersion })
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const workDir = detail.workDir || process.cwd()
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
@@ -1309,10 +1341,7 @@ async function resolveWorkflowFollowUpTemplate(
   if (template.phases.length === 0) {
     throw workflowError(400, 'WORKFLOW_TEMPLATE_INVALID', 'Selected workflow template has no phases')
   }
-  return {
-    ...template,
-    displayName: typeof template.displayName === 'string' ? template.displayName : template.name,
-  } as WorkflowTemplate
+  return toWorkflowTemplate(template)
 }
 
 function normalizeWorkflowFollowUpKind(value: unknown): WorkflowFollowUpRunKind | undefined {
@@ -1355,6 +1384,7 @@ async function getWorkflowState(sessionId: string): Promise<Response> {
       authoritative = written
       projectionMetadata = stateToWorkflowMetadata(written, pointer)
       const detail = await sessionService.getSession(sessionId)
+      if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
       await workflowSessionCreateService.appendWorkflowMetadata(
         sessionId,
         detail.workDir || process.cwd(),
@@ -1482,6 +1512,7 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
         { expectedStateVersion: stateRead.state.stateVersion },
       )
       const detail = await sessionService.getSession(sessionId)
+      if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
       const workDir = detail.workDir || process.cwd()
       await workflowSessionCreateService.appendWorkflowMetadata(
         sessionId,
@@ -1510,6 +1541,7 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
     const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, { expectedStateVersion: transitionState.stateVersion })
     await persistWorkflowFinalReportIfReady(result.state)
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const workDir = detail.workDir || process.cwd()
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
@@ -1661,6 +1693,7 @@ async function updateWorkflowCompletionProgress(req: Request, sessionId: string)
     })
     const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, { expectedStateVersion: stateRead.state.stateVersion })
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
       detail.workDir || process.cwd(),
@@ -1723,6 +1756,7 @@ async function updateWorkflowAgentTaskProgress(req: Request, sessionId: string):
       { expectedStateVersion: stateRead.state.stateVersion },
     )
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
       detail.workDir || process.cwd(),
@@ -1755,9 +1789,10 @@ async function updateDevelopmentBatchAgentProgress(req: Request, sessionId: stri
     }
     let state: WorkflowSessionState
     try {
-      state = recordDevelopmentBatchAgentProgress(
+      state = await recordDevelopmentBatchAgentProgressWithLedger(
         stateRead.state,
         body as DevelopmentBatchAgentProgressInput,
+        event => agentRunLedgerService.appendEvent(event),
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -1780,6 +1815,7 @@ async function updateDevelopmentBatchAgentProgress(req: Request, sessionId: stri
       { expectedStateVersion: stateRead.state.stateVersion },
     )
     const detail = await sessionService.getSession(sessionId)
+    if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
     await workflowSessionCreateService.appendWorkflowMetadata(
       sessionId,
       detail.workDir || process.cwd(),
@@ -1944,7 +1980,7 @@ async function prepareRuntimeVerifiedCompletionEvidence(
 }
 type WorkflowBoundaryTransitionResult = {
   state: WorkflowSessionState
-  notifications: Array<Record<string, unknown>>
+  notifications: WorkflowNotification[]
   route?: {
     approvedTargetPhaseId: string | null
     routeReason: string
@@ -2378,7 +2414,7 @@ async function getSessionInspection(sessionId: string, url: URL): Promise<Respon
       // separately when the context tab is actually selected.
     } else if (contextResult.status === 'fulfilled' && contextResult.value) {
       response.context = contextResult.value
-    } else {
+    } else if (contextResult.status === 'rejected') {
       errors.context = contextResult.reason instanceof Error ? contextResult.reason.message : String(contextResult.reason)
     }
 
@@ -2402,7 +2438,7 @@ function usageTokenTotal(usage: unknown): number {
     record.totalOutputTokens,
     record.totalCacheReadInputTokens,
     record.totalCacheCreationInputTokens,
-  ].reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0)
+  ].reduce<number>((sum, value) => sum + (typeof value === 'number' ? value : 0), 0)
 }
 
 function chooseRicherUsage(

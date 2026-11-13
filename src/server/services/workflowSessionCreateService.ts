@@ -540,14 +540,20 @@ export class WorkflowSessionCreateService {
           ...(phase.toolPolicy ? { toolPolicy: phase.toolPolicy } : {}),
           ...(phase.intent ? { intent: phase.intent } : {}),
           ...(phase.contract ? { contract: phase.contract } : {}),
-          ...(phase.evidencePolicy ? { evidencePolicy: phase.evidencePolicy } : {}),
+          ...(phase.evidencePolicy ? { evidencePolicy: {
+        ...phase.evidencePolicy,
+        requiredArtifacts: phase.evidencePolicy.requiredArtifacts.map(artifact => ({
+          ...artifact, kind: typeof artifact.kind === 'string' ? artifact.kind : 'json',
+          description: artifact.description || artifact.name || artifact.id,
+        })),
+      } } : {}),
           ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
           ...(phase.runtimeContract ? { runtimeContract: phase.runtimeContract } : {}),
           ...(phase.outputArtifacts ? { outputArtifacts: phase.outputArtifacts } : {}),
         }
       }),
       registryKey: `${template.source}:${template.id}`,
-      ...(template.contentHash ? { contentHash: template.contentHash } : {}),
+      ...(typeof template.contentHash === 'string' ? { contentHash: template.contentHash } : {}),
       ...(typeof template.packId === 'string' ? { packId: template.packId } : {}),
       ...(typeof template.packName === 'string' ? { packName: template.packName } : {}),
       ...(typeof template.packVersion === 'string' ? { packVersion: template.packVersion } : {}),

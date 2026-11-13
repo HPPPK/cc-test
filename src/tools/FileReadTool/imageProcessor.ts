@@ -35,6 +35,21 @@ export type SharpCreator = (options: SharpCreatorOptions) => SharpInstance
 let imageProcessorModule: { default: SharpFunction } | null = null
 let imageCreatorModule: { default: SharpCreator } | null = null
 
+/** Validate optional module exports before selecting the native implementation. */
+export async function loadOptionalNativeImageProcessor(importer: () => Promise<unknown>): Promise<SharpFunction | null> {
+  try {
+    const mod = await importer()
+    if (typeof mod !== 'object' || mod === null) return null
+    if ('sharp' in mod && isSharpFunction(mod.sharp)) return mod.sharp
+    if ('default' in mod && isSharpFunction(mod.default)) return mod.default
+    return null
+  } catch { return null }
+}
+
+function isSharpFunction(value: unknown): value is SharpFunction {
+  return typeof value === 'function'
+}
+
 export async function getImageProcessor(): Promise<SharpFunction> {
   if (imageProcessorModule) {
     return imageProcessorModule.default
@@ -50,8 +65,8 @@ export async function getImageProcessor(): Promise<SharpFunction> {
     // Try to load the native image processor first
     try {
       // Use the native image processor module
-      const imageProcessor = await import('image-processor-napi')
-      const sharp = imageProcessor.sharp || imageProcessor.default
+      const sharp = await loadOptionalNativeImageProcessor(() => import('image-processor-napi'))
+      if (!sharp) throw new Error('Native image processor exports are unavailable')
       imageProcessorModule = { default: sharp }
       return sharp
     } catch {

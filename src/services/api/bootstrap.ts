@@ -16,9 +16,9 @@ import { getAPIProvider } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
 
-const bootstrapResponseSchema = lazySchema(() =>
+export const bootstrapResponseSchema = lazySchema(() =>
   z.object({
-    client_data: z.record(z.unknown()).nullish(),
+    client_data: z.record(z.string(), z.unknown()).nullish(),
     additional_model_options: z
       .array(
         z

@@ -36,7 +36,7 @@ export type Props = {
   skipSettingsWrite?: boolean;
 };
 const NO_PREFERENCE = '__NO_PREFERENCE__';
-export function ModelPicker(t0) {
+export function ModelPicker(t0: Props): React.ReactNode {
   const $ = _c(82);
   const {
     initial,
@@ -51,7 +51,7 @@ export function ModelPicker(t0) {
   const setAppState = useSetAppState();
   const exitState = useExitOnCtrlCDWithKeybindings();
   const initialValue = initial === null ? NO_PREFERENCE : initial;
-  const [focusedValue, setFocusedValue] = useState(initialValue);
+  const [focusedValue, setFocusedValue] = useState<string | undefined>(initialValue);
   const isFastMode = useAppState(_temp);
   const [hasToggledEffort, setHasToggledEffort] = useState(false);
   const effortValue = useAppState(_temp2);
@@ -63,7 +63,7 @@ export function ModelPicker(t0) {
   } else {
     t1 = $[1];
   }
-  const [effort, setEffort] = useState(t1);
+  const [effort, setEffort] = useState<EffortLevel | undefined>(t1);
   const t2 = isFastMode ?? false;
   let t3;
   if ($[2] !== t2) {
@@ -402,7 +402,9 @@ function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
   return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
 }
-function EffortLevelIndicator(t0) {
+function EffortLevelIndicator(t0: {
+  effort?: EffortLevel
+}): React.ReactNode {
   const $ = _c(5);
   const {
     effort

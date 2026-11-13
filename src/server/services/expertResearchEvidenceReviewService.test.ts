@@ -86,7 +86,7 @@ test('retains every terminal source outcome when one researcher lane exceeds six
     maxCharactersPerRecord: 120_000,
     reviewerEvidenceOnly: true as const,
   }
-  let state = undefined
+  let state: ReturnType<typeof recordExpertResearchEvidence> | undefined = undefined
   for (let batch = 0; batch < 7; batch++) {
     const entries = Array.from({ length: batch === 6 ? 8 : 10 }, (_, offset) => {
       const index = batch * 10 + offset

@@ -92,7 +92,7 @@ export function autoNameSessionFromPlan(plan: string, setAppState: (updater: (pr
   // generateSessionName tail-slices to the last 1000 chars (correct for
   // conversations, where recency matters). Plans front-load the goal and
   // end with testing steps — head-slice so Haiku sees the summary.
-  [createUserMessage({
+  [createUserMessage({ messageKind: 'internal_notification',
     content: plan.slice(0, 1000)
   })], new AbortController().signal).then(async name => {
     // On clear-context acceptance, regenerateSessionId() has run by now —
@@ -375,7 +375,7 @@ export function ExitPlanModePermissionRequest({
         ...prev,
         initialMessage: {
           message: {
-            ...createUserMessage({
+            ...createUserMessage({ messageKind: 'internal_notification',
               content: `Implement the following plan:\n\n${currentPlan}${verificationInstruction}${transcriptHint}${teamHint}${feedbackSuffix}`
             }),
             planContent: currentPlan

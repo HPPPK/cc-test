@@ -96,9 +96,9 @@ export function Config({
   const insideModal = useIsInsideModal();
   const [, setTheme] = useTheme();
   const themeSetting = useThemeSetting();
-  const [globalConfig, setGlobalConfig] = useState(getGlobalConfig());
+  const [globalConfig, setGlobalConfig] = useState<GlobalConfig>(getGlobalConfig());
   const initialConfig = React.useRef(getGlobalConfig());
-  const [settingsData, setSettingsData] = useState(getInitialSettings());
+  const [settingsData, setSettingsData] = useState<ReturnType<typeof getInitialSettings>>(getInitialSettings());
   const initialSettingsData = React.useRef(getInitialSettings());
   const [currentOutputStyle, setCurrentOutputStyle] = useState<OutputStyle>(settingsData?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME);
   const initialOutputStyle = React.useRef(currentOutputStyle);
@@ -392,7 +392,7 @@ export function Config({
     }
   }] : []),
   // Speculation toggle (ant-only)
-  ...("external" === 'ant' ? [{
+  ...(false ? [{
     id: 'speculationEnabled',
     label: 'Speculative execution',
     value: globalConfig.speculationEnabled ?? true,
@@ -1751,7 +1751,7 @@ const THEME_LABELS: Record<string, string> = {
   'dark-ansi': 'Dark mode (ANSI colors only)',
   'light-ansi': 'Light mode (ANSI colors only)'
 };
-function NotifChannelLabel(t0) {
+function NotifChannelLabel(t0: { value: string }): React.ReactNode {
   const $ = _c(4);
   const {
     value

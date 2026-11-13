@@ -62,7 +62,7 @@ const PROVIDER_MANAGED_ENV_VAR_NAMES = [
   'CLAUDE_CODE_MODEL_CONTEXT_WINDOWS',
 ] as const
 
-const PROVIDER_MANAGED_ENV_VARS = new Set(PROVIDER_MANAGED_ENV_VAR_NAMES)
+const PROVIDER_MANAGED_ENV_VARS = new Set<string>(PROVIDER_MANAGED_ENV_VAR_NAMES)
 
 const PROVIDER_MANAGED_ENV_PREFIXES = [
   // Per-model Vertex region overrides — scales with model releases, so

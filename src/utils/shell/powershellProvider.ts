@@ -1,6 +1,7 @@
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { join as posixJoin } from 'path/posix'
+import { buildClaudeCliArgs, resolveClaudeCliLauncher } from '../desktopBundledCli.js'
 import { getSessionEnvVars } from '../sessionEnvVars.js'
 import type { ShellProvider } from './shellProvider.js'
 
@@ -63,7 +64,12 @@ export function createPowerShellProvider(shellPath: string): ShellProvider {
       // exit code (was 0 — old logic only looked at $? which the trailing
       // cmdlet set true). Both rarer than the git/npm/curl stderr case.
       const cwdTracking = `\n; $_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }\n; (Get-Location).Path | Out-File -FilePath '${escapedCwdFilePath}' -Encoding utf8 -NoNewline\n; exit $_ec`
-      const psCommand = command + cwdTracking
+      const launcher = resolveClaudeCliLauncher({ cliPath: process.env.CLAUDE_CLI_PATH })
+      const wrapper = launcher
+        ? 'function claude { & ' + buildClaudeCliArgs(launcher, [])
+          .map(arg => "'" + arg.replace(/'/g, "''") + "'").join(' ') + ' @args }\n'
+        : ''
+      const psCommand = wrapper + command + cwdTracking
 
       // Sandbox wraps the returned commandString as `<binShell> -c '<cmd>'` —
       // hardcoded `-c`, no way to inject -NoProfile -NonInteractive. So for

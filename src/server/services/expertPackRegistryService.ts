@@ -1,3 +1,4 @@
+import type { ExpertResearchIntakeState } from './expertResearchIntakeService.js'
 import * as fs from 'node:fs/promises'
 import type { ExpertTemplateFillOutputPolicy } from './expertTemplateOutputPolicyService.js'
 import type { ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
@@ -163,6 +164,7 @@ export type ExpertSessionMetadata = {
   activeRunId?: string
   runtimeBinding?: ExpertRuntimeBinding
   intakeState?: ExpertIntakeState
+  researchIntake?: ExpertResearchIntakeState
   researchDelivery?: ExpertResearchDeliveryState
   researchCompletion?: ExpertResearchCompletionState
   /** Bounded completed researcher handoffs for a ZIP-designated evidence reviewer. */

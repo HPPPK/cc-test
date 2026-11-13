@@ -1,3 +1,4 @@
+import { messageKindMetadata, type MessageKindMetadata } from '../../utils/messageKind.js';
 import { getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
 import { OUTPUT_FILE_TAG, STATUS_TAG, SUMMARY_TAG, TASK_ID_TAG, TASK_NOTIFICATION_TAG, TOOL_USE_ID_TAG, WORKTREE_BRANCH_TAG, WORKTREE_PATH_TAG, WORKTREE_TAG } from '../../constants/xml.js';
 import { abortSpeculation } from '../../services/PromptSuggestion/speculation.js';
@@ -21,6 +22,9 @@ import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/
 import type { SdkWorkflowTaskEventMetadata } from '../../utils/sdkEventQueue.js';
 import { emitTaskProgress } from '../../utils/task/sdkProgress.js';
 import type { TaskState } from '../types.js';
+// Legacy strings remain supported; tagged entries are created only by callers
+// that know the prompt's provenance. This queue is in-memory task state.
+export type PendingAgentMessage = string | ({ content: string } & MessageKindMetadata);
 export type ToolActivity = {
   toolName: string;
   input: Record<string, unknown>;
@@ -134,7 +138,7 @@ export type LocalAgentTaskState = TaskStateBase & {
   // Whether the task has been backgrounded (false = foreground running, true = backgrounded)
   isBackgrounded: boolean;
   // Messages queued mid-turn via SendMessage, drained at tool-round boundaries
-  pendingMessages: string[];
+  pendingMessages: PendingAgentMessage[];
   // UI is holding this task: blocks eviction, enables stream-append, triggers
   // disk bootstrap. Set by enterTeammateView. Separate from viewingAgentTaskId
   // (which is "what am I LOOKING at") — retain is "what am I HOLDING."
@@ -165,10 +169,13 @@ export function isLocalAgentTask(task: unknown): task is LocalAgentTaskState {
 export function isPanelAgentTask(t: unknown): t is LocalAgentTaskState {
   return isLocalAgentTask(t) && t.agentType !== 'main-session';
 }
-export function queuePendingMessage(taskId: string, msg: string, setAppState: (f: (prev: AppState) => AppState) => void): void {
+export function queuePendingMessage(taskId: string, msg: string, setAppState: (f: (prev: AppState) => AppState) => void, metadata?: Partial<MessageKindMetadata>): void {
+  const pending: PendingAgentMessage = metadata
+    ? { content: msg, ...messageKindMetadata({ type: 'user', origin: { kind: 'coordinator' }, ...metadata }) }
+    : msg;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => ({
     ...task,
-    pendingMessages: [...task.pendingMessages, msg]
+    pendingMessages: [...task.pendingMessages, pending]
   }));
 }
 
@@ -184,7 +191,7 @@ export function appendMessageToLocalAgent(taskId: string, message: Message, setA
     messages: [...(task.messages ?? []), message]
   }));
 }
-export function drainPendingMessages(taskId: string, getAppState: () => AppState, setAppState: (f: (prev: AppState) => AppState) => void): string[] {
+export function drainPendingMessages(taskId: string, getAppState: () => AppState, setAppState: (f: (prev: AppState) => AppState) => void): PendingAgentMessage[] {
   const task = getAppState().tasks[taskId];
   if (!isLocalAgentTask(task) || task.pendingMessages.length === 0) {
     return [];

@@ -100,6 +100,7 @@ export class ExpertHumanVerificationService {
     private deliver: ExpertHumanVerificationDelivery = () => false,
     // Accepted for compatibility with older callers; no deadline resolves a verification.
     _legacyWaitTimeoutMs?: number,
+    private ownerAdmissionTimeoutMs = 10_000,
   ) {}
 
   setDelivery(deliver: ExpertHumanVerificationDelivery): void { this.deliver = deliver }
@@ -332,6 +333,14 @@ export class ExpertHumanVerificationService {
   private waitForOwner(waitersByKey: Map<string, PendingFollower[]>, key: string): Promise<ExpertHumanVerificationResponse> {
     return new Promise((resolve, reject) => {
       const waiter: PendingFollower = { resolve, reject }
+      // This bounds only the race before a real CAPTCHA owner is registered.
+      // Once attached to an owner, its timer is cleared and human waiting is unlimited.
+      waiter.timeout = setTimeout(() => {
+        const remaining = (waitersByKey.get(key) ?? []).filter(candidate => candidate !== waiter)
+        if (remaining.length) waitersByKey.set(key, remaining)
+        else waitersByKey.delete(key)
+        reject(new Error('EXPERT_HUMAN_VERIFICATION_OWNER_UNAVAILABLE: No matching preserved-page owner registered. No verification was completed or skipped. Preserve the page and retry the browser handoff; do not wait for an invisible user prompt.'))
+      }, this.ownerAdmissionTimeoutMs)
       waitersByKey.set(key, [...(waitersByKey.get(key) ?? []), waiter])
     })
   }

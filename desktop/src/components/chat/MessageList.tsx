@@ -1278,6 +1278,7 @@ export function MessageList({ sessionId, compact = false, workflowTransitionCard
               <div key={itemKey}>
                 {item.kind === 'tool_group' ? (
                   <ToolCallGroup
+                    sessionId={resolvedSessionId}
                     toolCalls={item.toolCalls}
                     resultMap={toolResultMap}
                     childToolCallsByParent={childToolCallsByParent}

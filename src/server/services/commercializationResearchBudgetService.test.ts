@@ -93,3 +93,90 @@ test('a rejected start leaves running researchers available and describes only t
   expect(globalDenial.reason).toContain('fifteen-minute research window ended')
   expect(globalDenial.reason).toContain('do not start more research')
 })
+
+test('read-only budget inspection preserves reservations and reports bounded lane follow-ups', () => {
+  const service = new CommercializationResearchBudgetService()
+  const now = Date.parse(start)
+  const scoped = { ...expert, runtimeBinding: { ...expert.runtimeBinding, researchArtifactPolicy: { researcherPaths: ['A', 'B', 'C'] } } }
+  expect(service.reserve('inspect', scoped, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'A' }, now).allowed).toBe(true)
+  expect(service.inspect('inspect', scoped, now)).toMatchObject({ remainingStarts: 5, remainingByLane: { A: 1, B: 2, C: 2 }, timeRemainingMs: 900000 })
+  expect(service.inspect('inspect', scoped, now).remainingStarts).toBe(5)
+  expect(service.reserve('inspect', scoped, { action: 'reserve-researcher', agentId: 'a-followup', artifactPath: 'A' }, now).allowed).toBe(true)
+  expect(service.inspect('inspect', scoped, now).remainingByLane.A).toBe(0)
+  expect(service.inspect('inspect', scoped, now + 900000).timeRemainingMs).toBe(0)
+})
+
+test('quality-enabled research gets a bounded 25-minute window without relaxing legacy budgets', () => {
+  const service = new CommercializationResearchBudgetService()
+  const quality = { ...expert, runtimeBinding: { ...expert.runtimeBinding, outputProtocol: { content: JSON.stringify({ researchQualityCheckpoint: { version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 2 } }) } } }
+  expect(service.inspect('quality-window', quality, Date.parse(start)).timeRemainingMs).toBe(25 * 60000)
+  expect(service.reserve('quality-window', quality, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'lane' }, Date.parse(start) + 16 * 60000).allowed).toBe(true)
+  expect(service.inspect('legacy-window', expert, Date.parse(start)).timeRemainingMs).toBe(15 * 60000)
+})
+
+
+test('unfinished follow-ups are visible, and settling a failed worker never refunds its slot', () => {
+  const service = new CommercializationResearchBudgetService()
+  const now = Date.parse(start)
+  const scoped = { ...expert, runtimeBinding: { ...expert.runtimeBinding, researchArtifactPolicy: { researcherPaths: ['A'] } } }
+  service.reserve('pending', scoped, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'A' }, now)
+  expect(service.inspect('pending', scoped, now).pendingByLane.A).toBe(1)
+  expect(service.finish('pending', scoped, 'unknown')).toBe(false)
+  expect(service.finish('pending', scoped, 'a')).toBe(true)
+  const status = service.inspect('pending', scoped, now)
+  expect(status.pendingByLane.A).toBe(0)
+  expect(status.remainingByLane.A).toBe(1)
+})
+
+ test('normal worker stays pending until its saved evidence audit arrives', () => {
+  const service = new CommercializationResearchBudgetService()
+  const now = Date.parse(start)
+  const scoped = { ...expert, runtimeBinding: { ...expert.runtimeBinding, researchArtifactPolicy: { researcherPaths: ['A'] } } }
+  service.reserve('audit-receipt', scoped, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'A' }, now)
+  expect(service.inspect('audit-receipt', scoped, now).pendingByLane.A).toBe(1)
+  const saved = { ...scoped, researchEvidence: { records: [{ agentId: 'a', agentType: 'expert-evidence-researcher', artifactPath: 'A', recordedAt: start, entries: [] }] } }
+  expect(service.inspect('audit-receipt', saved, now).pendingByLane.A).toBe(0)
+  expect(service.inspect('audit-receipt', saved, now).remainingByLane.A).toBe(1)
+})
+
+test('adaptive intake wait does not consume the admitted research window', () => {
+  const service = new CommercializationResearchBudgetService()
+  const admittedAt = new Date(Date.parse(start) + 60 * 60_000).toISOString()
+  const admitted = { ...expert, researchIntake: { admittedAt } }
+  expect(service.reserve('intake', admitted, { action: 'reserve-researcher', agentId: 'a', artifactPath: 'lane' }, Date.parse(admittedAt)).allowed).toBe(true)
+  expect(service.inspect('intake', admitted, Date.parse(admittedAt)).timeRemainingMs).toBe(900_000)
+})
+
+
+test('save-only resume exposes real same-worker generations without refunding research quota', () => {
+  const service = new CommercializationResearchBudgetService()
+  const t = Date.parse(start)
+  const scoped = { ...expert, runtimeBinding: { ...expert.runtimeBinding, researchArtifactPolicy: { researcherPaths: ['research/02.md'] } } }
+  const reserve = () => service.reserve('lifecycle', scoped, { action: 'reserve-researcher', agentId: 'original-A', artifactPath: 'research/02.parts/original-A.md' }, t)
+  expect(reserve().allowed).toBe(true)
+  expect(service.getWorkerLifecycles('lifecycle', scoped)).toEqual([{ agentId: 'original-A', artifactPath: 'research/02.md', state: 'running', generation: 1, startedAt: t }])
+  reserve() // Transport retries cannot invent another execution generation.
+  expect(service.getWorkerLifecycles('lifecycle', scoped)[0]!.generation).toBe(1)
+  expect(service.finish('lifecycle', scoped, 'original-A')).toBe(true)
+  expect(service.getWorkerLifecycles('lifecycle', scoped)[0]!.state).toBe('ended')
+  expect(service.reserve('lifecycle', scoped, { action: 'reserve-researcher', agentId: 'original-A', artifactPath: 'research/02.md' }, t + 9999999).allowed).toBe(true)
+  expect(service.getWorkerLifecycles('lifecycle', scoped)[0]).toMatchObject({ state: 'running', generation: 2, startedAt: t + 9999999 })
+  expect(service.inspect('lifecycle', scoped, t).remainingByLane['research/02.md']).toBe(1)
+  expect(service.reserve('lifecycle', scoped, { action: 'reserve-browser', agentId: 'original-A', requestId: 'new-search' }, t + 9999999).allowed).toBe(false)
+})
+
+
+test('save-only recovery is a host-enforced browser boundary, not just a model instruction', () => {
+  const service = new CommercializationResearchBudgetService()
+  const t = Date.parse(start)
+  service.reserve('save-only', expert, { action: 'reserve-researcher', agentId: 'original', artifactPath: 'lane' }, t)
+  expect(service.reserve('save-only', expert, { action: 'reserve-browser', agentId: 'original', requestId: 'before' }, t).allowed).toBe(true)
+  service.markSaveOnlyRecovery('save-only', expert, 'original')
+  expect(service.reserve('save-only', expert, { action: 'reserve-browser', agentId: 'original', requestId: 'after' }, t)).toMatchObject({ allowed: false, reason: expect.stringContaining('EXPERT_RESEARCH_SAVE_ONLY_RECOVERY') })
+  expect(service.reserve('save-only', expert, { action: 'reserve-browser', agentId: 'original', requestId: 'before' }, t).allowed).toBe(false)
+  service.finish('save-only', expert, 'original')
+  expect(service.reserve('save-only', expert, { action: 'reserve-researcher', agentId: 'original', artifactPath: 'lane' }, t).allowed).toBe(true)
+  expect(service.reserve('save-only', expert, { action: 'reserve-browser', agentId: 'original', requestId: 'resumed' }, t).allowed).toBe(false)
+  service.reserve('save-only', expert, { action: 'reserve-researcher', agentId: 'sibling', artifactPath: 'other' }, t)
+  expect(service.reserve('save-only', expert, { action: 'reserve-browser', agentId: 'sibling', requestId: 'allowed' }, t).allowed).toBe(true)
+})

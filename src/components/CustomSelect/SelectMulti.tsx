@@ -55,7 +55,7 @@ export type SelectMultiProps<T> = {
   readonly pastedContents?: Record<number, PastedContent>;
   readonly onRemoveImage?: (id: number) => void;
 };
-export function SelectMulti(t0) {
+export function SelectMulti<T>(t0: SelectMultiProps<T>): React.ReactNode {
   const $ = _c(44);
   const {
     isDisabled: t1,
@@ -125,7 +125,7 @@ export function SelectMulti(t0) {
   } else {
     t6 = $[16];
   }
-  const state = useMultiSelectState(t6);
+  const state = useMultiSelectState<T>(t6);
   let T0;
   let T1;
   let t7;

@@ -31,7 +31,7 @@ type InnerProps = {
   width: number;
   promise: Promise<NotebookContent | null>;
 };
-export function NotebookEditToolDiff(props) {
+export function NotebookEditToolDiff(props: Props): React.ReactNode {
   const $ = _c(5);
   let t0;
   if ($[0] !== props.notebook_path) {
@@ -61,7 +61,7 @@ function _temp2() {
 function _temp(content) {
   return safeParseJSON(content) as NotebookContent | null;
 }
-function NotebookEditToolDiffInner(t0) {
+function NotebookEditToolDiffInner(t0: InnerProps): React.ReactNode {
   const $ = _c(34);
   const {
     notebook_path,
@@ -150,7 +150,7 @@ function NotebookEditToolDiffInner(t0) {
     t3 = t4;
   }
   const hunks = t3;
-  let editTypeDescription;
+  let editTypeDescription: string;
   bb2: switch (edit_mode) {
     case "insert":
       {

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "algorithm": "sha256",
-  "sourceRevision": "sha256-cf7c6141446321e7a6dd6be45f414225cb904178c2f4754ed693f7c0a853b513",
+  "sourceRevision": "sha256-df0f244900f353909999941e1371a8974735e2fda8407236b7921862c3716ba7",
   "files": {
     "README.md": "sha256-0991563cd425e07b1720f58c8bd4020f76b1da2753d512aee71979b65fb294cc",
-    "manifest.json": "sha256-03c1068b5f779a82a7be9ef18d84c6501858c7651d8433a75a1348263ef9e918",
+    "manifest.json": "sha256-0a330673cb22d671d4f309f383719aa4e3e930966ed8988a00be0af28fbe7211",
     "model-capabilities/requirements.json": "sha256-96fb5184903f0ffd572bb127b43c53c5128dbc1b4488079a7a141a13265ba755",
     "permissions/permissions.json": "sha256-48997c34cc28a91cfbccac248164cded9a7854cf5851270d3ff66d1517f0ba9f",
     "skills/claude-code-read-grep-edit-bash-todo/SKILL.md": "sha256-20a7d873f18bf2fb424f38e388e966cc27a7709f61f94c781457e9485af6cad2",
@@ -16,7 +16,7 @@
     "skills/spec-kit-plus-plan/SKILL.md": "sha256-21b63241e1c1375dd09726a01ed4f78a5235fb6abc9295c509f7ea6f8f43f9fc",
     "skills/spec-kit-plus-tasks/SKILL.md": "sha256-eb098407999ae8fb27e79d26e14a26092329ca3b46b8cb4275299fec0bb867fe",
     "skills/spec-kit-plus-testing/SKILL.md": "sha256-0e10cb5cb6582108ee30946881f5ae6a15401324f30e88e51753548a0bed5d3b",
-    "skills/superpowers-brainstorming/SKILL.md": "sha256-bba47904a7f6bbee3bf8a107ebbe84e65d392be683bbb898ded736b29e415f90",
+    "skills/superpowers-brainstorming/SKILL.md": "sha256-509611b0663ed9d4dc4863c3022d834a0e97ead9e7ab2c7c465d5936c85df319",
     "skills/superpowers-brainstorming/agents/openai.yaml": "sha256-90585d2a09289aaff7eba1271596e8500c7328437b94839f2d39699a41689195",
     "skills/superpowers-brainstorming/scripts/frame-template.html": "sha256-fb22ba9d47f3b83b56e0a95d52a3c2727db03b0d4365078d92c850293a62457b",
     "skills/superpowers-brainstorming/scripts/helper.js": "sha256-e763d82f32b4ebb320be2f0d08449d3e5a0585778edf5c407c1fdab3f39976a5",
@@ -47,6 +47,6 @@
     "skills/workflow-local-preview-runner/SKILL.md": "sha256-5db2ac7de89b0c7ee8ee81c6eec7bd423c003474a2efc2d90831f00c74536211",
     "skills/workflow-memory-update/SKILL.md": "sha256-3da77edcecbcdd0486d7c1f775aa7e183dbdc84a5cc4bcb3245f09ff7316ba77",
     "tools/host-tools.json": "sha256-6420b72ec5186cf3660186fec080bf2008f02a9d694556b620ed0a7d0482cd60",
-    "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json": "sha256-92b16c82db61ca27a8670b4a9fe226b0a6dc9ced6dce0054b795cfd2cc32368a"
+    "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json": "sha256-7f31b1f2acc5cdb5ba2473f1aef7af839274cd298e29a286566f390317c66a67"
   }
 }

@@ -43,7 +43,7 @@ import {
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
-import { createUserMessage } from './messages.js'
+import { createRuntimeUserMessage } from './messages.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
@@ -465,7 +465,7 @@ export function prependUserContext(
   }
 
   return [
-    createUserMessage({
+    createRuntimeUserMessage({
       content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${Object.entries(
         context,
       )

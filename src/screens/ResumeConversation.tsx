@@ -313,7 +313,7 @@ export function ResumeConversation({
   }
   return <LogSelector logs={filteredLogs} maxHeight={rows} onCancel={onCancel} onSelect={onSelect} onLogsChanged={isResumeWithRenameEnabled ? () => loadLogs(showAllProjects) : undefined} onLoadMore={loadMoreLogs} initialSearchQuery={initialSearchQuery} showAllProjects={showAllProjects} onToggleAllProjects={handleToggleAllProjects} onAgenticSearch={agenticSessionSearch} />;
 }
-function NoConversationsMessage() {
+function NoConversationsMessage(): React.ReactNode {
   const $ = _c(2);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -337,7 +337,9 @@ function NoConversationsMessage() {
 function _temp() {
   process.exit(1);
 }
-function CrossProjectMessage(t0) {
+function CrossProjectMessage(t0: {
+  command: string
+}): React.ReactNode {
   const $ = _c(8);
   const {
     command

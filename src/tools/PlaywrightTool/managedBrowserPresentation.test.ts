@@ -98,3 +98,20 @@ describe('explicit managed browser presentation', () => {
     expect(f.restoreNative).not.toHaveBeenCalled()
   })
 })
+
+test('macOS also requires native foreground confirmation after CDP restoration', async () => {
+  const f = fixture()
+  f.deps.platform = 'darwin'
+  f.restoreNative.mockResolvedValue(false)
+  expect(await presentManagedBrowserWindow(f.input, f.deps)).toBe(false)
+  expect(f.restoreNative).toHaveBeenCalledWith(42, f.input.bounds)
+})
+
+test('macOS retries bounds after native activation when the first unminimize acknowledgement lags', async () => {
+  const f = fixture()
+  f.deps.platform = 'darwin'
+  f.restorePage.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  expect(await presentManagedBrowserWindow(f.input, f.deps)).toBe(true)
+  expect(f.restoreNative).toHaveBeenCalledTimes(1)
+  expect(f.restorePage).toHaveBeenCalledTimes(2)
+})

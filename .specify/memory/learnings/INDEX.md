@@ -282,6 +282,29 @@ context. Open only the linked detail documents whose `applies_to` or
     "last_seen": "2026-06-16T08:55:00Z",
     "occurrence_count": 1,
     "signal_strength": "high"
+  },
+  {
+    "id": "learn-2026-11-11-image-stream-idle-reset",
+    "problem": "Image generation can reset during a long wait despite a successful model-catalog preflight.",
+    "lesson": "On the investigated network, final-only and one-preview requests reset; three previews allowed Bun and curl to complete. Request progressive previews, parse SSE incrementally, accept only the completed event, and catch failures while reading the response body. A catalog hit does not prove generation succeeds.",
+    "learning_type": "recovery_path",
+    "source_command": "direct-debug",
+    "recurrence_key": "image-stream-idle-reset",
+    "applies_to": [
+      "image generation",
+      "server provider networking"
+    ],
+    "trigger_signals": [
+      "IMAGE_PROVIDER_NETWORK_ERROR",
+      "ECONNRESET",
+      "partial_images",
+      "image_generation.completed"
+    ],
+    "detail": "./learn-2026-11-11-image-stream-idle-reset.md",
+    "first_seen": "2026-11-11T07:20:00Z",
+    "last_seen": "2026-11-11T07:20:00Z",
+    "occurrence_count": 1,
+    "signal_strength": "high"
   }
 ]
 <!-- SPECKIT_LEARNING_DATA_END -->
@@ -504,3 +527,16 @@ A failed CLI restart left runtimeOverrides as next-startup truth while desktop r
 #### Lesson
 
 The SuperSpec template used activePhaseId sp-implement, but workflow tool policy only treated implementation/implement as implementation phases. The server therefore launched the CLI with mutating tools disallowed in phase 5. Normalize phase ids and cover skill-style implementation aliases with server and WebSocket launch regressions.
+
+
+### Image stream idle resets
+
+- Applies to image generation, provider networking, and SSE parsing.
+- Trigger: `IMAGE_PROVIDER_NETWORK_ERROR`, `ECONNRESET`, or preflight success followed by generation failure.
+- [Evidence and recovery](./learn-2026-11-11-image-stream-idle-reset.md).
+
+### Development workflow question batches
+
+- Applies to: canonical development workflow, AskUserQuestion batching, prompt injection and reconnect.
+- Trigger: serial clarification overload, optional questions lost on reconnect, preferences incorrectly marked blocking.
+- [Policy and cross-layer evidence](./learn-2026-11-11-development-question-batches.md).

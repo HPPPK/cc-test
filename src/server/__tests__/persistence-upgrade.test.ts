@@ -1,3 +1,4 @@
+import { requireFixtureRecord } from './fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as os from 'os'
@@ -374,13 +375,35 @@ test('upgrades legacy expert delivery capability without inventing fields or dro
     await fs.writeFile(file, JSON.stringify({ schemaVersion: 1, sessionId: id, expert, updatedAt: '2026-01-01T00:00:00Z' }))
     const store = new ExpertRuntimeSessionStore()
     const loaded = await store.get(id)
-    expect(loaded).toEqual(expert)
+    expect(requireFixtureRecord(loaded)).toEqual(expert)
     expect(loaded?.templateFillDelivery).not.toHaveProperty('fieldSnapshot')
     await store.save(id, loaded!)
-    expect(await new ExpertRuntimeSessionStore().get(id)).toEqual(expert)
+    expect(requireFixtureRecord(await new ExpertRuntimeSessionStore().get(id))).toEqual(expert)
   } finally {
     if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR
     else process.env.CLAUDE_CONFIG_DIR = previous
     await fs.rm(config, { recursive: true, force: true })
+  }
+})
+
+test('upgrades a legacy WebSearch choice additively without changing keys or unknown user settings', async () => {
+  const { SettingsService } = await import('../services/settingsService.js')
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'web-search-upgrade-'))
+  const previous = process.env.CLAUDE_CONFIG_DIR
+  process.env.CLAUDE_CONFIG_DIR = root
+  try {
+    await fs.writeFile(path.join(root, 'settings.json'), JSON.stringify({ futureRoot: { keep: true }, webSearch: { mode: 'brave', braveApiKey: 'fixture-key', futureOption: { keep: true } } }))
+    await new SettingsService().updateUserSettings({ webSearch: { mode: 'tavily-keyless' } })
+    const saved = JSON.parse(await fs.readFile(path.join(root, 'settings.json'), 'utf8'))
+    expect(saved.webSearch.mode).toBe('tavily-keyless')
+    expect(saved.webSearch.braveApiKey).toBe('fixture-key')
+    expect(saved.webSearch.futureOption).toEqual({ keep: true })
+    expect(saved.futureRoot).toEqual({ keep: true })
+    expect(saved.schemaVersion).toBeUndefined()
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = previous
+    resetPersistentStorageMigrationsForTests()
+    await fs.rm(root, { recursive: true, force: true })
   }
 })

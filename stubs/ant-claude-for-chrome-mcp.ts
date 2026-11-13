@@ -1,3 +1,6 @@
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { unsupportedFeature } from '../src/utils/unsupportedFeature.js'
+
 export type PermissionMode =
   | 'ask'
   | 'skip_all_permission_checks'
@@ -17,8 +20,6 @@ export const BROWSER_TOOLS: Array<{ name: string }> = [];
 
 export function createClaudeForChromeMcpServer(
   _context: ClaudeForChromeContext,
-) {
-  return {
-    async connect(_transport: unknown): Promise<void> {},
-  };
+): McpServer {
+  return unsupportedFeature('private-chrome-mcp-server')
 }

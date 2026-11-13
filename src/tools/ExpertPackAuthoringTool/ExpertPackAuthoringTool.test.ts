@@ -1,3 +1,4 @@
+import { customToolSchemaFixture, toolPromptFixture } from '../toolFixtures.test.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -31,8 +32,8 @@ function candidate(id = 'tool-authored-expert') {
   }
 }
 
-async function loadTool(): Promise<Tool> {
-  const mod = await import('./ExpertPackAuthoringTool.js') as { ExpertPackAuthoringTool?: Tool }
+async function loadTool(): Promise<NonNullable<typeof import('./ExpertPackAuthoringTool.js')['ExpertPackAuthoringTool']>> {
+  const mod = await import('./ExpertPackAuthoringTool.js')
   expect(mod.ExpertPackAuthoringTool).toBeDefined()
   if (!mod.ExpertPackAuthoringTool) throw new Error('ExpertPackAuthoringTool export is required')
   return mod.ExpertPackAuthoringTool
@@ -66,11 +67,11 @@ describe('ExpertPackAuthoringTool', () => {
     expect(findToolByName(getAllBaseTools(), 'expert_pack_authoring')).toBe(tool)
     expect(findToolByName(getTools(getEmptyToolPermissionContext()), 'expert_pack_authoring')).toBe(tool)
 
-    const apiSchema = await toolToAPISchema(tool, {
+    const apiSchema = customToolSchemaFixture(await toolToAPISchema(tool, {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
       tools: [],
       agents: [],
-    })
+    }))
     expect(apiSchema.input_schema).toMatchObject({ type: 'object' })
     expect(tool.inputSchema.safeParse({ operation: 'create', pack: candidate() }).success).toBe(true)
   })
@@ -136,9 +137,9 @@ describe('ExpertPackAuthoringTool', () => {
 
   test('marks authoring reads as read-only and deletion as destructive', async () => {
     const tool = await loadTool()
-    expect(tool.isReadOnly({ operation: 'guide' })).toBe(true)
-    expect(tool.isReadOnly({ operation: 'validate', pack: candidate() })).toBe(true)
-    expect(tool.isReadOnly({ operation: 'create', pack: candidate() })).toBe(false)
+    expect(tool.isReadOnly?.({ operation: 'guide' })).toBe(true)
+    expect(tool.isReadOnly?.({ operation: 'validate', pack: candidate() })).toBe(true)
+    expect(tool.isReadOnly?.({ operation: 'create', pack: candidate() })).toBe(false)
     expect(tool.isDestructive?.({ operation: 'delete', packId: 'tool-authored-expert', basisHash: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })).toBe(true)
   })
 

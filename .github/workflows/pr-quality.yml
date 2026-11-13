@@ -56,6 +56,29 @@ jobs:
         id: policy
         run: bun run scripts/pr/change-policy.ts --files changed-files.txt --labels-file labels.txt
 
+  core-types:
+    name: core-types
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install search dependency for core contract tests
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: bun install
+
+      - name: Check SDK parity, source boundaries, root types and core tests
+        run: bun run check:core-contracts
+
   desktop-checks:
     name: desktop-checks
     needs: change-policy
@@ -251,6 +274,7 @@ jobs:
     name: pr-quality-gate
     needs:
       - change-policy
+      - core-types
       - desktop-checks
       - server-checks
       - adapter-checks
@@ -290,6 +314,7 @@ jobs:
           }
 
           require_success "change-policy" "${{ needs.change-policy.result }}"
+          require_success "core-types" "${{ needs.core-types.result }}"
           allow_skip_or_success "desktop-checks" "${{ needs.desktop-checks.result }}"
           allow_skip_or_success "server-checks" "${{ needs.server-checks.result }}"
           allow_skip_or_success "adapter-checks" "${{ needs.adapter-checks.result }}"

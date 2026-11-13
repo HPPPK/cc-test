@@ -47,7 +47,7 @@ export type Props = Except<Styles, 'textWrap'> & {
 /**
  * `<Box>` is an essential Ink component to build your layout. It's like `<div style="display: flex">` in the browser.
  */
-function Box(t0) {
+function Box(t0: PropsWithChildren<Props>): React.ReactNode {
   const $ = _c(42);
   let autoFocus;
   let children;

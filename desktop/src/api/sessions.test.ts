@@ -938,3 +938,12 @@ describe('sessionsApi workflow contract', () => {
     })
   })
 })
+
+
+describe('session-bound agent result preview', () => {
+  it('encodes session and tool call IDs and never sends an arbitrary path', async () => {
+    getMock.mockResolvedValueOnce({ status: 'missing', content: '' })
+    await sessionsApi.getAgentResult('session/id', 'call/id')
+    expect(getMock).toHaveBeenCalledWith('/api/sessions/session%2Fid/agent-results/call%2Fid')
+  })
+})

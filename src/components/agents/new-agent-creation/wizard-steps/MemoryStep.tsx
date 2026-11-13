@@ -1,3 +1,4 @@
+import { assertAgentColorStage, assertAgentConfirmStage } from '../stageContracts.js'
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode } from 'react';
 import { Box } from '../../../../ink.js';
@@ -15,14 +16,16 @@ type MemoryOption = {
   label: string;
   value: AgentMemoryScope | 'none';
 };
-export function MemoryStep() {
+export function MemoryStep(): ReactNode {
   const $ = _c(13);
   const {
     goNext,
     goBack,
     updateWizardData,
     wizardData
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
+  assertAgentColorStage(wizardData)
+  assertAgentConfirmStage(wizardData)
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
@@ -66,7 +69,7 @@ export function MemoryStep() {
   } else {
     t1 = $[2];
   }
-  const memoryOptions = t1;
+  const memoryOptions: MemoryOption[] = t1;
   let t2;
   if ($[3] !== goNext || $[4] !== updateWizardData || $[5] !== wizardData.finalAgent || $[6] !== wizardData.systemPrompt) {
     t2 = value => {

@@ -57,7 +57,7 @@ describe('workflow task router', () => {
     const result = routeWorkflowTask({ request })
 
     expect(result.primaryLabel).toBe(expectedPrimaryLabel)
-    expect(expectedEfforts).toContain(result.effort)
+    expect(expectedEfforts.some(effort => effort === result.effort)).toBe(true)
     expect(result.confidence).toBeGreaterThanOrEqual(0.6)
     expect(result.rationale).toEqual(expect.any(String))
     expect(result.suggestedPath).toEqual(expect.arrayContaining(expectedPath))

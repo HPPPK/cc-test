@@ -42,7 +42,7 @@ const DEFAULT_PLACEHOLDERS: Record<FeedbackType, string> = {
  * - Analytics events for feedback interactions
  * - Transforming options to Select-compatible format
  */
-export function PermissionPrompt(t0) {
+export function PermissionPrompt<T extends string>(t0: PermissionPromptProps<T>): React.ReactNode {
   const $ = _c(54);
   const {
     options,
@@ -57,7 +57,7 @@ export function PermissionPrompt(t0) {
   const [rejectFeedback, setRejectFeedback] = useState("");
   const [acceptInputMode, setAcceptInputMode] = useState(false);
   const [rejectInputMode, setRejectInputMode] = useState(false);
-  const [focusedValue, setFocusedValue] = useState(null);
+  const [focusedValue, setFocusedValue] = useState<T | null>(null);
   const [acceptFeedbackModeEntered, setAcceptFeedbackModeEntered] = useState(false);
   const [rejectFeedbackModeEntered, setRejectFeedbackModeEntered] = useState(false);
   let t2;

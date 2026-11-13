@@ -238,7 +238,7 @@ function candidatesForVisitedUrl(
 
   const roots = hostMatches
     .map((candidate) => ({ candidate, url: comparableUrl(candidate.candidateUrl) }))
-    .filter((item): item is { candidate: ExpertResearchSourceLibraryEntry; url: ComparableUrl } => Boolean(item.url) && item.url.pathname === '/')
+    .filter((item): item is { candidate: ExpertResearchSourceLibraryEntry; url: ComparableUrl } => item.url !== undefined && item.url.pathname === '/')
   const sameOriginRoot = roots.find((item) => item.url.protocol === visited.protocol && item.url.rawHost === visited.rawHost)
     ?? roots.find((item) => item.url.protocol === visited.protocol)
     ?? roots.find((item) => item.url.rawHost === visited.rawHost)

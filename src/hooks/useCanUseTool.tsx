@@ -25,7 +25,9 @@ import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWork
 import { createPermissionContext, createPermissionQueueOps } from './toolPermission/PermissionContext.js';
 import { logPermissionDecision } from './toolPermission/permissionLogging.js';
 export type CanUseToolFn<Input extends Record<string, unknown> = Record<string, unknown>> = (tool: ToolType, input: Input, toolUseContext: ToolUseContext, assistantMessage: AssistantMessage, toolUseID: string, forceDecision?: PermissionDecision<Input>) => Promise<PermissionDecision<Input>>;
-function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
+function useCanUseTool(setToolUseConfirmQueue: React.Dispatch<
+    React.SetStateAction<ToolUseConfirm[]>
+  >, setToolPermissionContext: (context: ToolPermissionContext) => void): CanUseToolFn {
   const $ = _c(3);
   let t0;
   if ($[0] !== setToolPermissionContext || $[1] !== setToolUseConfirmQueue) {
@@ -128,7 +130,7 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
                   command: string;
                 }).command);
                 if (speculativePromise) {
-                  const raceResult = await Promise.race([speculativePromise.then(_temp), new Promise(_temp2)]);
+                  const raceResult = await Promise.race([speculativePromise.then(_temp), new Promise<{ type: 'timeout' }>(_temp2)]);
                   if (ctx.resolveIfAborted(resolve)) {
                     return;
                   }
@@ -194,7 +196,7 @@ function _temp2(res) {
     type: "timeout" as const
   });
 }
-function _temp(r) {
+function _temp<T>(r: T) {
   return {
     type: "result" as const,
     result: r

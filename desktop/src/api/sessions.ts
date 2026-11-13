@@ -441,6 +441,10 @@ function buildWorkspacePath(
 }
 
 export const sessionsApi = {
+  getAgentResult(sessionId: string, toolUseId: string) {
+    return api.get<{ status: 'available' | 'missing'; content: string; source?: 'artifact' | 'transcript'; artifactPath?: string }>(`/api/sessions/${encodeURIComponent(sessionId)}/agent-results/${encodeURIComponent(toolUseId)}`)
+  },
+
   list(params?: { project?: string; limit?: number; offset?: number }) {
     const query = new URLSearchParams()
     if (params?.project) query.set('project', params.project)

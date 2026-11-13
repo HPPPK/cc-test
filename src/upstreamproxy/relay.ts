@@ -295,11 +295,12 @@ export async function startNodeRelay(
 function handleData(
   sock: ClientSocket,
   st: ConnState,
-  data: Buffer,
+  incoming: Buffer | string,
   wsUrl: string,
   authHeader: string,
   wsAuthHeader: string,
 ): void {
+  const data = typeof incoming === 'string' ? Buffer.from(incoming, 'utf8') : incoming
   // Phase 1: accumulate until we've seen the full CONNECT request
   // (terminated by CRLF CRLF). curl/gh send this in one packet, but
   // don't assume that.
@@ -453,3 +454,5 @@ function cleanupConn(st: ConnState | undefined): void {
   }
   st.ws = undefined
 }
+
+export const _test = { handleData, newConnState }

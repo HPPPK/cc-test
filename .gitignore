@@ -117,3 +117,7 @@ desktop/.managed-node-runtime/
 .tmp-*
 desktop/.tmp-*
 desktop-builtin-audit.json
+
+/*.bun-build
+/.runner-compiled-*/
+/.runner-capture-*/

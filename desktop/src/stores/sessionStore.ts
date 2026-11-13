@@ -15,6 +15,9 @@ type CreateSessionOptions = {
   workflow?: WorkflowSessionCreateOptions
 }
 
+// Ignore list snapshots taken before a newer refresh or a successful deletion.
+let sessionListRevision = 0
+
 type SessionStore = {
   sessions: SessionListItem[]
   activeSessionId: string | null
@@ -47,9 +50,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   selectedSessionIds: new Set(),
 
   fetchSessions: async (project?: string) => {
+    const revision = ++sessionListRevision
     set({ isLoading: true, error: null })
     try {
-      const { sessions: raw } = await sessionsApi.list({ project, limit: 100 })
+      const raw: SessionListItem[] = []
+      const limit = 100
+      let offset = 0
+      let total: number
+      do {
+        const page = await sessionsApi.list({ project, limit, offset })
+        if (revision !== sessionListRevision) return
+        raw.push(...page.sessions)
+        total = page.total
+        offset += limit
+      } while (offset < total)
       let syncedSessions: SessionListItem[] = []
       set((state) => {
         const currentById = new Map(state.sessions.map((session) => [session.id, session]))
@@ -69,6 +83,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       })
       syncOpenSessionTabTitles(syncedSessions)
     } catch (err) {
+      if (revision !== sessionListRevision) return
       set({ error: (err as Error).message, isLoading: false })
     }
   },
@@ -106,17 +121,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   deleteSession: async (id: string) => {
     await sessionsApi.delete(id)
+    sessionListRevision++
     useSessionRuntimeStore.getState().clearSelection(id)
     set((s) => ({
       sessions: s.sessions.filter((session) => session.id !== id),
       activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       selectedSessionIds: removeIdsFromSet(s.selectedSessionIds, [id]),
+      isLoading: false,
     }))
   },
 
   deleteSessions: async (ids: string[]) => {
     const sessionIds = [...new Set(ids)].filter(Boolean)
     const result = await sessionsApi.batchDelete(sessionIds)
+    if (result.successes.length > 0) sessionListRevision++
     for (const id of result.successes) {
       useSessionRuntimeStore.getState().clearSelection(id)
     }
@@ -126,6 +144,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         ? null
         : s.activeSessionId,
       selectedSessionIds: removeIdsFromSet(s.selectedSessionIds, result.successes),
+      ...(result.successes.length > 0 ? { isLoading: false } : {}),
     }))
     return result
   },

@@ -28,12 +28,20 @@ import { AgentPromptDisplay, AgentResponseDisplay } from '../AgentTool/UI.js';
 import BashToolResultMessage from '../BashTool/BashToolResultMessage.js';
 import { TASK_OUTPUT_TOOL_NAME } from './constants.js';
 const inputSchema = lazySchema(() => z.strictObject({
-  task_id: z.string().describe('The task ID to get output from'),
+  task_id: z.string().min(1).regex(/\S/).describe('Non-empty task ID. For async agents, copy the exact agentId returned by Agent into task_id.'),
   block: semanticBoolean(z.boolean().default(true)).describe('Whether to wait for completion'),
   timeout: z.number().min(0).max(600000).default(30000).describe('Max wait time in ms')
 }));
 type InputSchema = ReturnType<typeof inputSchema>;
 type TaskOutputToolInput = z.infer<InputSchema>;
+
+function taskIdInputError(input: unknown): string | undefined {
+  const taskId = input && typeof input === 'object' && 'task_id' in input ? input.task_id : undefined
+  if (typeof taskId !== 'string' || !taskId.trim()) {
+    return 'TaskOutput requires task_id to be a non-empty string. For an async agent, copy the exact agentId returned by Agent into task_id. For a background shell, copy its returned task ID. Do not send an empty value or a placeholder, and do not launch another agent to recover the ID.'
+  }
+  return undefined
+}
 
 // Unified output type covering all task types
 type TaskOutput = {
@@ -173,7 +181,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     return this.isReadOnly?.(_input) ?? false;
   },
   isEnabled() {
-    return "external" !== 'ant';
+    return true;
   },
   isReadOnly(_input) {
     return true;
@@ -186,24 +194,26 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
 
 - Retrieves output from a running or completed task (background shell, agent, or remote session)
 - Takes a task_id parameter identifying the task
+- For async agents, copy the exact agentId returned by Agent into task_id; do not send an empty value or a placeholder
 - Returns the task output along with status information
 - Use block=true (default) to wait for task completion
 - Use block=false for non-blocking check of current status
 - Task IDs can be found using the /tasks command
 - Works with all task types: background shells, async agents, and remote sessions`;
   },
-  async validateInput({
-    task_id
-  }, {
+  formatInputValidationError: taskIdInputError,
+  async validateInput(input, {
     getAppState
   }) {
-    if (!task_id) {
+    const inputError = taskIdInputError(input)
+    if (inputError) {
       return {
         result: false,
-        message: 'Task ID is required',
+        message: inputError,
         errorCode: 1
       };
     }
+    const { task_id } = input
     const appState = getAppState();
     const task = appState.tasks?.[task_id] as TaskState | undefined;
     if (!task) {
@@ -365,7 +375,11 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     return <FallbackToolUseErrorMessage result={result} verbose={verbose} />;
   }
 } satisfies ToolDef<InputSchema, TaskOutputToolOutput>);
-function TaskOutputResultDisplay(t0) {
+function TaskOutputResultDisplay(t0: {
+  content: string | TaskOutputToolOutput
+  verbose?: boolean
+  theme: ThemeName
+}): React.ReactNode {
   const $ = _c(54);
   const {
     content,
@@ -382,7 +396,7 @@ function TaskOutputResultDisplay(t0) {
   } else {
     t2 = $[1];
   }
-  const result = t2;
+  const result: TaskOutputToolOutput = t2;
   if (!result.task) {
     let t3;
     if ($[2] === Symbol.for("react.memo_cache_sentinel")) {

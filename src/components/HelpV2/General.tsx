@@ -2,7 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { Box, Text } from '../../ink.js';
 import { PromptInputHelpMenu } from '../PromptInput/PromptInputHelpMenu.js';
-export function General() {
+export function General(): React.ReactNode {
   const $ = _c(2);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

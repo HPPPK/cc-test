@@ -1,3 +1,4 @@
+import { isHumanInputMessage, resolveMessageKind } from '../utils/messageKind.js';
 import { c as _c } from "react/compiler-runtime";
 import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import { randomUUID, type UUID } from 'crypto';
@@ -118,7 +119,7 @@ export function MessageSelector({
       ...summarizeInputProps,
       onChange: setSummarizeFromFeedback
     });
-    if ("external" === 'ant') {
+    if (false) {
       baseOptions.push({
         value: 'summarize_up_to',
         label: 'Summarize up to here',
@@ -413,7 +414,11 @@ function getRestoreOptionConversationText(option: RestoreOption): string {
       return 'The conversation will be unchanged.';
   }
 }
-function RestoreOptionDescription(t0) {
+function RestoreOptionDescription(t0: {
+  selectedRestoreOption: RestoreOption
+  canRestoreCode: boolean
+  diffStatsForRestore: DiffStats | undefined
+}): React.ReactNode {
   const $ = _c(11);
   const {
     selectedRestoreOption,
@@ -458,7 +463,9 @@ function RestoreOptionDescription(t0) {
   }
   return t4;
 }
-function RestoreCodeConfirmation(t0) {
+function RestoreCodeConfirmation(t0: {
+  diffStatsForRestore: DiffStats | undefined
+}): React.ReactNode {
   const $ = _c(14);
   const {
     diffStatsForRestore
@@ -541,7 +548,9 @@ function RestoreCodeConfirmation(t0) {
   }
   return t2;
 }
-function DiffStatsText(t0) {
+function DiffStatsText(t0: {
+  diffStats: DiffStats | undefined
+}): React.ReactNode {
   const $ = _c(7);
   const {
     diffStats
@@ -576,7 +585,13 @@ function DiffStatsText(t0) {
   }
   return t3;
 }
-function UserMessageOption(t0) {
+function UserMessageOption(t0: {
+  userMessage: UserMessage
+  color?: keyof Theme
+  dimColor?: boolean
+  isCurrent: boolean
+  paddingRight?: number
+}): React.ReactNode {
   const $ = _c(31);
   const {
     userMessage,
@@ -765,9 +780,8 @@ function computeDiffStatsBetweenMessages(messages: Message[], fromMessageId: UUI
   };
 }
 export function selectableUserMessagesFilter(message: Message): message is UserMessage {
-  if (message.type !== 'user') {
-    return false;
-  }
+  if (message.type !== 'user' || !isHumanInputMessage(message)) return false;
+  if (message.messageKind === 'user_input') return true;
   if (Array.isArray(message.message.content) && message.message.content[0]?.type === 'tool_result') {
     return false;
   }
@@ -800,6 +814,11 @@ export function messagesAfterAreOnlySynthetic(messages: Message[], fromIndex: nu
   for (let i = fromIndex + 1; i < messages.length; i++) {
     const msg = messages[i];
     if (!msg) continue;
+
+    // Explicit provenance wins over legacy flags and quoted interruption text.
+    if (msg.type === 'user' && msg.messageKind === 'user_input') return false;
+    const kind = resolveMessageKind(msg);
+    if (kind === 'context_summary' || kind === 'internal_notification' || kind === 'system_event') continue;
 
     // Skip known non-meaningful message types
     if (isSyntheticMessage(msg)) continue;

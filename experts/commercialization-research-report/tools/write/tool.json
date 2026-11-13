@@ -2,7 +2,7 @@
   "id": "write",
   "name": "调研 Markdown 文件",
   "type": "hostBuiltinRef",
-  "purpose": "文件优先研究阶段：只能用 Write(file_path, content) 写入运行时声明的 Markdown 交接文件。主代理写 01-research-brief.md；研究子代理只写自己分配的 Markdown；D 写 05，E 写 07，F 写 08。Markdown 路径是授权依据，不需要、也不得传 research_artifact.kind。子代理只回传实际路径与极短真实状态；真实 Write 结果、可读取产物及浏览审计才是后续依据。HTML 生成、修改和定稿只能用 cc-jiangxia expert-template-fill --data <已有payload.json> 或 --data-stdin，并用 --output <报告.html> 指向当前 workDir；JSON 为 {templateId, fields, mode?: patch|finalize}。禁止 Write/Edit/MultiEdit HTML、临时 JSON、脚本或自由 HTML。CLI 负责固定母版渲染、写盘和确认；初稿成功后进入 08 复核，读取 08 后只对同一产物最小 patch，或 fields={} finalize。失败按具体错误修复并重试同一 CLI，不重做研究，不直接调用内部确认接口。首次候选的字段修复规则由既有协议约束。",
+  "purpose": "文件优先研究阶段：只能用 Write(file_path, content) 写入运行时声明的 Markdown 交接文件。主代理写 01-research-brief.md；研究子代理只写自己分配的 Markdown；D 写 05，E 写 07，F 写 08。Markdown 路径是授权依据，不需要、也不得传 research_artifact.kind。子代理只回传实际路径与极短真实状态；真实 Write 结果、可读取产物及浏览审计才是后续依据。HTML 生成、修改和定稿只能用 claude expert-template-fill --data <已有payload.json> 或 --data-stdin，并用 --output <报告.html> 指向当前 workDir；JSON 为 {templateId, fields, mode?: patch|finalize}。禁止 Write/Edit/MultiEdit HTML、临时 JSON、脚本或自由 HTML。CLI 负责固定母版渲染、写盘和确认；初稿成功后进入 08 复核，读取 08 后只对同一产物最小 patch，或 fields={} finalize。失败按具体错误修复并重试同一 CLI，不重做研究，不直接调用内部确认接口。首次候选的字段修复规则由既有协议约束。",
   "hostToolId": "Write",
   "network": "none",
   "permissions": [

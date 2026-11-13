@@ -1,3 +1,4 @@
+import { attachMessageKind, messageKindMetadata, resolveMessageKind, type MessageKind } from './messageKind.js'
 import { createHash } from 'node:crypto'
 import { feature } from 'bun:bundle'
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
@@ -384,7 +385,7 @@ function baseCreateAssistantMessage({
   isVirtual?: true
   usage?: Usage
 }): AssistantMessage {
-  return {
+  return attachMessageKind({
     type: 'assistant',
     uuid: randomUUID(),
     timestamp: new Date().toISOString(),
@@ -406,7 +407,7 @@ function baseCreateAssistantMessage({
     errorDetails,
     isApiErrorMessage,
     isVirtual,
-  }
+  })
 }
 
 export function createAssistantMessage({
@@ -460,6 +461,8 @@ export function createAssistantAPIErrorMessage({
 
 export function createUserMessage({
   content,
+  messageKind,
+  isSynthetic,
   isMeta,
   isVisibleInTranscriptOnly,
   isVirtual,
@@ -475,10 +478,12 @@ export function createUserMessage({
   origin,
 }: {
   content: string | ContentBlockParam[]
-  isMeta?: true
-  isVisibleInTranscriptOnly?: true
+  messageKind?: MessageKind
+  isSynthetic?: boolean
+  isMeta?: boolean
+  isVisibleInTranscriptOnly?: boolean
   isVirtual?: true
-  isCompactSummary?: true
+  isCompactSummary?: boolean
   toolUseResult?: unknown // Matches tool's `Output` type
   /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
   mcpMeta?: {
@@ -502,6 +507,8 @@ export function createUserMessage({
 }): UserMessage {
   const m: UserMessage = {
     type: 'user',
+    ...(messageKind ? { messageKind } : {}),
+    ...(typeof isSynthetic === 'boolean' ? { isSynthetic } : {}),
     message: {
       role: 'user',
       content: content || NO_CONTENT_MESSAGE, // Make sure we don't send empty messages
@@ -520,7 +527,15 @@ export function createUserMessage({
     permissionMode,
     origin,
   }
-  return m
+  return attachMessageKind(m)
+}
+
+/** Runtime instructions use user-role transport without pretending a human authored them. */
+export function createRuntimeUserMessage(input: Parameters<typeof createUserMessage>[0]): ReturnType<typeof createUserMessage> {
+  const value = createUserMessage(input)
+  return value.messageKind === 'user_input' && input.messageKind === undefined
+    ? { ...value, messageKind: 'internal_notification' }
+    : value
 }
 
 export function prepareUserContent({
@@ -550,7 +565,7 @@ export function createUserInterruptionMessage({
 }): UserMessage {
   const content = toolUse ? INTERRUPT_MESSAGE_FOR_TOOL_USE : INTERRUPT_MESSAGE
 
-  return createUserMessage({
+  return createRuntimeUserMessage({
     content: [
       {
         type: 'text',
@@ -594,9 +609,10 @@ export function createModelSwitchBreadcrumbs(
 ): UserMessage[] {
   return [
     createSyntheticUserCaveatMessage(),
-    createUserMessage({ content: formatCommandInputTags('model', modelArg) }),
+    createUserMessage({ content: formatCommandInputTags('model', modelArg), messageKind: 'system_event' }),
     createUserMessage({
       content: `<${LOCAL_COMMAND_STDOUT_TAG}>Set model to ${resolvedDisplay}</${LOCAL_COMMAND_STDOUT_TAG}>`,
+      messageKind: 'system_event',
     }),
   ]
 }
@@ -610,14 +626,14 @@ export function createProgressMessage<P extends Progress>({
   parentToolUseID: string
   data: P
 }): ProgressMessage<P> {
-  return {
+  return attachMessageKind({
     type: 'progress',
     data,
     toolUseID,
     parentToolUseID,
     uuid: randomUUID(),
     timestamp: new Date().toISOString(),
-  }
+  })
 }
 
 export function createToolResultStopMessage(
@@ -756,6 +772,7 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
             ? deriveUUID(message.uuid, index)
             : message.uuid
           return {
+            ...messageKindMetadata(message),
             type: 'assistant' as const,
             timestamp: message.timestamp,
             message: {
@@ -815,6 +832,7 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
               imagePasteIds: imageId !== undefined ? [imageId] : undefined,
               origin: message.origin,
             }),
+            ...messageKindMetadata(message),
             uuid: isNewChain ? deriveUUID(message.uuid, index) : message.uuid,
           } as NormalizedMessage
         })
@@ -2081,6 +2099,7 @@ export function normalizeMessagesForAPI(
           // so the model can reference previous command output in later turns
           const userMsg = createUserMessage({
             content: message.content,
+            ...messageKindMetadata(message),
             uuid: message.uuid,
             timestamp: message.timestamp,
           })
@@ -3754,10 +3773,13 @@ Read the team config to discover your teammates' names. Check the task list peri
       // QueuedCommand.isMeta — it should stay visible. Previously this
       // hardcoded isMeta:true, which hid user-typed messages in brief mode
       // (filterForBriefTool) and in normal mode (shouldShowUserMessage).
-      const metaProp =
-        origin !== undefined || attachment.isMeta
-          ? ({ isMeta: true } as const)
-          : {}
+      const metaProp = messageKindMetadata({
+        ...attachment,
+        type: 'user',
+        mode: attachment.commandMode,
+        origin,
+        ...(origin !== undefined && attachment.messageKind !== 'user_input' ? { isMeta: true } : {}),
+      })
 
       if (Array.isArray(attachment.prompt)) {
         // Handle content blocks (may include images)
@@ -4347,7 +4369,7 @@ export function createSystemMessage(
   toolUseID?: string,
   preventContinuation?: boolean,
 ): SystemInformationalMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'informational',
     content,
@@ -4357,13 +4379,13 @@ export function createSystemMessage(
     toolUseID,
     level,
     ...(preventContinuation && { preventContinuation }),
-  }
+  })
 }
 
 export function createPermissionRetryMessage(
   commands: string[],
 ): SystemPermissionRetryMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'permission_retry',
     content: `Allowed ${commands.join(', ')}`,
@@ -4372,14 +4394,14 @@ export function createPermissionRetryMessage(
     isMeta: false,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
-  }
+  })
 }
 
 export function createBridgeStatusMessage(
   url: string,
   upgradeNudge?: string,
 ): SystemBridgeStatusMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'bridge_status',
     content: `/remote-control is active. Code in CLI or at ${url}`,
@@ -4388,20 +4410,20 @@ export function createBridgeStatusMessage(
     isMeta: false,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
-  }
+  })
 }
 
 export function createScheduledTaskFireMessage(
   content: string,
 ): SystemScheduledTaskFireMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'scheduled_task_fire',
     content,
     isMeta: false,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
-  }
+  })
 }
 
 export function createStopHookSummaryMessage(
@@ -4416,7 +4438,7 @@ export function createStopHookSummaryMessage(
   hookLabel?: string,
   totalDurationMs?: number,
 ): SystemStopHookSummaryMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'stop_hook_summary',
     hookCount,
@@ -4431,7 +4453,7 @@ export function createStopHookSummaryMessage(
     toolUseID,
     hookLabel,
     totalDurationMs,
-  }
+  })
 }
 
 export function createTurnDurationMessage(
@@ -4439,7 +4461,7 @@ export function createTurnDurationMessage(
   budget?: { tokens: number; limit: number; nudges: number },
   messageCount?: number,
 ): SystemTurnDurationMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'turn_duration',
     durationMs,
@@ -4450,43 +4472,43 @@ export function createTurnDurationMessage(
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createAwaySummaryMessage(
   content: string,
 ): SystemAwaySummaryMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'away_summary',
     content,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createMemorySavedMessage(
   writtenPaths: string[],
 ): SystemMemorySavedMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'memory_saved',
     writtenPaths,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createAgentsKilledMessage(): SystemAgentsKilledMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'agents_killed',
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createApiMetricsMessage(metrics: {
@@ -4502,7 +4524,7 @@ export function createApiMetricsMessage(metrics: {
   classifierCount?: number
   configWriteCount?: number
 }): SystemApiMetricsMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'api_metrics',
     ttftMs: metrics.ttftMs,
@@ -4519,13 +4541,13 @@ export function createApiMetricsMessage(metrics: {
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createCommandInputMessage(
   content: string,
 ): SystemLocalCommandMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'local_command',
     content,
@@ -4533,7 +4555,7 @@ export function createCommandInputMessage(
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
     isMeta: false,
-  }
+  })
 }
 
 export function createCompactBoundaryMessage(
@@ -4543,7 +4565,7 @@ export function createCompactBoundaryMessage(
   userContext?: string,
   messagesSummarized?: number,
 ): SystemCompactBoundaryMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'compact_boundary',
     content: `Conversation compacted`,
@@ -4560,7 +4582,7 @@ export function createCompactBoundaryMessage(
     ...(lastPreCompactMessageUuid && {
       logicalParentUuid: lastPreCompactMessageUuid,
     }),
-  }
+  })
 }
 
 export function createMicrocompactBoundaryMessage(
@@ -4573,7 +4595,7 @@ export function createMicrocompactBoundaryMessage(
   logForDebugging(
     `[microcompact] saved ~${formatTokens(tokensSaved)} tokens (cleared ${compactedToolIds.length} tool results)`,
   )
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'microcompact_boundary',
     content: 'Context microcompacted',
@@ -4588,7 +4610,7 @@ export function createMicrocompactBoundaryMessage(
       compactedToolIds,
       clearedAttachmentUUIDs,
     },
-  }
+  })
 }
 
 export function createSystemAPIErrorMessage(
@@ -4597,7 +4619,7 @@ export function createSystemAPIErrorMessage(
   retryAttempt: number,
   maxRetries: number,
 ): SystemAPIErrorMessage {
-  return {
+  return attachMessageKind({
     type: 'system',
     subtype: 'api_error',
     level: 'error',
@@ -4608,7 +4630,7 @@ export function createSystemAPIErrorMessage(
     maxRetries,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
-  }
+  })
 }
 
 /**
@@ -4918,7 +4940,7 @@ export function filterWhitespaceOnlyAssistantMessages(
   const merged: Message[] = []
   for (const message of filtered) {
     const prev = merged.at(-1)
-    if (message.type === 'user' && prev?.type === 'user') {
+    if (message.type === 'user' && prev?.type === 'user' && resolveMessageKind(message) === resolveMessageKind(prev)) {
       merged[merged.length - 1] = mergeUserMessages(prev, message) // lvalue
     } else {
       merged.push(message)
@@ -5115,13 +5137,13 @@ export function createToolUseSummaryMessage(
   summary: string,
   precedingToolUseIds: string[],
 ): ToolUseSummaryMessage {
-  return {
+  return attachMessageKind({
     type: 'tool_use_summary',
     summary,
     precedingToolUseIds,
     uuid: randomUUID(),
     timestamp: new Date().toISOString(),
-  }
+  })
 }
 
 /**

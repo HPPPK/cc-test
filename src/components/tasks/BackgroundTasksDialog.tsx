@@ -98,6 +98,7 @@ type ListItem = {
 } | {
   id: string;
   type: 'leader';
+  task?: never;
   label: string;
   status: 'running';
 };
@@ -186,8 +187,8 @@ export function BackgroundTasksDialog({
       const bStatus = b.status;
       if (aStatus === 'running' && bStatus !== 'running') return -1;
       if (aStatus !== 'running' && bStatus === 'running') return 1;
-      const aTime = 'task' in a ? a.task.startTime : 0;
-      const bTime = 'task' in b ? b.task.startTime : 0;
+      const aTime = a.task?.startTime ?? 0;
+      const bTime = b.task?.startTime ?? 0;
       return bTime - aTime;
     });
     const bash = sorted.filter(item => item.type === 'local_bash');
@@ -549,7 +550,10 @@ function toListItem(task: BackgroundTaskState): ListItem {
       };
   }
 }
-function Item(t0) {
+function Item(t0: {
+  item: ListItem
+  isSelected: boolean
+}): ReactNode {
   const $ = _c(14);
   const {
     item,
@@ -609,7 +613,10 @@ function Item(t0) {
   }
   return t8;
 }
-function TeammateTaskGroups(t0) {
+function TeammateTaskGroups(t0: {
+  teammateTasks: ListItem[]
+  currentSelectionId: string | undefined
+}): ReactNode {
   const $ = _c(3);
   const {
     teammateTasks,
@@ -643,7 +650,7 @@ function TeammateTaskGroups(t0) {
   }
   return t1;
 }
-function _temp2(i_0) {
+function _temp2(i_0: ListItem): i_0 is Extract<ListItem, { type: "in_process_teammate" }> {
   return i_0.type === "in_process_teammate";
 }
 function _temp(i) {

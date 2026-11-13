@@ -1,3 +1,4 @@
+import { isHumanInputMessage } from '../utils/messageKind.js'
 /**
  * Shared transport-layer helpers for bridge message handling.
  *
@@ -88,22 +89,12 @@ export function isEligibleBridgeMessage(m: Message): boolean {
 }
 
 /**
- * Extract title-worthy text from a Message for onUserMessage. Returns
- * undefined for messages that shouldn't title the session: non-user, meta
- * (nudges), tool results, compact summaries, non-human origins (task
- * notifications, channel messages), or pure display-tag content
- * (<ide_opened_file>, <session-start-hook>, etc.).
- *
- * Synthetic interrupts ([Request interrupted by user]) are NOT filtered here —
- * isSyntheticMessage lives in messages.ts (heavy import, pulls command
- * registry). The initialMessages path in initReplBridge checks it; the
- * writeMessages path reaching an interrupt as the *first* message is
- * implausible (an interrupt implies a prior prompt already flowed through).
+ * Extract title-worthy human input using envelope provenance. Legacy flags and
+ * structural content provide fallback classification; prose never establishes
+ * authorship. Display tags are stripped only after identity is established.
  */
 export function extractTitleText(m: Message): string | undefined {
-  if (m.type !== 'user' || m.isMeta || m.toolUseResult || m.isCompactSummary)
-    return undefined
-  if (m.origin && m.origin.kind !== 'human') return undefined
+  if (m.type !== 'user' || !isHumanInputMessage(m)) return undefined
   const content = m.message.content
   let raw: string | undefined
   if (typeof content === 'string') {
@@ -399,6 +390,7 @@ export function handleServerControlRequest(
 export function makeResultMessage(sessionId: string): SDKResultSuccess {
   return {
     type: 'result',
+    messageKind: 'system_event',
     subtype: 'success',
     duration_ms: 0,
     duration_api_ms: 0,

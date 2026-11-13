@@ -59,7 +59,7 @@ import type { Message } from '../../types/message.js'
 import type { PermissionDecision } from '../../types/permissions.js'
 import {
   createAssistantAPIErrorMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
 } from '../../utils/messages.js'
 import { evictTaskOutput } from '../../utils/task/diskOutput.js'
 import { evictTerminalTask } from '../../utils/task/framework.js'
@@ -659,6 +659,14 @@ async function tryClaimNextTask(
   }
 }
 
+/** Sender provenance comes from the trusted inbox, never from prompt text. */
+export function createTeammatePromptMessage(content: string, from?: string) {
+  return createRuntimeUserMessage({
+    content,
+    messageKind: from === 'user' ? 'user_input' : 'internal_notification',
+  })
+}
+
 /**
  * Result of waiting for messages.
  */
@@ -1014,6 +1022,7 @@ export async function runInProcessTeammate(
     description,
   )
   let currentPrompt = wrappedInitialPrompt
+  let currentPromptFrom = 'team-lead'
   let shouldExit = false
 
   // Try to claim an available task immediately so the UI can show activity
@@ -1030,7 +1039,7 @@ export async function runInProcessTeammate(
         ...task,
         messages: appendCappedMessage(
           task.messages,
-          createUserMessage({ content: wrappedInitialPrompt }),
+          createRuntimeUserMessage({ content: wrappedInitialPrompt }),
         ),
       }),
       setAppState,
@@ -1069,7 +1078,7 @@ export async function runInProcessTeammate(
       // Prepare prompt messages for this iteration
       // For the first iteration, start fresh
       // For subsequent iterations, pass accumulated messages as context
-      const userMessage = createUserMessage({ content: currentPrompt })
+      const userMessage = createTeammatePromptMessage(currentPrompt, currentPromptFrom)
       const promptMessages: Message[] = [userMessage]
 
       // Check if compaction is needed before building context
@@ -1368,6 +1377,7 @@ export async function runInProcessTeammate(
 
       switch (waitResult.type) {
         case 'shutdown_request':
+          currentPromptFrom = 'team-lead'
           // Pass shutdown request to model for decision
           // Format as teammate-message for consistency with how tmux teammates receive it
           // The model will use approveShutdown or rejectShutdown tool
@@ -1381,12 +1391,13 @@ export async function runInProcessTeammate(
           // Add shutdown request to task.messages for transcript display
           appendTeammateMessage(
             taskId,
-            createUserMessage({ content: currentPrompt }),
+            createRuntimeUserMessage({ content: currentPrompt }),
             setAppState,
           )
           break
 
         case 'new_message':
+          currentPromptFrom = waitResult.from
           // New prompt from leader or teammate
           logForDebugging(
             `[inProcessRunner] ${identity.agentId} received new message from ${waitResult.from}`,
@@ -1407,7 +1418,7 @@ export async function runInProcessTeammate(
             // added by injectUserMessageToTeammate
             appendTeammateMessage(
               taskId,
-              createUserMessage({ content: currentPrompt }),
+              createRuntimeUserMessage({ content: currentPrompt }),
               setAppState,
             )
           }

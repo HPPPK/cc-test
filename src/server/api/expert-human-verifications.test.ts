@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import { handleExpertHumanVerificationsApi } from './expert-human-verifications.js'
 import { expertHumanVerificationService } from '../services/expertHumanVerificationService.js'
@@ -27,7 +28,7 @@ describe('Expert human verification API', () => {
         calls.push({ kind: 'join', sessionId, options })
         return {
           resolution: 'verification_completed',
-          verificationGateId: options.verificationGateId,
+          verificationGateId: requireFixtureValue(options).verificationGateId,
           verification: { url: 'https://example.com/captcha', title: 'CAPTCHA', detail: 'required' },
         }
       }

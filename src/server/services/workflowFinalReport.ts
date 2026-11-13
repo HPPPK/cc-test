@@ -1,6 +1,7 @@
 import type {
   WorkflowCompletionResult,
   WorkflowFinalReport,
+  WorkflowRecommendedSkillReport,
   WorkflowModelResolution,
   WorkflowPhaseSkillEvidence,
   WorkflowPhaseSkillReference,
@@ -11,10 +12,6 @@ import type {
   WorkflowVerificationResult,
 } from './workflowTypes.js'
 
-type WorkflowRecommendedSkillReport = {
-  snapshots: WorkflowPhaseSkillSnapshot[]
-  evidence: WorkflowPhaseSkillEvidence[]
-}
 
 function completionForPhase(state: WorkflowSessionState, phaseId: string): WorkflowCompletionResult {
   const phase = state.phases.find((candidate) => candidate.id === phaseId)

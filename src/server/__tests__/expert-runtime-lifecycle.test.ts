@@ -174,7 +174,7 @@ describe('Expert lifecycle handoff', () => {
     const gate = new Promise<void>(resolve => { release = resolve })
     const pending = sessionRuntimeTransitionService.run(h.id, () => gate)
     const exited = new ExpertSessionService().exitExpertMode(h.id)
-    const continued = continueCommercializationResearch(h.id, { kind: 'continue-review' })
+    const continued = continueCommercializationResearch(h.id, { kind: 'continue-review', briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: [] })
     release()
     await pending
     await exited
@@ -190,4 +190,49 @@ describe('Expert lifecycle handoff', () => {
     expect(h.send).not.toHaveBeenCalled()
     expect(h.start).toHaveBeenCalledTimes(1)
   })
+})
+
+test('quality recovery sends the admission repair without the old contradictory review instruction', async () => {
+  const h = harness(active(), true, getExpertProcessBindingKey(active()))
+  const internal = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+  expect(await continueCommercializationResearch(h.id, { kind: 'recover-quality-checkpoint', code: 'EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED', instruction: 'Repair the saved evidence block before browsing.' })).toBe(true)
+  expect(internal).toHaveBeenCalledTimes(1)
+  const text = String(internal.mock.calls[0]![1])
+  expect(text).toContain('Repair the saved evidence block before browsing.')
+  expect(text).not.toContain('Do not re-dispatch researchers')
+  expect(text).not.toContain('06-browser-audit.md')
+})
+
+test('stalled research recovery reports a visible blocker without another model turn', async () => {
+  const h = harness(active(), true, getExpertProcessBindingKey(active()))
+  const internal = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+  expect(await continueCommercializationResearch(h.id, { kind: 'research-continuation-stalled' })).toBe(true)
+  expect(internal).not.toHaveBeenCalled()
+  expect(h.sent.some(message => message.code === 'EXPERT_RESEARCH_CONTINUATION_STALLED')).toBe(true)
+  expect(h.sent.some(message => message.type === 'status' && message.state === 'idle')).toBe(true)
+})
+
+
+test('an explicit user stop prevents a completed child from automatically resuming expert research', async () => {
+  const h = harness(active(), true, getExpertProcessBindingKey(active()))
+  const internal = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+  handleWebSocket.message(h.ws, JSON.stringify({ type: 'stop_generation' }))
+  expect(await continueCommercializationResearch(h.id, {
+    kind: 'recover-ended-researchers', recoveries: [{ artifactPath: 'research/02.md', endedAgentId: 'stopped-A', reason: 'ended-without-saved-handoff' }], preservedResearcherPaths: [],
+  })).toBe(false)
+  expect(internal).not.toHaveBeenCalled()
+})
+
+
+test('a user stop during recovery startup is rechecked before the internal resume message is sent', async () => {
+  const h = harness(active(), false)
+  let release!: () => void
+  h.gate(new Promise<void>(resolve => { release = resolve }))
+  const internal = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+  const continuation = continueCommercializationResearch(h.id, { kind: 'recover-quality-checkpoint', code: 'fixture', instruction: 'Repair only' })
+  await until(() => h.start.mock.calls.length > 0)
+  h.post({ type: 'stop_generation' })
+  release()
+  expect(await continuation).toBe(false)
+  expect(internal).not.toHaveBeenCalled()
 })

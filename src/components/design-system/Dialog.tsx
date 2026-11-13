@@ -27,7 +27,7 @@ type DialogProps = {
    */
   isCancelActive?: boolean;
 };
-export function Dialog(t0) {
+export function Dialog(t0: DialogProps): React.ReactNode {
   const $ = _c(27);
   const {
     title,

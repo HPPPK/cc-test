@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process'
 import { diffLines } from 'diff'
-import { constants as fsConstants } from 'fs'
+import { constants as fsConstants, type Dirent } from 'fs'
 import {
   copyFile,
   mkdir,
@@ -19,11 +19,12 @@ import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
 } from '../tools/AgentTool/constants.js'
-import type { LogOption } from '../types/logs.js'
+import type { LogOption, SerializedMessage } from '../types/logs.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
+import { isHumanInputMessage } from '../utils/messageKind.js'
 import { extractTextContent } from '../utils/messages.js'
 import { getDefaultOpusModel } from '../utils/model/model.js'
 import {
@@ -120,7 +121,7 @@ const collectFromRemoteHost: (
           }
 
           const projectsDir = join(tempDir, 'projects')
-          let projectDirents: Awaited<ReturnType<typeof readdir>>
+          let projectDirents: Dirent<string>[]
           try {
             projectDirents = await readdir(projectsDir, { withFileTypes: true })
           } catch {
@@ -146,7 +147,7 @@ const collectFromRemoteHost: (
               }
 
               // Copy session files (skip existing)
-              let files: Awaited<ReturnType<typeof readdir>>
+              let files: Dirent<string>[]
               try {
                 files = await readdir(projectPath, { withFileTypes: true })
               } catch {
@@ -464,7 +465,18 @@ function getLanguageFromPath(filePath: string): string | null {
   return EXTENSION_TO_LANGUAGE[ext] || null
 }
 
-function extractToolStats(log: LogOption): {
+/** Read content by envelope discriminator; authorship is determined independently. */
+function insightMessageContent(message: SerializedMessage) {
+  switch (message.type) {
+    case 'user':
+    case 'assistant': return message.message.content
+    case 'system': return message.content
+    case 'attachment': return message.attachment.type === 'queued_command' ? message.attachment.prompt : undefined
+    case 'progress': return undefined
+  }
+}
+
+export function extractToolStats(log: LogOption): {
   toolCounts: Record<string, number>
   languages: Record<string, number>
   gitCommits: number
@@ -590,23 +602,11 @@ function extractToolStats(log: LogOption): {
       }
     }
 
-    // Check user messages
-    if (msg.type === 'user' && msg.message) {
-      const content = msg.message.content
+    // Human activity uses provenance; tool-result processing retains its transport input.
+    if (msg.type === 'user' || isHumanInputMessage(msg)) {
+      const content = insightMessageContent(msg)
 
-      // Check if this is an actual human message (has text) vs just tool_result
-      // matching Python reference logic
-      let isHumanMessage = false
-      if (typeof content === 'string' && content.trim()) {
-        isHumanMessage = true
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'text' && 'text' in block) {
-            isHumanMessage = true
-            break
-          }
-        }
-      }
+      const isHumanMessage = isHumanInputMessage(msg)
 
       // Only track message hours and response times for actual human messages
       if (isHumanMessage) {
@@ -734,7 +734,7 @@ function hasValidDates(log: LogOption): boolean {
   )
 }
 
-function logToSessionMeta(log: LogOption): SessionMeta {
+export function logToSessionMeta(log: LogOption): SessionMeta {
   const stats = extractToolStats(log)
   const sessionId = getSessionIdFromLog(log) || 'unknown'
   const startTime = log.created.toISOString()
@@ -746,25 +746,7 @@ function logToSessionMeta(log: LogOption): SessionMeta {
   let assistantMessageCount = 0
   for (const msg of log.messages) {
     if (msg.type === 'assistant') assistantMessageCount++
-    // Only count user messages that have actual text content (human messages)
-    // not just tool_result messages (matching Python reference)
-    if (msg.type === 'user' && msg.message) {
-      const content = msg.message.content
-      let isHumanMessage = false
-      if (typeof content === 'string' && content.trim()) {
-        isHumanMessage = true
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'text' && 'text' in block) {
-            isHumanMessage = true
-            break
-          }
-        }
-      }
-      if (isHumanMessage) {
-        userMessageCount++
-      }
-    }
+    if (isHumanInputMessage(msg)) userMessageCount++
   }
 
   return {
@@ -828,7 +810,7 @@ export function deduplicateSessionBranches(
   return [...bestBySession.values()]
 }
 
-function formatTranscriptForFacets(log: LogOption): string {
+export function formatTranscriptForFacets(log: LogOption): string {
   const lines: string[] = []
   const meta = logToSessionMeta(log)
 
@@ -839,8 +821,8 @@ function formatTranscriptForFacets(log: LogOption): string {
   lines.push('')
 
   for (const msg of log.messages) {
-    if (msg.type === 'user' && msg.message) {
-      const content = msg.message.content
+    if (isHumanInputMessage(msg)) {
+      const content = insightMessageContent(msg)
       if (typeof content === 'string') {
         lines.push(`[User]: ${content.slice(0, 500)}`)
       } else if (Array.isArray(content)) {
@@ -2755,7 +2737,7 @@ type LiteSessionInfo = {
 async function scanAllSessions(): Promise<LiteSessionInfo[]> {
   const projectsDir = getProjectsDir()
 
-  let dirents: Awaited<ReturnType<typeof readdir>>
+  let dirents: Dirent<string>[]
   try {
     dirents = await readdir(projectsDir, { withFileTypes: true })
   } catch {

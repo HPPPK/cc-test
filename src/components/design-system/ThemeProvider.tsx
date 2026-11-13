@@ -119,7 +119,7 @@ export function ThemeProvider({
  * Returns the resolved theme for rendering (never 'auto') and a setter that
  * accepts any ThemeSetting (including 'auto').
  */
-export function useTheme() {
+export function useTheme(): [ThemeName, (setting: ThemeSetting) => void] {
   const $ = _c(3);
   const {
     currentTheme,
@@ -141,7 +141,7 @@ export function useTheme() {
  * Returns the raw theme setting as stored in config. Use this in UI that
  * needs to show 'auto' as a distinct choice (e.g., ThemePicker).
  */
-export function useThemeSetting() {
+export function useThemeSetting(): ThemeSetting {
   return useContext(ThemeContext).themeSetting;
 }
 export function usePreviewTheme() {

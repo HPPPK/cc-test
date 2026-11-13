@@ -55,6 +55,13 @@ describe('PermissionModeSelector mobile access', () => {
     useTabStore.setState({ activeTabId: null, tabs: [] })
   })
 
+  it('centers bypass confirmation using the shared content overlay', () => {
+    render(<PermissionModeSelector compact workDir="/repo" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask permissions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Bypass permissions/ }))
+    expect(screen.getByText('Enable bypass mode').closest('[data-content-overlay]')?.parentElement).toBe(document.body)
+  })
+
   it('labels the compact mobile trigger and opens a phone-sized menu sheet', () => {
     viewportMocks.isMobile = true
 

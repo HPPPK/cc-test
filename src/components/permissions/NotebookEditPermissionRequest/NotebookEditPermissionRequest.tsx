@@ -9,7 +9,7 @@ import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDial
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { NotebookEditToolDiff } from './NotebookEditToolDiff.js';
 type NotebookEditInput = z.infer<typeof NotebookEditTool.inputSchema>;
-export function NotebookEditPermissionRequest(props) {
+export function NotebookEditPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const $ = _c(52);
   const parseInput = _temp;
   let T0;

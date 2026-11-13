@@ -38,7 +38,7 @@ type UseLspPluginRecommendationResult = {
   recommendation: LspRecommendationState;
   handleResponse: (response: 'yes' | 'no' | 'never' | 'disable') => void;
 };
-export function useLspPluginRecommendation() {
+export function useLspPluginRecommendation(): UseLspPluginRecommendationResult {
   const $ = _c(12);
   const trackedFiles = useAppState(_temp);
   const {
@@ -51,12 +51,12 @@ export function useLspPluginRecommendation() {
   } else {
     t0 = $[0];
   }
-  const checkedFilesRef = React.useRef(t0);
+  const checkedFilesRef = React.useRef<Set<string>>(t0);
   const {
     recommendation,
     clearRecommendation,
     tryResolve
-  } = usePluginRecommendationBase();
+  } = usePluginRecommendationBase<NonNullable<LspRecommendationState>>();
   let t1;
   let t2;
   if ($[1] !== trackedFiles || $[2] !== tryResolve) {
@@ -65,7 +65,7 @@ export function useLspPluginRecommendation() {
         if (hasShownLspRecommendationThisSession()) {
           return null;
         }
-        const newFiles = [];
+        const newFiles: string[] = [];
         for (const file of trackedFiles) {
           if (!checkedFilesRef.current.has(file)) {
             checkedFilesRef.current.add(file);

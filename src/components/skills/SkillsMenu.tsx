@@ -44,7 +44,7 @@ function getSourceSubtitle(source: SkillSource, skills: SkillCommand[]): string 
   const hasCommandsSkills = skills.some(s => s.loadedFrom === 'commands_DEPRECATED');
   return hasCommandsSkills ? `${skillsPath}, ${getDisplayPath(getSkillsPath(source, 'commands'))}` : skillsPath;
 }
-export function SkillsMenu(t0) {
+export function SkillsMenu(t0: Props): React.ReactNode {
   const $ = _c(35);
   const {
     onExit,
@@ -59,7 +59,7 @@ export function SkillsMenu(t0) {
     t1 = $[1];
   }
   const skills = t1;
-  let groups;
+  let groups: Record<SkillSource, SkillCommand[]>;
   if ($[2] !== skills) {
     groups = {
       policySettings: [],

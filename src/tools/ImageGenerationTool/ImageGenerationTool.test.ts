@@ -1,3 +1,4 @@
+import { toolPromptFixture } from '../toolFixtures.test.js'
 ﻿import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { findToolByName } from '../../Tool.js'
 import { getAllBaseTools } from '../../tools.js'
@@ -54,7 +55,7 @@ describe('ImageGenerationTool', () => {
     })
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
 
-    const result = await ImageGenerationTool.call({ operation: 'preflight' }, toolContext(), null as never, null as never)
+    const result = await ImageGenerationTool.call({ operation: 'preflight' }, toolContext())
 
     const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-call')
 
@@ -84,7 +85,7 @@ describe('ImageGenerationTool', () => {
 
     const result = await ImageGenerationTool.call({
       operation: 'generate', prompt: 'Luxury tea on stone, editorial composition', size: '1536x1024', quality: 'high', output_format: 'png', file_name: 'tea.png',
-    }, toolContext(), null as never, null as never)
+    }, toolContext())
     const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-call')
 
     expect(ImageGenerationTool.isReadOnly({ operation: 'generate', prompt: 'x' })).toBe(false)
@@ -113,7 +114,7 @@ describe('ImageGenerationTool', () => {
     })
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
 
-    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext(), null as never, null as never)
+    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext())
     const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-call')
 
     expect(result.data).toMatchObject({
@@ -156,7 +157,7 @@ describe('ImageGenerationTool', () => {
     })
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = `http://127.0.0.1:${server.port}`
 
-    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext(), null as never, null as never)
+    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext())
     const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-call')
 
     expect(result.data).toMatchObject({
@@ -172,7 +173,7 @@ describe('ImageGenerationTool', () => {
   test('requires a fallback choice when the desktop image service is absent', async () => {
     delete process.env.CC_JIANGXIA_DESKTOP_SERVER_URL
 
-    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext(), null as never, null as never)
+    const result = await ImageGenerationTool.call({ operation: 'generate', prompt: 'A real image' }, toolContext())
     const block = ImageGenerationTool.mapToolResultToToolResultBlockParam(result.data, 'image-call')
 
     expect(result.data).toMatchObject({

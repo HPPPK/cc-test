@@ -12,11 +12,11 @@
     },
     {
       "packId": "efficient-constrained-dev-debug-workflow-v5",
-      "packVersion": "24",
-      "workflowVersion": "24",
-      "sha256": "121cab4cdc153a4b0566c20fcb690f590092f30e1e0feba72be22a278de0fdef",
+      "packVersion": "26",
+      "workflowVersion": "26",
+      "sha256": "5570986a7595a667e241320f4a7d47f2b07cd3c123ace54c36408aad0cdb25d0",
       "entrypoint": "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json",
-      "sourceRevision": "sha256-cf7c6141446321e7a6dd6be45f414225cb904178c2f4754ed693f7c0a853b513",
+      "sourceRevision": "sha256-df0f244900f353909999941e1371a8974735e2fda8407236b7921862c3716ba7",
       "filename": "efficient-constrained-dev-debug-workflow-v5.zip"
     },
     {
@@ -27,6 +27,24 @@
       "entrypoint": "workflows/feature-extension-workflow-v8.workflow.json",
       "sourceRevision": "sha256-38277a927685f563ed5763dc32859d6ccc70814f8c7b9801e6ac5ae1731f6e23",
       "filename": "feature-extension-workflow-v8.zip"
+    },
+    {
+      "packId": "skills-development",
+      "packVersion": "17",
+      "workflowVersion": "17",
+      "sha256": "be2293730ae67b8cb26cb272cda5b61435efdedf7079313f457058d2c9412ac6",
+      "entrypoint": "workflows/skills-development.workflow.json",
+      "sourceRevision": "sha256-f0a8ac6d532d57e4b49c29c7e754e69460f7d1d98e28d19a874543cc284e9aa7",
+      "filename": "skills-development.zip"
+    },
+    {
+      "packId": "stradn-managed-development-workflow-v1",
+      "packVersion": "1",
+      "workflowVersion": "1",
+      "sha256": "e90bb8b01adf34ab2027a9ff7776847687c5c8ad0b2798b0609afaab6c4353be",
+      "entrypoint": "workflows/stradn-managed-development-workflow-v1.workflow.json",
+      "sourceRevision": "sha256-510059c72ff78ccbc91f9f2224c0eb210e566d485a81a9bb0517f41fbbee6e93",
+      "filename": "stradn-managed-development-workflow-v1.zip"
     }
   ]
 }

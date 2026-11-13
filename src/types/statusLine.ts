@@ -1,34 +1,27 @@
-// @generated stub from scan-missing-imports
-// 该文件自动生成，对应 ant-internal 的 feature() gated 模块。
-// 所有外部 build 的代码路径在 DCE 后都不会真的执行这里的代码，这只是
-// bun build resolver 的占位符。
-const __target = function noop() {}
-const __handler: ProxyHandler<any> = {
-  get(_t, prop) {
-    if (prop === '__esModule') return true
-    if (prop === 'default') return new Proxy(__target, __handler)
-    if (prop === Symbol.toPrimitive) return () => undefined
-    if (prop === Symbol.iterator) return function* () {}
-    if (prop === Symbol.asyncIterator) return async function* () {}
-    if (prop === 'then') return undefined
-    return new Proxy(__target, __handler)
-  },
-  apply() {
-    return new Proxy(__target, __handler)
-  },
-  construct() {
-    return new Proxy(__target, __handler)
-  },
+import type { BaseHookInput } from '../entrypoints/sdk/coreTypes.js'
+import type { VimMode } from './textInputTypes.js'
+import type { getCurrentUsage } from '../utils/tokens.js'
+
+type RateLimitWindow = { used_percentage: number, resets_at: number }
+export type StatusLineCommandInput = BaseHookInput & {
+  session_name?: string
+  model: { id: string, display_name: string }
+  workspace: { current_dir: string, project_dir: string, added_dirs: string[] }
+  version: string
+  output_style: { name: string }
+  cost: { total_cost_usd: number, total_duration_ms: number, total_api_duration_ms: number, total_lines_added: number, total_lines_removed: number }
+  context_window: {
+    total_input_tokens: number
+    total_output_tokens: number
+    context_window_size: number
+    current_usage: ReturnType<typeof getCurrentUsage>
+    used_percentage: number | null
+    remaining_percentage: number | null
+  }
+  exceeds_200k_tokens: boolean
+  rate_limits?: { five_hour?: RateLimitWindow, seven_day?: RateLimitWindow }
+  vim?: { mode: VimMode }
+  agent?: { name: string }
+  remote?: { session_id: string }
+  worktree?: { name: string, path: string, branch: string | undefined, original_cwd: string, original_branch: string | undefined }
 }
-const stub: any = new Proxy(__target, __handler)
-export default stub
-export const __stubMissing = true
-// 兼容常见的命名导出 —— 没列在这里的也会通过 default Proxy 兜底
-export const createCachedMCState = stub
-export const isCachedMicrocompactEnabled = stub
-export const isModelSupportedForCacheEditing = stub
-export const getCachedMCConfig = stub
-export const markToolsSentToAPI = stub
-export const resetCachedMCState = stub
-export const checkProtectedNamespace = stub
-export const getCoordinatorUserContext = stub

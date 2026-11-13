@@ -1,0 +1,715 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "skills-development",
+      "phases": [
+        {
+          "id": "route-context",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "workspace-validation",
+              "source-material-identification",
+              "app-framing"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "detailed feature design",
+              "ui detail design",
+              "implementation planning",
+              "subagent coding"
+            ],
+            "completionRequires": [
+              "Workspace is valid.",
+              ".workflow/project-context.md exists or is updated.",
+              ".workflow/work-order.md contains the confirmed app-framing block.",
+              "The user either accepted all recommended app-framing fields, or adjusted selected fields and then confirmed the final app-framing summary.",
+              "The final app-framing summary includes all eight baseline fields plus appFormat and companionComponents.",
+              "The final app-framing summary includes sourceMaterialType and sourceMaterialAccessStatus.",
+              "sourceMaterialLocation and sourceMaterialHandlingHint are recorded when source material is provided, selected, linked, or mentioned.",
+              "If source material is inaccessible or permission is needed, sourceMaterialAccessStatus records the issue.",
+              "If UI, prototype, screenshot, image, HTML prototype, or reference website material is provided or mentioned, uiDirectionNeeded is recorded.",
+              "Explicit user-specified platform, app type, delivery form, or code migration target was preserved or the user explicitly changed it.",
+              "platformRiskForStage2 is recorded when platform capabilities or messaging/automation permissions need clarification.",
+              "No production files were edited or created.",
+              "No dependency, database, seed, delete, network, or deployment action was performed.",
+              "final app-framing summary includes sourceMaterialType and sourceMaterialAccessStatus.",
+              "if UI/prototype/reference material is provided or mentioned, uiDirectionNeeded is recorded.",
+              "if source material is inaccessible or permission is needed, sourceMaterialAccessStatus records the issue.",
+              "if platform capability/messaging/automation risk exists, platformRiskForStage2 is recorded.",
+              "explicit user-specified platform/app type/delivery form, if present, is preserved or explicitly changed by user.",
+              "If sourceMaterialAccessStatus is inaccessible / needsUserUpload / needsPermission / unknown and the material is important for UI or scope, the user must choose how to proceed before Stage 1 completes.",
+              "Stage 1 must not proceed to normal app-framing confirmation while a critical source material access issue is unresolved."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            }
+          }
+        },
+        {
+          "id": "scope-plan",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "product-discovery",
+              "scope-lock",
+              "source-material-analysis",
+              "ui-ux-direction"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "implementation planning",
+              "target file planning",
+              "database schema design",
+              "api route design",
+              "component structure design",
+              "css implementation planning",
+              "subagent coding"
+            ],
+            "completionRequires": [
+              "Stage 1 appFraming exists in .workflow/work-order.md.",
+              "If sourceMaterialType is not none, .workflow/work-order.md contains sourceMaterialSummary.",
+              "If source material is available, .workflow/work-order.md contains sourceMaterialFindings or an explicit reason why extraction is blocked.",
+              "If UI/prototype/reference material exists or uiDirectionNeeded is true, .workflow/work-order.md contains uiUxDirection.",
+              "If referenceWebsite is used, .workflow/work-order.md contains referencePolicy.",
+              "If sourceMaterialType is codeMigration, .workflow/work-order.md contains equivalence criteria and behavior-preservation criteria.",
+              ".workflow/work-order.md contains productScope unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains userRoles unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains coreUserFlows unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains mvpFeatures unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains nonGoals unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains acceptanceCriteria unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains scenarioCases unless explicitly skipped with a reason.",
+              ".workflow/work-order.md contains userFacingCopyRequirements unless explicitly skipped with a reason.",
+              "User confirmed the product scope or explicitly adjusted/skipped it with a reason.",
+              "No production files were edited.",
+              "No dependency/database/deployment action was performed.",
+              "If sourceMaterialType is not none, sourceMaterialSummary exists.",
+              "If UI/prototype/reference material is provided or uiDirectionNeeded = true, uiUxDirection exists.",
+              "If referenceWebsite is used, referencePolicy exists.",
+              "If codeMigration is used, behavior-preservation/equivalence criteria exist.",
+              "productScope, userRoles, coreUserFlows, mvpFeatures, nonGoals, acceptanceCriteria, scenarioCases, userFacingCopyRequirements are still present unless explicitly skipped with reason."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            }
+          }
+        },
+        {
+          "id": "delivery-plan",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "technical-approach",
+              "delivery-planning",
+              "subagent-task-design",
+              "ui-implementation-planning",
+              "visual-validation-planning"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file creation",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "implementation execution",
+              "subagent coding",
+              "changing confirmed product scope",
+              "adding non-goals back to MVP"
+            ],
+            "completionRequires": [
+              "Stage 1 appFraming exists in .workflow/work-order.md.",
+              "Stage 2 product scope exists in .workflow/work-order.md.",
+              ".workflow/work-order.md contains technicalApproach.",
+              ".workflow/work-order.md contains architectureOutline.",
+              "If sourceMaterialSummary or sourceMaterialFindings exist, .workflow/work-order.md contains sourceMaterialImplementationNotes.",
+              "If uiUxDirection exists, .workflow/work-order.md contains uiImplementationPlan.",
+              "If pageList exists, .workflow/work-order.md contains pageRoutePlan or equivalent page implementation structure.",
+              "If visualStyle or layoutExpectations exist, .workflow/work-order.md contains styleSystemPlan and visualValidationPlan.",
+              "If sourceMaterialType is codeMigration, .workflow/work-order.md contains migration/equivalence implementation plan.",
+              ".workflow/work-order.md contains implementationBatches.",
+              "ImplementationBatches include source-material handling when applicable.",
+              "Every implementation batch has goal, targetModules or likelyFiles, actions, validation, and stopCondition.",
+              ".workflow/work-order.md contains subagentTaskPackets.",
+              "subagentTaskPackets include UI/source-material constraints when applicable.",
+              ".workflow/work-order.md contains coderReturnFormat.",
+              ".workflow/work-order.md contains validationPlan.",
+              ".workflow/work-order.md contains dangerousActionsNeedingConfirmation.",
+              "User confirmed the delivery plan or explicitly adjusted/skipped it with a reason.",
+              "No production files were edited.",
+              "No dependency/database/deployment action was performed.",
+              "If uiUxDirection exists, uiImplementationPlan exists.",
+              "If pageList exists, pageRoutePlan or equivalent exists.",
+              "If visualStyle/layout expectations exist, styleSystemPlan and visualValidationPlan exist.",
+              "If sourceMaterialType = codeMigration, migration/equivalence implementation plan exists.",
+              "implementationBatches include relevant source-material handling when applicable."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy"
+              ]
+            }
+          }
+        },
+        {
+          "id": "delegate-implement",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Write",
+              "Edit",
+              "MultiEdit",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "search",
+              "edit-within-plan",
+              "targeted-test",
+              "artifact",
+              "question",
+              "subagent-coder",
+              "subagent-reviewer",
+              "subagent-debug",
+              "problem-investigation",
+              "debug-diagnosis"
+            ],
+            "forbiddenActions": [
+              "out-of-plan edits",
+              "changing confirmed product scope",
+              "adding non-goals back to MVP",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "unconfirmed deploy",
+              "broad rewrites",
+              "long-running preview server",
+              "skipping reviewer",
+              "continuing with critical review issues",
+              "ad-hoc repair",
+              "debug direct code edit",
+              "repair without diagnosis",
+              "skipping debug diagnosis"
+            ],
+            "completionRequires": [
+              "Stage 3 delivery plan exists in .workflow/work-order.md.",
+              ".workflow/work-order.md contains implementationBatches.",
+              ".workflow/work-order.md contains subagentTaskPackets.",
+              ".workflow/work-order.md contains coderReturnFormat.",
+              "Every completed batch has a Coder result matching coderReturnFormat.",
+              "Every completed batch has a Reviewer result matching reviewerRequiredReturn.",
+              "Every critical/major requiredFix is resolved or explicitly accepted by user.",
+              ".workflow/runs/<runId>/implementation-log.md exists.",
+              ".workflow/run-report.md is updated.",
+              "No unconfirmed dangerous action was performed.",
+              "No out-of-plan changes remain unresolved.",
+              "If Reviewer reported unclear/cross-module/runtime/integration/environment/database/high-risk issue, Debug diagnosis exists before repair or continuation.",
+              "No complex reviewer issue was repaired without Debug diagnosis unless it was a clearly scoped same-batch requiredFix."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "Write",
+                "Edit",
+                "MultiEdit",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "broad refactor",
+                "changing product scope",
+                "adding new feature not in work-order"
+              ]
+            }
+          }
+        },
+        {
+          "id": "scenario-review",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ],
+            "restrictions": [
+              "Bash/PowerShell only for bounded tests/checks, not app preview server, install, migration, seed, delete, deploy, or long-running processes.",
+              "Agent only for QA and Acceptance Reviewer subagents.",
+              "Reviewer is read-only.",
+              "QA is validation-only, not repair."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "search",
+              "bounded-test",
+              "build-check",
+              "lint-check",
+              "artifact",
+              "question",
+              "subagent-qa",
+              "subagent-acceptance-reviewer",
+              "subagent-debug",
+              "problem-investigation",
+              "debug-diagnosis"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "Coder Subagent repair",
+              "broad rewrites",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "unconfirmed deploy",
+              "long-running preview server",
+              "finish/handoff",
+              "skipping QA",
+              "skipping Acceptance Reviewer",
+              "entering local-preview with critical issues",
+              "ad-hoc repair",
+              "debug direct code edit",
+              "repair without diagnosis",
+              "skipping debug diagnosis",
+              "QA direct repair"
+            ],
+            "completionRequires": [
+              "Stage 4 implementation-log.md exists.",
+              ".workflow/work-order.md contains scenarioCases and acceptanceCriteria.",
+              ".workflow/run-report.md indicates all planned batches completed or skipped with reasons.",
+              "QA result exists and matches qaReturnFormat.",
+              "Acceptance Reviewer result exists and matches acceptanceReviewReturnFormat.",
+              ".workflow/runs/<runId>/quality-report.md exists.",
+              ".workflow/runs/<runId>/acceptance-review.md exists.",
+              ".workflow/run-report.md is updated.",
+              "No critical issue remains unresolved.",
+              "No major issue remains unresolved unless explicitly accepted by user.",
+              "readyForPreview decision is recorded.",
+              "QA and Acceptance Reviewer remain validation-only.",
+              "If QA or Acceptance Reviewer found a failed scenario or unclear blocker, Debug diagnosis exists before any repair path.",
+              "Any repair after Stage 5 failure returns to Stage 4 and then Stage 5 is rerun for affected checks."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "proceedToPreviewWithMajorRisk"
+              ]
+            }
+          }
+        },
+        {
+          "id": "local-preview",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "Bash",
+              "PowerShell",
+              "Agent",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit"
+            ],
+            "restrictions": [
+              "Bash/PowerShell only for workflow-owned preview start/stop, bounded log inspection, and safe run command discovery.",
+              "Bash/PowerShell must not be used for install, migration, seed, delete, network, deploy, or unrelated long-running processes unless explicit user confirmation exists.",
+              "Agent only for Debug / Problem Investigation Subagent.",
+              "Stage 6 must not use Coder, Reviewer, or QA subagents.",
+              "Debug Subagent is read-only and investigation-only.",
+              "Stage 6 must not directly repair code."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "question",
+              "preview-start",
+              "preview-stop",
+              "bounded-log-read",
+              "subagent-debug",
+              "problem-investigation",
+              "debug-diagnosis"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "Coder Subagent repair",
+              "broad rewrites",
+              "unconfirmed installs",
+              "unconfirmed database init",
+              "unconfirmed migrations",
+              "unconfirmed seed overwrite",
+              "unconfirmed deletes",
+              "deploy",
+              "long-running preview server",
+              "auto-fixing preview failures",
+              "finish/handoff",
+              "finish without preview confirmation",
+              "ad-hoc repair",
+              "debug direct code edit",
+              "repair without diagnosis",
+              "skipping debug diagnosis",
+              "preview direct repair"
+            ],
+            "completionRequires": [
+              "quality-report.md and acceptance-review.md exist.",
+              "readyForPreview is true or risks were explicitly accepted.",
+              ".workflow/runs/<runId>/run-preview.md exists.",
+              "The app was successfully previewed and user confirmed success, or the user explicitly chose to skip preview with a reason.",
+              "Stop App is available for any workflow-owned running process.",
+              "No unresolved preview blocker remains.",
+              "If user preview reported a bug or preview failed, issue is recorded.",
+              "Blocking preview issues cannot go to finish without Debug diagnosis or explicit user risk acceptance.",
+              "Any repair after Stage 6 issue returns to Stage 4 and then Stage 5 before Stage 6 rerun."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit"
+              ],
+              "requiresExplicitUserConfirmation": [
+                "installDependencies",
+                "databaseInit",
+                "migrations",
+                "seedOverwrite",
+                "delete",
+                "network",
+                "deploy",
+                "continuePreviewWithDocumentedRisk"
+              ]
+            }
+          }
+        },
+        {
+          "id": "finish-memory",
+          "toolPolicy": {
+            "allowedTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "workflow_artifact_write",
+              "AskUserQuestion",
+              "workflow_template_authoring",
+              "submit_phase_completion",
+              "request_workflow_route"
+            ],
+            "disallowedTools": [
+              "NotebookEdit",
+              "Bash",
+              "PowerShell",
+              "Agent"
+            ],
+            "restrictions": [
+              "Artifact writing is limited to .workflow/project-context.md, .workflow/work-order.md, .workflow/run-report.md, and .workflow/runs/<runId>/handoff.md.",
+              "Do not edit production files.",
+              "Do not start follow-up workflows automatically."
+            ]
+          },
+          "runtimeContract": {
+            "allowedActions": [
+              "read",
+              "artifact",
+              "handoff",
+              "memory-update",
+              "question"
+            ],
+            "forbiddenActions": [
+              "production edits",
+              "source file edits",
+              "subagent-coder",
+              "subagent-reviewer",
+              "subagent-qa",
+              "bounded-test",
+              "preview-start",
+              "dependency installs",
+              "database init",
+              "migrations",
+              "seed overwrite",
+              "deletes",
+              "deploy",
+              "auto-start follow-up workflow",
+              "running tests",
+              "starting preview server"
+            ],
+            "completionRequires": [
+              ".workflow/project-context.md is updated.",
+              ".workflow/work-order.md is updated.",
+              ".workflow/run-report.md is updated.",
+              ".workflow/runs/<runId>/handoff.md exists.",
+              "Preview result or skip/block reason is recorded.",
+              "Known risks and next workflow options are recorded.",
+              "The user chooses finish or a next workflow option through structured question UI.",
+              "No production files were edited."
+            ],
+            "toolAccess": {
+              "allowed": [
+                "Read",
+                "Glob",
+                "Grep",
+                "LS",
+                "workflow_artifact_write",
+                "AskUserQuestion",
+                "workflow_template_authoring",
+                "submit_phase_completion",
+                "request_workflow_route"
+              ],
+              "forbidden": [
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

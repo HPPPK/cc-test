@@ -1339,7 +1339,7 @@ describe('MessageList nested tool calls', () => {
     render(<MessageList />)
 
     expect(screen.getByText('Partially done')).toBeTruthy()
-    expect(screen.queryByText('Done')).toBeNull()
+    expect(screen.queryByText('Ended')).toBeNull()
   })
 
   it('shows completed agent output when no nested tool activity is available', () => {
@@ -1381,7 +1381,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(screen.getByText('Done')).toBeTruthy()
+    expect(screen.getByText('Ended')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'View result' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'View result' }))
@@ -1423,7 +1423,7 @@ describe('MessageList nested tool calls', () => {
     render(<MessageList />)
 
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Done')).toBeNull()
+    expect(screen.queryByText('Ended')).toBeNull()
     expect(screen.queryByRole('button', { name: 'View result' })).toBeNull()
   })
 
@@ -1467,7 +1467,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(screen.getByText('Done')).toBeTruthy()
+    expect(screen.getByText('Ended')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View result' }))
 
     expect(within(screen.getByRole('dialog')).getByText(resultText)).toBeTruthy()

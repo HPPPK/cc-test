@@ -10,6 +10,7 @@ import type {
   AnthropicMessage,
   OpenAIResponsesRequest,
   OpenAIResponsesInputItem,
+  OpenAIResponsesFunctionCallOutputContent,
   OpenAIChatContentPart,
 } from './types.js'
 import { toOpenAIFunctionDefinition } from './toolSchemaContract.js'
@@ -55,6 +56,9 @@ export function anthropicToOpenaiResponses(body: AnthropicRequest): OpenAIRespon
       .map((t) => ({
         type: 'function',
         ...toOpenAIFunctionDefinition(t),
+        // Responses may normalize omitted strictness into required optional fields.
+        // Preserve the source tool semantics unless it explicitly opts into strict mode.
+        strict: t.strict ?? false,
       }))
   }
 
@@ -80,7 +84,7 @@ export function anthropicToOpenaiResponses(body: AnthropicRequest): OpenAIRespon
   return result
 }
 
-function convertToolResultOutput(content: string | AnthropicContentBlock[]) {
+function convertToolResultOutput(content: string | AnthropicContentBlock[]): string | OpenAIResponsesFunctionCallOutputContent[] {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
 
@@ -92,7 +96,7 @@ function convertToolResultOutput(content: string | AnthropicContentBlock[]) {
       .join('\n')
   }
 
-  return content.flatMap((block) => {
+  return content.flatMap<OpenAIResponsesFunctionCallOutputContent>((block) => {
     if (block.type === 'text') return [{ type: 'input_text' as const, text: block.text }]
     if (block.type === 'image') {
       return [{

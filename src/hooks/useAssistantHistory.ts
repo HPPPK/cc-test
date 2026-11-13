@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { randomUUID } from 'crypto'
 import {
   type RefObject,

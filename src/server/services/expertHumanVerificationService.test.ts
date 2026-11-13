@@ -449,3 +449,18 @@ test('replays the active verification with its original identity without new del
   await cancelled
   expect(service.getReplayRequest('replay-owner')).toBeNull()
 })
+
+test('an orphaned join fails without pretending a user decision; a real verification never expires on this admission timer', async () => {
+  const messages: Array<{ requestId: string }> = []
+  const service = new ExpertHumanVerificationService((_session, message) => { messages.push(message); return true }, undefined, 10)
+  const orphan = service.waitForActiveVerification('orphan', { verificationGateId: 'missing-owner' })
+  await expect(orphan).rejects.toThrow('EXPERT_HUMAN_VERIFICATION_OWNER_UNAVAILABLE')
+  const real = service.requestVerification({ sessionId: 'orphan', verificationGateId: 'missing-owner', verification })
+  let settled = false
+  void real.then(() => { settled = true })
+  await new Promise(resolve => setTimeout(resolve, 25))
+  expect(settled).toBe(false)
+  expect(messages).toHaveLength(1)
+  expect(service.resolveVerification(messages[0]!.requestId, true, { verificationResolution: 'record_evidence_gap' })).toBe(true)
+  await expect(real).resolves.toMatchObject({ resolution: 'record_evidence_gap' })
+})

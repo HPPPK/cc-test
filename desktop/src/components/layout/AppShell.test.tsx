@@ -198,6 +198,21 @@ describe('AppShell boot flow', () => {
     })
   })
 
+  it('reconnects background session tabs while the active page is Settings', async () => {
+    mocks.tabState.activeTabId = '__settings__'
+    mocks.tabState.tabs = [
+      { sessionId: '__settings__', title: 'Settings', type: 'settings', status: 'idle' },
+      { sessionId: 'background-1', title: 'One', type: 'session', status: 'idle' },
+      { sessionId: 'background-2', title: 'Two', type: 'session', status: 'idle' },
+    ]
+    render(<AppShell />)
+    await waitFor(() => {
+      expect(mocks.connectToSession).toHaveBeenCalledWith('background-1', { prewarm: false })
+      expect(mocks.connectToSession).toHaveBeenCalledWith('background-2', { prewarm: false })
+    })
+    expect(mocks.connectToSession).not.toHaveBeenCalledWith('__settings__')
+  })
+
   it('shows the H5 connection view in browser mode when startup needs H5 auth', async () => {
     mocks.initializeDesktopServerUrl.mockRejectedValueOnce(
       Object.assign(new Error('Enter your H5 token to continue.'), {

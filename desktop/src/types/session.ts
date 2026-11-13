@@ -1,3 +1,4 @@
+import type { MessageKindMetadata } from '../../../src/utils/messageKind'
 // Source: src/server/services/sessionService.ts
 
 export type SessionMode = 'dialogue' | 'workflow' | 'expert'
@@ -225,7 +226,8 @@ export type WorkflowSessionSummary = {
   autoRecovery?: {
     phaseId: string
     startedAt: string
-    expiresAt: string
+    credentialId?: string
+    expiresAt?: string
     attempt: number
     source: 'phase-completion-blocked' | 'phase-completion-unable'
   }
@@ -1043,7 +1045,8 @@ export type SessionListItem = {
   expert?: ExpertSessionSummary
 }
 
-export type MessageEntry = {
+export type MessageEntry = Partial<MessageKindMetadata> & {
+  isHumanInput?: boolean
   id: string
   type: 'user' | 'assistant' | 'system' | 'tool_use' | 'tool_result'
   content: unknown

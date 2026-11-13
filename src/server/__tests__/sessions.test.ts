@@ -1,3 +1,4 @@
+import { requireFixtureValue, requireFixtureRecord, requireFixtureArray } from './fixtureAssertions.js'
 /**
  * Unit tests for SessionService and Sessions API
  */
@@ -44,6 +45,7 @@ const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TRANSITION_INVALID',
   'WORKFLOW_STATE_STALE',
   'WORKFLOW_PENDING_CONFLICT',
+  'WORKFLOW_CONFIRMATION_SUPERSEDED',
   'WORKFLOW_REPORT_NOT_READY',
   'WORKFLOW_REPORT_UNAVAILABLE',
   'WORKFLOW_MODEL_UNAVAILABLE',
@@ -59,12 +61,14 @@ const WORKFLOW_ERROR_CODES = [
 let tmpDir: string
 let service: SessionService
 let originalGitCeilingDirectories: string | undefined
+let originalConfigDir: string | undefined
 
 /** Create a temporary config dir and configure the service to use it. */
 async function setupTmpConfigDir(): Promise<string> {
   tmpDir = path.join(os.tmpdir(), `claude-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
   originalGitCeilingDirectories = process.env.GIT_CEILING_DIRECTORIES
+  originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   process.env.GIT_CEILING_DIRECTORIES = tmpDir
   return tmpDir
@@ -87,7 +91,8 @@ async function cleanupTmpDir(): Promise<void> {
       throw lastError
     }
   }
-  delete process.env.CLAUDE_CONFIG_DIR
+  if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
   if (originalGitCeilingDirectories !== undefined) {
     process.env.GIT_CEILING_DIRECTORIES = originalGitCeilingDirectories
   } else {
@@ -95,35 +100,9 @@ async function cleanupTmpDir(): Promise<void> {
   }
 }
 
-function git(cwd: string, ...args: string[]): string {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-  })
-}
 
-async function createCleanGitRepo(baseDir: string): Promise<string> {
-  const workDir = path.join(
-    baseDir,
-    `repo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  )
 
-  await fs.mkdir(workDir, { recursive: true })
-  git(workDir, 'init')
-  git(workDir, 'config', 'user.email', 'sessions-api@example.com')
-  git(workDir, 'config', 'user.name', 'Sessions API')
-  git(workDir, 'checkout', '-b', 'main')
-  await fs.writeFile(path.join(workDir, 'README.md'), 'main\n')
-  git(workDir, 'add', 'README.md')
-  git(workDir, 'commit', '-m', 'initial')
-  git(workDir, 'checkout', '-b', 'feature/rail')
-  await fs.writeFile(path.join(workDir, 'feature.txt'), 'feature\n')
-  git(workDir, 'add', 'feature.txt')
-  git(workDir, 'commit', '-m', 'feature')
-  git(workDir, 'checkout', 'main')
 
-  return workDir
-}
 
 /** Write a JSONL session file with given entries. */
 async function writeSessionFile(
@@ -2671,6 +2650,7 @@ describe('Sessions API', () => {
       expect(stateRes.status).toBe(200)
       const statePayload = (await stateRes.json()) as {
         state?: {
+          phaseSkillSnapshots?: unknown[]
           templateSnapshot?: {
             phases?: Array<{
               id: string
@@ -2759,8 +2739,9 @@ describe('Sessions API', () => {
         artifactIndex: [{
           artifactId: 'requirements',
           phaseId: 'discussion',
-          kind: 'document',
-          title: 'Requirements',
+          kind: 'phase-artifact',
+          sessionId: created.sessionId, schemaVersion: 1, createdAt: '2026-05-20T00:00:00Z',
+          label: 'Requirements',
           lifecycleStatus: 'accepted',
         }],
       }))
@@ -3068,7 +3049,7 @@ describe('Sessions API', () => {
 
     describe('Linked workflow session start contract', () => {
       async function createSourceDialogueSession(
-        strategy: 'clear' | 'inherit' | 'summarize',
+        strategy: string,
       ): Promise<{
         sessionId: string
         workDir: string
@@ -3271,7 +3252,7 @@ describe('Sessions API', () => {
         })
         expect(sourceState.startupPrompt).toContain('Inherited workflow context anchor')
         expect(sourceState.startupPrompt).toContain('Discuss linked workflow inherit')
-        expect(sourceState.phaseRuns[0]?.inputArtifactRefs).toEqual(expect.arrayContaining([
+        expect(requireFixtureRecord(requireFixtureArray(sourceState.phaseRuns)[0]).inputArtifactRefs).toEqual(expect.arrayContaining([
           expect.objectContaining({ artifactId: 'context-carryover' }),
         ]))
         const sourceAfter = await sessionService.getSession(source.sessionId)
@@ -4225,7 +4206,7 @@ describe('Sessions API', () => {
           },
         ],
       })
-      state.templateSnapshot.phases[0]!.transitionAuthority = 'auto'
+      requireFixtureRecord(requireFixtureArray(requireFixtureRecord(state.templateSnapshot).phases)[0]).transitionAuthority = 'auto'
       await writeWorkflowSessionState(sessionId, state)
       await writeSessionFile(sanitizePath(workDir), sessionId, [
         makeSnapshotEntry(),
@@ -4878,7 +4859,7 @@ describe('Sessions API', () => {
         }
       }
 
-      expect(reportBody.pointer).toEqual(transitionBody.workflow.reportPointer)
+      expect(transitionBody.workflow.reportPointer).toEqual(reportBody.pointer)
       expect(reportBody.report).toMatchObject({
         sessionId,
         status: 'completed',
@@ -5618,8 +5599,8 @@ describe('Sessions API', () => {
         path: activeWorktree,
         plannedPath: activeWorktree,
         sourceWorkDir: repository!.requestedWorkDir,
-        slug: repository!.worktreeSlug,
-        branch: repository!.worktreeBranch,
+        slug: requireFixtureValue(repository!.worktreeSlug),
+        branch: requireFixtureValue(repository!.worktreeBranch),
       })
     } finally {
       sessionsMap.delete(sessionId)
@@ -5792,6 +5773,28 @@ describe('Sessions API', () => {
       sessionService.deleteSession = originalDeleteSession as typeof sessionService.deleteSession
       conversationService.unmarkSessionDeleted(sessionId)
     }
+  })
+
+  it('POST /api/sessions/batch-delete removes 92 listed legacy sessions including duplicate transcripts', async () => {
+    const ids = Array.from({ length: 92 }, (_, i) => `restored-workflow-answer-${i}-${crypto.randomUUID()}`)
+    const peer = crypto.randomUUID()
+    for (const id of [...ids, peer]) {
+      await writeSessionFile('-legacy-project', id, [makeSnapshotEntry()])
+    }
+    await writeSessionFile('-duplicate-project', ids[0]!, [makeSnapshotEntry()])
+    const listed = await fetch(`${baseUrl}/api/sessions?limit=100`)
+    const before = await listed.json() as { sessions: Array<{ id: string }> }
+    expect(ids.every((id) => before.sessions.some((s) => s.id === id))).toBe(true)
+    const response = await fetch(`${baseUrl}/api/sessions/batch-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIds: ids }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, successes: ids, failures: [] })
+    const after = await (await fetch(`${baseUrl}/api/sessions?limit=100`)).json() as { sessions: Array<{ id: string }> }
+    expect(after.sessions.map((s) => s.id)).toEqual([peer])
+    expect((await fetch(`${baseUrl}/api/sessions/${peer}`)).status).toBe(200)
   })
 
   it('POST /api/sessions/batch-delete should delete sessions and clean adapter mappings', async () => {

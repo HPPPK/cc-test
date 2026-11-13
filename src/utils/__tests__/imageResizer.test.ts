@@ -113,6 +113,7 @@ describe('imageResizer', () => {
     setMockState({
       metadata: { width: 1920, height: 1080, format: 'png' },
       resizeCalls: [],
+      encodeCalls: [],
       outputBuffer: Buffer.from('encoded'),
     })
     const imageBuffer = Buffer.alloc(24_000)

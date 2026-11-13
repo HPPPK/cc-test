@@ -38,7 +38,13 @@ function applyFastMode(enable: boolean, setAppState: (f: (prev: AppState) => App
     }));
   }
 }
-export function FastModePicker(t0) {
+export function FastModePicker(t0: {
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
+  unavailableReason: string | null
+}): React.ReactNode {
   const $ = _c(30);
   const {
     onDone,

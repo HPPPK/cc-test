@@ -80,7 +80,7 @@ export function CoordinatorTaskPanel(): React.ReactNode {
  * The panel's 1s tick evicts expired tasks from prev.tasks, so this count
  * stays accurate without needing its own tick.
  */
-export function useCoordinatorTaskCount() {
+export function useCoordinatorTaskCount(): number {
   const tasks = useAppState(_temp);
   let t0;
   t0 = 0;
@@ -89,7 +89,11 @@ export function useCoordinatorTaskCount() {
 function _temp(s) {
   return s.tasks;
 }
-function MainLine(t0) {
+function MainLine(t0: {
+  isSelected?: boolean
+  isViewed?: boolean
+  onClick: () => void
+}): React.ReactNode {
   const $ = _c(10);
   const {
     isSelected,
@@ -140,7 +144,7 @@ type AgentLineProps = {
   isViewed?: boolean;
   onClick?: () => void;
 };
-function AgentLine(t0) {
+function AgentLine(t0: AgentLineProps): React.ReactNode {
   const $ = _c(32);
   const {
     task,

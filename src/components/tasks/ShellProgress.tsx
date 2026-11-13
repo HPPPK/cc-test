@@ -10,7 +10,7 @@ type TaskStatusTextProps = {
   label?: string;
   suffix?: string;
 };
-export function TaskStatusText(t0) {
+export function TaskStatusText(t0: TaskStatusTextProps): ReactNode {
   const $ = _c(4);
   const {
     status,
@@ -31,7 +31,9 @@ export function TaskStatusText(t0) {
   }
   return t1;
 }
-export function ShellProgress(t0) {
+export function ShellProgress(t0: {
+  shell: DeepImmutable<LocalShellTaskState>
+}): ReactNode {
   const $ = _c(4);
   const {
     shell

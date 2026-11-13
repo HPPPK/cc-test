@@ -1,3 +1,4 @@
+import { DEVELOPMENT_QUESTION_BATCH_LIMIT, usesDevelopmentQuestionBatches } from './workflowDevelopmentQuestionPolicy.js'
 import * as path from 'node:path'
 ﻿import type { WorkflowPhaseActionPolicy, WorkflowPhaseDefinition, WorkflowSessionState, WorkflowTemplate } from './workflowTypes.js'
 import { getRipgrepStatus } from '../../utils/ripgrep.js'
@@ -394,7 +395,20 @@ export function getWorkflowQuestionCardContractViolation(
   input: unknown,
   state: WorkflowSessionState | null | undefined,
 ): string | null {
-  if (toolName !== 'AskUserQuestion') return null
+  if (toolName !== 'AskUserQuestion' || !state) return null
+
+  if (isActiveWorkflowState(state) && usesDevelopmentQuestionBatches(state)) {
+    const questions = input && typeof input === 'object' ? (input as Record<string, unknown>).questions : undefined
+    if (!Array.isArray(questions) || questions.length < 1 || questions.length > DEVELOPMENT_QUESTION_BATCH_LIMIT) {
+      return 'WORKFLOW_QUESTION_CONTRACT_VIOLATION: development allows 1–8 independent questions per batch.'
+    }
+    // Reuse the per-question blocker checks and the existing single-open-request guard.
+    for (const question of questions) {
+      const violation = getSingleWorkflowQuestionViolation({ questions: [question] }, state, 'development')
+      if (violation) return violation
+    }
+    return null
+  }
 
   const policy = getSkillsDevelopmentScopePlanQuestionPolicy(state)
   if (!policy) {
@@ -733,7 +747,7 @@ export function getWorkflowTemplateAuthoringOperationPolicy(
     readOnly,
     mutating,
     reason: 'workflow-tool-access-unrestricted',
-    phaseId: state.activePhaseId,
+    phaseId: state.activePhaseId ?? undefined,
     message: `Workflow template authoring mutation "${operation}" remains available; follow the active phase guidance.`,
   }
 }
@@ -792,7 +806,7 @@ export function getWorkflowPromptToolGuidance(
 
   return [
     'Workflow-only tools',
-    necessaryQuestionPolicy
+    usesDevelopmentQuestionBatches(state) ? 'Use the single Development question policy in the workflow runtime contract; do not restate it.' : necessaryQuestionPolicy
       ? 'AskUserQuestion in this phase uses the necessary-question schema branch: call exactly one question with blocksCompletion: true, non-empty blockingReason and answerImpact, and 2–4 user-answer choices. Use this card only when the answer is required for current-phase work; otherwise continue with a conservative default instead of calling AskUserQuestion.'
       : null,
     hasSkillsDevelopmentArtifactWriteGuidance

@@ -1,3 +1,4 @@
+import { resolveMessageKind, isHumanInputMessage, attachMessageKind } from '../../../src/utils/messageKind'
 import { create } from 'zustand'
 import { createWorkflowTransitionId, wsManager } from '../api/websocket'
 import { sessionsApi } from '../api/sessions'
@@ -9,6 +10,13 @@ import { useSessionRuntimeStore } from './sessionRuntimeStore'
 import { useTabStore } from './tabStore'
 import { randomSpinnerVerb } from '../config/spinnerVerbs'
 import { notifyDesktop } from '../lib/desktopNotifications'
+import {
+  initialSessionLifecycle,
+  transitionSessionLifecycle,
+  type SessionLifecycle,
+  type LifecycleInput,
+  type LifecycleWait,
+} from '../lib/sessionLifecycle'
 import { deriveSessionTitle, isPlaceholderSessionTitle } from '../lib/sessionTitle'
 import { AGENT_LIFECYCLE_TYPES } from '../types/team'
 import type { ComposerAttachment } from '../lib/composerAttachments'
@@ -78,6 +86,9 @@ function normalizeExpertBrowserResearchActivity(value: unknown): ExpertBrowserRe
 export type PerSessionState = {
   messages: UIMessage[]
   chatState: ChatState
+  /** Global product lifecycle; never persisted to transcripts or user settings. */
+  lifecycle?: SessionLifecycle
+  lifecycleEpoch?: string
   connectionState: ConnectionState
   streamingText: string
   streamingToolInput: string
@@ -323,7 +334,7 @@ type ChatStore = {
   sessions: Record<string, PerSessionState>
 
   getSession: (sessionId: string) => PerSessionState
-  connectToSession: (sessionId: string) => void
+  connectToSession: (sessionId: string, options?: { prewarm?: boolean }) => void
   disconnectSession: (sessionId: string) => void
   sendMessage: (
     sessionId: string,
@@ -1026,23 +1037,6 @@ function normalizeNotificationPreview(content: string): string {
     .trim()
 }
 
-function buildAgentCompletionNotification(
-  sessionId: string,
-  messages: UIMessage[],
-  text: string,
-): { title: string; body: string; dedupeKey: string } | null {
-  const preview = normalizeNotificationPreview(text)
-  if (!preview) return null
-
-  const lastAssistant = [...messages].reverse().find((message) => message.type === 'assistant_text')
-  const suffix = preview.length > AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS ? '...' : ''
-  return {
-    title: 'Claude Code Jiangxia 已完成回复',
-    body: preview.slice(0, AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS) + suffix,
-    dedupeKey: `agent-completion:${sessionId}:${lastAssistant?.id ?? Date.now()}`,
-  }
-}
-
 type PendingPermission = NonNullable<PerSessionState['pendingPermission']>
 
 // Legacy in-memory sessions/test fixtures may only have the displayed head.
@@ -1074,7 +1068,9 @@ function updateSessionIn(
 ): Record<string, PerSessionState> {
   const session = sessions[sessionId]
   if (!session) return sessions
-  return { ...sessions, [sessionId]: { ...session, ...updater(session) } }
+  const patch = updater(session)
+  if (patch.messages) patch.messages = patch.messages.map(message => message.messageKind ? message : attachMessageKind(message))
+  return { ...sessions, [sessionId]: { ...session, ...patch } }
 }
 
 type SlashCommandState = PerSessionState['slashCommands'][number]
@@ -1178,6 +1174,98 @@ function legacyStrictVisualProtocolNotice(code: string): string {
 }
 
 export const useChatStore = create<ChatStore>((set, get) => {
+  const recoveryNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const reconcileLifecycle = (sessionId: string, signal: LifecycleInput['signal'], before?: PerSessionState, expertSettled = false): void => {
+    const session = get().sessions[sessionId]
+    if (!session) return
+    const metadata = useSessionStore.getState().sessions.find(item => item.id === sessionId)
+    const workflow = metadata?.workflow
+    const waits: LifecycleWait[] = getPendingPermissions(session).map(request => {
+      const input = request.input && typeof request.input === 'object' ? request.input as Record<string, unknown> : {}
+      const first = Array.isArray(input.questions) ? input.questions[0] as Record<string, unknown> | undefined : undefined
+      const question = first?.question ?? first?.prompt
+      const browserVerification = request.toolName === 'Playwright' && input.kind === 'expert-playwright-verification'
+      return {
+        key: `permission:${request.requestId}`,
+        body: request.toolName === 'AskUserQuestion'
+          ? `需要你回答问题。${typeof question === 'string' ? question.slice(0, 160) : ''}`
+          : browserVerification
+            ? '搜索已暂停。请回到会话点击“打开验证浏览器”完成验证或登录；软件每 3 秒检查一次，确认完成后继续。'
+            : `${request.toolName || '工具'} 请求执行，正在等待允许。`,
+      }
+    })
+    if (session.pendingComputerUsePermission) waits.push({
+      key: `computer-use:${session.pendingComputerUsePermission.requestId}`,
+      body: session.pendingComputerUsePermission.request.reason || 'Computer Use 正在等待允许。',
+    })
+    const input: LifecycleInput = { signal, chatState: session.chatState, workflow, waits }
+    const previous = session.lifecycle ?? before?.lifecycle ?? initialSessionLifecycle(before?.chatState ?? session.chatState)
+    if (metadata?.expert?.mode === 'expert') {
+      // Internal results/idle are not the end of an Expert task. Only the
+      // server's completed continuation check can authorize that notification.
+      if (!expertSettled && waits.length === 0 && (signal === 'settled' || signal === 'snapshot')) return
+      // Late child acknowledgements must not reopen an already ended task.
+      // An explicit user submission still starts the next run via 'start'.
+      if (previous.status === 'ended' && signal === 'progress') return
+    }
+    let result = transitionSessionLifecycle(previous, input)
+    const notices = result.notice ? [result.notice] : []
+    // Reconnect snapshots can replay several outstanding requests at once.
+    while (result.notice?.attention) {
+      result = transitionSessionLifecycle(result.lifecycle, input)
+      if (result.notice) notices.push(result.notice)
+    }
+    const epoch = session.lifecycleEpoch ?? nextId()
+    if (result.lifecycle !== session.lifecycle || !session.lifecycleEpoch) {
+      set(state => ({ sessions: updateSessionIn(state.sessions, sessionId, () => ({ lifecycle: result.lifecycle, lifecycleEpoch: epoch })) }))
+    }
+    const title = metadata?.title?.trim()
+      || useTabStore.getState().tabs?.find(tab => tab.sessionId === sessionId)?.title?.trim()
+      || 'Claude Code Jiangxia'
+    for (const notice of notices) {
+      let lastUserIndex = -1
+      for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+        if (session.messages[index]?.type === 'user_text') {
+          lastUserIndex = index
+          break
+        }
+      }
+      const lastReply = [...session.messages.slice(lastUserIndex + 1)]
+        .reverse()
+        .find(message => message.type === 'assistant_text')
+      const preview = !notice.attention && result.lifecycle.endReason === 'completed' && lastReply?.type === 'assistant_text'
+        ? normalizeNotificationPreview(lastReply.content).slice(0, AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS)
+        : ''
+      void Promise.resolve(notifyDesktop({
+        dedupeKey: `session-lifecycle:${sessionId}:${notice.attention ? notice.key : `${epoch}:${notice.key}`}`,
+        title,
+        body: preview ? `${notice.body} ${preview}` : notice.body,
+        ...(notice.attention ? { requestAttention: true } : {}),
+        target: { type: 'session', sessionId },
+      })).then(sent => {
+        // Denied/disabled native delivery must not consume an outstanding request.
+        if (sent !== false || !notice.attention) return
+        set(state => ({ sessions: updateSessionIn(state.sessions, sessionId, current => {
+          const lifecycle = current.lifecycle
+          if (!lifecycle || current.lifecycleEpoch !== epoch || lifecycle.run !== result.lifecycle.run) return {}
+          return { lifecycle: { ...lifecycle, announcedWaits: lifecycle.announcedWaits.filter(key => key !== notice.key) } }
+        }) }))
+      })
+    }
+    if (signal === 'workflow' || signal === 'reset' || signal === 'stopped') {
+      const timer = recoveryNotificationTimers.get(sessionId)
+      if (timer) clearTimeout(timer)
+      recoveryNotificationTimers.delete(sessionId)
+      const expiresAt = Date.parse(workflow?.autoRecovery?.expiresAt ?? '')
+      if (signal === 'workflow' && result.lifecycle.status === 'running' && Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+        recoveryNotificationTimers.set(sessionId, setTimeout(() => {
+          recoveryNotificationTimers.delete(sessionId)
+          reconcileLifecycle(sessionId, 'workflow')
+        }, Math.min(expiresAt - Date.now(), 2147483647)))
+      }
+    }
+  }
+
   const submitNextQueuedMessage = (sessionId: string): boolean => {
     const queued = peekQueuedOutboundUserMessage(sessionId)
     const session = get().sessions[sessionId]
@@ -1203,6 +1291,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       })),
     }))
 
+    reconcileLifecycle(sessionId, 'start')
     wsManager.send(sessionId, {
       type: 'user_message',
       content: submitted.content,
@@ -1273,6 +1362,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       })),
     }))
     useTabStore.getState().updateTabStatus(sessionId, 'idle')
+    reconcileLifecycle(sessionId, 'settled', session)
   }
 
   return {
@@ -1280,7 +1370,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
   getSession: (sessionId) => get().sessions[sessionId] ?? createDefaultSessionState(),
 
-  connectToSession: (sessionId) => {
+  connectToSession: (sessionId, options) => {
     void useCLITaskStore.getState().fetchSessionTasks(sessionId)
 
     const existing = get().sessions[sessionId]
@@ -1325,6 +1415,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             wsManager.send(sessionId, { type: 'set_runtime_config', ...runtimeSelection })
           }
           const shouldPrewarm =
+            options?.prewarm !== false &&
             !runtimeSelection &&
             !sessionId.startsWith('__') &&
             !useTeamStore.getState().getMemberBySessionId(sessionId)
@@ -1363,6 +1454,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
     clearPendingTaskToolUseIds(sessionId)
     clearPendingToolParentUseIds(sessionId)
     clearQueuedOutboundUserMessages(sessionId)
+    const recoveryTimer = recoveryNotificationTimers.get(sessionId)
+    if (recoveryTimer) clearTimeout(recoveryTimer)
+    recoveryNotificationTimers.delete(sessionId)
     wsManager.disconnect(sessionId)
     set((s) => {
       const { [sessionId]: _, ...rest } = s.sessions
@@ -1491,6 +1585,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       return
     }
 
+    reconcileLifecycle(sessionId, 'start')
     if (isMemberSession) {
       void useTeamStore.getState().sendMessageToMember(sessionId, userFacingContent)
         .catch((err) => {
@@ -1509,6 +1604,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               ],
             })),
           }))
+          reconcileLifecycle(sessionId, 'failed')
         })
       return
     }
@@ -1680,6 +1776,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
   },
 
   stopGeneration: (sessionId) => {
+    const beforeStop = get().sessions[sessionId]
     flushAuxiliaryDelta(sessionId)
     wsManager.send(sessionId, { type: 'stop_generation' })
     if (pendingDeltaBySession.has(sessionId)) {
@@ -1724,6 +1821,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     })
     useTabStore.getState().updateTabStatus(sessionId, 'idle')
+    reconcileLifecycle(sessionId, 'stopped', beforeStop)
   },
 
   loadHistory: async (sessionId) => {
@@ -1876,9 +1974,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
     clearPendingToolParentUseIds(sessionId)
     clearQueuedOutboundUserMessages(sessionId)
     set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], activeGoal: null, streamingText: '', chatState: 'idle', ...pendingPermissionsPatch([]), pendingComputerUsePermission: null, localStopNonce: null, undoableSubmittedMessage: null })) }))
+    reconcileLifecycle(sessionId, 'reset')
   },
 
   handleServerMessage: (sessionId, msg) => {
+    const beforeMessage = get().sessions[sessionId]
     const update = (updater: (session: PerSessionState) => Partial<PerSessionState>) => {
       set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, (session) => {
         const patch = updater(session)
@@ -1952,6 +2052,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
         // Sync tab status
         useTabStore.getState().updateTabStatus(sessionId, effectiveState === 'idle' ? 'idle' : 'running')
+        if (msg.state === 'idle') reconcileLifecycle(sessionId, 'settled', beforeMessage)
         if (effectiveState === 'idle') {
           submitNextQueuedMessage(sessionId)
           void restoreDisconnectedHistory(sessionId)
@@ -2182,27 +2283,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
         const isExpertBrowserVerification = msg.toolName === 'Playwright'
           && input?.kind === 'expert-playwright-verification'
         if (isExpertBrowserVerification && current && getPendingPermissions(current).some(item => item.requestId === msg.requestId)) break
-        // AskUserQuestion has its own in-chat choice card. A generic desktop
-        // permission toast incorrectly tells the user to allow a tool and can
-        // linger after the answer was already submitted.
-        if (msg.toolName !== 'AskUserQuestion') {
-          notifyDesktop({
-            dedupeKey: isExpertBrowserVerification
-              ? `expert-human-verification:${sessionId}:${msg.requestId}`
-              : `permission:${msg.requestId}`,
-            ...(!isExpertBrowserVerification ? { cooldownScope: 'permission-prompt' } : {}),
-            requestAttention: true,
-            title: isExpertBrowserVerification
-              ? '需要协助完成网站验证'
-              : 'Claude Code Jiangxia 需要你的确认',
-            body: isExpertBrowserVerification
-              ? '搜索已暂停。请回到会话点击“打开验证浏览器”完成验证或登录；软件每 3 秒检查一次，确认完成后继续。'
-              : msg.toolName
-                ? `${msg.toolName} 请求执行，正在等待允许。`
-                : '有一个工具请求正在等待允许。',
-            target: { type: 'session', sessionId },
-          })
-        }
         update((s) => ({
           ...enqueuePendingPermission(s, {
             requestId: msg.requestId,
@@ -2254,14 +2334,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       case 'computer_use_permission_request':
         if (isLocallyStopped(get().sessions[sessionId])) break
-        notifyDesktop({
-          dedupeKey: `computer-use-permission:${msg.requestId}`,
-          cooldownScope: 'permission-prompt',
-          requestAttention: true,
-          title: 'Claude Code Jiangxia 需要你的确认',
-          body: msg.request.reason || 'Computer Use 正在等待允许。',
-          target: { type: 'session', sessionId },
-        })
         update(() => ({
           pendingComputerUsePermission: {
             requestId: msg.requestId,
@@ -2276,7 +2348,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
       case 'message_complete': {
         const session = get().sessions[sessionId]
         if (!session) break
-        const wasAgentRunning = session.chatState !== 'idle'
         const text = `${session.streamingText}${consumePendingDelta(sessionId)}`
         let completionMessages = session.messages
         if (text.trim()) {
@@ -2293,26 +2364,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
           tokenUsage: msg.usage,
           chatState: 'idle',
           activeThinkingId: null,
-          pendingPermission: null,
-          pendingPermissions: [],
-          pendingComputerUsePermission: null,
           elapsedTimer: null,
           localStopNonce: null,
           undoableSubmittedMessage: null,
         }))
         useTabStore.getState().updateTabStatus(sessionId, 'idle')
-        const notification = wasAgentRunning
-          ? buildAgentCompletionNotification(sessionId, completionMessages, text)
-          : null
-        if (notification) {
-          void notifyDesktop({
-            dedupeKey: notification.dedupeKey,
-            cooldownScope: 'agent-completion',
-            title: notification.title,
-            body: notification.body,
-            target: { type: 'session', sessionId },
-          })
-        }
+        reconcileLifecycle(sessionId, 'settled', beforeMessage)
         submitNextQueuedMessage(sessionId)
         void restoreDisconnectedHistory(sessionId)
         break
@@ -2539,7 +2596,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
                     ? 'Workflow is ready. Tell me what you want to do to start the first phase.'
                     : msg.subtype === 'strict_visual_incomplete'
                       ? 'Visual review remains incomplete.'
-                      : 'Context compacted',
+                      : '上下文已整理',
                 timestamp: Date.now(),
               },
             ],
@@ -2648,6 +2705,24 @@ export const useChatStore = create<ChatStore>((set, get) => {
         break
       case 'pong':
         break
+    }
+    if (!isLocallyStopped(beforeMessage)) {
+      if (msg.type === 'permission_request' || msg.type === 'computer_use_permission_request') {
+        reconcileLifecycle(sessionId, 'wait', beforeMessage)
+      } else if (msg.type === 'system_notification' && msg.subtype === 'expert_execution_settled') {
+        reconcileLifecycle(sessionId, 'settled', beforeMessage, true)
+      } else if (msg.type === 'system_notification' && msg.subtype === 'workflow_state' && isWorkflowSummary(msg.data)) {
+        reconcileLifecycle(sessionId, 'workflow', beforeMessage)
+      } else if (msg.type === 'system_notification' && msg.subtype === 'session_cleared') {
+        reconcileLifecycle(sessionId, 'reset', beforeMessage)
+      } else if (msg.type === 'error' && !isLegacyStrictVisualProtocolError(msg.code)
+        && !(isWorkflowTransitionError(msg.code) && beforeMessage?.pendingWorkflowTransition)) {
+        reconcileLifecycle(sessionId, 'failed', beforeMessage)
+      } else if ((msg.type === 'status' && msg.state !== 'idle') || msg.type === 'content_start'
+        || (msg.type === 'thinking' && beforeMessage?.lifecycle?.status !== 'running')
+        || msg.type === 'tool_result' || msg.type === 'permission_response_ack') {
+        reconcileLifecycle(sessionId, 'progress', beforeMessage)
+      }
     }
   },
   }
@@ -3264,6 +3339,7 @@ function isExpertInternalHistoryDescendant(
     const parent = messagesById.get(parentUuid)
     if (!parent) break
     if (parent.type === 'user') {
+      if (parent.messageKind === 'user_input') break
       if (isInternalExpertRuntimePromptContent(parent.content) || isInternalLoadedSkillPromptContent(parent.content)) {
         result = true
         break
@@ -3344,7 +3420,7 @@ function extractLeadingFileReferences(text: string): {
  */
 export function reconstructAgentNotifications(messages: MessageEntry[]): Record<string, AgentTaskNotification> {
   const taskNotifications = messages
-    .filter((message) => message.type === 'user')
+    .filter((message) => message.type === 'user' && message.messageKind !== 'user_input')
     .map((message) => extractTaskNotification(message.content))
     .filter((notification): notification is AgentTaskNotification => notification !== null)
 
@@ -3373,7 +3449,7 @@ export function reconstructAgentNotifications(messages: MessageEntry[]): Record<
   // which overwrite actual review content if stored later in history
   const teammateContent = new Map<string, string>()
   for (const msg of messages) {
-    if (msg.type !== 'user') continue
+    if (msg.type !== 'user' || msg.messageKind === 'user_input') continue
     const text = typeof msg.content === 'string'
       ? msg.content
       : Array.isArray(msg.content)
@@ -3431,12 +3507,22 @@ export function mapHistoryMessagesToUiMessages(
   let pendingGoalCommand: { name: string; args: string } | null = null
 
   for (const msg of messages) {
+    const kind = resolveMessageKind(msg)
+    if (kind === 'context_summary') {
+      const last = uiMessages[uiMessages.length - 1]
+      if (last?.type !== 'system' || last.content !== '上下文已整理') {
+        uiMessages.push({ id: msg.id, type: 'system', content: '上下文已整理', timestamp: new Date(msg.timestamp).getTime() })
+      }
+      continue
+    }
+    if (kind === 'internal_notification') continue
+    const explicitHuman = msg.messageKind === 'user_input'
     const suppressExpertAssistantProse = (
       (msg.type === 'assistant' || msg.type === 'tool_use')
       && isExpertInternalHistoryDescendant(msg, messagesById, internalExpertTurnCache)
     )
 
-    if (msg.type === 'user' && isTaskNotificationContent(msg.content)) {
+    if (msg.type === 'user' && !explicitHuman && isTaskNotificationContent(msg.content)) {
       suppressTaskNotificationResponse = true
       continue
     }
@@ -3478,7 +3564,7 @@ export function mapHistoryMessagesToUiMessages(
       }
     }
     if (msg.type === 'user' && typeof msg.content === 'string') {
-      if (isTeammateMessage(msg.content)) {
+      if (!explicitHuman && isTeammateMessage(msg.content)) {
         if (!includeTeammateMessages) continue
         const teammateContents = extractVisibleTeammateMessageContents(msg.content)
         if (teammateContents.length === 0) continue
@@ -3490,7 +3576,7 @@ export function mapHistoryMessagesToUiMessages(
         })
         continue
       }
-      const visibleContent = stripInternalUserPrompt(msg.content)
+      const visibleContent = explicitHuman ? msg.content : stripInternalUserPrompt(msg.content)
       if (visibleContent === null) continue
       const parsed = extractLeadingFileReferences(visibleContent)
       uiMessages.push({
@@ -3571,7 +3657,7 @@ export function mapHistoryMessagesToUiMessages(
       }
     }
   }
-  return uiMessages
+  return uiMessages.map(message => message.messageKind ? message : attachMessageKind(message))
 }
 
 function extractLastTodoWriteFromHistory(messages: MessageEntry[]): Array<{ content: string; status: string; activeForm?: string }> | null {
@@ -3599,7 +3685,7 @@ function extractLastTodoWriteFromHistory(messages: MessageEntry[]): Array<{ cont
   const allDone = todos.every((t) => t.status === 'completed')
   if (allDone) {
     for (let i = foundIndex + 1; i < messages.length; i++) {
-      if (messages[i]!.type === 'user' && messages[i]!.content) return null
+      if (isHumanInputMessage(messages[i]!) && messages[i]!.content) return null
     }
   }
   return todos
@@ -3617,6 +3703,6 @@ function hasUserMessagesAfterTaskCompletion(messages: MessageEntry[]): boolean {
     }
   }
   if (lastTaskIndex < 0) return false
-  for (let i = lastTaskIndex + 1; i < messages.length; i++) { if (messages[i]!.type === 'user') return true }
+  for (let i = lastTaskIndex + 1; i < messages.length; i++) { if (isHumanInputMessage(messages[i]!)) return true }
   return false
 }

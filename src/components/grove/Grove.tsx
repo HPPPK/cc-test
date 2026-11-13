@@ -24,7 +24,7 @@ const NEW_TERMS_ASCII = ` _____________
  |  ----------  |
  |              |
  |______________|`;
-function GracePeriodContentBody() {
+function GracePeriodContentBody(): React.ReactNode {
   const $ = _c(9);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -88,7 +88,7 @@ function GracePeriodContentBody() {
   }
   return t8;
 }
-function PostGracePeriodContentBody() {
+function PostGracePeriodContentBody(): React.ReactNode {
   const $ = _c(7);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -141,15 +141,15 @@ function PostGracePeriodContentBody() {
   }
   return t6;
 }
-export function GroveDialog(t0) {
+export function GroveDialog(t0: Props): React.ReactNode {
   const $ = _c(34);
   const {
     showIfAlreadyViewed,
     location,
     onDone
   } = t0;
-  const [shouldShowDialog, setShouldShowDialog] = useState(null);
-  const [groveConfig, setGroveConfig] = useState(null);
+  const [shouldShowDialog, setShouldShowDialog] = useState<boolean | null>(null);
+  const [groveConfig, setGroveConfig] = useState<GroveConfig | null>(null);
   let t1;
   let t2;
   if ($[0] !== location || $[1] !== onDone || $[2] !== showIfAlreadyViewed) {
@@ -354,7 +354,7 @@ type PrivacySettingsDialogProps = {
   domainExcluded?: boolean;
   onDone(): void;
 };
-export function PrivacySettingsDialog(t0) {
+export function PrivacySettingsDialog(t0: PrivacySettingsDialogProps): React.ReactNode {
   const $ = _c(17);
   const {
     settings,

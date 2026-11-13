@@ -197,3 +197,27 @@ test('recovery requires readable public content and rejects loading, blank, clos
     { text: '请解决以下难题以继续' },
   ]) expect(isHumanVerificationRecoveryHealthy({ ...healthy, ...invalid })).toBe(false)
 })
+
+test('recognizes the observed Reddit and Cloudflare challenge surfaces consistently', () => {
+  const cases = [
+    ['https://www.reddit.com/r/Windows10/search/?js_challenge=1', 'Reddit - Prove your humanity', 'Prove your humanity\nComplete the challenge below and let us know you’re a real person.'],
+    ['https://www.v2ex.com/?__cf_chl_rt_tk=token', 'Just a moment...', ''],
+  ]
+  for (const [url, title, text] of cases) {
+    expect(detectHumanVerificationKind(url!, title!, text!)).toBeTruthy()
+    expect(isHumanVerificationSurfaceStillPresent(undefined, url!, title!, text!)).toBe(true)
+    expect(classifyRenderedPageAccess(url!, title!, text!)).toContain('ACCESS_LIMITED_PAGE')
+  }
+  expect(detectHumanVerificationKind('https://example.com/article', 'How Reddit verifies users', 'The challenge says “Prove your humanity”.')).toBeNull()
+})
+
+
+test('keeps the real Cloudflare security-verification wording paused without treating a discussion as a challenge', () => {
+  const text = 'www.autohotkey.com\nPerforming security verification\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.\nRay ID: example\nPerformance and security by Cloudflare'
+  for (const url of ['https://www.autohotkey.com/', 'https://cn.v2ex.com/t/723554']) {
+    expect(detectHumanVerificationKind(url, 'Just a moment...', text)).toBe('human verification')
+    expect(isHumanVerificationSurfaceStillPresent(undefined, url, 'Just a moment...', text)).toBe(true)
+    expect(classifyRenderedPageAccess(url, 'Just a moment...', text)).toContain('ACCESS_LIMITED_PAGE')
+  }
+  expect(detectHumanVerificationKind('https://example.com/blog', 'How security verification works', text)).toBeNull()
+})

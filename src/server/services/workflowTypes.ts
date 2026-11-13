@@ -190,6 +190,10 @@ export type DialogueSessionWorkflowProjection = {
 }
 
 export type WorkflowArtifactPointer = {
+  lifecycleStatus?: WorkflowArtifactLifecycleStatus | WorkflowCompletionSubmissionStatus
+  submission?: CompletionSubmission
+  phaseId?: string
+  contentHash?: string
   kind: WorkflowArtifactPointerKind
   sessionId: string
   artifactId: string
@@ -471,6 +475,7 @@ export type WorkflowPhaseDefinition = {
 }
 
 export type WorkflowTemplate = {
+  packId?: string
   schemaVersion: number
   id: string
   source: WorkflowTemplateSource
@@ -536,12 +541,31 @@ export type WorkflowCompletionSummary = {
 export type WorkflowAutoRecovery = {
   phaseId: string
   startedAt: string
-  expiresAt: string
+  /** One-shot server credential consumed by the next accepted repair route. */
+  credentialId?: string
+  /** Legacy timed-window field retained only while old persisted state is upgraded. */
+  expiresAt?: string
   attempt: number
   source: WorkflowAutoRecoverySource
 }
 
+export type WorkflowRecommendedSkillStatusSummary = {
+  total: number
+  available: number
+  unavailable: number
+  degraded: number
+  evidenceCount: number
+  activePhaseItems?: Array<{
+    name: string
+    status: WorkflowPhaseSkillResolutionStatus
+    source?: WorkflowPhaseSkillSource
+    pluginName?: string
+  }>
+}
+
 export type WorkflowSessionSummary = {
+  recommendedSkillStatus?: WorkflowRecommendedSkillStatusSummary
+  sourceTemplateStatus?: WorkflowTemplateSourceStatus
   mode: WorkflowMode
   templateId: string
   templateVersion: string
@@ -690,6 +714,7 @@ export const WORKFLOW_ROUTE_INTENTS = [
 export type WorkflowRouteIntent = (typeof WORKFLOW_ROUTE_INTENTS)[number]
 
 export type WorkflowRouteRequest = {
+  nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   phaseId?: string
   stateVersion?: number
   intent: WorkflowRouteIntent
@@ -789,8 +814,8 @@ export type WorkflowTransitionRecord = {
     | 'stopped'
     | 'stale-template'
     | 'missing-template'
-  action?: 'auto-advance' | 'confirmation-requested' | 'route-requested' | 'route-confirmed' | 'route-recovery-auto-applied' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
-  result?: 'accepted' | 'rejected' | 'superseded' | 'blocked' | 'unable' | 'noop'
+  action?: 'auto-advance' | 'confirmation-requested' | 'route-requested' | 'route-confirmed' | 'route-recovery-auto-applied' | 'route-recovery-confirmed' | 'confirmed' | 'rejected' | 'retry' | 'paused' | 'resumed' | 'stopped' | 'cancelled'
+  result?: 'accepted' | 'rejected' | 'superseded' | 'blocked' | 'unable' | 'noop' | 'needs_user' | 'completed' | 'ready'
   completionCheckId: string | null
   artifactRefs?: WorkflowArtifactPointer[]
   createdAt: string
@@ -842,6 +867,8 @@ export type WorkflowPhaseIssueStatus = (typeof WORKFLOW_PHASE_ISSUE_STATUSES)[nu
 export type WorkflowPhaseCheckStatus = (typeof WORKFLOW_PHASE_CHECK_STATUSES)[number]
 
 export type WorkflowPhaseIssue = {
+  questionInput?: Record<string, unknown>
+  questionDescription?: string
   id: string
   phaseId: string
   sessionId: string
@@ -987,6 +1014,10 @@ export type WorkflowContextCapsule = {
 }
 
 export type WorkflowSessionState = {
+  templateSnapshotHash?: string
+  contextCapsules?: WorkflowContextCapsule[]
+  activeContextCapsuleId?: string
+  preview?: WorkflowPreviewState
   schemaVersion: number
   sessionId: string
   mode: WorkflowMode
@@ -1140,7 +1171,13 @@ export type WorkflowPhaseReportSummary = {
   model?: WorkflowModelResolution
 }
 
+export type WorkflowRecommendedSkillReport = {
+  snapshots: WorkflowPhaseSkillSnapshot[]
+  evidence: WorkflowPhaseSkillEvidence[]
+}
+
 export type WorkflowFinalReport = {
+  recommendedSkills?: WorkflowRecommendedSkillReport
   schemaVersion: number
   reportId: string
   sessionId: string

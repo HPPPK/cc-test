@@ -1,3 +1,4 @@
+import { assertAgentConfirmStage } from '../stageContracts.js'
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode } from 'react';
 import type { KeyboardEvent } from '../../../../ink/events/keyboard-event.js';
@@ -24,7 +25,7 @@ type Props = {
   onSaveAndEdit: () => void;
   error?: string | null;
 };
-export function ConfirmStep(t0) {
+export function ConfirmStep(t0: Props): ReactNode {
   const $ = _c(88);
   const {
     tools,
@@ -36,7 +37,8 @@ export function ConfirmStep(t0) {
   const {
     goBack,
     wizardData
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
+  assertAgentConfirmStage(wizardData)
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {

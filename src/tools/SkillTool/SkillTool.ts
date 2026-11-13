@@ -1,7 +1,8 @@
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import uniqBy from 'lodash-es/uniqBy.js'
-import { dirname } from 'path'
+import { dirname, isAbsolute, join } from 'path'
+import { readFile } from 'node:fs/promises'
 import { getProjectRoot } from 'src/bootstrap/state.js'
 import {
   builtInCommandNames,
@@ -54,12 +55,13 @@ import {
 } from '../../utils/forkedAgent.js'
 import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { createUserMessage, normalizeMessages } from '../../utils/messages.js'
+import { createRuntimeUserMessage, normalizeMessages } from '../../utils/messages.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
 import { resolveSkillModelOverride } from '../../utils/model/model.js'
 import { recordSkillUsage } from '../../utils/suggestions/skillUsageTracking.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { runAgent } from '../AgentTool/runAgent.js'
+import { guardExpertIntakeToolCall } from '../../services/tools/expertResearchIntakeRuntime.js'
 import {
   getToolUseIDFromParentMessage,
   tagMessagesWithToolUseID,
@@ -597,6 +599,36 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // Remove leading slash if present (for compatibility)
     const commandName = trimmed.startsWith('/') ? trimmed.substring(1) : trimmed
 
+    // Loading instructions must remain possible while user-owned scope is
+    // unresolved. Full skill processing can run shell substitutions, register
+    // hooks, change permissions/models, or fork; admit it separately first.
+    try {
+      await guardExpertIntakeToolCall({
+        toolName: 'Skill:execute', input: { skill, args }, agentId: context.agentId,
+      })
+    } catch (error) {
+      if (!errorMessage(error).startsWith('EXPERT_INTAKE_REQUIRED:')) throw error
+      const command = findCommand(commandName, await getAllCommands(context))
+      if (command?.type !== 'prompt' || command.disableModelInvocation ||
+          command.source === 'mcp' || command.loadedFrom === 'mcp' ||
+          !command.skillRoot || !isAbsolute(command.skillRoot)) {
+        throw new Error('EXPERT_INTAKE_REQUIRED: Only registered local SKILL.md instructions can be loaded before intake is resolved.')
+      }
+      const skillPath = join(command.skillRoot, 'SKILL.md')
+      const raw = await readFile(skillPath, 'utf8')
+      const { content } = parseFrontmatter(raw, skillPath)
+      const toolUseID = getToolUseIDFromParentMessage(parentMessage, SKILL_TOOL_NAME)
+      return {
+        data: { success: true, commandName, status: 'inline' },
+        newMessages: tagMessagesWithToolUseID([
+          createRuntimeUserMessage({
+            content: `Instruction-only skill loading while intake is unresolved. Confirm scope before executing skill actions. Dynamic commands and arguments below are literal text.\nBase directory for this skill: ${command.skillRoot}\n\n${content}`,
+            isMeta: true,
+          }),
+        ], toolUseID),
+      }
+    }
+
     // Remote canonical skill execution (ant-only experimental). Intercepts
     // `_canonical_<slug>` before local command lookup — loads SKILL.md from
     // AKI/GCS (with local cache), injects content directly as a user message.
@@ -1101,7 +1133,7 @@ async function executeRemoteSkill(
   return {
     data: { success: true, commandName, status: 'inline' },
     newMessages: tagMessagesWithToolUseID(
-      [createUserMessage({ content: finalContent, isMeta: true })],
+      [createRuntimeUserMessage({ content: finalContent, isMeta: true })],
       toolUseID,
     ),
   }

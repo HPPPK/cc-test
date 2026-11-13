@@ -1,3 +1,4 @@
+import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import React, { type ReactNode, useState } from 'react'
 import { Box, Text } from '../../../ink.js'
 import { useKeybinding } from '../../../hooks/useKeybinding.js'
@@ -10,6 +11,8 @@ export function TaskDescriptionStep(): ReactNode {
   const { goNext, goBack, updateWizardData, wizardData } =
     useWizard<ScheduledTaskWizardData>()
   const [value, setValue] = useState(wizardData.description ?? '')
+  const [cursorOffset, setCursorOffset] = useState(value.length)
+  const { columns } = useTerminalSize()
   const [error, setError] = useState<string | null>(null)
 
   useKeybinding('confirm:no', goBack, { context: 'Settings' })
@@ -34,6 +37,9 @@ export function TaskDescriptionStep(): ReactNode {
           </Text>
         </Box>
         <TextInput
+            columns={columns}
+            cursorOffset={Math.min(cursorOffset, value.length)}
+            onChangeCursorOffset={setCursorOffset}
           value={value}
           onChange={setValue}
           onSubmit={handleSubmit}
@@ -41,7 +47,7 @@ export function TaskDescriptionStep(): ReactNode {
         />
         {error && (
           <Box marginTop={1}>
-            <Text color="red">{error}</Text>
+            <Text color="error">{error}</Text>
           </Box>
         )}
       </Box>

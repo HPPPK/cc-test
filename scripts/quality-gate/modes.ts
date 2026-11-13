@@ -28,13 +28,23 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       category: 'governance',
     },
 
+    {
+      id: 'core-types',
+      title: 'Core types and source contracts',
+      description: 'Check SDK schema parity, missing source imports, and the complete CLI/server type project.',
+      kind: 'command',
+      command: ['bun', 'run', 'check:core-contracts'],
+      requiredForModes: ['pr', 'baseline', 'release'],
+      category: 'unit',
+    },
+
     // === Layer 2: Core smoke and fast-lane tests ===
     {
       id: 'core-smoke',
       title: 'Core smoke tests',
       description: 'Tiny fixed set of critical-path smoke tests for fast feedback. Validates policy and quarantine governance tests.',
       kind: 'command',
-      command: ['bun', 'test', 'scripts/pr/change-policy.test.ts', 'scripts/quality-gate/quarantine.test.ts'],
+      command: ['bun', 'test', './scripts/pr/change-policy.test.ts', './scripts/quality-gate/quarantine.test.ts'],
       requiredForModes: ['fast'],
       category: 'smoke',
       timeoutMs: 30000,
@@ -163,7 +173,7 @@ export function lanesForMode(mode: QualityGateMode, baselineTargets: BaselineTar
       title: 'Baseline case catalog validation',
       description: 'Validate real Coding Agent baseline case definitions and fixture metadata.',
       kind: 'command',
-      command: ['bun', 'test', 'scripts/quality-gate/baseline/cases.test.ts'],
+      command: ['bun', 'test', './scripts/quality-gate/baseline/cases.test.ts'],
       requiredForModes: ['baseline', 'release'],
       category: 'unit',
     },

@@ -1,3 +1,4 @@
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import * as path from 'node:path'
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
@@ -48,7 +49,7 @@ describe('expert template-fill Write runtime', () => {
     enableTemplateFillSession()
     process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
     let rendererCalls = 0
-    globalThis.fetch = async () => { rendererCalls++; return new Response('{}') }
+    globalThis.fetch = withFetchPreconnect(async () => { rendererCalls++; return new Response('{}') })
     for (const input of [{}, { file_path: 'report.html', content: '<html>invented</html>' }, { file_path: 'report.html', content: '', expert_output: { templateId: 'fixed-v1', fields: {} } }]) {
       await expect(renderExpertTemplateFillForWrite(input)).rejects.toThrow('cc-jiangxia expert-template-fill')
     }
@@ -155,10 +156,10 @@ describe('expert template-fill Write runtime', () => {
   test('returns a specific repair instruction for an accidental empty Write without calling the renderer', async () => {
     enableTemplateFillSession()
     let rendererCalled = false
-    globalThis.fetch = async () => {
+    globalThis.fetch = withFetchPreconnect(async () => {
       rendererCalled = true
       return new Response('{}')
-    }
+    })
 
     await expect(renderExpertTemplateFillForWrite({})).rejects.toThrow('EXPERT_TEMPLATE_FILL_REPAIR_REQUIRED')
     await expect(renderExpertTemplateFillForWrite({})).rejects.toThrow('otherwise mode="finalize"')
@@ -169,10 +170,10 @@ describe('expert template-fill Write runtime', () => {
   test('normalizes an absolute final report path in the active workDir but rejects another destination', async () => {
     enableTemplateFillSession()
     let rendererCalls = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = withFetchPreconnect(async () => {
       rendererCalls++
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>report</html>' }))
-    }
+    })
 
     const inSessionPath = path.resolve(outputRoot, 'report.html')
     await expect(renderExpertTemplateFillForWrite({
@@ -363,10 +364,10 @@ describe('expert template-fill Write runtime', () => {
       maxCharacters: 90000,
     })
     let rendererCalled = false
-    globalThis.fetch = async () => {
+    globalThis.fetch = withFetchPreconnect(async () => {
       rendererCalled = true
       return new Response('{}')
-    }
+    })
 
     // Research workers use the ordinary Write shape. The runtime must derive
     // the internal artifact type from this session's declared path instead of
@@ -430,10 +431,10 @@ describe('expert template-fill Write runtime', () => {
       maxCharacters: 90_000,
     })
     let rendererCalls = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = withFetchPreconnect(async () => {
       rendererCalls++
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>report</html>' }))
-    }
+    })
     const finalWrite = {
       file_path: 'report.html',
       content: '',
@@ -464,10 +465,10 @@ describe('expert template-fill Write runtime', () => {
       maxCharacters: 90_000,
     })
     let calls = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = withFetchPreconnect(async () => {
       calls++
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>report</html>' }))
-    }
+    })
     recordMainAgentReportFieldAbsorptionRead(path.join(outputRoot, 'commercialization-research/07-report-field-absorption.md'))
 
     const initial = await renderExpertTemplateFillForWrite({
@@ -532,9 +533,9 @@ describe('expert template-fill Write runtime', () => {
       maxCharacters: 90_000,
     })
     recordMainAgentReportFieldAbsorptionRead(path.join(outputRoot, 'commercialization-research/07-report-field-absorption.md'))
-    globalThis.fetch = async () => new Response(JSON.stringify({
+    globalThis.fetch = withFetchPreconnect(async () => new Response(JSON.stringify({
       templateId: 'commercialization-report-v1', content: '<html>first repaired draft</html>', completionReviewRequired: true,
-    }))
+    })))
     const initial = await renderExpertTemplateFillForWrite({
       file_path: 'repaired-report.html', content: '',
       expert_output: { templateId: 'commercialization-report-v1', mode: 'patch', fields: { SOURCE_ROWS: [['[1]', 'https://example.com/']] } },
@@ -550,9 +551,9 @@ describe('expert template-fill Write runtime', () => {
       expert_output: { templateId: 'commercialization-report-v1', mode: 'finalize', fields: {} },
     })).rejects.toThrow('EXPERT_TEMPLATE_FILL_OUTPUT_REVIEW_READ_REQUIRED')
     recordMainAgentReportCompletenessReviewRead(path.join(outputRoot, 'commercialization-research/08-report-completeness-review.md'))
-    globalThis.fetch = async () => new Response(JSON.stringify({
+    globalThis.fetch = withFetchPreconnect(async () => new Response(JSON.stringify({
       templateId: 'commercialization-report-v1', content: '<html>reviewed final</html>', completionReviewRequired: false,
-    }))
+    })))
     const final = await renderExpertTemplateFillForWrite({
       file_path: 'repaired-report.html', content: '',
       expert_output: { templateId: 'commercialization-report-v1', mode: 'finalize', fields: {} },
@@ -567,16 +568,18 @@ describe('expert template-fill Write runtime', () => {
     const reportPath = path.join(outputRoot, 'persisted-report.html')
     expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath)).toBe(false)
     expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath, reportPath)).toBe(true)
+    expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath, '')).toBe(false)
+    expect(isCurrentExpertTemplateOutputReviewReportPath(reportPath, '   ')).toBe(false)
     expect(isCurrentExpertTemplateOutputReviewReportPath(path.join(outputRoot, 'other.html'), reportPath)).toBe(false)
   })
 
   test('forwards a minimal patch to the same session renderer and returns fixed-template HTML', async () => {
     enableTemplateFillSession()
     const requests: Array<{ url: string; body: unknown }> = []
-    globalThis.fetch = async (url, init) => {
+    globalThis.fetch = withFetchPreconnect(async (url, init) => {
       requests.push({ url: String(url), body: JSON.parse(String(init?.body)) })
       return new Response(JSON.stringify({ templateId: 'commercialization-report-v1', content: '<html>patched report</html>' }))
-    }
+    })
 
     await expect(renderExpertTemplateFillForWrite({
       file_path: '产品-商业化调研报告.html',
@@ -625,13 +628,13 @@ test('saves a v2 brief with normal prose even when optional Route metadata is in
 test('does not repeatedly send a deterministic write-confirmation error', async () => {
   enableTemplateFillSession()
   let commitCalls = 0
-  globalThis.fetch = (async (url) => {
+  globalThis.fetch = withFetchPreconnect(async (url) => {
     if (String(url).endsWith('template-fill-commit')) {
       commitCalls++
       return new Response(JSON.stringify({ message: 'written content mismatch' }), { status: 409 })
     }
     return new Response(JSON.stringify({ content: '<html>draft</html>', templateId: 'commercialization-report-v1', writeReceipt: 'receipt', completionReviewRequired: true }))
-  }) as typeof fetch
+  })
   const rendered = await renderExpertTemplateFillForWrite({ file_path: 'confirmed.html', content: '', expert_output: { templateId: 'commercialization-report-v1', fields: {} } })
   expect(commitCalls).toBe(0)
   if (rendered.kind !== 'rendered-template-fill') throw new Error('expected rendered write')
@@ -645,7 +648,7 @@ test('saves oversized legacy Markdown and independent parts without invoking the
   enableTemplateFillSession()
   process.env.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY = JSON.stringify({ mode: 'markdown-path-only', directory: 'commercialization-research', briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: ['commercialization-research/02-competitors.md'], researcherParts: true, reviewerPath: 'commercialization-research/05-evidence-review.md', auditPath: 'commercialization-research/06-browser-audit.md', maxCharacters: 90000 })
   let calls = 0
-  globalThis.fetch = Object.assign(async () => { calls++; throw new Error('must not render a research file') }, { preconnect: initialFetch.preconnect })
+  globalThis.fetch = withFetchPreconnect(Object.assign(async () => { calls++; throw new Error('must not render a research file') }, { preconnect: initialFetch.preconnect }))
   const content = '# complete evidence\n' + '真实证据\n'.repeat(25000)
   for (const file_path of ['commercialization-research/02-competitors.md', 'commercialization-research/02-competitors.parts/worker-12.md']) {
     const output = await renderExpertTemplateFillForWrite({ file_path, content })
@@ -653,4 +656,19 @@ test('saves oversized legacy Markdown and independent parts without invoking the
     expect(isSessionResearchArtifactReadAllowed(file_path, ['researcher-report'])).toBe(true)
   }
   expect(calls).toBe(0)
+})
+
+test('wrong research output filename returns the declared exact path for recovery without writing', async () => {
+  enableTemplateFillSession()
+  process.env.CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY = JSON.stringify({
+    mode: 'markdown-path-only', directory: 'commercialization-research',
+    briefPath: 'commercialization-research/01-research-brief.md',
+    researcherPaths: ['commercialization-research/02-competitors.md', 'commercialization-research/03-user-needs.md', 'commercialization-research/04-channels.md'],
+    reviewerPath: 'commercialization-research/05-evidence-review.md',
+    auditPath: 'commercialization-research/06-browser-audit.md',
+    absorptionPath: 'commercialization-research/07-report-field-absorption.md',
+    completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
+    maxCharacters: 90000,
+  })
+  await expect(renderExpertTemplateFillForWrite({ file_path: 'commercialization-research/07-field-absorption.md', content: '# accumulated real material' })).rejects.toThrow('07-report-field-absorption.md')
 })

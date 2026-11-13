@@ -12,7 +12,7 @@ type Props = {
   onAccept: () => void;
   onReject: () => void;
 };
-export function ManagedSettingsSecurityDialog(t0) {
+export function ManagedSettingsSecurityDialog(t0: Props): React.ReactNode {
   const $ = _c(26);
   const {
     settings,
