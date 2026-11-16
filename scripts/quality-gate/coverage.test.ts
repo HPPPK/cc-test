@@ -57,6 +57,61 @@ function createIsolationFixture(failSecond = false) {
   return root
 }
 
+test('records high-volume coverage output through regular files and retains valid LCOV', async () => {
+  const root = createIsolationFixture()
+  try {
+    writeFileSync(join(root, 'volume.test.ts'), `
+      import { test, expect } from 'bun:test'
+      import { fstatSync, writeSync } from 'node:fs'
+      import { first, second } from './src/server/subject'
+      test('high output regular-file reporter', () => {
+        for (let index = 0; index < 256; index++) {
+          writeSync(1, 'OUT-' + index + ':' + 'o'.repeat(4096) + '\\n')
+          writeSync(2, 'ERR-' + index + ':' + 'e'.repeat(4096) + '\\n')
+        }
+        writeSync(1, 'STDOUT-END\\n')
+        writeSync(2, 'STDERR-END\\n')
+        writeSync(1, 'STDIO_REGULAR:' + fstatSync(1).isFile() + ',' + fstatSync(2).isFile() + '\\n')
+        expect(fstatSync(1).isFile()).toBe(true)
+        expect(fstatSync(2).isFile()).toBe(true)
+        expect(first() + second()).toBe(3)
+      })
+    `)
+    const result = await runRootCoverage(['volume.test.ts'], root, join(root, 'coverage'))
+    const log = readFileSync(result.logPath, 'utf8')
+    expect(log.match(/^STDIO_REGULAR:.+$/m)?.[0]).toBe('STDIO_REGULAR:true,true')
+    expect(result.exitCode).toBe(0)
+    expect(log.startsWith('\n# volume.test.ts\n$ bun test ')).toBe(true)
+    expect((log.match(/^OUT-\d+:o{4096}$/gm) ?? [])).toHaveLength(256)
+    expect((log.match(/^ERR-\d+:e{4096}$/gm) ?? [])).toHaveLength(256)
+    expect(log.includes('STDOUT-END\n')).toBe(true)
+    expect(log.includes('STDERR-END\n')).toBe(true)
+    expect(log.includes('WriteFailed')).toBe(false)
+    const summary = parseLcov(readFileSync(result.lcovPath, 'utf8'), {
+      rootDir: root, scope: { id: 'volume', title: 'Volume fixture', includePrefixes: ['src/server/subject.ts'] },
+    })
+    expect(summary.lines.total).toBeGreaterThan(0)
+    expect(summary.lines.covered).toBe(summary.lines.total)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
+test('preserves an exact child exit code and both streams without publishing missing LCOV', async () => {
+  const root = createIsolationFixture()
+  try {
+    writeFileSync(join(root, 'exit.test.ts'), "import { writeSync } from 'node:fs'; writeSync(1, 'exit-stdout\\n'); writeSync(2, 'exit-stderr\\n'); process.exit(7)\n")
+    const result = await runRootCoverage(['exit.test.ts'], root, join(root, 'coverage'))
+    expect(result.exitCode).toBe(7)
+    expect(existsSync(result.lcovPath)).toBe(false)
+    const log = readFileSync(result.logPath, 'utf8')
+    expect(log.includes('exit-stdout\n')).toBe(true)
+    expect(log.includes('exit-stderr\n')).toBe(true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
 describe('root coverage test collection', () => {
   test('includes all core TS and TSX tests while respecting quarantine and repository boundaries', () => {
     const root = mkdtempSync(join(tmpdir(), 'root-coverage-selection-'))

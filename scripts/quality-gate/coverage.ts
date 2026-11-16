@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import ts from 'typescript'
 import { loadQuarantineManifest, quarantinedPathSet } from './quarantine'
@@ -385,19 +385,18 @@ function parseVitestSummary(path: string): CoverageSummary {
 
 async function runCommand(command: string[], cwd: string, logPath: string) {
   const started = Date.now()
-  const proc = Bun.spawn(command, {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
   mkdirSync(dirname(logPath), { recursive: true })
-  writeFileSync(logPath, `$ ${command.join(' ')}\n${stdout}${stderr}`)
-  return { exitCode, durationMs: Date.now() - started }
+  const logFd = openSync(logPath, 'w')
+  try {
+    writeSync(logFd, `$ ${command.join(' ')}\n`)
+    // Bun's synchronous coverage text reporter must not write to nonblocking
+    // pipes. Share a regular log file for both streams without buffering them.
+    const proc = Bun.spawn(command, { cwd, stdout: logFd, stderr: logFd })
+    const exitCode = await proc.exited
+    return { exitCode, durationMs: Date.now() - started }
+  } finally {
+    closeSync(logFd)
+  }
 }
 
 async function runSuite(
