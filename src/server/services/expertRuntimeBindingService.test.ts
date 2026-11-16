@@ -1155,7 +1155,9 @@ describe('commercialization autonomous planning and source-level price review', 
       'Report an audit/result conflict',
       'region, currency, tax, billing period, payment cadence, promotion eligibility and renewal',
       'For first year X after that', 'not a contradiction', 'monthly equivalent billed yearly is not a monthly checkout',
-      'D and E independently inspect original captured source evidence', 'F independently traces',
+      'D/E/F verify consequential claims against original quotes and adjacent conditions',
+      'Same engine with different queries is different evidence',
+      'never merges it into another query citation',
       'Esc, backdrop and dismiss keep human verification pending',
     ]) expect(instruction).toContain(rule)
     expect(instruction.indexOf('Consequential intake only')).toBeGreaterThan(instruction.indexOf(legacy.promptSnapshot))
@@ -1222,7 +1224,7 @@ test('commercialization review reconciles all derived unit costs with explicit p
   expect(runtime).toContain('including AI inferences')
   expect(runtime).toContain('annual spend against monthly allowance requires allowance * 12')
   expect(runtime).toContain('one-time and recurring terms require an explicit comparison horizon')
-  const example = prompt.match(/```expert-report-review\n([^`]+)\n```/)
+  const example = prompt.match(/```expert-report-review\r?\n([^`]+)\r?\n```/)
   expect(example).not.toBeNull()
   expect(JSON.parse(example![1]!)).toEqual({ version: 1, findings: [], calculations: [] })
 })
@@ -1274,6 +1276,18 @@ test('commercialization adaptive intake is evidence-bound and enforced before di
   expect(instruction).toContain('actual human message IDs and exact quotes')
   expect(instruction).toContain('server-owned answer receipt')
   expect(instruction).toContain('delegate')
+  expect(instruction).toContain('requiresAssessment=false')
+  expect(instruction).toContain('EXPERT_INTAKE_UNAVAILABLE does not mean an answer was not saved')
+  expect(instruction).not.toContain('call assess_expert_research_scope inspect and assess.')
+})
+
+test('existing expert sessions receive actionable link, research-priority and writing guidance', () => {
+  const instruction = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Playwright'] })!
+  expect(instruction).toContain('exact returned links')
+  expect(instruction).toContain('known facts, decision-changing gaps and the next observed link')
+  expect(instruction).toContain('Shared limitations belong in one place')
+  expect(instruction).toContain('A partial audit summary is not the full source')
+  expect(instruction).toContain('Do not loop on duplicate quote formatting')
 })
 
 

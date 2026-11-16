@@ -1,7 +1,9 @@
 import { DEVELOPMENT_QUESTION_BATCH_LIMIT, usesDevelopmentQuestionBatches } from './workflowDevelopmentQuestionPolicy.js'
+import { WORKFLOW_COMPLETION_STATUS_GUIDANCE } from './workflowTypes.js'
 import * as path from 'node:path'
 ﻿import type { WorkflowPhaseActionPolicy, WorkflowPhaseDefinition, WorkflowSessionState, WorkflowTemplate } from './workflowTypes.js'
 import { getRipgrepStatus } from '../../utils/ripgrep.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getWorkflowCompletionEligibility } from './workflowCompletionGate.js'
 
 type WorkflowRipgrepStatus = ReturnType<typeof getRipgrepStatus>
@@ -589,8 +591,12 @@ export function getWorkflowPhaseAlwaysLoadedTools(
 
 export function getWorkflowUnavailableSearchToolNames(
   status: WorkflowRipgrepStatus = getRipgrepStatus(),
+  globNoIgnore = isEnvTruthy(process.env.CLAUDE_CODE_GLOB_NO_IGNORE || 'true'),
 ): string[] {
   if (status.mode === 'unavailable' || status.working === false) {
+    // Glob's filename-only fallback runs only without an rg path and does not
+    // implement .gitignore semantics. A broken configured rg still needs repair.
+    if (!status.path && globNoIgnore) return ['Grep']
     return [...WORKFLOW_PHASE_RIPGREP_BACKED_TOOLS]
   }
   return []
@@ -683,6 +689,21 @@ export function isWorkflowPhaseToolDenied(
     return true
   }
   return getWorkflowPhaseDisallowedTools(state).includes(toolName)
+}
+
+export function getWorkflowToolDenialMessage(
+  toolName: string,
+  state: WorkflowSessionState | null | undefined,
+): string {
+  const prefix = `WORKFLOW_TOOL_FORBIDDEN: ${toolName} is not allowed in the current workflow phase.`
+  if (
+    ['Edit', 'MultiEdit'].includes(toolName)
+    && hasWorkflowArtifactWriteCapability(state)
+    && !isWorkflowPhaseToolDenied('Write', state)
+  ) {
+    return `${prefix} Read the exact .workflow artifact, preserve its existing content, and use Write to update that artifact in the same phase. This does not permit production edits. Do not retry the denied editor or route solely to update workflow artifacts.`
+  }
+  return `${prefix} Continue using the current phase's allowed capabilities; do not retry this tool or advance solely to bypass the restriction.`
 }
 
 export function isWorkflowTemplateAuthoringReadOnlyOperation(
@@ -788,11 +809,9 @@ export function getWorkflowPromptToolGuidance(
   const hasRouteTool = scopedToolNames.includes(REQUEST_WORKFLOW_ROUTE_TOOL_NAME)
   const necessaryQuestionPolicy = getNecessaryWorkflowQuestionPolicy(state)
   const hasArtifactWrite = hasWorkflowArtifactWriteCapability(state)
-  // The concrete artifact-write recovery wording belongs only to the independently
-  // evolved skills-development pack. Other workflow templates keep their existing
-  // prompt guidance even if they share the declarative capability name.
-  const hasSkillsDevelopmentArtifactWriteGuidance =
-    hasArtifactWrite && state.templateIdentity?.id === 'skills-development'
+  // Explain the scoped writer wherever these workflows require artifact updates.
+  const hasScopedArtifactWriteGuidance =
+    hasArtifactWrite && ['skills-development', 'efficient-constrained-dev-debug-workflow-v5'].includes(state.templateIdentity?.id ?? '')
   const completionEligibility = state.runtimeContract
     ? getWorkflowCompletionEligibility(state)
     : null
@@ -809,11 +828,14 @@ export function getWorkflowPromptToolGuidance(
     usesDevelopmentQuestionBatches(state) ? 'Use the single Development question policy in the workflow runtime contract; do not restate it.' : necessaryQuestionPolicy
       ? 'AskUserQuestion in this phase uses the necessary-question schema branch: call exactly one question with blocksCompletion: true, non-empty blockingReason and answerImpact, and 2–4 user-answer choices. Use this card only when the answer is required for current-phase work; otherwise continue with a conservative default instead of calling AskUserQuestion.'
       : null,
-    hasSkillsDevelopmentArtifactWriteGuidance
+    hasScopedArtifactWriteGuidance
       ? 'workflow_artifact_write is a declarative capability, not necessarily a visible tool name. It exposes the visible Write tool only for workspace-relative .workflow/... artifacts in this phase.'
       : null,
-    hasSkillsDevelopmentArtifactWriteGuidance
+    hasScopedArtifactWriteGuidance
       ? 'Do not use Edit/MultiEdit as a substitute, and do not use Write for src, public, the repository root, C:\\Temp, another workspace, or an unknown path. If an artifact Write is denied, repair the path to .workflow/... and continue the same phase; do not end in prose.'
+      : null,
+    hasScopedArtifactWriteGuidance
+      ? 'Read the exact existing artifact first, merge the current stage findings with its existing content, then use Write to replace that .workflow artifact. Write supports updating existing files. A denied Edit does not mean artifact updates are forbidden; continue with the allowed Write capability in the same phase.'
       : null,
     hasCompletionTool
       ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} is a direct API tool, never a Skill. Do not call Skill with workflow:${SUBMIT_PHASE_COMPLETION_TOOL_NAME}, and do not prepend workflow: to this tool name.`
@@ -825,11 +847,17 @@ export function getWorkflowPromptToolGuidance(
       ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} requires status, handoff, rationale, and evidence. phaseId and stateVersion may be omitted because the active phase and latest state version are inferred at call time.`
       : null,
     hasCompletionTool
-      ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} input contract: handoff must be an object, rationale must be a non-empty string, and evidence must be an array. Plain assistant text does not satisfy these required tool inputs.`
+      ? `${SUBMIT_PHASE_COMPLETION_TOOL_NAME} input contract: handoff must be an object, rationale must be a non-empty string, and evidence must be an array. remainingRisks and nextUserAction belong inside handoff, never at the top level. Plain assistant text does not satisfy these required tool inputs.`
       : null,
     completionEligibility?.status === 'eligible'
       ? `The persisted completion gate is eligible. Present the handoff and call ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status ready in the same assistant turn.`
-      : `The persisted completion gate is not yet eligible. Do not submit ready/completed or claim a phase transition. Resolve current work, blocking issues, required evidence, and checks through their explicit workflow state-update path first. If work must return for repair or wait on the user, first record the current result with ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status blocked or needs_user, then request ${REQUEST_WORKFLOW_ROUTE_TOOL_NAME} with rework_current_phase or jump_to_phase; never put executable route fields in handoff.`,
+      : completionEligibility
+        ? 'Persisted completion eligibility is a snapshot of recorded evidence, not proof that the current work is blocked. It may remain ineligible until the server verifies the completed phase outputs.'
+        : 'No persisted completion eligibility snapshot is available. Judge readiness from the actual current-phase work and evidence; do not invent a missing state-update tool.',
+    `When the current-phase work and required outputs are complete, call ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status ready: in Desktop, ready triggers server-side output verification and refreshes artifact requirements, checks, and eligible answered issues before evaluating completion. The server still enforces all real completion and permission gates; submission does not grant approval or advance the phase.`,
+    'Do not report blocked or request rework solely because the eligibility snapshot is not eligible. Repair missing current-phase content in the same phase using allowed tools, then submit ready for verification; do not invent a state-update tool or route merely to fill a field.',
+    WORKFLOW_COMPLETION_STATUS_GUIDANCE,
+    `For an actual unresolved blocker or an operation the current phase cannot safely perform, record the concrete reason and evidence with ${SUBMIT_PHASE_COMPLETION_TOOL_NAME} with status blocked or unable. Use ${REQUEST_WORKFLOW_ROUTE_TOOL_NAME} with rework_current_phase or jump_to_phase only when a real repair route is needed; never put executable route fields in handoff.`,
     hasCompletionTool
       ? 'Do not ask the user to type continue before calling the completion tool; the tool creates the user-confirmation step.'
       : null,

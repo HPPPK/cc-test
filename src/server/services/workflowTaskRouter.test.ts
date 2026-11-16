@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { studentSevenStageRequest } from './__fixtures__/studentSevenStageRequest.js'
 import {
   WORKFLOW_EFFORT_MODES,
   WORKFLOW_LABELS,
@@ -9,6 +10,72 @@ import {
 } from './workflowTaskRouter.js'
 
 describe('workflow task router', () => {
+  test.each([
+    '创建一个全新的学生管理系统，不必重复索要已给授权',
+    '创建一个全新的学生管理系统，不做数据库迁移，需要登录页、测试和README文档',
+    '这不是重复需求，请创建一个全新的学生管理系统',
+    '不要标记duplicate，请从零开发学生管理系统',
+    'Build a new student management system. Do not mark this as duplicate or invalid.',
+  ])('keeps product creation as the main action: %s', (request) => {
+    const result = routeWorkflowTask({ request })
+    expect(result.primaryLabel).toBe('new-product')
+    expect(result.terminalReason).toBeUndefined()
+    expect(result.effort).not.toBe('light')
+    expect(result.suggestedPath).toContain('implement')
+  })
+
+  test('preserves every selected canonical phase for the full student system request', async () => {
+    const request = studentSevenStageRequest
+    const result = routeWorkflowTask({ request, logs: 'duplicate test failed', selectedFiles: ['invalid.test.ts'] })
+    const template = await Bun.file(new URL('../../../workflows/efficient-constrained-dev-debug-workflow-v5/workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json', import.meta.url)).json()
+    const kept = template.phases.filter((phase: Parameters<typeof phaseAppliesToRoute>[0]['phase']) => phaseAppliesToRoute({
+      phase, labels: [result.primaryLabel, ...result.secondaryLabels], primaryLabel: result.primaryLabel, effort: result.effort,
+    }).applies)
+    expect(result.primaryLabel).toBe('new-product')
+    expect(result.rationale).not.toContain('duplicate wording')
+    expect(kept.map((phase: { id: string }) => phase.id)).toEqual(template.phases.map((phase: { id: string }) => phase.id))
+    expect(kept).toHaveLength(7)
+  })
+
+  test.each([
+    ['这和上次那个需求一样，按重复需求关闭', 'duplicate'],
+    ['This request is a duplicate of issue #123', 'duplicate'],
+    ['duplicate', 'duplicate'],
+    ['这个请求无效，不是需求', 'invalid'],
+    ['invalid', 'invalid'],
+    ['不是需求', 'invalid'],
+    ['该问题不修复，按 wontfix 关闭', 'wontfix'],
+    ['这个需求不做了', 'wontfix'],
+    ['wontfix', 'wontfix'],
+    ['不修', 'wontfix'],
+  ] as const)('retains explicit terminal classification: %s', (request, label) => {
+    expect(routeWorkflowTask({ request }).primaryLabel).toBe(label)
+  })
+
+  test('does not classify diagnostic metadata as a decision to stop', () => {
+    const result = routeWorkflowTask({ request: '优化学生列表筛选', logs: 'duplicate invalid wontfix', selectedFiles: ['duplicate.md'] })
+    expect(result.primaryLabel).toBe('enhancement')
+    expect(result.terminalReason).toBeUndefined()
+  })
+
+  test('explains an explicit duplicate classification with a duplicate signal', () => {
+    expect(routeWorkflowTask({ request: 'This request is a duplicate of issue #123' }).rationale).toContain('duplicate wording')
+  })
+
+  test('keeps full-flow refactoring distinct from new product creation', () => {
+    const result = routeWorkflowTask({ request: '重构现有学生系统，完整七阶段，补充测试及文档' })
+    expect(result.primaryLabel).toBe('refactor')
+    expect(result.effort).not.toBe('light')
+    expect(result.suggestedPath).toContain('task-breakdown')
+  })
+
+  test('does not confuse fixing product-creation errors with creating a new product', () => {
+    expect(routeWorkflowTask({ request: '修复创建学生管理系统时出现的报错，补回归测试' }).primaryLabel).toBe('bug')
+  })
+
+  test('rejects conflicting explicit complete flow and forced terminal classification', () => {
+    expect(() => routeWorkflowTask({ request: '创建学生系统，完整七阶段', forcedLabel: 'duplicate' })).toThrow('WORKFLOW_ROUTE_CONFLICT')
+  })
   test('exports canonical labels and effort modes', () => {
     expect(WORKFLOW_LABELS).toEqual([
       'new-product',

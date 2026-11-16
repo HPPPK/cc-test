@@ -9,7 +9,7 @@ import { getModelCapability } from './model/modelCapabilities.js'
 import { getConfiguredOrBuiltInModelContextWindow } from './model/modelContextWindows.js'
 
 // Default fallback when the model-specific capability is unknown.
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
+export const MODEL_CONTEXT_WINDOW_DEFAULT = 1_000_000
 
 // Maximum output tokens for compact operations
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000

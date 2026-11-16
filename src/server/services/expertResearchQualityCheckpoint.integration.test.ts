@@ -111,6 +111,42 @@ test('legacy active fixtures do not gain a new completion gate or mutate their s
   expect(JSON.parse(stored!.expert!.runtimeBinding!.outputProtocol!.content).researchQualityCheckpoint).toBeUndefined()
 })
 
+test('ended unaudited research requests original-worker recovery instead of waiting for a finished task', async () => {
+  const { service, sessionId, work, policy } = await fixture()
+  const session = await sessionService.getSession(sessionId)
+  const expert = session!.expert!
+  const original = expert.researchEvidence!.records.find(record => record.agentId === 'worker-1')!
+  expert.researchEvidence!.records = expert.researchEvidence!.records.map(record => record.agentId === 'worker-1'
+    ? { ...original, artifactPath: undefined, entries: [{ target: 'https://forum.example/thread/1', status: 'opened' as const }] } : record)
+  await sessionService.appendSessionMetadata(sessionId, { workDir: work, expert })
+  commercializationResearchBudgetService.finish(sessionId, expert, 'worker-1')
+  commercializationResearchBudgetService.reserve(sessionId, expert, { action: 'reserve-researcher', agentId: 'empty-repair', artifactPath: policy.researcherPaths[1] })
+  commercializationResearchBudgetService.finish(sessionId, expert, 'empty-repair')
+  await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-reviewer')).rejects.toMatchObject({
+    code: 'EXPERT_RESEARCH_RESUME_REQUIRED', message: expect.stringContaining('worker-1'),
+  })
+  const saved = await sessionService.getSession(sessionId)
+  expect(saved!.expert!.researchEvidence!.records.map(record => record.artifactPath)).toEqual(expect.arrayContaining([
+    policy.researcherPaths[0]!.replace('.md', '.parts/worker-0.md'), policy.researcherPaths[2]!.replace('.md', '.parts/worker-2.md'),
+  ]))
+})
+
+test('four-backtick saved evidence is admitted with its real original audit without a replacement start', async () => {
+  const { service, sessionId, work, policy } = await fixture()
+  const expert = (await sessionService.getSession(sessionId))!.expert!
+  const part = policy.researcherPaths[1]!.replace('.md', '.parts/worker-1.md')
+  const content = (await fs.readFile(path.join(work, part), 'utf8')).replaceAll('```', '````')
+  await fs.writeFile(path.join(work, part), content)
+  const entries = [{ target: 'https://forum.example/thread/1', status: 'opened' as const, detail: 'extracted text from body: Actual original user passage.' }]
+  const remaining = commercializationResearchBudgetService.inspect(sessionId, expert).remainingStarts
+  const result = await service.recordResearchAudit(sessionId, { agentId: 'worker-1', agentType: 'expert-evidence-researcher', artifactPath: part, content: 'Saved same-worker evidence.', entries, completed: true })
+  const saved = result.researchEvidence!.records.find(record => record.agentId === 'worker-1')!
+  expect(saved.content).toBe(content)
+  expect(saved.artifactPath).toBe(part)
+  expect(saved.entries).toEqual(entries)
+  expect(commercializationResearchBudgetService.inspect(sessionId, result.expert).remainingStarts).toBe(remaining)
+})
+
 async function selectionFixture(withPlan: boolean) {
   const f = await fixture()
   const current = await sessionService.getSession(f.sessionId), expert = current!.expert!
@@ -128,15 +164,17 @@ test('new opt-in snapshots require an actionable source plan before dispatch, wi
   await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-researcher')).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_SOURCE_SELECTION_REQUIRED' })
 })
 
-test('validated catalog picks reach the worker context and ignored picks use only the existing bounded follow-up', async () => {
+test('validated catalog picks remain visible without forcing source-only follow-up', async () => {
   const f = await selectionFixture(true)
   const context = await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-researcher')
   expect(context.skills.some(skill => skill.skillId === 'research-source-library')).toBe(false)
   const saved = await sessionService.getSession(f.sessionId)
   expect(saved!.expert!.runtimeBinding!.skills.some(skill => skill.skillId === 'research-source-library')).toBe(true)
   expect(context.researchQuality?.sourceSelection?.lanes[0]?.picks[0]).toMatchObject({ candidateUrl: 'https://www.reddit.com/', status: 'not_visited' })
-  try { await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer'); throw new Error('Expected follow-up') }
-  catch (error: any) { expect(error.code).toBe('EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED'); expect(error.message).toContain('选源计划') }
+  const before = commercializationResearchBudgetService.inspect(f.sessionId, saved!.expert!).remainingStarts
+  const review = await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')
+  expect(review.researchQuality?.sourceSelection?.unattemptedLanes).toHaveLength(3)
+  expect(commercializationResearchBudgetService.inspect(f.sessionId, saved!.expert!).remainingStarts).toBe(before)
 })
 
 test('unattempted selected sources remain visible after budget exhaustion without forcing new research', async () => {
@@ -162,7 +200,7 @@ test('unattempted selected sources remain visible after budget exhaustion withou
   expect(audit).not.toContain('用户候选来源库任务池与浏览状态')
 })
 
-test('adequate external evidence does not silently satisfy an ignored source plan, and exhausted follow-ups remain bounded', async () => {
+test('adequate external evidence can proceed while unvisited candidates remain honestly recorded', async () => {
   const f = await selectionFixture(true)
   const saved = (await sessionService.getSession(f.sessionId))!.expert!
   const quote = 'A concrete excerpt retained from the actually opened fixture page.'
@@ -178,7 +216,7 @@ test('adequate external evidence does not silently satisfy an ignored source pla
     await fs.writeFile(path.join(f.work, record.artifactPath!), record.content)
   }
   await sessionService.appendSessionMetadata(f.sessionId, { workDir: f.work, expert: saved })
-  await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED' })
+  await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')).resolves.toMatchObject({ researchQuality: { sourceSelection: { unattemptedLanes: expect.any(Array) } } })
   for (const [i, target] of f.policy.researcherPaths.entries()) {
     expect(commercializationResearchBudgetService.reserve(f.sessionId, saved, { action: 'reserve-researcher', agentId: 'source-only-' + i, artifactPath: target }).allowed).toBe(true)
     commercializationResearchBudgetService.finish(f.sessionId, saved, 'source-only-' + i)
@@ -238,7 +276,7 @@ test('dispatch returns original JSON diagnostics and current ID contract to the 
   expect((await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-researcher')).researchQuality?.sourceSelection?.lanes).toHaveLength(3)
 })
 
-test('repair saved evidence fields before allocating a new research follow-up', async () => {
+test('duplicate-prose quote discrepancies reach review as warnings without consuming a follow-up', async () => {
   const f = await selectionFixture(true)
   const current = await sessionService.getSession(f.sessionId)
   const expert = current!.expert!
@@ -246,24 +284,21 @@ test('repair saved evidence fields before allocating a new research follow-up', 
   const prose = 'An actual contiguous passage from the already captured product page.'
   const item = { url: 'https://vendor.example/product', quote: 'A different unsupported concatenated quotation.', observation: 'The saved observation describes the bounded repair feature and its limitations.', relevant: true, supplier: 'Example' }
   saved.content = '# Evidence\n' + prose + '\n```expert-research-evidence\n' + JSON.stringify({ version: 1, lane: 'competitors', items: [item] }) + '\n```'
+  saved.entries = [{ target: item.url, finalUrl: item.url, kind: 'url', status: 'opened' }]
   await fs.writeFile(path.join(f.work, saved.artifactPath!), saved.content)
   await sessionService.appendSessionMetadata(f.sessionId, { workDir: f.work, expert })
   const startsBeforeRepair = commercializationResearchBudgetService.inspect(f.sessionId, expert).remainingStarts
-  await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_EVIDENCE_CONTRACT_INVALID' })
-  try { await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer') } catch (error: any) {
-    expect(error.message).toContain('不要新派')
-    expect(error.message).toContain(saved.artifactPath)
-    expect(error.message).toContain(saved.agentId)
-    expect(error.message).not.toContain('通过 SendMessage')
-    expect(error.message).toContain('重新读取')
-    expect(error.message).not.toContain('每条仅在原工作者已完成后派一次')
-  }
+  const review = await f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')
+  expect(review.researchQuality?.evaluation?.issues).toEqual([])
+  expect(review.researchQuality?.evaluation?.boundary).toContain(saved.artifactPath)
+  expect(review.researchQuality?.evaluation?.boundary).toContain('不阻挡复核')
+  expect(review.researchQuality?.evaluation?.distinctSuppliers).toBe(0)
   expect(commercializationResearchBudgetService.inspect(f.sessionId, expert).remainingStarts).toBe(startsBeforeRepair)
   item.quote = prose
   saved.content = '# Evidence\n' + prose + '\n```expert-research-evidence\n' + JSON.stringify({ version: 1, lane: 'competitors', items: [item] }) + '\n```'
   await fs.writeFile(path.join(f.work, saved.artifactPath!), saved.content)
   await sessionService.appendSessionMetadata(f.sessionId, { workDir: f.work, expert })
-  await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED' })
+  await expect(f.service.getSubagentSkillContext(f.sessionId, 'expert-evidence-reviewer')).resolves.toMatchObject({ researchQuality: { sourceSelection: { unattemptedLanes: expect.any(Array) } } })
 })
 
 
@@ -291,7 +326,7 @@ test('review rereads a repaired registered file without re-browsing or a new wor
   const url = 'https://vendor.example/product'
   const item = { url, quote: 'Incorrect concatenated quote not present in prose.', observation: 'This observed product capability has a bounded scope, not a validated market outcome.', relevant: true, supplier: 'Vendor' }
   const content = () => '# Evidence\n' + quote + '\n```expert-research-evidence\n' + JSON.stringify({ version: 1, lane: 'competitors', items: [item] }) + '\n```'
-  saved.content = content()
+  saved.content = content().replace('"version":1,', '"version":1,,')
   saved.entries = [{ target: url, finalUrl: url, kind: 'url', status: 'opened' }]
   await fs.writeFile(path.join(f.work, saved.artifactPath!), saved.content)
   await sessionService.appendSessionMetadata(f.sessionId, { workDir: f.work, expert })

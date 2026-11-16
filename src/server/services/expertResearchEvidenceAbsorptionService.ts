@@ -563,7 +563,7 @@ function reportSourceBindings(artifact: string | undefined, reportText: string, 
     definitions.set(key, refs)
   }
   const markdown = (artifact ?? '').replace(/\x60{3}[^\n]*\n[\s\S]*?\x60{3}/g, '')
-  for (const match of markdown.matchAll(/^[ \t]{0,3}\[([^\]\r\n]+)\]:[ \t]*([^\r\n]+)$/gm)) addDefinition(match[1]!, match[2]!)
+  for (const match of markdown.matchAll(/^[ \t]{0,3}(?:[-*+]\s+)?\[([^\]\r\n]+)\]:[ \t]*([^\r\n]+)$/gm)) addDefinition(match[1]!, match[2]!)
   for (const match of markdown.matchAll(/\[([^\]\r\n]+)\]\(((?:https?:\/\/|audit:)[^\s]+?)\)/g)) addDefinition(match[1]!, match[2]!)
   // A source table is ordinary Markdown too. Require an explicit first-cell
   // citation label; prose mentioning a platform or a visited URL is not a map.
@@ -593,6 +593,7 @@ export function mergeAuditedOpenedSourcesIntoSourceRows(input: {
   fields: Record<string, unknown>
   templateFields: ExpertTemplateFillField[]
   absorptionArtifactContent?: string
+  previousSourceRows?: unknown[]
 }): { fields: Record<string, unknown>; appended: number } {
   const sourceField = input.templateFields.find((field) => field.id === input.policy.sourceFieldId)
   if (!sourceField || sourceField.kind !== 'table-rows' || sourceField.urlColumnIndex === undefined) {
@@ -602,15 +603,37 @@ export function mergeAuditedOpenedSourcesIntoSourceRows(input: {
   const canonicalUrls = citableAuditedCanonicalUrls(input.researchEvidence, input.policy)
   const reportText = Object.entries(input.fields).filter(([key]) => key !== sourceField.id).map(([, value]) => textFromField(value)).join('\n')
   const auditUrls = citableAuditedUrlById(input.researchEvidence, input.policy)
+  // Existing source labels are authoritative for the saved draft, independently
+  // of 07's local labels. Never guess that S1 and 1 identify the same page.
+  const citedLabels = new Set([...reportText.matchAll(/\[([^\]]+)\]/g)].map(match => match[1]!.trim()))
+  const rowIdentity = (raw: unknown) => {
+    const row = normalizeExpertTemplateFillTableRow(raw, sourceField.columns)
+    if (!row) return undefined
+    const id = auditReferenceId(row.cells[sourceField.urlColumnIndex!]) ?? row.auditId
+    const url = id ? auditUrls.get(id) : normalizeHttpUrl(row.cells[sourceField.urlColumnIndex!])
+    return { row, id, url }
+  }
+  for (const previous of input.previousSourceRows ?? []) {
+    const old = rowIdentity(previous)
+    if (!old?.url || ![...String(old.row.cells[0]).matchAll(/\[([^\]]+)\]/g)].some(match => citedLabels.has(match[1]!.trim()))) continue
+    if (!canonicalUrls.has(old.url) && ![...auditUrls.values()].includes(old.url)) continue
+    const collision = rawRows.some(raw => {
+      const current = rowIdentity(raw)
+      return current && (current.url === old.url || current.row.cells[0] === old.row.cells[0])
+    })
+    if (!collision) rawRows.push(previous)
+  }
   const bindings = reportSourceBindings(input.absorptionArtifactContent, reportText, canonicalUrls, auditUrls)
-  let repaired = false
+  let repaired = rawRows.length !== (Array.isArray(input.fields[sourceField.id]) ? (input.fields[sourceField.id] as unknown[]).length : 0)
   // An exact source ID in the used-material mapping can repair a copied URL.
   // Do not infer attribution from similar website names or all visited URLs.
   rawRows = rawRows.map((rawRow) => {
     const normalized = normalizeExpertTemplateFillTableRow(rawRow, sourceField.columns)
-    // An explicit audit selects one browser observation; never replace it with
-    // a URL-only 07 label, which cannot distinguish repeated search attempts.
-    if (!normalized || normalized.auditId || auditReferenceId(normalized.cells[sourceField.urlColumnIndex!])) return rawRow
+    // URL-only mappings cannot override a selected observation. An exact,
+    // unambiguous 07 audit binding can repair a copied ID as well as a copied
+    // URL; different queries on the same engine must retain their identities.
+    if (!normalized) return rawRow
+    const selectedAuditId = normalized.auditId ?? auditReferenceId(normalized.cells[sourceField.urlColumnIndex!])
     const groups = [...String(normalized.cells[0] ?? '').matchAll(/\[([^\]]+)\]/g)]
       .map((match) => bindings.get(match[1]!.trim().replace(/\s+/g, ' ').toLowerCase()))
     if (!groups.length || groups.some((group) => !group?.length)) return rawRow
@@ -619,6 +642,7 @@ export function mergeAuditedOpenedSourcesIntoSourceRows(input: {
     if (new Set(refs.map((ref) => ref!.auditId)).size !== 1) return rawRow
     const url = refs[0]!.url
     const auditId = refs[0]!.auditId
+    if (selectedAuditId && (!auditId || selectedAuditId === auditId)) return rawRow
     if (!auditId && normalizeHttpUrl(normalized.cells[sourceField.urlColumnIndex!]) === url) return rawRow
     const cells = [...normalized.cells]
     cells[sourceField.urlColumnIndex!] = auditId ? 'audit:' + auditId : url
@@ -665,13 +689,33 @@ export function mergeAuditedOpenedSourcesIntoSourceRows(input: {
           aliases.has(normalizeHttpUrl(match[0].replace(/[),.;，。；]+$/, '')))))?.trim()
       if (!supportingLine) continue
 
+      const previous = input.previousSourceRows?.find(raw => {
+        const row = normalizeExpertTemplateFillTableRow(raw, sourceField.columns)
+        if (!row) return false
+        const id = auditReferenceId(row.cells[sourceField.urlColumnIndex!]) ?? row.auditId
+        return id ? id === entry.auditId : normalizeHttpUrl(row.cells[sourceField.urlColumnIndex!]) === url
+      })
+      if (previous) {
+        rawRows.push(previous)
+        const restored = normalizeExpertTemplateFillTableRow(previous, sourceField.columns)
+        for (const label of String(restored?.cells[0] ?? '').matchAll(/\d+/g)) {
+          nextNumber = Math.max(nextNumber, Number(label[0]) + 1)
+        }
+        existing.add(url)
+        if (entry.auditId) existingAuditIds.add(entry.auditId)
+        appended += 1
+        continue
+      }
+
       const host = (() => {
         try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '公开网页' }
       })()
       const sourceType = isObservedSearch
         ? (entry.searchEngine ?? '搜索引擎') + ' 关键词结果页'
         : host + ' 公开页面'
-      const summary = supportingLine.slice(0, 800)
+      // Prose establishes that the source is cited, not what the page said.
+      // Without original metadata, never present report inferences as a source abstract.
+      const summary = '本轮实际打开并在报告中引用；具体观察及证据边界见研究记录。'
       const urlCell = (isObservedSearch || hasExactBinding) && entry.auditId ? 'audit:' + entry.auditId : url
       const cells = buildAutoAppendedSourceRowCells({ sourceField, sourceNumber: nextNumber, sourceType, summary, visitDate, urlCell })
       if (matchingBindings.length) cells[0] = matchingBindings.map((binding) => '[' + binding.label + ']').join('、')

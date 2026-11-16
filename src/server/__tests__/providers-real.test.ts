@@ -74,8 +74,8 @@ describe('Real Provider Configs', () => {
     expect((settings.env as Record<string, string>).ANTHROPIC_API_KEY).toBe('')
     expect((settings.env as Record<string, string>).ANTHROPIC_MODEL).toBe('MiniMax-M2.7-highspeed')
     expect(JSON.parse((settings.env as Record<string, string>).CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toMatchObject({
-      'MiniMax-M2.7': 204800,
-      'MiniMax-M2.7-highspeed': 204800,
+      'MiniMax-M2.7': 1_000_000,
+      'MiniMax-M2.7-highspeed': 1_000_000,
     })
 
     // 验证原版 settings.json 没有被创建
@@ -113,8 +113,8 @@ describe('Real Provider Configs', () => {
     let settings = await readCcJiangxiaSettings()
     expect((settings.env as Record<string, string>).ANTHROPIC_BASE_URL).toBe('https://api.minimaxi.com/anthropic')
     expect(JSON.parse((settings.env as Record<string, string>).CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toMatchObject({
-      'MiniMax-M2.7': 204800,
-      'MiniMax-M2.7-highspeed': 204800,
+      'MiniMax-M2.7': 1_000_000,
+      'MiniMax-M2.7-highspeed': 1_000_000,
     })
 
     // 切换到接口AI中转站

@@ -4,6 +4,7 @@ import {
   WORKFLOW_ARTIFACT_LIFECYCLE_STATUSES,
   WORKFLOW_ARTIFACT_POINTER_KINDS,
   WORKFLOW_COMPLETION_SUBMISSION_STATUSES,
+  isWorkflowReadyCompletionStatus,
   WORKFLOW_EFFORT_MODES,
   WORKFLOW_LABELS,
   WORKFLOW_LIFECYCLE_STATUSES,
@@ -38,6 +39,16 @@ import type {
 } from './workflowTypes'
 
 describe('workflow domain types', () => {
+  test.each(WORKFLOW_COMPLETION_SUBMISSION_STATUSES)('classifies %s consistently for server evidence verification', status => {
+    expect(isWorkflowReadyCompletionStatus(status)).toBe(['ready', 'needs_user', 'completed'].includes(status))
+  })
+
+  test('does not treat missing or unknown status as a completion request', () => {
+    for (const status of [null, undefined, 'retry', 'manual_complete', 'confirm', {}, 1]) {
+      expect(isWorkflowReadyCompletionStatus(status)).toBe(false)
+    }
+  })
+
   test('exports canonical workflow state vocabularies', () => {
     expect(WORKFLOW_LIFECYCLE_STATUSES).toEqual([
       'created',

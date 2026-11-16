@@ -10,6 +10,28 @@ import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 import { inspectExpertResearchIntake, submitExpertResearchAssessment, recordExpertIntakeQuestion, recordExpertIntakeAnswer, guardExpertResearchIntake, getPendingExpertIntakeQuestion } from './expertResearchIntakeService.js'
 const oldConfig = process.env.CLAUDE_CONFIG_DIR
 const roots: string[] = []
+
+test('delivery-only continue preserves confirmed scope, while a real scope change still requires assessment', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'expert-delivery-resume-'))
+  roots.push(root)
+  process.env.CLAUDE_CONFIG_DIR = root
+  const { sessionId } = await sessionService.createSession(root)
+  const expert = { mode: 'expert', status: 'active', expertId: 'commercialization-research-report', runtimeBinding: { active: true, expertId: 'commercialization-research-report' },
+    researchIntake: { version: 1, revision: 1, status: 'clear', dimensions: [], evidenceMessageIds: ['scope'], receipts: [], updatedAt: '2026-11-15T00:00:00Z' },
+    templateFillDraft: { templateId: 'v1', fields: { REPORT_TITLE: 'Saved' }, savedAt: '2026-11-15T00:00:00Z', updatedAt: '2026-11-15T00:00:00Z', completionReview: { initialRenderedAt: '2026-11-15T00:00:00Z', reportPath: 'report.html' } }, materialRefs: [],
+  } as any
+  await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert })
+  const file = (await sessionService.findSessionFile(sessionId))!.filePath
+  const appendHuman = async (id: string, content: string) => appendFile(file, JSON.stringify({ uuid: id, type: 'user', messageKind: 'user_input', message: { role: 'user', content } }) + '\n')
+  await appendHuman('scope', 'Windows 桌面工具')
+  await appendHuman('continue', '继续')
+  expect((await inspectExpertResearchIntake(sessionId)).requiresAssessment).toBe(false)
+  await expect(guardExpertResearchIntake(sessionId, 'Bash', { command: 'claude expert-template-fill --data-stdin' })).resolves.toBeUndefined()
+  await appendHuman('changed', '改成 macOS 产品')
+  await appendHuman('continue-again', '继续')
+  expect((await inspectExpertResearchIntake(sessionId)).requiresAssessment).toBe(true)
+  await expect(guardExpertResearchIntake(sessionId, 'Bash', { command: 'claude expert-template-fill --data-stdin' })).rejects.toThrow('new human turn')
+})
 afterEach(async () => {
   resetExpertPackRegistryForTests()
   if (oldConfig === undefined) delete process.env.CLAUDE_CONFIG_DIR

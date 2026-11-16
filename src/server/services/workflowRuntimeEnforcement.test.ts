@@ -557,6 +557,11 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('do not hide a route inside handoff')
     expect(prompt).toContain('do not ask the user to bypass the workflow')
     expect(prompt).toContain('rework_current_phase or jump_to_phase')
+    expect(prompt).toContain('blocked or unable')
+    expect(prompt).toContain('needs_user is a legacy confirmation alias')
+    expect(prompt).not.toContain('blocked/needs_user')
+    expect(prompt).toContain('does not satisfy a required file-output contract')
+    expect(prompt).toContain('repair the content in the same phase')
   })
 
   test('runtime prompt injects stable phase execution contract for questions, output, gates, handoff, and internal safety', () => {
@@ -690,7 +695,9 @@ describe('workflow runtime enforcement v5', () => {
     expect(brief.content).toContain('Workflow subagent capabilities')
     expect(brief.content).toContain('terminal command capability')
     expect(brief.content).not.toContain('Bash')
-    expect(brief.content).not.toContain('Write')
+    expect(brief.content).not.toMatch(/\bWrite\b/)
+    expect(brief.content).toContain('scopeAmendment={batchId,addWriteScopes}')
+    expect(brief.content).toContain('An ordinary AskUserQuestion answer does not amend scope')
     expect(brief.content).not.toContain('Edit')
     expect(brief.content).not.toContain('MultiEdit')
     expect(brief.content).not.toContain('FULL CHAT HISTORY SHOULD NOT BE INCLUDED')
@@ -741,6 +748,11 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('matching top-level workflow_role')
     expect(prompt).toContain('Required workflow roles: coder, reviewer')
     expect(prompt).toContain('summaryForLeader')
+    expect(prompt).toContain('Whenever workflow_role is set, use subagent_type=general-purpose')
+    expect(prompt).toContain('explicit readyForReview boolean')
+    expect(prompt).toContain('the Leader delegates implementation and test commands')
+    expect(prompt).toContain('Ending a reply does not complete a Batch')
+    expect(prompt).toContain('not permission to start a nested workflow')
   })
 
   test('validates structural evidence for v7 work-order, quality report, preview, and handoff gates', () => {
@@ -814,6 +826,39 @@ describe('workflow runtime enforcement v5', () => {
   })
 })
 
+test('development dispatch guidance references artifacts instead of repeating their contents for every role', () => {
+  const template = makeTemplate()
+  const state = makeState()
+  const phase = { ...template.phases[0]!, id: 'delegate-implement', subagentPolicy: { allowedRoles: ['coder', 'reviewer'] } }
+  const artifact = { id: 'plan', filename: 'delivery-plan.md', phaseId: 'delivery-plan', kind: 'markdown', required: true, content: 'unique-large-artifact-body '.repeat(100), createdAt: NOW, updatedAt: NOW }
+  const input = { template, run: state.workflowRuns![0]!, phase, sessionState: state, inheritedArtifacts: [artifact], userMessage: '' }
+  const prompt = buildWorkflowRuntimePrompt(input)
+  expect(prompt).not.toContain('unique-large-artifact-body')
+  expect(prompt).toContain('delivery-plan.md')
+  expect(prompt).toContain('Callable Agent tool subagent_type: general-purpose')
+  expect(prompt).toContain('workflow_role=reviewer')
+  expect(prompt).toContain('summaryForLeader')
+  expect(buildWorkflowRuntimePrompt({ ...input, template: { ...template, id: 'custom-workflow' } })).toContain('unique-large-artifact-body')
+})
+
+test('development artifact pointers retain inline-only evidence once and bound its model view', () => {
+  const template = makeTemplate()
+  const state = makeState()
+  const phase = { ...template.phases[0]!, id: 'delegate-implement', subagentPolicy: { allowedRoles: ['coder', 'reviewer'] } }
+  const inline = { id: 'inline-accepted-decision', phaseId: 'delivery-plan', kind: 'markdown', required: true,
+    content: 'Accepted user decision: offline-only student records.\n' + 'inline-remaining-detail '.repeat(300), createdAt: NOW, updatedAt: NOW }
+  const file = { ...inline, id: 'known-file', filename: 'delivery-plan.md', content: 'FILE_BODY_SHOULD_NOT_REPEAT' }
+  const stored = JSON.stringify([inline, file])
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, inheritedArtifacts: [inline, file], userMessage: '' })
+  expect(prompt.match(/Accepted user decision: offline-only student records\./g)).toHaveLength(1)
+  expect(prompt).toContain('inline-accepted-decision')
+  expect(prompt).toContain('additional inline content omitted')
+  expect(prompt).not.toContain('FILE_BODY_SHOULD_NOT_REPEAT')
+  expect(prompt).toContain('delivery-plan.md')
+  expect(prompt.match(/inline-remaining-detail/g)!.length).toBeLessThan(100)
+  expect(JSON.stringify([inline, file])).toBe(stored)
+})
+
 test('development policy overrides old single-question brainstorming and defines convergence', () => {
   const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a video editor', now: NOW })
   const template = requireFixtureValue(state.templateSnapshot)
@@ -854,4 +899,42 @@ test('development runtime prompt keeps long phase instructions and the question 
   expect(prompt.match(/Stage-specific grounding rules\./g)).toHaveLength(1)
   expect(prompt.match(/Inherited brainstorming guidance\./g)).toHaveLength(1)
   expect(prompt.match(/Development question policy \(takes precedence/g)).toHaveLength(1)
+})
+
+test('development artifact applicability overrides inherited unconditional material field lists', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a student manager without reference material', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = 'Handoff sourceMaterialSummary and sourceMaterialFindings before completion.'
+  const input = { template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Build a student manager' }
+  const prompt = buildWorkflowRuntimePrompt(input)
+
+  expect(prompt).toContain('sourceMaterialSummary is required only when source material was provided or mentioned')
+  expect(prompt).toContain('sourceMaterialFindings is required only when accessible material can actually be extracted')
+  expect(prompt).toContain('When sourceMaterialType is none, inherit that fact')
+  expect(prompt).toContain('An unavailable material remains a blocker only when it is necessary')
+  expect(prompt).toContain('exact camelCase heading names are not a completion requirement')
+  expect(prompt).toContain('update the existing artifact and submit when ready')
+  expect(prompt.lastIndexOf('Development artifact applicability policy')).toBeGreaterThan(prompt.indexOf(phase.instructions))
+  expect(prompt).toContain('each question accepts 2–4 choices')
+
+  template.id = 'debug-repair-workflow-v8'
+  expect(buildWorkflowRuntimePrompt(input)).not.toContain('Development artifact applicability policy')
+})
+
+test('fresh phase prompts distinguish output declarations from existing inputs even with legacy instructions', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a student manager', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = 'Read app-framing.md before asking questions.'
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Build a student manager' })
+  expect(prompt).toContain('Output declarations are creation obligations, not existing inputs')
+  expect(prompt).toContain('Do not Read a new phase output merely because its target path is known')
+  expect(prompt).toContain('Missing genuine required inputs remain blockers')
+  expect(prompt.lastIndexOf('Artifact lifecycle policy')).toBeGreaterThan(prompt.indexOf(phase.instructions))
+  expect(prompt).toContain('QA and Debug must omit workflow_parallel_plan')
+  template.id = 'debug-repair-workflow-v8'
+  expect(buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Debug' })).not.toContain('Development Agent field policy')
 })

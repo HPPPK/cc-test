@@ -243,6 +243,28 @@ const clientBackpressureStates = new Map<
 
 const clientOutboxes = new Map<ServerWebSocket<WebSocketData>, ClientOutbox>()
 const runningBackgroundTasks = new Map<string, Set<string>>()
+// A transition publishes durable state before its asynchronous prompt assembly
+// completes. Fence the previous generation until the new contract is enqueued;
+// keep its sequence afterwards so an already-awaiting finalizer stays obsolete.
+const workflowPhaseHandoffs = new Map<string, { runId?: string; phaseId: string | null; previousTurnSequence: number; inFlight: boolean }>()
+
+function traceWorkflowHandoff(action: 'arm' | 'suppress' | 'release' | 'failed', handoff: { phaseId: string | null; previousTurnSequence: number }, sequence?: number): void {
+  if (!/^(?:1|true)$/i.test(process.env.CC_JIANGXIA_WORKFLOW_STATE_TIMING ?? '')) return
+  console.info('[WorkflowPhaseHandoff]', JSON.stringify({ action, phaseId: handoff.phaseId, previousTurnSequence: handoff.previousTurnSequence, ...(sequence === undefined ? {} : { terminalSequence: sequence }) }))
+}
+
+function supersededWorkflowTerminal(sessionId: string, sequence: number, expectedStream: SessionStreamState): boolean {
+  // Cleanup and a newer assistant generation invalidate already-awaiting finalizers.
+  // Do not allocate a replacement stream while checking the previous owner.
+  if (sessionStreamStates.get(sessionId) !== expectedStream) return true
+  if (expectedStream.terminalTurnSequence !== sequence) return true
+  const handoff = workflowPhaseHandoffs.get(sessionId)
+  if (!handoff) return false
+  if (handoff.inFlight) handoff.previousTurnSequence = Math.max(handoff.previousTurnSequence, sequence)
+  const superseded = handoff.inFlight || sequence <= handoff.previousTurnSequence
+  if (superseded) traceWorkflowHandoff('suppress', handoff, sequence)
+  return superseded
+}
 
 function addActiveClient(
   sessionId: string,
@@ -2055,22 +2077,38 @@ async function applyWorkflowTransitionMessage(
   }
 
   const result = await applyWorkflowBoundaryTransition(state, message, new Date().toISOString())
-
-  await persistWorkflowStateIfAvailable(sessionId, result.state, state.stateVersion)
-  for (const notification of result.notifications) {
-    sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
-  }
   const workflowResumeInstruction = getWorkflowResumeInstructionAfterTransition(state, result.state, message)
     ?? getWorkflowResumeInstructionAfterCompletion(result.state, message)
-  // A normal phase transition keeps the same workflow leader process alive.
-  // The next turn contains only the newly active phase contract; tool execution
-  // refreshes persisted Desktop state immediately before each real tool call.
-  // Restarting remains reserved for a workflow binding/model/permission change.
-  if (workflowResumeInstruction && !conversationService.hasSession(sessionId)) {
-    await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
+  const handoff = workflowResumeInstruction ? {
+    runId: result.state.activeWorkflowRunId, phaseId: result.state.activePhaseId,
+    previousTurnSequence: getStreamState(sessionId).terminalTurnSequence, inFlight: true,
+  } : undefined
+  if (handoff) {
+    workflowPhaseHandoffs.set(sessionId, handoff)
+    traceWorkflowHandoff('arm', handoff)
   }
-  if (workflowResumeInstruction) {
-    await sendWorkflowResumeTurn(ws, sessionId, result.state, workflowResumeInstruction)
+  let enqueued = false
+  try {
+    await persistWorkflowStateIfAvailable(sessionId, result.state, state.stateVersion, { requireAuthoritativeWrite: Boolean(handoff) })
+    for (const notification of result.notifications) {
+      sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
+    }
+    // A normal phase transition keeps the same workflow leader process alive.
+    // The next turn contains only the newly active phase contract; tool execution
+    // refreshes persisted Desktop state immediately before each real tool call.
+    // Restarting remains reserved for a workflow binding/model/permission change.
+    if (workflowResumeInstruction && !conversationService.hasSession(sessionId)) {
+      await ensureCliSessionStarted(ws, sessionId, 'workflow_auto_continue')
+    }
+    if (workflowResumeInstruction) {
+      enqueued = await sendWorkflowResumeTurn(ws, sessionId, result.state, workflowResumeInstruction)
+    }
+  } finally {
+    if (handoff && workflowPhaseHandoffs.get(sessionId) === handoff) {
+      if (enqueued) handoff.inFlight = false
+      else workflowPhaseHandoffs.delete(sessionId)
+      traceWorkflowHandoff(enqueued ? 'release' : 'failed', handoff)
+    }
   }
 }
 
@@ -2109,6 +2147,7 @@ async function applyWorkflowBoundaryTransition(
         rationale: message.rationale,
         evidence: message.evidence,
         requireUserConfirmation: message.requireUserConfirmation,
+        scopeAmendment: message.scopeAmendment,
       },
     })
     return { state: result.state, notifications: result.notifications }
@@ -2195,6 +2234,17 @@ function getWorkflowResumeInstructionAfterTransition(
   const phaseId = nextState.activePhaseId
   if (
     message.action === 'confirm'
+    && previousState.pendingRoute?.status === 'pending'
+    && nextState.workflowStatus === 'running'
+    && nextState.runStatus === 'active'
+    && Boolean(phaseId)
+    && !nextState.pendingConfirmation
+    && !nextState.pendingRoute
+  ) {
+    return `Continue automatically with the confirmed workflow route target phase: ${phaseId}.`
+  }
+  if (
+    message.action === 'confirm'
     && nextState.workflowStatus === 'running'
     && Boolean(phaseId)
     && phaseId !== previousState.activePhaseId
@@ -2215,7 +2265,6 @@ function getWorkflowResumeInstructionAfterTransition(
 
   if (
     message.action === 'retry'
-    && previousState.runStatus === 'blocked'
     && nextState.workflowStatus === 'running'
     && nextState.runStatus === 'active'
     && Boolean(phaseId)
@@ -2248,8 +2297,8 @@ async function sendWorkflowResumeTurn(
   sessionId: string,
   state: WorkflowSessionState,
   userMessage: string,
-): Promise<void> {
-  if (!conversationService.hasSession(sessionId)) return
+): Promise<boolean> {
+  if (!conversationService.hasSession(sessionId)) return false
 
   const phaseId = state.activePhaseId ?? 'active'
   sendMessage(ws, { type: 'status', state: 'thinking', verb: 'Thinking' })
@@ -2263,13 +2312,13 @@ async function sendWorkflowResumeTurn(
     isRequestedModelAvailable: async (modelId) => defaultModel.modelId === modelId,
   })
 
-  await persistWorkflowStateIfAvailable(sessionId, started.state, state.stateVersion)
+  await persistWorkflowStateIfAvailable(sessionId, started.state, state.stateVersion, { requireAuthoritativeWrite: true })
   for (const notification of started.notifications) {
     sendMessage(ws, workflowNotificationForDesktop(notification) as ServerMessage)
   }
   if (started.state.workflowStatus === 'failed') {
     sendMessage(ws, { type: 'status', state: 'idle' })
-    return
+    return false
   }
 
   const prompt = await workflowRuntimeService.assemblePrompt({
@@ -2287,6 +2336,7 @@ async function sendWorkflowResumeTurn(
     })
     sendMessage(ws, { type: 'status', state: 'idle' })
   }
+  return sent
 }
 
 async function sendWorkflowErrorWithAuthoritativeState(
@@ -2855,10 +2905,12 @@ function consumeToolParentUseId(
 
 /** Clean up stream state when session disconnects */
 function cleanupStreamState(sessionId: string) {
+  workflowPhaseHandoffs.delete(sessionId)
   sessionStreamStates.delete(sessionId)
 }
 
 function cleanupSessionRuntimeState(sessionId: string) {
+  workflowPhaseHandoffs.delete(sessionId)
   runningBackgroundTasks.delete(sessionId)
   cleanupStreamState(sessionId)
   sessionSlashCommands.delete(sessionId)
@@ -4880,14 +4932,16 @@ export function buildInitialTemplateRenderAutoContinueInstruction(
   ].join('\n')
 }
 
-function buildOutputReviewAutoContinueInstruction(
+export function buildOutputReviewAutoContinueInstruction(
   plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-output-review' }>,
 ): string {
   return [
     '<expert-research-output-review-auto-continue>',
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The initial HTML draft is durably saved, but this draft does not yet have a current 08 completeness-review receipt. Continue the real review now; do not merely say that you will dispatch it.',
-    'Your next action must be exactly one Agent tool call with subagent_type "' + plan.reviewerAgentType + '" and run_in_background: false.',
+    plan.resumeAgentId
+      ? 'Your next action must be SendMessage(' + JSON.stringify({ to: plan.resumeAgentId, summary: '恢复原报告复核', message: '恢复本轮 F。保留原读取与审查进度，先检查自己的 08；有已保存内容就继续补完并 Read-back，再提交真实审计。不要从头重复读取全部文件，不浏览、不改 HTML。' }) + '). Do not launch a fresh Agent or discard the original transcript.'
+      : 'Your next action must be exactly one Agent tool call with subagent_type "' + plan.reviewerAgentType + '" and run_in_background: false.',
     'Give that Agent only this file-first task: Read ' + plan.briefPath + ', ' + plan.absorptionPath + ', and ' + plan.reportPath + '; independently verify original captured source text, adjacent price conditions and actual audit status in the exact declared researcher reports/parts, evidence review and browser audit supplied by its runtime; Write only ' + plan.completionReviewPath + '. Its final return must contain only that relative Markdown path plus a short status.',
     'The parent must not read raw researcher ledgers; only the constrained reviewer reads its exact declared provenance. Do not browse, re-dispatch research workers, read undeclared files, generate another HTML file, or paste any research content into the parent context. After the Agent succeeds, the server will require the parent to Read 08 and make one patch-or-finalize decision for this same HTML path.',
     '</expert-research-output-review-auto-continue>',
@@ -4898,12 +4952,13 @@ export function buildFinalizeDeliveryAutoContinueInstruction(
   plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-finalize-delivery' }>,
   cliOnly = false,
 ): string {
+  const cliOutputName = path.posix.basename(plan.reportPath.replaceAll('\\', '/'))
   return [
     '<expert-research-finalize-delivery-auto-continue>',
     'This is an internal Expert runtime continuation. Do not display it as a normal answer and do not ask the user a question.',
     'The same initial HTML and a current 08 completeness review are durably saved. Finish the existing delivery now; do not restart research or create another report file.',
     cliOnly
-      ? 'Read only ' + plan.completionReviewPath + '. Then invoke claude expert-template-fill --data-stdin --output "' + plan.reportPath + '" for this exact existing report. Use the running CLAUDE_CLI_PATH executable when available and JSON {templateId, fields, mode}, with no expert_output wrapper or HTML. Never use Write/Edit, scripts or internal endpoints for report HTML.'
+      ? 'Read only ' + plan.completionReviewPath + '. Then invoke claude expert-template-fill --data-stdin --output ' + JSON.stringify(cliOutputName) + ' in the current session workDir for this exact existing report: ' + plan.reportPath + '. The CLI output argument is the filename only, not an absolute path. Use the running CLAUDE_CLI_PATH executable when available and JSON {templateId, fields, mode}, with no expert_output wrapper or HTML. Never use Write/Edit, scripts or internal endpoints for report HTML.'
       : 'Read only ' + plan.completionReviewPath + '. Then write only the existing report path ' + plan.reportPath + ' using the structured fixed-template Write.',
     cliOnly
       ? 'If 08 plainly identifies a source-supported omission or correction, use mode="patch" with only the smallest supported fields. Otherwise use mode="finalize" with fields: {}. Validation, disk save and content acknowledgement must succeed; a successful patch is terminal and must not be followed by finalize. For action=retry-commit retry only --commit-receipt <receipt> --output <same-report.html>; for retry-write or validation errors correct/retry the original payload on the same path.'
@@ -6047,12 +6102,15 @@ async function recoverWorkflowProtocolToolBinding(
   cliMsg: any,
 ): Promise<boolean> {
   const streamState = getStreamState(sessionId)
+  const terminalSequence = streamState.terminalTurnSequence
+  if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   const toolName = streamState.workflowProtocolToolRegistryError
     ?? workflowProtocolToolNameFromError(cliMsg?.result)
     ?? workflowProtocolToolNameFromError(Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : undefined)
   if (!toolName) return false
 
   const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   if (
     !state
     || state.mode !== 'workflow'
@@ -6081,6 +6139,7 @@ async function recoverWorkflowProtocolToolBinding(
   }
 
   const rebound = await refreshWorkflowRuntimeBinding(sessionId, state)
+  if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   if (rebound.status !== 'restarted') {
     if (rebound.status !== 'restart-failed') sendWorkflowProtocolToolBindingError(sessionId, state)
     finishWorkflowInteractionTurn(sessionId)
@@ -6214,12 +6273,15 @@ async function recoverWorkflowProtocolInputValidation(
   cliMsg: any,
 ): Promise<boolean> {
   const streamState = getStreamState(sessionId)
+  const terminalSequence = streamState.terminalTurnSequence
+  if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   const toolName = streamState.workflowProtocolInputValidationError
     ?? workflowProtocolInputValidationToolNameFromError(cliMsg?.result)
     ?? workflowProtocolInputValidationToolNameFromError(Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : undefined)
   if (!toolName) return false
 
   const state = await loadWorkflowStateForWebSocket(sessionId)
+  if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   if (
     !state
     || state.mode !== 'workflow'
@@ -6275,6 +6337,9 @@ async function recoverWorkflowProtocolInputValidation(
 
 async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<void> {
   const streamState = getStreamState(sessionId)
+  const terminalSequence = streamState.terminalTurnSequence
+  const superseded = () => supersededWorkflowTerminal(sessionId, terminalSequence, streamState)
+  if (superseded()) return
   const fallbackTurn = cliMsg?.__workflowTerminalFallbackTurn
   if (
     typeof fallbackTurn === 'number'
@@ -6290,12 +6355,15 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   streamState.terminalRecoveryHandledForTurn = true
   clearWorkflowTerminalFallback(streamState)
   if (await recoverWorkflowProtocolToolBinding(sessionId, cliMsg)) return
+  if (superseded()) return
   if (await recoverWorkflowProtocolInputValidation(sessionId, cliMsg)) return
+  if (superseded()) return
 
   const questionDeliveryFailed = await staleFailedWorkflowAskUserQuestions(
     sessionId,
     streamState.failedAskUserQuestionToolUseIds,
   )
+  if (superseded()) return
   if (questionDeliveryFailed) {
     // The failing AskUserQuestion tool result is already visible to the user.
     // Finish cleanly after unblocking state; do not inject a second model turn.
@@ -6308,6 +6376,7 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   const workflowRecovery = !cliMsg.is_error
     ? await workflowTerminalRecoveryForResult(sessionId, turn)
     : null
+  if (superseded()) return
   const strictVisualRecovery = !cliMsg.is_error && !workflowRecovery
     ? await strictVisualTerminalRecoveryForResult(sessionId, turn)
     : null
@@ -6320,6 +6389,7 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   const expertResearchDeliveryRecovery = !cliMsg.is_error && !workflowRecovery && !strictVisualRecovery && !prototypeVisualRecovery && !commercializationResearchQuestionRecovery
     ? await expertResearchDeliveryTerminalRecoveryForResult(sessionId, turn)
     : null
+  if (superseded()) return
 
 
   if (prototypeVisualRecovery) {
@@ -6531,6 +6601,7 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
   }
 
   if (workflowRecovery) {
+    if (superseded()) return
     const recovery = workflowRecovery
     if (!conversationService.hasSession(sessionId)) {
       sendWorkflowTerminalRecoveryUnavailableError(sessionId)
@@ -6552,7 +6623,9 @@ async function finalizeClientResult(sessionId: string, cliMsg: any): Promise<voi
         })
       }
     }
-    const sent = conversationService.sendMessage(
+    // Recovery is runtime control, not human input. Preserve its provenance so
+    // both live projection and persisted transcript rendering keep it hidden.
+    const sent = conversationService.sendInternalMessage(
       sessionId,
       buildWorkflowTerminalRecoveryInstruction(
         recovery,
@@ -7095,13 +7168,19 @@ async function persistWorkflowStateIfAvailable(
   sessionId: string,
   state: WorkflowSessionState,
   expectedStateVersion: number,
+  options: { requireAuthoritativeWrite?: boolean } = {},
 ): Promise<void> {
-  const read = await workflowSessionStateService.readState(sessionId).catch(() => null)
+  const reading = workflowSessionStateService.readState(sessionId)
+  const read = options.requireAuthoritativeWrite ? await reading : await reading.catch(() => null)
   if (!read?.exists) {
+    if (options.requireAuthoritativeWrite) throw new ApiError(409, 'Workflow state is unavailable for phase handoff.', 'WORKFLOW_STATE_UNAVAILABLE')
     ephemeralWorkflowStates.set(sessionId, state)
     return
   }
   const write = await workflowSessionStateService.writeState(sessionId, state, { expectedStateVersion }).catch((error) => {
+    if (options.requireAuthoritativeWrite) throw error
+    const scopeConfirmation = state.transitionHistory?.at(-1)
+    if (scopeConfirmation?.scopeAmendment && scopeConfirmation.stateVersion === state.stateVersion) throw error
     console.warn(`[WS] Failed to persist workflow state for ${sessionId}:`, error)
     return null
   })
@@ -7417,4 +7496,5 @@ export function __resetWebSocketHandlerStateForTests(): void {
   prewarmedSessions.clear()
   ephemeralWorkflowStates.clear()
   workflowArtifactWriteRecoveryAttempts.clear()
+  workflowPhaseHandoffs.clear()
 }

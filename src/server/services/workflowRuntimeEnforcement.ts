@@ -1,4 +1,5 @@
 import { DEVELOPMENT_QUESTION_POLICY } from './workflowDevelopmentQuestionPolicy.js'
+import { DEVELOPMENT_REVIEWER_RESULT_GUIDANCE } from './developmentToolExecutionPolicy.js'
 import type {
   EffortMode,
   JsonObject,
@@ -419,7 +420,7 @@ export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowS
       compactArtifacts.length ? `Relevant workflow artifacts:\n${compactArtifacts.join('\n')}` : 'Relevant workflow artifacts: none supplied',
       formatWorkflowCapabilityPolicy('Workflow subagent capabilities', rolePolicy.allowedTools),
       formatWorkflowCapabilityPolicy('Workflow subagent restrictions', rolePolicy.disallowedTools),
-      roleContract(input.role),
+      roleContract(input.role, input.run.templateId === DEVELOPMENT_WORKFLOW_TEMPLATE_ID && input.phase.id === DEVELOPMENT_IMPLEMENT_PHASE_ID),
       'Required return shape:',
       input.role === 'coder'
         ? '- changedFiles\n- testsRun\n- result\n- blockers\n- summaryForLeader'
@@ -437,6 +438,7 @@ export function buildSubagentBrief(input: WorkflowSubagentBriefInput): WorkflowS
 function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInput): string {
   if (!input.phase.subagentPolicy) return ''
 
+  const useArtifactReferences = input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
   const requiresDevelopmentBatchAgents = input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
     && input.phase.id === DEVELOPMENT_IMPLEMENT_PHASE_ID
   const allowedRoles = subagentRolesForPolicy(input.phase.subagentPolicy)
@@ -445,7 +447,7 @@ function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInpu
     run: input.run,
     phase: input.phase,
     role,
-    artifacts: input.inheritedArtifacts,
+    artifacts: useArtifactReferences ? [] : input.inheritedArtifacts,
     nativeAgentAvailable: true,
   }))
 
@@ -460,13 +462,15 @@ function formatSubagentDispatchRequirement(input: BuildWorkflowRuntimePromptInpu
       ? '- Every Coder and Reviewer call must include workflow_parallel_plan: task_id is the current Batch ID and tasks is the same complete Stage 3 Batch list. The runtime compares that list with delivery-plan.md, expands each Batch into Coder -> Reviewer, allows only isolated Batch chains to overlap, persists real Agent receipts, and rejects prose or report-only claims.'
       : '- If Agent is not available, record fallback-contract explicitly before any leader-owned implementation or repair.',
     requiresDevelopmentBatchAgents
-      ? '- Every Reviewer final answer must include a machine-readable workflowReview object with reviewStatus=pass|needs-fix, requiredFixes as an array, and readyForNextBatch as a boolean. pass requires no fixes and true; needs-fix requires at least one fix and false.'
+      ? `- ${DEVELOPMENT_REVIEWER_RESULT_GUIDANCE}`
       : '',
     '- After every subagent return, the leader must summarize changedFiles/testsRun/findings/blockers/risks and decide whether bounded fixes, validation, or phase completion is next.',
     `Required workflow roles: ${requiredRoles.join(', ')}`,
     ...briefs.map((brief) => [
       `Brief for ${brief.role}:`,
-      brief.content,
+      useArtifactReferences
+        ? brief.content.replace('Relevant workflow artifacts: none supplied', 'Relevant workflow artifacts: use the artifact pointers listed once in this runtime contract. Read only the files needed for the assigned batch and include its accepted facts in the actual delegated prompt.')
+        : brief.content,
     ].join('\n')),
   ].join('\n\n')
 }
@@ -596,7 +600,16 @@ export function buildWorkflowRuntimePrompt(input: BuildWorkflowRuntimePromptInpu
   const forbiddenActions = runtime?.forbiddenActions ?? defaultForbiddenActions(input.phase.id)
   const allowedTools = runtime?.allowedTools ?? runtime?.toolAccess?.allowed ?? defaultAllowedTools(input.phase.id)
   const forbiddenTools = runtime?.disallowedTools ?? runtime?.toolAccess?.forbidden ?? defaultForbiddenTools(input.phase.id)
-  const completionRequires = runtime?.completionRequires ?? normalizeCriteria(input.phase.completionCriteria)
+  const completionRequires = input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
+    // The outer canonical prompt omits its duplicate criteria block. A user
+    // can edit either contract, so retain distinct obligations from both.
+    ? [...new Set([
+        ...(runtime?.completionRequires ?? []),
+        ...(input.phase.completionCriteria == null && runtime?.completionRequires
+          ? []
+          : normalizeCriteria(input.phase.completionCriteria)),
+      ])]
+    : runtime?.completionRequires ?? normalizeCriteria(input.phase.completionCriteria)
   const mustProduce = runtime?.mustProduce ?? []
   const explorationMode = selectedExplorationMode(input)
   const artifacts = [
@@ -638,17 +651,34 @@ export function buildWorkflowRuntimePrompt(input: BuildWorkflowRuntimePromptInpu
     formatSkillAvailability(input.skillAvailability ?? [], input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID),
     formatBrainstormingContractInjection(input.brainstormingContract, input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID),
     'Actual tool availability policy: Workflow capabilities are semantic policy constraints, not a callable tool catalog. Only call a concrete tool when that tool is explicitly present in the current conversation tool list. If a capability is needed but no matching concrete tool is visible, use an available equivalent, record the limitation, or ask through the available structured question UI.',
-    'Workflow routing protocol: pending-confirmation contract: submit_phase_completion records only the current phase result. A completion result waiting for user confirmation is a hard wait state: stop current-phase business progression; do not produce next-phase questions, plans, artifacts, operations, or nonessential tool calls; and wait only for controlled confirmation, rejection, retry, pause, stop, or explicitly supported recovery. Do not create a route in the same assistant turn as a ready completion, do not hide a route inside handoff, routeDecision, targetPhaseId fields, or ordinary assistant text, and do not claim or begin a target phase before the runtime accepts a separately authorized route. If the current phase is already blocked because validation found a repairable defect, do not ask the user to bypass the workflow or start edits outside its state: use request_workflow_route only when the current runtime state explicitly authorizes a rework_current_phase or jump_to_phase recovery. If request_workflow_route is unavailable or rejects the request, record the limitation and keep the current phase blocked/needs_user rather than claiming the route occurred.',
+    'Workflow routing protocol: pending-confirmation contract: submit_phase_completion records only the current phase result. A completion result waiting for user confirmation is a hard wait state: stop current-phase business progression; do not produce next-phase questions, plans, artifacts, operations, or nonessential tool calls; and wait only for controlled confirmation, rejection, retry, pause, stop, or explicitly supported recovery. Do not create a route in the same assistant turn as a ready completion, do not hide a route inside handoff, routeDecision, targetPhaseId fields, or ordinary assistant text, and do not claim or begin a target phase before the runtime accepts a separately authorized route. If the current phase is already blocked because validation found a repairable defect, do not ask the user to bypass the workflow or start edits outside its state: use request_workflow_route only when the current runtime state explicitly authorizes a rework_current_phase or jump_to_phase recovery. If request_workflow_route is unavailable or rejects the request, record the limitation and keep the current phase blocked rather than claiming the route occurred. Record a genuine unfinished blocker with blocked or unable; needs_user is a legacy confirmation alias with the same readiness checks as ready, not a blocker status.',
     'Unavailable tool recovery policy: if a tool call reports "No such tool available", treat that tool as unavailable for the rest of the turn. Do not retry it, do not call another unavailable tool with the same purpose, and do not use screen/computer-control tools to operate Terminal, an editor, Finder, or another app as a substitute for missing shell or file-writing tools. Continue by recording the limitation in the workflow handoff or asking one structured question.',
-    'Workflow artifact policy under limited tools: required workflow artifacts are content obligations first. In route, scope, plan, and handoff phases, if no concrete file-writing tool is visible, write the artifact content in the phase handoff/answer instead of attempting file creation. Only create or read artifact files when the exact file tool is visible in the current tool list and the file path is known.',
+    'Workflow artifact policy under limited tools: required workflow artifacts are content obligations first. In route, scope, plan, and handoff phases, if no concrete file-writing tool is visible, write the artifact content in the phase handoff/answer instead of attempting file creation. Content recorded in a handoff preserves recovery information but does not satisfy a required file-output contract. If a declared file is required and no permitted writer is available, record that concrete blocker instead of claiming ready from prose alone. When an allowed writer exists, repair the content in the same phase and submit ready for runtime verification; do not record blocked or request rework merely to fill an applicable field. Only create or read artifact files when the exact file tool is visible in the current tool list and the file path is known.',
     'Filesystem exploration policy: inspect directories only with an available directory-listing or search tool, and inspect files only when the exact file path is known. Never use a file-read operation on the workspace root, home directory, .claude, .workflow, or any directory path. If directory listing, search, shell, file creation, or file editing is unavailable, treat that as a tool availability limit; do not guess paths, retry unavailable tools, or probe random home-directory paths. Ask the user for the correct project folder or file through AskUserQuestion or the structured question UI when the workspace is unclear. If a file operation reports "File does not exist", stop guessing and ask for the correct path or continue from known workflow artifacts. If a file edit/write operation reports "File has not been read yet", do not retry the edit blindly. Read the exact target file first when a concrete read tool is available, then retry with the current file contents in mind and use any new error as correction feedback. If no concrete read tool is visible, do not guess paths; ask one structured question or record the limitation in the workflow handoff.',
     (input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID ? 'AskUserQuestion policy: every workflow-generated question must use AskUserQuestion or the structured question UI. Batch all currently relevant independent questions; defer only dependent follow-ups.' : 'AskUserQuestion policy: every workflow-generated question must use AskUserQuestion or the structured question UI. Ask one question at a time.') + '  Provide at least 3 options. Put the recommended option first and include "(Recommended)" in the label. Plain assistant text is not an approval gate. Any confirmation, yes/no choice, "should I...", "do you want me to...", or "想试试吗" workflow question must be emitted as AskUserQuestion or the structured question UI so the user gets clickable options. Do not put user-input requests, confirmation prompts, or clarification questions in normal assistant text. Normal assistant text may summarize progress or handoff results, but any sentence that expects the user to choose, confirm, answer, approve, reject, retry, continue, pause, stop, provide a path, or add a note must be represented as one structured AskUserQuestion. Allowed workflow question intents are confirm-workspace, confirm-scope, confirm-brainstorming, confirm-tech-stack, confirm-phase-transition, confirm-terminal-label, confirm-checkpoint-restore, confirm-handoff, clarify-requirement, choose-next-workflow, and record-user-note. Use the closest intent in the AskUserQuestion payload or option labels/descriptions when the current UI schema has no explicit intent field. For phase transitions use Continue (Recommended), Adjust, and Pause/Stop. Do not ask non-technical users to choose a tech stack; recommend one and ask them to confirm or request alternatives. When confirming a recommended tech stack, keep the option label as the stack name, but make each option description simple and user-facing. Explain what the choice means for the app, setup, and future changes in everyday words. Avoid specialist wording such as backend, rendering engine, database service, migrations, ORM, server-side, frontend stack, or deployment architecture unless the user used those words first. For optional visual brainstorming, browser display, local preview, or design sketch offers, do not promise to open anything unless a concrete preview/browser-opening control is available and the phase allows it. If confirmation is needed, ask one structured question with options such as "生成简版界面草图 (Recommended)", "先用文字确认范围", and "跳过视觉草图". If no preview tool is visible, provide a text or Mermaid sketch in the answer/handoff instead. Do not offer fake permission choices such as "grant terminal access" or "authorize write tools" unless the application provides a concrete permission control in the UI. If tools are unavailable, explain where the user can change execution permissions or offer a manual/pause path.',
     'user-facing error/copy/comment policy: explain 发生了什么, 用户可以怎么做, and 技术支持可用信息. Avoid vague messages like Failed or Something went wrong. Comments should explain why, edge cases, permissions, data integrity, or business rules.',
     uniqueArtifacts.length
-      ? `Inherited/current artifacts:\n${uniqueArtifacts.map((artifact) => `- ${artifact.filename ?? artifact.id}`).join('\n')}`
+      ? `Inherited/current artifacts:\n${uniqueArtifacts.map((artifact) => {
+          const reference = `- ${artifact.filename ?? artifact.id}`
+          if (input.template.id !== DEVELOPMENT_WORKFLOW_TEMPLATE_ID || artifact.filename?.trim() || typeof artifact.content !== 'string') return reference
+          // Inline-only artifacts have no file to read. Keep their evidence
+          // once here instead of dropping it with the repeated role briefs.
+          const summary = artifact.content.split('\n').slice(0, 12).join('\n').slice(0, 2000)
+          return [reference, indentBlock(summary, '  '), summary.length < artifact.content.length
+            ? '  [additional inline content omitted; this artifact ID is not a file path. Obtain its recorded content before relying on omitted details.]'
+            : ''].filter(Boolean).join('\n')
+        }).join('\n')}`
       : 'Inherited/current artifacts: none',
     input.projectContext ? `Project context:\n${input.projectContext}` : '',
+    'AskUserQuestion schema limits: each question accepts 2–4 choices; use 3–4 useful choices when following the recommendation policy. The built-in Other/free-text answer does not need an extra choice. Never exceed four choices to satisfy a phase checklist.',
+    'Artifact lifecycle policy (overrides inherited Read-before-create instructions): Output declarations are creation obligations, not existing inputs. Do not Read a new phase output merely because its target path is known. Read an output only after an available discovery tool confirms it exists, a successful write created it, or existing artifact evidence identifies it. Otherwise create it when the phase work is ready; its initial absence is not missing user material, a reason to ask the user for it, or a rework route. Missing genuine required inputs remain blockers. Required output presence and content must still be verified before ready submission.',
+    input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
+      ? 'Development Agent field policy: Whenever workflow_role is set, use subagent_type=general-purpose. Coder and Reviewer batch calls include the complete workflow_parallel_plan. QA and Debug must omit workflow_parallel_plan; return their findings to the Leader without acquiring batch ownership. In Stage 4, the Leader delegates implementation and test commands instead of running shell commands directly. Coder completion includes the existing explicit readyForReview boolean: true only after the scoped work and promised checks are complete; false for waiting or blocked work. Ending a reply does not complete a Batch. Worker skills are method references, not permission to start a nested workflow or ask for confirmation.'
+      : '',
     'Do not jump ahead. Follow the current phase only and stop at required gates.',
+    input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID
+      ? 'Development artifact applicability policy (takes precedence over unconditional field lists in inherited phase instructions, output descriptions, and handoff checklists): sourceMaterialSummary is required only when source material was provided or mentioned; sourceMaterialFindings is required only when accessible material can actually be extracted. When sourceMaterialType is none, inherit that fact from the confirmed framing; do not invent missing material, require empty summary/findings fields, or block/rework the phase to add them. An unavailable material remains a blocker only when it is necessary and the user has not agreed to a fallback. UI direction, reference policy, and migration criteria remain required when their own applicability conditions hold. Artifact content may use clear natural-language headings; exact camelCase heading names are not a completion requirement. Reuse confirmed facts by reference instead of copying them into every file. A missing applicable detail that can be corrected with current-phase permissions is ordinary work: update the existing artifact and submit when ready; do not record blocked or request a workflow retry solely to finish that correction.'
+      : null,
     '',
     input.template.id === DEVELOPMENT_WORKFLOW_TEMPLATE_ID ? DEVELOPMENT_QUESTION_POLICY : null,
     input.userMessage,
@@ -703,7 +733,9 @@ function formatPhaseExecutionContract(
     '- User-visible output must state the current phase name, phase goal, in-scope work, out-of-scope work, key decisions/evidence, and next action.',
     `- Required outputs before transition: ${outputArtifacts}.`,
     'Completion gate:',
-    `- Do not advance phases or claim completion until these criteria are satisfied: ${completionRequires.join('; ')}.`,
+    developmentBatches
+      ? '- Do not advance phases or claim completion until the Completion criteria listed once below are satisfied.'
+      : `- Do not advance phases or claim completion until these criteria are satisfied: ${completionRequires.join('; ')}.`,
     '- If criteria cannot be satisfied, mark the phase blocked/unable with the reason, attempted evidence, and the next user action needed.',
     'Handoff format:',
     '- On phase completion, provide a concise handoff with completed items, key decisions, evidence/artifacts, remaining risks, and next phase inputs.',
@@ -894,13 +926,15 @@ export function getWorkflowSubagentRoleToolPolicy(role: WorkflowSubagentRole): {
   }
 }
 
-function roleContract(role: WorkflowSubagentRole): string {
+function roleContract(role: WorkflowSubagentRole, canonicalImplementation = false): string {
   if (role === 'coder') {
     return sanitizeWorkflowToolNameText([
       'Coder contract:',
       '- Read target files first and create a mini-plan before editing.',
       '- Edit only scoped target files and planned tests.',
-      '- Do not install dependencies, run migrations, delete data, deploy, or expand scope without AskUserQuestion confirmation.',
+      canonicalImplementation
+        ? '- Edit only the current writeScopes. For a necessary exact existing file outside them, return its path and reason to the Leader. The Leader must use request_workflow_route with intent=rework_current_phase and scopeAmendment={batchId,addWriteScopes}; that creates the single formal confirmation and updates the accepted plan only after approval. An ordinary AskUserQuestion answer does not amend scope. Wait for the new accepted plan and worker authority before editing. Unsupported broader/new-file/dependency changes require explicit replanning. Never bypass the file guard.'
+        : '- Do not install dependencies, run migrations, delete data, deploy, or expand scope without AskUserQuestion confirmation.',
       '- If blocked, report the blocker instead of guessing.',
     ].join('\n'))
   }

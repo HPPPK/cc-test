@@ -1,4 +1,5 @@
 import { searchEngineForUrl, isSearchResultsUrl } from '../../utils/searchEngineSurface.js'
+import { detectHumanVerificationKind } from '../PlaywrightTool/pageAccessAssessment.js'
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { clearInvokedSkillsForAgent } from '../../bootstrap/state.js'
@@ -43,6 +44,7 @@ import { asAgentId } from '../../types/ids.js'
 import type { Message as MessageType } from '../../types/message.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { persistAgentTaskOutput } from '../../utils/task/diskOutput.js'
 import { isInProtectedNamespace } from '../../utils/envUtils.js'
 import { AbortError, errorMessage } from '../../utils/errors.js'
 import type { CacheSafeParams } from '../../utils/forkedAgent.js'
@@ -574,7 +576,7 @@ function decodePlaywrightLedger(content: unknown): PlaywrightLedger | undefined 
     if (!parsed) return undefined
     return {
       ...(typeof parsed.url === 'string' ? { url: parsed.url } : {}),
-      ...(parsed.textExtracted === true ? { textExtracted: true } : {}),
+      ...(typeof parsed.textExtracted === 'boolean' ? { textExtracted: parsed.textExtracted } : {}),
       ...(typeof parsed.accessLimited === 'boolean' ? { accessLimited: parsed.accessLimited } : {}),
       ...(parsed.sharedHumanVerificationBlocked === true ? { sharedHumanVerificationBlocked: true } : {}),
       ...(Array.isArray(parsed.verificationHistory) ? { verificationHistory: parsed.verificationHistory.map(asRecord).filter((entry): entry is PlaywrightVerificationHistory => Boolean(entry)) } : {}),
@@ -670,8 +672,16 @@ function verificationRecoveredForTarget(ledger: PlaywrightLedger, target: Playwr
   const finalUrl = isLast ? ledger.url : ledger.steps?.findLast(step => typeof step.index === 'number'
     && (target.actionIndex === undefined || step.index >= target.actionIndex)
     && step.index < nextActionIndex! && Boolean(step.url))?.url
-  return Boolean(observed?.url && finalUrl && !isHumanVerificationUrl(finalUrl)
-    && matchesObservedAuditTarget(target, finalUrl) && matchesObservedAuditTarget(target, observed.url))
+  if (!observed?.url || !finalUrl || isHumanVerificationUrl(finalUrl)) return false
+  if (matchesObservedAuditTarget(target, finalUrl) && matchesObservedAuditTarget(target, observed.url)) return true
+  // An opaque result link can redirect to the real article before verification.
+  // Trust only the destination recorded by this same navigation group and its
+  // subsequent extraction, never an unrelated final page or a new fallback.
+  const navigation = ledger.steps?.find(step => step.index === target.actionIndex
+    && ['navigate', 'new_tab'].includes(step.type ?? '') && step.outcome === 'success')
+  return Boolean(target.kind === 'url' && navigation?.url && !isHumanVerificationUrl(navigation.url)
+    && matchesObservedAuditTarget({ target: navigation.url, kind: 'url' }, finalUrl)
+    && matchesObservedAuditTarget({ target: navigation.url, kind: 'url' }, observed.url))
 }
 
 /** Inserted recovery actions shift subsequent input indices; match their observed navigation. */
@@ -706,7 +716,7 @@ function renderedAuditFailure(steps: PlaywrightLedgerStep[]): { status: 'failed'
   const title = steps.findLast(step => step.title)?.title ?? ''
   const body = steps.findLast(step => step.type === 'extract' && step.outcome === 'success')?.detail ?? ''
   const url = steps.findLast(step => step.url)?.url ?? ''
-  if (/^Just a moment[.!…]*$/i.test(title.trim()) && /__cf_chl|challenge/i.test(url)) {
+  if (detectHumanVerificationKind(url, title, body)) {
     return { status: 'access_limited', detail: 'Rendered verification challenge; no usable public content was obtained.' }
   }
   if (/^(?:404(?:\s*[-:|–—]?\s*(?:page\s+)?not\s+found)?|page not found|not found)(?:\s*[-|–—]\s*.+)?$/i.test(title.trim())
@@ -876,7 +886,7 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
                   ? 'results_observed' as const
                   : 'entry_opened' as const
           : undefined
-        audit.push({
+        const entry: PlaywrightAuditEntry = {
           ...target,
           auditId: scriptPage
             ? 'playwright:' + block.id + ':' + (actionIndex ?? 'script') + ':script:' + (scriptPageIndex ?? 0)
@@ -901,7 +911,17 @@ export function buildPlaywrightAudit(messages: MessageType[]): PlaywrightAuditEn
                   : transientVerificationRecovered
                     ? { detail: 'Earlier human verification was observed; the final page content was obtained after recovery. The original verification history remains in the tool result.' }
                     : {}),
-        })
+        }
+        // Keep an actual page-bound excerpt, not just a navigation outcome. This
+        // reuses the existing detail field and leaves older receipts readable.
+        const extracted = !scriptPage && ledger.steps?.findLast(step => step.type === 'extract' && step.outcome === 'success'
+          && (actionIndex === undefined || (step.index ?? -1) >= actionIndex)
+          && (nextActionIndex === undefined || (step.index ?? -1) < nextActionIndex)
+          && (!step.url || step.url === finalUrl))?.detail
+        if (typeof extracted === 'string' && extracted.startsWith('extracted text from ')) {
+          entry.detail = [entry.detail, extracted].filter(Boolean).join('\n')
+        }
+        audit.push(entry)
       }
     }
   }
@@ -1148,9 +1168,10 @@ export function appendExpertPostReviewEvidenceAbsorptionContext(
   agentResult: Pick<AgentToolResult, 'agentType' | 'content'>,
   instruction: string | undefined,
 ): void {
-  if (isFileFirstExpertResearchArtifactAgent(agentResult.agentType)) return
   const normalized = instruction?.trim()
   if (!normalized || !normalized.includes('<expert-post-review-evidence-absorption>')) return
+  if (isFileFirstExpertResearchArtifactAgent(agentResult.agentType)
+    && !(agentResult.agentType === 'expert-evidence-researcher' && normalized.includes('<expert-research-follow-up>'))) return
   if (agentResult.content.some((block) => block.text.includes('<expert-post-review-evidence-absorption>'))) return
   agentResult.content.push({ type: 'text', text: normalized })
 }
@@ -1302,7 +1323,10 @@ type SetAppState = (f: (prev: AppState) => AppState) => void
 
 export type AsyncAgentLifecycleOutcome =
   | { status: 'succeeded' }
+  | { status: 'blocked', reason: string }
   | { status: 'failed', reason: string }
+
+export type AgentFinalMessageValidation = string | { status: 'blocked', reason: string } | null
 
 /**
  * Drives a background agent from spawn to terminal notification.
@@ -1320,6 +1344,8 @@ export async function runAsyncAgentLifecycle({
   enableSummarization,
   getWorktreeResult,
   validateFinalMessage,
+  validateWorkflowExecution = false,
+  beforeTerminal,
 }: {
   taskId: string
   abortController: AbortController
@@ -1336,10 +1362,15 @@ export async function runAsyncAgentLifecycle({
     worktreePath?: string
     worktreeBranch?: string
   }>
-  validateFinalMessage?: (message: string) => string | null
+  validateFinalMessage?: (message: string) => AgentFinalMessageValidation
+  validateWorkflowExecution?: boolean
+  beforeTerminal?: (outcome: AsyncAgentLifecycleOutcome) => Promise<void>
 }): Promise<AsyncAgentLifecycleOutcome> {
   let stopSummarization: (() => void) | undefined
   const agentMessages: MessageType[] = []
+  let workflowExecutionError: string | undefined
+  const executedToolNames = new Map<string, string>()
+  const workflowControlTools = new Set(['TaskOutput', 'TaskStop', 'AskUserQuestion', 'request_workflow_route', 'submit_phase_completion', 'AgentOutputTool', 'BashOutputTool'])
   try {
     const tracker = createProgressTracker()
     const resolveActivity = createActivityDescriptionResolver(
@@ -1358,6 +1389,29 @@ export async function runAsyncAgentLifecycle({
       : undefined
     for await (const message of makeStream(onCacheSafeParams)) {
       agentMessages.push(message)
+      if (validateWorkflowExecution && message.type === 'assistant' && Array.isArray(message.message.content)) {
+        for (const block of message.message.content) if (block.type === 'tool_use') executedToolNames.set(block.id, block.name)
+      }
+      if (validateWorkflowExecution && message.type === 'user' && Array.isArray(message.message.content)) {
+        for (const block of message.message.content) {
+          if (block.type !== 'tool_result') continue
+          const result = typeof block.content === 'string' ? block.content
+            : Array.isArray(block.content) ? extractTextContent(block.content, '\n') : ''
+          // A real runtime refusal is authoritative; ordinary final prose and
+          // successful Read contents cannot declare either failure or success.
+          if (block.is_error && /^\s*(?:<tool_use_error>)?WORKFLOW_(?:EXECUTION_SUSPENDED|WORKER_STALE|WORKER_CONTRACT_REQUIRED):/.test(result)) {
+            // Stale/missing authority cannot be healed by a later temporary pause.
+            if (!workflowExecutionError || workflowExecutionError.startsWith('WORKFLOW_EXECUTION_SUSPENDED:')) {
+              workflowExecutionError = result.replace(/^\s*<tool_use_error>|<\/tool_use_error>\s*$/g, '').trim()
+            }
+          } else if (!block.is_error && workflowExecutionError?.startsWith('WORKFLOW_EXECUTION_SUSPENDED:')
+            && executedToolNames.has(block.tool_use_id) && !workflowControlTools.has(executedToolNames.get(block.tool_use_id)!)) {
+            // Only a real business operation proves that this worker resumed.
+            // TaskOutput/TaskStop remain callable while paused and prove nothing.
+            workflowExecutionError = undefined
+          }
+        }
+      }
       // Append immediately when UI holds the task (retain). Bootstrap reads
       // disk in parallel and UUID-merges the prefix — disk-write-before-yield
       // means live is always a suffix of disk, so merge is order-correct.
@@ -1399,12 +1453,28 @@ export async function runAsyncAgentLifecycle({
 
     stopSummarization?.()
 
+    // Synthetic runtime failures are not worker completion reports. Preserve
+    // their original error before a role-specific receipt parser can mask it.
+    const terminalAssistant = getLastAssistantMessage(agentMessages)
+    if (terminalAssistant?.isApiErrorMessage) {
+      throw new Error(extractTextContent(terminalAssistant.message.content, '\n'))
+    }
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
-    const finalMessage = extractTextContent(agentResult.content, '\n')
-    const finalValidationError = validateFinalMessage?.(finalMessage)
-    if (finalValidationError) throw new Error(finalValidationError)
+    let finalMessage = extractTextContent(agentResult.content, '\n')
+    if (workflowExecutionError) throw new Error(workflowExecutionError)
+    const finalValidation = validateFinalMessage?.(finalMessage)
+    if (typeof finalValidation === 'string') throw new Error(finalValidation)
+    const terminalOutcome: AsyncAgentLifecycleOutcome = finalValidation?.status === 'blocked'
+      ? { status: 'blocked', reason: finalValidation.reason }
+      : { status: 'succeeded' }
+    if (terminalOutcome.status === 'blocked') {
+      finalMessage = `工作已返回，但尚未就绪：${terminalOutcome.reason}\n\n${finalMessage}`
+    }
     const postReviewEvidenceAbsorption = await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType)
     appendExpertPostReviewEvidenceAbsorptionContext(agentResult, postReviewEvidenceAbsorption)
+    finalMessage = extractTextContent(agentResult.content, '\n')
+    await persistAgentTaskOutput(taskId, finalMessage)
+    await beforeTerminal?.(terminalOutcome)
 
     // Mark task completed FIRST so TaskOutput(block=true) unblocks
     // immediately, then notify the parent before any optional cleanup. The
@@ -1445,9 +1515,21 @@ export async function runAsyncAgentLifecycle({
         )
       }
     })()
-    return { status: 'succeeded' }
+    return terminalOutcome
   } catch (error) {
     stopSummarization?.()
+    let terminalReason = error instanceof AbortError ? 'Agent was cancelled' : errorMessage(error)
+    try {
+      await persistAgentTaskOutput(taskId, terminalReason)
+    } catch (outputError) {
+      terminalReason += `; Agent output persistence failed: ${errorMessage(outputError)}`
+    }
+    try {
+      await beforeTerminal?.({ status: 'failed', reason: terminalReason })
+    } catch (receiptError) {
+      terminalReason += `; Workflow task receipt persistence failed: ${errorMessage(receiptError)}`
+      logForDebugging(terminalReason)
+    }
     try {
       await recordInterruptedExpertAgentResearchAudit({
         agentId: agentIdForCleanup,
@@ -1494,7 +1576,7 @@ export async function runAsyncAgentLifecycle({
       )
       return { status: 'failed', reason: 'Agent was cancelled' }
     }
-    const msg = errorMessage(error)
+    const msg = terminalReason
     failAsyncAgent(taskId, msg, rootSetAppState)
     enqueueAgentNotification({
       taskId,

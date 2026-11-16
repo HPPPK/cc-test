@@ -103,6 +103,36 @@ describe('default development execution contract', () => {
     }
   })
 
+  test('injects the enforced Reviewer result contract directly into the child prompt', () => {
+    const prompt = developmentWorkerContractPrompt(worker({ role: 'reviewer' }))
+    expect(prompt).toContain('workflowReview')
+    expect(prompt).toContain('readyForNextBatch')
+    expect(prompt).toContain('requiredFixes')
+    expect(prompt).toContain('needs-fix')
+    expect(prompt).toContain('non-empty strings or finding objects')
+    expect(prompt).toContain('Coder-provided commands, results and recorded evidence')
+    expect(prompt).toContain('Do not treat unavailable shell access itself as a code defect')
+    expect(prompt).toContain('Do not claim unperformed checks passed')
+    expect(developmentWorkerContractPrompt(worker({ role: 'coder' }))).not.toContain('workflowReview')
+  })
+
+  test('keeps nested Skill execution out of default Stage 4 workers while preserving Leader and unrelated workflows', () => {
+    for (const role of ['coder', 'reviewer', 'qa', 'debug'] as const) {
+      const contract = worker({ role })
+      expect(developmentWorkerToolAllowed('Skill', role, state())).toBe(false)
+      expect(developmentToolCallViolation('Skill', { skill: 'spx-debug' }, state(), contract)).toContain('WORKFLOW_WORKER_SKILL_BOUNDARY')
+      expect(developmentToolCallViolation('Read', { file_path: '/project/file.ts' }, state(), contract)).toBeNull()
+      expect(developmentWorkerToolAllowed('Skill', role, state({ templateIdentity: { id: 'stradn-managed-development-workflow-v1' }, activePhaseId: 'stradn-delivery' }))).toBe(true)
+    }
+    expect(developmentToolCallViolation('Skill', { skill: 'spx-debug' }, state())).toBeNull()
+    expect(developmentToolCallViolation('Skill', { skill: 'spx-debug' }, undefined)).toBeNull()
+    expect(developmentToolCallViolation('Skill', { skill: 'spx-debug' }, state({ templateIdentity: { id: 'custom-workflow' } }))).toBeNull()
+    const preview = state({ activePhaseId: 'local-preview' })
+    expect(developmentToolCallViolation('Skill', { skill: 'spx-debug' }, preview, worker({ role: 'debug', phaseId: 'local-preview' }))).toBeNull()
+    expect(developmentWorkerContractPrompt(worker({ role: 'debug' }))).toContain('independent workflow')
+    expect(developmentWorkerContractPrompt(worker({ role: 'coder' }))).toContain('readyForReview')
+  })
+
   test.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])('read-only QA cannot mutate with %s', tool => {
     expect(developmentToolCallViolation(tool, { file_path: '/project/src/a.ts' }, state({ activePhaseId: 'scenario-review' }), worker({ phaseId: 'scenario-review', role: 'qa' }))).toContain('WORKFLOW_WORKER_READ_ONLY')
   })

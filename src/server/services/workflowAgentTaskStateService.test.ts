@@ -6,6 +6,7 @@ import {
   type WorkflowAgentTaskProgressInput,
 } from './workflowAgentTaskStateService.js'
 import type { WorkflowSessionState } from './workflowTypes.js'
+import { recordDevelopmentBatchAgentProgress } from './workflowDevelopmentBatchAgentProgress.js'
 
 const now = '2026-09-17T08:00:00.000Z'
 
@@ -72,6 +73,47 @@ function input(overrides: Partial<WorkflowAgentTaskProgressInput> = {}): Workflo
 }
 
 describe('workflowAgentTaskStateService', () => {
+  test.each([true, false])('does not promote a canonical Stage 4 Coder from a generic completed ledger before its typed receipt (ownerAlive=%s)', async ownerAlive => {
+    const initial = state('efficient-constrained-dev-debug-workflow-v5')
+    initial.activePhaseId = 'delegate-implement'
+    initial.runStatus = 'active'
+    initial.runtimeContract!.phaseStates['delegate-implement'] = {
+      ...initial.runtimeContract!.phaseStates['feature-implement']!, phaseId: 'delegate-implement',
+    }
+    delete initial.runtimeContract!.phaseStates['feature-implement']
+    initial.workflowRuns = [{ id: 'run-1', templateId: initial.templateIdentity.id, status: 'active', currentPhaseId: 'delegate-implement',
+      history: [], createdAt: now, updatedAt: now,
+      artifacts: [{ id: 'delivery-plan', filename: 'delivery-plan.md', phaseId: 'delivery-plan', kind: 'markdown', required: true,
+        content: 'fixture', developmentBatchPlan: plan, createdAt: now, updatedAt: now }],
+    }]
+    const progress = { phaseId: 'delegate-implement', role: 'coder' as const, batchId: 'B1', plan, agentId: 'agent-1', recordedAt: now }
+    const running = recordDevelopmentBatchAgentProgress(initial, { ...progress, status: 'running' })
+    const ledger = { schemaVersion: 1 as const, sessionId: running.sessionId, runId: 'agent-1', status: 'completed' as const,
+      startedAt: now, updatedAt: now, events: [], artifacts: [] }
+    const recovered = await reconcileWorkflowAgentTasks(running, async () => ledger, '2026-09-17T08:10:00.000Z', { ownerAlive })
+    const task = recovered.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots.find(item => item.workflowRole === 'coder' && item.batchId === 'B1')!
+    expect(task.status).toBe(ownerAlive ? 'running' : 'interrupted')
+    expect(recovered.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots.find(item => item.workflowRole === 'reviewer' && item.batchId === 'B1')!.status).toBe('waiting_dependency')
+    if (ownerAlive) {
+      expect(recovered).toBe(running)
+      const blocked = recordDevelopmentBatchAgentProgress(recovered, { ...progress, status: 'blocked', reason: 'readyForReview=false' })
+      expect(blocked.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots.find(item => item.workflowRole === 'coder' && item.batchId === 'B1')!.status).toBe('blocked')
+      const accepted = recordDevelopmentBatchAgentProgress(recovered, { ...progress, status: 'succeeded' })
+      expect(await reconcileWorkflowAgentTasks(accepted, async () => ledger, '2026-09-17T08:11:00.000Z')).toBe(accepted)
+    } else {
+      expect(recovered.runStatus).toBe('blocked')
+      expect(task.reason).toContain('accepted readiness receipt')
+    }
+  })
+
+  test('retains legacy generic Coder completion outside canonical Stage 4', async () => {
+    const running = recordWorkflowAgentTaskProgress(state('efficient-constrained-dev-debug-workflow-v5'), input())
+    const ledger = { schemaVersion: 1 as const, sessionId: running.sessionId, runId: 'agent-1', status: 'completed' as const,
+      startedAt: now, updatedAt: now, events: [], artifacts: [] }
+    const recovered = await reconcileWorkflowAgentTasks(running, async () => ledger, '2026-09-17T08:10:00.000Z')
+    expect(recovered.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('succeeded')
+  })
+
   test('persists the complete Coder/Reviewer graph with dependencies and capsule input', () => {
     const next = recordWorkflowAgentTaskProgress(state(), input())
     const snapshots = next.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots
@@ -151,6 +193,18 @@ describe('workflowAgentTaskStateService', () => {
     expect(recordWorkflowAgentTaskProgress(first, input())).toBe(first)
   })
 
+  test('rejects success after a pause while allowing a truthful failure receipt', () => {
+    const running = recordWorkflowAgentTaskProgress(state(), input())
+    const paused = { ...running, runStatus: 'paused' as const }
+    expect(() => recordWorkflowAgentTaskProgress(paused, input({ status: 'succeeded' }))).toThrow('WORKFLOW_EXECUTION_SUSPENDED')
+    const failed = recordWorkflowAgentTaskProgress(paused, input({ status: 'failed', reason: 'Owner paused the workflow' }))
+    expect(failed.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('failed')
+    expect(failed.runStatus).toBe('paused')
+    const done = recordWorkflowAgentTaskProgress(running, input({ status: 'succeeded' }))
+    const acceptedBeforePause = { ...done, runStatus: 'paused' as const }
+    expect(recordWorkflowAgentTaskProgress(acceptedBeforePause, input({ status: 'succeeded' }))).toBe(acceptedBeforePause)
+  })
+
   test('validates task progress before writing Agent Run Ledger status and uses status-specific idempotency keys', async () => {
     const events: Array<{ status?: string; toolUseId?: string }> = []
     const appendLedgerEvent = async (event: { status?: string; toolUseId?: string }) => {
@@ -195,5 +249,68 @@ describe('workflowAgentTaskStateService', () => {
   test('does not apply the new task contract to unrelated workflows', () => {
     expect(() => recordWorkflowAgentTaskProgress(state('skills-development'), input()))
       .toThrow('WORKFLOW_AGENT_TASK_GUARD_INACTIVE')
+  })
+
+  test('keeps a live owner task running during a long model request without heartbeat events', async () => {
+    const running = recordWorkflowAgentTaskProgress(state(), input())
+    const next = await reconcileWorkflowAgentTasks(running, async () => null,
+      '2026-09-17T08:10:00.000Z', { ownerAlive: true })
+    expect(next).toBe(running)
+    expect(next.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('running')
+    const oldLedger = { schemaVersion: 1 as const, sessionId: running.sessionId, runId: 'agent-1',
+      status: 'running' as const, startedAt: now, updatedAt: now, events: [], artifacts: [] }
+    expect(await reconcileWorkflowAgentTasks(running, async () => oldLedger,
+      '2026-09-17T08:10:00.000Z', { ownerAlive: true })).toBe(running)
+    const lost = await reconcileWorkflowAgentTasks(running, async () => oldLedger, '2026-09-17T08:10:00.000Z')
+    expect(lost.runStatus).toBe('blocked')
+    expect(lost.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.reason).toContain('heartbeat expired')
+  })
+
+  test('exposes orphaned work as recoverable blocked state without advancing or clearing accepted work', async () => {
+    const coderDone = recordWorkflowAgentTaskProgress(recordWorkflowAgentTaskProgress(state(), input()), input({ status: 'succeeded' }))
+    const reviewing = recordWorkflowAgentTaskProgress(coderDone, input({ role: 'reviewer', agentRunId: 'reviewer-1' }))
+    const next = await reconcileWorkflowAgentTasks(reviewing, async () => null, '2026-09-17T08:10:00.000Z')
+    expect(next.runStatus).toBe('blocked')
+    expect(next.blockedReason).toContain('B1::reviewer')
+    expect(next.activePhaseId).toBe('feature-implement')
+    expect(next.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('succeeded')
+    expect(next.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[1]!.status).toBe('interrupted')
+    expect(await reconcileWorkflowAgentTasks(next, async () => null, '2026-09-17T08:11:00.000Z')).toBe(next)
+  })
+
+  test('repairs an old active fixture with already interrupted tasks without changing user-wait or terminal states', async () => {
+    const old = recordWorkflowAgentTaskProgress(state(), input())
+    old.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status = 'interrupted'
+    old.runStatus = 'active'
+    old.workflowLanguage = 'zh'
+    const recovered = await reconcileWorkflowAgentTasks(old, async () => null, '2026-09-17T08:10:00.000Z')
+    expect(recovered.runStatus).toBe('blocked')
+    expect(recovered.blockedReason).toContain('已中断')
+    for (const runStatus of ['waiting_for_user', 'completed', 'cancelled'] as const) {
+      const retained = { ...old, runStatus }
+      expect(await reconcileWorkflowAgentTasks(retained, async () => null, '2026-09-17T08:10:00.000Z')).toBe(retained)
+    }
+  })
+
+  test('leaves a workflow without an active phase unchanged', async () => {
+    const inactive = state()
+    inactive.activePhaseId = null
+    expect(await reconcileWorkflowAgentTasks(inactive, async () => null)).toBe(inactive)
+  })
+
+  test('does not invent a successful review from a completed ledger lacking the accepted review receipt', async () => {
+    const coderDone = recordWorkflowAgentTaskProgress(recordWorkflowAgentTaskProgress(state(), input()), input({ status: 'succeeded' }))
+    const reviewing = recordWorkflowAgentTaskProgress(coderDone, input({ role: 'reviewer', agentRunId: 'reviewer-1' }))
+    const ledger = { schemaVersion: 1 as const, sessionId: reviewing.sessionId, runId: 'reviewer-1',
+      status: 'completed' as const, startedAt: now, updatedAt: now, events: [], artifacts: [] }
+    expect(await reconcileWorkflowAgentTasks(reviewing, async () => ledger,
+      '2026-09-17T08:10:00.000Z', { ownerAlive: true })).toBe(reviewing)
+    const recovered = await reconcileWorkflowAgentTasks(reviewing, async () => ledger, '2026-09-17T08:10:00.000Z')
+    expect(recovered.runStatus).toBe('blocked')
+    expect(recovered.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[1]!.status).toBe('interrupted')
+    const coderRunning = recordWorkflowAgentTaskProgress(state(), input())
+    const coderRecovered = await reconcileWorkflowAgentTasks(coderRunning, async () => ({ ...ledger, runId: 'agent-1' }), '2026-09-17T08:10:00.000Z')
+    expect(coderRecovered.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('succeeded')
+    expect(coderRecovered.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.outputArtifactRefs).toEqual([])
   })
 })

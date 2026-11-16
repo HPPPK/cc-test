@@ -40,6 +40,8 @@ import {
 } from './workflowSummary.js'
 import {
   phaseAppliesToRoute,
+  requestsCompleteDevelopmentWorkflow,
+  WorkflowRouteConflictError,
   routeWorkflowTask,
 } from './workflowTaskRouter.js'
 import {
@@ -187,11 +189,14 @@ function resolveWorkflowRoute(
     ...baseRouter.secondaryLabels,
   ]))
   const secondaryLabels = labels.filter((label) => label !== labels[0])
-  const effort = workflowOptions?.effort ?? baseRouter.effort
+  const completeCanonicalFlow = template.id === 'efficient-constrained-dev-debug-workflow-v5' && requestsCompleteDevelopmentWorkflow(request)
+  const requestedEffort = workflowOptions?.effort ?? baseRouter.effort
+  const effort = completeCanonicalFlow && (requestedEffort === 'light' || requestedEffort === 'auto') ? 'standard' : requestedEffort
   const routingMode = workflowOptions?.routingMode ?? 'manual'
   const brainstormingMode = workflowOptions?.brainstormingMode ?? 'auto'
   const skippedPhases: Array<{ phaseId: string; reason: string }> = []
   const applicablePhases = template.phases.filter((phase) => {
+    if (completeCanonicalFlow) return true
     const result = phaseAppliesToRoute({
       phase,
       labels,
@@ -334,7 +339,13 @@ export class WorkflowSessionCreateService {
     }
 
     const now = new Date().toISOString()
-    const route = resolveWorkflowRoute(registryTemplate, workflowOptions)
+    let route: ReturnType<typeof resolveWorkflowRoute>
+    try {
+      route = resolveWorkflowRoute(registryTemplate, workflowOptions)
+    } catch (error) {
+      if (error instanceof WorkflowRouteConflictError) throw workflowError(400, error.code, error.message)
+      throw error
+    }
     const templatePhases = route.applicablePhases.length ? route.applicablePhases : registryTemplate.phases
     const runtimeTemplate = this.toWorkflowTemplate(registryTemplate, templatePhases)
     const templateVersionId = `${registryTemplate.id}-v${registryTemplate.version}`

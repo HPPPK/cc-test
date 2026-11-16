@@ -5,6 +5,20 @@ import {
 } from './expertResearchEvidenceReviewService.js'
 
 describe('expertResearchEvidenceReviewService', () => {
+  test('old receipts and page-bound excerpts survive the same persistence round trip without a new schema', () => {
+    const policy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 4, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true as const }
+    const old = { records: [{ agentId: 'legacy', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-14T20:00:00Z', content: 'Existing evidence', entries: [{ target: 'https://old.test/', status: 'opened' as const }] }], updatedAt: '2026-11-14T20:00:00Z' }
+    const before = JSON.stringify(old)
+    const state = recordExpertResearchEvidence(JSON.parse(before), policy, {
+      agentId: 'current', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-15T00:00:00Z', content: 'Current evidence',
+      entries: [{ target: 'https://forum.test/thread/1', status: 'opened', detail: 'extracted text from body: 实际页面片段' }],
+    })
+    const restored = JSON.parse(JSON.stringify(state))
+    expect(restored.records[0]).toEqual(old.records[0])
+    expect(restored.records[1].entries[0].detail).toContain('实际页面片段')
+    expect(JSON.stringify(old)).toBe(before)
+    expect(restored.schemaVersion).toBeUndefined()
+  })
   test('keeps bounded researcher evidence with its Playwright audit for a ZIP-declared reviewer', () => {
     const policy = resolveExpertResearchEvidenceReviewPolicy(JSON.stringify({
       researchEvidenceReview: {

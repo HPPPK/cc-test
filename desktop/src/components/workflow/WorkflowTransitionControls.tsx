@@ -70,6 +70,9 @@ export function WorkflowTransitionControls({
   const blocked = Boolean(
     workflow
     && !pending
+    // A running workflow can retain historical diagnostics after an answered
+    // question. Its active recovery does not require another retry.
+    && !(workflow.status === 'running' && workflow.runStatus === 'active')
     && (
       workflow.status === 'failed'
       || workflow.runStatus === 'blocked'
@@ -101,6 +104,8 @@ export function WorkflowTransitionControls({
 
   const routeTarget = workflowRouteTarget(workflow, t)
   const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
+  const isReworkRoute = workflow.pendingRoute?.intent === 'rework_current_phase'
+  const scopeAmendment = isReworkRoute ? workflow.pendingRoute?.scopeAmendment : undefined
 
   const pendingTransitionMatchesCurrentConfirmation = Boolean(
     pendingTransition
@@ -188,9 +193,9 @@ export function WorkflowTransitionControls({
       <div className="flex items-start gap-3">
         <Icon />
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.confirmTitle')}</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{scopeAmendment ? t('workflows.transition.scopeConfirmTitle', { batch: scopeAmendment.batchId }) : t(isReworkRoute ? 'workflows.transition.reworkConfirmTitle' : 'workflows.transition.confirmTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
-            {t('workflows.transition.confirmDescription')}
+            {t(scopeAmendment ? 'workflows.transition.scopeConfirmDescription' : isReworkRoute ? 'workflows.transition.reworkConfirmDescription' : 'workflows.transition.confirmDescription')}
           </p>
         </div>
       </div>
@@ -203,16 +208,18 @@ export function WorkflowTransitionControls({
         <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.summaryTitle')}</div>
         <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
           <li>{t('workflows.transition.currentPhase', { phase: formatWorkflowPhaseSummary(workflow) })}</li>
-          <li>{t('workflows.transition.keyResult')}</li>
-          {routeTarget ? <li>{t('workflows.transition.nextStep', { step: routeTarget })}</li> : null}
+          <li>{t(scopeAmendment ? 'workflows.transition.scopeKeyResult' : isReworkRoute ? 'workflows.transition.reworkKeyResult' : 'workflows.transition.keyResult')}</li>
+          {scopeAmendment?.addWriteScopes.map(path => <li key={path}><code className="break-all">{path}</code></li>)}
+          {scopeAmendment ? <li>{workflow.pendingRoute?.rationale}</li> : null}
+          {routeTarget && !isReworkRoute ? <li>{t('workflows.transition.nextStep', { step: routeTarget })}</li> : null}
         </ul>
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         <OptionButton
-          icon="thumb_up"
-          title={t(isJumpRoute ? 'workflows.transition.returnTitle' : 'workflows.transition.continueTitle')}
-          description={routeTarget ?? ''}
+          icon={isReworkRoute ? 'refresh' : 'thumb_up'}
+          title={t(scopeAmendment ? 'workflows.transition.scopeApproveTitle' : isReworkRoute ? 'workflows.transition.retryTitle' : isJumpRoute ? 'workflows.transition.returnTitle' : 'workflows.transition.continueTitle')}
+          description={scopeAmendment ? t('workflows.transition.scopeApproveDescription') : isReworkRoute ? t('workflows.transition.retryDescription') : routeTarget ?? ''}
           disabled={transitionPending}
           onClick={() => submitTransition(onConfirm, 'confirm')}
         />

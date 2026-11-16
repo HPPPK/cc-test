@@ -2,6 +2,7 @@ import { constants as fsConstants } from 'fs'
 import {
   type FileHandle,
   mkdir,
+  lstat,
   open,
   stat,
   symlink,
@@ -428,24 +429,70 @@ export function initTaskOutputAsSymlink(
   taskId: string,
   targetPath: string,
 ): Promise<string> {
-  return track(
-    (async () => {
+  if (!taskId || /[/\\\0]/.test(taskId) || taskId === '.' || taskId === '..') {
+    const rejected = Promise.reject<{ path: string; fallback?: FileHandle }>(new Error('Invalid agent task output ID'))
+    agentOutputInitializations.set(taskId, rejected)
+    return track(rejected.then(output => output.path))
+  }
+  const initialization = (async (): Promise<{ path: string; fallback?: FileHandle }> => {
+    try {
+      await ensureOutputDir()
+      const outputPath = getTaskOutputPath(taskId)
+
       try {
-        await ensureOutputDir()
-        const outputPath = getTaskOutputPath(taskId)
-
-        try {
-          await symlink(targetPath, outputPath)
-        } catch {
-          await unlink(outputPath)
-          await symlink(targetPath, outputPath)
-        }
-
-        return outputPath
-      } catch (error) {
-        logError(error)
-        return initTaskOutput(taskId)
+        await symlink(targetPath, outputPath)
+      } catch {
+        await unlink(outputPath)
+        await symlink(targetPath, outputPath)
       }
-    })(),
-  )
+
+      return { path: outputPath }
+    } catch (error) {
+      logError(error)
+      await ensureOutputDir()
+      const path = getTaskOutputPath(taskId)
+      // Keep the exclusively-created handle: final writes never follow a
+      // replacement symlink, including on Windows without O_NOFOLLOW.
+      return { path, fallback: await open(path, 'wx') }
+    }
+  })()
+  agentOutputInitializations.set(taskId, initialization)
+  return track(initialization.then(output => output.path))
+}
+
+const agentOutputInitializations = new Map<string, Promise<{ path: string; fallback?: FileHandle }>>()
+
+export async function releaseAgentTaskOutput(taskId: string): Promise<void> {
+  const initialization = agentOutputInitializations.get(taskId)
+  if (!initialization) return
+  agentOutputInitializations.delete(taskId)
+  const output = await initialization
+  await output.fallback?.close()
+}
+
+/** Await real initialization and commit the final answer to a fallback file. */
+export async function persistAgentTaskOutput(taskId: string, content: string): Promise<void> {
+  const initialization = agentOutputInitializations.get(taskId)
+  if (!initialization) return // Foreground/legacy fixture task without an output registration.
+  let fallback: FileHandle | undefined
+  try {
+    const output = await initialization
+    fallback = output.fallback
+    if (!fallback) return // The transcript owns a successful symlink target.
+    const pathStat = await lstat(output.path)
+    const handleStat = await fallback.stat()
+    if (!pathStat.isFile() || pathStat.isSymbolicLink() || pathStat.dev !== handleStat.dev || pathStat.ino !== handleStat.ino) {
+      throw new Error('Agent output fallback was replaced before final persistence')
+    }
+    await fallback.writeFile(content)
+    await fallback.sync()
+    // Detect a concurrent rename/replacement without ever writing its target.
+    const finalStat = await lstat(output.path)
+    if (!finalStat.isFile() || finalStat.dev !== handleStat.dev || finalStat.ino !== handleStat.ino) {
+      throw new Error('Agent output fallback was replaced during final persistence')
+    }
+  } finally {
+    agentOutputInitializations.delete(taskId)
+    await fallback?.close()
+  }
 }

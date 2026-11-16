@@ -142,7 +142,7 @@
             ],
             "completionRequires": [
               "Stage 2 can complete only when: Stage 1 appFraming exists; sourceMaterialSummary exists when sourceMaterialType is not none; sourceMaterialFindings exist when available material can be extracted; uiUxDirection exists when UI/prototype/reference material exists or uiDirectionNeeded is true; referencePolicy exists for referenceWebsite; equivalence and behavior-preservation criteria exist for codeMigration; product scope is confirmed or explicitly adjusted/skipped with a reason; .workflow/work-order.md contains productScope, userRoles, coreUserFlows, mvpFeatures, nonGoals, acceptanceCriteria, scenarioCases, and userFacingCopyRequirements unless explicitly skipped with a reason; no production files were edited; no dependency/database/deployment action was performed.",
-              "Handoff locked product scope, sourceMaterialSummary, sourceMaterialFindings, uiUxDirection when available, referencePolicy when applicable, and product boundaries to the next phase.",
+              "Handoff locked product scope and product boundaries. Include sourceMaterialSummary only when sourceMaterialType is not none, sourceMaterialFindings only when accessible material can be extracted, uiUxDirection when applicable, and referencePolicy for referenceWebsite. With no source material, inherit that fact; do not require empty summary/findings fields or restart the phase to add them.",
               "The next phase may create technical approach, delivery plan, target modules, UI implementation plan, and implementation batches only after product scope is confirmed.",
               "The next phase must use .workflow/work-order.md as the source of truth.",
               "Coder Subagent must not be invoked until after the delivery plan phase.",
@@ -325,7 +325,7 @@
               "Stage 4 can complete only when every accepted task has an explicit terminal status and every completed batch has a successful Coder result followed by a Reviewer pass with user-path evidence.",
               "Record a terminal result for every accepted task and a Coder then Reviewer result for every completed batch.",
               "Handoff changed files, checks, user-path evidence, blockers, remaining risks, and the latest Context Capsule to scenario-review.",
-              "Do not advance while a Reviewer returns needs-fix or allowNextBatch=false."
+              "Do not advance while a Reviewer returns needs-fix or workflowReview.readyForNextBatch=false."
             ],
             "toolAccess": {
               "allowed": [

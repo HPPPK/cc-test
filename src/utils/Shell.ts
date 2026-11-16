@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'child_process'
+import { prepareShellTransport } from './shell/commandTransport.js'
 import { constants as fsConstants, readFileSync, unlinkSync } from 'fs'
 import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
@@ -313,7 +314,8 @@ export async function exec(
   }
 
   try {
-    const childProcess = spawn(spawnBinary, shellArgs, {
+    const transport = prepareShellTransport(process.platform, shellType, shellArgs, commandString)
+    const childProcess = spawn(spawnBinary, transport.args, {
       env: {
         ...subprocessEnv(),
         SHELL: shellType === 'bash' ? binShell : undefined,
@@ -343,6 +345,12 @@ export async function exec(
       taskOutput,
       shouldAutoBackground,
     )
+    if (transport.stdin !== undefined) {
+      // The process listener owns spawn failure; a closed stdin must not create
+      // an uncaught EPIPE or log the report payload.
+      childProcess.stdin?.on('error', () => {})
+      childProcess.stdin?.end(transport.stdin)
+    }
 
     // Close our copy of the fd — the child has its own dup.
     // Must happen after wrapSpawn attaches 'error' listener, since the await

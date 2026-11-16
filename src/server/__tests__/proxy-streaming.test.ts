@@ -343,6 +343,93 @@ describe('openaiChatStreamToAnthropic', () => {
 // ─── OpenAI Responses SSE → Anthropic SSE ──────────────────────
 
 describe('openaiResponsesStreamToAnthropic', () => {
+  const responseEvent = (event: string, data: Record<string, unknown>) =>
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+
+  for (const [label, deltas] of [
+    ['done-only', []],
+    ['partial delta', ['{"file_path":']],
+    ['complete deltas', ['{"file_path":', '"/tmp/student.json"}']],
+  ] as const) {
+    test(`preserves finalized Read arguments with ${label}`, async () => {
+      const args = '{"file_path":"/tmp/student.json"}'
+      const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream([
+        responseEvent('response.output_item.added', {
+          output_index: 0, item: { type: 'function_call', id: 'fc_read', call_id: 'call_read', name: 'Read' },
+        }),
+        ...deltas.map(delta => responseEvent('response.function_call_arguments.delta', { item_id: 'fc_read', delta })),
+        responseEvent('response.function_call_arguments.done', { item_id: 'fc_read', arguments: args }),
+      ]), 'test-model'))
+      const json = events.filter(e => e.event === 'content_block_delta')
+        .map(e => (e.data.delta as Record<string, unknown>).partial_json).join('')
+      expect(json).toBe(args)
+      expect(JSON.parse(json)).toEqual({ file_path: '/tmp/student.json' })
+      expect(events.at(-1)?.event).toBe('content_block_stop')
+    })
+  }
+
+  test('isolates interleaved calls and text and ignores events after arguments finish', async () => {
+    const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream([
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'a', name: 'Read' } }),
+      responseEvent('response.content_part.added', { output_index: 1, content_index: 0, part: { type: 'output_text' } }),
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'b', name: 'Read' } }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: '{"file_path":' }),
+      responseEvent('response.output_text.delta', { output_index: 1, content_index: 0, delta: 'Reading files' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'b', arguments: '{"file_path":"b"}' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a', arguments: '{"file_path":"a"}' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a', arguments: '{"file_path":"a"}' }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: 'ignored' }),
+    ]), 'test-model'))
+    for (const [index, expected] of [[0, '{"file_path":"a"}'], [2, '{"file_path":"b"}']] as const) {
+      expect(events.filter(e => e.event === 'content_block_delta' && e.data.index === index)
+        .map(e => (e.data.delta as Record<string, unknown>).partial_json).join('')).toBe(expected)
+      expect(events.filter(e => e.event === 'content_block_stop' && e.data.index === index)).toHaveLength(1)
+    }
+    expect(events.find(e => e.data.index === 1 && e.event === 'content_block_delta')?.data.delta)
+      .toEqual({ type: 'text_delta', text: 'Reading files' })
+  })
+
+  test('rejects conflicting final arguments instead of mixing different tool inputs', async () => {
+    const stream = openaiResponsesStreamToAnthropic(makeStream([
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'a', name: 'Read' } }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: '{"file_path":"a"}' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a', arguments: '{"file_path":"b"}' }),
+    ]), 'test-model')
+    await expect(collectSse(stream)).rejects.toThrow('Conflicting finalized function-call arguments')
+  })
+
+  test('accepts semantically identical finalized JSON without repeating complete arguments', async () => {
+    const emitted = '{"file_path":"a","offset":1.0}'
+    const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream([
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'a', name: 'Read' } }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: emitted }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a', arguments: ' { "offset": 1, "file_path": "a" } ' }),
+    ]), 'test-model'))
+    expect(events.filter(e => e.event === 'content_block_delta')
+      .map(e => (e.data.delta as Record<string, unknown>).partial_json).join('')).toBe(emitted)
+    expect(events.filter(e => e.event === 'content_block_stop')).toHaveLength(1)
+  })
+
+  test('rejects incompatible partial JSON even when the final arguments are valid', async () => {
+    const stream = openaiResponsesStreamToAnthropic(makeStream([
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'a', name: 'Read' } }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: '{"file_path":"a' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a', arguments: '{ "file_path": "a" }' }),
+    ]), 'test-model')
+    await expect(collectSse(stream)).rejects.toThrow('Conflicting finalized function-call arguments')
+  })
+
+  test('keeps legacy done events without arguments compatible with complete deltas', async () => {
+    const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream([
+      responseEvent('response.output_item.added', { item: { type: 'function_call', id: 'a', name: 'Read' } }),
+      responseEvent('response.function_call_arguments.delta', { item_id: 'a', delta: '{"file_path":"a"}' }),
+      responseEvent('response.function_call_arguments.done', { item_id: 'a' }),
+    ]), 'test-model'))
+    expect(events.filter(e => e.event === 'content_block_delta')
+      .map(e => (e.data.delta as Record<string, unknown>).partial_json).join('')).toBe('{"file_path":"a"}')
+    expect(events.filter(e => e.event === 'content_block_stop')).toHaveLength(1)
+  })
+
   test('basic text streaming', async () => {
     const sseChunks = [
       'event: response.created\ndata: {"id":"r1","model":"gpt-4o","status":"in_progress"}\n\n',

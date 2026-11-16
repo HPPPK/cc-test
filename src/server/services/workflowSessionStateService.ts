@@ -12,6 +12,7 @@ import type {
 } from './workflowTypes.js'
 import { ensureWorkflowArtifactStorage } from './workflowArtifactStorage.js'
 import { migrateWorkflowRuntimeContract } from './workflowCompletionGate.js'
+import { migrateWorkflowScopeApproval, scopeAmendmentStorageTransaction } from './workflowScopeAmendment.js'
 
 export type WorkflowStateReadResult = {
   exists: boolean
@@ -28,6 +29,8 @@ export type WorkflowStateWriteResult = {
 export type WorkflowStateUpdateOptions = {
   expectedStateVersion?: number
   expectedRevision?: number
+  /** Server-owned scope confirmation transaction; never accepted from HTTP JSON. */
+  projectArtifactTransaction?: { beforeSync: () => void | Promise<void>; rollback: () => Promise<void> }
 }
 
 export type WorkflowPhaseArtifactWriteResult = {
@@ -227,13 +230,13 @@ export class WorkflowSessionStateService {
     const initial = await this.readStoredState(sessionId)
     if (!initial.exists || !initial.state) return initial
 
-    const migrated = migrateWorkflowRuntimeContract(initial.state, undefined, new Date().toISOString())
+    const migrated = migrateWorkflowRuntimeContract(migrateWorkflowScopeApproval(initial.state), undefined, new Date().toISOString())
     if (migrated === initial.state) return initial
 
     return this.withWriteLock(this.statePath(sessionId), async () => {
       const current = await this.readStoredState(sessionId)
       if (!current.exists || !current.state) return current
-      const currentMigrated = migrateWorkflowRuntimeContract(current.state, undefined, new Date().toISOString())
+      const currentMigrated = migrateWorkflowRuntimeContract(migrateWorkflowScopeApproval(current.state), undefined, new Date().toISOString())
       if (currentMigrated === current.state) return current
 
       await syncProjectWorkflowArtifacts(currentMigrated)
@@ -259,7 +262,7 @@ export class WorkflowSessionStateService {
       }
 
       const state = migrateWorkflowRuntimeContract(
-        normalizeJsonObject<WorkflowSessionState>(stateInput, 'workflow state'),
+        migrateWorkflowScopeApproval(normalizeJsonObject<WorkflowSessionState>(stateInput, 'workflow state')),
         undefined,
         new Date().toISOString(),
       )
@@ -267,10 +270,28 @@ export class WorkflowSessionStateService {
       if (state.sessionId !== sessionId) {
         throw ApiError.badRequest('Workflow state sessionId must match the owning session')
       }
+      if (options.expectedStateVersion !== undefined && !current.state
+        && (options.projectArtifactTransaction || state.transitionHistory?.at(-1)?.scopeAmendment)) {
+        throw new ApiError(409, 'Workflow state is missing or corrupt; scope approval cannot be committed.', 'WORKFLOW_STATE_STALE')
+      }
       assertSafeArtifactId('state')
 
-      await syncProjectWorkflowArtifacts(state)
-      await atomicWriteJson(this.statePath(sessionId), state)
+      let projectSyncStarted = false
+      const transaction = options.projectArtifactTransaction ?? (current.state ? scopeAmendmentStorageTransaction(current.state, state) : undefined)
+      try {
+        await transaction?.beforeSync()
+        projectSyncStarted = true
+        await syncProjectWorkflowArtifacts(state)
+        await atomicWriteJson(this.statePath(sessionId), state)
+      } catch (error) {
+        if (projectSyncStarted && transaction && current.state) {
+          try {
+            await syncProjectWorkflowArtifacts(current.state)
+            await transaction.rollback()
+          } catch (rollbackError) { throw ApiError.internal(`Scope confirmation failed and project rollback failed: ${String(error)}; ${String(rollbackError)}`) }
+        }
+        throw error
+      }
       return {
         state,
         pointer: statePointer(state),
@@ -289,7 +310,7 @@ export class WorkflowSessionStateService {
         throw ApiError.notFound('Workflow state is unavailable for update')
       }
 
-      const migrated = migrateWorkflowRuntimeContract(current.state, undefined, new Date().toISOString())
+      const migrated = migrateWorkflowRuntimeContract(migrateWorkflowScopeApproval(current.state), undefined, new Date().toISOString())
       assertExpectedVersion(migrated, options)
       const previousRevision = typeof migrated.revision === 'number' ? migrated.revision : 0
       const previousStateVersion = typeof migrated.stateVersion === 'number' ? migrated.stateVersion : 0

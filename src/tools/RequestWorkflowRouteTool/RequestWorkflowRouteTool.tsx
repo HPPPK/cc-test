@@ -36,12 +36,17 @@ const inputSchema = lazySchema(() =>
     rationale: z.string().min(1).describe('Non-empty explanation for the requested route.'),
     evidence: z.array(evidenceSchema).describe('Structured evidence supporting this route.'),
     requireUserConfirmation: z.literal(true).optional().default(true).describe('Routes always require explicit user confirmation.'),
+    scopeAmendment: z.strictObject({ batchId: z.string().min(1), addWriteScopes: z.array(z.string().min(1)).min(1).max(4) }).optional()
+      .describe('Canonical Stage 4 only: request one confirmation to add exact existing workspace-relative files to this Batch scope. Use rework_current_phase; do not ask a separate permission question. No glob, secret/config store, new file, scope removal or dependency changes.'),
   }).superRefine((value, ctx) => {
     if (value.intent === 'jump_to_phase' && !value.targetPhaseId?.trim()) {
       ctx.addIssue({ code: 'custom', path: ['targetPhaseId'], message: 'jump_to_phase requires targetPhaseId.' })
     }
     if (value.intent === 'route_to_workflow' && !value.targetWorkflowId?.trim()) {
       ctx.addIssue({ code: 'custom', path: ['targetWorkflowId'], message: 'route_to_workflow requires targetWorkflowId.' })
+    }
+    if (value.scopeAmendment && (value.intent !== 'rework_current_phase' || value.targetPhaseId || value.targetWorkflowId)) {
+      ctx.addIssue({ code: 'custom', path: ['scopeAmendment'], message: 'scopeAmendment requires rework_current_phase without another target.' })
     }
   }),
 )
@@ -194,6 +199,7 @@ export const RequestWorkflowRouteTool: Tool<InputSchema, Output> = buildTool({
       'Do not use advance for ordinary linear progression. After a normal completion, submit_phase_completion alone creates the current phase confirmation and enters the immediate linear next phase after the user confirms.',
       'In particular, after a repair returns to Stage 4, submit the Stage 4 completion and do not request a route merely to re-enter its normal Stage 5 validation phase.',
       'Do not describe a route only in plain text or hide it inside a completion handoff.',
+      'For canonical Stage 4 only, a necessary exact existing file outside one Batch scope may use intent=rework_current_phase plus scopeAmendment={batchId,addWriteScopes}. This creates one formal confirmation listing the files; do not ask an ordinary permission question first. Wait for all current workers to finish. Confirmation updates the accepted plan and only invalidates that Batch and downstream results, keeping other passed batches and the current stage. It does not edit the requested production files. New files, globs, protected paths or dependency changes require replanning instead.',
       'The server validates phase, stateVersion, route policy, and target existence. Every normal model-requested route waits for explicit user confirmation. The only exception is a one-time recovery credential returned by submit_phase_completion: it does not expire while the model is reasoning, so immediately request rework_current_phase or jump_to_phase with requireUserConfirmation true, and the server may apply that first constrained repair without a user click.',
     ].join('\n')
   },

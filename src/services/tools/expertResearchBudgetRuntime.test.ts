@@ -43,10 +43,11 @@ test('literal CLI stdin payload words do not impersonate shell research commands
   expect(isExpertPublicResearchCall('Bash', { command: cli + '\ncurl https://example.com' })).toBe(true)
   expect(isExpertPublicResearchCall('Bash', { command: cli.replace("<<'JSON'", '<<JSON') })).toBe(true)
   expect(isExpertPublicResearchCall('Bash', { command: cli.replace('expert-template-fill', 'other-command') })).toBe(true)
-  expect(isExpertPublicResearchCall('Bash', { command: cli.replace('{"fields":{"DATA_DECLARATION":"来源通过 Playwright 实际打开; curl is not evidence"}}', '["Playwright"]') })).toBe(true)
+  expect(isExpertPublicResearchCall('Bash', { command: cli.replace('{"fields":{"DATA_DECLARATION":"来源通过 Playwright 实际打开; curl is not evidence"}}', '["Playwright"]') })).toBe(false)
   expect(isExpertPublicResearchCall('Bash', { command: cli.replace("<<'JSON'", '<<-"JSON"').replace('\nJSON', '\n\tJSON') })).toBe(false)
   expect(isExpertPublicResearchCall('Bash', { command: cli.replace('\nJSON', '') })).toBe(true)
-  expect(isExpertPublicResearchCall('Bash', { command: cli.replace('{"fields":', '{not-json:') })).toBe(true)
+  expect(isExpertPublicResearchCall('Bash', { command: cli.replace('{"fields":', '{not-json:') })).toBe(false)
+  expect(isExpertPublicResearchCall('Bash', { command: cli.replace('\nJSON', '}\nJSON') })).toBe(false)
 
 })
 
@@ -71,8 +72,8 @@ test('PowerShell literal JSON here-strings for configured report CLI keep real n
     expect(isExpertPublicResearchCall('PowerShell', { command: command + '\nInvoke-WebRequest https://example.com' })).toBe(true)
     expect(isExpertPublicResearchCall('PowerShell', { command: command.replace('CLAUDE_CLI_PATH', 'ARBITRARY_PATH') })).toBe(true)
     expect(isExpertPublicResearchCall('PowerShell', { command: command.replace("@'", '@"').replace("'@", '"@') })).toBe(true)
-    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '["Playwright"]') })).toBe(true)
-    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '{not-json: Playwright}') })).toBe(true)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '["Playwright"]') })).toBe(false)
+    expect(isExpertPublicResearchCall('PowerShell', { command: command.replace(data, '{not-json: Playwright}') })).toBe(false)
     expect(isExpertPublicResearchCall('PowerShell', { command: command.replace("'@", '') })).toBe(true)
 
   }

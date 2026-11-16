@@ -1,6 +1,16 @@
 import { expect, test } from 'bun:test'
 import { buildInitialTemplateRenderAutoContinueInstruction, buildFinalizeDeliveryAutoContinueInstruction } from '../ws/handler.js'
 
+test('failed F resumes its original transcript instead of starting a replacement review', async () => {
+  const { buildOutputReviewAutoContinueInstruction } = await import('../ws/handler.js')
+  const instruction = buildOutputReviewAutoContinueInstruction({ kind: 'continue-output-review', briefPath: '01.md', absorptionPath: '07.md', completionReviewPath: '08.md', reportPath: 'report.html', reviewerAgentType: 'expert-evidence-output-reviewer', resumeAgentId: 'original-F' })
+  expect(instruction).toContain('"summary":"恢复原报告复核"')
+  expect(instruction).toContain('SendMessage')
+  expect(instruction).toContain('"to":"original-F"')
+  expect(instruction).toContain('Do not launch a fresh Agent')
+  expect(instruction).not.toContain('exactly one Agent tool call')
+})
+
 // Test the emitted model instruction contract, including the legacy expert branch.
 test('canonical draft and final continuation use only acknowledged CLI HTML delivery', () => {
   const initial = { kind: 'continue-initial-render' as const, briefPath: '01.md', absorptionPath: '07.md' }
@@ -19,6 +29,13 @@ test('canonical draft and final continuation use only acknowledged CLI HTML deli
   expect(finish).toContain('successful patch is terminal')
   expect(buildInitialTemplateRenderAutoContinueInstruction(initial)).toContain('structured Write')
   expect(buildFinalizeDeliveryAutoContinueInstruction(final)).toContain('structured fixed-template Write')
+})
+
+test.each(['C:\\Users\\测试\\项目\\报告.html', '/Users/test/project/报告.html'])('CLI finalization uses a filename instead of an absolute output path: %s', reportPath => {
+  const instruction = buildFinalizeDeliveryAutoContinueInstruction({ kind: 'continue-finalize-delivery', briefPath: '01.md', absorptionPath: '07.md', completionReviewPath: '08.md', reportPath }, true)
+  expect(instruction).toContain('--output "报告.html"')
+  expect(instruction).not.toContain('--output ' + JSON.stringify(reportPath))
+  expect(instruction).toContain(reportPath)
 })
 
 test('canonical stale source and route recovery cannot demand another catalog wave', async () => {

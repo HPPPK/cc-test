@@ -298,6 +298,8 @@ export type QueuePriority = 'now' | 'next' | 'later'
  * Queued command type
  */
 export type QueuedCommand = {
+  /** In-memory producer identity for task-notification delivery and GC. */
+  taskNotificationId?: string
   messageKind?: MessageKind
   isCompactSummary?: boolean
   isVisibleInTranscriptOnly?: boolean

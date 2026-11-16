@@ -30,6 +30,7 @@ import {
 } from './repositoryLaunchService.js'
 import { cleanSessionTitleSource } from '../../utils/sessionTitleText.js'
 import type { WorkflowSessionMetadata } from './workflowTypes.js'
+import { readWorkflowSessionMetadata, workflowMetadataDecision } from './workflowSessionMetadataReader.js'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
 
@@ -344,17 +345,9 @@ export class SessionService {
   private resolveWorkflowFromEntries(entries: RawEntry[]): WorkflowSessionMetadata | undefined {
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]
-      if (entry?.type !== 'session-meta') continue
-
-      const workflow = entry.workflow
-      if (
-        workflow &&
-        typeof workflow === 'object' &&
-        !Array.isArray(workflow) &&
-        (workflow as Record<string, unknown>).mode === 'workflow'
-      ) {
-        return workflow as WorkflowSessionMetadata
-      }
+      if (!entry) continue
+      const decision = workflowMetadataDecision(entry)
+      if (decision) return decision.workflow
     }
     return undefined
   }
@@ -1627,6 +1620,17 @@ export class SessionService {
     }
   }
 
+  /** Ownership lookup without loading/projecting chat or child transcripts. */
+  async getWorkflowSessionMetadata(sessionId: string): Promise<{ workflow?: WorkflowSessionMetadata } | null> {
+    const found = await this.findSessionFile(sessionId)
+    if (!found) return null
+    try { return await readWorkflowSessionMetadata(found.filePath) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    }
+  }
+
   /**
    * Get only the messages for a session (lighter than full detail).
    */
@@ -1642,6 +1646,17 @@ export class SessionService {
       sessionId,
       this.entriesToMessages(entries),
     )
+  }
+
+  /** Runtime recovery must also see errors hidden with internal Expert prose. */
+  async getSessionRuntimeMessages(sessionId: string): Promise<MessageEntry[]> {
+    const found = await this.findSessionFile(sessionId)
+    if (!found) return []
+    const entries = await this.readJsonlFile(found.filePath)
+    return entries.flatMap(entry => {
+      const message = this.entryToMessage(entry, entry.parent_tool_use_id ?? undefined)
+      return message ? [message] : []
+    })
   }
 
   /** User-only result preview. The caller selects a session-bound Agent call, never a file path. */

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { matchResearchSourceLibraryAttempts, type ExpertResearchSourceLibraryCatalog } from './expertResearchSourceLibraryService.js'
 import type { ExpertResearchEvidenceRecord } from './expertResearchEvidenceReviewService.js'
 
+export const RESEARCH_COVERAGE_GUIDANCE = '选源是发现入口，不是查询范围上限；围绕竞品替代、用户任务、收费、市场背景与分发路径取证。相关线索优先跟进，背景资料按口径使用；用关键问题和实际取得判断广度，不以来源数量或耗尽预算判断。不能直接证明需求不等于没有背景价值；市场、平台和行业资料按原口径用于背景，不外推目标需求。入口受限或跑偏时，优先沿同一字段和目标人群换相关路线；不能用海外结果填平中文缺口。D/F同时核对关键问题、未跟进的相关线索及07细节去向，不只检查格式；有依据的产品方案和商业建议须保留依据、取舍与推翻条件。研究员结束前、主代理进入D前，区分关键问题已支持、已有线索未跟进、受阻或未查；现有预算与每线一次补查优先解决决策缺口，不因最低覆盖通过就收工。理由与下一路线留在已有Markdown，不新增表单、文件或审批；无增量或预算耗尽则带缺口交付。'
+
 const laneNames = ['competitors', 'user-needs', 'channels'] as const
 const statuses = ['opened', 'access_limited', 'failed', 'interrupted', 'pending', 'not_visited'] as const
 type SelectionStatus = typeof statuses[number]
@@ -240,7 +242,8 @@ export function requiredSourceCandidates(lane: ResearchSourceSelection['lanes'][
 
 export function sourceSelectionInstruction(selection: ResearchSourceSelection, assignedPath?: string): string {
   const lanes = assignedPath ? selection.lanes.filter(lane => lane.artifactPath === rootPath(assignedPath)) : selection.lanes
-  return '<expert-source-selection>\n' + JSON.stringify(lanes) + '\n按本线 purpose 选取具体页面；来源入口按所选平台对账，attemptedUrls 才是实际尝试页面，不表示样例路径或数据已打开。候选根入口不是最终证据。至少尝试一条相关的选定路线；若明确选用核心入口，至少真实尝试其中一条，不能用其他补充来源代替。确实不适用则由主代理将核心取舍改为 deferred 并说明理由。其余为备用，不逐站扫库。已有同线回执可以复用。失败、登录、付费墙或无相关内容时按真实状态记录并换同字段公开来源；不强求成功、付费数据或全部候选访问。未访问不等于失败。D 按运行时对账检查选源是否合理，不以来源数量代替内容质量。\n</expert-source-selection>'
+  // The initial catalog picks describe seeds, never an allowlist for discovery.
+  return RESEARCH_COVERAGE_GUIDANCE + '\n<expert-source-selection>\n' + JSON.stringify(lanes) + '\n按本线 purpose 选取具体页面；来源入口按所选平台对账，attemptedUrls 才是实际尝试页面，不表示样例路径或数据已打开。候选根入口不是最终证据。选定但未访问的入口保留真实状态，不因缺一次目录访问强制补查。围绕关键问题优先跟进相关线索；已有更相关材料或入口不适用时说明取舍，不把备用来源当待办队列。其余为备用，不逐站扫库。已有同线回执可以复用。失败、登录、付费墙或无相关内容时按真实状态记录并换同字段公开来源；不强求成功、付费数据或全部候选访问。未访问不等于失败。D 按运行时对账检查选源是否合理，不以来源数量代替内容质量。\n</expert-source-selection>'
 }
 
 export function renderResearchSourceSelectionMarkdown(selection: ResearchSourceSelection): string {

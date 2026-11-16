@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { evaluateResearchQualityCheckpoint, resolveResearchQualityCheckpointPolicy, normalizeResearchQualityContext, researchQualityInstruction } from './expertResearchQualityCheckpoint.js'
+import { buildResearchFollowUpInstruction, evaluateResearchQualityCheckpoint, resolveResearchQualityCheckpointPolicy, normalizeResearchQualityContext, researchQualityInstruction, researchEvidenceContractIssues } from './expertResearchQualityCheckpoint.js'
 
 const paths = ['commercialization-research/02-competitors.md', 'commercialization-research/03-user-needs.md', 'commercialization-research/04-channels.md']
 const policy = { version: 1 as const, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 2 }
@@ -9,6 +9,58 @@ function record(lane: number, items: any[], entries = items.map(x => ({ target: 
   return { path: paths[lane]!.replace('.md', '.parts/worker.md'), content: '# Actual captured evidence\n' + quote + '\n```expert-research-evidence\n' + JSON.stringify({ version: 1, lane: ['competitors', 'user-needs', 'channels'][lane], items }) + '\n```', entries }
 }
 const evaluate = (records: any[]) => evaluateResearchQualityCheckpoint({ policy, researcherPaths: paths, records })
+
+test('saved critical gaps reach parent dispatch even when source counts suffice, without adding quotas', () => {
+  const rows = [{ agentId: 'original-a', artifactPath: paths[0]!.replace('.md', '.parts/a.md'), content: '# Evidence\nAlready captured XMBC.\n## 关键缺口与下一路线\n已发现 Quicker 官方功能链接但未跟进，尚缺实际收费边界。' }]
+  const budget = { remainingStarts: 3, timeRemainingMs: 60_000, remainingByLane: { [paths[0]!]: 1 }, pendingByLane: {} }
+  const instruction = buildResearchFollowUpInstruction({ records: rows, budget })!
+  expect(instruction).toContain('<expert-research-follow-up>')
+  expect(instruction).toContain('targeted-evidence')
+  expect(instruction).toContain('已发现 Quicker 官方功能链接但未跟进')
+  expect(instruction).toContain('original-a')
+  expect(instruction).toContain('不凑数量')
+  for (const exhausted of [{ ...budget, timeRemainingMs: 0 }, { ...budget, remainingStarts: 0 }, { ...budget, remainingByLane: {} }, { ...budget, pendingByLane: { [paths[0]!]: 1 } }]) {
+    expect(buildResearchFollowUpInstruction({ records: rows, budget: exhausted })).toBeUndefined()
+  }
+  expect(buildResearchFollowUpInstruction({ records: [{ ...rows[0]!, content: '# 已支持\n任务已经查清' }], budget })).toBeUndefined()
+})
+
+test('escaped line breaks in prose do not force quote repair or another browsing pass', () => {
+  const url = 'https://vendor.test/pricing'
+  const q = 'Free tier\nCommercial use allowed\nRenewal discount'
+  const saved = record(0, [item(url, { supplier: 'Vendor', quote: q })])
+  saved.content = saved.content.replace(quote + '\n', '> Free tier\\nCommercial use allowed\\nRenewal discount\n')
+  expect(evaluate([saved]).issues).toEqual([])
+  expect(evaluate([saved]).distinctSuppliers).toBe(1)
+})
+
+test('a quote captured on the actual page need not be duplicated verbatim in narrative prose', () => {
+  const url = 'https://vendor.test/pricing'
+  const saved = record(0, [item(url, { supplier: 'Vendor' })], [{ target: url, status: 'opened' as const, detail: 'extracted text from body: ' + quote }] as any)
+  saved.content = saved.content.replace(quote + '\n', 'Paraphrased bounded analysis.\n')
+  expect(evaluate([saved]).issues).toEqual([])
+  expect(evaluate([saved]).distinctSuppliers).toBe(1)
+})
+
+test('line-break normalization does not reinterpret a Windows path as a newline', () => {
+  const saved = record(0, [item('https://vendor.test/product', { supplier: 'Vendor', quote: 'C:\\new-folder' })])
+  saved.content = saved.content.replace(quote + '\n', 'C:\new-folder\n')
+  expect(evaluate([saved]).distinctSuppliers).toBe(0)
+})
+
+test('valid longer Markdown fences preserve evidence without requiring a save-only recovery', () => {
+  const json = JSON.stringify({ version: 1, lane: 'user-needs', items: [] })
+  for (const fence of ['```', '````', '`````']) {
+    const content = '# Saved research\n' + fence + 'expert-research-evidence\n' + json + '\n' + fence
+    expect(researchEvidenceContractIssues(content, 'user-needs')).toEqual([])
+    expect(researchEvidenceContractIssues(content.replaceAll('\n', '\r\n'), 'user-needs')).toEqual([])
+    expect(researchEvidenceContractIssues('# expert-research-evidence\n' + fence + 'json\n' + json + '\n' + fence, 'user-needs')).toEqual([])
+  }
+  expect(researchEvidenceContractIssues('````expert-research-evidence\n' + json + '\n```', 'user-needs')).not.toEqual([])
+  const valid = '````expert-research-evidence\n' + json + '\n````'
+  expect(researchEvidenceContractIssues(valid + '\n' + valid, 'user-needs')).not.toEqual([])
+  expect(researchEvidenceContractIssues(valid, 'channels')).not.toEqual([])
+})
 
 test('checkpoint is opt-in and leaves old protocols unchanged', () => {
   expect(resolveResearchQualityCheckpointPolicy('{}')).toBeUndefined()
@@ -31,6 +83,33 @@ test('only separately opened and quoted specific user content counts', () => {
   expect(evaluate([record(1, [item('https://forum.test/thread/456')], [])]).userSignals).toBe(0)
   const missingQuote = record(1, [item('https://forum.test/thread/456')]); missingQuote.content = missingQuote.content.replace(quote + '\n', '')
   expect(evaluate([missingQuote]).userSignals).toBe(0)
+})
+
+test('does not attribute a captured search excerpt to a different opened thread', () => {
+  const url = 'https://forum.test/thread/456'
+  const row = record(1, [item(url)], [
+    { target: url, finalUrl: url, status: 'opened', detail: 'extracted text from body: Forum navigation; no quoted user passage.' },
+    { target: 'https://www.google.com/search?q=mouse', finalUrl: 'https://www.google.com/search?q=mouse', status: 'opened', detail: 'extracted text from body: ' + quote },
+  ] as any)
+  const result = evaluate([row])
+  expect(result.userSignals).toBe(0)
+  expect(result.boundary).toContain('搜索摘要')
+  expect(result.boundary).toContain(url)
+  expect(result.boundary).toContain('不阻挡复核')
+  expect(result.issues).toEqual([])
+})
+
+test('a partial excerpt does not reject genuine material absent from the captured prefix', () => {
+  const url = 'https://forum.test/thread/456'
+  const row = record(1, [item(url)], [{ target: url, status: 'opened', detail: 'extracted text from body: A truncated prefix.' }] as any)
+  expect(evaluate([row]).issues).toEqual([])
+  expect(evaluate([record(1, [item(url)])]).issues).toEqual([])
+  const matching = record(1, [item(url)], [
+    { target: url, status: 'opened', detail: 'extracted text from body: ' + quote },
+    { target: 'https://www.google.com/search?q=mouse', status: 'opened', detail: 'extracted text from body: ' + quote },
+  ] as any)
+  expect(evaluate([matching]).boundary).not.toContain('尚未匹配')
+  expect(evaluate([matching]).userSignals).toBe(1)
 })
 
 test('channel coverage requires complementary mechanisms and an actual observed search result', () => {
@@ -108,13 +187,13 @@ test('follow-up receives its saved lane evidence and shared access failures with
   expect(researchQualityInstruction(context, paths, 'outside.md')).not.toContain('Existing user lane')
 })
 
-test('malformed quote fields request repair from saved evidence before more browsing', () => {
+test('an unsupported combined quote is flagged for review without a duplicate-prose repair loop', () => {
   const saved = record(0, [item('https://vendor.test/product', { supplier: 'Vendor', quote: quote + ' Unquoted appended sentence.' })])
   const result = evaluate([saved])
   expect(result.distinctSuppliers).toBe(0)
-  expect(result.issues.join('\n')).toContain('items[0].quote')
-  expect(result.gaps.find(g => g.lane === 'competitors')?.question).toContain('先修复')
-  expect(result.gaps.find(g => g.lane === 'competitors')?.question).toContain('不要重开')
+  expect(result.issues).toEqual([])
+  expect(result.boundary).toContain('items[0].quote')
+  expect(result.boundary).toContain('不阻挡复核')
 })
 
 test('a corrected handoff may reuse already-opened evidence from its own lane without reopening it or borrowing sibling audit', () => {
@@ -170,4 +249,20 @@ test('accepts concise real observations without minimum quote or explanation pad
   const quote = '¥57.6/年'
   const source = { path: paths[0]!, content: quote + '\n```expert-research-evidence\n' + JSON.stringify({ version: 1, lane: 'competitors', items: [{ url: 'https://vendor.test/pricing', supplier: 'Vendor', quote, observation: '年付促销', relevant: true }] }) + '\n```', entries: [{ target: 'https://vendor.test/pricing', status: 'opened' as const }] }
   expect(evaluate([source]).distinctSuppliers).toBe(1)
+})
+test('runtime and package instructions share the same breadth boundary without adding numeric gates', async () => {
+  const { RESEARCH_COVERAGE_GUIDANCE } = await import('./expertResearchQualityCheckpoint.js')
+  expect(researchQualityInstruction({ policy }, paths)).toContain(RESEARCH_COVERAGE_GUIDANCE)
+  expect(RESEARCH_COVERAGE_GUIDANCE).toContain('不能直接证明需求不等于没有背景价值')
+  expect(RESEARCH_COVERAGE_GUIDANCE).toContain('同一字段和目标人群')
+  expect(RESEARCH_COVERAGE_GUIDANCE).toContain('已有线索未跟进')
+  expect(RESEARCH_COVERAGE_GUIDANCE).toContain('不新增表单、文件或审批')
+  const selection = { version: 1 as const, lanes: [], unattemptedLanes: [] }
+  expect(researchQualityInstruction({ policy, sourceSelection: selection }, paths).split(RESEARCH_COVERAGE_GUIDANCE)).toHaveLength(2)
+  const { REPORT_EVIDENCE_HANDOFF_GUIDANCE } = await import('../../services/tools/expertReportHandoffGuidance.js')
+  expect(REPORT_EVIDENCE_HANDOFF_GUIDANCE).toContain(RESEARCH_COVERAGE_GUIDANCE)
+  for (const file of ['prompts/system.md', 'skills/commercialization-research-method/SKILL.md', 'skills/research-source-library/SKILL.md']) {
+    const content = await Bun.file(new URL('../../../experts/commercialization-research-report/' + file, import.meta.url)).text()
+    expect(content).toContain(RESEARCH_COVERAGE_GUIDANCE)
+  }
 })

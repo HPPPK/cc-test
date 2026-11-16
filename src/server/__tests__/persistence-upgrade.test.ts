@@ -1,4 +1,6 @@
 import { requireFixtureRecord } from './fixtureAssertions.js'
+import { migrateWorkflowScopeApproval } from '../services/workflowScopeAmendment.js'
+import type { WorkflowSessionState } from '../services/workflowTypes.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as os from 'os'
@@ -12,6 +14,19 @@ import {
 } from '../services/persistentStorageMigrations.js'
 
 let tempDir: string
+
+test('workflow scope approval forward migration preserves old pending routes and rejects unsupported approval versions', async () => {
+  const state = JSON.parse(await fs.readFile(path.join(import.meta.dir, '../services/__fixtures__/workflow-sessions/pending-ready-state.json'), 'utf8')) as WorkflowSessionState
+  state.pendingRoute = { routeId: 'legacy-route', phaseId: 'requirements-clarification', fromPhaseId: 'requirements-clarification', targetPhaseId: 'requirements-clarification', intent: 'rework_current_phase', rationale: 'Legacy rework', evidence: [], createdAt: '2026-01-01', requiresConfirmation: true, approvedTargetPhaseId: 'requirements-clarification', status: 'pending' }
+  expect(migrateWorkflowScopeApproval(state)).toBe(state)
+  const before = structuredClone(state.runtimeContract)
+  state.pendingRoute.scopeAmendment = { schemaVersion: 999, batchId: 'B3', addWriteScopes: ['config/settings.py'] } as never
+  const upgraded = migrateWorkflowScopeApproval(state)
+  expect(upgraded.pendingRoute?.status).toBe('rejected')
+  expect(upgraded.pendingRoute?.scopeAmendment).toBeUndefined()
+  expect(upgraded.runStatus).toBe('blocked')
+  expect(upgraded.runtimeContract).toEqual(before)
+})
 
 async function listFiles(dir: string) {
   try {

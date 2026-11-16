@@ -106,6 +106,12 @@ const MANAGED_BUNDLED_WORKFLOW_IDS = new Set([
 ])
 const KNOWN_PREVIOUS_OFFICIAL_WORKFLOW_PACK_SHA256 = new Map<string, ReadonlySet<string>>([
   ['efficient-constrained-dev-debug-workflow-v5', new Set([
+    '04266d0a85d5dd42352f357f481c0d67e49e82d2ec7cf62744f9c3d2db9832d2',
+    'c76c4d8ff7d9673e9d976388d5fbca4bfd7d26fcb08e820ba024ae063e673214',
+    'fd4e2416d0a735df5a3311e696128b5b16700adea15f7df4c1dadeebe4b0424b',
+    '747ce1230da9f357417a2ad338741629d6336e32fdff5905b074553f7bf84c0a',
+    '7e4d861e303b7046c24afb42564693d1f38496f2e48251612a30297654bcb0f5',
+    '5570986a7595a667e241320f4a7d47f2b07cd3c123ace54c36408aad0cdb25d0',
     '5aee81e834a5a97f6d7bce9ccfe50dd10744342e20568917b305d3abd36eebe6',
     'a9d79c1ef8ab146af8fd841acd005f403bedf7be883e61cdb3461c50e3353a08',
     'be16b990f40f67ff19a07c54bf7ae1bc55af400eb36e881e3a97c5570e470830',

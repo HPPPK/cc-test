@@ -39,6 +39,7 @@ export function isWorkflowSessionState(value: unknown): value is WorkflowSession
  */
 export async function resolveWorkflowRuntimeState(
   localWorkflow: unknown,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<WorkflowRuntimeStateResolution> {
   const desktop = getDesktopWorkflowContext()
   if (!desktop) {
@@ -48,9 +49,13 @@ export async function resolveWorkflowRuntimeState(
     }
   }
 
+  const timeoutMs = options.timeoutMs ?? 10_000
+  const deadline = AbortSignal.timeout(timeoutMs)
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline
   try {
     const response = await fetch(
       `${desktop.serverUrl}/api/sessions/${encodeURIComponent(desktop.sessionId)}/workflow`,
+      { signal },
     )
     if (!response.ok) {
       return {
@@ -70,6 +75,9 @@ export async function resolveWorkflowRuntimeState(
     }
     return { source: 'desktop', state }
   } catch (error) {
+    if (deadline.aborted) {
+      return { source: 'desktop-unavailable', reason: `Desktop workflow state request exceeded its ${timeoutMs}ms timeout.` }
+    }
     const reason = `Unable to refresh the current Desktop workflow state: ${errorMessage(error)}`
     logForDebugging(reason)
     return { source: 'desktop-unavailable', reason }
@@ -78,6 +86,7 @@ export async function resolveWorkflowRuntimeState(
 
 export async function recordWorkflowAgentTaskProgressThroughDesktop(
   input: WorkflowAgentTaskProgressInput,
+  options: { timeoutMs?: number } = {},
 ): Promise<boolean> {
   const desktop = getDesktopWorkflowContext()
   if (!desktop) return false
@@ -90,6 +99,7 @@ export async function recordWorkflowAgentTaskProgressThroughDesktop(
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(input),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
       },
     )
   } catch (error) {
@@ -110,6 +120,7 @@ export async function recordWorkflowAgentTaskProgressThroughDesktop(
 
 export async function recordDevelopmentBatchAgentProgressThroughDesktop(
   input: DevelopmentBatchAgentProgressInput,
+  options: { timeoutMs?: number } = {},
 ): Promise<boolean> {
   const desktop = getDesktopWorkflowContext()
   if (!desktop) return false
@@ -122,6 +133,7 @@ export async function recordDevelopmentBatchAgentProgressThroughDesktop(
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(input),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
       },
     )
   } catch (error) {

@@ -3,6 +3,42 @@ import type { Message } from '../../types/message.js'
 import { requireFixtureRecord } from '../../server/__tests__/fixtureAssertions.js'
 import { TaskOutputTool } from './TaskOutputTool.js'
 import { createToolContextFixture, customToolSchemaFixture } from '../toolFixtures.test.js'
+import { terminalAgentReceipts } from '../../utils/task/terminalAgentReceipts.js'
+import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
+import { enqueuePendingNotification, getCommandQueue, resetCommandQueue } from '../../utils/messageQueueManager.js'
+
+for (const block of [false, true]) test(`acknowledges a successfully retrieved terminal result with block=${block}`, async () => {
+  resetCommandQueue()
+  const taskId = `task-output-ack-${block}`
+  let state = { tasks: { [taskId]: { id: taskId, type: 'local_agent', status: 'completed', startTime: 123,
+    description: 'Worker', result: { content: [{ type: 'text', text: 'Actual final result' }] } } } } as any
+  enqueuePendingNotification({ mode: 'task-notification', taskNotificationId: taskId, value: 'Unread terminal result' }, { attempt: 123 })
+  try {
+    const response = await TaskOutputTool.call({ task_id: taskId, block, timeout: 0 }, {
+      getAppState: () => state,
+      setAppState: (update: (previous: typeof state) => typeof state) => { state = update(state) },
+    } as never, undefined as never, undefined as never)
+    expect(response.data).toMatchObject({ retrieval_status: 'success', task: { output: 'Actual final result' } })
+    expect(getCommandQueue()).toHaveLength(0)
+    enqueuePendingNotification({ mode: 'task-notification', taskNotificationId: taskId, value: 'Later resumed result' }, { attempt: 124 })
+    expect(getCommandQueue()).toHaveLength(1)
+  } finally { resetCommandQueue() }
+})
+
+test('retrieves only a registered terminal receipt after the live task has been evicted', async () => {
+  const taskId = 'task-output-terminal-receipt'
+  terminalAgentReceipts.record({ id: taskId, type: 'local_agent', status: 'failed', description: 'Worker', error: 'Actual runtime refusal' } as LocalAgentTaskState)
+  try {
+    const context = { getAppState: () => ({ tasks: {} }) } as never
+    const input = { task_id: taskId, block: true, timeout: 0 }
+    expect(await TaskOutputTool.validateInput?.(input, context)).toEqual({ result: true })
+    const response = await TaskOutputTool.call(input, context, undefined as never, undefined as never)
+    expect(response.data).toMatchObject({ retrieval_status: 'success', task: { task_id: taskId, status: 'failed', error: 'Actual runtime refusal' } })
+    expect(await TaskOutputTool.validateInput?.({ ...input, task_id: '../unknown' }, context)).toMatchObject({ result: false, errorCode: 2 })
+  } finally {
+    terminalAgentReceipts.forget(taskId)
+  }
+})
 
 test('returns the real Playwright audit with an async Agent TaskOutput', () => {
   const result = TaskOutputTool.mapToolResultToToolResultBlockParam({

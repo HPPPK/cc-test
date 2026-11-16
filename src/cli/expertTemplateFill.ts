@@ -118,8 +118,19 @@ function parseFieldsDocument(content: string): ExpertTemplateFillPayload {
   let document: unknown
   try {
     document = JSON.parse(content)
-  } catch (error) {
-    throw new Error(`Could not parse --data JSON: ${error instanceof Error ? error.message : String(error)}`)
+  } catch {
+    let syntaxHint = '请检查多余括号、引号或逗号。'
+    const trimmed = content.trim()
+    if (trimmed.endsWith('}')) {
+      try {
+        // Diagnose the exact failure without accepting or changing the input.
+        if (isRecord(JSON.parse(trimmed.slice(0, -1)))) syntaxHint = '末尾多了一个右花括号 }；前面的 JSON 对象已完整结束。'
+      } catch { /* Other syntax errors keep the generic diagnostic. */ }
+    }
+    throw new ExpertTemplateFillCliError(
+      'Could not parse --data JSON. ' + syntaxHint + '只修正语法并保留字段内容后重试同一 CLI。尚未请求模板服务、未修改报告；这不是研究身份、预算或网络错误，不要重做调研或从 HTML 重建字段。',
+      'EXPERT_TEMPLATE_FILL_INVALID_JSON', 'repair-fields', false,
+    )
   }
   if (!isRecord(document)) throw new Error('--data must be a JSON object with templateId and fields.')
   const allowedKeys = new Set(['format', 'templateId', 'fields', 'mode', 'evidenceAbsorption'])
@@ -414,7 +425,7 @@ export async function expertTemplateFillMain(args: string[]): Promise<void> {
     console.log(JSON.stringify({ ok: true, ...result }))
   } catch (error) {
     if (error instanceof ExpertTemplateFillCliError) {
-      console.error(JSON.stringify({ ok: false, message: error.message, code: error.code, action: error.action, retryable: error.retryable, outputPath: error.outputPath, receipt: error.receipt, ...(['repair-fields', 'rerender-same-fields'].includes(error.action) ? { recoveryCommand: 'cc-jiangxia expert-template-fill --recover-fields' } : {}) }))
+        console.error(JSON.stringify({ ok: false, message: error.message, code: error.code, action: error.action, retryable: error.retryable, outputPath: error.outputPath, receipt: error.receipt, ...(error.code !== 'EXPERT_TEMPLATE_FILL_INVALID_JSON' && ['repair-fields', 'rerender-same-fields'].includes(error.action) ? { recoveryCommand: 'cc-jiangxia expert-template-fill --recover-fields' } : {}) }))
     } else {
       console.error(`expert-template-fill: ${error instanceof Error ? error.message : String(error)}`)
     }

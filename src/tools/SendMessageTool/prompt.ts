@@ -24,6 +24,8 @@ A listed peer is alive and will process your message — no "busy" state; messag
 
 Send a message to another agent.
 
+For an ordinary Agent worker, use the exact returned agentId as \`to\` and include \`summary\`. A stopped worker resumes from its original transcript; do not launch a new Agent to repair its saved work. This continuation does not require agent teams. Team names, broadcasts and structured team protocols require agent teams to be enabled.
+
 \`\`\`json
 {"to": "researcher", "summary": "assign task 1", "message": "start on task #1"}
 \`\`\`
@@ -33,7 +35,7 @@ Send a message to another agent.
 | \`"researcher"\` | Teammate by name |
 | \`"*"\` | Broadcast to all teammates — expensive (linear in team size), use only when everyone genuinely needs it |${udsRow}
 
-Your plain text output is NOT visible to other agents — to communicate, you MUST call this tool. Messages from teammates are delivered automatically; you don't check an inbox. Refer to teammates by name, never by UUID. When relaying, don't quote the original — it's already rendered to the user.${udsSection}
+Your plain text output is NOT visible to other agents — to communicate, you MUST call this tool. Messages from teammates are delivered automatically; you don't check an inbox. Refer to team members by name; for ordinary Agent continuation copy the returned agentId exactly. When relaying, don't quote the original — it's already rendered to the user.${udsSection}
 
 ## Protocol responses (legacy)
 

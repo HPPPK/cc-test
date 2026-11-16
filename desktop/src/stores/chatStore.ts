@@ -972,11 +972,42 @@ function mergeRestoredNestedToolActivities(
 }
 
 /**
- * History is authoritative for a completed top-level question. A tab switch can
- * race a live card that was created before its tool_result persisted; retain
- * unrelated live stream state, but replace that one stale question pair so it
- * cannot render as answerable after the server has already accepted its answer.
+ * Supplement a partially restored timeline without replacing live messages or
+ * touching stream state. Tool identity is stable across socket and HTTP paths.
  */
+function mergeRestoredConversationMessages(messages: UIMessage[], restoredMessages: UIMessage[]): UIMessage[] {
+  const existingIds = new Set(messages.map(message => message.id))
+  const toolKey = (message: UIMessage) => message.type === 'tool_use' || message.type === 'tool_result'
+    ? `${message.type}:${message.toolUseId}:${message.parentToolUseId ?? ''}` : null
+  const textKey = (message: UIMessage) => (
+    message.type === 'user_text' || message.type === 'assistant_text' || message.type === 'thinking' || message.type === 'system'
+  ) ? JSON.stringify([message.type, message.content, message.type === 'user_text' ? message.attachments : undefined]) : null
+  const existingTools = new Set(messages.map(toolKey).filter(key => key !== null))
+  const historyEnd = restoredMessages.reduce((end, message) => Math.max(end, message.timestamp), -Infinity)
+  // UI and transcript text IDs differ. Match occurrences rather than a content
+  // Set, and never consume newer live turns against a stale HTTP snapshot.
+  const textCounts = new Map<string, number>()
+  for (const message of messages) {
+    const key = textKey(message)
+    if (key && message.timestamp <= historyEnd) textCounts.set(key, (textCounts.get(key) ?? 0) + 1)
+  }
+  const missing: UIMessage[] = []
+  for (const message of restoredMessages) {
+    const tool = toolKey(message)
+    const text = textKey(message)
+    if (tool) {
+      if (!existingTools.has(tool)) missing.push(message)
+      existingTools.add(tool)
+    } else if (text) {
+      const remaining = textCounts.get(text) ?? 0
+      if (remaining > 0) textCounts.set(text, remaining - 1)
+      else if (!existingIds.has(message.id)) missing.push(message)
+    }
+  }
+  return missing.length ? [...messages, ...missing].sort((a, b) => a.timestamp - b.timestamp) : messages
+}
+
+/** A persisted answered question replaces only its stale live question pair. */
 function mergeRestoredAnsweredAskUserQuestions(
   messages: UIMessage[],
   restoredMessages: UIMessage[],
@@ -1848,7 +1879,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             messages: mergeRestoredAnsweredAskUserQuestions(
               mergeRestoredNestedToolActivities(
                 mergeRestoredTerminalGoalEvents(
-                  mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks),
+                  mergeRestoredConversationMessages(mergeBackgroundTaskMessages(s.messages, restoredBackgroundTasks), uiMessages),
                   uiMessages,
                 ),
                 uiMessages,

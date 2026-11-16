@@ -10,6 +10,7 @@ import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from './ex
 import { ZipPackAdapter } from './zipPackAdapter.js'
 import { expertHumanVerificationService } from './expertHumanVerificationService.js'
 import { expertResearchAutoContinueService } from './expertResearchAutoContinueService.js'
+import { commercializationResearchBudgetService } from './commercializationResearchBudgetService.js'
 
 const adapter = new ZipPackAdapter()
 const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -1920,6 +1921,25 @@ describe('ExpertSessionService', () => {
     expect(afterRejectedAudit?.expert?.researchEvidence).toBeUndefined()
   })
 
+  it('returns saved decision gaps with real remaining budget to the parent researcher handoff', async () => {
+    const configRoot = await makeTempRoot('expert-followup-context-config-')
+    const projectRoot = await makeTempRoot('expert-followup-context-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const expert = (await sessionService.getSession(sessionId))!.expert!
+    expert.runtimeBinding!.outputProtocol = { path: 'protocol.json', content: JSON.stringify({ researchQualityCheckpoint: { version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 2 } }) }
+    expert.researchEvidence = { records: [{ agentId: 'original-a', agentType: 'expert-evidence-researcher', recordedAt: new Date().toISOString(), artifactPath: 'commercialization-research/02-competitors.parts/a.md', content: '# Evidence\n## 关键缺口与下一路线\n已有相关官方链接未跟进，缺收费边界。', entries: [] }], updatedAt: new Date().toISOString() }
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+    const budget = spyOn(commercializationResearchBudgetService, 'inspect').mockReturnValue({ remainingStarts: 3, timeRemainingMs: 60_000, remainingByLane: { 'commercialization-research/02-competitors.md': 1 }, pendingByLane: {} })
+    try {
+      expect((await service.getPostReviewEvidenceAbsorptionContext(sessionId, 'expert-evidence-researcher'))?.instruction).toContain('已有相关官方链接未跟进')
+      budget.mockReturnValue({ remainingStarts: 0, timeRemainingMs: 0, remainingByLane: {}, pendingByLane: {} })
+      expect(await service.getPostReviewEvidenceAbsorptionContext(sessionId, 'expert-evidence-researcher')).toBeUndefined()
+    } finally { budget.mockRestore() }
+  })
+
   it('returns a compact post-review instruction only to the ZIP-designated reviewer', async () => {
     const configRoot = await makeTempRoot('expert-absorption-context-config-')
     const projectRoot = await makeTempRoot('expert-absorption-context-project-')
@@ -2235,6 +2255,7 @@ describe('ExpertSessionService', () => {
       content: 'commercialization-research/02-competitors.md',
       entries: [{
         auditId: 'talkingdata-opened',
+        detail: 'extracted text from body: ' + 'Navigation and feature overview. '.repeat(30) + '\nFree commercial use is allowed. Renewal discount continues.\n[partial excerpt; absence here does not prove absence from the page]',
         target: 'https://www.talkingdata.com/',
         finalUrl: 'https://www.talkingdata.com/reports/mobile-market',
         kind: 'url',
@@ -2254,6 +2275,9 @@ describe('ExpertSessionService', () => {
     expect(audit).toContain('同域具体页已打开：https://www.talkingdata.com/reports/mobile-market')
     expect(audit).toContain('talkingdata.com')
     expect(audit).toContain('talkingdata-opened')
+    expect(audit).toContain('Free commercial use is allowed. Renewal discount continues.')
+    expect(audit).toContain('partial excerpt; absence here does not prove absence from the page')
+    expect(audit).toContain('原文摘录')
 
     // The receipt belongs only to Experts that actually ship the optional
     // user-curated source-library skill. It must not leak into unrelated

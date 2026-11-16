@@ -5,6 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as expertCli from './expertTemplateFill.js'
 import { EXPERT_TEMPLATE_FILL_FORMAT } from '../utils/expertTemplateFill.js'
+import { guardExpertResearchToolCall } from '../services/tools/expertResearchBudgetRuntime.js'
 import { expertTemplateFillMain, parseExpertTemplateFillCliArgs, queryExpertTemplateFillSchema, runExpertTemplateFillCli } from './expertTemplateFill.js'
 
 const roots: string[] = []
@@ -29,6 +30,27 @@ async function fixture(document: Record<string, unknown> = {}) {
 }
 
 describe('expert CLI receipt delivery', () => {
+  test('malformed literal report data reaches JSON validation without research reservation or file changes, then correct data delivers', async () => {
+    const f = await fixture({ mode: 'patch' })
+    const original = await f.dependencies.readStdin()
+    const malformed = original.slice(0, -1) + ',"description":"Playwright and curl are source descriptions"}}'
+    const command = "claude expert-template-fill --data-stdin --output report.html <<'JSON'\n" + malformed + '\nJSON'
+    await guardExpertResearchToolCall({ toolName: 'Bash', input: { command }, env: {
+      ...f.dependencies.env, CC_JIANGXIA_EXPERT_TEMPLATE_FILL_WRITE: '1', CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY: 'cli-only',
+    }, fetchImpl: async () => { throw new Error('Report data must not reserve browser access') } })
+    f.dependencies.readStdin = async () => malformed
+    await expect(runExpertTemplateFillCli(f.options, f.dependencies)).rejects.toMatchObject({
+      code: 'EXPERT_TEMPLATE_FILL_INVALID_JSON', action: 'repair-fields', retryable: false,
+      message: expect.stringContaining('末尾多了一个右花括号'),
+    })
+    expect(f.calls).toHaveLength(0)
+    await expect(fs.access(f.outputPath)).rejects.toThrow()
+    f.dependencies.readStdin = async () => original
+    await runExpertTemplateFillCli(f.options, f.dependencies)
+    expect(f.calls.map(call => call.url.split('/').at(-1))).toEqual(['template-fill', 'template-fill-commit'])
+    expect(await fs.readFile(f.outputPath, 'utf8')).toBe('<html>fixed</html>')
+  })
+
   test('delivers through the real HTTP boundary and acknowledges the on-disk bytes', async () => {
     const f = await fixture({ mode: 'finalize' })
     let acknowledged = false

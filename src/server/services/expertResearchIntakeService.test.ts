@@ -11,6 +11,14 @@ const clear = { dimensions: [
 const uncertain = { dimensions: clear.dimensions.map(d => d.id === 'coreTask' ? { id: d.id, provenance: 'unknown', materialImpact: '决定竞品集合', userOwnedReason: '不知道用户要做什么' } : d) }
 const card = { questions: [{ id: 'coreTask', prompt: '最先帮助用户完成哪件事？', choices: [{ id: 'review', label: '复习知识' }, { id: 'delegate', label: '先探索，你来决定' }] }] }
 
+it('identifies the exact already-confirmed dimension when an intake card contradicts assessment', () => {
+  const state = assessResearchIntake(undefined, uncertain, [human])
+  const inconsistent = { questions: [...card.questions, { ...card.questions[0]!, id: 'deliveryBoundary', prompt: '首发哪个平台？' }] }
+  expect(() => issueResearchIntakeQuestion(state, 'r1', 't1', inconsistent)).toThrow('deliveryBoundary')
+  expect(state.pending).toBeUndefined()
+  expect(issueResearchIntakeQuestion(state, 'r1', 't1', card).pending?.card.questions).toHaveLength(1)
+})
+
 describe('adaptive commercialization intake', () => {
   it('admits grounded clear or explicitly delegated scope without fixed questions', () => {
     const state = assessResearchIntake(undefined, clear, [human], '2026-11-10T00:00:00Z')

@@ -17,6 +17,10 @@ export {
 const TERMINAL_LABELS = new Set<WorkflowLabel>(['duplicate', 'invalid', 'wontfix'])
 const NON_ACTIONABLE_LABELS = new Set<WorkflowLabel>(['question', 'duplicate', 'invalid', 'wontfix'])
 
+export class WorkflowRouteConflictError extends Error {
+  readonly code = 'WORKFLOW_ROUTE_CONFLICT'
+}
+
 type PhaseApplicabilityInput = {
   phase: {
     id: string
@@ -54,13 +58,19 @@ export function routeWorkflowTask(input: WorkflowTaskRouterInput): WorkflowTaskR
     input.repoMetadata ? JSON.stringify(input.repoMetadata) : '',
   ].filter(Boolean).join('\n')
   const normalized = corpus.toLowerCase()
+  const request = input.request.toLowerCase()
+  const completeFlow = requestsCompleteDevelopmentWorkflow(request)
+  if (completeFlow && input.forcedLabel && NON_ACTIONABLE_LABELS.has(input.forcedLabel)) {
+    throw new WorkflowRouteConflictError('WORKFLOW_ROUTE_CONFLICT: A complete development workflow cannot use a non-actionable forced label. Choose an actionable label or remove the complete-flow request.')
+  }
 
-  const primaryLabel = input.forcedLabel ?? classifyPrimaryLabel(normalized)
+  const primaryLabel = input.forcedLabel ?? classifyPrimaryLabel(request, normalized)
   const secondaryLabels = classifySecondaryLabels(normalized, primaryLabel)
-  const effort = classifyEffort(normalized, primaryLabel, input.forcedLabel)
-  const suggestedPath = suggestedPathFor(primaryLabel, effort)
+  const inferredEffort = classifyEffort(normalized, primaryLabel, input.forcedLabel)
+  const effort = completeFlow && inferredEffort === 'light' ? 'standard' : inferredEffort
+  const suggestedPath = suggestedPathFor(completeFlow ? 'enhancement' : primaryLabel, effort)
   const confidence = confidenceFor(normalized, primaryLabel, input.forcedLabel)
-  const rationale = rationaleFor(normalized, primaryLabel, secondaryLabels, effort)
+  const rationale = rationaleFor(normalized, primaryLabel, secondaryLabels, effort, request)
   const terminalReason = TERMINAL_LABELS.has(primaryLabel)
     ? terminalReasonFor(primaryLabel)
     : undefined
@@ -109,10 +119,40 @@ export function phaseAppliesToRoute(input: PhaseApplicabilityInput): PhaseApplic
   }
 }
 
-function classifyPrimaryLabel(normalized: string): WorkflowLabel {
-  if (matches(normalized, ['duplicate', '重复', '一样', 'same as', 'already exists', '上次那个'])) return 'duplicate'
-  if (matches(normalized, ['wontfix', "won't fix", '不修', '不做', '不处理'])) return 'wontfix'
-  if (matches(normalized, ['invalid', '无效', '不合法', '不是需求'])) return 'invalid'
+/** Explicit complete-flow requests affect path selection, not the requested type of work. */
+export function requestsCompleteDevelopmentWorkflow(request: string): boolean {
+  return positiveRequestClauses(request.toLowerCase()).some(clause =>
+    /(?:完整|全部|全套|所有)[^。；;!?！？\n]{0,16}(?:七|7)\s*(?:个)?阶段|(?:完整|全套)[^。；;!?！？\n]{0,8}(?:开发)?(?:工作流|流程)|(?:complete|full|all)\s+(?:seven|7)[ -]stage(?:s|\b)/.test(clause))
+}
+
+function positiveRequestClauses(request: string): string[] {
+  return request.split(/[。；;!?！？\n，,]|\.\s+/).map(clause => clause.trim()).filter(clause =>
+    clause && !/^(?:请)?(?:不必|不要|不得|无需|不用|不能|禁止|不做|不因)|^(?:please\s+)?(?:do not|don't|never|without)\b/.test(clause))
+}
+
+function explicitTerminalLabel(request: string): WorkflowLabel | null {
+  if (/^(?:重复需求|重复问题)[。.!！\s]*$/.test(request.trim())) return 'duplicate'
+  if (/^(?:无效|不是需求)[。.!！\s]*$/.test(request.trim())) return 'invalid'
+  if (/^(?:不修(?:复|了)?|不做(?:了)?|不处理(?:了)?)[。.!！\s]*$/.test(request.trim())) return 'wontfix'
+  for (const clause of positiveRequestClauses(request)) {
+    // A negative classification is not a decision to stop. Only request text can authorize one.
+    if (/(?:不是|并非|不算|不要|不应|不能)|\b(?:not|never|don't)\b/.test(clause)) continue
+    if (/^(?:duplicate|invalid|wontfix|won't fix)[.!。！\s]*$/.test(clause)) return clause.startsWith('duplicate') ? 'duplicate' : clause.startsWith('invalid') ? 'invalid' : 'wontfix'
+    if (/(?:按|标记为?|归类为?|判定为?)[^。；;]{0,12}(?:duplicate|重复需求|重复问题)|(?:这|该|此|本).{0,18}(?:需求|请求|问题).{0,12}(?:重复|一样)|这和上次那个需求一样|\b(?:this|the)\s+(?:request|issue|task)\s+(?:is\s+)?(?:a\s+)?duplicate\b/.test(clause)) return 'duplicate'
+    if (/(?:按|标记为?|归类为?|判定为?)[^。；;]{0,12}(?:invalid|无效)|(?:这|该|此|本).{0,12}(?:需求|请求|问题)(?:是|为)?无效|\b(?:this|the)\s+(?:request|issue|task)\s+is\s+invalid\b/.test(clause)) return 'invalid'
+    if (/(?:按|标记为?|归类为?)[^。；;]{0,12}(?:wontfix|won't fix)|(?:这|该|此|本).{0,12}(?:需求|请求|问题)(?:决定)?(?:不修复|不处理了|不做了)|\b(?:we|i)\s+(?:won't|will not)\s+(?:fix|implement)\s+(?:this|the)\s+(?:issue|request|task)\b/.test(clause)) return 'wontfix'
+  }
+  return null
+}
+
+function classifyPrimaryLabel(request: string, normalized: string): WorkflowLabel {
+  const terminal = explicitTerminalLabel(request)
+  if (terminal) return terminal
+  const clauses = positiveRequestClauses(request)
+  // Main requested work outranks incidental deliverables such as login, tests and README.
+  if (clauses.some(clause => /^(?:(?:请你?|帮我|我需要你?|我想要?|我要|需要你?|麻烦你?|please|can you)\s*)*(?:创建|开发|构建|搭建|做一个|实现一个|交付一个|从零).{0,60}(?:系统|应用|产品|平台|网站|工具|\bapp\b|mvp|saas)|^(?:please\s+|can you\s+|i (?:want|need) you to\s+)*(?:build|create|develop)\b.{0,70}\b(?:system|application|app|product|platform|website|tool|mvp|saas)\b/.test(clause))) return 'new-product'
+  if (clauses.some(clause => /^(?:请|帮我|需要|我要|我想)?\s*(?:重构|整理代码|refactor\b|cleanup\b)/.test(clause))) return 'refactor'
+  if (clauses.some(clause => /^(?:请|帮我|需要|我要|我想)?\s*(?:新增|增加|优化|enhance\b|improve\b|add\b)/.test(clause))) return 'enhancement'
   if (matches(normalized, ['help wanted', '帮忙看', '需要帮助'])) return 'help-wanted'
   if (matches(normalized, ['good first issue', '新手', '入门任务'])) return 'good-first-issue'
   if (matches(normalized, ['500', 'error', 'exception', 'failed', 'failure', 'stack', 'bug', '报错', '控制台', '点击没反应', '没反应', '崩溃', '登录页'])) return 'bug'
@@ -121,7 +161,7 @@ function classifyPrimaryLabel(normalized: string): WorkflowLabel {
   if (matches(normalized, ['error handling', 'recovery hint', '错误处理', '异常处理', '错误提示'])) return 'error-handling'
   if (matches(normalized, ['test', 'tests', 'coverage', '测试', '回归'])) return 'test'
   if (matches(normalized, ['refactor', 'cleanup', '重构', '整理代码'])) return 'refactor'
-  if (matches(normalized, ['mvp', 'saas', 'new product', '从零', '创建', '做一个', '开发一个', '记账 mvp'])) return 'new-product'
+  if (matches(clauses.join('\n'), ['mvp', 'saas', 'new product', '从零', '创建', '做一个', '开发一个', '记账 mvp'])) return 'new-product'
   if (matches(normalized, ['enhance', 'enhancement', 'improve', 'feature', '新增', '增加', '优化'])) return 'enhancement'
   if (matches(normalized, ['question', '请问', '怎么', '如何', '?', '？'])) return 'question'
   return 'enhancement'
@@ -183,12 +223,13 @@ function rationaleFor(
   primary: WorkflowLabel,
   secondaryLabels: WorkflowLabel[],
   effort: EffortMode,
+  request: string,
 ): string {
   const signals: string[] = []
   if (matches(normalized, ['500'])) signals.push('500 error')
   if (matches(normalized, ['readme'])) signals.push('README request')
   if (matches(normalized, ['mvp', 'saas'])) signals.push('MVP/product scope')
-  if (matches(normalized, ['重复', 'duplicate', '一样'])) signals.push('duplicate wording')
+  if (primary === 'duplicate' && explicitTerminalLabel(request) === 'duplicate') signals.push('duplicate wording')
   if (matches(normalized, ['test', '测试'])) signals.push('test evidence')
 
   const signalText = signals.length ? ` Signals: ${signals.join(', ')}.` : ''

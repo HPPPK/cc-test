@@ -49,8 +49,16 @@ import {
   peek,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
+  acknowledgeTaskNotifications,
+  pruneObsoleteTaskNotifications,
+  takeTaskNotificationBatch,
+  taskNotificationReady,
+  taskNotificationsWaitingForUser,
+  restoreTaskNotificationBatch,
 } from 'src/utils/messageQueueManager.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
+import { readTaskNotificationBoundary } from 'src/utils/taskNotificationBoundary.js'
+import type { NotificationState } from 'src/utils/messageQueueManager.js'
 import {
   getSessionState,
   notifySessionStateChanged,
@@ -1017,6 +1025,7 @@ function runHeadlessStreaming(
   turnInterruptionState?: TurnInterruptionState,
 ): AsyncIterable<StdoutMessage> {
   let running = false
+  let notificationRetryRequested = false
   let runPhase:
     | 'draining_commands'
     | 'waiting_for_agents'
@@ -1935,7 +1944,30 @@ function runHeadlessStreaming(
     // notifications are drained by the subagent's mid-turn gate in query.ts.
     // Defined outside the try block so it's accessible in the post-finally
     // queue re-checks at the bottom of run().
+    let notificationProcessingFailed = false
+    let notificationState: NotificationState = getAppState()
+    let lastBackgroundNotificationRead = 0
+    const refreshNotificationState = async () => {
+      const local = getAppState()
+      const queued = getCommandsByMaxPriority('later')
+      const hasMachineNotice = queued.some(cmd => cmd.mode === 'task-notification' && cmd.messageKind !== 'user_input')
+      // Idle background waiting is only a delivery hint. Actual queued results always refresh authority.
+      if (!hasMachineNotice && Date.now() - lastBackgroundNotificationRead < 1000) return
+      notificationState = (hasMachineNotice
+        || getRunningTasks(local).some(task => isBackgroundTask(task) && task.type !== 'in_process_teammate'))
+        ? await readTaskNotificationBoundary(local, {
+          skipDesktopRefresh: queued.some(cmd => cmd.mode !== 'task-notification' || cmd.messageKind === 'user_input'),
+          interruptOnHumanInput: true,
+          wakeOnUnavailable: () => {
+            if (running) notificationRetryRequested = true
+            else void run()
+          },
+        }) : local
+      lastBackgroundNotificationRead = Date.now()
+    }
     const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
+      && !(notificationProcessingFailed && cmd.mode === 'task-notification') && taskNotificationReady(cmd, notificationState)
+    let activeNotificationBatch: QueuedCommand[] = []
 
     try {
       let command: QueuedCommand | undefined
@@ -1946,6 +1978,8 @@ function runHeadlessStreaming(
       // ask() call so messages that queued up during a long turn coalesce
       // into a single follow-up turn instead of N separate turns.
       const drainCommandQueue = async () => {
+        await refreshNotificationState()
+        pruneObsoleteTaskNotifications(notificationState)
         while ((command = dequeue(isMainThread))) {
           if (
             command.mode !== 'prompt' &&
@@ -1957,10 +1991,10 @@ function runHeadlessStreaming(
             )
           }
 
-          // Non-prompt commands (task-notification, orphaned-permission) carry
-          // side effects or orphanedPermission state, so they process singly.
+          // Task results share one model turn; permission commands stay single.
           // Prompt commands greedily collect followers with matching workload.
-          const batch: QueuedCommand[] = [command]
+          const batch: QueuedCommand[] = takeTaskNotificationBatch(command, notificationState)
+          if (command.mode === 'task-notification') activeNotificationBatch = batch
           if (command.mode === 'prompt') {
             while (canBatchWith(command, peek(isMainThread))) {
               batch.push(dequeue(isMainThread)!)
@@ -1973,6 +2007,9 @@ function runHeadlessStreaming(
               }
             }
           }
+          if (command.mode === 'task-notification' && batch.length > 1) {
+            command = { ...command, value: joinPromptValues(batch.map(item => item.value)) }
+          }
           const batchUuids = batch.map(c => c.uuid).filter(u => u !== undefined)
 
           // QueryEngine will emit a replay for command.uuid (the last uuid in
@@ -1980,7 +2017,7 @@ function runHeadlessStreaming(
           // rest so consumers that track per-uuid delivery (clank's
           // asyncMessages footer, CCR) see an ack for every message they sent,
           // not just the one that survived the merge.
-          if (options.replayUserMessages && batch.length > 1) {
+          if (options.replayUserMessages && command.mode === 'prompt' && batch.length > 1) {
             for (const c of batch) {
               if (c.uuid && c.uuid !== command.uuid) {
                 output.enqueue({
@@ -2028,8 +2065,9 @@ function runHeadlessStreaming(
           // This matches TUI behavior where useQueueProcessor always feeds
           // notifications to the model regardless of coordinator mode.
           if (command.mode === 'task-notification') {
+            for (const notification of batch) {
             const notificationText =
-              typeof command.value === 'string' ? command.value : ''
+              typeof notification.value === 'string' ? notification.value : ''
             // Parse the XML-formatted notification
             const taskIdMatch = notificationText.match(
               /<task-id>([^<]+)<\/task-id>/,
@@ -2123,6 +2161,7 @@ function runHeadlessStreaming(
               })
             }
             // No continue -- fall through to ask() so the model processes the result
+            }
           }
 
           const input = command.value
@@ -2392,6 +2431,8 @@ function runHeadlessStreaming(
             }
           }
 
+          acknowledgeTaskNotifications(batch)
+          activeNotificationBatch = []
           // Log headless profiler metrics for this turn and start next turn
           logHeadlessProfilerTurn()
           logQueryProfileReport()
@@ -2422,8 +2463,9 @@ function runHeadlessStreaming(
         // doesn't hit this.
         waitingForAgents = false
         {
+          await refreshNotificationState()
           const state = getAppState()
-          const hasRunningBg = getRunningTasks(state).some(
+          const hasRunningBg = !taskNotificationsWaitingForUser(notificationState) && getRunningTasks(state).some(
             t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
           )
           const hasMainThreadQueued = peek(isMainThread) !== undefined
@@ -2456,6 +2498,10 @@ function runHeadlessStreaming(
         }
       }
     } catch (error) {
+      // Preserve unread terminal results if model processing throws.
+      notificationProcessingFailed = activeNotificationBatch.length > 0
+      restoreTaskNotificationBatch(activeNotificationBatch)
+      activeNotificationBatch = []
       // Emit error result message before shutting down
       // Write directly to structuredIO to ensure immediate delivery
       try {
@@ -2519,6 +2565,11 @@ function runHeadlessStreaming(
       }
     }
 
+    if (notificationRetryRequested) {
+      notificationRetryRequested = false
+      void run()
+      return
+    }
     // Re-check the queue after releasing the mutex. A message may have
     // arrived (and called run()) between the last dequeue() returning
     // undefined and `running = false` above. In that case the caller

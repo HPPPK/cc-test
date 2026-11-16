@@ -361,6 +361,7 @@ export class WorkflowPreviewService {
       cwd,
       shell: true,
       detached: true,
+      windowsHide: true,
       env: { ...process.env, FORCE_COLOR: '0' },
     })
     const record: PreviewProcessRecord = {

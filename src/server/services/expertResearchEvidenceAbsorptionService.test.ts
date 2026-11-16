@@ -60,6 +60,28 @@ const researchEvidence = {
   updatedAt: '2026-08-18T04:00:00.000Z',
 }
 
+test('partial source updates retain still-cited original rows despite different 07 labels', () => {
+  const original = { value: ['[1]', '官方页', '原文摘要', '原始日期', 'https://typora.io/'], auditId: 'product' }
+  const unused = { value: ['[3]', '帮助', '未采用', '原始日期', 'https://typora.io/support'], auditId: 'support' }
+  const replacement = ['[2]', '其他来源', '保持输入', '日期', 'https://typora.io/support']
+  const result = mergeAuditedOpenedSourcesIntoSourceRows({ policy: policy(), templateFields, researchEvidence,
+    fields: { COMPETITOR_NOTES: '已保存的正文仍引用原来源。[1]', SOURCE_ROWS: [replacement] },
+    previousSourceRows: [original, unused], absorptionArtifactContent: '[S9]: audit:product',
+  })
+  expect(result.fields.SOURCE_ROWS).toEqual([{ value: replacement }, original])
+})
+
+test('a used source omitted by a replacement table restores original metadata instead of inference prose', () => {
+  const original = ['[S1]', '官网定价', '原始来源说明：免费版与付费版条件', '页面更新2026-07-21', 'audit:product']
+  const result = mergeAuditedOpenedSourcesIntoSourceRows({
+    policy: policy(), templateFields, researchEvidence,
+    fields: { COMPETITOR_NOTES: 'AI推断：可以尝试低价切入。[S1]', SOURCE_ROWS: [] },
+    absorptionArtifactContent: '[S1]: audit:product',
+    previousSourceRows: [original],
+  })
+  expect(result.fields.SOURCE_ROWS).toEqual([original])
+})
+
 describe('expertResearchEvidenceAbsorptionService', () => {
   test('parses the opt-in post-review policy', () => {
     expect(policy()).toMatchObject({
@@ -76,7 +98,7 @@ describe('expertResearchEvidenceAbsorptionService', () => {
 
 
 
-  test('appends only report-used audited sources with their actual supporting context', () => {
+  test('appends only report-used audited sources without treating report prose as page abstracts', () => {
     const result = mergeAuditedOpenedSourcesIntoSourceRows({
       policy: policy(),
       templateFields,
@@ -112,7 +134,8 @@ describe('expertResearchEvidenceAbsorptionService', () => {
       expect.objectContaining({ auditId: 'support', value: expect.arrayContaining(['https://typora.io/support']) }),
       expect.objectContaining({ auditId: 'serp', value: expect.arrayContaining(['audit:serp']) }),
     ]))
-    expect(rows.map((row) => row.value.join(' ')).join('\n')).toContain('license activation')
+    expect(rows.map((row) => row.value.join(' ')).join('\n')).not.toContain('license activation')
+    expect(rows.map((row) => row.value.join(' ')).join('\n')).toContain('具体观察及证据边界见研究记录')
     expect(rows.map((row) => row.auditId)).not.toEqual(expect.arrayContaining(['limited', 'failed', 'pending', 'redirected', 'unused']))
   })
 
@@ -1021,6 +1044,26 @@ test('does not guess conflicting or unused absorption reference definitions', ()
     fields: { COMPETITOR_NOTES: 'Support [S1]', SOURCE_ROWS: [] },
   })
   expect(result.appended).toBe(0)
+})
+
+test.each([false, true])('bullet source definitions retain distinct Google queries and repair copied identities (explicit=%s)', explicit => {
+  const english = 'https://www.google.com/search?q=Windows+middle+click+remap'
+  const quicker = 'https://www.google.com/search?q=Quicker+middle+click'
+  const evidence = { ...researchEvidence, records: [{ ...researchEvidence.records[0]!, entries: [
+    { auditId: 'english', target: english, finalUrl: english, kind: 'search' as const, status: 'opened' as const, searchEngine: 'Google' as const, query: 'Windows middle click remap', searchResultStatus: 'results_observed' as const },
+    { auditId: 'quicker', target: quicker, finalUrl: quicker, kind: 'search' as const, status: 'opened' as const, searchEngine: 'Google' as const, query: 'Quicker middle click', searchResultStatus: 'results_observed' as const },
+  ] }] }
+  const result = mergeAuditedOpenedSourcesIntoSourceRows({
+    policy: policy(), templateFields, researchEvidence: evidence,
+    absorptionArtifactContent: '- [S10]: audit:english — English remapping search\n- [S15]: audit:quicker — Quicker panel search',
+    fields: { COMPETITOR_NOTES: 'Remapping tutorial [S10]. Quicker panel search snippet [S15].', SOURCE_ROWS: [
+      ['[S15]', '搜索摘要', 'Quicker panel', '今天', explicit ? 'audit:english' : english],
+    ] },
+  })
+  const resolved = resolveExpertResearchAuditSourceReferences({ policy: policy(), templateFields, researchEvidence: evidence, fields: result.fields })
+  const rows = resolved.fields.SOURCE_ROWS as Array<{ value: string[]; auditId?: string }>
+  expect(rows.find(row => row.value[0] === '[S15]')?.value[4]).toBe(quicker)
+  expect(rows.find(row => row.value[0] === '[S10]')?.value[4]).toBe(english)
 })
 
 

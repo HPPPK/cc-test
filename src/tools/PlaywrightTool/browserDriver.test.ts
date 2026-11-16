@@ -22,5 +22,5 @@ test('rollback loads the original driver without importing the candidate', async
 
 test('loads the pinned candidate for the managed default', async () => {
   const original = { name: 'unused-original' } as any
-  expect(await loadManagedChromium(original, {})).toBe((await import('patchright')).chromium)
+  expect(Object.is(await loadManagedChromium(original, {}), (await import('patchright')).chromium)).toBe(true)
 })

@@ -642,7 +642,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const development = await loadTemplate('efficient-constrained-dev-debug-workflow-v5.zip')
     const developmentIntake = development.phases.find((phase) => phase.id === 'route-context')
     const developmentPhase = (id: string) => development.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(development.version).toBe('26')
+    expect(development.version).toBe('32')
     expect(developmentPhase('delegate-implement')).toContain('run_in_background=true')
     expect(developmentPhase('delegate-implement')).toContain('Reviewer uses file reads and recorded evidence only')
     expect(developmentPhase('scenario-review')).toContain('workflow_role=qa')

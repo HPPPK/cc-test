@@ -1,8 +1,12 @@
 import { toolNameFixture } from '../toolFixtures.test.js'
+import { AgentTool } from './AgentTool.js'
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdir, rm } from 'fs/promises'
+import { getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js'
 import type { AppState } from '../../state/AppState.js'
-import { IDLE_SPECULATION_STATE } from '../../state/AppStateStore.js'
+import { getDefaultAppState, IDLE_SPECULATION_STATE } from '../../state/AppStateStore.js'
 import { createTaskStateBase } from '../../Task.js'
+import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { Message } from '../../types/message.js'
@@ -11,7 +15,7 @@ import {
   getCommandQueue,
   resetCommandQueue,
 } from '../../utils/messageQueueManager.js'
-import { createAssistantMessage, createUserMessage } from '../../utils/messages.js'
+import { createAssistantAPIErrorMessage, createAssistantMessage, createUserMessage } from '../../utils/messages.js'
 import {
   buildLargeToolResultMessage,
   extractMachineReadableToolResultArtifacts,
@@ -1177,6 +1181,87 @@ describe('runAsyncAgentLifecycle', () => {
     resetCommandQueue()
   })
 
+  test.each(['api-error', 'recovered-api', 'blocked'] as const)('preserves runtime error authority and normal business blocking: %s', async scenario => {
+    const taskId = `agent-terminal-${scenario}-${crypto.randomUUID()}`
+    const task: LocalAgentTaskState = {
+      ...createTaskStateBase(taskId, 'local_agent', 'Scoped work'), type: 'local_agent', status: 'running',
+      agentId: taskId, prompt: 'Scoped work', agentType: 'general-purpose', retrieved: false,
+      lastReportedToolCount: 0, lastReportedTokenCount: 0, isBackgrounded: true,
+      pendingMessages: [], retain: false, diskLoaded: false,
+    }
+    let app: AppState = { ...getDefaultAppState(), tasks: { [taskId]: task } }
+    const context: ToolUseContext = {
+      options: { commands: [], debug: false, mainLoopModel: 'test-model', tools: [], verbose: false, thinkingConfig: { type: 'disabled' }, mcpClients: [], mcpResources: {}, isNonInteractiveSession: true, agentDefinitions: { activeAgents: [], allAgents: [] } },
+      abortController: new AbortController(), readFileState: createFileStateCacheWithSizeLimit(10),
+      getAppState: () => app, setAppState: update => { app = update(app) },
+      setInProgressToolUseIDs() {}, setResponseLength() {}, updateFileHistoryState() {}, updateAttributionState() {}, messages: [],
+    }
+    let validationCalls = 0
+    const receipts: string[] = []
+    const report = 'Scoped work is saved.\n`readyForReview: false`，HTTP check remains unverified.'
+    const outcome = await runAsyncAgentLifecycle({
+      taskId, abortController: context.abortController,
+      makeStream: async function* () {
+        if (scenario !== 'blocked') yield createAssistantAPIErrorMessage({ content: 'Path contains null bytes' })
+        if (scenario !== 'api-error') yield createAssistantMessage({ content: report })
+      },
+      metadata: { prompt: 'Scoped work', resolvedAgentModel: 'test', isBuiltInAgent: true, startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+      description: 'Scoped work', toolUseContext: context, rootSetAppState: context.setAppState,
+      agentIdForCleanup: taskId, enableSummarization: false, getWorktreeResult: async () => ({}),
+      validateFinalMessage: () => { validationCalls++; return scenario === 'recovered-api' ? null : { status: 'blocked', reason: 'The promised HTTP check remains unverified.' } },
+      beforeTerminal: async result => { receipts.push(result.status) },
+    })
+    if (scenario === 'api-error') {
+      expect(outcome).toEqual({ status: 'failed', reason: 'Path contains null bytes' })
+      expect(validationCalls).toBe(0)
+      expect(receipts).toEqual(['failed'])
+      expect(JSON.stringify(getCommandQueue())).not.toContain('readyForReview is missing')
+    } else if (scenario === 'blocked') {
+      expect(outcome).toEqual({ status: 'blocked', reason: 'The promised HTTP check remains unverified.' })
+      expect(receipts).toEqual(['blocked'])
+      expect(app.tasks[taskId]!.status).toBe('completed')
+      expect(JSON.stringify(getCommandQueue())).toContain('HTTP check remains unverified')
+      expect(JSON.stringify(getCommandQueue())).toContain('readyForReview: false')
+      expect(JSON.stringify(getCommandQueue())).not.toContain('<status>failed</status>')
+    } else {
+      expect(outcome).toEqual({ status: 'succeeded' })
+      expect(validationCalls).toBe(1)
+      expect(receipts).toEqual(['succeeded'])
+    }
+  })
+
+  test('fails and notifies instead of publishing success when real output initialization failed', async () => {
+    const taskId = `agent-output-failed-${crypto.randomUUID()}`
+    const path = getTaskOutputPath(taskId)
+    await mkdir(path, { recursive: true })
+    try {
+      await expect(initTaskOutputAsSymlink(taskId, 'unused-target')).rejects.toThrow()
+      let state = { tasks: { [taskId]: {
+        ...createTaskStateBase(taskId, 'local_agent', 'Output failure'),
+        type: 'local_agent', status: 'running', agentId: taskId, prompt: 'Implement', agentType: 'general-purpose',
+        retrieved: false, lastReportedToolCount: 0, lastReportedTokenCount: 0,
+        isBackgrounded: true, pendingMessages: [], retain: false, diskLoaded: false,
+      } }, speculation: IDLE_SPECULATION_STATE } as unknown as AppState
+      const receipts: string[] = []
+      const outcome = await runAsyncAgentLifecycle({
+        taskId, abortController: new AbortController(),
+        makeStream: async function* () { yield createAssistantMessage({ content: 'Done' }) as Message },
+        metadata: { prompt: 'Implement', resolvedAgentModel: 'test', isBuiltInAgent: true,
+          startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+        description: 'Output failure', toolUseContext: { options: { tools: [] }, getAppState: () => state } as unknown as ToolUseContext,
+        rootSetAppState: fn => { state = fn(state) }, agentIdForCleanup: taskId,
+        enableSummarization: false, getWorktreeResult: async () => ({}),
+        beforeTerminal: async outcome => { receipts.push(outcome.status) },
+      })
+      expect(outcome.status).toBe('failed')
+      expect(receipts).toEqual(['failed'])
+      expect(state.tasks[taskId]?.status).toBe('failed')
+      expect(String(getCommandQueue()[0]?.value)).toContain('<status>failed</status>')
+    } finally {
+      await rm(path, { recursive: true, force: true })
+    }
+  })
+
   test('notifies the parent before post-completion cleanup finishes', async () => {
     const taskId = 'agent-notify-first'
     const abortController = new AbortController()
@@ -1251,6 +1336,52 @@ describe('runAsyncAgentLifecycle', () => {
       '<status>completed</status>',
     )
     expect(String(getCommandQueue()[0]?.value)).toContain('Review complete.')
+  })
+
+  test.each(['suspended', 'stale', 'quoted', 'resumed', 'resumed-read', 'control-output', 'control-stop', 'unmatched', 'stale-suspended-resumed', 'contract-resumed'] as const)('managed worker settles from actual tool execution receipts: %s', async scenario => {
+    const taskId = `agent-workflow-execution-${scenario}`
+    const abortController = new AbortController()
+    let appState = {
+      tasks: { [taskId]: {
+        ...createTaskStateBase(taskId, 'local_agent', 'Implement rules', 'toolu_rules'),
+        type: 'local_agent', status: 'running', agentId: taskId, prompt: 'Implement rules', agentType: 'general-purpose',
+        abortController, retrieved: false, lastReportedToolCount: 0, lastReportedTokenCount: 0,
+        isBackgrounded: true, pendingMessages: [], retain: false, diskLoaded: false,
+      } },
+      toolPermissionContext: getEmptyToolPermissionContext(), speculation: IDLE_SPECULATION_STATE,
+    } as unknown as AppState
+    const code = scenario.startsWith('stale') ? 'WORKFLOW_WORKER_STALE' : scenario === 'contract-resumed' ? 'WORKFLOW_WORKER_CONTRACT_REQUIRED' : 'WORKFLOW_EXECUTION_SUSPENDED'
+    async function* makeStream(): AsyncGenerator<Message, void> {
+      yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_skill', name: 'Skill', input: { skill: 'test-driven-development' } }] }) as Message
+      yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_skill',
+        content: `<tool_use_error>${code}: No business tool was executed.</tool_use_error>`, is_error: scenario !== 'quoted' }] }) as Message
+      if (scenario === 'stale-suspended-resumed') {
+        yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_second_skill', name: 'Skill', input: { skill: 'test-driven-development' } }] }) as Message
+        yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_second_skill', content: 'WORKFLOW_EXECUTION_SUSPENDED: paused again', is_error: true }] }) as Message
+      }
+      if (!['suspended', 'stale', 'quoted'].includes(scenario)) {
+        const name = scenario === 'control-output' ? 'TaskOutput' : scenario === 'control-stop' ? 'TaskStop' : scenario === 'resumed-read' ? 'Read' : 'Edit'
+        if (scenario !== 'unmatched') yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_edit', name, input: { file_path: 'rules.js' } }] }) as Message
+        yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_edit', content: 'File updated.' }] }) as Message
+      }
+      yield createAssistantMessage({ content: 'The workflow paused. I have not changed files.' }) as Message
+    }
+    const result = await runAsyncAgentLifecycle({
+      taskId, abortController, makeStream,
+      metadata: { prompt: 'Implement rules', resolvedAgentModel: 'test-model', isBuiltInAgent: true,
+        startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+      description: 'Implement rules',
+      toolUseContext: { options: { tools: [] }, toolUseId: 'toolu_rules', getAppState: () => appState } as unknown as ToolUseContext,
+      rootSetAppState: update => { appState = update(appState) }, agentIdForCleanup: taskId,
+      enableSummarization: false, getWorktreeResult: async () => ({}), validateWorkflowExecution: true,
+    })
+    if (!['quoted', 'resumed', 'resumed-read'].includes(scenario)) {
+      expect(result).toMatchObject({ status: 'failed', reason: expect.stringContaining(code) })
+      expect(appState.tasks[taskId]!.status).toBe('failed')
+      expect(JSON.stringify(getCommandQueue())).not.toContain('<status>completed</status>')
+    } else {
+      expect(result).toEqual({ status: 'succeeded' })
+    }
   })
 
   test('fails the agent before completion when its final message violates the Reviewer contract', async () => {
@@ -1383,6 +1514,16 @@ describe('runAsyncAgentLifecycle', () => {
 })
 
 describe('post-review evidence absorption handoff', () => {
+  test('preserves a server-authorized targeted follow-up receipt after file-first researcher completion', () => {
+    const result = { agentType: 'expert-evidence-researcher', content: [{ type: 'text' as const, text: '文件交接：02.md' }] }
+    const instruction = '<expert-post-review-evidence-absorption><expert-research-follow-up>Read 02 then assign a relevant targeted-evidence follow-up.</expert-research-follow-up></expert-post-review-evidence-absorption>'
+    appendExpertPostReviewEvidenceAbsorptionContext(result, instruction)
+    appendExpertPostReviewEvidenceAbsorptionContext(result, instruction)
+    expect(result.content).toHaveLength(2)
+    expect(result.content[1]!.text).toBe(instruction)
+    const mapped = AgentTool.mapToolResultToToolResultBlockParam({ ...result, status: 'completed', agentId: 'original-a', artifactPath: 'commercialization-research/02-competitors.md', totalTokens: 0, totalDurationMs: 1, totalToolUseCount: 1 } as never, 'parent-visible-follow-up')
+    expect(JSON.stringify(mapped.content)).toContain('<expert-research-follow-up>')
+  })
   test('never appends a server instruction to a file-first Expert completion receipt', () => {
     const fileFirst = {
       agentType: 'expert-evidence-reviewer',

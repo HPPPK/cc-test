@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { latestInitialRenderAttempt } from './expertInitialRenderRecovery.js'
+import { latestInitialRenderAttempt, reportRenderAttempts } from './expertInitialRenderRecovery.js'
 import type { MessageEntry } from './sessionService.js'
 
 const call = (id: string, command = 'claude expert-template-fill --data-stdin'): MessageEntry => ({ id, type: 'tool_use', timestamp: id, content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] })
@@ -21,8 +21,15 @@ test('different field errors sharing a code are distinguishable for recovery', (
   expect(changed?.failureFingerprint).not.toBe(first?.failureFingerprint)
 })
 
+test('structured CLI JSON syntax errors retain their actual code for recovery', () => {
+  const reply = result('json')
+  reply.content = [{ type: 'tool_result', tool_use_id: 'json', is_error: true, content: 'Exit code 1\n' + JSON.stringify({ ok: false, code: 'EXPERT_TEMPLATE_FILL_INVALID_JSON', action: 'repair-fields', message: 'Correct JSON syntax only' }) }]
+  expect(latestInitialRenderAttempt([call('json'), reply])?.errorCode).toBe('EXPERT_TEMPLATE_FILL_INVALID_JSON')
+})
+
 test('duplicate legacy result wrappers do not manufacture a new tool attempt', () => {
   const first = latestInitialRenderAttempt([call('a'), result('a')])
   const duplicate = latestInitialRenderAttempt([call('a'), { ...result('a'), id: 'regenerated-legacy-wrapper' }])
   expect(duplicate?.id).toBe(first?.id)
+  expect(reportRenderAttempts([call('a'), result('a'), { ...result('a'), id: 'legacy-wrapper' }, call('b'), result('b')]).map(attempt => attempt.id)).toEqual(['a', 'b'])
 })

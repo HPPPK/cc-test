@@ -30,18 +30,20 @@ export type WorkflowTaskSchedulingLifecycleOptions = {
   signal?: AbortSignal
   role?: WorkflowTaskSchedulingRole
   onStarted?: () => void
-  onCancelled?: () => void
-  onBlocked?: (reason: string) => void
+  onCancelled?: () => void | Promise<void>
+  onBlocked?: (reason: string) => void | Promise<void>
 }
 
 export type WorkflowTaskLifecycleOutcome =
   | { status: 'succeeded' }
+  | { status: 'blocked', reason: string }
   | { status: 'failed', reason?: string }
 
 type SchedulerLane = {
   scheduler: WorkflowParallelScheduler
   planSignature: string
   listeners: Set<() => void>
+  queuedTaskIds: Set<string>
 }
 
 const schedulerLanes = new Map<string, SchedulerLane>()
@@ -165,10 +167,66 @@ export async function validateWorkflowTaskSchedule(
 
   const scheduledPlan = expandWorkflowBatchPlanForRole(plan, role)
   validateWorkflowParallelPlan({ maxParallel: parallelism.maxParallel }, scheduledPlan.tasks)
+  assertReviewerCodeRepairComplete(workflow, scheduledPlan, role)
   const existing = schedulerLanes.get(parallelism.key)
   if (existing && existing.planSignature !== createPlanSignature(scheduledPlan.tasks)) {
     throw new Error('Workflow task plan does not match the existing workflow task plan for this phase')
   }
+  const currentTasks = existing?.scheduler.snapshot().tasks
+    ?? persistedTaskSnapshots(workflow, scheduledPlan.tasks).map(task => ({
+      id: task.taskId, status: persistedSchedulerStatus(task),
+    }))
+  assertRoleTaskCanBeSubmitted(scheduledPlan.taskId, role, currentTasks)
+  if (role) assertDependenciesDispatched(scheduledPlan, currentTasks, existing?.queuedTaskIds)
+}
+
+function assertDependenciesDispatched(
+  plan: WorkflowTaskSchedulePlan,
+  tasks: Array<{ id: string; status: string | null }>,
+  queuedTaskIds?: ReadonlySet<string>,
+): void {
+  const task = plan.tasks.find(candidate => candidate.id === plan.taskId)
+  const undispatched = task?.dependsOn.filter(id => {
+    const status = tasks.find(candidate => candidate.id === id)?.status
+    return !queuedTaskIds?.has(id)
+      && (status === 'pending' || status === 'ready' || status === null || status === undefined)
+  }) ?? []
+  if (undispatched.length) {
+    const dispatches = undispatched.map(id => {
+      const separator = id.lastIndexOf('::')
+      return separator < 0 ? id
+        : `workflow_role=${JSON.stringify(id.slice(separator + 2))}, workflow_parallel_plan.task_id=${JSON.stringify(id.slice(0, separator))}`
+    })
+    throw new Error(`WORKFLOW_DEPENDENCY_NOT_DISPATCHED: ${plan.taskId} cannot wait for unstarted prerequisites: ${undispatched.join(', ')}. Dispatch these prerequisite roles first: ${dispatches.join('; ')}. Do not retry this same dispatch until those prerequisites have started or succeeded. Earlier narrative completion does not replace the current task receipts.`)
+  }
+}
+
+function assertReviewerCodeRepairComplete(
+  workflow: unknown,
+  plan: WorkflowTaskSchedulePlan,
+  role: WorkflowTaskSchedulingRole | undefined,
+): void {
+  if (role !== 'reviewer') return
+  const reviewer = persistedTaskSnapshots(workflow, plan.tasks).find(task => task.taskId === plan.taskId)
+  if (reviewer?.status !== 'needs_fix' && reviewer?.reviewStatus !== 'needs-fix') return
+  const batchId = plan.taskId.slice(0, plan.taskId.lastIndexOf('::'))
+  throw new Error(`WORKFLOW_AGENT_TASK_REPAIR_REQUIRED: Reviewer recorded actual required fixes for ${batchId}. Dispatch workflow_role="coder", workflow_parallel_plan.task_id=${JSON.stringify(batchId)} to repair them first. Retry Reviewer only after the new Coder attempt succeeds and invalidates the prior review. Do not retry this same dispatch or replace required code repair with report formatting.`)
+}
+
+function assertRoleTaskCanBeSubmitted(
+  taskId: string,
+  role: WorkflowTaskSchedulingRole | undefined,
+  tasks: Array<{ id: string; status: string | null }>,
+): void {
+  if (!role) return
+  const current = tasks.find(task => task.id === taskId)
+  if (current?.status === 'running') throw new Error(`Workflow task is already running: ${taskId}`)
+  if (current?.status !== 'succeeded') return
+  const reviewer = role === 'coder'
+    ? tasks.find(task => task.id === taskId.replace(/::coder$/, '::reviewer'))
+    : undefined
+  if (reviewer?.status === 'failed' || reviewer?.status === 'blocked') return
+  throw new Error(`Workflow task already succeeded: ${taskId}. Reuse its recorded result; use an explicit workflow rework before rerunning accepted work.`)
 }
 
 export async function hasActiveWorkflowTaskSchedule(workflow: unknown): Promise<boolean> {
@@ -189,11 +247,11 @@ export async function runWithinWorkflowTaskSchedule<T extends WorkflowTaskLifecy
     permit = await acquireWorkflowTaskPermit(workflow, plan, options.signal, options.role)
   } catch (error) {
     if (error instanceof WorkflowTaskBlockedError) {
-      options.onBlocked?.(error.message)
+      await options.onBlocked?.(error.message)
       return undefined
     }
     if (error instanceof WorkflowTaskSchedulingCancellationError) {
-      options.onCancelled?.()
+      await options.onCancelled?.()
       return undefined
     }
     throw error
@@ -245,12 +303,15 @@ async function acquireWorkflowTaskPermit(
   }
 
   const scheduledPlan = expandWorkflowBatchPlanForRole(plan, role)
+  assertReviewerCodeRepairComplete(workflow, scheduledPlan, role)
   const lane = getOrCreateLane(
     parallelism.key,
     parallelism.maxParallel,
     scheduledPlan.tasks,
     persistedTaskSnapshots(workflow, scheduledPlan.tasks),
   )
+  assertRoleTaskCanBeSubmitted(scheduledPlan.taskId, role, lane.scheduler.snapshot().tasks)
+  if (role) assertDependenciesDispatched(scheduledPlan, lane.scheduler.snapshot().tasks, lane.queuedTaskIds)
   if (role) {
     const current = lane.scheduler.snapshot().tasks.find((task) => task.id === scheduledPlan.taskId)
     if (current && (current.status === 'succeeded' || current.status === 'failed' || current.status === 'blocked')) {
@@ -258,20 +319,27 @@ async function acquireWorkflowTaskPermit(
       notifyLane(lane)
     }
   }
-  while (true) {
-    if (signal?.aborted) {
-      throw createCancellationError()
-    }
+  lane.queuedTaskIds.add(scheduledPlan.taskId)
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw createCancellationError()
+      }
+      if (role) assertDependenciesDispatched(scheduledPlan, lane.scheduler.snapshot().tasks, lane.queuedTaskIds)
 
-    const result = lane.scheduler.tryStartTask(scheduledPlan.taskId)
-    if (result.status === 'started') {
-      return { key: parallelism.key, lane }
-    }
-    if (result.status === 'blocked') {
-      throw new WorkflowTaskBlockedError(result.reason)
-    }
+      const result = lane.scheduler.tryStartTask(scheduledPlan.taskId)
+      if (result.status === 'started') {
+        return { key: parallelism.key, lane }
+      }
+      if (result.status === 'blocked') {
+        throw new WorkflowTaskBlockedError(result.reason)
+      }
 
-    await waitForSchedulerChange(lane, signal)
+      await waitForSchedulerChange(lane, signal)
+    }
+  } finally {
+    lane.queuedTaskIds.delete(scheduledPlan.taskId)
+    notifyLane(lane)
   }
 }
 
@@ -294,6 +362,7 @@ function getOrCreateLane(
     scheduler: new WorkflowParallelScheduler({ maxParallel }, tasks),
     planSignature,
     listeners: new Set(),
+    queuedTaskIds: new Set(),
   }
   for (const snapshot of persistedSnapshots) {
     const status = persistedSchedulerStatus(snapshot)
@@ -351,6 +420,8 @@ function completeWorkflowTask(
   if (outcome.status === 'succeeded') {
     lane.scheduler.markSucceeded(taskId)
   } else {
+    // A returned-but-not-ready worker releases its permit without satisfying
+    // dependencies. The business receipt remains blocked, never succeeded.
     lane.scheduler.markFailed(taskId, outcome.reason ?? 'Agent lifecycle failed')
   }
   notifyLane(lane)

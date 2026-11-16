@@ -1,8 +1,9 @@
 import { z } from 'zod/v4'
+import { EXPERT_INTAKE_SCOPE_TOOL_NAME, isExpertIntakeLocalTool } from '../../utils/expertResearchIntakePolicy.js'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 
 const TARGET = 'commercialization-research-report'
-export const INTAKE_TOOL_NAME = 'assess_expert_research_scope'
+export const INTAKE_TOOL_NAME = EXPERT_INTAKE_SCOPE_TOOL_NAME
 const questionDimension = (id: string) => id.replace(/^expert-intake:/, '')
 const dimensionIds = ['coreTask', 'audience', 'deliveryBoundary'] as const
 const evidenceSchema = z.strictObject({ messageId: z.string().min(1), quote: z.string().min(1) })
@@ -93,7 +94,8 @@ export function issueResearchIntakeQuestion(state: ExpertResearchIntakeState, re
   const seen = new Set<string>()
   for (const q of card.questions) {
     const options = q.choices ?? q.options ?? []
-    if (!unknown.has(questionDimension(q.id) as any) || seen.has(questionDimension(q.id)) || !(q.prompt ?? q.question)?.trim() || options.length < 2 || options.length > 4 || options.some(o => !o.id?.trim() || !o.label?.trim()) || new Set(options.map(o => o.id)).size !== options.length) fail('Question IDs must identify unresolved dimensions, with dynamic prompts and 2–4 stable choices. Use delegate for explicit exploration delegation.')
+    if (!unknown.has(questionDimension(q.id) as any)) fail('Question ' + q.id + ' is not unresolved in the saved assessment. Ask only unresolved dimensions: ' + [...unknown].join(', ') + '. Preserve actual confirmed answers; do not mix an already-confirmed dimension into this card.')
+    if (seen.has(questionDimension(q.id)) || !(q.prompt ?? q.question)?.trim() || options.length < 2 || options.length > 4 || options.some(o => !o.id?.trim() || !o.label?.trim()) || new Set(options.map(o => o.id)).size !== options.length) fail('Question IDs must identify unresolved dimensions, with dynamic prompts and 2–4 stable choices. Use delegate for explicit exploration delegation.')
     seen.add(questionDimension(q.id))
   }
   return { ...state, pending: { requestId, toolUseId, revision: state.revision, card: { questions: JSON.parse(JSON.stringify(cleanIntakeQuestions(card.questions).map(q => ({ ...q, id: 'expert-intake:' + questionDimension(q.id) })))) } } }
@@ -177,14 +179,24 @@ async function currentBusinessRules(expert: ExpertSessionMetadata): Promise<stri
   // replace missing rules with a synthesized customer/platform default.
   return expert.runtimeBinding?.promptSnapshot ?? ''
 }
+
+function scopeEvidence(expert: ExpertSessionMetadata, evidence: Array<{ id: string; text: string }>) {
+  const state = expert.researchIntake
+  const draft = expert.templateFillDraft?.completionReview
+  // A pure operational resume after a durable draft does not change scope.
+  // Keep every substantive turn, including one followed by a later "continue".
+  if (!draft?.initialRenderedAt || !draft.reportPath || state?.pending || !['clear', 'delegated'].includes(state?.status ?? '')) return evidence
+  return evidence.filter(message => !/^(?:继续|继续完成|继续定稿|继续生成报告|继续完成报告|继续交付|重试|重试定稿|continue|resume|retry)[。.!！\s]*$/i.test(message.text.trim()))
+}
 export async function inspectExpertResearchIntake(sessionId: string) {
   const expert = await updateExpertResearchIntake(sessionId, expert => expert)
   const { sessionService } = await import('./sessionService.js')
   const businessRules = await currentBusinessRules(expert)
   const evidence = (await sessionService.getSessionMessages(sessionId)).filter(m => (m as any).isHumanInput === true).map(m => ({ id: m.id, text: textContent(m.content) }))
   const state = expert.researchIntake
+  const scopeMessages = scopeEvidence(expert, evidence)
   const rulesChanged = state?.dimensions.some(d => d.provenance === 'known-business-default' && (!d.evidence?.quote || !businessRules.includes(d.evidence.quote))) ?? false
-  const requiresAssessment = intakeApplies(expert) && (!state || state.status === 'unassessed' || rulesChanged || (evidence.length > 0 && !state.evidenceMessageIds?.includes(evidence.at(-1)!.id)))
+  const requiresAssessment = intakeApplies(expert) && (!state || state.status === 'unassessed' || rulesChanged || (scopeMessages.length > 0 && !state.evidenceMessageIds?.includes(scopeMessages.at(-1)!.id)))
   const nextAction = requiresAssessment ? 'assess_new_input' : state?.status === 'needs-user' ? 'ask_unresolved_scope' : 'continue_research'
   return {
     businessRules: { id: 'active-business-rules', text: businessRules, precedence: 'Actual user instructions and supplied rule documents override editable defaults; cite defaults only where they still apply.' },
@@ -206,14 +218,14 @@ export async function guardExpertResearchIntake(sessionId: string, toolName?: st
   const session = await sessionService.getSession(sessionId)
   if (!session) fail('The session could not be found; no operation was admitted.')
   const expert = session?.expert ?? await expertRuntimeSessionStore.get(sessionId)
-  if (toolName && ['Read', 'AskUserQuestion', INTAKE_TOOL_NAME, 'Skill'].includes(toolName)) return
+  if (toolName && isExpertIntakeLocalTool(toolName)) return
   const command = (input as { command?: unknown } | undefined)?.command
   if (expert?.templateFillDelivery && (toolName === 'Bash' || toolName === 'PowerShell') && typeof command === 'string' && /^\s*claude\s+expert-template-fill\s+--(?:schema|recover-fields)\s*$/.test(command)) return
   assertResearchIntakeAdmitted(expert)
   if (intakeApplies(expert)) {
     const businessRules = await currentBusinessRules(expert!)
     if (expert?.researchIntake?.dimensions.some(d => d.provenance === 'known-business-default' && (!d.evidence?.quote || !businessRules.includes(d.evidence.quote)))) fail('The active editable business rules changed; reassess scope using the current stored rules.')
-    const humans = (await sessionService.getSessionMessages(sessionId)).filter(m => m.isHumanInput === true)
+    const humans = scopeEvidence(expert!, (await sessionService.getSessionMessages(sessionId)).filter(m => m.isHumanInput === true).map(m => ({ id: m.id, text: textContent(m.content) })))
     if (humans.length && !expert?.researchIntake?.evidenceMessageIds?.includes(humans.at(-1)!.id)) fail('A new human turn has not been assessed. Reuse known decisions and assess the new input; do not repeat answered questions.')
   }
 }

@@ -1,5 +1,7 @@
 # Project Learning Index
 
+- Workflow Agent queued forever after a failure notification: [pending task failure and Reviewer contract boundaries](./learn-2026-11-16-workflow-pending-agent-failure.md). Applies to background dispatch, TaskOutput, batch reset, Reviewer results and desktop status.
+
 Thin first-read index of reusable engineering lessons for later `sp-xxx` workflows.
 
 Read this file after `.specify/memory/project-rules.md` and before command-local
@@ -305,6 +307,30 @@ context. Open only the linked detail documents whose `applies_to` or
     "last_seen": "2026-11-11T07:20:00Z",
     "occurrence_count": 1,
     "signal_strength": "high"
+  },
+  {
+    "id": "learn-2026-11-15-expert-report-transport-recovery",
+    "problem": "Windows长报告命令EOF、来源表局部替换与F网络失败会诱发压缩内容和重复任务。",
+    "lesson": "保留原字节走stdin，按已保存引用和审计身份恢复来源，复用原F而非重建；不以门禁或网络假设代替实测。",
+    "learning_type": "recovery_path",
+    "source_command": "authorized expert repair",
+    "recurrence_key": "expert-report-transport-and-recovery",
+    "applies_to": [
+      "Windows Bash",
+      "expert report rendering",
+      "source table patch",
+      "output review recovery"
+    ],
+    "trigger_signals": [
+      "unexpected EOF",
+      "SOURCE_ROWS partial patch",
+      "08 ENOENT after API 502"
+    ],
+    "detail": "./learn-2026-11-15-expert-report-transport-recovery.md",
+    "first_seen": "2026-11-15",
+    "last_seen": "2026-11-15",
+    "occurrence_count": 1,
+    "signal_strength": "high"
   }
 ]
 <!-- SPECKIT_LEARNING_DATA_END -->
@@ -540,3 +566,21 @@ The SuperSpec template used activePhaseId sp-implement, but workflow tool policy
 - Applies to: canonical development workflow, AskUserQuestion batching, prompt injection and reconnect.
 - Trigger: serial clarification overload, optional questions lost on reconnect, preferences incorrectly marked blocking.
 - [Policy and cross-layer evidence](./learn-2026-11-11-development-question-batches.md).
+
+### Expert ended-worker recovery
+
+- Applies to: expert evidence handoff, SendMessage availability, audit failure and same-worker resume.
+- Trigger: evidence fence rejected, failed worker incorrectly treated as pending, replacement worker denied reading the original part.
+- [Root cause and recovery contract](./learn-2026-11-16-expert-worker-recovery.md).
+
+### Expert saved-answer handoff
+
+- Applies to: Desktop question answers, client/server intake admission and resumed Expert prompts.
+- Trigger: an answered card is green while the model claims the question was not delivered.
+- [Persistence versus tool-result delivery](./learn-2026-11-16-expert-intake-answer-handoff.md).
+
+### Research result links and slow local activity
+
+- Applies to: Expert link follow-through, persisted browser previews and report synthesis.
+- Trigger: relevant search result followed by unrelated topics, or a successful browser call taking several minutes.
+- [Observed causes, bounded reporting and guidance](./learn-2026-11-16-research-link-preview.md).

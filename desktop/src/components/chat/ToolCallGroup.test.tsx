@@ -9,6 +9,15 @@ function show(error?: string, notification?: Partial<AgentTaskNotification>) {
   fireEvent.click(screen.getByRole('button', { name: 'Expand agent' }))
 }
 describe('Agent failure details', () => {
+  it.each([['blocked', 'Blocked'], ['failed', 'Failed'], ['stopped', 'Stopped'], ['completed', 'Ended']] as const)('uses terminal background %s instead of a stale running launch card', (status, label) => {
+    render(<ToolCallGroup toolCalls={[call]} resultMap={new Map()} childToolCallsByParent={new Map()} agentTaskNotifications={{}}
+      isStreaming backgroundAgentTasks={{ task: { taskId: 'task', toolUseId: 'review', status,
+        blockedReason: 'Dependency B3::coder failed: Agent cancelled', startedAt: 1, updatedAt: 2 } }} />)
+    expect(screen.getByText(new RegExp(`${label}|${({ blocked: '受阻', failed: '失败', stopped: '已停止', completed: '已结束' })[status]}`))).toBeTruthy()
+    expect(screen.queryByText(/^(Running|进行中)$/)).toBeNull()
+    if (status === 'blocked') expect(screen.getByText(/Dependency B3::coder failed/)).toBeTruthy()
+  })
+
   it('shows the tool failure instead of repeating the task name', () => {
     show('EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED: 请先保存初始报告。')
     expect(screen.getByText(/EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED/)).toBeTruthy()

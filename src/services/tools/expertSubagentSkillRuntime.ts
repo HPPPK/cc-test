@@ -1,4 +1,5 @@
 import { normalizeResearchQualityContext, researchQualityInstruction, type ResearchQualityContext } from '../../server/services/expertResearchQualityCheckpoint.js'
+import { expertLocalRequest } from './expertLocalTransport.js'
 import type { ExpertResearchAuditEntry } from '../../server/services/expertResearchCompletionService.js'
 import { isFileFirstExpertResearchAgentType, resolveFileFirstExpertAgentType, researchArtifactRootPath } from './expertFileFirstResearchProtocol.js'
 
@@ -734,17 +735,15 @@ export async function recordExpertSubagentResearchAudit(
     }
     return
   }
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
-    const response = await dependencies.fetch(
+    const response = await expertLocalRequest(
       `${serverUrl}/api/sessions/${encodeURIComponent(sessionId)}/expert/research-audit`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(input),
-        signal: controller.signal,
       },
+      { fetchImpl: dependencies.fetch },
     )
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
@@ -762,8 +761,6 @@ export async function recordExpertSubagentResearchAudit(
       throw new ExpertResearchAuditPersistenceError(message)
     }
     console.error(message)
-  } finally {
-    clearTimeout(timeout)
   }
 }
 

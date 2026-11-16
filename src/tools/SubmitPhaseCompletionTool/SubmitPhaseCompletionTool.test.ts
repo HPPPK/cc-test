@@ -357,6 +357,13 @@ describe('SubmitPhaseCompletionTool', () => {
       'rationale',
       'evidence',
     ]))
+    const { WORKFLOW_COMPLETION_STATUS_GUIDANCE, WORKFLOW_COMPLETION_SUBMISSION_STATUSES } = await import('../../server/services/workflowTypes.js')
+    expect(schema.input_schema).toMatchObject({
+      properties: { status: { enum: [...WORKFLOW_COMPLETION_SUBMISSION_STATUSES], description: WORKFLOW_COMPLETION_STATUS_GUIDANCE } },
+    })
+    expect(await SubmitPhaseCompletionTool.prompt({
+      getToolPermissionContext: async () => getEmptyToolPermissionContext(), tools: [], agents: [],
+    })).toContain(WORKFLOW_COMPLETION_STATUS_GUIDANCE)
   })
 
   test.each(['ready', 'needs_user', 'completed', 'blocked', 'unable'] as const)('accepts %s completion status', async (status) => {
@@ -452,7 +459,7 @@ describe('SubmitPhaseCompletionTool', () => {
     })
   })
 
-  test('submits through the desktop workflow transition API when launched by Desktop', async () => {
+  test.each(['ready', 'needs_user', 'completed'] as const)('submits %s through Desktop and returns the confirmation wait contract', async (status) => {
     const requests: Array<{ method: string; url: string; body: unknown }> = []
     const server = Bun.serve({
       port: 0,
@@ -488,7 +495,7 @@ describe('SubmitPhaseCompletionTool', () => {
 
     try {
       const SubmitPhaseCompletionTool = await loadTool()
-      const result = await callToolFixture(SubmitPhaseCompletionTool, validInput(), contextFor('workflow'))
+      const result = await callToolFixture(SubmitPhaseCompletionTool, validInput({ status }), contextFor('workflow'))
 
       expect(requests).toHaveLength(2)
       expect(requests[0]?.method).toBe('GET')
@@ -496,11 +503,12 @@ describe('SubmitPhaseCompletionTool', () => {
       expect(requests[1]?.method).toBe('POST')
       expect(requests[1]?.url).toBe('/api/sessions/workflow-session-123/workflow/transition')
       expect(requests[1]?.body).toMatchObject({
-        action: 'ready',
+        action: status,
         phaseId: 'requirements',
         stateVersion: 8,
         rationale: 'The required requirements artifact was produced.',
       })
+      expect(result.data.status).toBe('pending')
       expect(result.data.message).toContain('user confirmation')
       expect(result.data.message).toContain('stop current-phase business progression')
       expect(result.data.message).toContain('Do not produce next-phase questions')

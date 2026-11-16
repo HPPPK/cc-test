@@ -656,6 +656,18 @@ describe('MessageList nested tool calls', () => {
     expect(card.textContent).toContain('not merged automatically')
   })
 
+  it('labels a queued Reviewer as read-only even when its shared batch plan permits writing', () => {
+    useChatStore.setState({ sessions: { [ACTIVE_TAB]: makeSessionState({ messages: [{
+      id: 'review-task', type: 'background_task', timestamp: 2,
+      task: { taskId: 'review-queued', toolUseId: 'review-tool', workflowTaskId: 'B3::reviewer',
+        status: 'queued', executionMode: 'write', description: 'Review B3', startedAt: 1, updatedAt: 2 },
+    }] }) } })
+    render(<MessageList />)
+    const card = screen.getByTestId('background-task-event-card')
+    expect(card.textContent).toContain('read task')
+    expect(card.textContent).not.toContain('write task')
+  })
+
   it('does not render agent background task events as separate transcript cards', () => {
     useChatStore.setState({
       sessions: {

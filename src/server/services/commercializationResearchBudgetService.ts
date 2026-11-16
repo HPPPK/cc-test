@@ -35,6 +35,10 @@ export class CommercializationResearchBudgetService {
     this.saveOnlyRecoveries.add(JSON.stringify([sessionId, expert.runtimeBinding.activatedAt, agentId]))
   }
 
+  completeSaveOnlyRecovery(sessionId: string, expert: BudgetExpert | undefined, agentId: string): void {
+    this.saveOnlyRecoveries.delete(JSON.stringify([sessionId, expert?.runtimeBinding?.activatedAt, agentId]))
+  }
+
   /** Actual process-local lifecycle, independent of source-batch receipts. */
   getWorkerLifecycles(sessionId: string, expert: BudgetExpert | undefined): Array<{ agentId: string; artifactPath: string; state: 'running' | 'ended'; generation: number; startedAt?: number }> {
     const workers = this.states.get(sessionId + ':' + expert?.runtimeBinding?.activatedAt)?.workers
@@ -121,6 +125,16 @@ export class CommercializationResearchBudgetService {
       this.states.set(key, state)
     }
     const worker = state.workers.get(input.agentId)
+    if (input.action === 'reserve-researcher' && !worker) {
+      const original = [...state.workers].find(([id, saved]) => saved.lane === lanePath(input.artifactPath ?? '')
+        && this.saveOnlyRecoveries.has(JSON.stringify([sessionId, binding.activatedAt, id])))
+      if (original) return {
+        allowed: false, applicable: true,
+        reason: 'EXPERT_RESEARCH_RESUME_REQUIRED: 本方向正在恢复原工作者 ' + original[0]
+          + ' 的已取得材料。新 Agent 没有原 transcript，不能充当保存恢复。请用 SendMessage({"to":'
+          + JSON.stringify(original[0]) + ',"summary":"恢复原研究保存","message":"继续原 SAVE-ONLY 保存交接，不浏览、不重新研究。"}) 恢复同一工作者；未创建新任务，也未消耗研究启动位置。',
+      }
+    }
     if (input.action === 'reserve-browser' && this.saveOnlyRecoveries.has(JSON.stringify([sessionId, binding.activatedAt, input.agentId]))) {
       return { allowed: false, applicable: true, reason: 'EXPERT_RESEARCH_SAVE_ONLY_RECOVERY: This original worker is recovering its saved handoff only. Do not browse or start another researcher. Reuse the actual prior browser results, save the assigned Markdown, Read it back and submit its real audit.', deadline: new Date(deadlineMs).toISOString() }
     }

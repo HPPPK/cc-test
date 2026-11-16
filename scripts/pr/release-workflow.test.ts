@@ -2,6 +2,22 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 describe('release desktop workflow', () => {
+  test('attaches only the two explicitly selected importable packs after the remote Tauri release succeeds', () => {
+    const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
+    const step = workflow.match(/      - name: Upload selected importable packs\n[\s\S]*?(?=\n      - name:|$)/)?.[0]
+    expect(step).toBeDefined()
+    expect(workflow.indexOf('uses: tauri-apps/tauri-action@v0')).toBeLessThan(workflow.indexOf('name: Upload selected importable packs'))
+    expect(step).toContain("if: matrix.platform == 'windows-latest'")
+    expect(step).toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}')
+    expect(step).toContain('gh release upload "v${{ steps.version.outputs.value }}"')
+    expect(step?.match(/src\/server\/packs\/[\w/-]+\.zip/g)).toEqual([
+      'src/server/packs/experts/commercialization-research-report.zip',
+      'src/server/packs/efficient-constrained-dev-debug-workflow-v5.zip',
+    ])
+    expect(step).not.toContain('*.zip')
+    expect(step).toContain('--clobber')
+  })
+
   test('publishes signed Windows updater artifacts by default and keeps Apple Silicon as an explicit manual opt-in', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
 

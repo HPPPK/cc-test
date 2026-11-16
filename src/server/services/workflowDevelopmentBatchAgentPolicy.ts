@@ -414,10 +414,11 @@ export function developmentBatchHandoffPrompt(state: WorkflowSessionState): stri
   if (state.activePhaseId === DEVELOPMENT_IMPLEMENT_PHASE_ID) {
     return [
       'Default development Stage 4 intake contract',
-      `Treat ${relativePath} as the immutable, already-validated Stage 3 Batch plan.`,
+      `Treat ${relativePath} as the authoritative, already-validated Stage 3 Batch plan. Only an approved server-side scope amendment may update it within Stage 4.`,
       'workflow_parallel_plan.task_id is the original Batch ID from tasks, for example B1; workflow_role selects coder or reviewer. Never pass internal ledger IDs such as development-batch:B1:coder or scheduler IDs such as B1::coder as task_id.',
       'Every Coder/Reviewer Agent call must reuse its complete tasks array without changing IDs, dependencies, write scopes, resource claims, or execution modes.',
-      'Do not edit delivery-plan.md from Stage 4 to work around a scheduling error. A plan defect must be corrected in Stage 3; Stage 4 only consumes the accepted plan.',
+      'Do not edit delivery-plan.md from Stage 4 to work around a scheduling error. For a necessary small existing-file scope addition, wait for current workers to finish, then request_workflow_route intent=rework_current_phase with scopeAmendment={batchId,addWriteScopes:["exact/relative/file"]} and a concrete rationale. Its confirmation updates the accepted plan and actual write permissions together; ordinary AskUserQuestion answers do not grant file scope. Re-read the amended complete tasks array after approval. Structural changes to goals, dependencies or resources still require Stage 3.',
+      'Reviewer launch and resume automatically receive the current successful Coder report and actual command receipts from existing task records. Inspect that packet and its transcript reference before asking for another run. Production database selection does not imply every test requires a live production database.',
     ].join('\n')
   }
 
@@ -515,7 +516,7 @@ export async function prepareDevelopmentDeliveryPlanHandoff(
   return { state: next, plan: parsed.plan, issues: [], canonicalPath, sourcePath: resolved.sourcePath }
 }
 
-function authoritativeDevelopmentBatchPlan(state: WorkflowSessionState): DevelopmentBatchPlanTask[] | null {
+export function authoritativeDevelopmentBatchPlan(state: WorkflowSessionState): DevelopmentBatchPlanTask[] | null {
   if (!isDevelopmentImplementationPhase(state)) return null
   for (const artifact of developmentDeliveryPlanArtifacts(state)) {
     const stored = artifact.developmentBatchPlan
@@ -612,41 +613,82 @@ function booleanValue(value: unknown): boolean | null {
   return null
 }
 
-function reviewerOutcomeFromRecord(record: Record<string, unknown>): DevelopmentReviewerOutcome | null {
+function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: string[]): DevelopmentReviewerOutcome | null {
+  const invalid = (message: string): null => { issues.push(message); return null }
   const nested = record.workflowReview
-  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-    return reviewerOutcomeFromRecord(nested as Record<string, unknown>)
+  if (nested !== undefined) {
+    if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return invalid('workflowReview must be an object.')
+    return reviewerOutcomeFromRecord(nested as Record<string, unknown>, issues)
   }
   const reviewStatus = normalizeReviewStatus(record.reviewStatus ?? record.approvalStatus)
-  const readyForNextBatch = booleanValue(record.readyForNextBatch)
+  const canonicalReady = booleanValue(record.readyForNextBatch)
+  const legacyReady = booleanValue(record.allowNextBatch)
+  if (record.readyForNextBatch !== undefined && canonicalReady === null) return invalid('readyForNextBatch must be a boolean.')
+  if (record.allowNextBatch !== undefined && legacyReady === null) return invalid('allowNextBatch must be a boolean.')
+  if (canonicalReady !== null && legacyReady !== null && canonicalReady !== legacyReady) return invalid('readyForNextBatch conflicts with allowNextBatch.')
+  const readyForNextBatch = canonicalReady ?? legacyReady
   const rawFixes = record.requiredFixes
-  const requiredFixes = Array.isArray(rawFixes)
-    ? rawFixes.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim())
-    : typeof rawFixes === 'string' && rawFixes.trim() && !/^(none|no|无|没有|\[\])$/i.test(rawFixes.trim())
-      ? [rawFixes.trim()]
-      : []
-  if (!reviewStatus || readyForNextBatch === null) return null
-  if (reviewStatus === 'pass' && (!readyForNextBatch || requiredFixes.length)) return null
-  if (reviewStatus === 'needs-fix' && (readyForNextBatch || !requiredFixes.length)) return null
+  if (!Array.isArray(rawFixes) && typeof rawFixes !== 'string') return invalid('requiredFixes must be an array of concrete strings or finding objects.')
+  const requiredFixes: string[] = []
+  if (Array.isArray(rawFixes)) {
+    for (const [index, value] of rawFixes.entries()) {
+      if (typeof value === 'string' && value.trim()) {
+        requiredFixes.push(value.trim())
+      } else if (value && typeof value === 'object' && !Array.isArray(value)
+        && ['issue', 'fix', 'requiredChange', 'requiredAction', 'suggestedFix', 'description', 'detail', 'message'].some(key =>
+          typeof value[key] === 'string' && value[key].trim())) {
+        // Keep all supplied locations, severity and actions in the existing
+        // string[] receipt shape. Never silently discard structured findings.
+        requiredFixes.push(JSON.stringify(value))
+      } else {
+        return invalid(`requiredFixes[${index}] must be a non-empty string or finding object with issue, fix, requiredChange, requiredAction, suggestedFix, description, detail, or message.`)
+      }
+    }
+  } else if (rawFixes.trim() && !/^(none|no|无|没有|\[\])$/i.test(rawFixes.trim())) {
+    requiredFixes.push(rawFixes.trim())
+  }
+  if (!reviewStatus) return invalid('reviewStatus must be pass or needs-fix.')
+  if (readyForNextBatch === null) return invalid('readyForNextBatch is required (boolean).')
+  if (reviewStatus === 'pass' && (!readyForNextBatch || requiredFixes.length)) return invalid('pass requires requiredFixes=[] and readyForNextBatch=true.')
+  if (reviewStatus === 'needs-fix' && (readyForNextBatch || !requiredFixes.length)) return invalid('needs-fix requires at least one concrete requiredFixes entry and readyForNextBatch=false.')
   return { reviewStatus, requiredFixes, readyForNextBatch }
 }
 
-export function parseDevelopmentReviewerOutcome(content: string): DevelopmentReviewerOutcome | null {
+export function inspectDevelopmentReviewerOutcome(content: string): { outcome: DevelopmentReviewerOutcome | null, issue: string | null } {
   const candidates = [content]
+  const issues: string[] = []
   for (const match of content.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(match[1])
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate.trim())
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const outcome = reviewerOutcomeFromRecord(parsed as Record<string, unknown>)
-        if (outcome) return outcome
+        const outcome = reviewerOutcomeFromRecord(parsed as Record<string, unknown>, issues)
+        if (outcome) return { outcome, issue: null }
       }
     } catch {}
   }
 
+  // A parsed but invalid receipt must not be reinterpreted by the legacy
+  // text parser, which cannot validate individual JSON finding entries.
+  if (issues.length) return { outcome: null, issue: issues[0] }
+
+  const outcome = parseLegacyDevelopmentReviewerOutcome(content)
+  return { outcome, issue: outcome ? null : 'Return a JSON workflowReview object with reviewStatus, requiredFixes and readyForNextBatch; the report could not be parsed as a valid receipt.' }
+}
+
+export function parseDevelopmentReviewerOutcome(content: string): DevelopmentReviewerOutcome | null {
+  return inspectDevelopmentReviewerOutcome(content).outcome
+}
+
+function parseLegacyDevelopmentReviewerOutcome(content: string): DevelopmentReviewerOutcome | null {
   const status = normalizeReviewStatus(/(?:reviewStatus|approvalStatus)\s*[:：]\s*([^\r\n]+)/i.exec(content)?.[1])
-  const ready = booleanValue(/readyForNextBatch\s*[:：]\s*([^\r\n]+)/i.exec(content)?.[1])
-  const fixesText = /requiredFixes\s*[:：]\s*([^\r\n]+)/i.exec(content)?.[1]?.trim() ?? ''
+  const canonicalReady = /readyForNextBatch\s*[:：]\s*([^\r\n]+)/i.exec(content)?.[1]
+  const legacyReady = /allowNextBatch\s*[:：]\s*([^\r\n]+)/i.exec(content)?.[1]
+  const ready = booleanValue(canonicalReady ?? legacyReady)
+  if (canonicalReady !== undefined && legacyReady !== undefined && booleanValue(canonicalReady) !== booleanValue(legacyReady)) return null
+  const fixesMatch = /requiredFixes\s*[:：]\s*([^\r\n]+)/i.exec(content)
+  if (!fixesMatch) return null
+  const fixesText = fixesMatch[1]?.trim() ?? ''
   const requiredFixes = fixesText && !/^(none|no|无|没有|\[\])$/i.test(fixesText)
     ? [fixesText.replace(/^[-*\s]+/, '')]
     : []

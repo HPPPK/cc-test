@@ -5,6 +5,27 @@ import { describe, expect, test } from 'bun:test'
 import { PlaywrightTool, resolveExpertCdpConnection, resolveExpertManagedPlaywrightPresentation, resolvePlaywrightContextKey, resolvePlaywrightSessionKey, shouldPreserveExpertHumanVerificationPage } from './PlaywrightTool.js'
 
 describe('PlaywrightTool', () => {
+  test('keeps real result links and page identity ahead of a large audit ledger, without inventing destinations', () => {
+    const resultUrl = 'https://www.google.com.hk/goto?url=opaque-real-token'
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam({
+      url: 'https://www.google.com.hk/search?q=desktop+tool', title: 'Desktop tool results',
+      text: 'Results', durationMs: 12, truncated: false, accessLimited: false,
+      links: [
+        ...Array.from({ length: 30 }, (_, i) => ({ text: 'Search tab', url: 'https://www.google.com.hk/search?q=desktop&tab=' + i })),
+        { text: 'Relevant user discussion', url: resultUrl },
+        { text: 'Other product', url: 'https://example.org/product' },
+      ],
+      steps: [{ index: 0, type: 'extract', outcome: 'success', url: 'https://www.google.com.hk/search?q=desktop+tool', detail: 'x'.repeat(9000) }],
+    } as never, 'links-before-large-ledger')
+    const content = String(mapped.content)
+    const preview = content.slice(0, 2000)
+    expect(preview).toContain('Desktop tool results')
+    expect(preview).toContain(resultUrl)
+    expect(preview).toContain('Relevant user discussion')
+    expect(content.indexOf(resultUrl)).toBeLessThan(content.indexOf('Search tab'))
+    expect(content).toContain('Do not invent post IDs')
+    expect(content).toContain('<playwright-action-ledger')
+  })
   test('exposes explicit observable actions rather than a research query or retry black box', () => {
     const schema = PlaywrightTool.inputSchema
     const value = schema.parse({ actions: [{ type: 'navigate', url: 'https://example.com' }, { type: 'extract' }] })

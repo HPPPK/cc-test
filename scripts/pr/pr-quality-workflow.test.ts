@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { tryFindGitBashPath } from '../../src/utils/windowsPaths.js'
 
 describe('PR quality workflow', () => {
   test('routes policy outputs into conditional check jobs', () => {
@@ -79,7 +80,14 @@ describe('unconditional core contract CI gate', () => {
     const script = aggregate.split('        run: |\n')[1]
     if (!script) throw new Error('Missing aggregate result evaluator')
     const executable = script.replace(/\$\{\{\s*needs\.([a-z-]+)\.result\s*\}\}/g, (_match, name: string) => name === 'change-policy' ? 'success' : name === 'core-types' ? result : 'skipped')
-    const child = spawnSync('bash', ['-c', executable], { encoding: 'utf8' })
+    // Preserve the multiline evaluator as stdin on Windows instead of passing
+    // shell quotes and variables through the native -c argument transport.
+    // PATH's bash.exe may be the Windows WSL launcher; use the same Git Bash
+    // resolver as local tooling instead of booting a different shell runtime.
+    const bash = process.platform === 'win32' ? tryFindGitBashPath() : 'bash'
+    if (!bash) throw new Error('Git Bash is required to evaluate the aggregate CI gate on Windows')
+    const child = spawnSync(bash, ['-s'], { input: executable, encoding: 'utf8', timeout: 15_000 })
+    if (child.error) throw child.error
     expect(child.status).toBe(result === 'success' ? 0 : 1)
-  })
+  }, 20_000)
 })

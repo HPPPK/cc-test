@@ -100,8 +100,14 @@ describe('coverage gate helpers', () => {
         new Response(aggregate.stderr).text(),
         aggregate.exited,
       ])
-      expect(aggregateExit).not.toBe(0)
-      expect(aggregateError).toContain('state.umask')
+      // Windows umask is a no-op, so it cannot demonstrate POSIX native-state
+      // leakage. The isolated runner below must pass on both platforms.
+      if (process.platform === 'win32') {
+        expect(aggregateExit).toBe(0)
+      } else {
+        expect(aggregateExit).not.toBe(0)
+        expect(aggregateError).toContain('state.umask')
+      }
 
       const result = await runRootCoverage(['01.test.ts', './02.test.ts'], root, join(root, 'coverage'))
       expect(result.exitCode).toBe(0)
@@ -116,7 +122,10 @@ describe('coverage gate helpers', () => {
       expect(subjectRecord).toMatch(/DA:2,[1-9]\d*/)
       expect(subjectRecord).toMatch(/DA:5,[1-9]\d*/)
       const coveredLines = (content: string) => {
-        const record = content.split('SF:src/server/subject.ts\n')[1].split('end_of_record')[0]
+        const record = content.replaceAll('\\', '/').split('end_of_record')
+          .find(section => /^SF:(?:.*\/)?src\/server\/subject\.ts\r?$/m.test(section))
+        expect(record).toBeDefined()
+        if (!record) throw new Error('Fixture subject is absent from LCOV')
         return [...record.matchAll(/^DA:(\d+),(\d+)/gm)]
           .filter((match) => Number(match[2]) > 0)
           .map((match) => Number(match[1]))

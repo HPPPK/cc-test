@@ -7,22 +7,20 @@ import {
 import { runWithRuntimeEnv } from '../runtimeEnv.js'
 
 describe('modelContextWindows', () => {
-  test('recognizes MiniMax-M3 as a built-in 1M context model', () => {
-    expect(getConfiguredOrBuiltInModelContextWindow('MiniMax-M3')).toBe(
-      1_000_000,
-    )
+  test.each(['MiniMax-M3', 'MiniMax-M2.7', 'claude-sonnet-4-6', 'anthropic/claude-haiku-4.5:thinking', 'glm-4.5-air', 'kimi-k2.6', 'custom/unknown-model'])('uses the application 1M default for %s without an explicit override', model => {
+    expect(runWithRuntimeEnv({ [MODEL_CONTEXT_WINDOWS_ENV_KEY]: '' }, () => getConfiguredOrBuiltInModelContextWindow(model))).toBe(1_000_000)
   })
 
-  test('runtime env model windows still override built-in defaults', () => {
+  test.each([204_800, 500_000])('explicit runtime window %i still overrides the application default', window => {
     const result = runWithRuntimeEnv(
       {
         [MODEL_CONTEXT_WINDOWS_ENV_KEY]: JSON.stringify({
-          'MiniMax-M3': 500_000,
+          'MiniMax-M3': window,
         }),
       },
       () => getConfiguredOrBuiltInModelContextWindow('MiniMax-M3'),
     )
 
-    expect(result).toBe(500_000)
+    expect(result).toBe(window)
   })
 })

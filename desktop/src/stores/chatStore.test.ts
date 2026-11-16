@@ -445,6 +445,46 @@ describe('chatStore history mapping', () => {
     ]))
   })
 
+  it('fills ordinary history around remaining question cards without resetting a live turn', async () => {
+    const sid = 'partial-history-restoration'
+    const stamp = Date.parse('2026-04-06T00:00:00Z')
+    const response: Awaited<ReturnType<typeof sessionsApi.getMessages>> = { messages: [
+      { id: 'history-user-1', type: 'user', timestamp: new Date(stamp).toISOString(), content: '继续' },
+      { id: 'history-answer', type: 'assistant', timestamp: new Date(stamp + 1000).toISOString(), content: [{ type: 'text', text: '普通历史回答' }] },
+      { id: 'history-read', type: 'assistant', timestamp: new Date(stamp + 2000).toISOString(), content: [{ type: 'tool_use', name: 'Read', id: 'restored-read', input: {} }] },
+      { id: 'history-result', type: 'user', timestamp: new Date(stamp + 3000).toISOString(), content: [{ type: 'tool_result', tool_use_id: 'restored-read', content: 'file contents' }] },
+      { id: 'history-user-2', type: 'user', timestamp: new Date(stamp + 4000).toISOString(), content: '继续' },
+    ] }
+    const permission = { requestId: 'live-permission', toolName: 'Bash', input: {} }
+    useChatStore.setState({ sessions: { [sid]: makeSession({
+      messages: [
+        { id: 'question', type: 'tool_use', toolName: 'AskUserQuestion', toolUseId: 'live-question', input: {}, timestamp: stamp + 500 },
+        { id: 'live-answer', type: 'assistant_text', content: '普通历史回答', timestamp: stamp + 999 },
+      ],
+      streamingText: '实时输出', activeToolName: 'Bash', activeToolUseId: 'live-tool',
+      pendingPermission: permission,
+    }) } })
+    let resolve!: (value: typeof response) => void
+    vi.mocked(sessionsApi.getMessages).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const loading = useChatStore.getState().loadHistory(sid)
+    useChatStore.setState(state => ({ sessions: { ...state.sessions, [sid]: {
+      ...state.sessions[sid]!, messages: [...state.sessions[sid]!.messages,
+        { id: 'new-live-user', type: 'user_text', content: '继续', timestamp: stamp + 10_000 }],
+    } } }))
+    resolve(response)
+    await loading
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce(response)
+    await useChatStore.getState().loadHistory(sid)
+    const session = useChatStore.getState().sessions[sid]!
+    expect(session.messages.filter(m => m.type === 'user_text' && m.content === '继续')).toHaveLength(3)
+    expect(session.messages.filter(m => m.type === 'assistant_text' && m.content === '普通历史回答')).toHaveLength(1)
+    expect(session.messages.filter(m => m.type === 'tool_use' && m.toolUseId === 'restored-read')).toHaveLength(1)
+    expect(session.messages.filter(m => m.type === 'tool_result' && m.toolUseId === 'restored-read')).toHaveLength(1)
+    expect(session.messages.some(m => m.id === 'new-live-user')).toBe(true)
+    expect(session.messages.some(m => m.id === 'live-answer')).toBe(true)
+    expect(session).toMatchObject({ chatState: 'streaming', streamingText: '实时输出', activeToolName: 'Bash', activeToolUseId: 'live-tool', pendingPermission: permission })
+  })
+
   it('replaces a live unanswered AskUserQuestion card with its persisted answered pair after history reload', async () => {
     vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({
       messages: [
@@ -722,6 +762,7 @@ describe('chatStore history mapping', () => {
     const session = useChatStore.getState().sessions[TEST_SESSION_ID]
     expect(session?.messages).toMatchObject([
       { id: 'visible-message', type: 'assistant_text', content: 'already rendered' },
+      { id: 'goal-command', type: 'user_text', content: '/goal ship the smoke test' },
       {
         id: 'goal-complete',
         type: 'goal_event',

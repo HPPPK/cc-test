@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import type { Message } from '../../types/message.js'
 import { createAssistantMessage, createUserMessage } from '../../utils/messages.js'
 import { buildPlaywrightAudit } from './agentToolUtils.js'
+import { PlaywrightTool } from '../PlaywrightTool/PlaywrightTool.js'
 
 function audit(target: string, ledger: Record<string, unknown>) {
   return buildPlaywrightAudit([
@@ -14,6 +15,22 @@ function audit(target: string, ledger: Record<string, unknown>) {
     }] }) as Message,
   ])
 }
+
+test('a recovered redirect is attributed to its observed destination, not its opaque search redirect URL', () => {
+  const redirect = 'https://www.google.com.hk/goto?url=observed-opaque-link'
+  const destination = 'https://v2ex.com/t/1011017'
+  const ledger = { url: destination, textExtracted: true, accessLimited: false,
+    verificationHistory: [{ stepIndex: 0, url: destination, detail: 'Human verification required' }], steps: [
+      { index: 0, type: 'navigate', outcome: 'success', url: destination, title: '请稍候…' },
+      { index: 1, type: 'wait', outcome: 'success', url: destination, title: 'Windows tools' },
+      { index: 2, type: 'extract', outcome: 'success', url: destination, title: 'Windows tools', detail: 'extracted text from body: User needs middle-click translation.' },
+    ] }
+  expect(audit(redirect, ledger)[0]).toMatchObject({ status: 'opened', finalUrl: destination })
+  // A different document, a still-blocked page or failed extraction is not recovery.
+  expect(audit(redirect, { ...ledger, accessLimited: true })[0]!.status).toBe('access_limited')
+  expect(audit(redirect, { ...ledger, textExtracted: false })[0]!.status).toBe('access_limited')
+  expect(audit(redirect, { ...ledger, steps: ledger.steps.map(step => step.type === 'extract' ? { ...step, url: 'https://unrelated.test/thread' } : step) })[0]!.status).toBe('access_limited')
+})
 
 for (const [target, blocked] of [
   ['https://trends.google.com/trends/explore?date=today%205-y&q=middle%20mouse%20button%20shortcut', 'https://www.google.com/sorry/index'],
@@ -57,6 +74,52 @@ test.each([
     { index: 1, type: 'wait', outcome: 'success', url: target, title },
     { index: 2, type: 'extract', outcome: 'success', url: target, title, detail: 'extracted text from body: ' + body },
   ] })[0]).toMatchObject({ status })
+})
+
+test('reconciles a legacy opened ledger against the actual Chinese challenge body', () => {
+  const target = 'https://www.v2ex.com/t/165355'
+  const entries = audit(target, { url: target, textExtracted: true, accessLimited: false, steps: [
+    { index: 0, type: 'navigate', outcome: 'success', url: target, title: '请稍候…' },
+    { index: 2, type: 'extract', outcome: 'success', url: target, title: '请稍候…', detail: 'extracted text from body: 正在进行安全验证\n本网站使用安全服务防护恶意自动程序。\n由 Cloudflare 提供的性能和安全服务' },
+  ] })
+  expect(entries[0]!.status).toBe('access_limited')
+  expect(entries[0]!.detail).toContain('正在进行安全验证')
+})
+
+test('keeps the already captured extract with its page identity for downstream quote checking', () => {
+  const url = 'https://forum.test/thread/1'
+  const entries = audit(url, { url, textExtracted: true, accessLimited: false, steps: [
+    { index: 0, type: 'navigate', outcome: 'success', url },
+    { index: 2, type: 'extract', outcome: 'success', url, detail: 'extracted text from body: 用户说中键难按，使用侧键映射。' },
+  ] })
+  expect(entries[0]!.detail).toContain('extracted text from body: 用户说中键难按，使用侧键映射。')
+  const long = audit(url, { url, textExtracted: true, accessLimited: false, steps: [
+    { index: 0, type: 'navigate', outcome: 'success', url },
+    { index: 2, type: 'extract', outcome: 'success', url, detail: 'extracted text from body: ' + '已取得的正文'.repeat(1000) },
+  ] })
+  expect(long[0]!.detail).toContain('已取得的正文'.repeat(1000))
+})
+
+test('review audit retains the final captured body beyond the action preview without attributing it to another page', () => {
+  const url = 'https://example.com/product'
+  const body = 'Product details. ' + 'Earlier features. '.repeat(400) + 'Donations are optional. FREE for anyone to install and use.'
+  const ledger = { url, textExtracted: true, accessLimited: false, steps: [
+    { index: 0, type: 'navigate', outcome: 'success', url },
+    { index: 2, type: 'extract', outcome: 'success', url, detail: 'extracted text from body: ' + body },
+  ] }
+  expect(audit(url, ledger)[0]!.detail).toContain('Donations are optional. FREE for anyone to install and use.')
+  expect(audit(url, { ...ledger, url: 'https://example.com/other' })[0]!.detail ?? '').not.toContain('Donations are optional.')
+})
+
+test('Playwright retains captured text in the machine ledger even when the visible result is persisted as a preview', () => {
+  const url = 'https://example.com/price'
+  const body = 'Earlier details. '.repeat(500) + 'Donations do not purchase extra support.'
+  const output = { url, text: body, steps: [{ index: 0, type: 'extract', outcome: 'success', url, detail: 'extracted text from body: ' + body.slice(0, 4000) }], links: [], durationMs: 1 }
+  const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(output as never, 'captured-body')
+  const match = String(mapped.content).match(/<playwright-action-ledger encoding="base64">(.*?)<\/playwright-action-ledger>/)!
+  const saved = JSON.parse(Buffer.from(match[1]!, 'base64').toString('utf8'))
+  expect(saved.steps[0].detail).toContain('Donations do not purchase extra support.')
+  expect(output.steps[0]!.detail).not.toContain('Donations do not purchase extra support.')
 })
 
 test('a still-blocked page, failed extraction and article mentioning verification cannot create false recovery', () => {

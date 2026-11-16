@@ -1,5 +1,6 @@
 import { describe, expect, test, spyOn } from 'bun:test'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
+import type { MessageEntry } from './sessionService.js'
 import { ExpertResearchAutoContinueService, buildResearchReviewContinuationInstruction, buildResearchEndedRecoveryInstruction } from './expertResearchAutoContinueService.js'
 import { parseResearchSourceLibrary, planResearchSourceLibraryExecutionBatches } from './expertResearchSourceLibraryService.js'
 
@@ -8,6 +9,28 @@ const researcherPaths = [
   'commercialization-research/03-user-needs.md',
   'commercialization-research/04-channels.md',
 ]
+
+test.each([401, 403])('does not auto-resume after persisted authentication failure %s, including reconnect', async status => {
+  const saved = { ...candidate(), messages: [
+    { id: 'auth', type: 'assistant' as const, timestamp: '2026-11-14T00:00:00Z', content: [{ type: 'text', text: `Failed to authenticate. API Error: ${status} access denied` }] },
+    { id: 'internal', type: 'user' as const, isHumanInput: false, timestamp: '2026-11-14T00:00:01Z', content: 'internal recovery' },
+    { id: 'noop', type: 'assistant' as const, model: '<synthetic>', timestamp: '2026-11-14T00:00:02Z', content: 'No response requested.' },
+  ] as MessageEntry[] }
+  let sends = 0
+  let completions = 0
+  const make = () => {
+    const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => saved, readFile: async () => '# saved brief', logError: () => {} })
+    service.setHandler(async () => { sends++; return true })
+    service.setSettledHandler(async () => { completions++ })
+    return service
+  }
+  expect(await make().tryContinue('auth')).toBe(false)
+  expect(await make().tryContinue('auth')).toBe(false)
+  expect(sends).toBe(0)
+  expect(completions).toBe(0)
+  saved.messages.push({ id: 'human', type: 'user', isHumanInput: true, timestamp: '2026-11-14T00:01:00Z', content: 'continue' })
+  expect(await make().tryContinue('auth')).toBe(true)
+})
 
 function candidate(paths: string[] = researcherPaths, reviewerPath?: string) {
   return {
@@ -300,6 +323,14 @@ describe('ExpertResearchAutoContinueService', () => {
       reportPath: 'C:/research/Quicker-commercialization-research.html',
       reviewerAgentType: 'expert-evidence-output-reviewer',
     })
+    Object.assign(current, { messages: [{ id: 'failed-F', type: 'user', timestamp: '2026-08-20T00:01:00Z', content: [{ type: 'tool_result', tool_use_id: 'f', is_error: true, content: '[expert-research-audit] failed to persist audit for expert-evidence-output-reviewer/original-F: HTTP 409 ENOENT' }] }] })
+    await service.tryContinue('session-initial-draft-awaiting-08')
+    expect(receivedPlan).toMatchObject({ kind: 'continue-output-review', resumeAgentId: 'original-F' })
+    const messages = (current as any).messages
+    messages.push({ ...messages[0], id: 'failed-again' }, { ...messages[0], id: 'failed-third' })
+    await service.tryContinue('session-initial-draft-awaiting-08')
+    expect(receivedPlan).toMatchObject({ kind: 'report-delivery-stalled', errorCode: 'EXPERT_OUTPUT_REVIEW_RECOVERY_FAILED' })
+    expect(await service.tryContinue('session-initial-draft-awaiting-08')).toBe(false)
   })
 
   test('continues final patch-or-finalize only after this draft has a durable 08 receipt', async () => {
@@ -645,6 +676,32 @@ test('report delivery retry guard only stops repeated new failures without progr
   expect(plans).toHaveLength(completed)
 })
 
+test('persisted tool-layer report rejections stop finalization loops across restart without template-service failure metadata', async () => {
+  const current = candidate(researcherPaths, 'commercialization-research/05-evidence-review.md')
+  Object.assign(current.expert, {
+    templateFillDraft: { templateId: 'v1', fields: { REPORT_TITLE: 'Draft' }, savedAt: '2026-08-20T00:00:00Z', updatedAt: '2026-08-20T00:00:00Z', completionReview: { initialRenderedAt: '2026-08-20T00:00:00Z', reportPath: 'C:/research/report.html' } },
+    reportCompletenessReview: { agentId: 'F', artifactPath: 'commercialization-research/08-report-completeness-review.md', completedAt: '2026-08-20T00:01:00Z' },
+  })
+  const messages: MessageEntry[] = Array.from({ length: 4 }, (_, n) => [
+    { id: 'call-' + n, type: 'assistant' as const, timestamp: '2026-08-20T00:02:00Z', content: [{ type: 'tool_use', id: 'tool-' + n, name: 'Bash', input: { command: 'claude expert-template-fill --data-stdin' } }] },
+    { id: 'result-' + n, type: 'user' as const, timestamp: '2026-08-20T00:02:01Z', content: [{ type: 'tool_result', tool_use_id: 'tool-' + n, is_error: true, content: 'EXPERT_RESEARCH_BUDGET_REJECTED: missing researcher identity or activation timestamp' }] },
+  ]).flat()
+  Object.assign(current, { messages })
+  const plans: Array<{ kind: string }> = []
+  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => current, readFile: async () => '# saved', logError: () => {} })
+  let completed = 0
+  service.setSettledHandler(async () => { completed++ })
+  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
+  await service.tryContinue('tool-failure-loop')
+  expect(plans.at(-1)?.kind).toBe('report-delivery-stalled')
+  await service.tryContinue('tool-failure-loop')
+  expect(plans).toHaveLength(1)
+  expect(completed).toBe(0)
+  messages.push({ id: 'human', type: 'user', isHumanInput: true, timestamp: '2026-08-20T00:03:00Z', content: 'continue after repair' })
+  await service.tryContinue('tool-failure-loop')
+  expect(plans.at(-1)?.kind).toBe('continue-finalize-delivery')
+})
+
 
 test('continues from all registered parts without requiring the three nonexistent root files', async () => {
   const parts = researcherPaths.flatMap((base, lane) => Array.from({ length: 4 }, (_, i) => base.replace('.md', '.parts/worker-' + lane + '-' + i + '.md')))
@@ -830,6 +887,8 @@ test('ended recovery instruction preserves saved lanes and requires truthful bou
   for (const path of researcherPaths) expect(instruction).toContain(path)
   expect(instruction).toContain('SendMessage')
   expect(instruction).toContain('\"to\":\"ended-A\"')
+  const recovery = instruction.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line)).find(value => value.to === 'ended-A')
+  expect(recovery.summary?.trim()).toBeTruthy()
   expect(instruction).toContain('Never launch a fresh Agent')
   expect(instruction).toContain('save-only')
   expect(instruction).toContain('Do not browse')
@@ -837,6 +896,19 @@ test('ended recovery instruction preserves saved lanes and requires truthful bou
   expect(instruction).toContain('Read it back')
   expect(instruction).toContain('Do not browse')
   expect(instruction).toContain('unchanged review admission passes')
+})
+
+test('save-only recovery chooses the original browser owner over an ended empty replacement', async () => {
+  const state = Object.assign(candidate(researcherPaths.slice(1)), { workerLifecycles: [
+    { agentId: 'original-B', artifactPath: researcherPaths[0]!, state: 'ended' as const, generation: 1 },
+    { agentId: 'empty-repair', artifactPath: researcherPaths[0]!, state: 'ended' as const, generation: 1 },
+  ] })
+  state.expert.researchEvidence!.records.push({ agentId: 'original-B', agentType: 'expert-evidence-researcher', content: 'Preserved actual browser audit, Markdown registration rejected.', recordedAt: new Date().toISOString(), entries: [{ target: 'https://example.test/thread', status: 'opened' }] } as any)
+  const service = new ExpertResearchAutoContinueService({ loadCandidate: async () => state, readFile: async () => '# saved', logError: () => {} })
+  const plans: any[] = []
+  service.setHandler(async (_id, plan) => { plans.push(plan); return true })
+  await service.tryContinue('original-browser-owner')
+  expect(plans[0]).toMatchObject({ kind: 'recover-ended-researchers', recoveries: [{ endedAgentId: 'original-B' }] })
 })
 
 test('same-agent save-only recovery counts distinct terminal notifications and ignores receipt timestamp churn', async () => {

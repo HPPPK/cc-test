@@ -26,6 +26,13 @@ export const WORKFLOW_ARTIFACT_POINTER_KINDS = ['workflow-state', 'phase-artifac
 
 export const WORKFLOW_COMPLETION_SUBMISSION_STATUSES = ['ready', 'needs_user', 'completed', 'blocked', 'unable'] as const
 
+export const WORKFLOW_COMPLETION_STATUS_GUIDANCE = 'Use ready when current-phase work is complete to request server verification and user confirmation. Legacy needs_user and completed have the same readiness checks and confirmation behavior as ready; they do not record an unfinished blocker. Use blocked or unable for an actual unresolved blocker. Repair missing current-phase content with allowed tools before submitting; do not request rework solely to fill a field. No completion status advances the phase without its required confirmation.'
+
+/** Confirmation aliases must collect and validate the same output evidence. */
+export function isWorkflowReadyCompletionStatus(status: unknown): boolean {
+  return status === 'ready' || status === 'needs_user' || status === 'completed'
+}
+
 export const WORKFLOW_AUTO_RECOVERY_SOURCES = [
   'phase-completion-blocked',
   'phase-completion-unable',
@@ -713,6 +720,20 @@ export const WORKFLOW_ROUTE_INTENTS = [
 
 export type WorkflowRouteIntent = (typeof WORKFLOW_ROUTE_INTENTS)[number]
 
+export type WorkflowScopeAmendmentRequest = {
+  batchId: string
+  addWriteScopes: string[]
+}
+
+export type WorkflowScopeAmendmentApproval = WorkflowScopeAmendmentRequest & {
+  schemaVersion: 1
+  runId: string
+  phaseId: string
+  workspaceRoot: string
+  basePlanSignature: string
+  basePlanContentHash: string
+}
+
 export type WorkflowRouteRequest = {
   nextPhaseContextStrategy?: WorkflowNextPhaseContextStrategy
   phaseId?: string
@@ -723,9 +744,11 @@ export type WorkflowRouteRequest = {
   rationale: string
   evidence: Array<JsonObject>
   requireUserConfirmation?: boolean
+  scopeAmendment?: WorkflowScopeAmendmentRequest
 }
 
 export type WorkflowPendingRoute = {
+  scopeAmendment?: WorkflowScopeAmendmentApproval
   routeId: string
   phaseId: string
   fromPhaseId: string
@@ -794,6 +817,7 @@ export type WorkflowTransitionAuthority =
 export type WorkflowNextPhaseContextStrategy = 'inherit' | 'clear' | 'capsule'
 
 export type WorkflowTransitionRecord = {
+  scopeAmendment?: WorkflowScopeAmendmentApproval
   transitionId: string
   fromStatus?: WorkflowLifecycleStatus | WorkflowPhaseStatus
   toStatus?: WorkflowLifecycleStatus | WorkflowPhaseStatus
@@ -1228,6 +1252,7 @@ export type WorkflowPhaseArtifact = {
 }
 
 export type WorkflowTransitionRequest = {
+  scopeAmendment?: WorkflowScopeAmendmentRequest
   phaseId: string
   action: 'confirm' | 'reject' | 'retry' | 'manual_complete' | 'pause' | 'resume' | 'stop' | 'cancelled' | 'route'
   transitionId?: string

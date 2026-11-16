@@ -14,6 +14,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(target_os = "windows")]
+mod system_proxy;
+
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use tauri::menu::MenuBuilder;
@@ -1719,6 +1722,8 @@ fn resolve_dev_sidecar_script(app_root: &Path) -> Option<PathBuf> {
 
 fn base_sidecar_environment(app_root: &Path, extra: &[(&str, String)]) -> Vec<(String, String)> {
     let mut envs = terminal_environment(&default_shell(None));
+    #[cfg(target_os = "windows")]
+    system_proxy::apply_system_proxy(&mut envs, &system_proxy::read_system_proxy());
     if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         let cache_dir = PathBuf::from(&config_dir).join("Cache");
         if let Err(e) = fs::create_dir_all(&cache_dir) {

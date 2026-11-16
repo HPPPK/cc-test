@@ -19,7 +19,10 @@ import { runWithAgentContext } from '../../utils/agentContext.js';
 import { recordDevelopmentBatchAgentProgressThroughDesktop, recordWorkflowAgentTaskProgressThroughDesktop, resolveWorkflowRuntimeState } from '../../services/tools/workflowRuntimeStateBridge.js';
 import { recordDevelopmentBatchAgentProgress } from '../../server/services/workflowDevelopmentBatchAgentProgress.js';
 import { isManagedWorkflowAgentImplementationPhase, recordWorkflowAgentTaskProgress, type WorkflowAgentTaskProgressInput } from '../../server/services/workflowAgentTaskStateService.js';
-import { isDevelopmentImplementationPhase, parseDevelopmentReviewerOutcome, validateDevelopmentBatchPlanForState, type DevelopmentBatchAgentProgressInput, type DevelopmentBatchAgentRole, type DevelopmentReviewerOutcome } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js';
+import { isDevelopmentImplementationPhase, validateDevelopmentBatchPlanForState, type DevelopmentBatchAgentProgressInput, type DevelopmentBatchAgentRole, type DevelopmentReviewerOutcome } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js';
+import { validateReviewerFinalMessage } from './reviewerResultValidation.js';
+import { validateCoderFinalMessage } from './coderResultValidation.js';
+import { buildWorkflowReviewerEvidence } from './workflowReviewerEvidence.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from '../../utils/cwd.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -37,7 +40,7 @@ import { writeAgentMetadata } from '../../utils/sessionStorage.js';
 import { sleep } from '../../utils/sleep.js';
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
-import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
+import { getTaskOutputPath, persistAgentTaskOutput } from '../../utils/task/diskOutput.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { teleportToRemote } from '../../utils/teleport.js';
@@ -58,10 +61,11 @@ import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
 import { runAgent } from './runAgent.js';
+import { resolveAgentToolPermissionContext } from './agentPermissionContext.js';
 import { getWorkflowTaskExecutionMode, hasActiveWorkflowTaskSchedule, normalizeWorkflowTaskSchedulePlan, runWithinWorkflowTaskSchedule, validateWorkflowTaskSchedule } from './workflowTaskScheduling.js';
 import { runWithinWorkflowParallelism } from './workflowParallelism.js';
 import type { WorkflowSessionState } from '../../server/services/workflowTypes.js';
-import { createDevelopmentWorkerContract, developmentToolCallViolation, developmentWorkerToolAllowed, isDevelopmentManagedWorkflowId } from '../../server/services/developmentToolExecutionPolicy.js';
+import { createDevelopmentWorkerContract, developmentToolCallViolation, developmentWorkerToolAllowed, isDefaultDevelopmentImplementationWorker, isDevelopmentManagedWorkflowId } from '../../server/services/developmentToolExecutionPolicy.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -735,17 +739,14 @@ export const AgentTool = buildTool({
     // permission mode, so they aren't affected by the parent's tool
     // restrictions. This is computed here so that runAgent doesn't need to
     // import from tools.ts (which would create a circular dependency).
-    const workerPermissionContext = {
-      ...appState.toolPermissionContext,
-      mode: selectedAgent.permissionMode ?? 'acceptEdits'
-    };
+    const workerPermissionContext = resolveAgentToolPermissionContext(appState.toolPermissionContext, selectedAgent.permissionMode);
     const workerTools = assembleWorkflowToolPool(
       workerPermissionContext,
       appState.mcp.tools,
       activeWorkflow,
       activeWorkflow ? workflow_role : undefined,
     ).filter(tool => !isDevelopmentManagedWorkflowId(activeWorkflow?.templateIdentity?.id)
-      || !workflow_role || developmentWorkerToolAllowed(tool.name, workflow_role));
+      || !workflow_role || developmentWorkerToolAllowed(tool.name, workflow_role, activeWorkflow));
 
     // Create a stable agent ID early so an explicitly requested worktree can use it as a slug
     const earlyAgentId = createAgentId();
@@ -1008,6 +1009,11 @@ export const AgentTool = buildTool({
 
       const runAsyncAgentInPreparedDirectory = () => wrapWithCwd(
         async () => {
+          if (developmentBatchRole === 'reviewer' && workflowTaskPlan) {
+            const current = await resolveWorkflowRuntimeState((toolUseContext.getAppState() as { workflow?: unknown }).workflow);
+            if (current.source === 'desktop-unavailable' || !current.state) throw new Error('WORKFLOW_REVIEW_EVIDENCE_UNAVAILABLE: Current workflow authority could not be loaded.');
+            promptMessages.push(createRuntimeUserMessage({ content: await buildWorkflowReviewerEvidence(current.state, workflowTaskPlan.taskId) }));
+          }
           await recordWorkflowTaskProgress('running');
           const outcome = await runAsyncAgentLifecycle({
           taskId: agentBackgroundTask.agentId,
@@ -1028,24 +1034,25 @@ export const AgentTool = buildTool({
           agentIdForCleanup: asyncAgentId,
           enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
           getWorktreeResult: cleanupWorktreeIfNeeded,
+          validateWorkflowExecution: Boolean(managedWorkflowTaskRole) || isDefaultDevelopmentImplementationWorker(activeWorkflow, workflow_role),
           validateFinalMessage: managedWorkflowTaskRole === 'reviewer'
             ? finalMessage => {
-                workflowReviewerOutcome = parseDevelopmentReviewerOutcome(finalMessage) ?? undefined;
-                if (!workflowReviewerOutcome) {
-                  return 'WORKFLOW_REVIEW_RESULT_INVALID: Reviewer must return workflowReview with reviewStatus, requiredFixes, and readyForNextBatch.';
-                }
-                if (workflowReviewerOutcome.reviewStatus === 'needs-fix') {
-                  return `WORKFLOW_REVIEW_NEEDS_FIX: ${workflowReviewerOutcome.requiredFixes.join('; ')}`;
-                }
-                return null;
+                const validation = validateReviewerFinalMessage(finalMessage);
+                workflowReviewerOutcome = validation.outcome;
+                return validation.error;
               }
-            : undefined
-          });
-          await recordWorkflowTaskProgress(
-            outcome.status === 'succeeded' ? 'succeeded' : 'failed',
-            outcome.status === 'failed' ? outcome.reason : undefined,
+            : isDefaultDevelopmentImplementationWorker(activeWorkflow, workflow_role) && workflow_role === 'coder'
+              ? finalMessage => {
+                  const result = validateCoderFinalMessage(finalMessage);
+                  return result.status === 'not-ready' ? { status: 'blocked' as const, reason: '工作已返回，但实现或承诺检查尚未完成；请按报告中的阻塞继续处理。' } : result.error;
+                }
+              : undefined,
+          beforeTerminal: outcome => recordWorkflowTaskProgress(
+            outcome.status,
+            outcome.status !== 'succeeded' ? outcome.reason : undefined,
             workflowReviewerOutcome,
-          );
+          )
+          });
           return outcome;
         },
         () => startAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
@@ -1067,8 +1074,14 @@ export const AgentTool = buildTool({
               signal: agentBackgroundTask.abortController!.signal,
               role: managedWorkflowTaskRole,
               onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
-              onBlocked: reason => {
-                const error = `Workflow task ${workflowTaskPlan.taskId} was blocked: ${reason}`;
+              onBlocked: async reason => {
+                let error = `Workflow task ${workflowTaskPlan.taskId} was blocked: ${reason}`;
+                try {
+                  await recordWorkflowTaskProgress('failed', error, workflowReviewerOutcome);
+                } catch (progressError) {
+                  error += `; Workflow task receipt persistence failed: ${errorMessage(progressError)}`;
+                  logForDebugging(error);
+                }
                 emitAsyncAgentBlocked(agentBackgroundTask.agentId, reason, rootSetAppState);
                 failAsyncAgent(agentBackgroundTask.agentId, error, rootSetAppState);
                 enqueueAgentNotification({
@@ -1090,13 +1103,16 @@ export const AgentTool = buildTool({
               onCancelled: () => killAsyncAgent(agentBackgroundTask.agentId, rootSetAppState),
             },
           )),
-      ).catch((launchError) => {
+      ).catch(async (launchError) => {
         // Worktree setup happens before runAsyncAgentLifecycle. Surface that
         // pre-lifecycle failure instead of leaving a registered task "running".
-        const error = errorMessage(launchError);
-        void recordWorkflowTaskProgress('failed', error, workflowReviewerOutcome).catch(progressError =>
-          logForDebugging(`Failed to record development Batch launch failure: ${errorMessage(progressError)}`),
-        );
+        let error = errorMessage(launchError);
+        try {
+          await recordWorkflowTaskProgress('failed', error, workflowReviewerOutcome);
+        } catch (progressError) {
+          error += `; Workflow task receipt persistence failed: ${errorMessage(progressError)}`;
+          logForDebugging(error);
+        }
         failAsyncAgent(agentBackgroundTask.agentId, error, rootSetAppState);
         enqueueAgentNotification({
           taskId: agentBackgroundTask.agentId,
@@ -1314,12 +1330,14 @@ export const AgentTool = buildTool({
                     // evidence reviewer that is later backgrounded finishes with a
                     // visible <playwright-browser-audit> for the parent but never
                     // writes researchCompletion — blocking research-delivery cards.
-                    await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
+                    const postReviewContext = await recordFinalizedExpertAgentResearchAudit(agentResult, metadata.agentType);
+                    appendExpertPostReviewEvidenceAbsorptionContext(agentResult, postReviewContext);
 
                     // Mark task completed FIRST so TaskOutput(block=true)
                     // unblocks immediately, then notify the parent before
                     // optional classifier/worktree cleanup. The parent loop
                     // depends on this notification to resume.
+                    await persistAgentTaskOutput(backgroundedTaskId, extractTextContent(agentResult.content, '\n'));
                     completeAsyncAgent(agentResult, rootSetAppState);
 
                     enqueueAgentNotification({
@@ -1354,6 +1372,11 @@ export const AgentTool = buildTool({
                       }
                     })();
                   } catch (error) {
+                    try {
+                      await persistAgentTaskOutput(backgroundedTaskId, errorMessage(error));
+                    } catch (outputError) {
+                      error = new Error(`${errorMessage(error)}; Agent output persistence failed: ${errorMessage(outputError)}`);
+                    }
                     try {
                       await recordInterruptedExpertAgentResearchAudit({
                         agentId: backgroundedTaskId,
@@ -1758,16 +1781,15 @@ The agent is now running and will receive instructions via mailbox.`
       }];
       // File-first Expert workers hand over only their fixed Markdown receipt.
       // The parent must Read the declared file; no free-form research prose,
-      // classifier warning, or post-review instruction may leak through this result.
+      // classifier warning, or model-authored instructions may leak through.
+      // The researcher follow-up is appended by the server after finalization.
       if (typeof data.agentType === 'string' && isFileFirstExpertResearchArtifactAgent(data.agentType)) {
+        const receipt = { agentType: data.agentType, content: normalizeFinalizedExpertResearchArtifactContent(data.agentType, contentOrMarker, data.artifactPath) };
+        appendExpertPostReviewEvidenceAbsorptionContext(receipt, data.content.find(block => block.text.includes('<expert-research-follow-up>'))?.text);
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: normalizeFinalizedExpertResearchArtifactContent(
-            data.agentType,
-            contentOrMarker,
-            data.artifactPath,
-          ),
+          content: receipt.content,
         };
       }
       // Expert evidence agents need their transcript-derived Playwright audit even if

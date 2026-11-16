@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
+import * as childProcess from 'node:child_process'
+import { PassThrough } from 'node:stream'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -80,6 +82,28 @@ function baseWorkflowState(workspaceRoot: string): WorkflowSessionState {
 }
 
 describe('WorkflowPreviewService', () => {
+  test('starts the preview with a hidden console while retaining its scoped process configuration', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(tmpDir, 'hidden-preview-'))
+    const child = new childProcess.ChildProcess()
+    Object.defineProperties(child, {
+      stdin: { value: new PassThrough() }, stdout: { value: new PassThrough() }, stderr: { value: new PassThrough() },
+    })
+    const spawn = spyOn(childProcess, 'spawn').mockReturnValue(child)
+    try {
+      const service = new WorkflowPreviewService()
+      const started = await service.startPreview(baseWorkflowState(workspaceRoot), { command: 'fixture-preview' })
+      const options = spawn.mock.calls[0]?.[1] as childProcess.SpawnOptions
+      expect({ command: spawn.mock.calls[0]?.[0], cwd: options?.cwd, shell: options?.shell,
+        detached: options?.detached, windowsHide: options?.windowsHide, forceColor: options?.env?.FORCE_COLOR }).toEqual({
+        command: 'fixture-preview', cwd: workspaceRoot, shell: true, detached: true, windowsHide: true, forceColor: '0',
+      })
+      expect(started.preview).toMatchObject({ status: 'running', command: 'fixture-preview', processOwner: 'workflow' })
+    } finally {
+      child.emit('exit', 0, null)
+      spawn.mockRestore()
+    }
+  })
+
   test('starts and stops a workflow-owned local preview while preserving a run-preview artifact', async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(tmpDir, 'workspace-'))
     const service = new WorkflowPreviewService()

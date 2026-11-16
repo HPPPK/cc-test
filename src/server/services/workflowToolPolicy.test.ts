@@ -413,7 +413,10 @@ describe('workflowToolPolicy', () => {
       mode: 'unavailable',
       path: '',
       working: false,
-    })).toEqual(['Glob', 'Grep'])
+    }, true)).toEqual(['Grep'])
+
+    expect(getWorkflowUnavailableSearchToolNames({ mode: 'unavailable', path: '', working: false }, false)).toEqual(['Glob', 'Grep'])
+    expect(getWorkflowUnavailableSearchToolNames({ mode: 'system', path: '/broken/rg', working: false }, true)).toEqual(['Glob', 'Grep'])
 
     expect(getWorkflowUnavailableSearchToolNames({
       mode: 'system',
@@ -640,7 +643,7 @@ describe('workflowToolPolicy', () => {
     expect(workflowToolPolicy.isWorkflowArtifactWritePath('/workspace/project', 'src/app.ts')).toBe(false)
   })
 
-  test('explains the concrete Write-only .workflow recovery contract only for skills-development', () => {
+  test('explains the concrete Write-only .workflow recovery contract for skills-development', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
     const state = workflowStateWithToolPolicy(
@@ -658,7 +661,7 @@ describe('workflowToolPolicy', () => {
     expect(guidance).toContain('do not end in prose')
   })
 
-  test('does not add skills-development artifact-write recovery guidance to efficient', () => {
+  test('explains scoped artifact updates and completion fields for efficient', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
     const state = workflowStateWithToolPolicy(
@@ -669,9 +672,22 @@ describe('workflowToolPolicy', () => {
 
     const guidance = getPromptGuidance(state, state.templateSnapshot)
 
-    expect(guidance).not.toContain('workflow_artifact_write is a declarative capability')
-    expect(guidance).not.toContain('Do not use Edit/MultiEdit as a substitute')
-    expect(guidance).not.toContain('If an artifact Write is denied, repair the path')
+    expect(guidance).toContain('workflow_artifact_write is a declarative capability')
+    expect(guidance).toContain('Do not use Edit/MultiEdit as a substitute')
+    expect(guidance).toContain('Read the exact existing artifact first')
+    expect(guidance).toContain('remainingRisks and nextUserAction belong inside handoff')
+  })
+
+  test('denied artifact editors explain same-phase Write recovery instead of routing', () => {
+    const state = workflowStateWithToolPolicy('scope-plan', ['Read', 'workflow_artifact_write'])
+    const message = workflowToolPolicy.getWorkflowToolDenialMessage('Edit', state)
+    expect(message).toContain('WORKFLOW_TOOL_FORBIDDEN')
+    expect(message).toContain('Read the exact .workflow artifact')
+    expect(message).toContain('Write')
+    expect(message).toContain('same phase')
+    expect(message).not.toContain('Complete or route')
+    expect(workflowToolPolicy.getWorkflowToolDenialMessage('Bash', state)).not.toContain('Read the exact .workflow artifact')
+    expect(workflowToolPolicy.getWorkflowToolDenialMessage('Edit', workflowStateWithToolPolicy('scope-plan', ['Read']))).not.toContain('Read the exact .workflow artifact')
   })
 
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
@@ -827,9 +843,15 @@ describe('workflowToolPolicy', () => {
     const guidance = getPromptGuidance(state)
     expect(guidance).toContain('direct API tool, never a Skill')
     expect(guidance).toContain('workflow:submit_phase_completion')
-    expect(guidance).toContain('not yet eligible')
-    expect(guidance).toContain('Do not submit ready/completed')
-    expect(guidance).toContain('submit_phase_completion with status blocked or needs_user')
+    expect(guidance).toContain('eligibility is a snapshot')
+    expect(guidance).toContain('ready triggers server-side output verification')
+    expect(guidance).toContain('Do not report blocked or request rework solely because')
+    expect(guidance).toContain('Repair missing current-phase content in the same phase')
+    expect(guidance).not.toContain('explicit workflow state-update path')
+    expect(guidance).not.toContain('Do not submit ready/completed')
+    expect(guidance).toContain('submit_phase_completion with status blocked or unable')
+    expect(guidance).toContain('Legacy needs_user and completed have the same readiness checks')
+    expect(guidance).not.toContain('status blocked or needs_user')
     expect(guidance).toContain('request_workflow_route with rework_current_phase or jump_to_phase')
   })
 
@@ -863,8 +885,9 @@ describe('workflowToolPolicy', () => {
     expect(guidance).toContain('handoff must be an object')
     expect(guidance).toContain('rationale must be a non-empty string')
     expect(guidance).toContain('evidence must be an array')
-    expect(guidance).toContain('The persisted completion gate is not yet eligible')
-    expect(guidance).toContain('Do not submit ready/completed')
+    expect(guidance).toContain('No persisted completion eligibility snapshot is available')
+    expect(guidance).toContain('ready triggers server-side output verification')
+    expect(guidance).not.toContain('Do not submit ready/completed')
     expect(guidance).toContain('Do not ask the user to type continue before calling the completion tool')
     expect(guidance).toContain('requirements-review')
     expect(guidance).toContain('prompt-level guidance only')

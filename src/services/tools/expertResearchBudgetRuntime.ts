@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { expertLocalRequest } from './expertLocalTransport.js'
 
 type Dependencies = { env?: NodeJS.ProcessEnv; fetchImpl?: (url: string, init?: RequestInit) => Promise<Response> }
 const unavailable = 'EXPERT_RESEARCH_BUDGET_UNAVAILABLE: This requested operation was not admitted because its budget reservation could not be checked. Preserve existing evidence; do not infer that other researchers have exhausted their budgets.'
@@ -12,7 +13,7 @@ async function reserve(body: Record<string, unknown>, deps: Dependencies): Promi
   let response: Response
   let payload: { allowed?: boolean; reason?: string }
   try {
-    response = await (deps.fetchImpl ?? fetch)(`${server}/api/sessions/${encodeURIComponent(session)}/expert/research-budget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) })
+    response = await expertLocalRequest(`${server}/api/sessions/${encodeURIComponent(session)}/expert/research-budget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, { fetchImpl: deps.fetchImpl })
     payload = await response.json() as { allowed?: boolean; reason?: string }
   } catch (error) { throw new Error(unavailable + ' ' + (error instanceof Error ? error.message : String(error))) }
   // Structured denials already name their scope. Do not turn a rejected start
@@ -24,9 +25,10 @@ export async function reserveExpertResearcherStart(input: Dependencies & { agent
   if (input.expertId !== 'commercialization-research-report') return
   await reserve({ action: 'reserve-researcher', agentId: input.agentId, artifactPath: input.artifactPath }, input)
 }
-/** Ignore only literal JSON stdin of a recognized report CLI command.
+/** Ignore literal stdin of a recognized report CLI command.
  * Shell code before/after it remains visible; unquoted heredocs can expand shell
- * substitutions and must never receive this treatment.
+ * substitutions and must never receive this treatment. JSON validity belongs
+ * to the CLI: malformed literal data is still data, never executable research.
  */
 function withoutLiteralReportStdin(command: string): string {
   const lines = command.split('\n')
@@ -41,10 +43,6 @@ function withoutLiteralReportStdin(command: string): string {
     let end = index + 1
     while (end < lines.length && (marker[1] ? lines[end].replace(/^\t+/, '') : lines[end]) !== marker[3]) end++
     if (end === lines.length) continue
-    try {
-      const payload = JSON.parse(lines.slice(index + 1, end).join('\n'))
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue
-    } catch { continue }
     index = end
   }
   return result.join('\n')
@@ -71,10 +69,6 @@ function withoutLiteralPowerShellReportStdin(command: string): string {
       direct = following.slice(0, variable.length).toLowerCase() === variable.toLowerCase() && reportPipe.test(following.slice(variable.length))
     }
     if (!direct) continue
-    try {
-      const payload = JSON.parse(lines.slice(index + 1, end).join('\n'))
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue
-    } catch { continue }
     result.push(closing)
     index = end
   }

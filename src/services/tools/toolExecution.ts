@@ -67,8 +67,10 @@ import { resolveWorkflowRuntimeState } from './workflowRuntimeStateBridge.js'
 import { uiuxImageToolViolation } from './uiuxImageWorkflowRuntime.js'
 import { developmentLeaderToolViolation } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js'
 import { developmentToolCallViolation } from '../../server/services/developmentToolExecutionPolicy.js'
+import { sendMessageInputForWorkflowGuard } from './sendMessageObservableInput.js'
 import {
   getWorkflowQuestionCardContractViolation,
+  getWorkflowToolDenialMessage,
   isWorkflowPhaseToolDenied,
 } from '../../server/services/workflowToolPolicy.js'
 import type { HookProgress } from '../../types/hooks.js'
@@ -797,7 +799,7 @@ async function checkPermissionsAndCallTool(
   // persisted Desktop state before every actual tool call instead of trusting
   // a launch-time deny list or an old transcript turn.
   const localWorkflowState = (toolUseContext.getAppState() as { workflow?: unknown }).workflow
-  const workflowResolution = await resolveWorkflowRuntimeState(localWorkflowState)
+  const workflowResolution = await resolveWorkflowRuntimeState(localWorkflowState, { signal: toolUseContext.abortController.signal })
   if (workflowResolution.source === 'desktop-unavailable') {
     const violation = `WORKFLOW_STATE_UNAVAILABLE: ${workflowResolution.reason} No tool was executed; retry after Desktop workflow state is available.`
     logForDebugging(violation)
@@ -822,7 +824,7 @@ async function checkPermissionsAndCallTool(
   const workflowState = workflowResolution.state
   const executionContractViolation = developmentToolCallViolation(
     tool.name,
-    input,
+    sendMessageInputForWorkflowGuard(tool, input, parsedInput.data as Record<string, unknown>),
     workflowState,
     toolUseContext.workflowWorkerContract,
     parsedInput.data as Record<string, unknown>,
@@ -862,7 +864,7 @@ async function checkPermissionsAndCallTool(
     ]
   }
   if (isWorkflowPhaseToolDenied(tool.name, workflowState)) {
-    const violation = `WORKFLOW_TOOL_FORBIDDEN: ${tool.name} is not allowed in the current workflow phase. Complete or route the current phase before using this tool.`
+    const violation = getWorkflowToolDenialMessage(tool.name, workflowState)
     logForDebugging(violation)
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
     return [
@@ -1533,9 +1535,17 @@ async function checkPermissionsAndCallTool(
     if (latest.state?.templateIdentity?.id !== workflowState?.templateIdentity?.id || latest.state?.activePhaseId !== workflowState?.activePhaseId) {
       throw new Error('WORKFLOW_EXECUTION_STALE: The workflow binding or phase changed while this call waited for permission. Refresh the current phase before retrying.')
     }
-    const violation = developmentToolCallViolation(tool.name, finalInput, latest.state, toolUseContext.workflowWorkerContract, undefined, Boolean(toolUseContext.agentId))
+    const finalParsed = tool.name === 'SendMessage' ? tool.inputSchema.safeParse(finalInput) : null
+    if (finalParsed && !finalParsed.success) {
+      throw new Error('WORKFLOW_TOOL_FIELDS_INVALID: The updated SendMessage input no longer matches its declared schema; no tool was executed.')
+    }
+    const finalGuardInput = finalParsed?.success
+      ? sendMessageInputForWorkflowGuard(tool, finalInput, finalParsed.data as Record<string, unknown>)
+      : finalInput
+    const violation = developmentToolCallViolation(tool.name, finalGuardInput, latest.state, toolUseContext.workflowWorkerContract,
+      finalParsed?.success ? finalParsed.data as Record<string, unknown> : undefined, Boolean(toolUseContext.agentId))
       ?? developmentLeaderToolViolation(tool.name, finalInput, latest.state, Boolean(toolUseContext.agentId))
-      ?? (isWorkflowPhaseToolDenied(tool.name, latest.state) ? 'WORKFLOW_TOOL_FORBIDDEN: The current phase no longer permits this tool.' : null)
+      ?? (isWorkflowPhaseToolDenied(tool.name, latest.state) ? getWorkflowToolDenialMessage(tool.name, latest.state) : null)
     if (violation) throw new Error(violation)
   }
   try {

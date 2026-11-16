@@ -15,6 +15,30 @@ import { WorkflowSessionCreateService } from './workflowSessionCreateService.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
 import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
 
+test('canonical development pack keeps reviewer receipts and phase inputs aligned with runtime', async () => {
+  const pack = path.resolve(import.meta.dir, '../../../workflows/efficient-constrained-dev-debug-workflow-v5')
+  const template = JSON.parse(await fs.readFile(path.join(pack, 'workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json'), 'utf8'))
+  const permissions = await fs.readFile(path.join(pack, 'permissions/permissions.json'), 'utf8')
+  const skill = await fs.readFile(path.join(pack, 'skills/workflow-lightweight-batch-review/SKILL.md'), 'utf8')
+  expect(skill).toContain('"workflowReview"')
+  expect(skill).toContain('"readyForNextBatch"')
+  expect(skill).not.toContain('allowNextBatch')
+  expect(permissions).toContain('workflowReview.readyForNextBatch')
+  for (const phase of template.phases) {
+    for (const instructions of [phase.instructions, phase.contract.instructions]) {
+      expect(instructions).toContain('Do not read a new phase output as an existing input')
+    }
+    expect(phase.requiredIntake ?? []).not.toContain('.workflow/runs/<runId>/implementation-log.md')
+  }
+  const implementation = template.phases.find((phase: { id: string }) => phase.id === 'delegate-implement')
+  for (const contract of [implementation, implementation.contract]) {
+    expect(contract.instructions).toContain('QA and Debug omit workflow_parallel_plan')
+    expect(contract.instructions).toContain('"workflowReview"')
+    expect(contract.subagentPolicy.reviewerRequiredReturn).toContain('workflowReview.readyForNextBatch')
+    expect(JSON.stringify(contract)).not.toContain('allowNextBatch')
+  }
+})
+
 type WorkflowTemplateFixture = {
   schemaVersion: 1 | 2
   templates: Array<{
@@ -282,7 +306,7 @@ describe('workflow template registry service', () => {
       id: 'efficient-constrained-dev-debug-workflow-v5',
       source: 'user',
       schemaVersion: 2,
-      version: '26',
+      version: '32',
       name: expect.any(String),
       labels: expect.arrayContaining(['new-product', 'enhancement', 'ux-copy', 'error-handling']),
       phases: expect.arrayContaining([
@@ -378,6 +402,7 @@ describe('workflow template registry service', () => {
     expect(developmentRouteContext?.completionCriteria).toMatchObject({
       description: expect.stringContaining('final app-framing summary includes all eight fields'),
     })
+    expect(developmentScopePlan?.outputArtifacts?.find(artifact => artifact.id === 'work-order')?.description).toContain('No source material means no empty material fields are required')
     expect(developmentScopePlan).toMatchObject({
       name: expect.any(String),
       objective: expect.stringContaining('Lock the first-version product scope'),
@@ -414,6 +439,8 @@ describe('workflow template registry service', () => {
     expect(developmentScopePlan?.instructions).toContain('Product Scope / User Roles / Core User Flows / MVP Features / Non-goals / Acceptance Criteria / Scenario Cases / User-facing Copy Requirements')
     expect(developmentScopePlan?.instructions).toContain('sourceMaterialSummary')
     expect(developmentScopePlan?.instructions).toContain('sourceMaterialFindings')
+    expect(developmentScopePlan?.instructions).toContain('If no material was provided, do not require empty material fields')
+    expect(developmentScopePlan?.handoffRules?.join('\n')).toContain('sourceMaterialSummary only when sourceMaterialType is not none')
     expect(developmentScopePlan?.instructions).toContain('uiUxDirection')
     expect(developmentScopePlan?.instructions).toContain('referencePolicy')
     expect(requireFixtureValue(developmentScopePlan?.executionRules).join('\n')).toContain('Do not create implementation batches')
@@ -505,7 +532,7 @@ describe('workflow template registry service', () => {
         contextPolicy: 'brief-only',
         reviewerReadOnly: true,
         coderRequiredReturn: ['changedFiles', 'completedItems', 'testsRun', 'testResults', 'blockers', 'risks', 'summary', 'readyForReview'],
-        reviewerRequiredReturn: ['reviewStatus', 'userScenarioChecked', 'evidence', 'requiredFixes', 'remainingRisks', 'allowNextBatch'],
+        reviewerRequiredReturn: ['workflowReview.reviewStatus', 'workflowReview.requiredFixes', 'workflowReview.readyForNextBatch', 'userScenarioChecked', 'evidence', 'remainingRisks'],
       }),
     })
     expect(developmentImplement?.requiredIntake).toEqual(expect.arrayContaining([
@@ -516,7 +543,7 @@ describe('workflow template registry service', () => {
     expect(developmentImplement?.instructions).toContain('Inside one batch the sequence is fixed: Coder implements, then Reviewer reads and reviews that completed batch')
     expect(developmentImplement?.instructions).toContain('Use the persisted Batch DAG and current Context Capsule')
     expect(developmentImplement?.instructions).toContain('Coder: change only the agreed scope')
-    expect(developmentImplement?.instructions).toContain('Reviewer: use workflow:lightweight-batch-review')
+    expect(developmentImplement?.instructions).toContain('Reviewer: apply the supplied workflow:lightweight-batch-review guidance as a method reference')
     expect(developmentImplement?.instructions).toContain('Do not skip accepted tasks')
     expect(developmentImplement?.instructions).toContain('A needs-fix result returns to the same Coder batch')
     expect(requireFixtureValue(developmentImplement?.handoffRules).join('\n')).toContain('Handoff changed files, checks, user-path evidence, blockers, remaining risks')

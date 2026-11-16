@@ -1,4 +1,6 @@
 import { toWorkflowTemplate } from '../services/workflowRuntimeTemplateService.js'
+import { scopeAmendmentStorageTransaction } from '../services/workflowScopeAmendment.js'
+import { isWorkflowReadyCompletionStatus } from '../services/workflowTypes.js'
 /**
  * Session REST API Routes
  *
@@ -53,6 +55,7 @@ import type { WorkflowAgentTaskProgressInput } from '../services/workflowAgentTa
 import { collectRuntimeVerifiedOutputEvidence, getRuntimeResolvableAnsweredIssueIds } from '../services/workflowCompletionEvidenceService.js'
 import { WorkflowPreviewService } from '../services/workflowPreviewService.js'
 import { enqueueWorkflowSessionTransition } from '../services/workflowTransitionCoordinator.js'
+import { WorkflowStateReadTiming } from '../services/workflowStateReadTiming.js'
 import { agentRunLedgerService } from '../services/agentRunLedgerService.js'
 import { buildWorkflowFinalReport } from '../services/workflowFinalReport.js'
 import {
@@ -1363,37 +1366,45 @@ function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
 }
 
 async function getWorkflowState(sessionId: string): Promise<Response> {
-  const workflowMetadata = await requireWorkflowSession(sessionId)
-  return await enqueueWorkflowSessionTransition(sessionId, async () => {
-    const stateRead = await workflowSessionStateService.readState(sessionId)
-    if (!stateRead.exists || !stateRead.state) {
-      throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
-    }
-    const reconciled = await reconcileWorkflowAgentTasks(
-      stateRead.state,
-      (ownerSessionId, runId) => agentRunLedgerService.getRun(ownerSessionId, runId),
-    )
-    let authoritative = stateRead.state
-    let projectionMetadata = workflowMetadata
-    if (reconciled !== stateRead.state) {
-      const { state: written, pointer } = await workflowSessionStateService.writeState(
-        sessionId,
-        reconciled,
-        { expectedStateVersion: stateRead.state.stateVersion },
-      )
-      authoritative = written
-      projectionMetadata = stateToWorkflowMetadata(written, pointer)
-      const detail = await sessionService.getSession(sessionId)
-      if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
-      await workflowSessionCreateService.appendWorkflowMetadata(
-        sessionId,
-        detail.workDir || process.cwd(),
-        projectionMetadata,
-      )
-    }
-    const state = projectWorkflowStateForApi(authoritative, projectionMetadata)
-    return Response.json({ state, workflow: workflowSummaryFromState(authoritative) })
-  })
+  const timing = new WorkflowStateReadTiming()
+  let outcome: 'ok' | 'error' = 'error'
+  try {
+    const workflowMetadata = await timing.measure('metadata', () => requireWorkflowSession(sessionId))
+    const enteredQueue = timing.begin('queueWait')
+    const response = await enqueueWorkflowSessionTransition(sessionId, async () => {
+      enteredQueue()
+      const stateRead = await timing.measure('stateRead', () => workflowSessionStateService.readState(sessionId))
+      if (!stateRead.exists || !stateRead.state) {
+        throw workflowError(404, 'WORKFLOW_STATE_UNAVAILABLE', 'Workflow state is unavailable')
+      }
+      let authoritative = stateRead.state
+      let projectionMetadata = workflowMetadata
+      await timing.measure('reconcile', async () => {
+        const reconciled = await reconcileWorkflowAgentTasks(
+          stateRead.state!,
+          (ownerSessionId, runId) => agentRunLedgerService.getRun(ownerSessionId, runId),
+          undefined,
+          { ownerAlive: conversationService.hasSession(sessionId) },
+        )
+        if (reconciled !== stateRead.state) {
+          const { state: written, pointer } = await workflowSessionStateService.writeState(
+            sessionId, reconciled, { expectedStateVersion: stateRead.state!.stateVersion },
+          )
+          authoritative = written
+          projectionMetadata = stateToWorkflowMetadata(written, pointer)
+          const detail = await sessionService.getSession(sessionId)
+          if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
+          await workflowSessionCreateService.appendWorkflowMetadata(
+            sessionId, detail.workDir || process.cwd(), projectionMetadata,
+          )
+        }
+      })
+      const state = projectWorkflowStateForApi(authoritative, projectionMetadata)
+      return timing.measureSync('serialization', () => Response.json({ state, workflow: workflowSummaryFromState(authoritative) }))
+    })
+    outcome = 'ok'
+    return response
+  } finally { timing.finish(outcome) }
 }
 
 function projectWorkflowStateForApi(
@@ -1538,7 +1549,11 @@ async function transitionWorkflow(req: Request, sessionId: string): Promise<Resp
       }
       throw error
     }
-    const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, { expectedStateVersion: transitionState.stateVersion })
+    const { pointer } = await workflowSessionStateService.writeState(sessionId, result.state, {
+      expectedStateVersion: transitionState.stateVersion,
+      ...(body.action === 'confirm' && transitionState.pendingRoute?.scopeAmendment
+        ? { projectArtifactTransaction: scopeAmendmentStorageTransaction(transitionState, result.state) } : {}),
+    })
     await persistWorkflowFinalReportIfReady(result.state)
     const detail = await sessionService.getSession(sessionId)
     if (!detail) throw ApiError.notFound(`Session not found: ${sessionId}`)
@@ -1866,7 +1881,7 @@ async function prepareRuntimeVerifiedCompletionEvidence(
   request: WorkflowBoundaryTransitionRequest,
   requestedAt: string,
 ): Promise<{ state: WorkflowSessionState }> {
-  if (!isCompletionSubmissionAction(request.action) || (request.action !== 'ready' && request.action !== 'completed' && request.action !== 'manual_complete')) {
+  if (!isWorkflowReadyCompletionStatus(request.action) && request.action !== 'manual_complete') {
     return { state }
   }
 
@@ -2009,6 +2024,7 @@ async function applyWorkflowBoundaryTransition(
         rationale: request.rationale,
         evidence: request.evidence as Array<Record<string, unknown>>,
         requireUserConfirmation: request.requireUserConfirmation,
+        scopeAmendment: request.scopeAmendment,
       },
     })
     return {
@@ -2117,7 +2133,7 @@ async function getWorkflowReport(sessionId: string): Promise<Response> {
 }
 
 async function requireWorkflowSession(sessionId: string): Promise<WorkflowSessionMetadata> {
-  const detail = await sessionService.getSession(sessionId)
+  const detail = await sessionService.getWorkflowSessionMetadata(sessionId)
   if (!detail) {
     throw ApiError.notFound(`Session not found: ${sessionId}`)
   }

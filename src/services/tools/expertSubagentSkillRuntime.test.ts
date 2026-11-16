@@ -20,6 +20,19 @@ const expertEnv = {
   CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456/',
 } as NodeJS.ProcessEnv
 
+test('audit transport recovery preserves original agent, evidence and assigned path', async () => {
+  const input = { agentId: 'original', agentType: 'expert-evidence-researcher', artifactPath: 'research/03.parts/original.md', entries: [{ target: 'https://example.com/post', status: 'opened' }], content: '# Original observed excerpt', completed: true }
+  const bodies: string[] = []
+  await recordExpertSubagentResearchAudit(input, { env: expertEnv, fetch: async (_url, init) => {
+    bodies.push(String(init?.body))
+    if (bodies.length === 1) throw new TypeError('acknowledgement reset')
+    return Response.json({ accepted: true })
+  } })
+  expect(bodies).toHaveLength(2)
+  expect(bodies[0]).toBe(bodies[1])
+  expect(JSON.parse(bodies[1]!)).toEqual(input)
+})
+
 function packageSkillResponse() {
   return new Response(JSON.stringify({
     expertId: 'commercialization-research-report',

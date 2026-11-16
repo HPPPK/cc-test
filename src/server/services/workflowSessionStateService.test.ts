@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
+import { createScopeAmendmentFixture } from './__fixtures__/workflowScopeAmendment.js'
+import { prepareScopeAmendment, applyScopeAmendment, scopeAmendmentStorageTransaction } from './workflowScopeAmendment.js'
 
 const FIXTURE_DIR = path.join(import.meta.dir, '__fixtures__', 'workflow-sessions')
 
@@ -117,6 +119,56 @@ function makeState(overrides: Record<string, unknown> = {}): Record<string, unkn
 }
 
 describe('WorkflowSessionStateService', () => {
+  test.each(['commit', 'stale', 'missing-state', 'state-write-failure'] as const)('scope amendment storage transaction handles %s without split file/state authority', async scenario => {
+    const fixture = await createScopeAmendmentFixture(path.join(tmpDir, 'scope-workspace'), SESSION_ID)
+    const service = new WorkflowSessionStateService()
+    const seeded = await service.writeState(SESSION_ID, fixture.state)
+    const approval = prepareScopeAmendment(seeded.state, { batchId: 'B3', addWriteScopes: ['config/settings.py'] })
+    const pending = { ...seeded.state, stateVersion: seeded.state.stateVersion + 1,
+      pendingRoute: { routeId: 'scope-route', phaseId: 'delegate-implement', fromPhaseId: 'delegate-implement', targetPhaseId: 'delegate-implement', intent: 'rework_current_phase' as const,
+        rationale: 'Add roster registration', evidence: [], createdAt: NOW, requiresConfirmation: true, approvedTargetPhaseId: 'delegate-implement', status: 'pending' as const, scopeAmendment: approval } }
+    const saved = await service.writeState(SESSION_ID, pending, { expectedStateVersion: seeded.state.stateVersion })
+    const next = structuredClone(saved.state)
+    applyScopeAmendment(next, approval, NOW)
+    next.stateVersion++; next.pendingRoute = null
+    next.transitionHistory.push({ transitionId: 'scope-confirmed', fromPhaseId: 'delegate-implement', toPhaseId: 'delegate-implement', authority: 'user-confirmation', action: 'route-confirmed', completionCheckId: null, createdAt: NOW, scopeAmendment: approval })
+    const transaction = scopeAmendmentStorageTransaction(saved.state, next)!
+    if (scenario === 'missing-state') {
+      await fs.unlink(statePath())
+      await expect(service.writeState(SESSION_ID, next, { expectedStateVersion: saved.state.stateVersion, projectArtifactTransaction: transaction })).rejects.toThrow('missing or corrupt')
+      expect(await fs.readFile(fixture.file, 'utf8')).toBe(fixture.content)
+      expect((await service.readState(SESSION_ID)).exists).toBe(false)
+      return
+    } else if (scenario === 'stale') {
+      await service.updateState(SESSION_ID, current => ({ ...current, updatedAt: NOW }))
+      await expect(service.writeState(SESSION_ID, next, { expectedStateVersion: saved.state.stateVersion, projectArtifactTransaction: transaction })).rejects.toThrow('version is stale')
+    } else if (scenario === 'state-write-failure') {
+      const rename = fs.rename
+      let rejected = false
+      const failure = spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+        if (String(to) === statePath() && !rejected) { rejected = true; throw new Error('fixture state commit failed') }
+        return rename(from, to)
+      })
+      try {
+        await expect(service.writeState(SESSION_ID, next, { expectedStateVersion: saved.state.stateVersion, projectArtifactTransaction: transaction })).rejects.toThrow('fixture state commit failed')
+      } finally { failure.mockRestore() }
+    } else {
+      // WebSocket and other server callers get the same transaction automatically.
+      await service.writeState(SESSION_ID, next, { expectedStateVersion: saved.state.stateVersion })
+    }
+    const persisted = (await service.readState(SESSION_ID)).state!
+    const planFile = await fs.readFile(fixture.file, 'utf8')
+    if (scenario === 'commit') {
+      expect(planFile).toBe(persisted.workflowRuns![0]!.artifacts[0]!.content!)
+      expect(planFile).toContain('config/settings.py')
+      expect(persisted.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots[0]!.status).toBe('succeeded')
+    } else {
+      expect(planFile).toBe(fixture.content)
+      expect(persisted.pendingRoute?.scopeAmendment).toEqual(approval)
+      expect(persisted.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots.find(task => task.batchId === 'B3' && task.workflowRole === 'coder')!.writeScopes).toEqual(['roster/'])
+    }
+    expect(await fs.readFile(path.join(fixture.state.workspaceRoot!, 'config/settings.py'), 'utf8')).toBe('INSTALLED_APPS = []\n')
+  })
   test('writes schema-versioned workflow state atomically under cc-jiangxia workflow-sessions', async () => {
     const service = new WorkflowSessionStateService()
     const state = makeState()

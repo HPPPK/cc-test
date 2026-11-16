@@ -3,6 +3,7 @@ import { createTaskStateBase } from '../../Task.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   killAsyncAgent,
+  failAgentTask,
   registerAgentForeground,
   startAsyncAgent,
   unregisterAgentForeground,
@@ -43,6 +44,25 @@ function taskStore(task: LocalAgentTaskState) {
 }
 
 describe('LocalAgentTask queued lifecycle', () => {
+  test('fails a queued task without pretending it started when permit acquisition rejects', () => {
+    const queued = taskStore(createQueuedAgent('rejected-permit'))
+    failAgentTask(queued.task.id, 'Permit rejected', queued.setAppState)
+    expect(queued.task.status).toBe('failed')
+    expect(queued.task.error).toBe('Permit rejected')
+    expect(queued.task.endTime).toBeGreaterThan(0)
+    expect(queued.task.abortController).toBeUndefined()
+    startAsyncAgent(queued.task.id, queued.setAppState)
+    expect(queued.task.status).toBe('failed')
+  })
+
+  test.each(['completed', 'failed', 'killed'] as const)('does not rewrite a task already %s', status => {
+    const original = { ...createQueuedAgent('terminal-' + status), status }
+    const store = taskStore(original)
+    failAgentTask(original.id, 'Late permit failure', store.setAppState)
+    expect(store.task).toBe(original)
+    expect(store.task.status).toBe(status)
+  })
+
   test('starts only when it receives a permit and can be cancelled while pending', () => {
     const queued = taskStore(createQueuedAgent('queued-agent'))
 

@@ -220,7 +220,16 @@ function candidatesForVisitedUrl(
 ): ExpertResearchSourceLibraryEntry[] {
   const visited = comparableUrl(value)
   if (!visited) return []
-  const hostMatches = catalog.entries.filter((candidate) => matchesCandidateHost(visited.candidateHost, candidate))
+  const hostMatches = catalog.entries.filter((candidate) => {
+    const selected = comparableUrl(candidate.candidateUrl)
+    // Only this explicit legacy platform entry aliases the modern Trends host.
+    // Google Search/Maps and unrelated subdomains must never satisfy it.
+    if (selected?.candidateHost === 'google.com' && /^\/trends\/?$/.test(selected.pathname)) {
+      return visited.candidateHost === 'trends.google.com'
+        || (visited.candidateHost === 'google.com' && /^\/trends(?:\/|$)/.test(visited.pathname))
+    }
+    return matchesCandidateHost(visited.candidateHost, candidate)
+  })
   if (hostMatches.length <= 1) return hostMatches
 
   const exact = hostMatches.filter((candidate) => comparableUrl(candidate.candidateUrl)?.href === visited.href)

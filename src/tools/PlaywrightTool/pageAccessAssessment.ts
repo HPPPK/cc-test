@@ -38,7 +38,7 @@ export function detectHumanVerificationKind(
   // Match the challenge surface, not an article merely quoting its wording.
   if (/^\s*(?:Reddit\s*[-|:]\s*)?Prove your humanity\s*$/i.test(title)
     || (/^\s*Prove your humanity(?:\s|$)/i.test(text) && /complete the challenge/i.test(text))
-    || (/^\s*Just a moment[.!…]*\s*$/i.test(title) && /[?&]__cf_chl_|\/cdn-cgi\/challenge-platform|challenge|checking your browser|performing security verification|security service to protect against malicious bots/i.test(url + ' ' + text))) return 'human verification'
+    || (/^\s*(?:Just a moment|请稍候|请稍等)[.!。…]*\s*$/i.test(title) && /[?&]__cf_chl_|\/cdn-cgi\/challenge-platform|challenge|checking your browser|performing security verification|security service to protect against malicious bots|正在进行安全验证|安全服务防护恶意自动程序/i.test(url + ' ' + text))) return 'human verification'
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
   const explicitChallenge = HUMAN_VERIFICATION_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.kind
   if (explicitChallenge) return explicitChallenge

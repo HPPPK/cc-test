@@ -22,6 +22,8 @@ import { jsonParse } from '../../utils/slowOperations.js';
 import { countCharInString } from '../../utils/stringUtils.js';
 import { getTaskOutput } from '../../utils/task/diskOutput.js';
 import { updateTaskState } from '../../utils/task/framework.js';
+import { terminalAgentReceipts } from '../../utils/task/terminalAgentReceipts.js';
+import { acknowledgeTaskNotification } from '../../utils/messageQueueManager.js';
 import { formatTaskOutput } from '../../utils/task/outputFormatting.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { AgentPromptDisplay, AgentResponseDisplay } from '../AgentTool/UI.js';
@@ -216,7 +218,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const { task_id } = input
     const appState = getAppState();
     const task = appState.tasks?.[task_id] as TaskState | undefined;
-    if (!task) {
+    if (!task && !terminalAgentReceipts.get(task_id)) {
       return {
         result: false,
         message: `No task found with ID: ${task_id}`,
@@ -236,20 +238,27 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const appState = toolUseContext.getAppState();
     const task = appState.tasks?.[task_id] as TaskState | undefined;
     if (!task) {
+      const receipt = terminalAgentReceipts.get(task_id)
+      if (receipt) {
+        acknowledgeTaskNotification(task_id)
+        return { data: { retrieval_status: 'success' as const, task: receipt } }
+      }
       throw new Error(`No task found with ID: ${task_id}`);
     }
     if (!block) {
       // Non-blocking: return current state
       if (task.status !== 'running' && task.status !== 'pending') {
+        const output = await getTaskOutputData(task);
         // Mark as notified
         updateTaskState(task_id, toolUseContext.setAppState, t => ({
           ...t,
           notified: true
         }));
+        acknowledgeTaskNotification(task_id, task.startTime);
         return {
           data: {
             retrieval_status: 'success' as const,
-            task: await getTaskOutputData(task)
+            task: output
           }
         };
       }
@@ -274,6 +283,11 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     }
     const completedTask = await waitForTaskCompletion(task_id, toolUseContext.getAppState, timeout, toolUseContext.abortController);
     if (!completedTask) {
+      const receipt = terminalAgentReceipts.get(task_id)
+      if (receipt) {
+        acknowledgeTaskNotification(task_id)
+        return { data: { retrieval_status: 'success' as const, task: receipt } }
+      }
       return {
         data: {
           retrieval_status: 'timeout' as const,
@@ -290,15 +304,17 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
       };
     }
 
+    const output = await getTaskOutputData(completedTask);
     // Mark as notified
     updateTaskState(task_id, toolUseContext.setAppState, t => ({
       ...t,
       notified: true
     }));
+    acknowledgeTaskNotification(task_id, completedTask.startTime);
     return {
       data: {
         retrieval_status: 'success' as const,
-        task: await getTaskOutputData(completedTask)
+        task: output
       }
     };
   },

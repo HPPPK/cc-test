@@ -1431,7 +1431,7 @@ function getModelContextInputValue(
   const trimmedModel = model?.trim()
   if (!trimmedModel) return ''
   const value = provider?.modelContextWindows?.[trimmedModel] ?? preset.modelContextWindows?.[trimmedModel]
-  return value !== undefined ? String(value) : ''
+  return value !== undefined ? String(value) : '1000000'
 }
 
 function getModelContextInputs(

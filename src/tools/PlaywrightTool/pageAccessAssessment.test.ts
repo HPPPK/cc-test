@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { classifyRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent } from './pageAccessAssessment.js'
+import { classifyRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent, isHumanVerificationRecoveryHealthy } from './pageAccessAssessment.js'
 
 describe('detectHumanVerificationKind', () => {
   test('detects Google Chinese sorry / reCAPTCHA interstitial even when iframe text is missing', () => {
@@ -220,4 +220,13 @@ test('keeps the real Cloudflare security-verification wording paused without tre
     expect(classifyRenderedPageAccess(url, 'Just a moment...', text)).toContain('ACCESS_LIMITED_PAGE')
   }
   expect(detectHumanVerificationKind('https://example.com/blog', 'How security verification works', text)).toBeNull()
+})
+
+test('recognizes the recorded Chinese Cloudflare page without blocking articles that quote it', () => {
+  const body = 'www.v2ex.com\n正在进行安全验证\n本网站使用安全服务防护恶意自动程序。在验证您不是自动程序期间，将显示此页面。\n由 Cloudflare 提供的性能和安全服务'
+  expect(detectHumanVerificationKind('https://www.v2ex.com/t/165355', '请稍候…', body)).toBe('human verification')
+  expect(classifyRenderedPageAccess('https://www.v2ex.com/t/165355', '请稍候…', body)).toContain('ACCESS_LIMITED_PAGE')
+  expect(isHumanVerificationRecoveryHealthy({ url: 'https://www.v2ex.com/t/165355', title: '请稍候…', text: body, readyState: 'complete', closed: false })).toBe(false)
+  expect(detectHumanVerificationKind('https://example.com/article', 'Cloudflare 验证说明', body)).toBeNull()
+  expect(detectHumanVerificationKind('https://example.com/', '请稍候…', '正在加载公开产品说明')).toBeNull()
 })

@@ -11,12 +11,48 @@ import {
 } from './workflowTemplateRegistryService.js'
 import { WorkflowSessionCreateService } from './workflowSessionCreateService.js'
 import { WorkflowSessionStateService } from './workflowSessionStateService.js'
+import { studentSevenStageRequest } from './__fixtures__/studentSevenStageRequest.js'
 
 let tempConfigDir: string
 let originalConfigDir: string | undefined
 let originalPacksDir: string | undefined
 
 describe('workflow session creation routing', () => {
+  test.each([
+    ['修复学生系统500报错，完整七阶段工作流', 'bug'],
+    [studentSevenStageRequest, 'new-product'],
+  ] as const)('honors the explicitly selected complete canonical flow: %s', async (request, primaryLabel) => {
+    const workspaceRoot = path.join(tempConfigDir, 'full-flow-workspace')
+    await fs.mkdir(workspaceRoot)
+    const service = new WorkflowSessionCreateService()
+    const workflow: WorkflowSessionCreateOptions = {
+      templateId: 'efficient-constrained-dev-debug-workflow-v5', templateSource: 'builtin',
+      request, effort: 'light',
+    }
+    const template = await service.resolveTemplate(workflow)
+    const summary = await service.createWorkflowSessionMetadata('complete-bug', workspaceRoot, template, workflow)
+    const { state } = await new WorkflowSessionStateService().readState('complete-bug')
+    expect(summary.router?.primaryLabel).toBe(primaryLabel)
+    expect(summary.effort).toBe('standard')
+    expect(state?.phases.map(phase => phase.id)).toEqual(template.phases.map(phase => phase.id))
+    expect(state?.phases).toHaveLength(7)
+  })
+
+  test('does not override a custom template applicability policy for a complete-flow phrase', async () => {
+    const workspaceRoot = path.join(tempConfigDir, 'custom-flow-workspace')
+    await fs.mkdir(workspaceRoot)
+    const service = new WorkflowSessionCreateService()
+    const workflow: WorkflowSessionCreateOptions = {
+      templateId: 'efficient-constrained-dev-debug-workflow-v5', templateSource: 'builtin',
+      request: '修复学生系统500报错，完整七阶段工作流',
+    }
+    const canonical = await service.resolveTemplate(workflow)
+    const custom = { ...canonical, id: 'custom-flow-fixture' }
+    await service.createWorkflowSessionMetadata('custom-bug', workspaceRoot, custom, workflow)
+    const { state } = await new WorkflowSessionStateService().readState('custom-bug')
+    expect(state?.phases.length).toBeLessThan(canonical.phases.length)
+    expect(state?.router?.primaryLabel).toBe('bug')
+  })
   beforeEach(async () => {
     tempConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-jiangxia-workflow-create-'))
     originalConfigDir = process.env.CLAUDE_CONFIG_DIR

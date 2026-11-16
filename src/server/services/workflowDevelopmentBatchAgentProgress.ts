@@ -157,6 +157,14 @@ export function recordDevelopmentBatchAgentProgress(
     && JSON.stringify(current.requiredFixes ?? []) === JSON.stringify(input.reviewerOutcome?.requiredFixes ?? [])
   ) return state
 
+  if (input.status === 'succeeded' && (
+    (state.runStatus !== undefined && state.runStatus !== 'active')
+    || ['paused', 'cancelled', 'completed', 'exited'].includes(state.status)
+    || state.pendingConfirmation || state.pendingRoute
+  )) {
+    throw new Error('WORKFLOW_EXECUTION_SUSPENDED: A successful task receipt requires the current workflow to be active without a pending confirmation or route. Preserve completed work and resume through the Leader.')
+  }
+
   const nextStateVersion = state.stateVersion + 1
   if (input.status === 'running') {
     if (current.status === 'running' && current.agentId !== input.agentId) {

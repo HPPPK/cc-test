@@ -8,7 +8,7 @@ import { useTranslation } from '../../i18n'
 import type { TranslationKey } from '../../i18n'
 import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
 import { useUIStore } from '../../stores/uiStore'
-import type { AgentTaskNotification, UIMessage } from '../../types/chat'
+import type { AgentTaskNotification, BackgroundAgentTask, UIMessage } from '../../types/chat'
 import { AGENT_LIFECYCLE_TYPES } from '../../types/team'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
@@ -33,6 +33,7 @@ type Props = {
   toolCalls: ToolCall[]
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
+  backgroundAgentTasks?: Record<string, BackgroundAgentTask>
   agentTaskNotifications: Record<string, AgentTaskNotification>
   /** When true, the last tool is still executing — show expanded */
   isStreaming?: boolean
@@ -116,6 +117,7 @@ export function ToolCallGroup({
   resultMap,
   childToolCallsByParent,
   agentTaskNotifications,
+  backgroundAgentTasks,
   isStreaming,
 }: Props) {
   const memoryActivity = getMemoryToolActivity(toolCalls, resultMap)
@@ -138,6 +140,7 @@ export function ToolCallGroup({
             resultMap={resultMap}
             childToolCallsByParent={childToolCallsByParent}
             agentTaskNotifications={agentTaskNotifications}
+            backgroundAgentTasks={backgroundAgentTasks}
             isStreaming={isStreaming}
           />
         </div>
@@ -161,6 +164,7 @@ export function ToolCallGroup({
       resultMap={resultMap}
       childToolCallsByParent={childToolCallsByParent}
       agentTaskNotifications={agentTaskNotifications}
+      backgroundAgentTasks={backgroundAgentTasks}
       isStreaming={isStreaming}
     />
   )
@@ -172,6 +176,7 @@ function ToolCallGroupContent({
   resultMap,
   childToolCallsByParent,
   agentTaskNotifications,
+  backgroundAgentTasks,
   isStreaming,
 }: Props) {
   const allAgents = toolCalls.every((toolCall) => toolCall.toolName === 'Agent')
@@ -184,6 +189,7 @@ function ToolCallGroupContent({
         resultMap={resultMap}
         childToolCallsByParent={childToolCallsByParent}
         agentTaskNotifications={agentTaskNotifications}
+        backgroundAgentTasks={backgroundAgentTasks}
         isStreaming={isStreaming}
       />
     )
@@ -207,6 +213,7 @@ function ToolCallGroupContent({
       resultMap={resultMap}
       childToolCallsByParent={childToolCallsByParent}
       agentTaskNotifications={agentTaskNotifications}
+      backgroundAgentTasks={backgroundAgentTasks}
       isStreaming={isStreaming}
     />
   )
@@ -338,6 +345,7 @@ function AgentToolGroup({
   resultMap,
   childToolCallsByParent,
   agentTaskNotifications,
+  backgroundAgentTasks,
   isStreaming,
 }: Props) {
   const [expanded, setExpanded] = useState(true)
@@ -350,6 +358,7 @@ function AgentToolGroup({
       isStreaming: !!isStreaming && !resultMap.has(toolCall.toolUseId),
       childCount: (childToolCallsByParent.get(toolCall.toolUseId) ?? []).length,
       taskStatus: agentTaskNotifications[toolCall.toolUseId]?.status,
+      backgroundStatus: latestBackgroundTask(backgroundAgentTasks, toolCall.toolUseId)?.status,
       reportedStatus: getAgentReportedStatus(resultMap.get(toolCall.toolUseId)?.content),
     }),
   )
@@ -412,6 +421,7 @@ function AgentToolGroup({
                   resultMap={resultMap}
                   childToolCallsByParent={childToolCallsByParent}
                   agentTaskNotification={agentTaskNotifications[toolCall.toolUseId]}
+                  backgroundTask={latestBackgroundTask(backgroundAgentTasks, toolCall.toolUseId)}
                   isStreaming={isStreaming && !resultMap.has(toolCall.toolUseId)}
                 />
               </div>
@@ -488,6 +498,7 @@ function AgentCallCard({
   resultMap,
   childToolCallsByParent,
   agentTaskNotification,
+  backgroundTask,
   isStreaming = false,
 }: {
   sessionId?: string | null
@@ -495,6 +506,7 @@ function AgentCallCard({
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
   agentTaskNotification?: AgentTaskNotification
+  backgroundTask?: BackgroundAgentTask
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -514,11 +526,12 @@ function AgentCallCard({
     isStreaming,
     childCount: childToolCalls.length,
     taskStatus: agentTaskNotification?.status,
+    backgroundStatus: backgroundTask?.status,
     reportedStatus: getAgentReportedStatus(result?.content),
   })
   const statusClassName = getAgentStatusClassName(status)
   const statusLabel = getAgentStatusLabel(status, t)
-  const taskSummary = agentTaskNotification?.summary?.trim() || ''
+  const taskSummary = backgroundTask?.blockedReason?.trim() || agentTaskNotification?.summary?.trim() || backgroundTask?.summary?.trim() || ''
   const taskResult = agentTaskNotification?.result?.trim() || ''
   const errorText =
     status === 'failed'
@@ -531,7 +544,7 @@ function AgentCallCard({
       ? extractAgentDisplayText(result.content).trim()
       : ''
   const terminalTaskReport = status === 'done' || status === 'stopped' ? taskResult : ''
-  const terminalTaskSummary = status === 'done' || status === 'stopped' ? taskSummary : ''
+  const terminalTaskSummary = ['done', 'stopped', 'blocked', 'failed'].includes(status) ? taskSummary : ''
   const previewText = terminalTaskReport || fullOutputText || terminalTaskSummary
   const outputSummary = previewText ? getAgentOutputSummary(previewText) : ''
   const showInlineOutputSummary = outputSummary && status !== 'done' && status !== 'stopped'
@@ -811,6 +824,11 @@ function extractLineHint(text: string): string | undefined {
   return match?.[1] ? `${match[1]} lines` : undefined
 }
 
+function latestBackgroundTask(tasks: Record<string, BackgroundAgentTask> | undefined, toolUseId: string) {
+  return Object.values(tasks ?? {}).filter(task => task.toolUseId === toolUseId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+}
+
 type AgentStatus = 'starting' | 'running' | 'done' | 'partial' | 'blocked' | 'failed' | 'stopped'
 type AgentTaskStatus = AgentTaskNotification['status']
 type AgentReportedStatus = 'completed' | 'partial' | 'blocked' | 'failed'
@@ -837,6 +855,7 @@ function getAgentStatus({
   isStreaming,
   childCount,
   taskStatus,
+  backgroundStatus,
   reportedStatus,
 }: {
   hasResult: boolean
@@ -844,9 +863,12 @@ function getAgentStatus({
   isLaunchResult: boolean
   isStreaming: boolean
   childCount: number
+  backgroundStatus?: BackgroundAgentTask['status']
   taskStatus?: AgentTaskStatus
   reportedStatus?: AgentReportedStatus
 }): AgentStatus {
+  if (backgroundStatus === 'blocked' || backgroundStatus === 'failed' || backgroundStatus === 'stopped') return backgroundStatus
+  if (backgroundStatus === 'completed') return 'done'
   if (taskStatus === 'failed') return 'failed'
   if (taskStatus === 'stopped') return 'stopped'
   if (reportedStatus === 'failed') return 'failed'

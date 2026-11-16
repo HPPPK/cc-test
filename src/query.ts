@@ -44,6 +44,7 @@ import {
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
+import { toolObservableInput } from './utils/toolObservableInput.js'
 import {
   createRuntimeUserMessage,
   createUserInterruptionMessage,
@@ -75,8 +76,13 @@ import {
   remove as removeFromQueue,
   getCommandsByMaxPriority,
   isSlashCommand,
+  acknowledgeTaskNotifications,
+  pruneObsoleteTaskNotifications,
+  taskNotificationReady,
+  recheckCommandQueue,
 } from './utils/messageQueueManager.js'
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
+import { readTaskNotificationBoundary } from './utils/taskNotificationBoundary.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
@@ -763,18 +769,16 @@ async function* queryLoop(
                   )
                   if (tool?.backfillObservableInput) {
                     const originalInput = block.input as Record<string, unknown>
-                    const inputCopy = { ...originalInput }
-                    tool.backfillObservableInput(inputCopy)
+                    const inputCopy = toolObservableInput(originalInput,
+                      copy => tool.backfillObservableInput!(copy),
+                      error => logForDebugging(`Tool observer enrichment failed for ${block.name}; preserving original input for tool validation: ${error instanceof Error ? error.message : String(error)}`))
                     // Only yield a clone when backfill ADDED fields; skip if
                     // it only OVERWROTE existing ones (e.g. file tools
                     // expanding file_path). Overwrites change the serialized
                     // transcript and break VCR fixture hashes on resume,
                     // while adding nothing the SDK stream needs — hooks get
                     // the expanded path via toolExecution.ts separately.
-                    const addedFields = Object.keys(inputCopy).some(
-                      k => !(k in originalInput),
-                    )
-                    if (addedFields) {
+                    if (inputCopy) {
                       clonedContent ??= [...message.message.content]
                       clonedContent[i] = { ...block, input: inputCopy }
                     }
@@ -1574,10 +1578,19 @@ async function* queryLoop(
     const isMainThread =
       querySource.startsWith('repl_main_thread') || querySource === 'sdk'
     const currentAgentId = toolUseContext.agentId
+    const hasMachineNotification = getCommandsByMaxPriority(sleepRan ? 'later' : 'next')
+      .some(cmd => cmd.mode === 'task-notification' && cmd.messageKind !== 'user_input')
+    const notificationState = hasMachineNotification ? await readTaskNotificationBoundary(toolUseContext.getAppState(), {
+      skipDesktopRefresh: getCommandsByMaxPriority('next').some(cmd => cmd.mode !== 'task-notification' || cmd.messageKind === 'user_input'),
+      interruptOnHumanInput: true,
+      wakeOnUnavailable: recheckCommandQueue,
+    }) : toolUseContext.getAppState()
+    pruneObsoleteTaskNotifications(notificationState)
     const queuedCommandsSnapshot = getCommandsByMaxPriority(
       sleepRan ? 'later' : 'next',
     ).filter(cmd => {
       if (isSlashCommand(cmd)) return false
+      if (!taskNotificationReady(cmd, notificationState)) return false
       if (isMainThread) return cmd.agentId === undefined
       // Subagents only drain task-notifications addressed to them — never
       // user prompts, even if someone stamps an agentId on one.
@@ -1647,6 +1660,7 @@ async function* queryLoop(
         }
       }
       removeFromQueue(consumedCommands)
+      acknowledgeTaskNotifications(consumedCommands)
     }
 
     // Instrumentation: Track file change attachments after they're added

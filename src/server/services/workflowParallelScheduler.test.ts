@@ -15,6 +15,20 @@ function task(overrides: Partial<WorkflowParallelTask> & Pick<WorkflowParallelTa
 }
 
 describe('workflow parallel scheduler', () => {
+  test('rejects resetting an ancestor atomically while a dependent is running', () => {
+    const scheduler = new WorkflowParallelScheduler({ maxParallel: 2 }, [
+      task({ id: 'B1' }), task({ id: 'B2', dependsOn: ['B1'] }),
+    ])
+    scheduler.tryStartTask('B1')
+    scheduler.markSucceeded('B1')
+    scheduler.tryStartTask('B2')
+    const before = JSON.stringify(scheduler.snapshot())
+    expect(() => scheduler.resetTaskAndDependents('B1')).toThrow('dependent work is running')
+    expect(JSON.stringify(scheduler.snapshot())).toBe(before)
+    scheduler.markSucceeded('B2')
+    expect(scheduler.snapshot().tasks.every(item => item.status === 'succeeded')).toBe(true)
+  })
+
   test('starts independent tasks up to the configured concurrency cap', () => {
     const scheduler = new WorkflowParallelScheduler({ maxParallel: 2 }, [
       task({ id: 'server' }),

@@ -18,6 +18,7 @@ import { SubmitPhaseCompletionTool } from '../../tools/SubmitPhaseCompletionTool
 import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import { createAssistantMessage } from '../../utils/messages.js'
 import { runToolUse } from './toolExecution.js'
+import { toolObservableInput } from '../../utils/toolObservableInput.js'
 import { asAgentId } from '../../types/ids.js'
 import * as tokenEstimation from '../tokenEstimation.js'
 import * as toolHooks from './toolHooks.js'
@@ -152,6 +153,24 @@ describe('runToolUse file edit recovery', () => {
     expect(JSON.stringify(messages)).not.toContain('File has not been read yet')
     expect(JSON.stringify(messages)).not.toContain('<tool_use_error>')
   }, 20_000)
+
+  test('keeps an observer path error recoverable at the real tool boundary without altering the invalid argument', async () => {
+    const input = { file_path: path.join(tmpDir, 'invalid\0name.txt') }
+    const before = JSON.stringify(input)
+    expect(toolObservableInput(input, copy => FileReadTool.backfillObservableInput!(copy), () => {})).toBeUndefined()
+    expect(JSON.stringify(input)).toBe(before)
+    const context = createContext()
+    const failed = await runSingleToolUse({ type: 'tool_use', id: 'invalid-observer-path', name: FileReadTool.name, input } as ToolUseBlock, context)
+    expect(JSON.stringify(failed)).toContain('Path contains null bytes')
+    expect(JSON.stringify(failed)).toContain('invalid-observer-path')
+    expect(context.abortController.signal.aborted).toBe(false)
+    expect(JSON.stringify(input)).toBe(before)
+    const validPath = path.join(tmpDir, 'corrected.txt')
+    await fs.writeFile(validPath, 'A corrected path can still be read.')
+    const corrected = await runSingleToolUse({ type: 'tool_use', id: 'corrected-observer-path', name: FileReadTool.name, input: { file_path: validPath } } as ToolUseBlock, context)
+    expect(JSON.stringify(corrected)).toContain('A corrected path can still be read.')
+    expect(JSON.stringify(corrected)).not.toContain('<tool_use_error>')
+  })
 
   test('rejects free-form HTML and temporary report JSON in a template-fill Expert session', async () => {
     const previous = {
@@ -548,6 +567,37 @@ describe('runToolUse file edit recovery', () => {
 
     expect(await fs.stat(filePath).catch(() => null)).toBeNull()
     expect(JSON.stringify(messages)).toContain('WORKFLOW_TOOL_FORBIDDEN')
+  })
+
+  test('denied workflow artifact Edit preserves the file and explains same-phase Write recovery', async () => {
+    const filePath = path.join(tmpDir, '.workflow', 'work-order.md')
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, 'confirmed scope')
+    const context = createContext()
+    const appState = context.getAppState()
+    context.getAppState = () => ({ ...appState,
+      workflow: {
+        mode: 'workflow', activePhaseId: 'scope-plan', status: 'running', workflowStatus: 'running',
+        templateSnapshot: {
+          schemaVersion: 1, id: 'workflow-tool-test', source: 'user', version: '1',
+          displayName: 'Workflow tool test', description: 'test',
+          phases: [{
+            id: 'scope-plan', label: 'Scope', instructions: 'Record scope.', requestedModel: null,
+            skillDeclarations: [], requiredArtifacts: [], completionCriteria: [],
+            transitionAuthority: 'user-confirmation',
+            toolPolicy: { allowedTools: ['Read', 'workflow_artifact_write'], disallowedTools: [] },
+          }],
+        },
+      },
+    })
+    const messages = await runSingleToolUse({
+      type: 'tool_use', id: 'denied-artifact-edit', name: FileEditTool.name,
+      input: { file_path: filePath, old_string: 'confirmed scope', new_string: 'changed scope' },
+    } as ToolUseBlock, context)
+    expect(await fs.readFile(filePath, 'utf8')).toBe('confirmed scope')
+    expect(JSON.stringify(messages)).toContain('Read the exact .workflow artifact')
+    expect(JSON.stringify(messages)).toContain('same phase')
+    expect(JSON.stringify(messages)).not.toContain('Complete or route')
   })
 
   test('blocks default development Stage 4 Leader production writes before tool execution', async () => {
@@ -1120,6 +1170,28 @@ test('unresolved Expert intake prevents the tool body and verification continuat
       expect(calls).toBe(1)
       expect(JSON.stringify(resumed)).toContain('scope changed')
     } finally { verification.mockRestore() }
+  } finally { guard.mockRestore() }
+})
+
+test('the saved Desktop answer reaches the model even when the redundant local admission route is offline', async () => {
+  const originalGuard = intakeRuntime.guardExpertIntakeToolCall
+  let requests = 0
+  const guard = spyOn(intakeRuntime, 'guardExpertIntakeToolCall').mockImplementation(input => originalGuard({ ...input,
+    env: { CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY: 'cli-only', CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456', CC_JIANGXIA_EXPERT_SESSION_ID: 'saved-answer-session' },
+    fetchImpl: async () => { requests++; throw new Error('offline admission route') },
+  }))
+  const context = createContext()
+  context.options.tools = [AskUserQuestionTool]
+  const questions = [{ id: 'coreTask', prompt: '产品方向？', choices: [{ id: 'new', label: '开发新品' }, { id: 'existing', label: '现有产品' }] }]
+  const saved = { questions, answers: { coreTask: '开发新品', deliveryBoundary: 'Windows桌面' } }
+  const messages: Message[] = []
+  try {
+    for await (const update of runToolUse({ caller: { type: 'direct' }, type: 'tool_use', id: 'answered-card', name: 'AskUserQuestion', input: { questions } }, createAssistantMessage({ content: 'Ask scope' }),
+      (async () => ({ behavior: 'allow', updatedInput: saved, decisionReason: { type: 'other', reason: 'actual saved Desktop response' } })) as CanUseToolFn, context)) messages.push(update.message)
+    expect(requests).toBe(0)
+    expect(JSON.stringify(messages)).toContain('开发新品')
+    expect(JSON.stringify(messages)).toContain('Windows桌面')
+    expect(JSON.stringify(messages)).not.toContain('EXPERT_INTAKE_UNAVAILABLE')
   } finally { guard.mockRestore() }
 })
 

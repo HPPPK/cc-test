@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
+import path from 'node:path'
 import { sessionService } from './sessionService.js'
 import { conversationService } from './conversationService.js'
 import { getSessionTurnCheckpointDiff, listSessionTurnCheckpoints, previewSessionRewind } from './sessionRewindService.js'
@@ -45,8 +46,8 @@ describe('rewind human input boundaries', () => {
     fixture()
     const checkpoints = await listSessionTurnCheckpoints('fixture')
     expect(checkpoints.map(c => c.target.targetUserMessageId)).toEqual(['human-1', 'human-pasted-summary'])
-    expect(checkpoints[0]?.code.filesChanged).toEqual(['/tmp/rewind-human-only/first.txt'])
-    expect(checkpoints[1]?.code.filesChanged).toEqual(['/tmp/rewind-human-only/second.txt'])
+    expect(checkpoints[0]?.code.filesChanged).toEqual([path.resolve('/tmp/rewind-human-only/first.txt')])
+    expect(checkpoints[1]?.code.filesChanged).toEqual([path.resolve('/tmp/rewind-human-only/second.txt')])
     const diff = await getSessionTurnCheckpointDiff('fixture', { targetUserMessageId: 'human-1' }, 'first.txt')
     expect(diff.state).toBe('ok')
     expect(diff.diff).toContain('+hello')

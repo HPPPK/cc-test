@@ -26,6 +26,13 @@ import {
 import type { WorkflowSessionState, WorkflowTemplate } from './workflowTypes.js'
 
 const NOW = '2026-08-28T08:00:00.000Z'
+test('preserves recorded structured Reviewer fixes instead of dropping object entries', () => {
+  const fix = { file: 'app/classes/__init__.py', issue: 'Whitespace teacher ID does not match identity', requiredChange: 'Reject padded IDs and test standard ID visibility.' }
+  expect(parseDevelopmentReviewerOutcome(JSON.stringify({ workflowReview: {
+    reviewStatus: 'needs-fix', requiredFixes: [fix], readyForNextBatch: false,
+  } }))).toEqual({ reviewStatus: 'needs-fix', requiredFixes: [JSON.stringify(fix)], readyForNextBatch: false })
+})
+
 let workspaceRoot = ''
 
 const plan: DevelopmentBatchPlanTask[] = [
@@ -196,6 +203,18 @@ describe('default development Stage 4 Batch Agent receipts', () => {
     expect(() => recordDevelopmentBatchAgentProgress(current, progress('reviewer', 'B1', 'running', 'reviewer-1'))).toThrow('Reviewer cannot start before its Coder succeeds')
   })
 
+  test('does not accept successful Coder output after the workflow has paused', () => {
+    const running = recordDevelopmentBatchAgentProgress(state(), progress('coder', 'B1', 'running', 'coder-1'))
+    const paused = { ...running, runStatus: 'paused' as const }
+    expect(() => recordDevelopmentBatchAgentProgress(paused, progress('coder', 'B1', 'succeeded', 'coder-1'))).toThrow('WORKFLOW_EXECUTION_SUSPENDED')
+    const failed = recordDevelopmentBatchAgentProgress(paused, progress('coder', 'B1', 'failed', 'coder-1', { reason: 'Workflow was paused' }))
+    expect(failed.runtimeContract!.phaseStates[DEVELOPMENT_IMPLEMENT_PHASE_ID]!.taskSnapshots.find(task => task.batchId === 'B1' && task.workflowRole === 'coder')!.status).toBe('failed')
+    expect(failed.runStatus).toBe('paused')
+    const done = recordDevelopmentBatchAgentProgress(running, progress('coder', 'B1', 'succeeded', 'coder-1'))
+    const acceptedBeforePause = { ...done, runStatus: 'paused' as const }
+    expect(recordDevelopmentBatchAgentProgress(acceptedBeforePause, progress('coder', 'B1', 'succeeded', 'coder-1'))).toBe(acceptedBeforePause)
+  })
+
   test('records every Batch and allows completion only after Coder then passing Reviewer', () => {
     let current = state()
     current = recordDevelopmentBatchAgentProgress(current, progress('coder', 'B1', 'running', 'coder-1'))
@@ -297,6 +316,39 @@ describe('default development Stage 4 Batch Agent receipts', () => {
     expect(developmentLeaderToolViolation('Write', { file_path: path.join(workspaceRoot, '.workflow', 'run-report.md') }, development, false)).toBeNull()
     expect(developmentLeaderToolViolation('Write', { file_path: path.join(workspaceRoot, 'src', 'app.ts') }, development, true)).toBeNull()
     expect(developmentLeaderToolViolation('Write', { file_path: path.join(workspaceRoot, 'src', 'app.ts') }, state('feature-extension-workflow-v8'), false)).toBeNull()
+  })
+
+  test('normalizes legacy Reviewer readiness without accepting conflicting or incomplete reviews', () => {
+    for (const reviewStatus of ['pass', 'needs-fix'] as const) {
+      const requiredFixes = reviewStatus === 'pass' ? [] : ['repair module entry']
+      const ready = reviewStatus === 'pass'
+      expect(parseDevelopmentReviewerOutcome(JSON.stringify({
+        workflowReview: { reviewStatus, requiredFixes, allowNextBatch: ready },
+      }))).toEqual({ reviewStatus, requiredFixes, readyForNextBatch: ready })
+      expect(parseDevelopmentReviewerOutcome(JSON.stringify({
+        workflowReview: { reviewStatus, requiredFixes, allowNextBatch: !ready },
+      }))).toBeNull()
+    }
+    expect(parseDevelopmentReviewerOutcome(JSON.stringify({
+      workflowReview: { reviewStatus: 'pass', requiredFixes: [], readyForNextBatch: true, allowNextBatch: false },
+    }))).toBeNull()
+    expect(parseDevelopmentReviewerOutcome(JSON.stringify({
+      workflowReview: { reviewStatus: 'pass', readyForNextBatch: true },
+    }))).toBeNull()
+    expect(parseDevelopmentReviewerOutcome('reviewStatus: pass\nreadyForNextBatch: true')).toBeNull()
+    expect(parseDevelopmentReviewerOutcome('reviewStatus: needs-fix\nrequiredFixes: repair module entry\nallowNextBatch: false')).toEqual({
+      reviewStatus: 'needs-fix', requiredFixes: ['repair module entry'], readyForNextBatch: false,
+    })
+    expect(parseDevelopmentReviewerOutcome(JSON.stringify({ reviewStatus: 'needs-fix', requiredFixes: 'repair module entry', allowNextBatch: false }))).toEqual({
+      reviewStatus: 'needs-fix', requiredFixes: ['repair module entry'], readyForNextBatch: false,
+    })
+    for (const value of [
+      { reviewStatus: 'pass', requiredFixes: [], readyForNextBatch: 'unknown', allowNextBatch: true },
+      { reviewStatus: 'pass', requiredFixes: [], allowNextBatch: 'unknown' },
+      { reviewStatus: 'pass', requiredFixes: ['repair module entry'], allowNextBatch: true },
+      { reviewStatus: 'needs-fix', requiredFixes: [], allowNextBatch: false },
+    ]) expect(parseDevelopmentReviewerOutcome(JSON.stringify(value))).toBeNull()
+    expect(parseDevelopmentReviewerOutcome('reviewStatus: pass\nrequiredFixes: []\nreadyForNextBatch: true\nallowNextBatch: false')).toBeNull()
   })
 
   test('locks the Stage 3 handoff format and never parses BatchId as a fake id Batch', () => {

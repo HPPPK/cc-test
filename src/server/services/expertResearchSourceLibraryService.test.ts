@@ -27,6 +27,21 @@ const SOURCE_LIBRARY = [
   "- Google Play：https://play.google.com/",
 ].join("\n")
 
+test('Trends legacy entry maps only actual Trends pages, retaining limited status and exact URL', () => {
+  const catalog = parseResearchSourceLibrary('<!-- research-source-library-tier: core -->\n### 趋势\n- Trends：http://www.google.com/trends')
+  const page = 'https://trends.google.com/trends/explore?q=Windows%20mouse%20shortcuts'
+  const records: any[] = [{ agentId: 'c', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-14', content: '', entries: [{ kind: 'url', target: page, finalUrl: page, status: 'access_limited' }] }]
+  expect(matchResearchSourceLibraryAttempts({ catalog, records })).toMatchObject([{ candidateUrl: 'http://www.google.com/trends', targetUrl: page, status: 'access_limited' }])
+  for (const target of ['https://trends.google.com/', 'https://trends.google.com/trending', 'https://www.google.com/trends/explore']) {
+    records[0].entries = [{ kind: 'url', target, finalUrl: target, status: 'opened' }]
+    expect(matchResearchSourceLibraryAttempts({ catalog, records })).toHaveLength(1)
+  }
+  for (const target of ['https://www.google.com/search?q=trends', 'https://www.google.com/maps', 'https://trends.google.com.evil.example/trends']) {
+    records[0].entries = [{ kind: 'url', target, finalUrl: target, status: 'opened' }]
+    expect(matchResearchSourceLibraryAttempts({ catalog, records })).toEqual([])
+  }
+})
+
 describe("research source library usage audit", () => {
   test("classifies only actually opened concrete pages by core and open source tiers", () => {
     const catalog = parseResearchSourceLibrary(SOURCE_LIBRARY)

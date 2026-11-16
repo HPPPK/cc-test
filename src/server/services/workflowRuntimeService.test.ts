@@ -411,6 +411,19 @@ describe('WorkflowRuntimeService', () => {
     }))
   })
 
+  test('clears both phase and workflow blocker when phase execution resumes successfully', async () => {
+    const service = await makeService()
+    const state = makeState({ blockedReason: 'old blocker', runStatus: 'blocked' })
+    state.phases[0]!.blockedReason = 'old blocker'
+    const result = await service.startPhase({ state, requestedAt: NOW,
+      isRequestedModelAvailable: async () => true,
+      resolveDefaultModel: async () => ({ providerId: 'fixture', modelId: 'fixture-model' }),
+    })
+    expect(result.state.runStatus).toBe('active')
+    expect(result.state.blockedReason).toBeUndefined()
+    expect(result.state.phases[0]!.blockedReason).toBeUndefined()
+  })
+
   test('falls back visibly from an unavailable requested phase model to the main session default', async () => {
     const service = await makeService()
 
@@ -1817,6 +1830,103 @@ describe('WorkflowRuntimeService', () => {
     })
   })
 
+  test('includes authoritative current task receipts when assembling a resumed phase prompt', async () => {
+    const service = await makeService()
+    const state = makeState()
+    state.templateIdentity = { ...state.templateIdentity, id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID }
+    state.runtimeContract!.phaseStates.requirements!.taskSnapshots = [{
+      taskId: 'development-batch:B1:coder', sessionId: state.sessionId, phaseId: 'requirements',
+      status: 'pending', stateVersion: state.stateVersion, updatedAt: NOW,
+    }]
+    const prompt = await service.assemblePrompt({ state, userMessage: 'Continue this phase.' })
+    expect(prompt.content).toContain('Authoritative current task receipts')
+    expect(prompt.content).toContain('development-batch:B1:coder: pending')
+    expect(prompt.content).toContain('override earlier conversation')
+  }, 60_000)
+
+  test('preserves accepted prerequisite batches when same-phase rework repairs a failed batch', async () => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const template = makeTemplate({ phases: [{ ...basePhase, id: 'delegate-implement', label: 'Stage 4', transitionAuthority: 'user-confirmation' }] })
+    const state = makeState({
+      templateSnapshot: template, activePhaseId: 'delegate-implement', workflowStatus: 'running', status: 'running', runStatus: 'blocked',
+      blockedReason: 'B3 needs repair',
+      phases: [{ id: 'delegate-implement', index: 0, status: 'running', blockedReason: 'B3 needs repair', artifactPointers: [] }],
+    })
+    state.templateIdentity = { ...state.templateIdentity, id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID }
+    const snapshots = ['B1', 'B2', 'B3', 'B4'].flatMap((batchId, index) => (['coder', 'reviewer'] as const).map(role => ({
+      taskId: `development-batch:${batchId}:${role}`, sessionId: state.sessionId, phaseId: 'delegate-implement',
+      batchId, workflowRole: role, stateVersion: state.stateVersion, updatedAt: NOW,
+      status: index < 2 || (batchId === 'B3' && role === 'coder') ? 'succeeded' as const
+        : batchId === 'B3' ? 'needs_fix' as const : 'waiting_dependency' as const,
+      ...(role === 'reviewer' && index < 2 ? { reviewStatus: 'pass' as const, readyForNextBatch: true } : {}),
+      ...(batchId === 'B3' && role === 'reviewer' ? { reviewStatus: 'needs-fix' as const, requiredFixes: ['derive class options'] } : {}),
+      dependsOn: role === 'reviewer' ? [`development-batch:${batchId}:coder`]
+        : index ? [`development-batch:B${index}:reviewer`] : [],
+      agentId: `${batchId}-${role}`, agentRunId: `${batchId}-${role}`, completedAt: NOW,
+    })))
+    state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots = snapshots
+    const routed = await service.requestWorkflowRoute({
+      state, requestedAt: NOW, transitionId: 'repair-one-batch',
+      request: { phaseId: 'delegate-implement', stateVersion: state.stateVersion, intent: 'rework_current_phase',
+        rationale: 'Repair B3 reviewer findings.', evidence: [{ ref: 'B3-review' }], requireUserConfirmation: true },
+    })
+    const confirmed = await service.applyTransition({
+      state: routed.state, requestedAt: NOW,
+      request: { phaseId: 'delegate-implement', action: 'confirm', transitionId: 'confirm-repair-one-batch',
+        confirmationId: routed.state.pendingRoute!.routeId, expectedStateVersion: routed.state.stateVersion },
+    })
+    const tasks = confirmed.state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots
+    expect(tasks.slice(0, 4)).toEqual(snapshots.slice(0, 4))
+    expect(tasks[4]).toMatchObject({ batchId: 'B3', workflowRole: 'coder', status: 'pending' })
+    expect(tasks.slice(4).every(task => !task.agentRunId && !task.completedAt)).toBe(true)
+    expect(confirmed.state.blockedReason).toBeUndefined()
+    expect(confirmed.state.phases[0]!.blockedReason).toBeUndefined()
+  })
+
+  test.each(['protocol-failure', 'needs-fix'] as const)('same-phase rework uses real ledger IDs and resets only necessary roles: %s', async failure => {
+    const service = await makeService()
+    const basePhase = makeTemplate().phases[0]
+    const state = makeState({
+      templateSnapshot: makeTemplate({ phases: [{ ...basePhase, id: 'delegate-implement', transitionAuthority: 'user-confirmation' }] }),
+      activePhaseId: 'delegate-implement', workflowStatus: 'running', status: 'running', runStatus: 'blocked', blockedReason: 'B2 review failed',
+      phases: [{ id: 'delegate-implement', index: 0, status: 'running', blockedReason: 'B2 review failed', artifactPointers: [] }],
+    })
+    state.templateIdentity = { ...state.templateIdentity, id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID }
+    const snapshots = ['B1', 'B2', 'B3'].flatMap((batchId, index) => (['coder', 'reviewer'] as const).map(workflowRole => ({
+      taskId: `development-batch:${batchId}:${workflowRole}`, sessionId: state.sessionId, phaseId: 'delegate-implement',
+      batchId, workflowRole, stateVersion: state.stateVersion, updatedAt: NOW,
+      status: batchId === 'B2' && workflowRole === 'reviewer'
+        ? failure === 'needs-fix' ? 'needs_fix' as const : 'failed' as const : 'succeeded' as const,
+      ...(batchId === 'B2' && workflowRole === 'reviewer'
+        ? failure === 'needs-fix' ? { reviewStatus: 'needs-fix' as const, requiredFixes: ['restrict teacher route target role'] }
+          : { reason: 'WORKFLOW_REVIEW_RESULT_INVALID: invalid protocol' }
+        : workflowRole === 'reviewer' ? { reviewStatus: 'pass' as const } : {}),
+      dependsOn: workflowRole === 'reviewer' ? [`${batchId}::coder`] : index ? [`B${index}::reviewer`] : [],
+      agentRunId: `${batchId}-${workflowRole}`, completedAt: NOW,
+    })))
+    state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots = snapshots
+    const routed = await service.requestWorkflowRoute({ state, requestedAt: NOW, transitionId: `role-rework-${failure}`,
+      request: { phaseId: 'delegate-implement', stateVersion: state.stateVersion, intent: 'rework_current_phase',
+        rationale: 'Repair the current failed review.', evidence: [{ ref: 'B2-review' }], requireUserConfirmation: true },
+    })
+    const confirmed = await service.applyTransition({ state: routed.state, requestedAt: NOW,
+      request: { phaseId: 'delegate-implement', action: 'confirm', transitionId: `confirm-role-rework-${failure}`,
+        confirmationId: routed.state.pendingRoute!.routeId, expectedStateVersion: routed.state.stateVersion },
+    })
+    const tasks = confirmed.state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots
+    expect(tasks.slice(0, 2)).toEqual(snapshots.slice(0, 2))
+    if (failure === 'protocol-failure') {
+      expect(tasks[2]).toEqual(snapshots[2])
+      expect(tasks[3]).toMatchObject({ status: 'pending', workflowRole: 'reviewer' })
+    } else {
+      expect(tasks[2]).toMatchObject({ status: 'pending', workflowRole: 'coder' })
+      expect(tasks[2]!.agentRunId).toBeUndefined()
+      expect(tasks[3]).toMatchObject({ status: 'waiting_dependency' })
+    }
+    expect(tasks.slice(4).every(task => !task.agentRunId && !task.completedAt && task.status === 'waiting_dependency')).toBe(true)
+  })
+
   test('invalidates successful task receipts when a managed implementation phase is confirmed for rework', async () => {
     const service = await makeService()
     const basePhase = makeTemplate().phases[0]
@@ -2301,6 +2411,64 @@ describe('WorkflowRuntimeService', () => {
     expect(resumed.state.runStatus).toBe('active')
     expect(resumed.state.pendingRoute).toBeNull()
     expect(resumed.state.pendingConfirmation).toBeNull()
+  })
+
+  test('backward development route preserves pre-invalidation evidence without accepting the old plan', async () => {
+    const service = await makeService()
+    const ids = ['route-context', 'scope-plan', 'delivery-plan', 'delegate-implement']
+    const template = makeTemplate({
+      id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID,
+      phases: ids.map(id => ({ ...makeTemplate().phases[0], id })),
+    })
+    const state = makeState({
+      templateSnapshot: template,
+      templateIdentity: { id: DEVELOPMENT_WORKFLOW_TEMPLATE_ID, source: 'user', version: '26' },
+      activePhaseId: 'delegate-implement', status: 'running', workflowStatus: 'running', runStatus: 'blocked',
+      phases: ids.map((id, index) => ({
+        id, index, status: id === 'delegate-implement' ? 'running' : 'completed',
+        blockedReason: id === 'delegate-implement' ? 'Platform scope needs revision.' : undefined,
+        artifactPointers: id === 'delegate-implement' ? [pointer('implementation-evidence')] : [],
+      })),
+    })
+    const source = state.runtimeContract!.phaseStates['delegate-implement']!
+    source.taskSnapshots = ['succeeded', 'pending'].map((status, index) => ({
+      taskId: `B${index + 1}::coder`, batchId: `B${index + 1}`, workflowRole: 'coder',
+      sessionId: state.sessionId, phaseId: 'delegate-implement', stateVersion: state.stateVersion,
+      status: status as 'succeeded' | 'pending', updatedAt: NOW,
+    }))
+    source.checks = [{ id: 'old-check', description: 'Old plan checked', required: true,
+      status: 'passed', evidenceArtifactIds: ['implementation-evidence'], updatedAt: NOW }]
+    const original = JSON.stringify(state)
+    const restored: WorkflowSessionState = JSON.parse(original)
+    const requested = await service.requestWorkflowRoute({
+      state: restored, requestedAt: NOW,
+      request: {
+        phaseId: 'delegate-implement', stateVersion: state.stateVersion,
+        intent: 'jump_to_phase', targetPhaseId: 'scope-plan',
+        rationale: 'Revise platform scope only.', evidence: [], requireUserConfirmation: true,
+      },
+    })
+    const confirmed = await service.applyTransition({
+      state: requested.state, requestedAt: NOW,
+      request: { phaseId: 'delegate-implement', action: 'confirm',
+        confirmationId: requested.state.pendingRoute!.routeId, stateVersion: requested.state.stateVersion },
+    })
+    const persisted: WorkflowSessionState = JSON.parse(JSON.stringify(confirmed.state))
+    const capsule = persisted.contextCapsules!.find(item => item.id === persisted.activeContextCapsuleId)!
+    expect(capsule).toMatchObject({
+      fromPhaseId: 'delegate-implement', toPhaseId: 'scope-plan',
+      sourceStateVersion: requested.state.stateVersion,
+      acceptedTaskIds: ['B1::coder', 'B2::coder'], completedTaskIds: ['B1::coder'], incompleteTaskIds: ['B2::coder'],
+      handoff: { routeRationale: 'Revise platform scope only.', routeEvidence: [] },
+    })
+    expect(capsule.artifactRefs).toContainEqual(expect.objectContaining({ artifactId: 'implementation-evidence' }))
+    expect(confirmed.state.phases.find(item => item.id === 'delegate-implement')!.artifactPointers).toEqual([])
+    expect(confirmed.state.runtimeContract!.phaseStates['delegate-implement']).toMatchObject({
+      eligibility: 'ineligible', taskSnapshots: [], checks: [expect.objectContaining({ status: 'stale' })],
+    })
+    expect(JSON.stringify(state)).toBe(original)
+    expect(JSON.stringify(restored)).toBe(original)
+    expect(persisted.runtimeContract!.phaseStates['delegate-implement']!.eligibility).toBe('ineligible')
   })
 
   test('allows a blocked phase to request and confirm a jump_to_phase recovery without a pending completion', async () => {

@@ -143,6 +143,7 @@ export type WorkflowStatusPanelSummary = {
     requiresConfirmation: boolean
     approvedTargetPhaseId: string | null
     status: 'pending' | 'approved' | 'rejected'
+    scopeAmendment?: { batchId: string; addWriteScopes: string[] }
   } | null
   pendingTargetPhaseId?: string | null
   pendingTargetPhaseIndex?: number

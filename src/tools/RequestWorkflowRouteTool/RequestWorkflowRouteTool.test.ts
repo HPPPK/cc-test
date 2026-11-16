@@ -49,6 +49,15 @@ function contextFor(): ToolUseContext {
 }
 
 describe('RequestWorkflowRouteTool', () => {
+  test('exposes only a current-phase exact scope amendment request, not client-authored approval bindings', async () => {
+    const tool = await loadTool()
+    const input = { intent: 'rework_current_phase', rationale: 'Register roster app', evidence: [],
+      scopeAmendment: { batchId: 'B3', addWriteScopes: ['config/settings.py'] } }
+    expect(tool.inputSchema.safeParse(input).success).toBe(true)
+    expect(tool.inputSchema.safeParse({ ...input, intent: 'jump_to_phase', targetPhaseId: 'delivery-plan' }).success).toBe(false)
+    expect(tool.inputSchema.safeParse({ ...input, scopeAmendment: { ...input.scopeAmendment, basePlanSignature: 'forged' } }).success).toBe(false)
+    expect(await tool.prompt(toolPromptFixture())).toContain('one formal confirmation')
+  })
   test('is strict and validates jump target requirements', async () => {
     const tool = await loadTool()
     expect(tool.name).toBe('request_workflow_route')

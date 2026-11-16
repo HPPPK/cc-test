@@ -200,6 +200,10 @@ export class WorkflowParallelScheduler {
       if (task.status === 'running') {
         throw new Error(`Cannot reset workflow task while dependent work is running: ${id}`)
       }
+    }
+    // Validate the complete reset before changing any dependency receipt.
+    for (const id of resetIds) {
+      const task = this.tasks.get(id)!
       task.status = 'pending'
       delete task.blockedReason
     }

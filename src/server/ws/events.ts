@@ -1,4 +1,5 @@
 import type { MessageKindMetadata } from '../../utils/messageKind.js'
+import type { WorkflowScopeAmendmentRequest } from '../services/workflowTypes.js'
 /**
  * WebSocket event type definitions
  *
@@ -27,6 +28,7 @@ export type ClientMessage =
       routeIntent?: 'advance' | 'rework_current_phase' | 'jump_to_phase' | 'pause' | 'resume' | 'finish'
       targetPhaseId?: string
       requireUserConfirmation?: boolean
+      scopeAmendment?: WorkflowScopeAmendmentRequest
     }
   | {
       type: 'permission_response'

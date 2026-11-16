@@ -5,7 +5,7 @@ import { expertResearchPathApiFor } from './expertResearchArtifactPolicyService.
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 import { hasActiveExpertRuntime } from './expertRuntimeBindingService.js'
 import { expertRuntimeSessionStore } from './expertRuntimeSessionStore.js'
-import { latestInitialRenderAttempt } from './expertInitialRenderRecovery.js'
+import { latestInitialRenderAttempt, reportRenderAttempts } from './expertInitialRenderRecovery.js'
 import { sessionService, type MessageEntry, type SessionTaskNotification } from './sessionService.js'
 import { expertHumanVerificationService } from './expertHumanVerificationService.js'
 import { commercializationResearchBudgetService } from './commercializationResearchBudgetService.js'
@@ -66,6 +66,7 @@ export type ExpertResearchAutoContinuePlan =
     completionReviewPath: string
     reportPath: string
     reviewerAgentType: 'expert-evidence-output-reviewer'
+    resumeAgentId?: string
   }
   | {
     kind: 'continue-finalize-delivery'
@@ -163,7 +164,7 @@ async function loadCandidateFromSession(sessionId: string): Promise<AutoContinue
   const { ExpertSessionService } = await import('./expertSessionService.js')
   expert = await new ExpertSessionService().refreshSavedResearchEvidence(sessionId) ?? expert
   const workerLifecycles = commercializationResearchBudgetService.getWorkerLifecycles(sessionId, expert)
-  return { workDir, expert, messages: session.messages, terminalNotifications, workerLifecycles }
+  return { workDir, expert, messages: await sessionService.getSessionRuntimeMessages(sessionId), terminalNotifications, workerLifecycles }
 }
 
 
@@ -198,6 +199,7 @@ export class ExpertResearchAutoContinueService {
   private readonly scheduled = new Set<string>()
   private readonly checking = new Set<string>()
   private readonly inFlight = new Set<string>()
+  private readonly outputReviewStalls = new Set<string>()
   private readonly researchRetries = new Map<string, { progress: string; attempts: number; notified: boolean; recoveredTerminals?: Set<string> }>()
   private readonly initialRenderRetries = new Map<string, { progress: string; lastAttempt?: string; errorCode?: string; failureFingerprint?: string; repeats: number; notified: boolean }>()
   private handler: ExpertResearchAutoContinueHandler | undefined
@@ -332,23 +334,37 @@ export class ExpertResearchAutoContinueService {
     return { kind: 'initial-render-stalled', errorCode: state.errorCode ?? 'EXPERT_INITIAL_RENDER_TOOL_ERROR' }
   }
 
-  private guardFinalizeRetry(sessionId: string, expert: ExpertSessionMetadata, review: string,
+  private guardFinalizeRetry(sessionId: string, candidate: AutoContinueCandidate, review: string,
     plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'continue-finalize-delivery' }>): ExpertResearchAutoContinuePlan | undefined {
+    const { expert } = candidate
+    const messages = candidate.messages ?? []
+    const humanIndex = messages.findLastIndex(message => message.isHumanInput === true && !message.isSidechain && !message.parentToolUseId)
+    const attempts = reportRenderAttempts(messages.slice(humanIndex + 1))
+    const toolFailure = attempts.at(-1)
+    let repeatedTools = 0
+    if (toolFailure?.failureFingerprint) {
+      for (const attempt of [...attempts].reverse()) {
+        if (attempt.failureFingerprint !== toolFailure.failureFingerprint) break
+        repeatedTools++
+      }
+    }
     const progress = createHash('sha256').update(JSON.stringify({
       draft: expert.templateFillDraft && { templateId: expert.templateFillDraft.templateId,
         fields: expert.templateFillDraft.fields, evidenceAbsorption: expert.templateFillDraft.evidenceAbsorption,
         completionReview: expert.templateFillDraft.completionReview },
       review, reviewPath: expert.reportCompletenessReview?.artifactPath,
       evidence: expert.researchEvidence?.updatedAt, reviewer: expert.researchEvidenceReviewer?.updatedAt,
+      human: messages[humanIndex]?.id,
     })).digest('hex')
     const failures = (expert as ExpertSessionMetadata & { templateFillRepairFailures?: Array<{ failedAt: string; failureFingerprint: string; code?: string }> }).templateFillRepairFailures
-    const latest = Array.isArray(failures) ? failures.at(-1) : undefined
+    const latest = toolFailure?.errorCode ? { failedAt: toolFailure.id, failureFingerprint: toolFailure.failureFingerprint!, code: toolFailure.errorCode }
+      : Array.isArray(failures) ? failures.at(-1) : undefined
     let state = this.finalizeRetries.get(sessionId)
     if (!state || state.progress !== progress) {
-      state = { progress, failedAt: latest?.failedAt, failure: latest?.failureFingerprint, repeats: 0, notified: false }
+      state = { progress, failedAt: latest?.failedAt, failure: latest?.failureFingerprint, repeats: repeatedTools, notified: false }
       this.finalizeRetries.set(sessionId, state)
       while (this.finalizeRetries.size > 128) this.finalizeRetries.delete(this.finalizeRetries.keys().next().value!)
-      return plan
+      if (state.repeats < 3) return plan
     }
     if (latest?.failedAt && latest.failedAt !== state.failedAt) {
       state.repeats = latest.failureFingerprint === state.failure ? state.repeats + 1 : 1
@@ -364,6 +380,24 @@ export class ExpertResearchAutoContinueService {
   private async resolvePlan(sessionId: string, markWaiting: () => void): Promise<ExpertResearchAutoContinuePlan | undefined> {
     const candidate = await this.dependencies.loadCandidate(sessionId)
     if (!candidate) return undefined
+    // Authentication cannot be repaired by another research instruction. Read
+    // the transcript so reconnects/server restarts cannot restart the loop.
+    // Only a later real user turn or successful parent response clears it.
+    for (const message of [...(candidate.messages ?? [])].reverse()) {
+      if (message.isSidechain || message.parentToolUseId) continue
+      if (message.isHumanInput === true) break
+      if (message.type !== 'assistant') continue
+      const text = typeof message.content === 'string' ? message.content
+        : Array.isArray(message.content) ? message.content
+          .filter(block => block?.type === 'text' && typeof block.text === 'string')
+          .map(block => block.text).join('\n') : ''
+      if (text.trim() === 'No response requested.') continue
+      if (/^(?:Failed to authenticate\.|API Error:\s*(?:401|403)\b)/i.test(text.trim())) {
+        markWaiting()
+        return undefined
+      }
+      if (text.trim()) break
+    }
     const { expert, workDir } = candidate
     // Only the live verification queue establishes a human wait. Historical
     // browser diagnostics or a child's final prose cannot pause recovery.
@@ -453,7 +487,11 @@ export class ExpertResearchAutoContinueService {
         // Live lifecycle takes priority over an earlier completion of this same
         // resumed worker; its generation advances only on a real resume.
         if (workers.some(worker => worker.state === 'running')) continue
-        const endedWorker = workers.filter(worker => worker.state === 'ended').at(-1)
+        const endedWorkers = workers.filter(worker => worker.state === 'ended')
+        // A failed fresh repair has no original browser context. Prefer the
+        // ended worker whose real audit was preserved, even without a saved path.
+        const endedWorker = endedWorkers.findLast(worker => expert.researchEvidence?.records.some(record => record.agentId === worker.agentId && record.entries?.length))
+          ?? endedWorkers.at(-1)
         if (endedWorker) {
           recoveries.push({ artifactPath, endedAgentId: endedWorker.agentId, endedAt: 'runtime:' + endedWorker.generation, reason: 'ended-without-saved-handoff' })
           continue
@@ -523,6 +561,24 @@ export class ExpertResearchAutoContinueService {
                 // Keep those records compatible without guessing a workspace
                 // filename or broadening the output-reviewer's Read surface.
                 if (!completionReviewPath || !reportPath) return undefined
+                // A failed audit includes the original F identity even when its
+                // final API request failed before Write. Resume that transcript.
+                const failedReview = [...(candidate.messages ?? [])].reverse().find(message =>
+                  Date.parse(message.timestamp) >= Date.parse(renderedDraft.completionReview.initialRenderedAt)
+                  && JSON.stringify(message.content).includes('[expert-research-audit] failed to persist audit for expert-evidence-output-reviewer/'))
+                const resumeAgentId = failedReview && JSON.stringify(failedReview.content).match(/failed to persist audit for expert-evidence-output-reviewer\/([a-zA-Z0-9_-]+)/)?.[1]
+                const latestHuman = (candidate.messages ?? []).filter(message => message.isHumanInput === true).at(-1)
+                const failures = resumeAgentId ? (candidate.messages ?? []).filter(message =>
+                  Date.parse(message.timestamp) >= Date.parse(latestHuman?.timestamp ?? renderedDraft.completionReview.initialRenderedAt)
+                  && JSON.stringify(message.content).includes('failed to persist audit for expert-evidence-output-reviewer/' + resumeAgentId + ':')) : []
+                if (failures.length >= 3) {
+                  markWaiting()
+                  const key = JSON.stringify([sessionId, renderedDraft.completionReview.initialRenderedAt, latestHuman?.id, resumeAgentId])
+                  if (this.outputReviewStalls.has(key)) return undefined
+                  this.outputReviewStalls.add(key)
+                  while (this.outputReviewStalls.size > 128) this.outputReviewStalls.delete(this.outputReviewStalls.values().next().value!)
+                  return { kind: 'report-delivery-stalled', reportPath, errorCode: 'EXPERT_OUTPUT_REVIEW_RECOVERY_FAILED' }
+                }
 
                 if (!hasCurrentCompletenessReviewReceipt(
                   expert,
@@ -536,6 +592,7 @@ export class ExpertResearchAutoContinueService {
                     completionReviewPath,
                     reportPath,
                     reviewerAgentType: 'expert-evidence-output-reviewer',
+                    ...(resumeAgentId ? { resumeAgentId } : {}),
                   }
                 }
                 let outputReview: string
@@ -552,6 +609,7 @@ export class ExpertResearchAutoContinueService {
                       completionReviewPath,
                       reportPath,
                       reviewerAgentType: 'expert-evidence-output-reviewer',
+                      ...(resumeAgentId ? { resumeAgentId } : {}),
                     }
                   }
                 } catch {
@@ -562,15 +620,18 @@ export class ExpertResearchAutoContinueService {
                     completionReviewPath,
                     reportPath,
                     reviewerAgentType: 'expert-evidence-output-reviewer',
+                    ...(resumeAgentId ? { resumeAgentId } : {}),
                   }
                 }
-                return this.guardFinalizeRetry(sessionId, expert, outputReview, {
+                const continuation = this.guardFinalizeRetry(sessionId, candidate, outputReview, {
                   kind: 'continue-finalize-delivery',
                   briefPath: artifactPolicy.briefPath,
                   absorptionPath,
                   completionReviewPath,
                   reportPath,
                 })
+                if (!continuation || continuation.kind === 'report-delivery-stalled') markWaiting()
+                return continuation
               }
             } catch {
               // A missing absorption file is exactly the recoverable D → E
@@ -661,6 +722,7 @@ export function buildResearchReviewContinuationInstruction(plan: Extract<ExpertR
 export function buildResearchEndedRecoveryInstruction(plan: Extract<ExpertResearchAutoContinuePlan, { kind: 'recover-ended-researchers' }>): string {
   const messages = plan.recoveries.map(recovery => ({
     to: recovery.endedAgentId,
+    summary: '恢复原研究员保存与审计',
     message: 'This is a save-only recovery in your existing research context. Your assigned research_artifact_path is ' + recovery.artifactPath + '. Read the declared brief if needed. Reuse your existing browser results and truthful runtime browser audit; save the missing Markdown and Read it back, then return the exact saved path so the runner submits the real audit. Do not browse, restart research, launch agents, or consume a new researcher start. Preserve original source quotations and conditions; if existing evidence is insufficient, save explicit evidence gaps instead of inventing facts, visits, audit events or Google wait state.',
   }))
   return [

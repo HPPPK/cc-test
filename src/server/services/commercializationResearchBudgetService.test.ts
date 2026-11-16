@@ -166,6 +166,23 @@ test('save-only resume exposes real same-worker generations without refunding re
 })
 
 
+test('a pending save-only handoff cannot be replaced by a fresh researcher on the same lane', () => {
+  const service = new CommercializationResearchBudgetService()
+  const t = Date.parse(start)
+  service.reserve('resume', expert, { action: 'reserve-researcher', agentId: 'original', artifactPath: 'lane' }, t)
+  service.finish('resume', expert, 'original')
+  service.markSaveOnlyRecovery('resume', expert, 'original')
+  const before = service.inspect('resume', expert, t).remainingStarts
+  const decision = service.reserve('resume', expert, { action: 'reserve-researcher', agentId: 'empty-replacement', artifactPath: 'lane' }, t)
+  expect(decision).toMatchObject({ allowed: false })
+  expect(decision.reason).toContain('SendMessage')
+  expect(decision.reason).toContain('original')
+  expect(service.inspect('resume', expert, t).remainingStarts).toBe(before)
+  expect(service.reserve('resume', expert, { action: 'reserve-researcher', agentId: 'original', artifactPath: 'lane' }, t).allowed).toBe(true)
+  service.completeSaveOnlyRecovery('resume', expert, 'original')
+  expect(service.reserve('resume', expert, { action: 'reserve-researcher', agentId: 'followup', artifactPath: 'lane' }, t).allowed).toBe(true)
+})
+
 test('save-only recovery is a host-enforced browser boundary, not just a model instruction', () => {
   const service = new CommercializationResearchBudgetService()
   const t = Date.parse(start)

@@ -19,6 +19,8 @@ import {
 import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import { developmentWorkerContractPrompt } from '../../server/services/developmentToolExecutionPolicy.js'
+import { resolveAgentToolPermissionContext } from './agentPermissionContext.js'
+import { hasDesktopWorkflowPermissionRelay } from './workflowWorkerPermissionRelay.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { query } from '../../query.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -776,6 +778,12 @@ export async function* runAgent({
   // Enabled only after the package context below has actually loaded. This
   // changes permission transport, not authorization or path/tool restrictions.
   let desktopExpertPermissionRelay = false
+  const desktopWorkflowPermissionRelay = await hasDesktopWorkflowPermissionRelay(
+    workflowWorkerContract ? { ...workflowWorkerContract, agentId } : undefined,
+    'workflow' in appState ? appState.workflow : undefined,
+    toolUseContext.abortController.signal,
+    worktreePath,
+  )
 
   // Override permission mode if agent defines one
   // However, don't override if parent is in bypassPermissions or acceptEdits mode - those should always take precedence
@@ -783,31 +791,17 @@ export async function* runAgent({
   const agentPermissionMode = agentDefinition.permissionMode
   const agentGetAppState = () => {
     const state = toolUseContext.getAppState()
-    let toolPermissionContext = state.toolPermissionContext
-
-    // Override permission mode if agent defines one (unless parent is bypassPermissions, acceptEdits, or auto)
-    if (
-      agentPermissionMode &&
-      state.toolPermissionContext.mode !== 'bypassPermissions' &&
-      state.toolPermissionContext.mode !== 'acceptEdits' &&
-      !(
-        feature('TRANSCRIPT_CLASSIFIER') &&
-        state.toolPermissionContext.mode === 'auto'
-      )
-    ) {
-      toolPermissionContext = {
-        ...toolPermissionContext,
-        mode: agentPermissionMode,
-      }
-    }
+    let toolPermissionContext = resolveAgentToolPermissionContext(state.toolPermissionContext, agentPermissionMode)
+    const workflowPromptRelay = desktopWorkflowPermissionRelay && toolPermissionContext.mode !== 'plan' && toolPermissionContext.mode !== 'dontAsk'
 
     const promptPolicy = resolveAgentPermissionPromptPolicy({
       isAsync,
       canShowPermissionPrompts,
       agentPermissionMode,
       desktopExpertBound: desktopExpertPermissionRelay,
+      desktopWorkflowBound: workflowPromptRelay,
     })
-    if (promptPolicy.shouldAvoidPermissionPrompts || desktopExpertPermissionRelay) {
+    if (promptPolicy.shouldAvoidPermissionPrompts || desktopExpertPermissionRelay || workflowPromptRelay) {
       toolPermissionContext = {
         ...toolPermissionContext,
         shouldAvoidPermissionPrompts: promptPolicy.shouldAvoidPermissionPrompts,
@@ -1567,10 +1561,11 @@ export function resolveAgentPermissionPromptPolicy(input: {
   canShowPermissionPrompts?: boolean
   agentPermissionMode?: string
   desktopExpertBound: boolean
+  desktopWorkflowBound?: boolean
 }): { shouldAvoidPermissionPrompts: boolean; awaitAutomatedChecksBeforePrompt: boolean } {
   const shouldAvoidPermissionPrompts = input.canShowPermissionPrompts !== undefined
     ? !input.canShowPermissionPrompts
-    : input.agentPermissionMode === 'bubble' || input.desktopExpertBound
+    : input.agentPermissionMode === 'bubble' || input.desktopExpertBound || input.desktopWorkflowBound
       ? false
       : input.isAsync
   return { shouldAvoidPermissionPrompts, awaitAutomatedChecksBeforePrompt: input.isAsync && !shouldAvoidPermissionPrompts }
